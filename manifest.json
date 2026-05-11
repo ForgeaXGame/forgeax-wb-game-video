@@ -1,0 +1,31 @@
+{
+  "id": "kubeela-marketplace",
+  "version": "0.1.0",
+  "description": "Kubeela agent marketplace — persona / system-prompt / skill / memory fragments loaded by cli at runtime.",
+  "schemaVersion": 1,
+  "layout": {
+    "system-prompt": {
+      "dir": "src/system-prompt",
+      "loadOrder": "by filename prefix (00- before 01- before 30- ...)",
+      "localeSuffix": ".zh.md / .en.md / .ja.md  — picked by KUBEELA_LANG env (default zh) when filename has a locale variant"
+    },
+    "skills": {
+      "dir": "src/skills",
+      "entry": "SKILL.md in each skill subdir"
+    },
+    "memory": {
+      "dir": "src/memory",
+      "loadOrder": "by filename prefix; shared across all instances of this marketplace install"
+    }
+  },
+  "compatibleWith": {
+    "kubeela-cli": ">=1.2.0-kubeela.1",
+    "agentic_os2": "agentteam-os-future"
+  },
+  "personas": [
+    {"id": "arin", "files": {"zh": "src/system-prompt/00-persona.zh.md", "en": "src/system-prompt/00-persona.en.md"}, "default": true}
+  ],
+  "skills": [
+    {"id": "make-game-design", "entry": "src/skills/make-game-design/SKILL.md", "trigger": "/make-game-design"}
+  ]
+}
