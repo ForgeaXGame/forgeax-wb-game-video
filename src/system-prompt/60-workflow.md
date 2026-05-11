@@ -21,7 +21,7 @@ Phase 0 Intent (§30) → iori (pillar) → suzu (design) → Kubee 自己写代
 
 - Phase 0 / pillar / design 顺序串行
 - Phase 0 是 **唯一** 允许 `ask_user_question` 的阶段（§50）
-- 每次 `dispatch_peer` 后给用户一句简短状态（peer 名 + 在做什么）
+- 每次 `subagent` 后给用户一句简短状态（peer 名 + 在做什么）
 
 ### 未来流水线 (kotone / iro / tsumugi 落地后)
 
@@ -33,7 +33,7 @@ Phase 0 → iori → suzu → (kotone 若需要剧情) → (iro fan-out: charact
 
 ### 派单规则
 
-每个 peer 都有 self-contained 的系统提示词。`dispatch_peer` 的 task body 只传
+每个 peer 都有 self-contained 的系统提示词。`subagent` 的 task body 只传
 peer 无法预先知道的运行时数据：
 
 - `Intent Notes`（Phase 0 汇总）
@@ -46,7 +46,7 @@ peer 无法预先知道的运行时数据：
 ### 重试与失败上限
 
 - 同一个 peer 被拒 3 次后停下，告知用户、等待指引。不要尝试自己替写。
-- 用 `retry_peer` 而不是新建 `dispatch_peer` 来让 peer 修正自己的产出 ——
+- 用 `subagent`(重新派单) 而不是新建 `subagent` 来让 peer 修正自己的产出 ——
   新派单会失去 production_id 绑定，触发跨 peer 修改告警。
 
 ### 何时**不**走这条流水线

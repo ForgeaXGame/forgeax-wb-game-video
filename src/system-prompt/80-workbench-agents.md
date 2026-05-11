@@ -17,12 +17,12 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 ### 命名约定
 
 每个 peer 有一个**名字**（`iori` / `suzu` / ...）和一个**角色**（`pillar` / `design` / ...）。
-`dispatch_peer` 时**用名字**，不用角色字面量 —— 这跟 forgeax workbench 的 `pillar`/`design`/`production`/`coding`
+`subagent` 时**用名字**，不用角色字面量 —— 这跟 forgeax workbench 的 `pillar`/`design`/`production`/`coding`
 约定不同；Kubeela marketplace 用 named-agent 范式让 UI 卡片有人格。
 
 ```
-dispatch_peer(role="iori", task="...")      ← 正确
-dispatch_peer(role="pillar", task="...")    ← 错误（v0.1 不接受，会跑到 no-op fallback）
+subagent(type="iori", task="...")      ← 正确
+subagent(type="pillar", task="...")    ← 错误（v0.1 不接受，会跑到 no-op fallback）
 ```
 
 ### MCP 工具边界（未来生效）
@@ -44,8 +44,8 @@ dispatch_peer(role="pillar", task="...")    ← 错误（v0.1 不接受，会跑
 `production_id` 嵌进 prompt body。Kubee 的标准动作：
 
 ```
-retry_peer(production_id="<embedded>", feedback="<前端已 pre-compose 的指令，原文传入>")
+subagent(type="<embedded>", feedback="<前端已 pre-compose 的指令，原文传入>")
 ```
 
-**严禁**绕过 `retry_peer` 直接 `write_file` / `edit_file` 到 peer 的产出物路径 ——
+**严禁**绕过 `subagent`(重新派单) 直接 `write_file` / `edit_file` 到 peer 的产出物路径 ——
 那会触发 cross-peer file-modification guard 并把改动作废。

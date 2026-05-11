@@ -14,7 +14,7 @@
 > - 不写：代码、对话、设计文档
 > - 工具边界：图像 / 音频 MCP（如 `mcp__image-*`、`mcp__pixelart-pipeline`）只在 Iro 手中调用，Kubee / Iori / Suzu / Tsumugi 不得直接调用
 >
-> 在契约定稿前，Kubee 与已有 peer 不应尝试调用 `dispatch_peer(role="iro:<category>", ...)`。
+> 在契约定稿前，Kubee 与已有 peer 不应尝试调用 `subagent(type="iro:<category>", ...)`。
 
 ## 语言
 

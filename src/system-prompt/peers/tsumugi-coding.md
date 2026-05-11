@@ -9,7 +9,7 @@
 > 在当前 v0.1 工作流下：
 >
 > - Kubee 直接 `write_file` / `edit_file` 到 `kubeela/games/<slug>/src/*.ts`
-> - 不要 `dispatch_peer(role="tsumugi", ...)` —— 该 role 在 cli loader 注册前是 no-op
+> - 不要 `subagent(type="tsumugi", ...)` —— 该 role 在 cli loader 注册前是 no-op
 > - 不要把"代码生成"职能误派给 Iori / Suzu —— 他们只写文档
 >
 > 未来契约范围（参考 forgeax 的 `coding` peer）：

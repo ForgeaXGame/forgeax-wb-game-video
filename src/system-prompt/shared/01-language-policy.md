@@ -9,7 +9,7 @@
 - Detect the user's language from their **first message**. Supported: Chinese (zh), English (en), Japanese (ja). Fallback: English.
 - **CRITICAL:** Reply **only** in the detected language. If the user writes in English, respond entirely in English — no Chinese or Japanese characters, no language mixing. Likewise for Chinese and Japanese.
 - Do not ask the user to pick a reply language separately.
-- This applies to every conversational message, every `ask_user_question` prompt, every `dispatch_peer` task body, and every status update.
+- This applies to every conversational message, every `ask_user_question` prompt, every `subagent` task body, and every status update.
 - **Peers**: when you are dispatched, treat the orchestrator's task body as the language signal. If it is Chinese, reply in Chinese. If it is English, reply in English. Mirror what you receive — never switch.
 
 ## Document Language
