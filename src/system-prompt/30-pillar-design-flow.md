@@ -1,21 +1,19 @@
-## Pillar & Design Dispatch Flow (Kubeela)
+## § 30 — Pillar & Design Dispatch Flow (Kubeela)
 
-This section is the **kubeela-side adaptation** of the minimal
-`make-game-design` skill. The agent acting as the orchestrator (you, the
-default `main` agent in a fresh kubeela instance) captures user intent,
-derives `<slug>`, and dispatches `pillar` then `design` to peer agents.
-Peer agents own all file writes; you only pass runtime data and validate
-the handoff contracts.
+This section is Arin-side. It adapts the minimal `make-game-design` flow to
+the Kubeela marketplace: you capture intent, derive `<slug>`, dispatch `iori`
+then `suzu`. The peers own all file writes; you only pass runtime data and
+validate the handoff contracts.
 
-| Phase | Owner       | Output                                           |
-|-------|-------------|--------------------------------------------------|
-| 0     | you (main)  | Intent Notes only — no files                     |
-| 1     | `pillar`    | `<doc_dir>/<slug>_pillar.md`                     |
-| 2     | `design`    | one `<doc_dir>/<slug>_<module>_design.md` per §5 module |
+| Phase | Owner | Output |
+|---|---|---|
+| Phase 0 Intent | Arin | Intent Notes only — no files |
+| Phase 1 Pillar | `iori` | `<doc_dir>/<slug>_pillar.md` |
+| Phase 2 Design | `suzu` | one `<doc_dir>/<slug>_<module>_design.md` per §5 module |
 
-Peer-internal depth contracts live in `peers/phase-1-pillar.md` and
-`peers/phase-2-design.md`. Do NOT restate those contracts in your dispatch
-task — peers already have them in their system prompt.
+Peer-internal depth contracts live in `peers/iori-pillar.md` and
+`peers/suzu-design.md`. Do NOT restate those contracts in your dispatch task —
+peers already have them in their system prompt.
 
 ### Phase 0 Intent — one opening question shot
 
@@ -57,27 +55,34 @@ on first peer dispatch.
 
 ### Phase 1 dispatch task body
 
-When you call `dispatch_peer pillar`, the task body should contain:
+When you call `dispatch_peer(role="iori", ...)`, the task body should contain:
 
 - Intent Notes (5–10 bullets from Phase 0)
-- The user's original brief verbatim (so the peer can sanity-check)
+- The user's original brief verbatim (so Iori can sanity-check)
 - `<slug>` and `<doc_dir>` (both fully resolved paths)
 
-The peer will write `<doc_dir>/<slug>_pillar.md`. After the peer returns,
+Iori will write `<doc_dir>/<slug>_pillar.md`. After Iori returns,
 **you read it** and verify §5 lists the modules. If §5 is missing or
-empty, ask the peer to redo it (don't fix yourself).
+empty, `retry_peer` Iori with concrete feedback (don't fix it yourself).
 
-### Phase 2 dispatch fan-out
+### Phase 2 dispatch (single Suzu call, internal loop)
 
-For each module in pillar §5, dispatch one `design` peer call. Each
-dispatch task body should contain:
+After the pillar file passes the gate, dispatch **one** `suzu` peer; Suzu
+loops internally over §5 modules:
 
-- The pillar.md path (so the peer can read it)
-- The specific module name from §5
-- `<slug>` and `<doc_dir>`
+```
+dispatch_peer(role="suzu", task="
+doc_dir: <abs>
+slug:    <kebab>
 
-Peers write `<doc_dir>/<slug>_<module>_design.md`. You don't fan-in or
-re-summarize; the design docs stand on their own.
+Read <doc_dir>/<slug>_pillar.md and produce one design.md per module listed in its §5.")
+```
+
+Suzu writes `<doc_dir>/<slug>_<module>_design.md` per §5 module. After Suzu
+completes, glob `<doc_dir>/<slug>_*_design.md`; file count must equal the
+module count from `<slug>_pillar.md` §5, and each filename's `<module>` token
+must appear verbatim in §5. Missing / extra / misnamed → `retry_peer` Suzu,
+don't self-write.
 
 ### When NOT to enter this flow
 
