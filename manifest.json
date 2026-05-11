@@ -49,7 +49,8 @@
       ],
       "produces": ["kubeela/games/<slug>/src/**"],
       "status": "active",
-      "default": true
+      "default": true,
+      "provider": "kubeela"
     },
     {
       "id": "iori",
@@ -59,7 +60,8 @@
       "avatar": "I",
       "peerFile": "src/system-prompt/peers/iori-pillar.md",
       "produces": ["<doc_dir>/<slug>_pillar.md"],
-      "status": "active"
+      "status": "active",
+      "provider": "kubeela"
     },
     {
       "id": "suzu",
@@ -69,7 +71,8 @@
       "avatar": "S",
       "peerFile": "src/system-prompt/peers/suzu-design.md",
       "produces": ["<doc_dir>/<slug>_<module>_design.md"],
-      "status": "active"
+      "status": "active",
+      "provider": "kubeela"
     },
     {
       "id": "kotone",
@@ -83,7 +86,8 @@
         "<doc_dir>/dialog/<scene>.md",
         "<doc_dir>/<slug>_branch_tree.json"
       ],
-      "status": "placeholder"
+      "status": "placeholder",
+      "provider": "kubeela"
     },
     {
       "id": "iro",
@@ -97,7 +101,8 @@
         "<doc_dir>/assets/manifest.<category>.json"
       ],
       "subcategories": ["characters", "environments", "ui", "vfx"],
-      "status": "placeholder"
+      "status": "placeholder",
+      "provider": "kubeela"
     },
     {
       "id": "tsumugi",
@@ -108,7 +113,19 @@
       "peerFile": "src/system-prompt/peers/tsumugi-coding.md",
       "produces": ["<active_game>.dir/**"],
       "status": "placeholder",
-      "notes": "In v0.1 Kubee writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode."
+      "notes": "In v0.1 Kubee writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode.",
+      "provider": "kubeela"
+    },
+    {
+      "id": "cc-coder",
+      "role": "coding",
+      "cardName": {"zh": "Claude Code 工程师", "en": "Claude Code Engineer"},
+      "color": "#cfa3ff",
+      "avatar": "CC",
+      "produces": ["<active_game>.dir/**"],
+      "status": "placeholder",
+      "provider": "claude-code",
+      "notes": "Routes through ClaudeCodeProvider (Anthropic claude-code CLI). v0.1 placeholder; Phase 5 wires Kubee → dispatch(cc-coder, task) as a real sub-agent."
     }
   ],
   "skills": [
