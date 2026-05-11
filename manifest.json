@@ -29,11 +29,11 @@
   },
   "agents": [
     {
-      "id": "arin",
+      "id": "kubee",
       "role": "orchestrator",
       "cardName": {"zh": "主线制作人", "en": "Lead Producer"},
       "color": "#f6d4e7",
-      "avatar": "A",
+      "avatar": "K",
       "personaFiles": {
         "zh": "src/system-prompt/00-persona.zh.md",
         "en": "src/system-prompt/00-persona.en.md"
@@ -108,7 +108,7 @@
       "peerFile": "src/system-prompt/peers/tsumugi-coding.md",
       "produces": ["<active_game>.dir/**"],
       "status": "placeholder",
-      "notes": "In v0.1 Arin writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode."
+      "notes": "In v0.1 Kubee writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode."
     }
   ],
   "skills": [

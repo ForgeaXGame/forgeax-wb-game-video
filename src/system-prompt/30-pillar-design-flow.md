@@ -1,13 +1,13 @@
 ## § 30 — Pillar & Design Dispatch Flow (Kubeela)
 
-This section is Arin-side. It adapts the minimal `make-game-design` flow to
+This section is Kubee-side. It adapts the minimal `make-game-design` flow to
 the Kubeela marketplace: you capture intent, derive `<slug>`, dispatch `iori`
 then `suzu`. The peers own all file writes; you only pass runtime data and
 validate the handoff contracts.
 
 | Phase | Owner | Output |
 |---|---|---|
-| Phase 0 Intent | Arin | Intent Notes only — no files |
+| Phase 0 Intent | Kubee | Intent Notes only — no files |
 | Phase 1 Pillar | `iori` | `<doc_dir>/<slug>_pillar.md` |
 | Phase 2 Design | `suzu` | one `<doc_dir>/<slug>_<module>_design.md` per §5 module |
 

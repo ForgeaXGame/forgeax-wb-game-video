@@ -11,7 +11,7 @@ peer that owns a portion of the project's files.
 
 ```
 ┌─ Workbench (left panel) ─┐
-│ 🅰 Arin · 主线制作人      │ ← writes: kubeela/games/<slug>/src/**
+│ 🅰 Kubee · 主线制作人      │ ← writes: kubeela/games/<slug>/src/**
 │   • main.ts              │
 │   • level.ts             │
 │   • player.ts            │
@@ -29,14 +29,14 @@ peer that owns a portion of the project's files.
 
 | Card | id | Role | Status | Outputs |
 |---|---|---|---|---|
-| 主线制作人 | `arin` | orchestrator | ✅ active | `kubeela/games/<slug>/src/**` |
+| 主线制作人 | `kubee` | orchestrator | ✅ active | `kubeela/games/<slug>/src/**` |
 | 核心玩法师 | `iori` | pillar peer | ✅ active | `<doc_dir>/<slug>_pillar.md` |
 | 体验设计师 | `suzu` | design peer | ✅ active | `<doc_dir>/<slug>_<module>_design.md` × N |
 | 剧情师 | `kotone` | narrative peer | 🟡 placeholder | `<doc_dir>/<slug>_narrative.md`, `dialog/*.md` |
 | 美术师 | `iro` | art peer | 🟡 placeholder | `<doc_dir>/assets/<category>/<id>.<ext>` |
 | 工程师 | `tsumugi` | coding peer | 🟡 placeholder | `<active_game>.dir/**` |
 
-Each peer has a Japanese-soft name (Arin / Iori / Suzu / Kotone / Iro /
+Each peer has a Japanese-soft name (Kubee / Iori / Suzu / Kotone / Iro /
 Tsumugi) chosen to feel like a small studio's roster — not a stack of
 faceless role literals. The full roster lives in `manifest.json#agents` and
 the canonical user-facing description is `src/system-prompt/80-workbench-agents.md`.
@@ -53,10 +53,10 @@ kubeela-marketplace/
 ├── README.md                    ← this file
 └── src/
     ├── system-prompt/
-    │   ├── 00-persona.zh.md             ← Arin 主人设（中）
-    │   ├── 00-persona.en.md             ← Arin 主人设（英）
+    │   ├── 00-persona.zh.md             ← Kubee 主人设（中）
+    │   ├── 00-persona.en.md             ← Kubee 主人设（英）
     │   ├── 01-platform-constraints.md   ← Kubeela 运行时硬约束（HMR / 零 build）
-    │   ├── 30-pillar-design-flow.md     ← Arin 派 iori / suzu 的流程
+    │   ├── 30-pillar-design-flow.md     ← Kubee 派 iori / suzu 的流程
     │   ├── 50-question-tool.md          ← ask_user_question 用法（仅 Phase 0）
     │   ├── 60-workflow.md               ← active / future 流水线总览
     │   ├── 80-workbench-agents.md       ← roster 表 + 派单约定
@@ -67,7 +67,7 @@ kubeela-marketplace/
     │   │   ├── iro-art.md               ← Iro 人设 + (占位)契约
     │   │   └── tsumugi-coding.md        ← Tsumugi 人设 + (占位)契约
     │   └── shared/
-    │       └── 01-language-policy.md    ← reply / doc / code 语言策略 + Arin 身份保护
+    │       └── 01-language-policy.md    ← reply / doc / code 语言策略 + Kubee 身份保护
     ├── skills/
     │   └── make-game-design/SKILL.md    ← `/make-game-design` 入口
     └── memory/
@@ -78,12 +78,12 @@ kubeela-marketplace/
 
 Two distinct prompts, two distinct concat rules:
 
-### Orchestrator (Arin) prompt
+### Orchestrator (Kubee) prompt
 
 Concat of numbered files in `src/system-prompt/*.md` + shared/:
 
 ```
-00-persona.<lang>.md         ← Arin's character
+00-persona.<lang>.md         ← Kubee's character
 01-platform-constraints.md   ← Kubeela HMR / filesystem boundaries
 30-pillar-design-flow.md     ← Phase 0 + iori / suzu dispatch
 50-question-tool.md          ← ask_user_question scoping
@@ -109,7 +109,7 @@ shared/01-language-policy.md ← appended (same as orchestrator)
 │                                                                          │
 │   at instance start:                                                     │
 │     1. read manifest.json#agents                                         │
-│     2. resolve KUBEELA_LANG → pick Arin persona variant                  │
+│     2. resolve KUBEELA_LANG → pick Kubee persona variant                  │
 │     3. for each agent in agents[]:                                       │
 │          - if role == 'orchestrator':                                    │
 │              concat orchestratorSystemPromptOrder → SOUL.md              │

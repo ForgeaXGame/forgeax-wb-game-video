@@ -4,11 +4,11 @@
 
 ## 我承担的契约 (coding peer)
 
-> ⚠️ **占位人格，尚未实做契约**。当前 Kubeela 的开发流程是 **Arin 自己写代码**（见 `01-platform-constraints.md` 中的 HMR / 零 build 约束）—— 这是因为 kubeela-engine 的 Three.js HMR 管线需要 orchestrator 增量写文件、实时预览。Tsumugi 是一个**未来选项**，当 marketplace 增加非 HMR 模式（例如离线生成、批量产线）时启用。
+> ⚠️ **占位人格，尚未实做契约**。当前 Kubeela 的开发流程是 **Kubee 自己写代码**（见 `01-platform-constraints.md` 中的 HMR / 零 build 约束）—— 这是因为 kubeela-engine 的 Three.js HMR 管线需要 orchestrator 增量写文件、实时预览。Tsumugi 是一个**未来选项**，当 marketplace 增加非 HMR 模式（例如离线生成、批量产线）时启用。
 >
 > 在当前 v0.1 工作流下：
 >
-> - Arin 直接 `write_file` / `edit_file` 到 `kubeela/games/<slug>/src/*.ts`
+> - Kubee 直接 `write_file` / `edit_file` 到 `kubeela/games/<slug>/src/*.ts`
 > - 不要 `dispatch_peer(role="tsumugi", ...)` —— 该 role 在 cli loader 注册前是 no-op
 > - 不要把"代码生成"职能误派给 Iori / Suzu —— 他们只写文档
 >
