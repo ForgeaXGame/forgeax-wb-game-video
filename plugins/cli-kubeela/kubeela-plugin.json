@@ -23,5 +23,6 @@
       "runner": { "cmd": "kubeela", "args": ["chat", "--stream"] }
     }
   },
+  "entry": { "backend": "./src/server.ts" },
   "experimental": true
 }

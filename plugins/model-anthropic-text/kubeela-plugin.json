@@ -16,5 +16,6 @@
       "roles": ["reasoning", "draft", "summarize"]
     }
   },
+  "entry": { "backend": "./src/server.ts" },
   "experimental": true
 }

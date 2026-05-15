@@ -23,5 +23,6 @@
       "runner": { "cmd": "claude", "args": ["--mode", "stream"] }
     }
   },
+  "entry": { "backend": "./src/server.ts" },
   "experimental": true
 }
