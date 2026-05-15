@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/cli-codex",
+  "version": "0.0.1",
+  "kind": "cli-provider",
+  "displayName": { "zh": "OpenAI Codex", "en": "OpenAI Codex CLI" },
+  "description": {
+    "zh": "占位 · OpenAI codex (@openai/codex) CLI 适配,Phase 6+ 拆 plugin 时填实际 runner + chat impl",
+    "en": "Placeholder. Wraps the OpenAI codex (@openai/codex) CLI. Phase 6+ fills the actual runner and chat impl."
+  },
+  "provides": {
+    "cliProvider": {
+      "id": "@kubeela-plugin/cli-codex",
+      "displayName": "OpenAI Codex",
+      "models": ["gpt-5", "gpt-5-codex"],
+      "capabilities": {
+        "streaming": true,
+        "thinking": true,
+        "toolCalls": true,
+        "subAgents": true,
+        "sessions": true
+      },
+      "runner": { "cmd": "codex", "args": ["exec", "--json"] }
+    }
+  },
+  "entry": { "backend": "./src/server.ts" },
+  "experimental": true
+}
