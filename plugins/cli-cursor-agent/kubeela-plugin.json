@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/cli-cursor-agent",
+  "version": "0.0.1",
+  "kind": "cli-provider",
+  "displayName": { "zh": "Cursor Agent", "en": "Cursor Agent CLI" },
+  "description": {
+    "zh": "占位 · Cursor IDE 的 cursor-agent CLI 适配 (stream-json print mode),Phase 6+ 拆 plugin 时填实际 runner + chat impl",
+    "en": "Placeholder. Wraps the Cursor IDE cursor-agent CLI (-p stream-json print mode). Phase 6+ fills the actual runner and chat impl."
+  },
+  "provides": {
+    "cliProvider": {
+      "id": "@kubeela-plugin/cli-cursor-agent",
+      "displayName": "Cursor Agent",
+      "models": ["auto", "claude-sonnet-4-6", "gpt-5"],
+      "capabilities": {
+        "streaming": true,
+        "thinking": true,
+        "toolCalls": true,
+        "subAgents": true,
+        "sessions": true
+      },
+      "runner": { "cmd": "cursor-agent", "args": ["-p", "--output-format", "stream-json", "--stream-partial-output", "-f"] }
+    }
+  },
+  "entry": { "backend": "./src/server.ts" },
+  "experimental": true
+}
