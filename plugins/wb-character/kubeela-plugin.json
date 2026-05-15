@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-character",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "角色叙事", "en": "Character & Narrative" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-character 提供。后续接 character-editor + narrative-studio。", "en": "Placeholder. Will host character-editor + narrative-studio." },
+  "provides": {
+    "workbench": {
+      "id": "character",
+      "lens": "by-category",
+      "icon": "👤",
+      "position": 110,
+      "panelSize": "lg",
+      "matchProduces": ["**/characters/**", "**/*_narrative.md", "**/branch_tree.json"]
+    }
+  },
+  "experimental": true
+}

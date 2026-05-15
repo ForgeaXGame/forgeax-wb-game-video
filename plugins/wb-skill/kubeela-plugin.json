@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-skill",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "技能 / VFX", "en": "Skills & VFX" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-skill 提供。后续接 Monster_Skill_Package + vfx2。", "en": "Placeholder. Will host skill tree + sim + VFX preview." },
+  "provides": {
+    "workbench": {
+      "id": "skill",
+      "lens": "by-category",
+      "icon": "⚡",
+      "position": 140,
+      "panelSize": "lg",
+      "matchProduces": ["**/skills/**", "**/vfx/**"]
+    }
+  },
+  "experimental": true
+}

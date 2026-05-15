@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-balance",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "平衡 / 数值", "en": "Balance & Sim" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-balance 提供。后续从零搭 sim runner + balance dashboard。", "en": "Placeholder. New simulation runner + tuning UI." },
+  "provides": {
+    "workbench": {
+      "id": "balance",
+      "lens": "by-category",
+      "icon": "📐",
+      "position": 190,
+      "panelSize": "md",
+      "matchProduces": ["**/balance/**", "**/sim/**"]
+    }
+  },
+  "experimental": true
+}

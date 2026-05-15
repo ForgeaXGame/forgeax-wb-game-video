@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-code",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "代码 / Code", "en": "Code Workbench" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-code 提供。后续升级现 WorkbenchMode 为独立 plugin。", "en": "Placeholder. Will upgrade current WorkbenchMode into a plugin." },
+  "provides": {
+    "workbench": {
+      "id": "code",
+      "lens": "by-category",
+      "icon": "</>",
+      "position": 200,
+      "panelSize": "lg",
+      "matchProduces": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.css"]
+    }
+  },
+  "experimental": true
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/admin",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "面板管理", "en": "Admin" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/admin 提供。11 台子启用/排序 + 多模态模型统一配置 + marketplace 草稿 + 认证清单。", "en": "Placeholder. Workbench enable/order + model bindings + auth status." },
+  "provides": {
+    "workbench": {
+      "id": "admin",
+      "lens": "by-category",
+      "icon": "⚙",
+      "position": 210,
+      "panelSize": "lg",
+      "matchProduces": ["**/.kubeela/**", "**/marketplace/**"]
+    }
+  },
+  "experimental": true
+}

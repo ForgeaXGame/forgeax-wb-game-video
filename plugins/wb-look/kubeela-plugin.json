@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-look",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "色彩 / Look", "en": "Color & Look-dev" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-look 提供。后续接 2D_style_transfer + H-3d-LookMaster。", "en": "Placeholder. Will host palette + LUT + postprocess stack." },
+  "provides": {
+    "workbench": {
+      "id": "look",
+      "lens": "by-category",
+      "icon": "🎨",
+      "position": 120,
+      "panelSize": "md",
+      "matchProduces": ["**/colorgrade.toml", "**/theme.json", "**/postprocess/*.json"]
+    }
+  },
+  "experimental": true
+}

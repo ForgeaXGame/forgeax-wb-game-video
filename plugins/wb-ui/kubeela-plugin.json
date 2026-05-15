@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-ui",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "UI 工坊", "en": "UI Workshop" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-ui 提供。后续接 UI_game_ui_matrix。", "en": "Placeholder. Will host Genre×Style×Platform matrix → HUD/HealthBar/Inventory." },
+  "provides": {
+    "workbench": {
+      "id": "ui",
+      "lens": "by-category",
+      "icon": "🪟",
+      "position": 130,
+      "panelSize": "md",
+      "matchProduces": ["**/ui/**", "**/ui/spec.json"]
+    }
+  },
+  "experimental": true
+}

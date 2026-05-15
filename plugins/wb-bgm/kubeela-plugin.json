@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-bgm",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "音乐 / BGM", "en": "Music & BGM" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-bgm 提供。后续从零搭最小骨架。", "en": "Placeholder. New minimal skeleton, no upstream source." },
+  "provides": {
+    "workbench": {
+      "id": "bgm",
+      "lens": "by-category",
+      "icon": "🔊",
+      "position": 170,
+      "panelSize": "md",
+      "matchProduces": ["**/audio/**", "**/audio/manifest.json"]
+    }
+  },
+  "experimental": true
+}

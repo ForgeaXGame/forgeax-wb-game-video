@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-anim",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "动画", "en": "Animation" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-anim 提供。后续接 character-editor/spine + 3D_Anim_Skeleton。", "en": "Placeholder. Will host spine binding + skeleton retargeting." },
+  "provides": {
+    "workbench": {
+      "id": "anim",
+      "lens": "by-category",
+      "icon": "🎬",
+      "position": 160,
+      "panelSize": "lg",
+      "matchProduces": ["**/anim/**", "**/*.spine.json", "**/*.sheet.png"]
+    }
+  },
+  "experimental": true
+}

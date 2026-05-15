@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-items",
+  "version": "0.0.1",
+  "kind": "workbench",
+  "displayName": { "zh": "道具 / 图标", "en": "Items & Icons" },
+  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-items 提供。后续接 2D_sidescroller + 2D_tileable + 2D_ai_pixel。", "en": "Placeholder. Will host items.json + icon-pixel editor." },
+  "provides": {
+    "workbench": {
+      "id": "items",
+      "lens": "by-category",
+      "icon": "🎒",
+      "position": 150,
+      "panelSize": "md",
+      "matchProduces": ["**/items.json", "**/assets/icons/**"]
+    }
+  },
+  "experimental": true
+}
