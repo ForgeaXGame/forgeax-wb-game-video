@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/skill-make-game-design",
+  "version": "0.0.1",
+  "kind": "skill",
+  "displayName": { "zh": "做游戏设计", "en": "Make Game Design" },
+  "description": {
+    "zh": "占位 · 纯 skill plugin 最简形 (modules/02 §359-§384),slash 命令 /make-game-design 给 cc-coder 系列 agent 用,Phase 4+ 拆 plugin 时填实际 SKILL.md + allowedTools",
+    "en": "Placeholder. Minimal pure-skill plugin (modules/02 §359-§384). Slash command /make-game-design for cc-coder-style agents. Phase 4+ fills the real SKILL.md and allowedTools."
+  },
+  "provides": {
+    "skills": [
+      {
+        "id": "make-game-design",
+        "entry": "./skills/make-game-design/SKILL.md",
+        "trigger": "/make-game-design"
+      }
+    ]
+  },
+  "experimental": true
+}
