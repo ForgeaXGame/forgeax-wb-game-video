@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/cli-kubeela",
+  "version": "0.0.1",
+  "kind": "cli-provider",
+  "displayName": { "zh": "Kubeela CLI", "en": "Kubeela CLI" },
+  "description": {
+    "zh": "占位 · packages/cli 现实现的 kubeela 命令适配,Phase 2 拆 plugin 时填实际 runner + chat impl",
+    "en": "Placeholder. Wraps the in-repo kubeela CLI from packages/cli. Phase 2 fills the actual runner and chat impl."
+  },
+  "provides": {
+    "cliProvider": {
+      "id": "@kubeela-plugin/cli-kubeela",
+      "displayName": "Kubeela CLI",
+      "models": ["kubeela-default"],
+      "capabilities": {
+        "streaming": true,
+        "thinking": true,
+        "toolCalls": true,
+        "subAgents": true,
+        "sessions": true
+      },
+      "runner": { "cmd": "kubeela", "args": ["chat", "--stream"] }
+    }
+  },
+  "experimental": true
+}

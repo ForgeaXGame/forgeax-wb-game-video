@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/model-anthropic-text",
+  "version": "0.0.1",
+  "kind": "model-binding",
+  "displayName": { "zh": "Anthropic Text", "en": "Anthropic Text" },
+  "description": {
+    "zh": "占位 · text channel 的 Anthropic 厂商绑定,默认覆盖 reasoning/draft/summarize 三个 role,Phase 6+ 拆 plugin 时填 ModelBindingPlugin impl",
+    "en": "Placeholder. Anthropic vendor binding on the text channel; default covers reasoning/draft/summarize roles. Phase 6+ fills the ModelBindingPlugin impl."
+  },
+  "provides": {
+    "modelBinding": {
+      "channel": "text",
+      "vendor": "anthropic",
+      "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
+      "roles": ["reasoning", "draft", "summarize"]
+    }
+  },
+  "experimental": true
+}
