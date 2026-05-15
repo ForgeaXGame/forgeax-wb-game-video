@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/cli-claude-code",
+  "version": "0.0.1",
+  "kind": "cli-provider",
+  "displayName": { "zh": "Claude Code", "en": "Claude Code CLI" },
+  "description": {
+    "zh": "占位 · Anthropic claude-code CLI 适配,Phase 2 拆 plugin 时填实际 runner + chat impl",
+    "en": "Placeholder. Wraps the Anthropic claude-code CLI. Phase 2 fills the actual runner and chat impl."
+  },
+  "provides": {
+    "cliProvider": {
+      "id": "@kubeela-plugin/cli-claude-code",
+      "displayName": "Claude Code",
+      "models": ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
+      "capabilities": {
+        "streaming": true,
+        "thinking": true,
+        "toolCalls": true,
+        "subAgents": true,
+        "sessions": true
+      },
+      "runner": { "cmd": "claude", "args": ["--mode", "stream"] }
+    }
+  },
+  "experimental": true
+}

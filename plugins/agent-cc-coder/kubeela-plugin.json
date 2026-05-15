@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/agent-cc-coder",
+  "version": "0.0.1",
+  "kind": "agent",
+  "displayName": { "zh": "cc-coder", "en": "cc-coder" },
+  "description": {
+    "zh": "占位 · 通用编码 agent · Phase 4 拆 plugin 时填 persona/zh.md + memory/AGENTS.md",
+    "en": "Placeholder. Generic coding agent. Phase 4 fills persona/zh.md + memory/AGENTS.md."
+  },
+  "provides": {
+    "agent": {
+      "id": "cc-coder",
+      "role": "coder",
+      "card": {
+        "name": { "zh": "cc-coder", "en": "cc-coder" },
+        "color": "#1F6FEB",
+        "avatar": "🧑‍💻"
+      },
+      "personaFile": "./persona/zh.md",
+      "memoryDir": "./memory/",
+      "produces": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.go", "**/*.py", "**/*.md"],
+      "preferredCliProvider": "@kubeela-plugin/cli-claude-code",
+      "defaultLang": "zh",
+      "multiInstance": true
+    }
+  },
+  "experimental": true
+}
