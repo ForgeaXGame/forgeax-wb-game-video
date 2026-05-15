@@ -15,5 +15,6 @@
       "matchProduces": ["**/balance/**", "**/sim/**"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

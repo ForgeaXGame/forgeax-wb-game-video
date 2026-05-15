@@ -15,5 +15,6 @@
       "matchProduces": ["**/audio/**", "**/audio/manifest.json"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

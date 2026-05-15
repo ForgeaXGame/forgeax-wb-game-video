@@ -15,5 +15,6 @@
       "matchProduces": ["**/anim/**", "**/*.spine.json", "**/*.sheet.png"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

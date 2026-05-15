@@ -15,5 +15,6 @@
       "matchProduces": ["**/skills/**", "**/vfx/**"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

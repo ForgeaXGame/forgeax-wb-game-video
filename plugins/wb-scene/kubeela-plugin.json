@@ -15,5 +15,6 @@
       "matchProduces": ["**/scenes/**.scene.json", "**/tilemaps/**"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

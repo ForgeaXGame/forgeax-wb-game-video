@@ -15,5 +15,6 @@
       "matchProduces": ["**/characters/**", "**/*_narrative.md", "**/branch_tree.json"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

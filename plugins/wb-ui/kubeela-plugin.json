@@ -15,5 +15,6 @@
       "matchProduces": ["**/ui/**", "**/ui/spec.json"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

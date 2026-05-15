@@ -15,5 +15,6 @@
       "matchProduces": ["**/.kubeela/**", "**/marketplace/**"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

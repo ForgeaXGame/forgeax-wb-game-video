@@ -15,5 +15,6 @@
       "matchProduces": ["**/colorgrade.toml", "**/theme.json", "**/postprocess/*.json"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }

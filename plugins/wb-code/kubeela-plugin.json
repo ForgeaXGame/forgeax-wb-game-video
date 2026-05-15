@@ -15,5 +15,6 @@
       "matchProduces": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.css"]
     }
   },
+  "entry": { "frontend": "./src/panel.tsx" },
   "experimental": true
 }
