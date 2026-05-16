@@ -151,3 +151,70 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
 
 `kubeela-cli` pins the compatible marketplace version range via
 `manifest.json#compatibleWith.kubeela-cli`.
+
+---
+
+## 2026-05-16 · 插件 placeholder 矩阵（v1 全插件化主线）
+
+跟 `kubeela-dev-diary/2026-05-15/00-GOALS.md` v1 全插件化方向对齐，本周 daemon 落了 17 个 placeholder plugin 在 `plugins/`：
+
+### Workbench (11) — 对应 GOALS §五 11 类
+
+| ID | 中文 | icon | id (workbench.id) | position | panelSize |
+|---|---|---|---|---|---|
+| `@kubeela-plugin/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
+| `@kubeela-plugin/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
+| `@kubeela-plugin/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
+| `@kubeela-plugin/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
+| `@kubeela-plugin/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
+| `@kubeela-plugin/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
+| `@kubeela-plugin/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
+| `@kubeela-plugin/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
+| `@kubeela-plugin/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
+| `@kubeela-plugin/wb-code` | 代码 Code | 💻 | code | 200 | lg |
+| (admin) | 面板管理 | ⚙ | admin | 999 | md |
+
+### CLI Provider (4)
+
+| ID | 桥接到 |
+|---|---|
+| `@kubeela-plugin/cli-claude-code` | `ClaudeCodeProvider` |
+| `@kubeela-plugin/cli-codex` | `CodexProvider` |
+| `@kubeela-plugin/cli-cursor-agent` | `CursorAgentProvider` |
+| `@kubeela-plugin/cli-kubeela` | `KubeelaCliProvider`（default boot） |
+
+### Agent (1) · Skill (1) · Tool (1) · Model-binding (1)
+
+- `@kubeela-plugin/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
+- `@kubeela-plugin/skill-make-game-design` — SKILL.md placeholder
+- `@kubeela-plugin/tool-balance-resim` — JSON Schema placeholder
+- `@kubeela-plugin/model-anthropic-text` — text model-binding placeholder
+
+### Placeholder 文件约定
+
+每个 wb-* / cli-* 目录:
+
+```
+plugins/<id>/
+├── kubeela-plugin.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
+├── src/
+│   ├── server.ts          # 占位：throw "[Phase 6+ shim] 未实现"（cli-* 用）
+│   └── panel.tsx          # 占位：throw "[Phase 6+ shim] React render 未实现"（wb-* 用）
+```
+
+panel.tsx 的 throw 是有意为之 ——
+manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 阶段** (见 `kubeela-dev-diary/2026-05-16/UI-FRAMEWORK-PROPOSAL.md` §四 P8) `<WorkbenchIframeHost>` 落地后，panel.tsx 才从 throw 升级成真 React 组件。
+
+### 路线图
+
+- **P8.5** wb-character 从 throw stub → 真 React（读 `games/<slug>/characters/*.json` + form + SVG preview）= 整个 v1 plugin 架构端到端首次验证
+- **P8.6** Bus tool `character.create` 让 claude-code 也能调（玩家点表单 = AI 调 tool）
+- **P8.8** 剩 10 个 wb-* 同模式落地
+
+### 相关文档
+
+- `kubeela-dev-diary/2026-05-15/00-GOALS.md` §五 11 类 workbench / §七 三合一
+- `kubeela-dev-diary/2026-05-15/modules/02-plugin-manifest.md`（manifest schema）
+- `kubeela-dev-diary/2026-05-15/modules/04-permissions-sandbox.md`（perms scope）
+- `kubeela-dev-diary/2026-05-16/STRATEGY-PLAN-v3.md`（OSS / Desktop / Cloud · plugin 是 OSS 主要扩展点）
+- `kubeela-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`（plugin 自动 AI-ready · `provides.surfaces[]` 字段预定）
