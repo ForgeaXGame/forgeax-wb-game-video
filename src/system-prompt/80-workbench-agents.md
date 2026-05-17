@@ -49,3 +49,22 @@ subagent(type="<embedded>", feedback="<前端已 pre-compose 的指令，原文�
 
 **严禁**绕过 `subagent`(重新派单) 直接 `write_file` / `edit_file` 到 peer 的产出物路径 ——
 那会触发 cross-peer file-modification guard 并把改动作废。
+
+### 派 peer 的工具:两种环境两种工具(2026-05-17)
+
+`subagent(type, task)` 是 **kubeela cli daemon 内置** 工具,只有当你跑在 Kubeela CLI provider 下才可用。
+当你跑在 **claude-code / codex / cursor-agent** 这些 subprocess provider 下时,studio 通过
+`.mcp.json` 注入了等价工具 `spawn_subagent`,**两个工具语义完全相同**,选用规则:
+
+```
+spawn_subagent(agentId="iori", task="...")   ← 任何 provider 都用这个 (推荐, 通用)
+subagent(type="iori", task="...")            ← 仅 kubeela cli provider 下可用
+```
+
+**关键纪律**: 当用户说"让玩法设计师 / Suzu / Iori 帮我做 X",你**不要自己写"任务书"
+markdown 然后假装派了单** —— 那不是真派,只是文本表演,左侧 AGENTS 面板不会激活 peer,
+也不会落 ledger。**真派的标志:tool_call_start 事件 type='spawn_subagent' 或 'subagent'**。
+
+如果你判断当前环境工具不可用(LLM 工具清单里没有 `spawn_subagent` 也没有 `subagent`),
+告诉用户"当前 provider 下两个派 peer 工具都看不到 · 检查 .mcp.json / Kubeela CLI provider
+是否健康",**不要 fallback 到自己写 markdown 任务书冒充派单**。

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "id": "@kubeela-plugin/wb-character-forge",
+  "version": "0.1.0",
+  "kind": "workbench",
+  "displayName": { "zh": "角色锻造", "en": "Character Forge" },
+  "description": {
+    "zh": "生产 + 试玩闭环的角色资产工坊 · 立绘 / 三视图 / 行动小人 / 换装 + mini playground 试玩",
+    "en": "End-to-end character forge: portrait / turnaround / sprite-sheet / variants + mini playground"
+  },
+  "author": { "name": "kubeela", "email": "dev@kubeela.local" },
+  "icon": "⚒️",
+  "keywords": ["character", "portrait", "sprite", "image-gen", "playground"],
+
+  "provides": {
+    "workbench": {
+      "id": "character-forge",
+      "lens": "by-category",
+      "icon": "⚒️",
+      "position": 105,
+      "panelSize": "lg",
+      "matchProduces": [
+        "**/.kubeela/games/*/characters/**"
+      ]
+    },
+    "tools": [
+      {
+        "id": "character-forge:generate-portrait",
+        "args": "./schemas/generate-portrait.args.json",
+        "returns": "./schemas/generate-portrait.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "生成角色立绘(可选三视图) · 主用 Seedream 备 Gemini nano-banana"
+        }
+      },
+      {
+        "id": "character-forge:generate-sprite-sheet",
+        "args": "./schemas/generate-sprite-sheet.args.json",
+        "returns": "./schemas/generate-sprite-sheet.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "为已存在的角色生成行动小人 sprite sheet · 用立绘做 reference 保持角色一致"
+        }
+      },
+      {
+        "id": "character-forge:list-characters",
+        "args": "./schemas/list-characters.args.json",
+        "returns": "./schemas/list-characters.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "列出指定 game slug 下的角色资产清单" }
+      },
+      {
+        "id": "character-forge:get-character",
+        "args": "./schemas/get-character.args.json",
+        "returns": "./schemas/get-character.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "读取单角色的完整 manifest + asset url" }
+      },
+      {
+        "id": "character-forge:rename-character",
+        "args": "./schemas/rename-character.args.json",
+        "returns": "./schemas/rename-character.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "重命名角色 (修改 manifest.name)" }
+      }
+    ],
+    "events": [
+      { "name": "character-forge.portrait.generated" },
+      { "name": "character-forge.sprite.generated" },
+      { "name": "character-forge.character.renamed" },
+      { "name": "character-forge.quota-exceeded" }
+    ]
+  },
+
+  "consumes": {
+    "models": [
+      { "channel": "image", "role": "concept-art" },
+      { "channel": "image", "role": "sprite-frame" },
+      { "channel": "text", "role": "reasoning" }
+    ]
+  },
+
+  "entry": {
+    "backend": "./src/server.ts",
+    "frontend": "./src/panel.tsx"
+  },
+
+  "permissions": [
+    "fs:read:.kubeela/games/{slug}/characters/**",
+    "fs:write:.kubeela/games/{slug}/characters/**",
+    "fs:read:.kubeela/games/{slug}/playground/**",
+    "fs:write:.kubeela/games/{slug}/playground/**",
+    "model:image:concept-art",
+    "model:image:sprite-frame",
+    "model:text:reasoning",
+    "net:ark.cn-beijing.volces.com",
+    "net:generativelanguage.googleapis.com",
+    "net:tence-mol3yp23-swedencentral.cognitiveservices.azure.com",
+    "net:llm-proxy.forgeax.com",
+    "emit:character-forge.*"
+  ],
+
+  "hot": false,
+  "experimental": true,
+  "compatibleWith": { "kubeela-bus": "^1.0.0" }
+}

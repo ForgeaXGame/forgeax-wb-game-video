@@ -1,10 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "@kubeela-plugin/wb-skill",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "kind": "workbench",
-  "displayName": { "zh": "技能 / VFX", "en": "Skills & VFX" },
-  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-skill 提供。后续接 Monster_Skill_Package + vfx2。", "en": "Placeholder. Will host skill tree + sim + VFX preview." },
+  "displayName": {
+    "zh": "技能 / VFX",
+    "en": "Skills & VFX"
+  },
+  "description": {
+    "zh": "技能 / VFX 工作台 · 列出 skills/* 与 vfx/* 产出 · 后续接 Monster_Skill_Package 技能树编辑 + vfx2 预览,玩家手点 / AI dispatch 共改一份 skill spec。",
+    "en": "Skill & VFX workbench. Lists skills/* and vfx/* outputs. Will host the skill-tree editor + VFX preview; player DOM and AI dispatch share one spec."
+  },
   "provides": {
     "workbench": {
       "id": "skill",
@@ -12,9 +18,14 @@
       "icon": "⚡",
       "position": 140,
       "panelSize": "lg",
-      "matchProduces": ["**/skills/**", "**/vfx/**"]
+      "matchProduces": [
+        "**/skills/**",
+        "**/vfx/**"
+      ]
     }
   },
-  "entry": { "frontend": "./src/panel.tsx" },
+  "entry": {
+    "frontend": "./src/panel.tsx"
+  },
   "experimental": true
 }

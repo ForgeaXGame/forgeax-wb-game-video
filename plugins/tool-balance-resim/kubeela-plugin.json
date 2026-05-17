@@ -1,12 +1,15 @@
 {
   "schemaVersion": 1,
   "id": "@kubeela-plugin/tool-balance-resim",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "kind": "tool",
-  "displayName": { "zh": "战斗重模拟", "en": "Balance Resim" },
+  "displayName": {
+    "zh": "战斗重模拟",
+    "en": "Balance Resim"
+  },
   "description": {
-    "zh": "占位 · 纯 tool plugin (modules/02 §201-§214),暴露 balance:resim — N 次 PvP 重模拟取 winRate,跑 in-process worker。Phase 6+ 拆 plugin 时填实际 simulate impl + schemas",
-    "en": "Placeholder. Pure-tool plugin (modules/02 §201-§214). Exposes balance:resim — N PvP resims returning winRate, in-process worker. Phase 6+ fills the simulator and JSON schemas."
+    "zh": "纯 tool plugin (modules/02 §201-§214) · 暴露 balance:resim — 对指定 scenario 跑 N 次 PvP/PvE 重模拟、返回 winRate + 95% CI,跑 in-process worker。给 /make-game-design 与 wb-balance 共用。",
+    "en": "Pure-tool plugin. Exposes balance:resim — N PvP/PvE resims for a scenario returning winRate + 95% CI. Runs in-process worker. Shared by /make-game-design and wb-balance."
   },
   "provides": {
     "tools": [
@@ -18,8 +21,14 @@
       }
     ],
     "events": [
-      { "name": "balance.resim.completed", "payload": "./schemas/resim-completed.event.json" }
+      {
+        "name": "balance.resim.completed",
+        "payload": "./schemas/resim-completed.event.json"
+      }
     ]
+  },
+  "entry": {
+    "backend": "./src/server.ts"
   },
   "experimental": true
 }

@@ -1,10 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "@kubeela-plugin/wb-ui",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "kind": "workbench",
-  "displayName": { "zh": "UI 工坊", "en": "UI Workshop" },
-  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-ui 提供。后续接 UI_game_ui_matrix。", "en": "Placeholder. Will host Genre×Style×Platform matrix → HUD/HealthBar/Inventory." },
+  "displayName": {
+    "zh": "UI 工坊",
+    "en": "UI Workshop"
+  },
+  "description": {
+    "zh": "UI 工坊工作台 · 列出 ui/*.spec.json + HUD/HealthBar/Inventory 配置 · 后续接 UI_game_ui_matrix Genre×Style×Platform 矩阵生成。",
+    "en": "UI workshop workbench. Lists ui/*.spec.json + HUD/HealthBar/Inventory configs. Will host UI_game_ui_matrix Genre×Style×Platform generation."
+  },
   "provides": {
     "workbench": {
       "id": "ui",
@@ -12,9 +18,14 @@
       "icon": "🪟",
       "position": 130,
       "panelSize": "md",
-      "matchProduces": ["**/ui/**", "**/ui/spec.json"]
+      "matchProduces": [
+        "**/ui/**",
+        "**/ui/spec.json"
+      ]
     }
   },
-  "entry": { "frontend": "./src/panel.tsx" },
+  "entry": {
+    "frontend": "./src/panel.tsx"
+  },
   "experimental": true
 }

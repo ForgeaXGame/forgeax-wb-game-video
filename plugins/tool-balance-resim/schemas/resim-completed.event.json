@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "kubeela://plugin/tool-balance-resim/resim-completed",
   "title": "balance.resim.completed event payload",
-  "description": "Placeholder JSON Schema for the balance.resim.completed bus event payload. Phase 6+ wires this into ajv for cross-plugin event validation (modules/02 §488).",
+  "description": "Payload schema for balance.resim.completed bus event. Validated by the host on bus.emit for cross-plugin event guarantees (modules/02 §488).",
   "type": "object",
   "required": ["scenario", "winRate", "samples"],
   "properties": {

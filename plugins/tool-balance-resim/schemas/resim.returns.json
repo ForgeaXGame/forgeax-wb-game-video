@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "kubeela://plugin/tool-balance-resim/resim.returns",
   "title": "balance:resim returns",
-  "description": "Placeholder JSON Schema for balance:resim output. Phase 6+ wires this into ajv (modules/02 §530).",
+  "description": "Output schema for balance:resim. Validated by the host on tool return (modules/02 §530).",
   "type": "object",
   "required": ["winRate", "samples"],
   "properties": {

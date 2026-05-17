@@ -5,7 +5,7 @@
 
 ## 当前 active 任务
 
-> 占位 — Phase 4 拆 plugin 接 memory:write 后由 cc-coder 自维护。
+（由 cc-coder 通过 `memory:write` 自维护。空表示无 active 任务。）
 
 ## 跨任务约束
 
@@ -33,8 +33,8 @@
 
 ## lessons 索引
 
-> 占位 — Phase 4 起 cc-coder 通过 `memory:write` 自维护到 `memory/lessons/<topic>.md`。
+由 cc-coder 通过 `memory:write` 自维护到 `memory/lessons/<topic>.md`，每个 topic 一文件。读取走 `memory:read`，文件不存在视为无该 lesson。
 
 ## scenes 索引
 
-> 占位 — 同上 → `memory/scenes/<scene>.md`。
+同上 → `memory/scenes/<scene>.md`。一个 scene 一个 plot/system 片段，跨任务复用上下文。

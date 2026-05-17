@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "kubeela://plugin/tool-balance-resim/resim.args",
   "title": "balance:resim args",
-  "description": "Placeholder JSON Schema for balance:resim input. Phase 6+ wires this into ajv (modules/02 §530).",
+  "description": "Input schema for balance:resim. The host validates with ajv on bus.call (modules/02 §530).",
   "type": "object",
   "required": ["scenario", "N"],
   "properties": {

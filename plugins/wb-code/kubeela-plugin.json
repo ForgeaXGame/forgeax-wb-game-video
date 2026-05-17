@@ -1,10 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "@kubeela-plugin/wb-code",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "kind": "workbench",
-  "displayName": { "zh": "代码 / Code", "en": "Code Workbench" },
-  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-code 提供。后续升级现 WorkbenchMode 为独立 plugin。", "en": "Placeholder. Will upgrade current WorkbenchMode into a plugin." },
+  "displayName": {
+    "zh": "代码 / Code",
+    "en": "Code Workbench"
+  },
+  "description": {
+    "zh": "代码工作台 · 升级现 MainArea/WorkbenchMode.tsx 为独立 plugin · 浏览 + 跳转 src/ 文件,与 cc-coder 跨 chat thread 协作。",
+    "en": "Code workbench. Will upgrade MainArea/WorkbenchMode.tsx into a plugin. Browse + jump src/ files; collaborates with cc-coder across chat threads."
+  },
   "provides": {
     "workbench": {
       "id": "code",
@@ -12,9 +18,16 @@
       "icon": "</>",
       "position": 200,
       "panelSize": "lg",
-      "matchProduces": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.css"]
+      "matchProduces": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.css"
+      ]
     }
   },
-  "entry": { "frontend": "./src/panel.tsx" },
+  "entry": {
+    "frontend": "./src/panel.tsx"
+  },
   "experimental": true
 }

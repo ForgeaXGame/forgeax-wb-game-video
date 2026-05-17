@@ -1,10 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "@kubeela-plugin/wb-bgm",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "kind": "workbench",
-  "displayName": { "zh": "音乐 / BGM", "en": "Music & BGM" },
-  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-bgm 提供。后续从零搭最小骨架。", "en": "Placeholder. New minimal skeleton, no upstream source." },
+  "displayName": {
+    "zh": "音乐 / BGM",
+    "en": "Music & BGM"
+  },
+  "description": {
+    "zh": "音乐 / BGM 工作台 · audio/manifest.json + BGM 时间轴 + SE 命名约定 · 从零搭最小骨架,未来接 oto agent。",
+    "en": "Music & BGM workbench. audio/manifest.json + BGM timeline + SE naming. Minimal skeleton; will plug into oto agent."
+  },
   "provides": {
     "workbench": {
       "id": "bgm",
@@ -12,9 +18,14 @@
       "icon": "🔊",
       "position": 170,
       "panelSize": "md",
-      "matchProduces": ["**/audio/**", "**/audio/manifest.json"]
+      "matchProduces": [
+        "**/audio/**",
+        "**/audio/manifest.json"
+      ]
     }
   },
-  "entry": { "frontend": "./src/panel.tsx" },
+  "entry": {
+    "frontend": "./src/panel.tsx"
+  },
   "experimental": true
 }
