@@ -79,12 +79,19 @@ function useMiniSurface<S>(opts: {
   const setSnapshot = useCallback((next: S | ((prev: S) => S)) => {
     setSnapshotState((prev) => {
       const v = typeof next === 'function' ? (next as (p: S) => S)(prev) : next;
-      // best-effort PUT; race conditions OK because next setSnapshot will fix
-      fetch(`/api/bus/ui/surfaces/${opts.id}/snapshot`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ snapshot: v }),
-      }).catch(() => { /* */ });
+      // Gate the PUT on mountedRef — same guard the /pending poll uses.
+      // Before registration POST settles the server has no surface entry
+      // yet (PUT → 404), and POST already carries `initialSnapshot` so the
+      // server starts in sync. After mount the next setSnapshot resyncs
+      // any state that diverged during the race window. Suppresses console
+      // spam on every initial render setSnapshot call.
+      if (mountedRef.current) {
+        fetch(`/api/bus/ui/surfaces/${opts.id}/snapshot`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ snapshot: v }),
+        }).catch(() => { /* */ });
+      }
       return v;
     });
   }, [opts.id]);
