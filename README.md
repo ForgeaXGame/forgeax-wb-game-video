@@ -218,3 +218,27 @@ manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 �
 - `kubeela-dev-diary/2026-05-15/modules/04-permissions-sandbox.md`（perms scope）
 - `kubeela-dev-diary/2026-05-16/STRATEGY-PLAN-v3.md`（OSS / Desktop / Cloud · plugin 是 OSS 主要扩展点）
 - `kubeela-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`（plugin 自动 AI-ready · `provides.surfaces[]` 字段预定）
+
+---
+
+## 2026-05-17 update · `wb-character-forge` 落地 + 模板化
+
+`wb-character-forge/` 是**第一个 end-to-end 落地**的 wb-* 插件 —— 角色生图 + 游乐场 + panel.tsx surface 化。后续 wb-* 全部参考它的接线模式:`manifest.json` + `entry.frontend` + `panel.tsx` + 多模态 fallback chain。
+
+primary/fallback chain(`DESIGN.md` 详细记录):
+
+```
+Seedream (ARK_IMAGE_KEY)  →  Gemini nano-banana (GEMINI_API_KEY)  →  Azure GPT-Image (AZURE_GPT_IMAGE_*)
+立绘 主路径                  sprite 主路径 / 立绘 备                  sprite 备 / 立绘 备
+```
+
+**厂商坑**(已踩):
+- Seedream `size` 必须**小写** `2k/3k/4k` 或 `WIDTHxHEIGHT`;最小总像素 3,686,400(≈1920²),小于则 400
+- Gemini key 走 query `?key=` 不走 header,必须设 `responseModalities:["IMAGE"]`
+- Azure header 是 `api-key`(不是 Bearer),size 只接受 1024×1024 / 1024×1536 / 1536×1024
+
+**插件 metadata** 0.0.1 → 0.1.0 bump,其他 10 个 wb-* / 4 个 cli-* / agent-cc-coder 已 placeholder ref-files。
+
+**警惕**:`bun run build` / `tsc` 会落 `.js` 到 `src/`,vite 优先服 `.js` 屏蔽 `.tsx`(2026-05-17 wb-character-forge 复发,interface 已加 `noEmit`,marketplace 插件需自查 `tsconfig.json` 是否 `noEmit:true`)。
+
+完整数据:[`../../kubeela-dev-diary/2026-05-18/SUMMARY.html`](../../kubeela-dev-diary/2026-05-18/SUMMARY.html)
