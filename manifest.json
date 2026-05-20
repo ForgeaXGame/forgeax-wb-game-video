@@ -1,13 +1,13 @@
 {
-  "id": "kubeela-marketplace",
+  "id": "forgeax-marketplace",
   "version": "0.2.0",
-  "description": "Kubeela agent marketplace — persona / system-prompt / skill / memory fragments loaded by cli at runtime. Each peer is a named agent (Iori / Suzu / ...) with persona-fused-function.",
+  "description": "ForgeaX agent marketplace — persona / system-prompt / skill / memory fragments loaded by cli at runtime. Each peer is a named agent (Iori / Suzu / ...) with persona-fused-function.",
   "schemaVersion": 1,
   "layout": {
     "system-prompt": {
       "dir": "src/system-prompt",
       "loadOrder": "by filename prefix (00- → 01- → 30- → 50- → 60- → 80-), then shared/* concatenated",
-      "localeSuffix": ".zh.md / .en.md / .ja.md — picked by KUBEELA_LANG env (default zh) when filename has a locale variant"
+      "localeSuffix": ".zh.md / .en.md / .ja.md — picked by FORGEAX_LANG env (default zh) when filename has a locale variant"
     },
     "peers": {
       "dir": "src/system-prompt/peers",
@@ -24,16 +24,16 @@
     }
   },
   "compatibleWith": {
-    "kubeela-cli": ">=1.2.0-kubeela.1",
+    "forgeax-cli": ">=1.2.0-forgeax.1",
     "agentic_os2": "agentteam-os-future"
   },
   "agents": [
     {
-      "id": "kubee",
+      "id": "forge",
       "role": "orchestrator",
       "cardName": {"zh": "主线制作人", "en": "Lead Producer"},
       "color": "#f6d4e7",
-      "avatar": "K",
+      "avatar": "F",
       "personaFiles": {
         "zh": "src/system-prompt/00-persona.zh.md",
         "en": "src/system-prompt/00-persona.en.md"
@@ -47,10 +47,10 @@
         "src/system-prompt/80-workbench-agents.md",
         "src/system-prompt/shared/01-language-policy.md"
       ],
-      "produces": ["kubeela/games/<slug>/src/**"],
+      "produces": ["forgeax/games/<slug>/src/**"],
       "status": "active",
       "default": true,
-      "provider": "kubeela"
+      "provider": "forgeax"
     },
     {
       "id": "iori",
@@ -61,7 +61,7 @@
       "peerFile": "src/system-prompt/peers/iori-pillar.md",
       "produces": ["<doc_dir>/<slug>_pillar.md"],
       "status": "active",
-      "provider": "kubeela"
+      "provider": "forgeax"
     },
     {
       "id": "suzu",
@@ -72,7 +72,7 @@
       "peerFile": "src/system-prompt/peers/suzu-design.md",
       "produces": ["<doc_dir>/<slug>_<module>_design.md"],
       "status": "active",
-      "provider": "kubeela"
+      "provider": "forgeax"
     },
     {
       "id": "kotone",
@@ -87,7 +87,7 @@
         "<doc_dir>/<slug>_branch_tree.json"
       ],
       "status": "placeholder",
-      "provider": "kubeela"
+      "provider": "forgeax"
     },
     {
       "id": "iro",
@@ -102,7 +102,7 @@
       ],
       "subcategories": ["characters", "environments", "ui", "vfx"],
       "status": "placeholder",
-      "provider": "kubeela"
+      "provider": "forgeax"
     },
     {
       "id": "tsumugi",
@@ -113,8 +113,8 @@
       "peerFile": "src/system-prompt/peers/tsumugi-coding.md",
       "produces": ["<active_game>.dir/**"],
       "status": "placeholder",
-      "notes": "In v0.1 Kubee writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode.",
-      "provider": "kubeela"
+      "notes": "In v0.1 Forge writes game code directly (HMR constraint). Tsumugi activates in a future non-HMR mode.",
+      "provider": "forgeax"
     },
     {
       "id": "cc-coder",
@@ -125,7 +125,7 @@
       "produces": ["<active_game>.dir/**"],
       "status": "placeholder",
       "provider": "claude-code",
-      "notes": "Routes through ClaudeCodeProvider (Anthropic claude-code CLI). v0.1 placeholder; Phase 5 wires Kubee → dispatch(cc-coder, task) as a real sub-agent."
+      "notes": "Routes through ClaudeCodeProvider (Anthropic claude-code CLI). v0.1 placeholder; Phase 5 wires Forge → dispatch(cc-coder, task) as a real sub-agent."
     }
   ],
   "skills": [

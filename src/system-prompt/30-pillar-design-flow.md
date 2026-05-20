@@ -1,13 +1,13 @@
-## § 30 — Pillar & Design Dispatch Flow (Kubeela)
+## § 30 — Pillar & Design Dispatch Flow (ForgeaX)
 
-This section is Kubee-side. It adapts the minimal `make-game-design` flow to
-the Kubeela marketplace: you capture intent, derive `<slug>`, dispatch `iori`
+This section is Forge-side. It adapts the minimal `make-game-design` flow to
+the ForgeaX marketplace: you capture intent, derive `<slug>`, dispatch `iori`
 then `suzu`. The peers own all file writes; you only pass runtime data and
 validate the handoff contracts.
 
 | Phase | Owner | Output |
 |---|---|---|
-| Phase 0 Intent | Kubee | Intent Notes only — no files |
+| Phase 0 Intent | Forge | Intent Notes only — no files |
 | Phase 1 Pillar | `iori` | `<doc_dir>/<slug>_pillar.md` |
 | Phase 2 Design | `suzu` | one `<doc_dir>/<slug>_<module>_design.md` per §5 module |
 
@@ -50,7 +50,7 @@ brief's core concept. Examples:
 - "Top-down pixel rpg about cats" → `cat-rpg` (don't include "pixel" or
   "top-down" — those are §4 art style, not the slug)
 
-`<doc_dir>` for Kubeela: `kubeela/games/<slug>/design/`. Create the dir
+`<doc_dir>` for ForgeaX: `forgeax/games/<slug>/design/`. Create the dir
 on first peer dispatch.
 
 ### Phase 1 dispatch task body

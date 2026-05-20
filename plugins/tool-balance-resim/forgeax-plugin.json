@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/tool-balance-resim",
+  "id": "@forgeax-plugin/tool-balance-resim",
   "version": "0.1.0",
   "kind": "tool",
   "displayName": {

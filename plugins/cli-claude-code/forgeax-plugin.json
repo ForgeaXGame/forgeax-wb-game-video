@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/cli-claude-code",
+  "id": "@forgeax-plugin/cli-claude-code",
   "version": "0.1.0",
   "kind": "cli-provider",
   "displayName": {
@@ -13,7 +13,7 @@
   },
   "provides": {
     "cliProvider": {
-      "id": "@kubeela-plugin/cli-claude-code",
+      "id": "@forgeax-plugin/cli-claude-code",
       "displayName": "Claude Code",
       "models": [
         "claude-opus-4-7",

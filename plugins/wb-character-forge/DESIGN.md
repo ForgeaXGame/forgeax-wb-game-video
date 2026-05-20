@@ -1,6 +1,6 @@
 # wb-character-forge · DESIGN.md
 
-> **First-class kubeela workbench plugin.** 角色资产产线 + 试玩游乐场。
+> **First-class forgeax workbench plugin.** 角色资产产线 + 试玩游乐场。
 > 同时作为后续 wb-* 作者的样板模板,所以这份文档刻意写清"为什么"。
 
 ## 一句话
@@ -22,12 +22,12 @@
 
 ```
 packages/marketplace/plugins/wb-character-forge/
-├── kubeela-plugin.json          # manifest (workbench + tools + permissions)
+├── forgeax-plugin.json          # manifest (workbench + tools + permissions)
 ├── DESIGN.md                    # 本文件
 ├── README.md                    # quickstart
 ├── src/
 │   ├── server.ts                # Hono router factory exported as createCharacterForgeRouter()
-│   ├── panel.tsx                # React panel (kubeela interface imports直接 lazy)
+│   ├── panel.tsx                # React panel (forgeax interface imports直接 lazy)
 │   ├── clients/
 │   │   ├── seedream.ts          # 即梦 / ARK image-gen (主立绘)
 │   │   ├── gemini-image.ts      # nano-banana (主 sprite + image-edit)
@@ -37,7 +37,7 @@ packages/marketplace/plugins/wb-character-forge/
 │   │   ├── portrait.ts          # 立绘 + 三视图 (移植自 character-editor TURNAROUND_*)
 │   │   └── sprite.ts            # 4-dir walk sheet (简化版 pixel-char/prompt-engine)
 │   ├── lib/
-│   │   ├── storage.ts           # 资产落盘 .kubeela/games/<slug>/characters/<charId>/
+│   │   ├── storage.ts           # 资产落盘 .forgeax/games/<slug>/characters/<charId>/
 │   │   ├── sprite-cut.ts        # sheet 切片 (Canvas2D 纯函数,移植自 sprite-processor)
 │   │   └── ids.ts               # charId 生成 + 校验
 │   └── types.ts                 # 跨前后端共享类型
@@ -52,15 +52,15 @@ packages/marketplace/plugins/wb-character-forge/
     └── index.html               # 独立可单跑 (debug用)
 ```
 
-## 接线到 kubeela 主仓
+## 接线到 forgeax 主仓
 
 因为 bus.call / entry.backend / Bus.models 仍是 stub(见 摸底报告),走最短路径:
 
 1. **后端 router** `packages/server/src/api/wb-character-forge.ts` 引入 plugin 的 `createCharacterForgeRouter(ctx)` 并 mount 到 `/api/wb/character-forge/*`。`main.ts` 新增一行 `app.route('/api/wb/character-forge', ...)`。
 2. **前端 panel** 在 `Sidebar.tsx` 的 bus-sourced tab 命中处 (`activeEntry.kind === 'bus' && activeEntry.id === 'wb:character-forge'`) 走特例 lazy import,而不是 BusPluginPlaceholder。其他 plugin 仍走 placeholder——这就是"过渡期"的契约。
 3. **settings 白名单** `settings.ts` SAFE_ENV_KEYS 追加 5 把多模态 key (ARK / GEMINI / AZURE_GPT_IMAGE / LITELLM_PROXY / KLING)。`.env` 写真值,bun --watch 重启后插件后端可直接读 `process.env.*`。
-4. **资产路径** `<projectRoot>/.kubeela/games/<slug>/characters/<charId>/` 走现有 `safe-path.ts` 白名单 (已含 `.kubeela/games/`)。
-5. **Ledger 事件** 后端在每次生成完成时调 `bus.events.emit({name:'character-forge.<verb>', ...})`,经现有 FileLedger 落到 `~/.kubeela/ledger/current.jsonl`。
+4. **资产路径** `<projectRoot>/.forgeax/games/<slug>/characters/<charId>/` 走现有 `safe-path.ts` 白名单 (已含 `.forgeax/games/`)。
+5. **Ledger 事件** 后端在每次生成完成时调 `bus.events.emit({name:'character-forge.<verb>', ...})`,经现有 FileLedger 落到 `~/.forgeax/ledger/current.jsonl`。
 
 > 当 Phase 6+ 真把 entry.backend / entry.frontend 自动加载落地,本插件 manifest 已经先写全,届时只需要删掉主仓的特例 hookup,**不需要改 plugin 自身**——这是"模板"价值的一部分。
 
@@ -105,10 +105,10 @@ UI 内调 `useSurface({ id: 'character-forge.editor', ... })` 注册 surface,act
 
 ```jsonc
 [
-  "fs:read:.kubeela/games/{slug}/characters/**",
-  "fs:write:.kubeela/games/{slug}/characters/**",
-  "fs:read:.kubeela/games/{slug}/playground/**",
-  "fs:write:.kubeela/games/{slug}/playground/**",
+  "fs:read:.forgeax/games/{slug}/characters/**",
+  "fs:write:.forgeax/games/{slug}/characters/**",
+  "fs:read:.forgeax/games/{slug}/playground/**",
+  "fs:write:.forgeax/games/{slug}/playground/**",
   "model:image:concept-art",
   "model:image:sprite-frame",
   "model:text:reasoning",
@@ -122,7 +122,7 @@ UI 内调 `useSurface({ id: 'character-forge.editor', ... })` 注册 surface,act
 
 ## 资产 schema · character.manifest.json
 
-落盘到 `.kubeela/games/<slug>/characters/<charId>/manifest.json`:
+落盘到 `.forgeax/games/<slug>/characters/<charId>/manifest.json`:
 
 ```jsonc
 {
@@ -173,7 +173,7 @@ UI 内调 `useSurface({ id: 'character-forge.editor', ... })` 注册 surface,act
 4. **直 HTTP 路径 (其他 plugin / 外部 AI)**:
    - curl POST `/api/wb/character-forge/portrait` body=json → 拿 charId → 再 curl POST `/api/wb/character-forge/sprite-sheet`
 5. **Ledger**:
-   - tail `~/.kubeela/ledger/current.jsonl` 应看到 `character-forge.portrait.generated` + `character-forge.sprite.generated` 两条事件
+   - tail `~/.forgeax/ledger/current.jsonl` 应看到 `character-forge.portrait.generated` + `character-forge.sprite.generated` 两条事件
 
 测试脚本: `packages/marketplace/plugins/wb-character-forge/playground/e2e.spec.ts` (与现有 `packages/server/test/p9-surface-playwright.spec.ts` 同风格)。
 
@@ -183,7 +183,7 @@ UI 内调 `useSurface({ id: 'character-forge.editor', ... })` 注册 surface,act
 2. **照抄** `src/server.ts` 的 router factory 风格——`createXxxRouter({ projectRoot, bus, env })`,绝不读 process.env 兜底,让宿主注入。
 3. **照抄** `src/lib/storage.ts` 的 friendlyPath + safe-path 接法,所有响应 c.json 凡含路径字段都包 `friendlyPath()` (见 memory `project_friendly_path_rule.md`)。
 4. **照抄** panel.tsx 内 `useSurface(...)` 的 schema + actions 写法。
-5. 资产 schema 永远走 `<root>/.kubeela/games/<slug>/<plugin-domain>/<asset-id>/manifest.json` 三段式。
+5. 资产 schema 永远走 `<root>/.forgeax/games/<slug>/<plugin-domain>/<asset-id>/manifest.json` 三段式。
 
 ## 不在 M1
 

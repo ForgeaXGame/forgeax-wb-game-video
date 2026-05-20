@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/wb-ui",
+  "id": "@forgeax-plugin/wb-ui",
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": {

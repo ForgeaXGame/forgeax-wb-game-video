@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/skill-make-game-design",
+  "id": "@forgeax-plugin/skill-make-game-design",
   "version": "0.1.0",
   "kind": "skill",
   "displayName": {

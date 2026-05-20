@@ -1,6 +1,6 @@
-# kubeela-marketplace
+# forgeax-marketplace
 
-Markdown-fragment marketplace consumed by `kubeela-cli` at agent boot.
+Markdown-fragment marketplace consumed by `forgeax-cli` at agent boot.
 Holds everything you'd want to inject into agents besides code: **named-agent
 personas, system-prompt fragments, skills, long-term memory templates**.
 
@@ -11,7 +11,7 @@ peer that owns a portion of the project's files.
 
 ```
 ┌─ Workbench (left panel) ─┐
-│ 🅰 Kubee · 主线制作人      │ ← writes: kubeela/games/<slug>/src/**
+│ 🅰 Forge · 主线制作人      │ ← writes: forgeax/games/<slug>/src/**
 │   • main.ts              │
 │   • level.ts             │
 │   • player.ts            │
@@ -29,34 +29,34 @@ peer that owns a portion of the project's files.
 
 | Card | id | Role | Status | Outputs |
 |---|---|---|---|---|
-| 主线制作人 | `kubee` | orchestrator | ✅ active | `kubeela/games/<slug>/src/**` |
+| 主线制作人 | `forge` | orchestrator | ✅ active | `forgeax/games/<slug>/src/**` |
 | 核心玩法师 | `iori` | pillar peer | ✅ active | `<doc_dir>/<slug>_pillar.md` |
 | 体验设计师 | `suzu` | design peer | ✅ active | `<doc_dir>/<slug>_<module>_design.md` × N |
 | 剧情师 | `kotone` | narrative peer | 🟡 placeholder | `<doc_dir>/<slug>_narrative.md`, `dialog/*.md` |
 | 美术师 | `iro` | art peer | 🟡 placeholder | `<doc_dir>/assets/<category>/<id>.<ext>` |
 | 工程师 | `tsumugi` | coding peer | 🟡 placeholder | `<active_game>.dir/**` |
 
-Each peer has a Japanese-soft name (Kubee / Iori / Suzu / Kotone / Iro /
+Each peer has a Japanese-soft name (Forge / Iori / Suzu / Kotone / Iro /
 Tsumugi) chosen to feel like a small studio's roster — not a stack of
 faceless role literals. The full roster lives in `manifest.json#agents` and
 the canonical user-facing description is `src/system-prompt/80-workbench-agents.md`.
 
 > Forgeax 范式参考：`forgeax-studio/packages/marketplace/src/system-prompt/workbench/`
 > 用 `pillar` / `design` / `production` / `coding` 作为 role literal，无人名。
-> Kubeela 选择 **named-agent**，让 UI 卡片有性格、产物归属可视化更清晰。
+> ForgeaX 选择 **named-agent**，让 UI 卡片有性格、产物归属可视化更清晰。
 
 ## Structure
 
 ```
-kubeela-marketplace/
+forgeax-marketplace/
 ├── manifest.json                ← metadata + agents roster + compat matrix
 ├── README.md                    ← this file
 └── src/
     ├── system-prompt/
-    │   ├── 00-persona.zh.md             ← Kubee 主人设（中）
-    │   ├── 00-persona.en.md             ← Kubee 主人设（英）
-    │   ├── 01-platform-constraints.md   ← Kubeela 运行时硬约束（HMR / 零 build）
-    │   ├── 30-pillar-design-flow.md     ← Kubee 派 iori / suzu 的流程
+    │   ├── 00-persona.zh.md             ← Forge 主人设（中）
+    │   ├── 00-persona.en.md             ← Forge 主人设（英）
+    │   ├── 01-platform-constraints.md   ← ForgeaX 运行时硬约束（HMR / 零 build）
+    │   ├── 30-pillar-design-flow.md     ← Forge 派 iori / suzu 的流程
     │   ├── 50-question-tool.md          ← ask_user_question 用法（仅 Phase 0）
     │   ├── 60-workflow.md               ← active / future 流水线总览
     │   ├── 80-workbench-agents.md       ← roster 表 + 派单约定
@@ -67,7 +67,7 @@ kubeela-marketplace/
     │   │   ├── iro-art.md               ← Iro 人设 + (占位)契约
     │   │   └── tsumugi-coding.md        ← Tsumugi 人设 + (占位)契约
     │   └── shared/
-    │       └── 01-language-policy.md    ← reply / doc / code 语言策略 + Kubee 身份保护
+    │       └── 01-language-policy.md    ← reply / doc / code 语言策略 + Forge 身份保护
     ├── skills/
     │   └── make-game-design/SKILL.md    ← `/make-game-design` 入口
     └── memory/
@@ -78,13 +78,13 @@ kubeela-marketplace/
 
 Two distinct prompts, two distinct concat rules:
 
-### Orchestrator (Kubee) prompt
+### Orchestrator (Forge) prompt
 
 Concat of numbered files in `src/system-prompt/*.md` + shared/:
 
 ```
-00-persona.<lang>.md         ← Kubee's character
-01-platform-constraints.md   ← Kubeela HMR / filesystem boundaries
+00-persona.<lang>.md         ← Forge's character
+01-platform-constraints.md   ← ForgeaX HMR / filesystem boundaries
 30-pillar-design-flow.md     ← Phase 0 + iori / suzu dispatch
 50-question-tool.md          ← ask_user_question scoping
 60-workflow.md               ← active / future pipeline
@@ -109,7 +109,7 @@ shared/01-language-policy.md ← appended (same as orchestrator)
 │                                                                          │
 │   at instance start:                                                     │
 │     1. read manifest.json#agents                                         │
-│     2. resolve KUBEELA_LANG → pick Kubee persona variant                  │
+│     2. resolve FORGEAX_LANG → pick Forge persona variant                  │
 │     3. for each agent in agents[]:                                       │
 │          - if role == 'orchestrator':                                    │
 │              concat orchestratorSystemPromptOrder → SOUL.md              │
@@ -132,7 +132,7 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
    function contract (`## 输入` / `## 输出` / hard constraints).
 2. Add an entry to `manifest.json#agents` with `id`, `role`, `cardName`,
    `color`, `avatar`, `peerFile`, `produces` (glob list), `status`.
-3. Commit + push. Bump parent `kubeela-studio` submodule pointer.
+3. Commit + push. Bump parent `forgeax-studio` submodule pointer.
 
 ## Add a new skill
 
@@ -149,46 +149,46 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
 - new agent or skill → minor
 - content tweaks → patch
 
-`kubeela-cli` pins the compatible marketplace version range via
-`manifest.json#compatibleWith.kubeela-cli`.
+`forgeax-cli` pins the compatible marketplace version range via
+`manifest.json#compatibleWith.forgeax-cli`.
 
 ---
 
 ## 2026-05-16 · 插件 placeholder 矩阵（v1 全插件化主线）
 
-跟 `kubeela-dev-diary/2026-05-15/00-GOALS.md` v1 全插件化方向对齐，本周 daemon 落了 17 个 placeholder plugin 在 `plugins/`：
+跟 `forgeax-dev-diary/2026-05-15/00-GOALS.md` v1 全插件化方向对齐，本周 daemon 落了 17 个 placeholder plugin 在 `plugins/`：
 
 ### Workbench (11) — 对应 GOALS §五 11 类
 
 | ID | 中文 | icon | id (workbench.id) | position | panelSize |
 |---|---|---|---|---|---|
-| `@kubeela-plugin/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
-| `@kubeela-plugin/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
-| `@kubeela-plugin/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
-| `@kubeela-plugin/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
-| `@kubeela-plugin/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
-| `@kubeela-plugin/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
-| `@kubeela-plugin/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
-| `@kubeela-plugin/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
-| `@kubeela-plugin/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
-| `@kubeela-plugin/wb-code` | 代码 Code | 💻 | code | 200 | lg |
+| `@forgeax-plugin/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
+| `@forgeax-plugin/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
+| `@forgeax-plugin/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
+| `@forgeax-plugin/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
+| `@forgeax-plugin/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
+| `@forgeax-plugin/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
+| `@forgeax-plugin/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
+| `@forgeax-plugin/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
+| `@forgeax-plugin/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
+| `@forgeax-plugin/wb-code` | 代码 Code | 💻 | code | 200 | lg |
 | (admin) | 面板管理 | ⚙ | admin | 999 | md |
 
 ### CLI Provider (4)
 
 | ID | 桥接到 |
 |---|---|
-| `@kubeela-plugin/cli-claude-code` | `ClaudeCodeProvider` |
-| `@kubeela-plugin/cli-codex` | `CodexProvider` |
-| `@kubeela-plugin/cli-cursor-agent` | `CursorAgentProvider` |
-| `@kubeela-plugin/cli-kubeela` | `KubeelaCliProvider`（default boot） |
+| `@forgeax-plugin/cli-claude-code` | `ClaudeCodeProvider` |
+| `@forgeax-plugin/cli-codex` | `CodexProvider` |
+| `@forgeax-plugin/cli-cursor-agent` | `CursorAgentProvider` |
+| `@forgeax-plugin/cli-forgeax` | `ForgeaXCliProvider`（default boot） |
 
 ### Agent (1) · Skill (1) · Tool (1) · Model-binding (1)
 
-- `@kubeela-plugin/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
-- `@kubeela-plugin/skill-make-game-design` — SKILL.md placeholder
-- `@kubeela-plugin/tool-balance-resim` — JSON Schema placeholder
-- `@kubeela-plugin/model-anthropic-text` — text model-binding placeholder
+- `@forgeax-plugin/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
+- `@forgeax-plugin/skill-make-game-design` — SKILL.md placeholder
+- `@forgeax-plugin/tool-balance-resim` — JSON Schema placeholder
+- `@forgeax-plugin/model-anthropic-text` — text model-binding placeholder
 
 ### Placeholder 文件约定
 
@@ -196,14 +196,14 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
 
 ```
 plugins/<id>/
-├── kubeela-plugin.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
+├── forgeax-plugin.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
 ├── src/
 │   ├── server.ts          # 占位：throw "[Phase 6+ shim] 未实现"（cli-* 用）
 │   └── panel.tsx          # 占位：throw "[Phase 6+ shim] React render 未实现"（wb-* 用）
 ```
 
 panel.tsx 的 throw 是有意为之 ——
-manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 阶段** (见 `kubeela-dev-diary/2026-05-16/UI-FRAMEWORK-PROPOSAL.md` §四 P8) `<WorkbenchIframeHost>` 落地后，panel.tsx 才从 throw 升级成真 React 组件。
+manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 阶段** (见 `forgeax-dev-diary/2026-05-16/UI-FRAMEWORK-PROPOSAL.md` §四 P8) `<WorkbenchIframeHost>` 落地后，panel.tsx 才从 throw 升级成真 React 组件。
 
 ### 路线图
 
@@ -213,11 +213,11 @@ manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 �
 
 ### 相关文档
 
-- `kubeela-dev-diary/2026-05-15/00-GOALS.md` §五 11 类 workbench / §七 三合一
-- `kubeela-dev-diary/2026-05-15/modules/02-plugin-manifest.md`（manifest schema）
-- `kubeela-dev-diary/2026-05-15/modules/04-permissions-sandbox.md`（perms scope）
-- `kubeela-dev-diary/2026-05-16/STRATEGY-PLAN-v3.md`（OSS / Desktop / Cloud · plugin 是 OSS 主要扩展点）
-- `kubeela-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`（plugin 自动 AI-ready · `provides.surfaces[]` 字段预定）
+- `forgeax-dev-diary/2026-05-15/00-GOALS.md` §五 11 类 workbench / §七 三合一
+- `forgeax-dev-diary/2026-05-15/modules/02-plugin-manifest.md`（manifest schema）
+- `forgeax-dev-diary/2026-05-15/modules/04-permissions-sandbox.md`（perms scope）
+- `forgeax-dev-diary/2026-05-16/STRATEGY-PLAN-v3.md`（OSS / Desktop / Cloud · plugin 是 OSS 主要扩展点）
+- `forgeax-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`（plugin 自动 AI-ready · `provides.surfaces[]` 字段预定）
 
 ---
 
@@ -241,4 +241,4 @@ Seedream (ARK_IMAGE_KEY)  →  Gemini nano-banana (GEMINI_API_KEY)  →  Azure G
 
 **警惕**:`bun run build` / `tsc` 会落 `.js` 到 `src/`,vite 优先服 `.js` 屏蔽 `.tsx`(2026-05-17 wb-character-forge 复发,interface 已加 `noEmit`,marketplace 插件需自查 `tsconfig.json` 是否 `noEmit:true`)。
 
-完整数据:[`../../kubeela-dev-diary/2026-05-18/SUMMARY.html`](../../kubeela-dev-diary/2026-05-18/SUMMARY.html)
+完整数据:[`../../forgeax-dev-diary/2026-05-18/SUMMARY.html`](../../forgeax-dev-diary/2026-05-18/SUMMARY.html)

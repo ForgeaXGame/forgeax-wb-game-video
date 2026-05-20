@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/wb-scene",
+  "id": "@forgeax-plugin/wb-scene",
   "version": "0.0.1",
   "kind": "workbench",
   "displayName": { "zh": "场景 / 世界", "en": "Scene & World" },
-  "description": { "zh": "占位 · 由 @kubeela-plugin/wb-scene 提供。后续接 ai_grasshopper + h-3d-world-builder。", "en": "Placeholder. Will host scene composer + tilemap." },
+  "description": { "zh": "占位 · 由 @forgeax-plugin/wb-scene 提供。后续接 ai_grasshopper + h-3d-world-builder。", "en": "Placeholder. Will host scene composer + tilemap." },
   "provides": {
     "workbench": {
       "id": "scene",

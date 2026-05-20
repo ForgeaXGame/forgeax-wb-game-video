@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/cli-codex",
+  "id": "@forgeax-plugin/cli-codex",
   "version": "0.1.0",
   "kind": "cli-provider",
   "displayName": {
@@ -13,7 +13,7 @@
   },
   "provides": {
     "cliProvider": {
-      "id": "@kubeela-plugin/cli-codex",
+      "id": "@forgeax-plugin/cli-codex",
       "displayName": "OpenAI Codex",
       "models": [
         "gpt-5",

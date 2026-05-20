@@ -83,7 +83,7 @@ export interface GenerateSpriteSheetResult {
 }
 
 export interface RouterCtx {
-  /** kubeela project root, absolute */
+  /** forgeax project root, absolute */
   projectRoot: string;
   /** bus event emitter (loose-typed, plugin shouldn't depend on bus internals) */
   emit?: (name: string, args: Record<string, unknown>) => void;

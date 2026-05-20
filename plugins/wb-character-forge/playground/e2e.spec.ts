@@ -18,8 +18,8 @@
 
 import { test, expect } from '@playwright/test';
 
-const INTERFACE_URL = process.env.KUBEELA_INTERFACE_URL ?? 'http://127.0.0.1:18920';
-const SERVER_URL = process.env.KUBEELA_SERVER_URL ?? 'http://127.0.0.1:18900';
+const INTERFACE_URL = process.env.FORGEAX_INTERFACE_URL ?? 'http://127.0.0.1:18920';
+const SERVER_URL = process.env.FORGEAX_SERVER_URL ?? 'http://127.0.0.1:18900';
 const SLUG = process.env.CF_TEST_SLUG ?? 'mario';
 const SURFACE = 'character-forge.editor';
 
@@ -29,7 +29,7 @@ test.describe('wb-character-forge · 端到端', () => {
   test.beforeEach(async ({ page }) => {
     // 把 pinnedSlug 预置好,避免 panel 因没选 slug 显示空状态
     await page.addInitScript((slug) => {
-      try { localStorage.setItem('kubeela.pinnedSlug', slug); } catch { /* */ }
+      try { localStorage.setItem('forgeax.pinnedSlug', slug); } catch { /* */ }
     }, SLUG);
   });
 

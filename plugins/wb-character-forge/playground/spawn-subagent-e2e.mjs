@@ -22,7 +22,7 @@ async function main() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       cliProviderId: 'claude-code',
-      activeEmitterId: 'kubeela',
+      activeEmitterId: 'forgeax',
       title: 'spawn-subagent e2e',
     }),
   }).then((r) => r.json());
@@ -38,7 +38,7 @@ async function main() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       message: prompt,
-      agentId: 'kubeela',
+      agentId: 'forgeax',
       threadId,
       providerOverride: 'claude-code',
     }),
@@ -92,7 +92,7 @@ async function main() {
   const usedSuzu = (ua.agents ?? []).some((a) => a.id === 'suzu');
   const calledSpawn = Array.from(toolNames).some((n) => /spawn_subagent/.test(n));
   log('\n## ── 评估 ──');
-  log(`  Kubee 真调了 spawn_subagent : ${calledSpawn ? '✓' : '✗'}`);
+  log(`  Forge 真调了 spawn_subagent : ${calledSpawn ? '✓' : '✗'}`);
   log(`  used-agents 含 suzu        : ${usedSuzu ? '✓' : '✗'}`);
   if (calledSpawn && usedSuzu) log('\n  🎉 全链通了');
   else log('\n  ⚠ 还有 gap');

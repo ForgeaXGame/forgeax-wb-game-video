@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/agent-cc-coder",
+  "id": "@forgeax-plugin/agent-cc-coder",
   "version": "0.1.0",
   "kind": "agent",
   "displayName": {
@@ -33,7 +33,7 @@
         "**/*.py",
         "**/*.md"
       ],
-      "preferredCliProvider": "@kubeela-plugin/cli-claude-code",
+      "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
       "multiInstance": true
     }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "kubeela://plugin/tool-balance-resim/resim.returns",
+  "$id": "forgeax://plugin/tool-balance-resim/resim.returns",
   "title": "balance:resim returns",
   "description": "Output schema for balance:resim. Validated by the host on tool return (modules/02 §530).",
   "type": "object",

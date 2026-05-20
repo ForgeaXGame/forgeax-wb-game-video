@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/wb-bgm",
+  "id": "@forgeax-plugin/wb-bgm",
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": {

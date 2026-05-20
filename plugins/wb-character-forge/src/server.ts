@@ -1,6 +1,6 @@
 /**
  * wb-character-forge backend.  Exported as a factory `createCharacterForgeRouter`
- * so the kubeela host can `app.route('/api/wb/character-forge', factory(ctx))`
+ * so the forgeax host can `app.route('/api/wb/character-forge', factory(ctx))`
  * without leaking process.env into the plugin (the host injects an env map).
  *
  * Endpoints — all under the mount prefix:
@@ -63,7 +63,7 @@ export function createCharacterForgeRouter(ctx: RouterCtx): Hono {
   r.get('/status', (c) => {
     const k = dispatcher.isReady();
     return c.json({
-      plugin: '@kubeela-plugin/wb-character-forge',
+      plugin: '@forgeax-plugin/wb-character-forge',
       version: '0.1.0',
       vendors: k,
       styles: STYLE_IDS,
@@ -288,7 +288,7 @@ export function createCharacterForgeRouter(ctx: RouterCtx): Hono {
   });
 
   // ──────────────────────────────────────────────────────────────────────
-  // GET /asset?path=.kubeela/games/<slug>/characters/<charId>/...
+  // GET /asset?path=.forgeax/games/<slug>/characters/<charId>/...
   // Streams raw bytes (PNG / JSON) for the browser <img src=> + AI fetch.
   // ──────────────────────────────────────────────────────────────────────
   r.get('/asset', async (c) => {
@@ -335,7 +335,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 /**
  * Restrict /asset to character-forge's own directory tree so a malicious or
  * confused caller can't pull arbitrary files (e.g. .env) through us.  Path
- * must resolve under `<projectRoot>/.kubeela/games/<slug>/characters/`.
+ * must resolve under `<projectRoot>/.forgeax/games/<slug>/characters/`.
  */
 function safeAssetPath(root: string, rel: string): string | null {
   if (!rel || typeof rel !== 'string') return null;
@@ -344,9 +344,9 @@ function safeAssetPath(root: string, rel: string): string | null {
   const abs = resolve(root, rel);
   const r = relative(root, abs);
   if (r.startsWith('..') || isAbsolute(r)) return null;
-  // canonical layout enforced: .kubeela / games / <slug> / characters / ...
+  // canonical layout enforced: .forgeax / games / <slug> / characters / ...
   const segs = r.split(/[/\\]/);
-  if (segs[0] !== '.kubeela' || segs[1] !== 'games' || segs[3] !== 'characters') return null;
+  if (segs[0] !== '.forgeax' || segs[1] !== 'games' || segs[3] !== 'characters') return null;
   return abs;
 }
 

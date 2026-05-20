@@ -19,8 +19,8 @@
  * 跟现在被占的 MCP chrome lock 错开运行(`bunx playwright test`).
  */
 
-const INTERFACE_URL = process.env.KUBEELA_INTERFACE_URL ?? 'http://127.0.0.1:18920';
-const SERVER_URL = process.env.KUBEELA_SERVER_URL ?? 'http://127.0.0.1:18900';
+const INTERFACE_URL = process.env.FORGEAX_INTERFACE_URL ?? 'http://127.0.0.1:18920';
+const SERVER_URL = process.env.FORGEAX_SERVER_URL ?? 'http://127.0.0.1:18900';
 const SLUG = process.env.CF_SMOKE_SLUG ?? 'mario';
 const SURFACE = 'character-forge.editor';
 const PREFIX = '/api/wb/character-forge';
@@ -86,7 +86,7 @@ const steps: Step[] = [
     fn: async () => {
       const charId = (globalThis as { __cfCharId?: string }).__cfCharId;
       assert(charId, 'no charId from step 2');
-      const path = `.kubeela/games/${SLUG}/characters/${charId}/portrait/front.png`;
+      const path = `.forgeax/games/${SLUG}/characters/${charId}/portrait/front.png`;
       // try both .png and .jpg since Seedream returns JPEG
       let r = await fetch(`${SERVER_URL}${PREFIX}/asset?path=${encodeURIComponent(path)}`);
       if (!r.ok) {
@@ -220,7 +220,7 @@ const steps: Step[] = [
       const r = await fetch(`${INTERFACE_URL}/`);
       assert(r.ok, `vite root HTTP ${r.status}`);
       // panel module path
-      const m = await fetch(`${INTERFACE_URL}/@fs/data/home/lockliu/kubee-project/kubeela-studio/packages/marketplace/plugins/wb-character-forge/src/panel.tsx`);
+      const m = await fetch(`${INTERFACE_URL}/@fs/data/home/lockliu/forge-project/forgeax-studio/packages/marketplace/plugins/wb-character-forge/src/panel.tsx`);
       assert(m.ok, `panel HTTP ${m.status}`);
       const t = await m.text();
       assert(t.includes('CharacterForgePanel'), 'panel module missing export marker');

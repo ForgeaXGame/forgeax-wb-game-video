@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/cli-cursor-agent",
+  "id": "@forgeax-plugin/cli-cursor-agent",
   "version": "0.1.0",
   "kind": "cli-provider",
   "displayName": {
@@ -13,7 +13,7 @@
   },
   "provides": {
     "cliProvider": {
-      "id": "@kubeela-plugin/cli-cursor-agent",
+      "id": "@forgeax-plugin/cli-cursor-agent",
       "displayName": "Cursor Agent",
       "models": [
         "auto",

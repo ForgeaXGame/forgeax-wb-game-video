@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "kubeela://plugin/tool-balance-resim/resim-completed",
+  "$id": "forgeax://plugin/tool-balance-resim/resim-completed",
   "title": "balance.resim.completed event payload",
   "description": "Payload schema for balance.resim.completed bus event. Validated by the host on bus.emit for cross-plugin event guarantees (modules/02 §488).",
   "type": "object",
@@ -26,7 +26,7 @@
     },
     "requestedBy": {
       "type": "string",
-      "description": "Plugin id that invoked balance:resim (PluginId form: '@kubeela-plugin/<slug>' or layer-anonymous '')",
+      "description": "Plugin id that invoked balance:resim (PluginId form: '@forgeax-plugin/<slug>' or layer-anonymous '')",
       "maxLength": 200
     }
   },

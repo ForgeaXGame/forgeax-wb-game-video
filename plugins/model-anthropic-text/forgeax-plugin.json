@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/model-anthropic-text",
+  "id": "@forgeax-plugin/model-anthropic-text",
   "version": "0.1.0",
   "kind": "model-binding",
   "displayName": {

@@ -1,6 +1,6 @@
-# @kubeela-plugin/wb-character-forge
+# @forgeax-plugin/wb-character-forge
 
-> 角色资产工坊 + 游乐场试玩 · kubeela 首个端到端 workbench 插件
+> 角色资产工坊 + 游乐场试玩 · forgeax 首个端到端 workbench 插件
 > · 作为后续 `wb-*` 插件作者的实物模板
 
 ## 是什么
@@ -13,7 +13,7 @@
 **人路径**: 浏览器开 `18920` → 锻造 tab → 填 prompt → 一键生成 + 试玩
 **AI 路径**: `POST /api/wb/character-forge/portrait` 直 HTTP,或 `POST /api/bus/ui/surfaces/character-forge.editor/action`
 
-两条路径共用同一个 `actions.run` 闭包(dual-modality contract, [`../../../../kubeela-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`](../../../../kubeela-dev-diary/2026-05-16/DUAL-MODALITY-UI.md))。
+两条路径共用同一个 `actions.run` 闭包(dual-modality contract, [`../../../../forgeax-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`](../../../../forgeax-dev-diary/2026-05-16/DUAL-MODALITY-UI.md))。
 
 ## 起步
 
@@ -22,15 +22,15 @@
 GEMINI_API_KEY=...            # nano-banana 主 sprite,备 portrait
 ARK_IMAGE_KEY=...             # Seedream 主 portrait
 AZURE_GPT_IMAGE_KEY=...       # 备 sprite + 备 portrait
-# (kubeela-studio/.env.example 已有占位;Settings UI 也可填,白名单见 packages/server/src/api/settings.ts:17)
+# (forgeax-studio/.env.example 已有占位;Settings UI 也可填,白名单见 packages/server/src/api/settings.ts:17)
 
-# 2. 启 kubeela
+# 2. 启 forgeax
 bash scripts/run.sh
 
 # 3. 浏览器开 18920 → sidebar 找 "⚒️ 角色锻造" tab
 # 4. (可选)  跑 smoke / 浏览器 e2e 自检
 bun packages/marketplace/plugins/wb-character-forge/playground/smoke.ts
-bun /data/home/lockliu/kubee-project/kubeela-studio/packages/marketplace/plugins/wb-character-forge/playground/browser-e2e.mjs   # 需 /tmp 装 playwright
+bun /data/home/lockliu/forge-project/forgeax-studio/packages/marketplace/plugins/wb-character-forge/playground/browser-e2e.mjs   # 需 /tmp 装 playwright
 ```
 
 ## tool 列表 (供其他 plugin / AI 调用)
@@ -48,7 +48,7 @@ bun /data/home/lockliu/kubee-project/kubeela-studio/packages/marketplace/plugins
 ## 资产物理路径
 
 ```
-<projectRoot>/.kubeela/games/<slug>/characters/<charId>/
+<projectRoot>/.forgeax/games/<slug>/characters/<charId>/
 ├── manifest.json
 ├── portrait/
 │   ├── front.png|jpg
@@ -59,7 +59,7 @@ bun /data/home/lockliu/kubee-project/kubeela-studio/packages/marketplace/plugins
         └── sheet.png|jpg
 ```
 
-`<projectRoot>` 由 `KUBEELA_PROJECT_ROOT` 决定;`<slug>` 由当前 game 项目定义。文件 extension 实际由响应字节 sniff 决定(Seedream 默认 JPEG, Gemini 默认 PNG)。
+`<projectRoot>` 由 `FORGEAX_PROJECT_ROOT` 决定;`<slug>` 由当前 game 项目定义。文件 extension 实际由响应字节 sniff 决定(Seedream 默认 JPEG, Gemini 默认 PNG)。
 
 ## 多模态厂商主备链 (`src/clients/dispatcher.ts`)
 

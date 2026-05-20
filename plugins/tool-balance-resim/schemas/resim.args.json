@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "kubeela://plugin/tool-balance-resim/resim.args",
+  "$id": "forgeax://plugin/tool-balance-resim/resim.args",
   "title": "balance:resim args",
   "description": "Input schema for balance:resim. The host validates with ajv on bus.call (modules/02 §530).",
   "type": "object",

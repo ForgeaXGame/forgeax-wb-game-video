@@ -212,11 +212,11 @@ export function CharacterForgePanel(): JSX.Element {
   // Read pinnedSlug straight from localStorage (FilesPanel keeps it there).
   // We watch the 'storage' event so cross-component pinning is reactive.
   const [pinnedSlug, setPinnedSlug] = useState<string | null>(() => {
-    try { return localStorage.getItem('kubeela.pinnedSlug'); } catch { return null; }
+    try { return localStorage.getItem('forgeax.pinnedSlug'); } catch { return null; }
   });
   useEffect(() => {
     const onStorage = () => {
-      try { setPinnedSlug(localStorage.getItem('kubeela.pinnedSlug')); } catch { /* */ }
+      try { setPinnedSlug(localStorage.getItem('forgeax.pinnedSlug')); } catch { /* */ }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -616,7 +616,7 @@ interface PlaygroundProps {
 function PlaygroundView(p: PlaygroundProps): JSX.Element {
   const { slug, manifest, busy, onGenerateSheet, onSelect, characters, selectedCharId } = p;
   const walk = manifest?.sprites?.walk ?? null;
-  const sheetUrl = walk ? `${API_BASE}/asset?path=${encodeURIComponent(`.kubeela/games/${slug}/characters/${manifest!.charId}/${walk.sheet}`)}` : null;
+  const sheetUrl = walk ? `${API_BASE}/asset?path=${encodeURIComponent(`.forgeax/games/${slug}/characters/${manifest!.charId}/${walk.sheet}`)}` : null;
   const [dirIdx, setDirIdx] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [frameIdx, setFrameIdx] = useState(0);
@@ -635,7 +635,7 @@ function PlaygroundView(p: PlaygroundProps): JSX.Element {
   const offsetX = -(frameIdx * cellW);
   const offsetY = -(dirIdx * cellH);
   const portraitUrl = manifest?.portrait?.front
-    ? `${API_BASE}/asset?path=${encodeURIComponent(`.kubeela/games/${slug}/characters/${manifest.charId}/${manifest.portrait.front}`)}`
+    ? `${API_BASE}/asset?path=${encodeURIComponent(`.forgeax/games/${slug}/characters/${manifest.charId}/${manifest.portrait.front}`)}`
     : null;
 
   return (

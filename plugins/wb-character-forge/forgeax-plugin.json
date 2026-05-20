@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/wb-character-forge",
+  "id": "@forgeax-plugin/wb-character-forge",
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": { "zh": "角色锻造", "en": "Character Forge" },
@@ -8,7 +8,7 @@
     "zh": "生产 + 试玩闭环的角色资产工坊 · 立绘 / 三视图 / 行动小人 / 换装 + mini playground 试玩",
     "en": "End-to-end character forge: portrait / turnaround / sprite-sheet / variants + mini playground"
   },
-  "author": { "name": "kubeela", "email": "dev@kubeela.local" },
+  "author": { "name": "forgeax", "email": "dev@forgeax.local" },
   "icon": "⚒️",
   "keywords": ["character", "portrait", "sprite", "image-gen", "playground"],
 
@@ -20,7 +20,7 @@
       "position": 105,
       "panelSize": "lg",
       "matchProduces": [
-        "**/.kubeela/games/*/characters/**"
+        "**/.forgeax/games/*/characters/**"
       ]
     },
     "tools": [
@@ -86,10 +86,10 @@
   },
 
   "permissions": [
-    "fs:read:.kubeela/games/{slug}/characters/**",
-    "fs:write:.kubeela/games/{slug}/characters/**",
-    "fs:read:.kubeela/games/{slug}/playground/**",
-    "fs:write:.kubeela/games/{slug}/playground/**",
+    "fs:read:.forgeax/games/{slug}/characters/**",
+    "fs:write:.forgeax/games/{slug}/characters/**",
+    "fs:read:.forgeax/games/{slug}/playground/**",
+    "fs:write:.forgeax/games/{slug}/playground/**",
     "model:image:concept-art",
     "model:image:sprite-frame",
     "model:text:reasoning",
@@ -102,5 +102,5 @@
 
   "hot": false,
   "experimental": true,
-  "compatibleWith": { "kubeela-bus": "^1.0.0" }
+  "compatibleWith": { "forgeax-bus": "^1.0.0" }
 }

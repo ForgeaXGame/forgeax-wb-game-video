@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "@kubeela-plugin/admin",
+  "id": "@forgeax-plugin/admin",
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": {
@@ -19,7 +19,7 @@
       "position": 210,
       "panelSize": "lg",
       "matchProduces": [
-        "**/.kubeela/**",
+        "**/.forgeax/**",
         "**/marketplace/**"
       ]
     }

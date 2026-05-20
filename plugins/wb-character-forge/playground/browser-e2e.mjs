@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOTS_DIR = resolve(__dirname, 'screenshots');
-const INTERFACE_URL = process.env.KUBEELA_INTERFACE_URL ?? 'http://127.0.0.1:18920';
-const SERVER_URL = process.env.KUBEELA_SERVER_URL ?? 'http://127.0.0.1:18900';
+const INTERFACE_URL = process.env.FORGEAX_INTERFACE_URL ?? 'http://127.0.0.1:18920';
+const SERVER_URL = process.env.FORGEAX_SERVER_URL ?? 'http://127.0.0.1:18900';
 const SLUG = process.env.CF_TEST_SLUG ?? 'mario';
 
 const passed = [];
@@ -46,7 +46,7 @@ async function run() {
     userAgent: 'wb-character-forge-e2e/0.1.0',
   });
   await ctx.addInitScript((slug) => {
-    try { localStorage.setItem('kubeela.pinnedSlug', slug); } catch { /* */ }
+    try { localStorage.setItem('forgeax.pinnedSlug', slug); } catch { /* */ }
   }, SLUG);
 
   const page = await ctx.newPage();

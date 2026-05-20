@@ -13,7 +13,7 @@ import { assertCharId, assertSlug, ForgeError } from './ids';
 
 /**
  * All character assets live under
- *   <projectRoot>/.kubeela/games/<slug>/characters/<charId>/
+ *   <projectRoot>/.forgeax/games/<slug>/characters/<charId>/
  * which is already on the safe-path whitelist (packages/server/src/fs/safe-path.ts).
  * Storage helpers refuse paths that would escape this prefix — even if a caller
  * smuggles "..", because every path is built from validated slug + charId.
@@ -22,7 +22,7 @@ import { assertCharId, assertSlug, ForgeError } from './ids';
 export function charDir(ctx: RouterCtx, slug: string, charId: string): string {
   assertSlug(slug);
   assertCharId(charId);
-  return resolve(ctx.projectRoot, '.kubeela', 'games', slug, 'characters', charId);
+  return resolve(ctx.projectRoot, '.forgeax', 'games', slug, 'characters', charId);
 }
 
 export function manifestPath(ctx: RouterCtx, slug: string, charId: string): string {
@@ -31,7 +31,7 @@ export function manifestPath(ctx: RouterCtx, slug: string, charId: string): stri
 
 export function gameCharsDir(ctx: RouterCtx, slug: string): string {
   assertSlug(slug);
-  return resolve(ctx.projectRoot, '.kubeela', 'games', slug, 'characters');
+  return resolve(ctx.projectRoot, '.forgeax', 'games', slug, 'characters');
 }
 
 /**
@@ -155,7 +155,7 @@ export async function listCharacters(ctx: RouterCtx, slug: string): Promise<Char
 export function assetUrl(slug: string, charId: string, rel: string): string {
   const safeRel = rel.replace(/^\/+/, '');
   return `/api/wb/character-forge/asset?path=${encodeURIComponent(
-    `.kubeela/games/${slug}/characters/${charId}/${safeRel}`,
+    `.forgeax/games/${slug}/characters/${charId}/${safeRel}`,
   )}`;
 }
 
