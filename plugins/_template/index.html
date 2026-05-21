@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plugin Template</title>
+    <link rel="stylesheet" href="/src/ui/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="pane-topbar">
+        <span class="brand">🧩 Plugin Template</span>
+      </header>
+      <aside class="pane-left">
+        <div id="left-root"></div>
+      </aside>
+      <main class="pane-center">
+        <div id="center-root"></div>
+      </main>
+      <aside class="pane-right">
+        <div id="right-root"></div>
+      </aside>
+      <footer class="pane-bottom">
+        <span class="status" id="status-text">idle</span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

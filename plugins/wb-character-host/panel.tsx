@@ -257,11 +257,13 @@ export function WbCharacterHostPanel(): JSX.Element {
 
   useEffect(() => { surface.setSnapshot(snapshot); /* eslint-disable-next-line */ }, [snapshot]);
 
-  // iframe URL 带 slug query, 给 wb-character app 第一时间能用
+  // iframe URL 带 slug query + pane=center. Sidebar 用 pane=left 加载同一个 dist。
+  // 见 docs/v2-vision/modules/16-three-pane-embedding.md
   const iframeSrc = useMemo(() => {
     const u = new URL(IFRAME_SRC, window.location.origin);
     if (slug) u.searchParams.set('slug', slug);
     u.searchParams.set('embedded', '1');
+    u.searchParams.set('pane', 'center');
     return u.pathname + u.search;
   }, [slug]);
 
