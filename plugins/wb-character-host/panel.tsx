@@ -324,7 +324,7 @@ export function WbCharacterHostPanel(): JSX.Element {
 export default WbCharacterHostPanel;
 
 const CSS = `
-.wbc-host { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #0b0c0a; color: #d8dde7; }
+.wbc-host { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; background: #0b0c0a; color: #d8dde7; }
 .wbc-host-bar {
   display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   background: #11141b; border-bottom: 1px solid #232a38; font-size: 12px;
