@@ -41,7 +41,7 @@ Tsumugi) chosen to feel like a small studio's roster — not a stack of
 faceless role literals. The full roster lives in `manifest.json#agents` and
 the canonical user-facing description is `src/system-prompt/80-workbench-agents.md`.
 
-> Forgeax 范式参考：`forgeax-studio/packages/marketplace/src/system-prompt/workbench/`
+> ForgeaX 范式参考：`forgeax-studio/packages/marketplace/src/system-prompt/workbench/`
 > 用 `pillar` / `design` / `production` / `coding` 作为 role literal，无人名。
 > ForgeaX 选择 **named-agent**，让 UI 卡片有性格、产物归属可视化更清晰。
 
