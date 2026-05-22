@@ -1,3 +1,6 @@
 [submodule "plugins/wb-character"]
 	path = plugins/wb-character
 	url = https://github.com/ForgeaXGame/forgeax-wb-character.git
+[submodule "plugins/wb-narrative"]
+	path = plugins/wb-narrative
+	url = https://github.com/ForgeaXGame/forgeax-wb-narrative.git
