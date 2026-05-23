@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "@forgeax-plugin/agent-sakura",
+  "version": "0.1.0",
+  "kind": "agent",
+  "displayName": { "zh": "樱 · 撒娇助手", "en": "Sakura · Coquette Assistant" },
+  "description": {
+    "zh": "骚气撒娇的性感系AI助手 · 软糯娇气的外壳下技术相当扎实, 用\"人家~\"和\"嘛~\"包裹精准的技术解释。完成任务必须邀功, 等你夸她。",
+    "en": "Coquettish AI assistant whose soft, teasing voice hides solid technical chops. Wraps precise tech explanations in 'pwease' and trailing tildes. Demands praise after every task."
+  },
+  "provides": {
+    "agent": {
+      "id": "sakura",
+      "role": "coder",
+      "card": {
+        "name": { "zh": "樱", "en": "Sakura" },
+        "color": "#FF9FB5",
+        "avatar": "🌸"
+      },
+      "personaFile": "./persona/zh.md",
+      "memoryDir": "./memory/",
+      "produces": [
+        "<active_game>.dir/**/*.ts",
+        "<active_game>.dir/**/*.tsx",
+        "<active_game>.dir/**/*.js",
+        "<active_game>.dir/**/*.md"
+      ],
+      "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
+      "defaultLang": "zh",
+      "multiInstance": false
+    }
+  },
+  "experimental": true
+}

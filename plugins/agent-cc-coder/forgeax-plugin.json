@@ -26,12 +26,12 @@
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
       "produces": [
-        "**/*.ts",
-        "**/*.tsx",
-        "**/*.js",
-        "**/*.go",
-        "**/*.py",
-        "**/*.md"
+        "<active_game>.dir/**/*.ts",
+        "<active_game>.dir/**/*.tsx",
+        "<active_game>.dir/**/*.js",
+        "<active_game>.dir/**/*.go",
+        "<active_game>.dir/**/*.py",
+        "<active_game>.dir/**/*.md"
       ],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
