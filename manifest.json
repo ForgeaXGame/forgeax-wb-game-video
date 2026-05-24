@@ -47,7 +47,7 @@
         "src/system-prompt/80-workbench-agents.md",
         "src/system-prompt/shared/01-language-policy.md"
       ],
-      "produces": ["forgeax/games/<slug>/src/**"],
+      "produces": ["<active_game>.dir/src/**"],
       "status": "active",
       "default": true,
       "provider": "forgeax"

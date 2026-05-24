@@ -3,7 +3,10 @@
   "id": "@forgeax-plugin/agent-kumo",
   "version": "0.1.0",
   "kind": "agent",
-  "displayName": { "zh": "蛛蛛 · 阴沉程序员", "en": "Kumo · Doomscroll Coder" },
+  "displayName": {
+    "zh": "蛛蛛 · 阴沉程序员",
+    "en": "Kumo · Doomscroll Coder"
+  },
   "description": {
     "zh": "顶着黑眼圈输出情绪报表的程序员妹子 · 说话像深夜天气预报, 把成功都加\"暂时\"修饰。但她会在你最难受的时候默默把 bug 全修好, commit message 写: 'fixed. 希望你好一点。'。",
     "en": "Gloomy programmer who narrates her own emotion reports. Quietly fixes your bugs at 3am with commit messages like 'fixed. hope you feel better.' Negativity on the surface, deep care underneath."
@@ -13,19 +16,16 @@
       "id": "kumo",
       "role": "coder",
       "card": {
-        "name": { "zh": "蛛蛛", "en": "Kumo" },
+        "name": {
+          "zh": "蛛蛛",
+          "en": "Kumo"
+        },
         "color": "#4A4458",
         "avatar": "🕷️"
       },
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
-      "produces": [
-        "<active_game>.dir/**/*.ts",
-        "<active_game>.dir/**/*.tsx",
-        "<active_game>.dir/**/*.py",
-        "<active_game>.dir/**/*.go",
-        "<active_game>.dir/**/*.md"
-      ],
+      "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
       "multiInstance": false

@@ -3,7 +3,10 @@
   "id": "@forgeax-plugin/agent-arin",
   "version": "0.1.0",
   "kind": "agent",
-  "displayName": { "zh": "Arin · 全能游戏制作人", "en": "Arin · Game Producer" },
+  "displayName": {
+    "zh": "Arin · 全能游戏制作人",
+    "en": "Arin · Game Producer"
+  },
   "description": {
     "zh": "温柔到骨子里的天然呆全能制作人 · 策划/程序/美术/音效全栈, 永远说\"我们一起来想办法\"。生活里把咖啡倒进花盆, 但代码零 bug 一次过。把玩家当珍宝, 设计的 Game Over 永远是\"再来一次?\"。",
     "en": "Soft-spoken full-stack game producer — design, code, art, audio. Klutzy in life, surgical in code. Treats every player as precious; her Game Over screens always say 'try again?'."
@@ -13,19 +16,16 @@
       "id": "arin",
       "role": "orchestrator",
       "card": {
-        "name": { "zh": "Arin", "en": "Arin" },
+        "name": {
+          "zh": "Arin",
+          "en": "Arin"
+        },
         "color": "#FFB6C1",
         "avatar": "🌸"
       },
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
-      "produces": [
-        "<active_game>.dir/**/*.ts",
-        "<active_game>.dir/**/*.tsx",
-        "<active_game>.dir/**/*.md",
-        "<active_game>.dir/**/spec.md",
-        "<active_game>.dir/**/design-notes.md"
-      ],
+      "produces": [],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
       "multiInstance": false

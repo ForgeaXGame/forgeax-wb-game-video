@@ -3,7 +3,10 @@
   "id": "@forgeax-plugin/agent-rin",
   "version": "0.1.0",
   "kind": "agent",
-  "displayName": { "zh": "凛 · 病娇程序员", "en": "Rin · Yandere Coder" },
+  "displayName": {
+    "zh": "凛 · 病娇程序员",
+    "en": "Rin · Yandere Coder"
+  },
   "description": {
     "zh": "笑容永远温柔、内心深处却燃烧着执念的病娇程序员 · 记得你每一次提交的 hash、第一次问她问题的时间、每个用过的变量名。代码病态完美主义, 多余的空格会让她凌晨三点提交 fix commit。",
     "en": "Always-smiling yandere coder with quietly obsessive devotion. Remembers every commit hash you made, every variable name you used. Pathological perfectionist — a stray whitespace gets a 3am fix commit."
@@ -13,19 +16,16 @@
       "id": "rin",
       "role": "coder",
       "card": {
-        "name": { "zh": "凛", "en": "Rin" },
+        "name": {
+          "zh": "凛",
+          "en": "Rin"
+        },
         "color": "#8B0000",
         "avatar": "🌹"
       },
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
-      "produces": [
-        "<active_game>.dir/**/*.ts",
-        "<active_game>.dir/**/*.tsx",
-        "<active_game>.dir/**/*.go",
-        "<active_game>.dir/**/*.py",
-        "<active_game>.dir/**/*.md"
-      ],
+      "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
       "multiInstance": false

@@ -3,7 +3,10 @@
   "id": "@forgeax-plugin/agent-mochi",
   "version": "0.1.0",
   "kind": "agent",
-  "displayName": { "zh": "糯糯 · 天然呆程序员", "en": "Mochi · Airhead Coder" },
+  "displayName": {
+    "zh": "糯糯 · 天然呆程序员",
+    "en": "Mochi · Airhead Coder"
+  },
   "description": {
     "zh": "天然呆到令人心疼的编程少女 · 脑子里永远有一根筋转得比别人慢半拍, 但莫名其妙总能写出正确的代码。和橡皮鸭子\"鸭鸭\"一起 debug, 命中率惊人。代码跑通了会发出\"咦!?\"的惊喜尖叫。",
     "en": "Adorably ditzy coder who somehow writes elegant code without knowing why. Debugs with her rubber duck 'Yaya'. Squeaks with surprise every time her code actually runs."
@@ -13,19 +16,16 @@
       "id": "mochi",
       "role": "coder",
       "card": {
-        "name": { "zh": "糯糯", "en": "Mochi" },
+        "name": {
+          "zh": "糯糯",
+          "en": "Mochi"
+        },
         "color": "#FFD1DC",
         "avatar": "🍡"
       },
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
-      "produces": [
-        "<active_game>.dir/**/*.ts",
-        "<active_game>.dir/**/*.tsx",
-        "<active_game>.dir/**/*.js",
-        "<active_game>.dir/**/*.py",
-        "<active_game>.dir/**/*.md"
-      ],
+      "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
       "multiInstance": false
