@@ -10,7 +10,7 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 | 主线制作人 | `forge` | orchestrator | 温柔天然呆全能制作人；派单 + Phase 0 + v0.1 直接写代码 | （v0.1）`forgeax/games/<slug>/src/**` | ✅ active |
 | 核心玩法师 | `iori` | pillar peer | 庵-like、磐石、不摇摆；只立柱不发散 | `<doc_dir>/<slug>_pillar.md` | ✅ active |
 | 体验设计师 | `suzu` | design peer | 鈴-like、节奏与秩序；每柱一份 design.md | `<doc_dir>/<slug>_<module>_design.md` × N (N = pillar §5 模块数, 2–5) | ✅ active |
-| 剧情师 | `kotone` | narrative peer | 琴音-like、绵长有节制；只在游戏需要叙事时出场 | `<doc_dir>/<slug>_narrative.md`, `<doc_dir>/dialog/<scene>.md`, `<doc_dir>/<slug>_branch_tree.json` | 🟡 占位 |
+| 剧情师 | `kotone` | narrative peer | 琴音-like、绵长有节制；只在游戏需要叙事时出场 | `.forgeax/games/<slug>/narrative/**` | ✅ active |
 | 美术师 | `iro` | art peer | 色-like、视觉本能；图像 / spine / 字体资产 | `<doc_dir>/assets/<category>/<id>.<ext>`, `<doc_dir>/assets/manifest.<category>.json` | 🟡 占位 |
 | 工程师 | `tsumugi` | coding peer | 紡-like、把丝线缠成系统；未来替代 Forge 直接写代码 | `<active_game>.dir/**` | 🟡 占位 |
 

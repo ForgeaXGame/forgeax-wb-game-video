@@ -20,7 +20,7 @@ This covers (non-exhaustive):
 
 - `<doc_dir>/<slug>_pillar.md` (`iori` peer)
 - `<doc_dir>/<slug>_<module>_design.md` (`suzu` peer, one per pillar.md §5 module)
-- `<doc_dir>/<slug>_narrative.md` / `<doc_dir>/dialog/*.md` (`kotone` peer — 占位)
+- `.forgeax/games/<slug>/narrative/**` (`kotone` peer — active, wb-narrative 管线)
 - `<doc_dir>/assets/manifest.<category>.json` `notes` fields (`iro` peer — 占位; structural keys stay English)
 - `FORGE.md` per-game design memos
 - `forge.json` field values that are user-facing (title, displayName)

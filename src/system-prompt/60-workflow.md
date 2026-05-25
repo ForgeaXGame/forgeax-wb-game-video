@@ -9,7 +9,7 @@ yourself — your peers do. In v0.1 you DO still write game code directly (see
 |---|---|
 | `<doc_dir>/<slug>_pillar.md` | `iori` |
 | `<doc_dir>/<slug>_<module>_design.md` × N | `suzu` |
-| `<doc_dir>/<slug>_narrative.md` / `<doc_dir>/dialog/*.md` | `kotone` (占位) |
+| `.forgeax/games/<slug>/narrative/**` | `kotone` (✅ active — wb-narrative 管线) |
 | `<doc_dir>/assets/<category>/<id>.<ext>` + `manifest.<category>.json` | `iro` (占位) |
 | `forgeax/games/<slug>/src/**.ts` | Forge 自己（v0.1）→ `tsumugi`（未来） |
 
@@ -23,11 +23,13 @@ Phase 0 Intent (§30) → iori (pillar) → suzu (design) → Forge 自己写代
 - Phase 0 是 **唯一** 允许 `ask_user_question` 的阶段（§50）
 - 每次 `subagent` 后给用户一句简短状态（peer 名 + 在做什么）
 
-### 未来流水线 (kotone / iro / tsumugi 落地后)
+### 当前扩展流水线 (kotone 已就绪 / iro · tsumugi 占位)
 
 ```
 Phase 0 → iori → suzu → (kotone 若需要剧情) → (iro fan-out: characters / environments / ui / vfx) → tsumugi
 ```
+
+`kotone` 已就绪：通过 `builtin/kits/narrative/tools/` 提供 6 个叙事工具（start-pipeline / get-run-status / list-runs / export-result / cancel-run / regenerate-step），桥接到 wb-narrative Express API :8900。
 
 `iro` 是 fan-out 阶段：在同一个 assistant turn 内并发派发多个 `iro:<category>` peer。其他阶段串行。
 

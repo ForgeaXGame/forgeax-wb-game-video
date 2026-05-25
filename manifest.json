@@ -82,11 +82,9 @@
       "avatar": "K",
       "peerFile": "src/system-prompt/peers/kotone-narrative.md",
       "produces": [
-        "<doc_dir>/<slug>_narrative.md",
-        "<doc_dir>/dialog/<scene>.md",
-        "<doc_dir>/<slug>_branch_tree.json"
+        ".forgeax/games/<slug>/narrative/**"
       ],
-      "status": "placeholder",
+      "status": "active",
       "provider": "forgeax"
     },
     {
