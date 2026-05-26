@@ -24,8 +24,7 @@
     }
   },
   "compatibleWith": {
-    "forgeax-cli": ">=1.2.0-forgeax.1",
-    "agentic_os2": "agentteam-os-future"
+    "forgeax-cli": ">=1.2.0-forgeax.1"
   },
   "agents": [
     {
