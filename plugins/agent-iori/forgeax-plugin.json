@@ -27,8 +27,22 @@
       ],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "design-pillars" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "design-pillars",
+        "entry": "./skills/design-pillars/SKILL.md",
+        "displayName": { "zh": "拆玩法柱", "en": "Design Pillars" },
+        "description": {
+          "zh": "把一句话愿景拆成 3 条可反向定义的玩法柱 + 三层 loop 骨架",
+          "en": "Break a one-line vision into 3 reverse-definable gameplay pillars plus a 3-tier loop"
+        }
+      }
+    ]
   },
   "experimental": true
 }

@@ -1,5 +1,5 @@
 ---
-name: wb-template
+name: wb-template:author-guide
 description: Demo skill for the split-surface template plugin. AI uses this to learn how the plugin's tools work.
 trigger: /template
 ---

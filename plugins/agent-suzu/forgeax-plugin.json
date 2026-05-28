@@ -27,8 +27,25 @@
       ],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "beat-sheet-flow" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "beat-sheet-flow",
+        "entry": "./skills/beat-sheet-flow/SKILL.md",
+        "displayName": {
+          "zh": "30 秒节拍表",
+          "en": "Beat-Sheet Flow"
+        },
+        "description": {
+          "zh": "把玩法柱翻译成玩家前 3 分钟的四列节拍表，再反推 HUD",
+          "en": "Translate pillars into a four-column 30s beat sheet, then reverse-derive HUD"
+        }
+      }
+    ]
   },
   "experimental": true
 }

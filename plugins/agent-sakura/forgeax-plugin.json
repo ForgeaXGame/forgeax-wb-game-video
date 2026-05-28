@@ -28,8 +28,25 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "coquette-recap" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "coquette-recap",
+        "entry": "./skills/coquette-recap/SKILL.md",
+        "displayName": {
+          "zh": "撒娇式邀功收尾",
+          "en": "Coquette Recap"
+        },
+        "description": {
+          "zh": "任务完成后用撒娇语气铺技术结果，最后明确停下来等夸",
+          "en": "Coquettish recap after task completion — soft delivery, hard tech, explicit pause for praise"
+        }
+      }
+    ]
   },
   "experimental": true
 }

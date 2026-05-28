@@ -28,8 +28,25 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "duck-debug" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "duck-debug",
+        "entry": "./skills/duck-debug/SKILL.md",
+        "displayName": {
+          "zh": "鸭鸭 debug",
+          "en": "Duck Debug with Yaya"
+        },
+        "description": {
+          "zh": "把问题大声讲给橡皮鸭子鸭鸭听，讲到一半就找出 bug",
+          "en": "Explain the bug aloud to rubber duck Yaya — solution emerges mid-sentence"
+        }
+      }
+    ]
   },
   "experimental": true
 }

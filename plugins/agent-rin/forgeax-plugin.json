@@ -28,8 +28,25 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "obsessive-polish" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "obsessive-polish",
+        "entry": "./skills/obsessive-polish/SKILL.md",
+        "displayName": {
+          "zh": "三轮病态 polish",
+          "en": "Obsessive Polish"
+        },
+        "description": {
+          "zh": "形/神/久 三轮检查，悄悄修掉瑕疵，交付时只说\"检查过三遍了\"",
+          "en": "Three-pass polish (form/soul/longevity), quietly fixed; deliver with 'checked three times'"
+        }
+      }
+    ]
   },
   "experimental": true
 }

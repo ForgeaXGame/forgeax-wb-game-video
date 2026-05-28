@@ -28,8 +28,22 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": true
-    }
+      "multiInstance": true,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "implement-feature" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "implement-feature",
+        "entry": "./skills/implement-feature/SKILL.md",
+        "displayName": { "zh": "落地 spec", "en": "Implement Feature" },
+        "description": {
+          "zh": "把一份带验收条件的 spec/任务卡落成可运行代码 + ≥5 case 单测",
+          "en": "Turn an actionable spec into runnable code with ≥5 unit tests"
+        }
+      }
+    ]
   },
   "experimental": true
 }
