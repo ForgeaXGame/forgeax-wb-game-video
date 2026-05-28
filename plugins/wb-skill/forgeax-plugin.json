@@ -35,7 +35,17 @@
   },
   "entry": {
     "frontend": "./src/panel.tsx",
-    "backend": "./server/api-plugin.ts"
+    "backend": "./server/api-plugin.ts",
+    "standalone": {
+      "start": "npm run dev",
+      "port": 15175,
+      "readyProbe": "/",
+      "dev": {
+        "watch": true,
+        "hmr": true
+      },
+      "embeddedAlso": true
+    }
   },
   "requestedEnv": [
     "GEMINI_API_KEY",
