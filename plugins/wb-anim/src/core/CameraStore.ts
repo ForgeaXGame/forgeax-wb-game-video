@@ -1,4 +1,3 @@
-// @source wb-character/src/core/CameraStore.ts
 import type { CameraPreset } from './types'
 
 const STORAGE_KEY = 'character-editor:camera-presets'

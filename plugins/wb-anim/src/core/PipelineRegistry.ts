@@ -1,29 +1,41 @@
-// @source wb-character/src/core/PipelineRegistry.ts
 import type { IPipeline, PipelineMeta, PipelinePlacement } from './types'
 
 /* ── Vite glob — eager metas, lazy modules ──────────────────────────
  *
  * `meta.ts` files are tiny pure-data modules and get pulled into the main
- * bundle synchronously. They give the host bridge / tab UI / agent manifest
- * immediate access to pipeline identity without paying for the heavy
- * `index.ts` modules.
+ * bundle synchronously: 8 pipelines × ~10 lines = trivial cost. They give
+ * the host bridge / tab UI / agent manifest immediate access to pipeline
+ * identity without paying for the heavy `index.ts` modules.
  *
  * `index.ts` is wrapped in a function that vite turns into `import()` — the
- * pipeline module only loads when the user actually activates that pipeline.
+ * 5k-line pixel-char module + its transitive deps only loads when the user
+ * (or an agent via `ce:switch-pipeline`) actually activates that pipeline.
  */
 const metaModules = (import.meta as any).glob('../pipelines/*/meta.ts', { eager: true })
 const indexLoaders = (import.meta as any).glob('../pipelines/*/index.ts')
 
 /* ── Pure helpers (testable without import.meta.glob) ───────────── */
 
+/**
+ * 解析管线的顶栏显示位置。没声明时按 `'drawer'` 兜底——保证新写的
+ * 管线不会无意间污染主干顶栏，必须显式标 `'main'` 才能上主 tab。
+ */
 export function resolvePlacement(meta: PipelineMeta): PipelinePlacement {
   return meta.placement ?? 'drawer'
 }
 
+/**
+ * 按 placement 过滤元数据列表。`hidden` 管线只有显式传 `'hidden'` 才会
+ * 返回——用于给 `getAgentManifest()` 做「智能体可见但 UI 不可见」的分类。
+ */
 export function filterByPlacement(metas: PipelineMeta[], placement: PipelinePlacement): PipelineMeta[] {
   return metas.filter(m => resolvePlacement(m) === placement)
 }
 
+/**
+ * 给 workbench / 外部智能体消费的清单：只含发现能力用得到的字段。
+ * 包括 `hidden` 管线——它们是给程序化调用的内部工具，智能体仍需要知道。
+ */
 export interface AgentPipelineEntry {
   id: string
   name: string
@@ -65,6 +77,7 @@ export class PipelineRegistry {
   private inflight = new Map<string, Promise<IPipeline | undefined>>()
 
   constructor() {
+    // 1) Eager metas: build slug → meta.
     const slugMeta = new Map<string, PipelineMeta>()
     for (const [path, mod] of Object.entries(metaModules)) {
       const slug = pipelineSlug(path)
@@ -77,6 +90,8 @@ export class PipelineRegistry {
       slugMeta.set(slug, meta)
     }
 
+    // 2) Lazy index: pair each loader with its sibling meta. Skip pipelines
+    //    whose meta.id starts with `_` (template / internal).
     for (const [path, loader] of Object.entries(indexLoaders)) {
       const slug = pipelineSlug(path)
       if (!slug) continue
@@ -88,6 +103,8 @@ export class PipelineRegistry {
     }
     console.log(`[PipelineRegistry] ${this.metas.size} pipeline meta(s) discovered (lazy-loaded)`)
   }
+
+  /* ── Sync metadata APIs (used by tab UI + agent manifest) ────── */
 
   getAllMetas(): PipelineMeta[] {
     return [...this.metas.values()]
@@ -105,14 +122,22 @@ export class PipelineRegistry {
     return [...this.metas.keys()]
   }
 
+  /** 按顶栏位置过滤元数据。详见 {@link filterByPlacement}。 */
   getByPlacement(placement: PipelinePlacement): PipelineMeta[] {
     return filterByPlacement(this.getAllMetas(), placement)
   }
 
+  /** 给 workbench / 智能体消费的完整清单（含 hidden）。 */
   getAgentManifest(): AgentManifest {
     return toAgentManifest(this.getAllMetas())
   }
 
+  /* ── Async loading (used when user activates a tab) ──────────── */
+
+  /**
+   * 懒加载并缓存指定管线模块。重复调用同一 id 会复用第一次的 promise,
+   * 模块加载完成后所有调用拿到同一个 IPipeline 实例。
+   */
   async load(id: string): Promise<IPipeline | undefined> {
     const cached = this.loaded.get(id)
     if (cached) return cached
@@ -145,6 +170,7 @@ export class PipelineRegistry {
     return promise
   }
 
+  /** 已加载到内存的 pipeline 实例(同步,只在 `load()` 后才有值)。 */
   getLoaded(id: string): IPipeline | undefined {
     return this.loaded.get(id)
   }

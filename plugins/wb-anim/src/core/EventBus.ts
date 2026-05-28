@@ -1,4 +1,3 @@
-// @source wb-character/src/core/EventBus.ts
 import type { IEventBus } from './types'
 
 type Handler = (...args: unknown[]) => void
