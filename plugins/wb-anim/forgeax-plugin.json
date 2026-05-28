@@ -23,10 +23,31 @@
         "**/*.spine.json",
         "**/*.sheet.png"
       ]
-    }
+    },
+    "tools": [
+      {
+        "id": "anim:generate-spine",
+        "args": "./schemas/generate-spine.args.json",
+        "returns": "./schemas/generate-spine.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "Spine 拆件绑骨 · 拆 → 绑 → 动作工坊 → skel/json 导出" }
+      },
+      {
+        "id": "anim:generate-video",
+        "args": "./schemas/generate-video.args.json",
+        "returns": "./schemas/generate-video.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "视频角色 · 序列帧 / 场景展示" }
+      }
+    ]
   },
   "entry": {
-    "frontend": "./src/panel.tsx"
+    "frontend": "./src/panel.tsx",
+    "backend": "./server/api-plugin.ts"
   },
+  "requestedEnv": [
+    "KLING_ACCESS_KEY",
+    "KLING_SECRET_KEY"
+  ],
   "experimental": true
 }
