@@ -3,24 +3,14 @@ import type * as THREE from 'three'
 
 /* ── Pipeline Plugin Interface ───────────────────────────────────── */
 
-/**
- *
- *
- */
 export type PipelinePlacement = 'main' | 'drawer' | 'hidden'
 
-/**
- *
- */
 export type PipelineInput =
   | 'conceptImage'
   | 'turnaroundSheet'
   | 'spriteSheet'
   | 'vehicleSheet'
 
-/**
- *
- */
 export type PipelineOutput =
   | 'spriteZip'
   | 'vehicleZip'
@@ -35,13 +25,9 @@ export interface PipelineMeta {
   description: string
   version: string
   author?: string
-   */
   placement?: PipelinePlacement
-   */
   agentTags?: string[]
-   */
   inputs?: PipelineInput[]
-   */
   outputs?: PipelineOutput[]
 }
 

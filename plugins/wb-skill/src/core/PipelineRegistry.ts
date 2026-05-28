@@ -17,20 +17,14 @@ const indexLoaders = (import.meta as any).glob('../pipelines/*/index.ts')
 
 /* ── Pure helpers (testable without import.meta.glob) ───────────── */
 
-/**
- */
 export function resolvePlacement(meta: PipelineMeta): PipelinePlacement {
   return meta.placement ?? 'drawer'
 }
 
-/**
- */
 export function filterByPlacement(metas: PipelineMeta[], placement: PipelinePlacement): PipelineMeta[] {
   return metas.filter(m => resolvePlacement(m) === placement)
 }
 
-/**
- */
 export interface AgentPipelineEntry {
   id: string
   name: string
@@ -117,20 +111,16 @@ export class PipelineRegistry {
     return [...this.metas.keys()]
   }
 
-   */
   getByPlacement(placement: PipelinePlacement): PipelineMeta[] {
     return filterByPlacement(this.getAllMetas(), placement)
   }
 
-   */
   getAgentManifest(): AgentManifest {
     return toAgentManifest(this.getAllMetas())
   }
 
   /* ── Async loading (used when user activates a tab) ──────────── */
 
-  /**
-   */
   async load(id: string): Promise<IPipeline | undefined> {
     const cached = this.loaded.get(id)
     if (cached) return cached
@@ -163,7 +153,6 @@ export class PipelineRegistry {
     return promise
   }
 
-   */
   getLoaded(id: string): IPipeline | undefined {
     return this.loaded.get(id)
   }
