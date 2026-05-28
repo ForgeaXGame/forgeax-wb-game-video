@@ -166,40 +166,13 @@ export async function tryLoadSpineBoost(spriteWorldHeight: number): Promise<void
   if (!_spriteAnchor) return
 
   try {
-    //  import （StudioStorage  spine ）
-    const { studioLoad, EDITOR_STATE_KEY } = await import(
-      '../../pipelines/spine/editor/StudioStorage'
-    )
-    const { parseSpineJson } = await import(
-      '../../pipelines/spine/editor/SpineDataParser'
-    )
-
-    const saved = await studioLoad<any>(EDITOR_STATE_KEY)
-    if (!saved?.rawJson) {
-      console.log('[SharedAdapter] Plan A+: no Spine T-pose data, using ratio mode')
-      return
-    }
-
-    const skeleton = parseSpineJson(saved.rawJson)
-    if (!skeleton?.bones?.size) {
-      console.log('[SharedAdapter] Plan A+: skeleton parse empty, skipping')
-      return
-    }
-
-    // Spine ：  localY
-    let spineMaxY = 0
-    for (const bone of skeleton.bones.values()) {
-      spineMaxY = Math.max(spineMaxY, bone.localY + Math.abs(bone.length))
-    }
-    if (spineMaxY <= 0) {
-      console.log('[SharedAdapter] Plan A+: spine height estimate failed, skipping')
-      return
-    }
-
-    _spriteAnchor.loadStaticSpine(skeleton, spineMaxY)
-    console.log(`[SharedAdapter]  A+ ：spineMaxY=${spineMaxY.toFixed(1)} → worldH=${spriteWorldHeight.toFixed(2)}`)
+    // D-1: wb-skill does not bundle the spine pipeline (that lives in wb-anim).
+    // Plan A+ (T-pose refinement from Spine skeleton) is unavailable here.
+    // Degrade silently to Plan A (ratio-based mount points).
+    console.log('[SharedAdapter] Plan A+: spine pipeline not available in wb-skill context, using ratio mode')
+    void spriteWorldHeight  // suppress unused parameter lint
+    return
   } catch (e) {
-    //  A+ ，
     console.warn('[SharedAdapter] Plan A+ load failed (degraded to Plan A):', e)
   }
 }

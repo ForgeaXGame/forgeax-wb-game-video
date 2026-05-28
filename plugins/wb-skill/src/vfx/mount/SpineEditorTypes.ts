@@ -14,6 +14,7 @@ export interface EditorBone {
   parent: string | null
   localX: number
   localY: number
+  localRotation: number
   worldX: number
   worldY: number
   length: number
