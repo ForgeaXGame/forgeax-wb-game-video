@@ -22,8 +22,10 @@
     "@types/sharp": "^0.31.1",
     "@types/three": "^0.170.0",
     "happy-dom": "^20.9.0",
+    "minimatch": "^10.2.5",
     "typescript": "^5.4.0",
     "vite": "^5.0.0",
-    "vitest": "^1.6.1"
+    "vitest": "^1.6.1",
+    "zod": "^3.25.0"
   }
 }

@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
         '@core': resolve(__dirname, 'src/core'),
         '@pipelines': resolve(__dirname, 'src/pipelines'),
         '@types': resolve(__dirname, 'src/types'),
+        // Required so server/src imports resolve during vitest
+        '@forgeax/types': resolve(__dirname, '../../../types/src/index.ts'),
+        '@forgeax/agent-runtime': resolve(__dirname, '../../../agent-runtime/src/index.ts'),
       },
     },
     optimizeDeps: {
