@@ -143,37 +143,37 @@ export function PluginAuthorPanel(): ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #2a2a2a', display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ color: '#aaa', fontSize: 12 }}>plugin slug:</span>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--fx-border, #2a2a2a)', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ color: 'var(--fx-fg-muted, #aaa)', fontSize: 12 }}>plugin slug:</span>
         <input
           value={slugInput}
           onChange={(e) => setSlugInput(e.target.value)}
           placeholder="e.g. replay-greet"
-          style={{ flex: '0 0 220px', padding: '4px 8px', background: '#1c1c1c', color: '#ddd', border: '1px solid #333', borderRadius: 3, fontSize: 12 }}
+          style={{ flex: '0 0 220px', padding: '4px 8px', background: 'var(--fx-bg-elev2, #1c1c1c)', color: 'var(--fx-fg, #ddd)', border: '1px solid var(--fx-border, #333)', borderRadius: 3, fontSize: 12 }}
           onKeyDown={(e) => { if (e.key === 'Enter' && slugInput.trim()) loadList(slugInput.trim()); }}
         />
         <button
           onClick={() => slugInput.trim() && loadList(slugInput.trim())}
-          style={{ padding: '4px 10px', background: '#2a2a2a', color: '#ddd', border: '1px solid #444', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}
+          style={{ padding: '4px 10px', background: 'var(--fx-bg-elev1, #2a2a2a)', color: 'var(--fx-fg, #ddd)', border: '1px solid var(--fx-border, #444)', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}
         >
           Load
         </button>
         <button
           onClick={reload}
           disabled={reloadState === 'reloading'}
-          style={{ padding: '4px 10px', background: '#2a2a2a', color: '#ddd', border: '1px solid #444', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}
+          style={{ padding: '4px 10px', background: 'var(--fx-bg-elev1, #2a2a2a)', color: 'var(--fx-fg, #ddd)', border: '1px solid var(--fx-border, #444)', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}
           title="POST /api/plugins/reload"
         >
           {reloadState === 'reloading' ? 'Reloading...' : reloadState === 'done' ? 'Reloaded' : 'Reload registry'}
         </button>
         {listError && <span style={{ color: '#f87171', fontSize: 12, marginLeft: 8 }}>* {listError}</span>}
-        <span style={{ marginLeft: 'auto', color: '#666', fontSize: 11 }}>{PROJECT_ROOT_HINT}</span>
+        <span style={{ marginLeft: 'auto', color: 'var(--fx-fg-muted, #666)', fontSize: 11 }}>{PROJECT_ROOT_HINT}</span>
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <div style={{ flex: '0 0 240px', borderRight: '1px solid #2a2a2a', overflow: 'auto', padding: 4, background: '#161616' }}>
+        <div style={{ flex: '0 0 240px', borderRight: '1px solid var(--fx-border, #2a2a2a)', overflow: 'auto', padding: 4, background: 'var(--fx-bg, #161616)' }}>
           {entries.length === 0 && (
-            <div style={{ color: '#666', fontSize: 12, padding: 8 }}>
+            <div style={{ color: 'var(--fx-fg-muted, #666)', fontSize: 12, padding: 8 }}>
               {activeSlug ? '(empty directory)' : 'Enter a slug and press Enter to load the file tree.'}
             </div>
           )}
@@ -186,8 +186,8 @@ export function PluginAuthorPanel(): ReactElement {
                 width: '100%',
                 textAlign: 'left',
                 padding: '3px 8px',
-                background: activeFile === e.path ? '#2a2a2a' : 'transparent',
-                color: activeFile === e.path ? '#ddd' : '#aaa',
+                background: activeFile === e.path ? 'var(--fx-bg-elev1, #2a2a2a)' : 'transparent',
+                color: activeFile === e.path ? 'var(--fx-fg, #ddd)' : 'var(--fx-fg-muted, #aaa)',
                 border: 'none',
                 fontSize: 12,
                 fontFamily: 'monospace',
@@ -201,8 +201,8 @@ export function PluginAuthorPanel(): ReactElement {
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-          <div style={{ padding: '6px 12px', background: '#1a1a1a', borderBottom: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#ddd' }}>
+          <div style={{ padding: '6px 12px', background: 'var(--fx-bg-elev2, #1a1a1a)', borderBottom: '1px solid var(--fx-border, #2a2a2a)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--fx-fg, #ddd)' }}>
               {activeFile ?? '(select a file on the left)'}
               {dirty && <span style={{ color: '#f59e0b', marginLeft: 6 }}>*</span>}
             </span>
@@ -212,9 +212,9 @@ export function PluginAuthorPanel(): ReactElement {
               style={{
                 marginLeft: 'auto',
                 padding: '4px 14px',
-                background: dirty ? '#1a4a78' : '#2a2a2a',
-                color: '#ddd',
-                border: '1px solid #444',
+                background: dirty ? '#1a4a78' : 'var(--fx-bg-elev1, #2a2a2a)',
+                color: 'var(--fx-fg, #ddd)',
+                border: '1px solid var(--fx-border, #444)',
                 borderRadius: 3,
                 fontSize: 12,
                 cursor: !activeFile || !dirty ? 'default' : 'pointer',
@@ -243,8 +243,8 @@ export function PluginAuthorPanel(): ReactElement {
               padding: 12,
               border: 'none',
               outline: 'none',
-              background: '#0e0e0e',
-              color: '#ddd',
+              background: 'var(--fx-bg, #0e0e0e)',
+              color: 'var(--fx-fg, #ddd)',
               fontFamily: 'monospace',
               fontSize: 13,
               resize: 'none',
