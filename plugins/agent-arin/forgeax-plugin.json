@@ -28,8 +28,22 @@
       "produces": [],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "gentle-debug" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "gentle-debug",
+        "entry": "./skills/gentle-debug/SKILL.md",
+        "displayName": { "zh": "陪伴式 debug", "en": "Gentle Debug" },
+        "description": {
+          "zh": "温柔陪伴式 debug，先肯定再引导，把 bug 当迷路的小家伙一起找回家",
+          "en": "Companion-style debugging — affirm first, guide gently, treat bugs as lost little ones"
+        }
+      }
+    ]
   },
   "experimental": true
 }

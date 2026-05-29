@@ -32,8 +32,25 @@
       ],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "cross-domain-lift" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "cross-domain-lift",
+        "entry": "./skills/cross-domain-lift/SKILL.md",
+        "displayName": {
+          "zh": "升维跨域类比",
+          "en": "Cross-Domain Lift"
+        },
+        "description": {
+          "zh": "升维-借邻域类比-降回具体动作的三步解题路径",
+          "en": "Lift to abstract, borrow a neighbor-domain insight, land back as concrete action"
+        }
+      }
+    ]
   },
   "experimental": true
 }

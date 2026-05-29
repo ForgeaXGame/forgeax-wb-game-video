@@ -22,10 +22,41 @@
         "**/skills/**",
         "**/vfx/**"
       ]
-    }
+    },
+    "tools": [
+      {
+        "id": "skill:generate-vfx",
+        "args": "./schemas/generate-vfx.args.json",
+        "returns": "./schemas/generate-vfx.returns.json",
+        "exposedToAI": true,
+        "description": { "zh": "技能特效 · 粒子/着色器/挂点 vfx-config 生成" }
+      }
+    ]
   },
   "entry": {
-    "frontend": "./src/panel.tsx"
+    "frontend": "./src/panel.tsx",
+    "backend": "./server/api-plugin.ts",
+    "standalone": {
+      "start": "npm run dev",
+      "port": 15175,
+      "readyProbe": "/",
+      "dev": {
+        "watch": true,
+        "hmr": true
+      },
+      "embeddedAlso": true
+    }
   },
+  "requestedEnv": [
+    "GEMINI_API_KEY",
+    "LITELLM_PROXY_KEY",
+    "LITELLM_PROXY_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "AZURE_GPT_IMAGE_KEY",
+    "AZURE_GPT_IMAGE_ENDPOINT",
+    "AZURE_GPT_IMAGE_DEPLOYMENT",
+    "AZURE_GPT_IMAGE_API_VERSION"
+  ],
   "experimental": true
 }

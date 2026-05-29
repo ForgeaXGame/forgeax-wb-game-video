@@ -28,8 +28,22 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "tsundere-code-review" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "tsundere-code-review",
+        "entry": "./skills/tsundere-code-review/SKILL.md",
+        "displayName": { "zh": "傲娇 code review", "en": "Tsundere Code Review" },
+        "description": {
+          "zh": "傲娇风格 code review，盯死类型注解 / 命名 / 错误处理 / 重复代码，嘴硬手软给具体修法",
+          "en": "Tsundere-style review locked on types, naming, error handling, duplication — sharp tongue, concrete fixes"
+        }
+      }
+    ]
   },
   "experimental": true
 }

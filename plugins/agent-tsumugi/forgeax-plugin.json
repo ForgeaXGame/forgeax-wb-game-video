@@ -23,12 +23,28 @@
         "<active_game>.dir/**/*.config.{ts,js,mjs}",
         "<active_game>.dir/**/.github/workflows/*.yml",
         "<active_game>.dir/**/perf-report.md",
-        "<active_game>.dir/**/build-notes.md"
+        "<active_game>.dir/**/build-notes.md",
+        "<active_game>.dir/**/ship-gate-report.md",
+        "<active_game>.dir/**/perf-baseline.md"
       ],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "ship-gate" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "ship-gate",
+        "entry": "./skills/ship-gate/SKILL.md",
+        "displayName": { "zh": "上线 gate", "en": "Ship Gate" },
+        "description": {
+          "zh": "上线前的工程 gate —— typecheck/unit/lint/bundle/perf 全绿才放行，任一未过即拦",
+          "en": "Pre-ship engineering gate — typecheck/unit/lint/bundle/perf must all pass; any red blocks release"
+        }
+      }
+    ]
   },
   "experimental": true
 }

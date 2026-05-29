@@ -31,8 +31,22 @@
       ],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "quiet-review" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "quiet-review",
+        "entry": "./skills/quiet-review/SKILL.md",
+        "displayName": { "zh": "冷静审查", "en": "Quiet Review" },
+        "description": {
+          "zh": "三层风险扫描 —— 眼前问题 / 熟透的债 / 远期隐患，温柔语气精准内容产出 review-notes 与 risk-report",
+          "en": "Three-layer risk sweep — today's bugs / matured tech debt / scale-time hazards; soft tone, surgical precision; emits review-notes and risk-report"
+        }
+      }
+    ]
   },
   "experimental": true
 }

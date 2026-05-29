@@ -29,8 +29,22 @@
       ],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": true
-    }
+      "multiInstance": true,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "establish-art-style" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "establish-art-style",
+        "entry": "./skills/establish-art-style/SKILL.md",
+        "displayName": { "zh": "立美术规范", "en": "Establish Art Style" },
+        "description": {
+          "zh": "在画第一张 hero 之前先产出 art-style.md + token 化的 palette.json",
+          "en": "Lock down art-style.md and tokenized palette.json before any hero asset"
+        }
+      }
+    ]
   },
   "experimental": true
 }

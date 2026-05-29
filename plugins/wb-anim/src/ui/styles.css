@@ -1,0 +1,711 @@
+:root {
+  --bg-primary: #0b0c0a;
+  --bg-panel: #131510;
+  --bg-hover: #1c1f17;
+  --bg-active: #2a2d24;
+  --border: #2c302a;
+  --text-primary: #F4F4ED;
+  --text-secondary: #9a9c94;
+  --accent: #D4FF48;
+  --accent-hover: #e0ff6a;
+  --accent-dim: rgba(212, 255, 72, 0.15);
+  --danger: #ff4444;
+  --success: #2ecc71;
+  --radius: 3px;
+  --left-width: 320px;
+  --right-width: 280px;
+  --topbar-height: 44px;
+}
+
+/* ── Topbar ───────────────────────────────────────────────────── */
+.editor-topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: var(--topbar-height);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: var(--text-secondary);
+  z-index: 20;
+}
+
+.editor-topbar select {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Pipeline tabs in topbar ─────────────────────────────────── */
+.pipeline-tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+
+.pipeline-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.pipeline-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.pipeline-tab.active {
+  background: var(--bg-active);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pipeline-tab .tab-icon {
+  font-size: 15px;
+}
+
+.pipeline-tab.design-tab.has-char::after {
+  content: '✓';
+  font-size: 10px;
+  color: var(--success);
+  margin-left: 2px;
+}
+
+.pipeline-tab.needs-char {
+  opacity: 0.5;
+}
+
+.tab-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* 让右侧辅助项贴到顶栏右边 */
+.tab-spacer { flex: 1; min-width: 8px; }
+
+.pipeline-tab.main-tab {
+  padding: 6px 16px;
+}
+
+.pipeline-tab.pipeline-tab-aux {
+  opacity: 0.75;
+}
+.pipeline-tab.pipeline-tab-aux:hover { opacity: 1; }
+
+/* 管线懒加载占位 — 第一次切到某管线时,等 import() 完成的几百毫秒里
+   左面板给一个加载提示,避免空白让人以为卡死 */
+.pipeline-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px 16px; gap: 12px;
+  color: var(--text-secondary, #9a9c94);
+  font-size: 13px;
+}
+.pipeline-loading-spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--border-color, #2c302a);
+  border-top-color: var(--accent, #D4FF48);
+  border-radius: 50%;
+  animation: pipeline-loading-spin 0.7s linear infinite;
+}
+.pipeline-loading-error { color: #ff8080; }
+@keyframes pipeline-loading-spin { to { transform: rotate(360deg); } }
+
+/* 「⋯ 更多模块 ▾」抽屉 */
+.pipeline-drawer-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pipeline-tab.drawer-trigger {
+  color: var(--text-secondary);
+}
+.pipeline-tab.drawer-trigger:hover { color: var(--text-primary); }
+.pipeline-tab.drawer-trigger .drawer-chevron {
+  font-size: 10px;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+.pipeline-drawer {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 240px;
+  background: var(--bg-elevated, #1e1e22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  z-index: 1000;
+}
+
+.pipeline-drawer-group {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pipeline-drawer-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+  transition: background 0.12s;
+}
+.pipeline-drawer-item:hover:not(.coming-soon) {
+  background: var(--bg-hover);
+}
+.pipeline-drawer-item.coming-soon {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.pipeline-drawer-icon {
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.pipeline-drawer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pipeline-drawer-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pipeline-drawer-desc {
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.editor-topbar .spacer { flex: 1; }
+
+/* ── Left panel ──────────────────────────────────────────────── */
+.editor-left {
+  position: absolute;
+  top: var(--topbar-height);
+  left: 0;
+  bottom: 0;
+  width: var(--left-width);
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 15;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.editor-left:empty::after {
+  content: '选择上方的管线标签开始';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+/* ── Center area ─────────────────────────────────────────────── */
+/* #ui-root > * sets pointer-events:auto (ID specificity).
+   Override with higher specificity to let mouse events reach the canvas. */
+#ui-root > .editor-center,
+.editor-center {
+  position: absolute;
+  top: var(--topbar-height);
+  left: var(--left-width);
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.editor-center.has-right {
+  right: var(--right-width);
+}
+
+.editor-center-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: none;
+  background: var(--bg-primary);
+  overflow: auto;
+}
+
+.editor-center-overlay.active {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.editor-center-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 7;
+  display: none;
+  background: rgba(19, 21, 16, 0.9);
+  border-bottom: 1px solid var(--border);
+  min-height: 36px;
+}
+
+.editor-center-toolbar.active {
+  display: flex;
+  pointer-events: auto;
+}
+
+/* ── Right panel ─────────────────────────────────────────────── */
+.editor-right {
+  position: absolute;
+  top: var(--topbar-height);
+  right: 0;
+  bottom: 0;
+  width: var(--right-width);
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 15;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.editor-right.visible {
+  display: flex;
+}
+
+/* ── Bottom panel ────────────────────────────────────────────── */
+.editor-bottom {
+  position: absolute;
+  bottom: 0;
+  left: var(--left-width);
+  right: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 16;
+  display: none;
+}
+
+.editor-bottom.has-right {
+  right: var(--right-width);
+}
+
+.editor-bottom.visible {
+  display: block;
+}
+
+/* ── Scene Preview Panel (left sidebar) ──────────────────────── */
+.sp-panel {
+  padding: 0;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.sp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sp-header-icon { font-size: 18px; }
+.sp-header-title { font-size: 14px; font-weight: 600; color: var(--accent); }
+
+.sp-hint {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+
+.sp-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.sp-section-title {
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+.sp-section-title:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sp-section-body {
+  padding: 6px 14px 12px;
+}
+
+/* Camera live info */
+.sp-live {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.sp-live-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.sp-live-label {
+  color: var(--text-secondary);
+  width: 36px;
+}
+
+/* Camera actions */
+.sp-cam-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sp-input {
+  flex: 1;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  outline: none;
+}
+.sp-input:focus { border-color: var(--accent); }
+
+.sp-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+  flex: 1;
+}
+.sp-btn:hover { background: var(--bg-active); }
+.sp-btn:active { transform: scale(0.97); }
+.sp-btn-primary {
+  background: var(--accent);
+  color: #0b0c0a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.sp-btn-primary:hover { background: var(--accent-hover); }
+
+/* Camera presets */
+.sp-presets-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.sp-presets { margin-top: 2px; }
+
+.sp-btn-full { width: 100%; flex: unset; font-size: 12px; padding: 8px 10px; }
+
+.sp-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+.sp-preset-row:hover { background: var(--bg-hover); }
+
+.sp-preset-row.sp-preset-active {
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+.sp-preset-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.sp-preset-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-preset-active .sp-preset-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sp-preset-apply,
+.sp-preset-update,
+.sp-preset-del {
+  color: var(--text-secondary);
+  font-size: 13px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.sp-preset-row:hover .sp-preset-apply,
+.sp-preset-row:hover .sp-preset-update,
+.sp-preset-row:hover .sp-preset-del { opacity: 1; }
+.sp-preset-apply:hover { color: var(--success); background: rgba(46,204,113,0.15); }
+.sp-preset-update:hover { color: var(--accent); background: var(--accent-dim); }
+.sp-preset-del:hover { color: var(--danger); background: rgba(231,76,60,0.15); }
+
+.sp-empty {
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 6px 0;
+  line-height: 1.5;
+}
+
+/* Sliders & toggles (reused for post-processing) */
+.sp-slider { margin-bottom: 6px; }
+.sp-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.sp-slider-head label { font-size: 11px; color: var(--text-secondary); }
+.sp-slider-head span {
+  font-size: 11px;
+  color: var(--accent);
+  font-family: monospace;
+  min-width: 50px;
+  text-align: right;
+}
+
+.sp-slider input[type="range"] {
+  width: 100%; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--bg-hover); border-radius: 2px; outline: none;
+}
+.sp-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-panel);
+}
+.sp-slider input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent-hover); }
+
+.sp-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding: 2px 0;
+}
+.sp-toggle label { font-size: 11px; color: var(--text-secondary); }
+.sp-toggle input[type="checkbox"] {
+  width: 32px; height: 16px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--bg-hover); border-radius: 8px;
+  position: relative; cursor: pointer;
+  border: 1px solid var(--border);
+  transition: background 0.2s;
+}
+.sp-toggle input[type="checkbox"]::after {
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform 0.2s, background 0.2s;
+}
+.sp-toggle input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.sp-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(15px);
+  background: #fff;
+}
+
+/* ── Spine step navigation (embedded in left panel) ──────────── */
+.spine-step-nav {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.spine-step-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.spine-step-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.spine-step-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.spine-step-btn.completed {
+  color: var(--success);
+}
+
+.spine-step-btn .step-icon {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+.spine-left-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Split-surface gating ─────────────────────────────────────────
+ * Studio host embeds this html twice with ?pane=left|center.
+ * See docs/v2-vision/modules/16-three-pane-embedding.md
+ * In standalone (no data-pane), nothing is hidden.
+ */
+body[data-pane="left"] .editor-topbar,
+body[data-pane="left"] .editor-center,
+body[data-pane="left"] .editor-center-toolbar,
+body[data-pane="left"] .editor-center-overlay,
+body[data-pane="left"] .editor-right,
+body[data-pane="left"] .editor-bottom,
+body[data-pane="left"] #viewport-wrap,
+body[data-pane="left"] #game-hud,
+body[data-pane="left"] #loading-screen { display: none !important; }
+body[data-pane="left"] .editor-left {
+  position: static !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100vh !important;
+  border-right: none !important;
+}
+
+body[data-pane="center"] .editor-left,
+body[data-pane="center"] .editor-right,
+body[data-pane="center"] .editor-bottom { display: none !important; }
+/* Topbar (pipeline tabs: 像素 / 载具 / 技能特效…) stays visible above the
+ * center viewport — host sidebar only carries the form, the pipeline switcher
+ * belongs over the viewport.  Its absolute top:0 + topbar-height already
+ * carve out the 44px strip; we just don't hide it. */
+body[data-pane="center"] .editor-center,
+body[data-pane="center"] #ui-root > .editor-center {
+  position: absolute !important;
+  top: var(--topbar-height) !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+}
+body[data-pane="center"] #viewport-wrap {
+  inset: 0 !important;
+}

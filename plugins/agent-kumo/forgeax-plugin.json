@@ -28,8 +28,25 @@
       "produces": [],
       "preferredCliProvider": "@forgeax-plugin/cli-claude-code",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "emit-mood-report" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "emit-mood-report",
+        "entry": "./skills/emit-mood-report/SKILL.md",
+        "displayName": {
+          "zh": "出情绪报表",
+          "en": "Emit Mood Report"
+        },
+        "description": {
+          "zh": "把当前状态量化成简短的情绪报表，配一句存在主义结论",
+          "en": "Quantify current state into a short mood report with an existential punchline"
+        }
+      }
+    ]
   },
   "experimental": true
 }

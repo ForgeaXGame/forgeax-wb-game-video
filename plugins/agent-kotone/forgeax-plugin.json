@@ -27,8 +27,22 @@
       ],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
-      "multiInstance": false
-    }
+      "multiInstance": false,
+      "defaultSkills": [
+        { "source": "inline", "skillId": "write-character-bio" }
+      ]
+    },
+    "skills": [
+      {
+        "id": "write-character-bio",
+        "entry": "./skills/write-character-bio/SKILL.md",
+        "displayName": { "zh": "写角色 bio", "en": "Write Character Bio" },
+        "description": {
+          "zh": "给 NPC 写可推动机 + 区分度足够的 talk style + 三句标志性台词",
+          "en": "Build NPC bio with derivable motive, distinctive talk style, and 3 signature lines"
+        }
+      }
+    ]
   },
   "experimental": true
 }
