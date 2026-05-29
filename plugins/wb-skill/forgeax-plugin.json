@@ -18,10 +18,16 @@
       "icon": "⚡",
       "position": 140,
       "panelSize": "lg",
+      "surface": "split",
+      "panes": {
+        "left":   { "minWidth": 320, "scrollable": true },
+        "center": { "minHeight": 600, "scrollable": false }
+      },
       "matchProduces": [
         "**/skills/**",
         "**/vfx/**"
-      ]
+      ],
+      "preferredAgent": "@forgeax-plugin/agent-vfx-artist"
     },
     "tools": [
       {
