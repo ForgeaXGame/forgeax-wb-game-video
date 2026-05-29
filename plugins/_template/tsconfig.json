@@ -6,12 +6,16 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src", "server", "vite.config.ts"]
+  "include": ["src", "server", "vite.config.ts", "tailwind.config.ts"]
 }
