@@ -3,7 +3,6 @@ import type { PipelineRegistry } from '../core/PipelineRegistry'
 import type { Engine } from '../core/Engine'
 import type { CameraStore } from '../core/CameraStore'
 import type { PreviewControls } from './PreviewControls'
-import type { CharacterDesign as CharacterDesignType } from '../shared/CharacterDesign'
 import { globalState } from '../shared/GlobalState'
 
 export interface ExtraPanels {
@@ -29,12 +28,17 @@ export class PipelinePanel {
   private scene: SceneDeps
   private activePipeline: IPipeline | null = null
   private activeId: string | null = null
-  private activeDesign = false
-  private charDesign: CharacterDesignType | null = null
-  private charDesignLoader: Promise<CharacterDesignType> | null = null
-  private designTab!: HTMLElement
   private tabEls: Map<string, HTMLElement> = new Map()
   private unsub: (() => void) | null = null
+
+  // Module 16 split-pane sync — wb-anim 在 Studio 主壳里被切成两个同源 iframe
+  // (?pane=left, ?pane=center)，每个 iframe 都跑独立的 PipelinePanel。
+  // 用户在任一 iframe 点 tab，必须把切换信号广播给另一份实例，否则两个面板
+  // 各自激活不同的 pipeline，左侧编辑 UI 与中间画布不匹配。
+  // 详见 pixel-char/index.ts 同名注释。
+  private _bc: BroadcastChannel | null = null
+  private _bcSelfId = Math.random().toString(36).slice(2, 10)
+  private _applyingBroadcast = false
 
   constructor(
     topbar: HTMLElement,
@@ -59,19 +63,13 @@ export class PipelinePanel {
     this.tabsContainer.innerHTML = ''
     this.tabEls.clear()
 
-    // 角色设计：永远第一个，是整个工作流的入口
-    this.designTab = document.createElement('button')
-    this.designTab.className = 'pipeline-tab design-tab main-tab'
-    this.designTab.innerHTML = '<span class="tab-icon">🎨</span>角色设计'
-    this.designTab.addEventListener('click', () => this.showDesign())
-    this.tabsContainer.appendChild(this.designTab)
-
-    const sep = document.createElement('div')
-    sep.className = 'tab-separator'
-    this.tabsContainer.appendChild(sep)
-
-    // 主 tab（placement='main'）—— 按主生产流水线顺序：像素角色 → 载具设计 → 技能特效
-    const MAIN_TAB_ORDER = ['pixel-char', 'vehicle-design', 'vfx']
+    // 主 tab（placement='main'）—— 动画工作台主流水线全部平铺到顶栏：
+    // 像素角色 → 载具动画 → Spine 骨骼 → 视频角色。
+    // 之前 spine / video 折在「⋯ 更多模块 ▾」抽屉里——按用户反馈改成
+    // 全部展开，省掉一次点击；切到任一 tab 时 PipelinePanel.activate()
+    // 会自动调用 pipeline.createUI(leftPanel, panels) 把对应左侧编辑 UI
+    // 渲染出来，所以这里不需要做额外的左侧分发。
+    const MAIN_TAB_ORDER = ['pixel-char', 'vehicle-design', 'spine', 'video']
     const mainMetas = this.registry.getByPlacement('main').sort((a, b) => {
       const ai = MAIN_TAB_ORDER.indexOf(a.id)
       const bi = MAIN_TAB_ORDER.indexOf(b.id)
@@ -86,7 +84,9 @@ export class PipelinePanel {
       this.tabEls.set(m.id, tab)
     }
 
-    // 右侧弹性撑开，让「更多模块」贴右
+    // 右侧弹性撑开——历史上「更多模块」贴右；现在 drawer 已经全部展开
+    // 到主 tab，spacer 留着保险，未来再加 placement='drawer' 的管线时
+    // buildMoreDrawer() 会自然回来。
     const spacer = document.createElement('div')
     spacer.className = 'tab-spacer'
     this.tabsContainer.appendChild(spacer)
@@ -105,12 +105,44 @@ export class PipelinePanel {
       void this.activate(target, { reset: true })
     }) as EventListener)
 
-    this.showDesign()
+    this.setupSplitPaneSync()
+
+    // 默认激活第一个 main 管线
+    if (mainMetas.length > 0) {
+      void this.activate(mainMetas[0], { reset: true })
+    }
+  }
+
+  /** 跨同源 iframe (?pane=left | ?pane=center) 同步活跃 tab。
+   *  广播自己 activate 的 pipeline id；收到对方广播时静默切到对应 tab，
+   *  不再回播（用 _applyingBroadcast guard）。 */
+  private setupSplitPaneSync(): void {
+    try {
+      this._bc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.active-pipeline')
+    } catch {
+      this._bc = null
+      return
+    }
+    this._bc.onmessage = (e: MessageEvent) => {
+      const data = e.data
+      if (!data || data.from === this._bcSelfId) return
+      const id = data.id
+      if (!id || id === this.activeId) return
+      const target = this.registry.getMeta(id)
+      if (!target) return
+      this._applyingBroadcast = true
+      void this.activate(target).finally(() => { this._applyingBroadcast = false })
+    }
+  }
+
+  private broadcastActive(id: string): void {
+    if (!this._bc || this._applyingBroadcast) return
+    try { this._bc.postMessage({ from: this._bcSelfId, id }) } catch { /* ignore */ }
   }
 
   /**
    * 「⋯ 更多模块 ▾」抽屉——右上角一个按钮，点开后列出所有 `placement='drawer'`
-   * 的管线（video / spine / sandbox 等辅助 / 变体 / 实验性）。
+   * 的管线，按 `meta.group` 分到「生产变体」/「辅助工具」两组（缺省 `'variant'`）。
    */
   private buildMoreDrawer(): void {
     const drawerPipelines = this.registry.getByPlacement('drawer')
@@ -143,19 +175,11 @@ export class PipelinePanel {
       it.addEventListener('click', () => { panel.style.display = 'none'; onClick() })
       return it
     }
-    const comingSoon = (icon: string, name: string) => {
-      const it = document.createElement('div')
-      it.className = 'pipeline-drawer-item coming-soon'
-      it.innerHTML = `<span class="pipeline-drawer-icon">${icon}</span>` +
-        `<span class="pipeline-drawer-text"><span class="pipeline-drawer-name">${name}</span>` +
-        `<span class="pipeline-drawer-desc">即将推出</span></span>`
-      return it
-    }
 
     const variantGroup: PipelineMeta[] = []
     const auxGroup: PipelineMeta[] = []
     for (const m of drawerPipelines) {
-      if (m.id === 'sandbox') auxGroup.push(m)
+      if (m.group === 'aux') auxGroup.push(m)
       else variantGroup.push(m)
     }
 
@@ -175,10 +199,6 @@ export class PipelinePanel {
       }
     }
 
-    panel.appendChild(groupHead('即将推出'))
-    panel.appendChild(comingSoon('🎯', '技能骨骼绑定'))
-    panel.appendChild(comingSoon('🎞️', '动捕导入'))
-
     trigger.addEventListener('click', (e) => {
       e.stopPropagation()
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none'
@@ -191,45 +211,12 @@ export class PipelinePanel {
     this.tabsContainer.appendChild(wrap)
   }
 
-  private showDesign(): void {
-    this.leaveCurrentMode()
-    this.activeDesign = true
-    this.clearPanels()
-    this.setActiveTab('__design__')
-
-    this.extra.center.classList.add('active')
-    this.leftPanel.innerHTML =
-      '<div class="pipeline-loading"><div class="pipeline-loading-spinner"></div>' +
-      '<div class="pipeline-loading-text">🎨 角色设计 加载中…</div></div>'
-
-    void this.ensureCharDesign().then(cd => {
-      // 用户可能在 await 期间切到别的 tab —— 不再是 design 模式就不挂载
-      if (!this.activeDesign) return
-      this.leftPanel.innerHTML = ''
-      cd.mount(this.leftPanel, this.extra.center)
-    }).catch(err => {
-      if (!this.activeDesign) return
-      console.warn('[PipelinePanel] CharacterDesign load failed:', err)
-      this.leftPanel.innerHTML = '<div class="pipeline-loading pipeline-loading-error">⚠️ 角色设计模块加载失败</div>'
-    })
-  }
-
-  private ensureCharDesign(): Promise<CharacterDesignType> {
-    if (this.charDesign) return Promise.resolve(this.charDesign)
-    if (!this.charDesignLoader) {
-      this.charDesignLoader = import('../shared/CharacterDesign').then(m => {
-        this.charDesign = new m.CharacterDesign()
-        return this.charDesign
-      })
-    }
-    return this.charDesignLoader
-  }
-
   private async activate(meta: PipelineMeta, opts: { reset?: boolean } = {}): Promise<void> {
     this.leaveCurrentMode()
     this.clearPanels()
     this.setActiveTab(meta.id)
     this.activeId = meta.id
+    this.broadcastActive(meta.id)
     this.showLoadingHint(meta)
 
     let pipeline: IPipeline | undefined
@@ -295,10 +282,6 @@ export class PipelinePanel {
   }
 
   private leaveCurrentMode(): void {
-    if (this.activeDesign) {
-      this.charDesign?.unmount()
-      this.activeDesign = false
-    }
     if (this.activePipeline) {
       this.activePipeline.destroyUI()
       this.activePipeline.dispose()
@@ -308,7 +291,6 @@ export class PipelinePanel {
   }
 
   private setActiveTab(id: string): void {
-    this.designTab.classList.toggle('active', id === '__design__')
     this.tabEls.forEach((el, tid) => {
       el.classList.toggle('active', tid === id)
     })
@@ -316,7 +298,6 @@ export class PipelinePanel {
 
   private updateBadge(): void {
     const has = globalState.hasCharacter
-    this.designTab.classList.toggle('has-char', has)
     this.tabEls.forEach(el => el.classList.toggle('needs-char', !has))
   }
 

@@ -334,6 +334,15 @@ class VideoUI {
       if (this.charWorld) h += `<div class="vp-char-meta">${this.charWorld}</div>`
       h += `</div></div>`
 
+      // 风格描述提前到 step1 末尾——step1 原本只有"角色缩略图 + 一个按钮"
+      // 视觉太单薄；把 step2 同名 textarea 复制一份过来，两边复用同一个
+      // `data-vp-action="ta-style"` 选择器（wireEvents 用 querySelector
+      // 抓单个，每次 render 后重新绑定，所以 step1/step2 切换时都能正确联动
+      // 同一个 `this.turnaroundStylePrompt` 字段）。
+      h += `<div class="vp-section"><div class="vp-section-title">风格描述（可选）</div>`
+      h += `<textarea class="vp-textarea" data-vp-action="ta-style" placeholder="例如：Q版风格、写实风格...">${this.turnaroundStylePrompt}</textarea>`
+      h += `</div>`
+
       h += `<button class="vp-btn vp-btn-primary" data-vp-action="go-step2">生成三视图 →</button>`
     }
 

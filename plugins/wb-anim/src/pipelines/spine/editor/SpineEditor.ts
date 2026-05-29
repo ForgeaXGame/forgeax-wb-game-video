@@ -1537,4 +1537,46 @@ const STUDIO_CSS = `
 .bp-offset-info { font-size: 9px; color: rgba(200,180,140,0.4); font-family: 'Orbitron',monospace; margin-left: auto; flex-shrink: 0; }
 .bp-part-skip-btn { border-color: rgba(200,200,200,0.2); color: #999; }
 .bp-part-skip-btn:hover { background: rgba(200,200,200,0.1); color: #ccc; }
+
+/* ═══════════════════ Spine 左侧 step nav（拆分部件 / 自动绑骨 / 动作工坊 / 导出） ═══════════════════
+ * 之前 mount() 把 .spine-step-nav 加到 leftPanel 但从未给它定义样式，
+ * 4 个按钮渲染成裸 button 堆，视觉上几乎看不见。补上：grid 平铺 + 边框 +
+ * active/completed 高亮，复用 STUDIO_CSS 已有的色板（亮绿 = #b6ff5a）。
+ */
+.spine-step-nav {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.spine-step-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--text-secondary, #aaa);
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.spine-step-btn:hover {
+  background: rgba(182,255,90,0.08);
+  border-color: rgba(182,255,90,0.3);
+  color: #ddd;
+}
+.spine-step-btn.active {
+  background: rgba(182,255,90,0.18);
+  border-color: rgba(182,255,90,0.6);
+  color: #b6ff5a;
+  box-shadow: 0 0 0 1px rgba(182,255,90,0.25) inset;
+}
+.spine-step-btn.completed {
+  border-color: rgba(100,200,255,0.35);
+  color: #6cf;
+}
+.spine-step-btn .step-icon { font-size: 14px; line-height: 1; }
+.spine-left-body { padding: 4px 0; }
 `;

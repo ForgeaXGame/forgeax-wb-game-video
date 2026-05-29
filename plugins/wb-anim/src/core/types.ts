@@ -48,6 +48,16 @@ export type PipelineOutput =
   | 'videoClip'
   | 'spineSkel'
 
+/**
+ * 在 drawer 抽屉内的子分组，用于把管线按性质聚类显示。
+ *
+ * - `variant`：生产变体（默认）；
+ * - `aux`：辅助工具（调试 / 检查 / 调参等）。
+ *
+ * 缺省按 `'variant'` 处理。
+ */
+export type PipelineGroup = 'variant' | 'aux'
+
 export interface PipelineMeta {
   id: string
   name: string
@@ -57,6 +67,8 @@ export interface PipelineMeta {
   author?: string
   /** 顶栏显示位置。缺省按 `'drawer'` 处理。 */
   placement?: PipelinePlacement
+  /** drawer 内的子分组。仅当 `placement === 'drawer'` 时有效，缺省 'variant'。 */
+  group?: PipelineGroup
   /** 智能体发现标签——workbench 侧按 tag 匹配任务需求。 */
   agentTags?: string[]
   /** 声明本管线消费的上游产物。 */

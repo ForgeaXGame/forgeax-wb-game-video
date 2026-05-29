@@ -7,7 +7,7 @@ export const meta: PipelineMeta = {
   icon: '🎬',
   description: '角色视频 · 序列帧 · 场景展示',
   version: '2.0.0',
-  placement: 'drawer',
+  placement: 'main',
   inputs: ['conceptImage'],
   outputs: ['videoClip', 'spriteZip'],
   agentTags: ['character.video', 'sprite', 'animation'],
