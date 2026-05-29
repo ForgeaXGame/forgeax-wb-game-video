@@ -16,3 +16,6 @@
 [submodule "plugins/wb-observatory"]
 	path = plugins/wb-observatory
 	url = https://github.com/ForgeaXGame/forgeax-wb-observatory.git
+[submodule "plugins/wb-reel"]
+	path = plugins/wb-reel
+	url = https://github.com/ForgeaXGame/forgeax-wb-reel.git
