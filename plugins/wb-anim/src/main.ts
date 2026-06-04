@@ -203,19 +203,45 @@ async function consumeAnimHandoff(registry: PipelineRegistry): Promise<void> {
     const ptr = await readActiveCharacterPointer(slug)
     if (ptr?.charId) { charId = ptr.charId; role = ptr.role }
   }
-  // 指针文件读不到(老数据 / 服务端未就绪)时,退回 localStorage 信号里的 charId。
+  // 指针文件读不到(老数据 / 服务端未就绪)时,退回 localStorage 信号里的 charId/role。
   if (!charId && sig?.charId) { charId = sig.charId; role = sig.role }
+  // 即使没拿到 charId,只要 handoff 信号带了 role,也用它路由——manifest 写盘
+  // 可能失败(slug 缺失 / 服务端未就绪)导致 charId 为空,但用户的意图(载具/角色)
+  // 在 sig.role 里是明确的,不能因为缺 charId 就静默停在默认 pixel-char。
+  if (!role && sig?.role) role = sig.role
 
-  // 没有任何 charId:用户可能是从画廊直接进来的,静默退出(后续可加角色选择器)。
-  if (!charId) return
+  // 有 charId 才尝试从磁盘加载角色数据(portrait 等);loadCharacterFromDisk 成功
+  // 返回的 role 以磁盘 manifest 为准,失败(返回 null)则保留上面已确定的 role,
+  // 不覆盖成兜底值。
+  if (charId) {
+    const r = await globalState.loadCharacterFromDisk(charId)
+    if (r?.role) role = r.role
+  }
 
-  const r = await globalState.loadCharacterFromDisk(charId)
-  if (r?.role) role = r.role
+  // 既没 charId 也没 role:用户可能是从画廊直接进来的,静默退出(后续可加角色选择器)。
+  if (!charId && !role) return
+
+  // 用 handoff 已确定的 role 标记 upstream —— 这样即使磁盘 manifest 缺失
+  // (loadCharacterFromDisk 没设上 _upstreamRole),vehicle-design 也能据此把
+  // characterImage 同步成 designImage,图片才会真正出现在「载具动画」里。
+  if (role) globalState.setUpstreamRole(role)
 
   const pid = pipelineForRole(role)
+  console.log('[anim-handoff] charId=%s role=%s → pipeline=%s (sig.role=%s)',
+    charId, role, pid, sig?.role)
   // PipelinePanel 的 ce:switch-pipeline 监听器会懒加载并激活该管线。
+  // 带重试:handoff 是 async(读盘),其 dispatch 可能与 PipelinePanel.render()
+  // 里「默认激活 mainMetas[0](pixel-char)」存在竞态——若 switch 事件在监听器
+  // 注册前到达、或被默认激活覆盖,管线就停在 pixel-char。重试几次确保切过去。
   if (registry.has(pid)) {
-    window.dispatchEvent(new CustomEvent('ce:switch-pipeline', { detail: { id: pid } }))
+    let tries = 0
+    const fire = () => {
+      window.dispatchEvent(new CustomEvent('ce:switch-pipeline', { detail: { id: pid } }))
+      tries++
+      // 多补发几次(0 / 120 / 360 / 720ms),覆盖默认激活的 async 完成时点。
+      if (tries < 4) setTimeout(fire, tries * 240)
+    }
+    fire()
   }
 }
 

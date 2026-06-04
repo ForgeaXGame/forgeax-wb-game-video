@@ -63,13 +63,11 @@ export class PipelinePanel {
     this.tabsContainer.innerHTML = ''
     this.tabEls.clear()
 
-    // 主 tab（placement='main'）—— 动画工作台主流水线全部平铺到顶栏：
-    // 像素角色 → 载具动画 → Spine 骨骼 → 视频角色。
-    // 之前 spine / video 折在「⋯ 更多模块 ▾」抽屉里——按用户反馈改成
-    // 全部展开，省掉一次点击；切到任一 tab 时 PipelinePanel.activate()
-    // 会自动调用 pipeline.createUI(leftPanel, panels) 把对应左侧编辑 UI
-    // 渲染出来，所以这里不需要做额外的左侧分发。
-    const MAIN_TAB_ORDER = ['pixel-char', 'vehicle-design', 'spine', 'video']
+    // 主 tab（placement='main'）—— 动画工作台主流水线全部平铺到顶栏。
+    // 顺序与角色设计（wb-character）的角色 tab 对齐：角色类（主角/NPC/怪物 →
+    // 像素角色 / Spine / 视频）在前，载具单独成类、排最后，和设计端「…/载具」
+    // 的末位一致，避免用户在两个工作台间切换时载具位置跳来跳去。
+    const MAIN_TAB_ORDER = ['pixel-char', 'spine', 'video', 'vehicle-design']
     const mainMetas = this.registry.getByPlacement('main').sort((a, b) => {
       const ai = MAIN_TAB_ORDER.indexOf(a.id)
       const bi = MAIN_TAB_ORDER.indexOf(b.id)
@@ -107,10 +105,33 @@ export class PipelinePanel {
 
     this.setupSplitPaneSync()
 
-    // 默认激活第一个 main 管线
+    // 默认激活第一个 main 管线。但若宿主已写入跨工作台交接信号且 role=vehicle,
+    // 直接默认激活「载具动画」——避免先激活 pixel-char 再被 consumeAnimHandoff
+    // 的 switch 事件覆盖时出现竞态(切不过去就停在像素角色)。
     if (mainMetas.length > 0) {
-      void this.activate(mainMetas[0], { reset: true })
+      const initial = this.resolveInitialPipeline(mainMetas)
+      void this.activate(initial, { reset: true })
     }
+  }
+
+  /** 读 localStorage 交接信号,若标记 role=vehicle 且 vehicle-design 已注册,
+   *  则把它作为初始管线;否则用第一个 main 管线(pixel-char)。 */
+  private resolveInitialPipeline(mainMetas: PipelineMeta[]): PipelineMeta {
+    try {
+      const raw = localStorage.getItem('forgeax:anim-handoff')
+      if (raw) {
+        const sig = JSON.parse(raw) as { role?: string }
+        if (sig?.role === 'vehicle') {
+          // 同步标记 upstream,确保 vehicle-design.mount() 立刻能把
+          // characterImage 同步成 designImage(consumeAnimHandoff 是 async,
+          // 此处 mount 早于它执行,不能依赖它来设 upstreamRole)。
+          globalState.setUpstreamRole('vehicle')
+          const vd = this.registry.getMeta('vehicle-design')
+          if (vd) return vd
+        }
+      }
+    } catch { /* 信号不可读 — 退回默认 */ }
+    return mainMetas[0]
   }
 
   /** 跨同源 iframe (?pane=left | ?pane=center) 同步活跃 tab。

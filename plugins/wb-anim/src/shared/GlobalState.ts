@@ -176,6 +176,13 @@ class GlobalStateManager {
   /** 上游交接过来的真实 role(hero/npc/monster/vehicle),未交接时为空串。 */
   getUpstreamRole(): string { return this._upstreamRole }
 
+  /** 直接设置上游 role。用于 manifest 写盘失败(charId 缺失)、loadCharacterFromDisk
+   *  拿不到 role 的兜底场景:此时仍用 handoff 信号里的 role 标记 upstream,
+   *  否则 vehicle-design 不会把 characterImage 同步成 designImage。 */
+  setUpstreamRole(role: string): void {
+    if (role) this._upstreamRole = role
+  }
+
   constructor() {
     this.load()
     this.loadImageModel()
