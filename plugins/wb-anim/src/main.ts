@@ -45,6 +45,11 @@ function applyPaneAttribute() {
 async function main() {
   applyPaneAttribute()
 
+  // Studio 把当前 game slug 拼进 iframe URL(?slug=)。bridge 的 STUDIO_INIT 也会
+  // 带 slug,但那是异步的;handoff 加载要尽早拿到 slug,所以先从 URL 兜底读一次。
+  const urlSlug = new URLSearchParams(location.search).get('slug')
+  if (urlSlug) globalState.setSlug(urlSlug)
+
   const bridge = new PlatformBridge()
   bridge.onMessage((msg: unknown) => {
     const m = msg as { type?: string; ctx?: { slug?: string | null } }
@@ -141,8 +146,92 @@ async function main() {
 
   window.dispatchEvent(new CustomEvent('__ce:ready', { detail: { engine, context } }))
 
+  // 跨工作台交接(走文件):wb-character「生成动画」时把 active-character 指针
+  // 落盘到 .forgeax/games/<slug>/active-character.json,并(为快路径)发一次
+  // postMessage 让宿主切 tab + 写一份 localStorage 信号。这里挂载时直接读盘
+  // 拿 charId/role,按 charId 从磁盘把角色 portrait 灌进 globalState,再按
+  // role 路由到对应管线(载具→vehicle-design,角色→pixel-char)。
+  void consumeAnimHandoff(registry)
+
+  // keep-alive 下本 iframe 可能早已 mount、main() 不会重跑。宿主每次切过来都会
+  // (重新)写 handoff 信号 —— 写操作发生在 parent window,会在本 iframe 触发
+  // 'storage' 事件,据此再消费一次,实现「已挂载时也能接收新角色」。
+  window.addEventListener('storage', (ev: StorageEvent) => {
+    if (ev.key === ANIM_HANDOFF_KEY && ev.newValue) {
+      void consumeAnimHandoff(registry)
+    }
+  })
 
   console.log('[CharacterEditor] 就绪')
+}
+
+/** localStorage key the host writes the cross-workbench handoff payload to.
+ *  Mirror of ANIM_HANDOFF_KEY in interface/StandalonePluginIframe.tsx. */
+const ANIM_HANDOFF_KEY = 'forgeax:anim-handoff'
+
+interface AnimHandoff { charId?: string; role?: string; slug?: string; ts?: number }
+
+/** role → wb-anim 管线 id。载具走载具设计;角色(hero/npc/monster)默认走像素
+ *  四方向。用户进来后仍可在顶栏切到 spine / video。 */
+function pipelineForRole(role: string | undefined): string {
+  return role === 'vehicle' ? 'vehicle-design' : 'pixel-char'
+}
+
+/** 读取并消费跨工作台交接:加载角色 + 路由管线。
+ *
+ *  「走文件连通」:真正的事实源是工程目录里的 active-character.json 指针文件
+ *  (由 server /api/wb/character/active-character 读写)。localStorage 信号只是
+ *  快路径 + slug 来源 + 私密模式兜底。优先读盘指针;读不到再退回 localStorage。
+ *  消费后清掉 localStorage 信号,避免重复触发(指针文件不清,它是长期状态)。 */
+async function consumeAnimHandoff(registry: PipelineRegistry): Promise<void> {
+  // 1) 先吃掉 localStorage 快路径信号(取 slug + 一次性触发),随即清掉。
+  let sig: AnimHandoff | null = null
+  try {
+    const raw = localStorage.getItem(ANIM_HANDOFF_KEY)
+    if (raw) {
+      try { sig = JSON.parse(raw) as AnimHandoff } catch { sig = null }
+      try { localStorage.removeItem(ANIM_HANDOFF_KEY) } catch { /* ignore */ }
+    }
+  } catch { /* unavailable */ }
+  if (sig?.slug) globalState.setSlug(sig.slug)
+
+  // 2) 以工程目录指针文件为事实源,确定要加载哪个 charId/role。
+  const slug = globalState.getSlug()
+  let charId = ''
+  let role: string | undefined
+  if (slug) {
+    const ptr = await readActiveCharacterPointer(slug)
+    if (ptr?.charId) { charId = ptr.charId; role = ptr.role }
+  }
+  // 指针文件读不到(老数据 / 服务端未就绪)时,退回 localStorage 信号里的 charId。
+  if (!charId && sig?.charId) { charId = sig.charId; role = sig.role }
+
+  // 没有任何 charId:用户可能是从画廊直接进来的,静默退出(后续可加角色选择器)。
+  if (!charId) return
+
+  const r = await globalState.loadCharacterFromDisk(charId)
+  if (r?.role) role = r.role
+
+  const pid = pipelineForRole(role)
+  // PipelinePanel 的 ce:switch-pipeline 监听器会懒加载并激活该管线。
+  if (registry.has(pid)) {
+    window.dispatchEvent(new CustomEvent('ce:switch-pipeline', { detail: { id: pid } }))
+  }
+}
+
+/** 读工程目录里的 active-character 指针(GET /api/wb/character/active-character)。 */
+async function readActiveCharacterPointer(
+  slug: string,
+): Promise<{ charId: string; role: string } | null> {
+  try {
+    const res = await fetch(
+      `/api/wb/character/active-character?slug=${encodeURIComponent(slug)}`,
+    )
+    if (!res.ok) return null
+    const j = await res.json() as { charId?: string | null; role?: string | null }
+    if (!j.charId) return null
+    return { charId: j.charId, role: j.role ?? 'hero' }
+  } catch { return null }
 }
 
 main().catch((err) => {

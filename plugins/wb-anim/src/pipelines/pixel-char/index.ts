@@ -1,6 +1,7 @@
 import type { IPipeline, PipelineContext, PipelinePanels } from '../../core/types'
 import { meta } from './meta'
 import { globalState } from '../../shared/GlobalState'
+import type { ImageModel } from '../../shared/ImageModel'
 import { forgeaxHost } from '../../platform/HostSdkBridge'
 import { apiModelIdForImageModel } from '../../shared/promptRouter'
 import { adaptPromptForImageModel } from '../../shared/promptAdapter'
@@ -210,7 +211,11 @@ function loadConfig(): PixelConfig {
     selectedActions: inferDefaultSelectedActions(),
     alignMode: 'waist',
     targetFrameSize: 0,
-    turnaroundModel: 'gpt-image-2',
+    // 动画生图统一走 nano(Gemini)。早期把它默认成 gpt-image-2、并为 image 重写过
+    // 提示词,反而把调好的 nano 效果弄乱(跳跃侧视图把整张设定图都画上去等)。
+    // UI 的模型选择器已移除,这里强制 gemini;持久化里若有旧的 gpt-image-2 也在
+    // 下面 merge 时被强制纠正回来。
+    turnaroundModel: 'gemini',
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -223,6 +228,8 @@ function loadConfig(): PixelConfig {
       if (!CHARACTER_TYPES.some(t => t.id === merged.characterType)) merged.characterType = defaults.characterType
       // If storage predated characterType entirely, infer from profile now.
       if (parsed.characterType === undefined) merged.characterType = defaults.characterType
+      // 动画统一走 nano:无视旧档里残留的 gpt-image-2 选择,一律纠正为 gemini。
+      merged.turnaroundModel = 'gemini'
       return merged
     }
   } catch { /* ignore */ }
@@ -261,6 +268,31 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error('图片加载失败'))
     img.src = src
   })
+}
+
+/**
+ * 探测一个 pose-template 资源是否真的可作为图片加载。
+ *
+ * 仅看 HTTP 200 不够:dev server 对不存在的静态路径会回退 SPA index.html
+ * (200 + text/html),那不是图片。这里先发 HEAD 看 content-type 是否 image/*,
+ * 拿不到头信息(HEAD 不被支持等)时再真正用 <img> 试加载一次兜底。任何失败都
+ * 返回 false,让调用方走标准生成路径,而不是整条动作生成失败。
+ */
+async function templateAssetLoadable(src: string): Promise<boolean> {
+  try {
+    const res = await fetch(src, { method: 'HEAD' })
+    if (res.ok) {
+      const ct = res.headers.get('content-type') || ''
+      if (ct.startsWith('image/')) return true
+      if (ct) return false // 明确不是图片(多半是 SPA 回退的 text/html)
+    }
+  } catch { /* HEAD 不支持 → 下面真加载兜底 */ }
+  try {
+    await loadImageElement(src)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -533,6 +565,16 @@ class PixelPipelineUI {
       customStyle: this.cfg.pixelStyle,
       charDesc: this.cfg.turnaroundUserDesc,
     }
+  }
+
+  /**
+   * 像素角色动画一律走 nano(Gemini)。提示词体系里 nano 是「主路线」
+   * (booru/tag 友好、四方向/动作 sheet 都按它调过),gpt-image-2 的那套自然语言
+   * 改写反而把效果弄乱。模型选择器已从 UI 移除,这里集中返回 gemini,避免散落的
+   * globalState.getImageModel() 把全局(可能被角色设计改成 gpt-image-2)的选择漏进来。
+   */
+  private animImageModel(): ImageModel {
+    return 'gemini'
   }
 
   /**
@@ -958,20 +1000,6 @@ class PixelPipelineUI {
       <div class="px-label" style="margin-top:10px">画风补充（可选） <span style="font-size:10px;color:var(--text-secondary)">将叠加在预设之上</span></div>
       <textarea class="px-textarea" data-px="style-prompt" placeholder="如：偏冷色调、带淡淡辉光、参考《极乐迪斯科》"
         rows="2">${this.esc(this.cfg.pixelStyle)}</textarea>
-
-      <div class="px-label" style="margin-top:8px">${entityWord}描述 <span style="font-size:10px;color:var(--text-secondary)">(可选)</span></div>
-      <textarea class="px-textarea" data-px="user-desc" placeholder="${
-        typePreset.id === 'creature-small' ? '如：身披荆棘的小史莱姆，淡紫色半透明外壳'
-        : isMonster ? '如：长着三个头的岩石巨兽，岩浆眼睛'
-        : '如：一个手持长剑的骑士，红色斗篷'
-      }"
-        rows="2">${this.esc(this.cfg.turnaroundUserDesc)}</textarea>
-
-      <div class="px-label" style="margin-top:10px">生图模型</div>
-      <select class="px-select" data-px="turnaround-model">
-        <option value="gpt-image-2"${this.cfg.turnaroundModel === 'gpt-image-2' ? ' selected' : ''}>gpt-image-2（质量高，~60s）</option>
-        <option value="gemini"${this.cfg.turnaroundModel === 'gemini' ? ' selected' : ''}>Gemini（速度快，~15s）</option>
-      </select>
 
       <button class="px-btn primary" data-px="gen-turnaround" style="margin-top:10px"
         ${!hasDesign ? 'disabled' : ''}>
@@ -1649,16 +1677,6 @@ class PixelPipelineUI {
       saveConfig(this.cfg)
     })
 
-    this.leftEl.querySelector('[data-px="user-desc"]')?.addEventListener('input', (e) => {
-      this.cfg.turnaroundUserDesc = (e.target as HTMLTextAreaElement).value
-      saveConfig(this.cfg)
-    })
-
-    this.leftEl.querySelector('[data-px="turnaround-model"]')?.addEventListener('change', (e) => {
-      this.cfg.turnaroundModel = (e.target as HTMLSelectElement).value as TurnaroundModel
-      saveConfig(this.cfg)
-    })
-
     this.leftEl.querySelector('[data-px="gen-turnaround"]')?.addEventListener('click', () => this.execStep1())
 
     this.leftEl.querySelector('[data-px="upload-turnaround"]')?.addEventListener('change', (e) => {
@@ -1776,10 +1794,7 @@ class PixelPipelineUI {
     if (!designImage) { this.toast('请先完成角色设计'); return }
 
     this.generating = true
-    const useGPT = this.cfg.turnaroundModel === 'gpt-image-2'
-    this.showProgress(true, useGPT
-      ? '正在生成四方向参考图（gpt-image-2，约60秒）...'
-      : '正在生成四方向参考图...')
+    this.showProgress(true, '正在生成四方向参考图...')
     // Re-render so the right cell switches to the in-cell loading skeleton
     // (instead of the empty placeholder) — without this the cell stays in its
     // pre-click state until refresh is triggered by autoSave.
@@ -1787,10 +1802,11 @@ class PixelPipelineUI {
 
     try {
       const base64 = designImage.replace(/^data:[^;]+;base64,/, '')
-      const rawPrompt = generateTurnaroundPrompt(this.styleCtx(), this.cfg.turnaroundModel)
-      // gpt-image-2 把权重语法 `(xxx:1.4)` 当字面文本，整段清洗一下。
-      // Gemini 原样通过。
-      const prompt = adaptPromptForImageModel(rawPrompt, this.cfg.turnaroundModel === 'gpt-image-2' ? 'gpt-image-2' : 'gemini')
+      // 动画统一走 nano(Gemini):提示词体系以 nano 为主路线,turnaround/动作 sheet
+      // 都按它调过。模型选择器已从 UI 移除。
+      const model = this.animImageModel()
+      const rawPrompt = generateTurnaroundPrompt(this.styleCtx(), model)
+      const prompt = adaptPromptForImageModel(rawPrompt, model)
       const aspect = getGameplayMode(this.cfg.gameplayMode).turnaroundLayout === 'single-side'
         ? '2:3'
         : '1:1'
@@ -1799,7 +1815,7 @@ class PixelPipelineUI {
         prompt,
         aspectRatio: aspect,
         inputImageBase64: base64,
-        model: this.cfg.turnaroundModel === 'gpt-image-2' ? 'gpt-image-2' : 'gemini-3-pro-image-preview',
+        model: apiModelIdForImageModel(model),
       }
 
       const result = await apiPost('/__ce-api__/generate-image', body)
@@ -2075,7 +2091,14 @@ class PixelPipelineUI {
   /* ── Generation Methods ──────────────────────────────────────────── */
 
   private async generateAction(action: ChibiAction): Promise<void> {
-    if (action.templateAsset) {
+    // pose-template 模式需要一张随插件发布的姿态模板图(action.templateAsset)。
+    // 但部分动作(如 walk → '/pixel-templates/walk.png')的模板资源从未实际打包,
+    // dev server 对未知路径回退到 SPA 的 index.html(Content-Type: text/html),
+    // <img> 加载 HTML 当然 onerror「图片加载失败」,导致该动作在批量生成里被
+    // 跳过(用户:选了待机+走路,只出了待机)。这里改为:模板能加载才走 pose-
+    // template,否则优雅回退到与待机相同的 turnaround 生成路径(motion 文本里
+    // 已含完整走路循环描述,质量足够),保证每个勾选的动作都能产出。
+    if (action.templateAsset && await templateAssetLoadable(action.templateAsset)) {
       await this.genFromPoseTemplate(action)
     } else if (this.cfg.genMode === 'direct') {
       await this.genDirect(action)
@@ -2110,14 +2133,14 @@ class PixelPipelineUI {
   private async genDirect(action: ChibiAction): Promise<void> {
     const rawPrompt = this.img.actionPrompts[action.id]
       || generateSheetPrompt(action, this.styleCtx())
-    const prompt = adaptPromptForImageModel(rawPrompt, globalState.getImageModel())
+    const prompt = adaptPromptForImageModel(rawPrompt, this.animImageModel())
     const refBase64 = this.img.turnaroundImage!.replace(/^data:[^;]+;base64,/, '')
 
     const result = await apiPost('/__ce-api__/generate-image', {
       prompt,
       inputImageBase64: refBase64,
       aspectRatio: this.sheetAspectRatio(action),
-      model: apiModelIdForImageModel(globalState.getImageModel()),
+      model: apiModelIdForImageModel(this.animImageModel()),
     })
 
     if (result.success && result.imageBase64) {
@@ -2138,13 +2161,13 @@ class PixelPipelineUI {
     const templateBase64 = templateDataUrl.replace(/^data:[^;]+;base64,/, '')
     const rawPrompt = this.img.actionPrompts[action.id]
       || generateTemplatePrompt(action, this.styleCtx())
-    const prompt = adaptPromptForImageModel(rawPrompt, globalState.getImageModel())
+    const prompt = adaptPromptForImageModel(rawPrompt, this.animImageModel())
 
     const result = await apiPost('/__ce-api__/generate-image', {
       prompt,
       inputImageBase64: templateBase64,
       aspectRatio: this.sheetAspectRatio(action),
-      model: apiModelIdForImageModel(globalState.getImageModel()),
+      model: apiModelIdForImageModel(this.animImageModel()),
     })
 
     if (result.success && result.imageBase64) {
@@ -2168,7 +2191,7 @@ class PixelPipelineUI {
 
     const rawPrompt = this.img.actionPrompts[action.id]
       || generatePoseTransferPrompt(action, this.styleCtx())
-    const prompt = adaptPromptForImageModel(rawPrompt, globalState.getImageModel())
+    const prompt = adaptPromptForImageModel(rawPrompt, this.animImageModel())
 
     const result = await apiPost('/__ce-api__/generate-image', {
       prompt,
@@ -2177,7 +2200,7 @@ class PixelPipelineUI {
         { base64: templateBase64, mimeType: 'image/png' },
       ],
       aspectRatio: this.sheetAspectRatio(action),
-      model: apiModelIdForImageModel(globalState.getImageModel()),
+      model: apiModelIdForImageModel(this.animImageModel()),
     })
 
     if (result.success && result.imageBase64) {
@@ -2554,7 +2577,7 @@ class PixelPipelineUI {
 
     try {
       const rawPrompt = generateSingleDirectionPrompt(action, direction, this.styleCtx())
-      const prompt = adaptPromptForImageModel(rawPrompt, globalState.getImageModel())
+      const prompt = adaptPromptForImageModel(rawPrompt, this.animImageModel())
       const refBase64 = this.img.turnaroundImage.replace(/^data:[^;]+;base64,/, '')
 
       // Virtual action with only THIS direction — so the layout helper sees
@@ -2566,7 +2589,7 @@ class PixelPipelineUI {
         prompt,
         inputImageBase64: refBase64,
         aspectRatio: nearestGeminiRatio(stripLayout.physCols, stripLayout.physRows),
-        model: apiModelIdForImageModel(globalState.getImageModel()),
+        model: apiModelIdForImageModel(this.animImageModel()),
       })
 
       if (!result.success || !result.imageBase64) throw new Error(result.error || '生成失败')

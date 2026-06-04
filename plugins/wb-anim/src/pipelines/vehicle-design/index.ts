@@ -1614,15 +1614,24 @@ class VehiclePipelineUI {
       )
       const prompt = adaptPromptForImageModel(rawPrompt, globalState.getImageModel())
 
-      // Step 1 of vehicle design must be INDEPENDENT of the character pipeline.
-      // Earlier we were cross-contaminating by attaching `globalState.characterImage`
-      // as `inputImageBase64` here, which caused Gemini to sometimes translate
-      // character colour palettes / silhouettes onto the vehicle. A "warrior's
-      // police car" is not what the user asked for.
-      const body = {
+      // 上游若是「载具」设定图(用户在角色设计里选了载具并生成了设定图,
+      // 经 active-character 指针交接到这条管线),就把它作为参考图喂进去,让动画
+      // 设定图延续用户已确定的载具外形/配色,而不是凭文字另画一台。
+      //
+      // 关键约束:只有 upstreamRole === 'vehicle' 时才挂参考图。早期 bug 是无条件
+      // 挂 globalState.characterImage,把角色(hero/npc)的色板/剪影翻译到了载具上
+      // (「战士的警车」),所以这里严格按 role 闸门,角色图绝不污染载具。
+      const upstreamIsVehicle = globalState.getUpstreamRole() === 'vehicle'
+      const upstreamVehicleImage = upstreamIsVehicle ? globalState.get().characterImage : null
+
+      const body: Record<string, unknown> = {
         prompt,
         aspectRatio: '1:1',
         model: apiModelIdForImageModel(globalState.getImageModel()),
+      }
+      if (upstreamVehicleImage) {
+        body.inputImageBase64 = upstreamVehicleImage.replace(/^data:[^;]+;base64,/, '')
+        this.showProgress(true, '正在基于你的载具设计生成设定图...')
       }
 
       const result = await apiPost('/__ce-api__/generate-image', body)

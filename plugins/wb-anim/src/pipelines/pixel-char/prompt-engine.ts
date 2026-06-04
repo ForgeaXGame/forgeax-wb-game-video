@@ -37,6 +37,34 @@ function usesHumanoidGuards(ctx: StyleContext): boolean {
 }
 
 /**
+ * nano(Gemini 3 Pro Image)做 image-to-image 时有一个很强的倾向:把参考图的
+ * **整体构图**也一起复刻出来。角色设计交接过来的参考图往往是一张「设定大图」
+ * (全身立绘 + 多视角 + 装备拆解小图 + 文字标注 + 色板),于是 nano 会把这些
+ * 杂七杂八全画进动作 sheet —— 用户反馈的「横版跳跃……全都放上来了,而不是单纯
+ * 的侧视图」正是这个。
+ *
+ * 这里集中产出一段「参考图只用于外观、绝不复刻其排版」的硬约束,供 sheet /
+ * 单方向 / 模板等所有动作提示词复用。是 nano 友好(自然语言 + 明确否定项),
+ * 不含权重语法。
+ */
+function referenceUsageGuard(isHumanoid: boolean): string {
+  const entity = isHumanoid ? 'character' : 'creature'
+  return (
+    `═══ HOW TO USE THE REFERENCE (READ CAREFULLY) ═══\n\n` +
+    `The reference image is provided ONLY to tell you what the ${entity} LOOKS LIKE ` +
+    `(silhouette, colours, outfit, weapon, distinctive features).\n` +
+    `It is NOT a layout to copy. The reference may itself be a busy design sheet with ` +
+    `multiple poses, several view angles, equipment call-outs, colour swatches, arrows, ` +
+    `or text labels.\n` +
+    `You MUST NOT reproduce ANY of that. Do NOT copy the reference's composition. ` +
+    `Do NOT include multiple view angles, equipment panels, colour palette bars, ` +
+    `captions, names, or any written text in your output.\n` +
+    `Your output is ONLY the requested animation strip: the clean ${entity} sprite frames ` +
+    `on a solid green (#00FF00) background — nothing else.\n\n`
+  )
+}
+
+/**
  * Motion copy for a sprite-sheet prompt. Humanoid characters use the rich,
  * biped-specific `action.motion` text authored in actions.ts. Monsters use
  * the minimal, anatomy-agnostic motion from `character-types.ts` so the
@@ -160,8 +188,8 @@ function describeDirectionRows(layout: SheetLayout, isHumanoid: boolean): string
   const entity = isHumanoid ? 'character' : 'creature'
   return layout.directions.map((d, i) => {
     const label = d === 'down' ? 'FRONT view (facing camera — viewer sees face/chest)'
-      : d === 'left' ? 'LEFT view (body and face pointing toward LEFT edge ← of the image)'
-      : d === 'right' ? 'RIGHT view (body and face pointing toward RIGHT edge → of the image)'
+      : d === 'left' ? 'LEFT view (body and face pointing toward the LEFT edge of the image)'
+      : d === 'right' ? 'RIGHT view (body and face pointing toward the RIGHT edge of the image)'
       : 'BACK view (facing away — viewer sees back/hair)'
     const firstRow = i * layout.rowsPerDir + 1
     const lastRow = firstRow + layout.rowsPerDir - 1
@@ -221,7 +249,7 @@ function generateFourViewTurnaroundPrompt(ctx: StyleContext): string {
       `CHARACTER FIDELITY (MOST IMPORTANT):\n` +
       `- Study the reference image carefully: note hair colour, hairstyle, face, skin tone, outfit design, armour pieces, weapons, accessories, colour scheme.\n` +
       `- The stylised version MUST preserve ALL key visual features: same hair, same outfit, same weapon, same colours. Do NOT invent new designs.\n` +
-      `- If the character has white/silver hair → keep white/silver hair. If they wear dark armour → keep dark armour. Match EVERYTHING.${charClause}`
+      `- If the character has white/silver hair, keep white/silver hair. If they wear dark armour, keep dark armour. Match EVERYTHING.${charClause}`
     )
     : (
       `CREATURE FIDELITY (MOST IMPORTANT):\n` +
@@ -241,33 +269,42 @@ function generateFourViewTurnaroundPrompt(ctx: StyleContext): string {
       `5. Respect the ART-STYLE doctrine above. Body plan is dictated by the reference, not by the art-style proportions line.`
     )
 
+  const entity = isHumanoid ? 'character' : 'creature'
+
   return (
     `GAMEPLAY CONTEXT: ${gameplayHeadline(ctx)}\n` +
     `CHARACTER TYPE: ${characterTypeHeadline(ctx)}\n\n` +
 
     `CRITICAL: The attached reference image is the CHARACTER DESIGN SHEET. Create a stylised interpretation of THIS EXACT ${isHumanoid ? 'CHARACTER' : 'CREATURE'} according to the art-style doctrine below.\n\n` +
 
-    `TASK: Generate a 2×2 turnaround sheet — 4 views of the ${isHumanoid ? 'character' : 'creature'} on SOLID GREEN (#00FF00) background.\n\n` +
+    `TASK: Generate ONE square image containing a 2×2 grid = EXACTLY 4 cells (2 rows × 2 columns). ` +
+    `Each cell holds ONE full-body view of the SAME ${entity}, on a SOLID GREEN (#00FF00) background.\n\n` +
 
     `${fidelityBlock}\n\n` +
 
     `${styleBlock(ctx, 'turnaround')}\n\n` +
 
-    `GRID LAYOUT (2×2) — the 4 cells are arranged like a compass:\n` +
-    `  Top-left:     FRONT view — the ${isHumanoid ? 'character' : 'creature'} faces TOWARD the camera (viewer sees the face/chest).\n` +
-    `  Top-right:    LEFT view  — the ${isHumanoid ? 'character' : 'creature'}'s body and face point to the LEFT edge of the image (← direction). The viewer sees the ${isHumanoid ? 'character' : 'creature'}'s RIGHT side (right shoulder, right ear).\n` +
-    `  Bottom-left:  RIGHT view — the ${isHumanoid ? 'character' : 'creature'}'s body and face point to the RIGHT edge of the image (→ direction). The viewer sees the ${isHumanoid ? 'character' : 'creature'}'s LEFT side (left shoulder, left ear).\n` +
-    `  Bottom-right: BACK view  — the ${isHumanoid ? 'character' : 'creature'} faces AWAY from the camera (viewer sees the back/hair).\n\n` +
+    `THE 4 CELLS AND THEIR VIEWING ANGLES:\n` +
+    `  • Top-left cell — FRONT view: the ${entity} faces straight toward the camera. The viewer sees the face and the front of the body.\n` +
+    `  • Top-right cell — LEFT-FACING side view: the ${entity} is turned so its whole body faces the left side of the image. It is a true side profile; the viewer sees one shoulder, the side of the head, and the profile of the face. This is NOT a front view.\n` +
+    `  • Bottom-left cell — RIGHT-FACING side view: the ${entity} is turned so its whole body faces the right side of the image. It is a true side profile facing the opposite way from the top-right cell — a clean mirror of it. This is NOT a front view.\n` +
+    `  • Bottom-right cell — BACK view: the ${entity} faces directly away from the camera. The viewer sees the back of the head and the back of the body. The face is NOT visible.\n\n` +
 
-    `⚠️ LEFT vs RIGHT — this is the #1 mistake:\n` +
-    `  - "LEFT view" means the ${isHumanoid ? 'character' : 'creature'} walks/looks toward the LEFT side of the picture (←). Their nose, toes, and weapon all point LEFT.\n` +
-    `  - "RIGHT view" means the ${isHumanoid ? 'character' : 'creature'} walks/looks toward the RIGHT side of the picture (→). Their nose, toes, and weapon all point RIGHT.\n` +
-    `  - LEFT and RIGHT views should look like mirror images of each other.\n\n` +
+    `SIDE-VIEW CHECK (most common mistake):\n` +
+    `  The two side views (top-right and bottom-left) must be genuine PROFILE views where the body is rotated 90°, NOT slightly-turned front views. ` +
+    `In a correct side view you can clearly tell the ${entity} is looking sideways across the cell. ` +
+    `The two side cells face opposite directions and look like mirror images of each other.\n\n` +
+
+    `ABSOLUTELY FORBIDDEN IN THE OUTPUT IMAGE:\n` +
+    `  - Do NOT draw any arrows, chevrons, or pointer symbols of any kind.\n` +
+    `  - Do NOT write any text, labels, captions, view names, or frame numbers inside any cell.\n` +
+    `  - Do NOT draw grid lines, borders, dividers, or boxes between the cells.\n` +
+    `  - Do NOT produce more than 4 cells. Exactly 4 views, arranged 2×2. No extra row, no extra column, no empty filler cell.\n\n` +
 
     `RULES:\n` +
-    `1. ALL 4 views = the SAME ${isHumanoid ? 'character' : 'creature'}, same colours, same proportions, same details.\n` +
-    `2. Background: SOLID GREEN (#00FF00). No scenery, shadows, or floor.\n` +
-    `3. NO borders or grid lines between cells.\n` +
+    `1. ALL 4 views = the SAME ${entity}, same colours, same proportions, same details. Only the viewing angle changes.\n` +
+    `2. Background: SOLID GREEN (#00FF00) filling every cell. No scenery, shadows, or floor.\n` +
+    `3. The ${entity} is centred in each cell at a consistent scale.\n` +
     `${rulesTail}`
   )
 }
@@ -309,35 +346,36 @@ function generateFourViewTurnaroundPromptGPT(ctx: StyleContext): string {
   return (
     `You are a professional pixel-art character designer.\n\n` +
 
-    `TASK: Create a 2×2 turnaround reference sheet with 4 views of the same ${entity} on a solid green (#00FF00) background.\n\n` +
+    `TASK: Create ONE square image containing a 2×2 grid = EXACTLY 4 cells (2 rows × 2 columns), with 4 views of the same ${entity} on a solid green (#00FF00) background.\n\n` +
 
     `${fidelityBlock}\n\n` +
 
     `${styleBlock(ctx, 'turnaround')}\n\n` +
 
-    `GRID LAYOUT — the image is divided into 4 equal quadrants:\n` +
-    `  Top-left:     FRONT view (正面) — the ${entity} faces directly toward the camera. The viewer sees the face and chest.\n` +
-    `  Top-right:    LEFT view (左视图) — the ${entity} faces toward the left edge of the image (← direction). ` +
-    `The viewer sees the ${entity}'s right side (right shoulder, right ear). ` +
-    `The ${entity}'s nose, toes, and any held weapon all point to the LEFT.\n` +
-    `  Bottom-left:  RIGHT view (右视图) — the ${entity} faces toward the right edge of the image (→ direction). ` +
-    `The viewer sees the ${entity}'s left side (left shoulder, left ear). ` +
-    `The ${entity}'s nose, toes, and any held weapon all point to the RIGHT.\n` +
-    `  Bottom-right: BACK view (背面) — the ${entity} faces away from the camera. The viewer sees the back of the head and the back.\n\n` +
+    `THE 4 CELLS AND THEIR VIEWING ANGLES:\n` +
+    `  • Top-left cell — FRONT view (正面): the ${entity} faces directly toward the camera. The viewer sees the face and the front of the body.\n` +
+    `  • Top-right cell — LEFT-FACING side view (左侧视图): the ${entity}'s whole body is turned to face the LEFT side of the image — a true 90° side profile. The viewer sees one shoulder and the side of the head, not the full face. This is NOT a front view.\n` +
+    `  • Bottom-left cell — RIGHT-FACING side view (右侧视图): the ${entity}'s whole body is turned to face the RIGHT side of the image — a true 90° side profile facing the opposite way from the top-right cell. This is NOT a front view.\n` +
+    `  • Bottom-right cell — BACK view (背面): the ${entity} faces away from the camera. The viewer sees the back of the head and the back of the body; the face is not visible.\n\n` +
 
-    `CRITICAL — DO NOT MIRROR-FLIP:\n` +
-    `The left view and the right view MUST be drawn as independent perspective views, ` +
+    `SIDE VIEWS — DO NOT MIRROR-FLIP:\n` +
+    `The left-facing and right-facing side views MUST be drawn as independent 90° profile views, ` +
     `NOT produced by horizontally flipping one to create the other. ` +
-    `Pay close attention to asymmetric details — a sword held in the right hand should ` +
-    `appear on the viewer's LEFT in the left-view, and on the viewer's RIGHT in the right-view. ` +
-    `Scars, asymmetric hairstyles, and one-sided accessories must appear on the correct side in each view.\n\n` +
+    `Pay close attention to asymmetric details — a weapon held in a specific hand, scars, ` +
+    `one-sided hairstyles, and one-sided accessories must appear on the correct side in each view. ` +
+    `The two side views look like clean profiles facing opposite directions.\n\n` +
+
+    `ABSOLUTELY FORBIDDEN IN THE OUTPUT IMAGE:\n` +
+    `  - Do NOT draw arrows, chevrons, or any pointer symbols.\n` +
+    `  - Do NOT write text, labels, captions, view names (FRONT/LEFT/etc.), or numbers inside any cell.\n` +
+    `  - Do NOT draw grid lines, borders, dividers, or boxes between cells.\n` +
+    `  - Do NOT produce more than 4 cells. Exactly 4 views in a 2×2 arrangement — no extra rows, columns, or filler cells.\n\n` +
 
     `RULES:\n` +
-    `1. All 4 views depict the SAME ${entity} with identical colours, proportions, and design details.\n` +
+    `1. All 4 views depict the SAME ${entity} with identical colours, proportions, and design details. Only the viewing angle changes.\n` +
     `2. Background: solid green #00FF00 everywhere. No scenery, shadows, or floor.\n` +
-    `3. No borders or grid lines between cells — the 4 views sit in a seamless 2×2 grid.\n` +
-    `4. ${poseTail}\n` +
-    `5. Respect the art-style doctrine above throughout all 4 views.`
+    `3. ${poseTail}\n` +
+    `4. Respect the art-style doctrine above throughout all 4 views.`
   )
 }
 
@@ -463,6 +501,8 @@ export function generateSheetPrompt(action: ChibiAction, ctx: StyleContext): str
     `The attached image is the ${isHumanoid ? "CHARACTER'S" : "CREATURE'S"} TURNAROUND REFERENCE.\n` +
     `It defines ${isHumanoid ? "the character's appearance: hair, face, outfit, weapon, colours, accessories" : "the creature's appearance: silhouette, anatomy, colour palette, textures, distinctive features"}.\n` +
     `You MUST use the EXACT SAME ${isHumanoid ? 'character' : 'creature'} in every frame.${charClause}\n\n` +
+
+    referenceUsageGuard(isHumanoid) +
 
     `═══ TASK ═══\n\n` +
 
@@ -691,8 +731,8 @@ export function generateSingleDirectionPrompt(
   const cols = action.framesPerDir
 
   const dirLabel = direction === 'down' ? 'FRONT view (facing camera — viewer sees face/chest)'
-    : direction === 'left' ? 'LEFT view (body and face pointing toward LEFT edge ← of the image)'
-    : direction === 'right' ? 'RIGHT view (body and face pointing toward RIGHT edge → of the image)'
+    : direction === 'left' ? 'LEFT view (body and face pointing toward the LEFT edge of the image)'
+    : direction === 'right' ? 'RIGHT view (body and face pointing toward the RIGHT edge of the image)'
     : 'BACK view (facing away — viewer sees back/hair)'
 
   const loopNote = action.looping
@@ -748,6 +788,8 @@ export function generateSingleDirectionPrompt(
     `═══ REFERENCE IMAGE ═══\n\n` +
 
     `The attached image is the ${isHumanoid ? "CHARACTER'S" : "CREATURE'S"} TURNAROUND REFERENCE.${charClause}\n\n` +
+
+    referenceUsageGuard(isHumanoid) +
 
     `═══ TASK ═══\n\n` +
 

@@ -53,7 +53,7 @@ export const ART_STYLES: ArtStylePreset[] = [
       'palette (colour count, hue range, saturation), ' +
       'surface finish (pixel grid, paper grain, digital flat, canvas texture, airbrush), ' +
       'and rendering resolution (pixelated vs. smooth). ' +
-      'If the reference is pixel art → stay pixel art with the same pixel density. If it is anime cel → stay anime cel. If it is painted illustration → stay painted. If it is sketch → clean it up into the SAME drawing language (do NOT repaint as pixel or vector). Silhouette and palette must read as the SAME universe as the reference.',
+      'If the reference is pixel art, stay pixel art with the same pixel density. If it is anime cel, stay anime cel. If it is painted illustration, stay painted. If it is sketch, clean it up into the SAME drawing language (do NOT repaint as pixel or vector). Silhouette and palette must read as the SAME universe as the reference.',
     frameClause:
       'MATCH-THE-REFERENCE style. Every frame must use the IDENTICAL rendering language as the reference image — same outline policy, same shading tones, same palette, same pixel density / line density. No frame may shift style mid-row. Only the pose changes.',
     negative:
