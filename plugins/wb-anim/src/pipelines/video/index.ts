@@ -1323,8 +1323,8 @@ const VP_CSS = `
 .vp-step-btn.locked { opacity: 0.35; cursor: not-allowed; }
 .vp-step-btn.done { color: var(--text-primary); }
 .vp-step-num { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
-.vp-step-btn.active .vp-step-num { background: var(--accent); color: #0b0c0a; }
-.vp-step-btn.done .vp-step-num { background: var(--accent); color: #0b0c0a; }
+.vp-step-btn.active .vp-step-num { background: var(--accent); color: var(--color-text-on-bright-primary); }
+.vp-step-btn.done .vp-step-num { background: var(--accent); color: var(--color-text-on-bright-primary); }
 .vp-step-label { white-space: nowrap; }
 
 /* Body */
@@ -1351,8 +1351,8 @@ const VP_CSS = `
 .vp-preset { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-secondary); cursor: pointer; font-size: 10px; font-family: inherit; transition: all 0.15s; }
 .vp-preset:hover { background: var(--bg-active); color: var(--text-primary); }
 .vp-preset.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim, rgba(212,255,72,0.1)); }
-.vp-preset.done { border-color: #4caf50; }
-.vp-preset-badge { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: #4caf50; color: #fff; font-size: 9px; line-height: 16px; text-align: center; font-weight: 700; }
+.vp-preset.done { border-color: var(--color-status-success); }
+.vp-preset-badge { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--color-status-success); color: var(--color-text-primary); font-size: 9px; line-height: 16px; text-align: center; font-weight: 700; }
 .vp-preset-icon { font-size: 18px; }
 .vp-preset-name { font-size: 10px; white-space: nowrap; }
 .vp-lib-stats { font-weight: 400; color: var(--accent); font-size: 10px; margin-left: 4px; }
@@ -1401,14 +1401,14 @@ const VP_CSS = `
 /* Buttons */
 .vp-btn { display: block; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; transition: background 0.15s; font-family: inherit; box-sizing: border-box; }
 .vp-btn:hover { background: var(--bg-active); }
-.vp-btn-primary { background: var(--accent); color: #0b0c0a; border-color: var(--accent); font-weight: 600; }
+.vp-btn-primary { background: var(--accent); color: var(--color-text-on-bright-primary); border-color: var(--accent); font-weight: 600; }
 .vp-btn-primary:hover { background: var(--accent-hover); }
 .vp-btn-disabled { opacity: 0.5; pointer-events: none; }
 .vp-btn-sm { display: inline-block; width: auto; padding: 5px 10px; font-size: 11px; }
 .vp-btn-xs { display: inline-block; width: auto; padding: 3px 8px; font-size: 10px; }
-.vp-btn-accent { background: #7c4dff; color: #fff; border-color: #7c4dff; font-weight: 600; }
-.vp-btn-accent:hover { background: #651fff; }
-.vp-btn-done { background: #4caf50; color: #fff; border-color: #4caf50; opacity: 0.8; cursor: default; }
+.vp-btn-accent { background: var(--accent); color: var(--color-text-on-bright-primary); border-color: var(--accent); font-weight: 600; }
+.vp-btn-accent:hover { background: var(--accent-hover); }
+.vp-btn-done { background: var(--color-status-success); color: var(--color-text-primary); border-color: var(--color-status-success); opacity: 0.8; cursor: default; }
 .vp-actions-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .vp-export-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
@@ -1424,7 +1424,7 @@ const VP_CSS = `
 .vp-lib-item-type { color: var(--text-secondary); font-size: 10px; background: var(--bg-active); padding: 1px 5px; border-radius: 3px; }
 .vp-lib-item-date { flex: 1; text-align: right; color: var(--text-secondary); font-size: 10px; }
 .vp-lib-item-rm { border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 3px; }
-.vp-lib-item-rm:hover { background: rgba(255,0,0,0.15); color: #f44336; }
+.vp-lib-item-rm:hover { background: color-mix(in srgb, var(--color-status-error) 18%, transparent); color: var(--color-status-error); }
 
 /* Status */
 .vp-status-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 0; }

@@ -220,13 +220,15 @@ export class PipelinePanel {
     this.showLoadingHint(meta)
 
     let pipeline: IPipeline | undefined
+    let loadErr: unknown
     try {
       pipeline = await this.registry.load(meta.id)
     } catch (err) {
+      loadErr = err
       console.warn('[PipelinePanel] load failed:', meta.id, err)
     }
     if (!pipeline) {
-      this.showLoadError(meta)
+      this.showLoadError(meta, loadErr)
       return
     }
 
@@ -240,7 +242,16 @@ export class PipelinePanel {
     }
 
     this.activePipeline = pipeline
-    await pipeline.init(this.context)
+    try {
+      await pipeline.init(this.context)
+    } catch (err) {
+      // init() 抛错以前会冒泡成未处理 rejection、UI 卡在「加载中…」转圈,
+      // 用户只看到永远转圈、不知所以。现在显式兜底 → 展示真实错误。
+      console.error('[PipelinePanel] init failed:', meta.id, err)
+      this.activePipeline = null
+      this.showLoadError(meta, err)
+      return
+    }
     if (this.activeId !== meta.id) {
       pipeline.dispose()
       this.activePipeline = null
@@ -272,11 +283,16 @@ export class PipelinePanel {
     this.leftPanel.innerHTML = ''
   }
 
-  private showLoadError(meta: PipelineMeta): void {
+  private showLoadError(meta: PipelineMeta, err?: unknown): void {
+    const detail = err
+      ? (err instanceof Error ? `${err.name}: ${err.message}` : String(err))
+      : ''
+    const stack = err instanceof Error && err.stack ? err.stack : ''
     this.leftPanel.innerHTML = `
       <div class="pipeline-loading pipeline-loading-error">
         ⚠️ 加载失败:${meta.id}
-        <div style="margin-top:8px;font-size:12px;opacity:0.7">查看控制台获取详情</div>
+        ${detail ? `<div style="margin-top:8px;font-size:12px;color:#ff8888;word-break:break-all;max-width:420px">${escapeHtml(detail)}</div>` : ''}
+        ${stack ? `<details style="margin-top:8px;max-width:440px"><summary style="font-size:11px;opacity:0.7;cursor:pointer">堆栈详情</summary><pre style="font-size:10px;opacity:0.7;white-space:pre-wrap;word-break:break-all;text-align:left">${escapeHtml(stack)}</pre></details>` : '<div style="margin-top:8px;font-size:12px;opacity:0.7">查看控制台获取详情</div>'}
       </div>
     `
   }
@@ -323,4 +339,12 @@ export class PipelinePanel {
     this.clearPanels()
     this.tabsContainer.remove()
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }

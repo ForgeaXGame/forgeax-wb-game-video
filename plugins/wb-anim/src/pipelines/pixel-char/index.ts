@@ -361,6 +361,8 @@ class PixelPipelineUI {
   private vfxUpdateCb: ((dt: number) => void) | null = null
   private charController: CharacterController | null = null
   private restoreReady = false
+  /** Guards the one-shot "partial generation recovered" toast (see restoreSession). */
+  private _partialChecked = false
 
   // Module 16 split-pane sync — see CharacterDesign for full rationale. The
   // pixel pipeline lives in two same-origin iframes; user-facing generation
@@ -470,7 +472,7 @@ class PixelPipelineUI {
     Promise.all([
       this.refreshActionLib(),
       this.refreshBatchHistory(),
-      this.restoreSession(),
+      this.restoreSession({ checkPartial: true }),
     ]).then(() => {
       this.restoreReady = true
       if (this.panels) this.refresh()
@@ -492,8 +494,8 @@ class PixelPipelineUI {
   /** 在 leftEl 顶部塞一条「未完成角色设计」的软提示条，不阻断后续 UI。 */
   private injectNoCharacterBanner(left: HTMLElement): void {
     const banner = document.createElement('div')
-    banner.style.cssText = 'padding:10px 12px;margin-bottom:8px;background:rgba(255,170,40,0.08);border:1px solid rgba(255,170,40,0.35);border-radius:6px;color:var(--text-secondary);font-size:12px;line-height:1.5;'
-    banner.innerHTML = `<strong style="color:#ffb84d;">⚠️ 还未完成角色设计</strong><br>
+    banner.style.cssText = 'padding:10px 12px;margin-bottom:8px;background:color-mix(in srgb, var(--color-status-warning) 14%, transparent);border:1px solid color-mix(in srgb, var(--color-status-warning) 40%, transparent);border-radius:6px;color:var(--color-text-secondary);font-size:12px;line-height:1.5;'
+    banner.innerHTML = `<strong style="color:var(--color-status-warning);">⚠️ 还未完成角色设计</strong><br>
       去 <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;">wb-character</code> 生成角色后再来跑像素流水线；当前可预览/调试 UI 但生成会缺基础图。`
     left.insertBefore(banner, left.firstChild)
   }
@@ -724,7 +726,7 @@ class PixelPipelineUI {
               ? `<img src="${thumb}" class="px-lib-card-thumb checkerboard" draggable="false"${scaleStyle} />`
               : '<div class="px-lib-card-thumb-empty">?</div>'}
           </div>
-          <div class="px-lib-card-name">${label}${hasSkill ? ' <span style="color:#ff6b35">⚔</span>' : ''}</div>
+          <div class="px-lib-card-name">${label}${hasSkill ? ' <span style="color:var(--color-accent-orange-default)">⚔</span>' : ''}</div>
           <div class="px-lib-card-scale" title="缩放（双击重置）">
             <button class="px-scale-btn" data-lib-scale-down="${entry.id}" title="缩小 5%">−</button>
             <span class="px-scale-pct" data-lib-scale-reset="${entry.id}">${pct}%</span>
@@ -1073,7 +1075,7 @@ class PixelPipelineUI {
     // 提示让用户先考虑只勾选「待机 + 走路」，需要战斗的再手动加回来。
     const isNpc = globalState.profile?.characterRole === 'npc'
     const npcHint = isNpc
-      ? `<div style="margin-top:8px;padding:6px 8px;border-radius:4px;background:rgba(99,140,255,.08);border:1px solid rgba(99,140,255,.25);font-size:11px;color:var(--text-secondary);line-height:1.4">
+      ? `<div style="margin-top:8px;padding:6px 8px;border-radius:4px;background:var(--color-interaction-selected-brand);border:1px solid rgba(212,255,72,.25);font-size:11px;color:var(--text-secondary);line-height:1.4">
         💡 <b>职业 NPC / 路人</b>：建议只勾选「待机 / 走路」这类日常动画，路人没有武器与大招，生成战斗动画容易产出不合身份的姿态。
       </div>`
       : ''
@@ -1122,7 +1124,7 @@ class PixelPipelineUI {
         const frames = Object.values(dirMap).reduce((n, arr) => n + arr.length, 0)
         items.push(`${action?.label || actionId}: ${dirs}方向 ${frames}帧`)
       }
-      h += `<div class="px-hint-box" style="margin-top:8px;color:var(--success);background:rgba(80,200,120,0.08);border-color:rgba(80,200,120,0.2)">${items.join('<br/>')}</div>`
+      h += `<div class="px-hint-box" style="margin-top:8px;color:var(--color-status-success);background:color-mix(in srgb, var(--color-status-success) 12%, transparent);border-color:color-mix(in srgb, var(--color-status-success) 25%, transparent)">${items.join('<br/>')}</div>`
 
       h += `<div class="px-label" style="margin-top:8px">GIF 播放速度</div>`
       h += `<div style="display:flex;align-items:center;gap:8px;">
@@ -2273,7 +2275,7 @@ class PixelPipelineUI {
   }
 
 
-  private async restoreSession(): Promise<void> {
+  private async restoreSession(opts: { checkPartial?: boolean } = {}): Promise<void> {
     try {
       const data = await sessionLoad(`current:${PIPELINE_ID}`)
       if (!data) return
@@ -2291,7 +2293,16 @@ class PixelPipelineUI {
       this.restoreBlobs(blobs)
       await this.updateReferenceAnchors()
 
-      this.checkPartialGeneration()
+      // The "partial generation recovered" toast must fire AT MOST ONCE — only
+      // on the first restore of this instance's lifetime. Without this guard it
+      // re-fired on every cross-iframe `pixel-char-state` broadcast sync
+      // (onBroadcastState → restoreSession), so the banner kept popping up
+      // forever even though nothing changed. Broadcast-driven restores pass
+      // `checkPartial:false`.
+      if (opts.checkPartial && !this._partialChecked) {
+        this._partialChecked = true
+        this.checkPartialGeneration()
+      }
     } catch (e) {
       console.warn('[PixelChar] session restore failed:', e)
     }
@@ -3104,7 +3115,7 @@ class PixelPipelineUI {
 
       <div class="px-skill-row" style="margin-top:6px">
         <button class="px-btn small" data-sf="save">保存</button>
-        <button class="px-btn small" data-sf="clear" style="color:#ff4444">清除技能</button>
+        <button class="px-btn small" data-sf="clear" style="color:var(--color-status-error)">清除技能</button>
       </div>
     `
 
@@ -4527,11 +4538,11 @@ function injectCSS(): void {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
   animation: px-shimmer 1s ease infinite;
 }
-.px-btn.done { border-color: var(--success, #50c878); }
+.px-btn.done { border-color: var(--color-status-success); }
 .px-btn.done::after {
   content: '✓'; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(80,200,120,0.15); color: var(--success, #50c878);
+  background: color-mix(in srgb, var(--color-status-success) 18%, transparent); color: var(--color-status-success);
   font-weight: 700; font-size: 14px;
   animation: px-flash-in 0.3s ease;
 }
@@ -4574,8 +4585,8 @@ function injectCSS(): void {
   position: relative;
 }
 .px-stage-dot.px-stage-done {
-  border-color: var(--success, #50c878);
-  background: var(--success, #50c878);
+  border-color: var(--color-status-success);
+  background: var(--color-status-success);
   color: #000;
 }
 .px-stage-dot.px-stage-active {
@@ -4606,7 +4617,7 @@ function injectCSS(): void {
   border-radius: 1px;
   min-width: 12px;
 }
-.px-stage-connector-done { background: var(--success, #50c878); opacity: 0.65; }
+.px-stage-connector-done { background: var(--color-status-success); opacity: 0.65; }
 .px-stage-connector-pending { background: var(--border); opacity: 0.5; }
 
 /* ── Friendly empty states ────────────────────────────────────────── */
@@ -4631,7 +4642,7 @@ function injectCSS(): void {
 /* ── In-cell loading state ────────────────────────────────────────── */
 .px-grid-cell.px-cell-active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 16px rgba(80,200,120,0.08);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 16px color-mix(in srgb, var(--color-status-success) 10%, transparent);
 }
 .px-cell-loading {
   position: relative;
@@ -4684,9 +4695,9 @@ function injectCSS(): void {
   animation: px-pulse-in 0.9s ease-out;
 }
 @keyframes px-pulse-in {
-  0%   { box-shadow: 0 0 0 0 rgba(80,200,120,0.55); }
-  60%  { box-shadow: 0 0 0 14px rgba(80,200,120,0); }
-  100% { box-shadow: 0 0 0 0 rgba(80,200,120,0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-status-success) 55%, transparent); }
+  60%  { box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-status-success) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-status-success) 0%, transparent); }
 }
 
 /* Step 2 placeholder loading variant — same idiom, looser layout. */
@@ -4898,8 +4909,8 @@ function injectCSS(): void {
 }
 .px-source-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
 .px-hint-box {
-  padding: 8px 10px; font-size: 11px; color: #ffbb33;
-  background: rgba(255,187,51,0.08); border: 1px solid rgba(255,187,51,0.2);
+  padding: 8px 10px; font-size: 11px; color: var(--color-status-warning);
+  background: color-mix(in srgb, var(--color-status-warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-status-warning) 28%, transparent);
   border-radius: 6px; margin-bottom: 6px; line-height: 1.5;
 }
 .px-upload-row { display: flex; align-items: center; gap: 6px; }
@@ -4984,11 +4995,11 @@ function injectCSS(): void {
 }
 .px-lib-item-name { font-size:12px;font-weight:600;color:var(--text-primary);flex:1; }
 .px-lib-remove {
-  width:20px;height:20px;border:none;border-radius:3px;background:rgba(255,60,60,0.15);
-  color:#ff4444;font-size:12px;cursor:pointer;transition:background .15s;
+  width:20px;height:20px;border:none;border-radius:3px;background:color-mix(in srgb, var(--color-status-error) 18%, transparent);
+  color:var(--color-status-error);font-size:12px;cursor:pointer;transition:background .15s;
   display:flex;align-items:center;justify-content:center;
 }
-.px-lib-remove:hover { background:rgba(255,60,60,0.3); }
+.px-lib-remove:hover { background:color-mix(in srgb, var(--color-status-error) 32%, transparent); }
 
 .px-btn.small {
   display: inline-flex; align-items: center; gap: 4px;
@@ -5040,8 +5051,8 @@ function injectCSS(): void {
 /* Batch History */
 .px-batch-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .px-batch-item { background: rgba(0,0,0,0.12); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: background 0.15s; }
-.px-batch-item.expanded { border-color: var(--accent, #4fc3f7); }
-.px-batch-item.viewing { border-color: var(--accent, #4fc3f7); box-shadow: 0 0 0 1px var(--accent, #4fc3f7); }
+.px-batch-item.expanded { border-color: var(--accent); }
+.px-batch-item.viewing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .px-batch-head { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; }
 .px-batch-head:hover { background: rgba(0,0,0,0.2); }
 .px-batch-info { flex: 1; min-width: 0; }
@@ -5086,8 +5097,8 @@ function injectCSS(): void {
   cursor: pointer; image-rendering: pixelated; object-fit: contain; flex-shrink: 0;
   background: rgba(0,0,0,0.3);
 }
-.px-skill-frame-thumb.trigger { border-color: #ff6b35; }
-.px-skill-frame-thumb.vfx-start { border-color: #35aaff; }
+.px-skill-frame-thumb.trigger { border-color: var(--color-accent-orange-default); }
+.px-skill-frame-thumb.vfx-start { border-color: var(--color-accent-blue-default); }
 .px-skill-section-title { font-size: 10px; color: #999; margin-top: 6px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* Tab Bar */
@@ -5213,8 +5224,8 @@ function injectCSS(): void {
   background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700;
 }
 .px-btn-pill.accent:hover { filter: brightness(1.1); }
-.px-btn-pill.danger { color: #ff6666; border-color: rgba(255,80,80,0.2); }
-.px-btn-pill.danger:hover { background: rgba(255,80,80,0.12); }
+.px-btn-pill.danger { color: var(--color-status-error); border-color: color-mix(in srgb, var(--color-status-error) 28%, transparent); }
+.px-btn-pill.danger:hover { background: color-mix(in srgb, var(--color-status-error) 14%, transparent); }
 .px-btn-pill.primary {
   color: #80f0a0; border-color: rgba(80,240,160,0.35);
   background: rgba(80,240,160,0.08);
@@ -5242,11 +5253,11 @@ function injectCSS(): void {
   border-color: rgba(255,255,255,0.15);
 }
 .px-btn-pill.ghost.danger {
-  color: rgba(255,120,120,0.85); border-color: rgba(255,80,80,0.15);
+  color: var(--color-status-error); border-color: color-mix(in srgb, var(--color-status-error) 22%, transparent);
 }
 .px-btn-pill.ghost.danger:hover {
-  background: rgba(255,80,80,0.08); color: #ff8888;
-  border-color: rgba(255,80,80,0.3);
+  background: color-mix(in srgb, var(--color-status-error) 12%, transparent); color: var(--color-status-error);
+  border-color: color-mix(in srgb, var(--color-status-error) 40%, transparent);
 }
 
 .px-btn-pill.busy {
@@ -5257,11 +5268,11 @@ function injectCSS(): void {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
   animation: px-shimmer 1s ease infinite;
 }
-.px-btn-pill.done { border-color: var(--success, #50c878); }
+.px-btn-pill.done { border-color: var(--color-status-success); }
 .px-btn-pill.done::after {
   content: '✓'; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(80,200,120,0.15); color: var(--success, #50c878);
+  background: color-mix(in srgb, var(--color-status-success) 18%, transparent); color: var(--color-status-success);
   font-weight: 700; font-size: 14px;
   animation: px-flash-in 0.3s ease;
 }
@@ -5288,9 +5299,9 @@ function injectCSS(): void {
   font-family: inherit; cursor: pointer; transition: all 0.15s;
 }
 .px-btn-icon:hover { background: rgba(255,255,255,0.12); }
-.px-btn-icon.danger { color: #ff6666; }
-.px-btn-icon.danger:hover { background: rgba(255,80,80,0.12); }
-.px-btn-icon.done { border-color: var(--success, #50c878); color: var(--success, #50c878); }
+.px-btn-icon.danger { color: var(--color-status-error); }
+.px-btn-icon.danger:hover { background: color-mix(in srgb, var(--color-status-error) 14%, transparent); }
+.px-btn-icon.done { border-color: var(--color-status-success); color: var(--color-status-success); }
 .px-btn-icon-glyph { font-size: 13px; line-height: 1; }
 
 /* Lib Detail Actions */

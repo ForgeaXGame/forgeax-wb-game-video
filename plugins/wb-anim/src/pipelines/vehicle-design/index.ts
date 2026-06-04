@@ -60,7 +60,7 @@ function vehicleBlobKeyToRel(key: string): string | null {
   return null
 }
 
-type Step = 1 | 2 | 3
+type Step = 1 | 2
 
 /* ── State ────────────────────────────────────────────────────────── */
 
@@ -328,11 +328,13 @@ class VehiclePipelineUI {
     this.leftEl = left
     this.panels = panels
 
-    // 进入时强制回到 step1：localStorage 持久化的 activeStep 在用户已经走完
-    // 一遍流程后会停在 step3，下次再 mount 直接落到「动画生成」面板，
-    // step nav 的引导价值被掩盖。规则：只有 designImage 还没生成时强制
-    // 回到 step1（让用户先走完载具设定）；如果已经有图，尊重用户上次的位置。
-    // applyBatch 路径仍可主动把 activeStep 推到 3——这里只兜首次空状态。
+    // 进入时：若上游是 vehicle role 且有设定图，则同步到 designImage
+    const upstream = globalState.get()
+    if (globalState.getUpstreamRole() === 'vehicle' && upstream.characterImage && !this.img.designImage) {
+      this.img.designImage = upstream.characterImage
+      this.autoSave()
+    }
+
     if (!this.img.designImage && this.cfg.activeStep !== 1) {
       this.cfg.activeStep = 1
       saveConfig(this.cfg)
@@ -368,7 +370,7 @@ class VehiclePipelineUI {
       <div class="vh-panel">
         <div class="vh-header">
           <span class="vh-header-icon">🚀</span>
-          <span class="vh-header-title">载具设计</span>
+          <span class="vh-header-title">载具动画</span>
         </div>
 
         <div class="vh-tab-bar">
@@ -414,23 +416,29 @@ class VehiclePipelineUI {
   private renderEditTab(): string {
     const c = this.cfg
     const cat = getCategory(c.categoryId)
-    const sub = getSubtype(c.categoryId, c.subtypeId)
-    const style = VEHICLE_STYLES.find(s => s.id === c.styleId)
-    const era = VEHICLE_ERAS.find(e => e.id === c.eraId)
     const vm = getViewMode(c.viewModeId)
 
     return `
       <div class="vh-section">
         <div class="vh-label">步骤</div>
         <div class="vh-steps">
-          ${this.renderStepItem(1, '🎨', '载具设定', this.isStepDone(1))}
-          ${this.renderStepItem(2, '📐', '多视角参考', this.isStepDone(2))}
-          ${this.renderStepItem(3, '🎬', '动画生成', this.isStepDone(3))}
+          ${this.renderStepItem(1, '📐', '多视角参考', this.isStepDone(1))}
+          ${this.renderStepItem(2, '🎬', '动画生成', this.isStepDone(2))}
         </div>
       </div>
-      ${c.activeStep === 1 ? this.renderStep1Left(cat, sub, style, era) : ''}
-      ${c.activeStep === 2 ? this.renderStep2Left(vm) : ''}
-      ${c.activeStep === 3 ? this.renderStep3Left(cat) : ''}
+      ${!this.img.designImage ? `
+      <div class="vh-section">
+        <div class="vh-hint vh-warn" style="padding:8px;border-radius:6px;background:color-mix(in srgb, var(--color-status-error) 14%, transparent);color:var(--color-status-error);font-size:12px">
+          ⚠️ 请先在「角色设计」工作台完成载具设定，生成设定图后点击「前往动画工作台」跳转到此处。
+        </div>
+      </div>` : ''}
+      ${this.img.designImage ? `
+      <div class="vh-section" style="text-align:center">
+        <img src="${this.img.designImage}" style="max-width:100%;max-height:140px;border-radius:6px;border:1px solid var(--color-border-default)"/>
+        <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">载具设定图（来自角色设计）</div>
+      </div>` : ''}
+      ${c.activeStep === 1 ? this.renderStep2Left(vm) : ''}
+      ${c.activeStep === 2 ? this.renderStep3Left(cat) : ''}
     `
   }
 
@@ -730,7 +738,7 @@ class VehiclePipelineUI {
         <button class="vh-btn primary" data-vh="gen-views" ${!this.img.designImage ? 'disabled' : ''}>
           ${this.img.viewsImage ? '重新生成视角图' : '生成多视角参考图'}
         </button>
-        ${!this.img.designImage ? '<div class="vh-hint vh-warn">请先完成第 1 步</div>' : ''}
+        ${!this.img.designImage ? '<div class="vh-hint vh-warn">请先在「角色设计」工作台完成载具设定</div>' : ''}
       </div>
     `
   }
@@ -843,7 +851,7 @@ class VehiclePipelineUI {
         </div>
       </div>
 
-      ${!this.img.viewsImage ? '<div class="vh-section"><div class="vh-hint vh-warn">请先完成第 2 步（多视角参考）</div></div>' : ''}
+      ${!this.img.viewsImage ? '<div class="vh-section"><div class="vh-hint vh-warn">请先完成「多视角参考」步骤</div></div>' : ''}
     `
   }
 
@@ -916,12 +924,9 @@ class VehiclePipelineUI {
       })
     })
 
-    this.leftEl.querySelector('[data-vh="gen-design"]')?.addEventListener('click', () => this.execStep1())
-    this.leftEl.querySelector('[data-vh="gen-design-and-views"]')?.addEventListener('click', () => this.execDesignAndViews())
     this.leftEl.querySelector('[data-vh="gen-views"]')?.addEventListener('click', () => this.execStep2())
     this.leftEl.querySelector('[data-vh="gen-continue"]')?.addEventListener('click', () => this.execStep3(false))
     this.leftEl.querySelector('[data-vh="gen-all"]')?.addEventListener('click', () => this.execStep3(true))
-    this.leftEl.querySelector('[data-vh="gen-full-pipeline"]')?.addEventListener('click', () => this.execFullPipeline())
     this.leftEl.querySelector('[data-vh="export-all"]')?.addEventListener('click', () => this.exportAll())
 
     this.leftEl.querySelectorAll<HTMLInputElement>('[data-vh-anim]').forEach(cb => {
@@ -1038,7 +1043,7 @@ class VehiclePipelineUI {
         <div class="vh-center">
           <div class="vh-empty">
             <div style="font-size:48px;margin-bottom:12px;">📐</div>
-            <div>${this.img.designImage ? '选择视角模式，然后点击「生成多视角参考图」' : '请先完成第 1 步'}</div>
+            <div>${this.img.designImage ? '选择视角模式，然后点击「生成多视角参考图」' : '请先在「角色设计」工作台完成载具设定'}</div>
           </div>
         </div>
       `
@@ -1054,7 +1059,7 @@ class VehiclePipelineUI {
         <div class="vh-center">
           <div class="vh-empty">
             <div style="font-size:48px;margin-bottom:12px;">🎬</div>
-            <div>${this.img.viewsImage ? '选择动画状态，然后点击「继续生成」或「全部重新生成」' : '请先完成第 2 步'}</div>
+            <div>${this.img.viewsImage ? '选择动画状态，然后点击「继续生成」或「全部重新生成」' : '请先完成「多视角参考」步骤'}</div>
           </div>
         </div>
       `
@@ -1631,7 +1636,7 @@ class VehiclePipelineUI {
       }
       if (upstreamVehicleImage) {
         body.inputImageBase64 = upstreamVehicleImage.replace(/^data:[^;]+;base64,/, '')
-        this.showProgress(true, '正在基于你的载具设计生成设定图...')
+        this.showProgress(true, '正在基于你的载具设定图生成多视角参考...')
       }
 
       const result = await apiPost('/__ce-api__/generate-image', body)
@@ -1705,7 +1710,7 @@ class VehiclePipelineUI {
 
         this.toast('视角图完成，自动进入动画生成')
         this.autoSave()
-        this.cfg.activeStep = 3
+        this.cfg.activeStep = 2
         saveConfig(this.cfg)
         this.generating = false
         this.showProgress(false)
@@ -1722,42 +1727,21 @@ class VehiclePipelineUI {
     this.showProgress(false)
   }
 
-  /* ── Full Pipeline (Step 1 → 2 → 3 chained) ─────────────────────── */
+  /* ── Full Pipeline (Step 1 → 2 chained) ─────────────────────────── */
 
   private async execFullPipeline(): Promise<void> {
     if (this.generating) return
+    if (!this.img.designImage) { this.toast('请先在「角色设计」工作台完成载具设定并跳转到此处'); return }
 
     this.cfg.activeStep = 1
     saveConfig(this.cfg)
     this.renderLeft()
     this.renderCenter()
-
-    await this.execStep1()
-    if (!this.img.designImage) return
 
     await this.execStep2()
     if (!this.img.viewsImage) return
 
     await this.execStep3(true)
-  }
-
-  /**
-   * 合并 Step 1 + Step 2 为一次操作：先生设定图，再按当前视角模式生多视角参考图。
-   * 不自动跑 Step 3——动画需要用户先选哪些状态。落到 Step 3 左栏等用户确认。
-   */
-  private async execDesignAndViews(): Promise<void> {
-    if (this.generating) return
-
-    this.cfg.activeStep = 1
-    saveConfig(this.cfg)
-    this.renderLeft()
-    this.renderCenter()
-
-    await this.execStep1()
-    if (!this.img.designImage) return
-
-    await this.execStep2()
-    // execStep2 成功时已经把 activeStep 推到 3；失败则留在 2 等用户重试。
   }
 
   /* ── Step 3: Animation Pipeline ─────────────────────────────────── */
@@ -2725,9 +2709,8 @@ class VehiclePipelineUI {
 
   private isStepDone(step: Step): boolean {
     switch (step) {
-      case 1: return !!this.img.designImage
-      case 2: return !!this.img.viewsImage
-      case 3: return Object.keys(this.img.splitFrames).length > 0
+      case 1: return !!this.img.viewsImage
+      case 2: return Object.keys(this.img.splitFrames).length > 0
     }
   }
 
@@ -2790,7 +2773,7 @@ const vehiclePipeline: IPipeline = {
     if (panels) {
       ui.mount(container, panels)
     } else {
-      container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);font-size:12px;">载具管线需要完整面板布局。</div>'
+      container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);font-size:12px;">载具动画管线需要完整面板布局。</div>'
     }
   },
 
@@ -2857,13 +2840,13 @@ function injectCSS(): void {
 }
 .vh-step:hover { background: var(--bg-hover); }
 .vh-step.active { background: var(--bg-active); border-color: var(--accent); }
-.vh-step.done .vh-step-label { color: var(--success, #a6e3a1); }
+.vh-step.done .vh-step-label { color: var(--color-status-success); }
 .vh-step-head {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px;
 }
 .vh-step-icon { font-size: 14px; width: 22px; text-align: center; }
 .vh-step-label { font-size: 12px; font-weight: 600; color: var(--text-primary); flex: 1; }
-.vh-step-done { font-size: 9px; color: var(--success, #a6e3a1); font-weight: 600; }
+.vh-step-done { font-size: 9px; color: var(--color-status-success); font-weight: 600; }
 
 /* Category grid */
 .vh-cat-grid {
@@ -2927,7 +2910,7 @@ function injectCSS(): void {
 .vh-input { resize: none; }
 .vh-input:focus { outline: none; border-color: var(--accent); }
 .vh-hint { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
-.vh-warn { color: var(--warning, #f0ad4e); }
+.vh-warn { color: var(--color-status-warning); }
 
 /* Buttons */
 .vh-btn {
@@ -2959,8 +2942,8 @@ function injectCSS(): void {
   font-size: 10px; font-family: inherit; cursor: pointer; transition: all 0.15s;
 }
 .vh-btn-mini:hover { background: var(--bg-active); color: var(--text-primary); }
-.vh-btn-mini.danger { color: #f38ba8; }
-.vh-btn-mini.danger:hover { background: rgba(243,139,168,0.15); }
+.vh-btn-mini.danger { color: var(--color-status-error); }
+.vh-btn-mini.danger:hover { background: color-mix(in srgb, var(--color-status-error) 15%, transparent); }
 
 .vh-btn-pill {
   display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -2983,7 +2966,7 @@ function injectCSS(): void {
   border: 1px solid transparent; transition: all 0.15s;
 }
 .vh-checkbox-row:hover { background: var(--bg-hover); }
-.vh-checkbox-row.done { border-color: color-mix(in srgb, var(--success, #a6e3a1) 30%, transparent); }
+.vh-checkbox-row.done { border-color: color-mix(in srgb, var(--color-status-success) 30%, transparent); }
 .vh-anim-name { flex: 1; font-weight: 500; }
 .vh-anim-detail {
   font-size: 10px; color: var(--text-secondary);
@@ -2991,13 +2974,13 @@ function injectCSS(): void {
   white-space: nowrap;
 }
 .vh-anim-done {
-  font-size: 9px; color: var(--success, #a6e3a1); font-weight: 600;
+  font-size: 9px; color: var(--color-status-success); font-weight: 600;
   white-space: nowrap;
 }
 .vh-range { accent-color: var(--accent); width: 100%; }
 .vh-select {
   width: 100%; padding: 6px 10px;
-  background: var(--bg-hover, #2a2a3e); color: var(--text-primary);
+  background: var(--bg-hover); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: 6px;
   font-size: 11px; font-family: inherit; cursor: pointer;
 }
@@ -3098,9 +3081,9 @@ function injectCSS(): void {
   border-top: 1px solid var(--border);
 }
 .vh-btn-pill.danger {
-  color: #ff8080; border-color: color-mix(in srgb, #ff8080 40%, transparent);
+  color: var(--color-status-error); border-color: color-mix(in srgb, var(--color-status-error) 40%, transparent);
 }
-.vh-btn-pill.danger:hover { background: color-mix(in srgb, #ff8080 15%, transparent); }
+.vh-btn-pill.danger:hover { background: color-mix(in srgb, var(--color-status-error) 15%, transparent); }
 
 /* ── Center Panel ─────────────────────────────────────────────────── */
 .vh-center {
@@ -3121,7 +3104,7 @@ function injectCSS(): void {
 
 .vh-preview-wrap {
   display: flex; justify-content: center; align-items: center;
-  background: var(--bg-secondary, #181825); border-radius: 8px; padding: 12px;
+  background: var(--color-background-elevated); border-radius: 8px; padding: 12px;
   border: 1px solid var(--border);
 }
 .vh-preview-img {
@@ -3135,7 +3118,7 @@ function injectCSS(): void {
 }
 .vh-view-cell {
   display: flex; flex-direction: column; align-items: center;
-  background: var(--bg-secondary, #181825); border: 1px solid var(--border);
+  background: var(--color-background-elevated); border: 1px solid var(--border);
   border-radius: 6px; padding: 8px; gap: 4px;
 }
 .vh-view-cell img {
@@ -3159,7 +3142,7 @@ function injectCSS(): void {
 
 .vh-anim-card {
   border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg-secondary, #181825); overflow: hidden;
+  background: var(--color-background-elevated); overflow: hidden;
   transition: box-shadow 0.2s;
 }
 .vh-anim-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
@@ -3199,7 +3182,7 @@ function injectCSS(): void {
   background: transparent; color: var(--text-secondary); border-radius: 4px; cursor: pointer;
 }
 .vh-prompt-tab.active {
-  background: var(--accent, #4a9eff); color: #fff; border-color: var(--accent, #4a9eff);
+  background: var(--accent); color: var(--color-text-on-bright-primary); border-color: var(--accent);
 }
 .vh-prompt-textarea {
   width: 100%; box-sizing: border-box;
@@ -3244,13 +3227,13 @@ function injectCSS(): void {
   width: 88px; height: 88px; object-fit: contain;
   image-rendering: pixelated;
   background-image:
-    linear-gradient(45deg, #1a1a2e 25%, transparent 25%),
-    linear-gradient(-45deg, #1a1a2e 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1a1a2e 75%),
-    linear-gradient(-45deg, transparent 75%, #1a1a2e 75%);
+    linear-gradient(45deg, var(--color-background-floating) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--color-background-floating) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--color-background-floating) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--color-background-floating) 75%);
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
-  background-color: #11111b;
+  background-color: var(--color-background-canvas);
   border: 1px solid var(--border); border-radius: 6px;
   transition: transform 0.15s, border-color 0.15s;
 }
@@ -3289,13 +3272,13 @@ function injectCSS(): void {
   cursor: grab; position: relative; overflow: hidden;
   border-radius: 6px; border: 1px solid var(--border);
   background-image:
-    linear-gradient(45deg, #1a1a2e 25%, transparent 25%),
-    linear-gradient(-45deg, #1a1a2e 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1a1a2e 75%),
-    linear-gradient(-45deg, transparent 75%, #1a1a2e 75%);
+    linear-gradient(45deg, var(--color-background-floating) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--color-background-floating) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--color-background-floating) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--color-background-floating) 75%);
   background-size: 8px 8px;
   background-position: 0 0, 0 4px, 4px -4px, -4px 0;
-  background-color: #11111b;
+  background-color: var(--color-background-canvas);
   transition: border-color 0.15s;
 }
 .vh-frame-drag-zone:hover { border-color: var(--accent); }
@@ -3345,7 +3328,7 @@ function injectCSS(): void {
 .vh-history-thumb {
   width: 48px; height: 48px; object-fit: contain;
   border-radius: 6px; image-rendering: pixelated;
-  background: #11111b; border: 1px solid var(--border);
+  background: var(--color-background-canvas); border: 1px solid var(--border);
   flex-shrink: 0;
 }
 .vh-history-thumb-placeholder {
@@ -3368,9 +3351,9 @@ function injectCSS(): void {
 .vh-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
   padding: 10px 20px; border-radius: 8px;
-  background: var(--bg-primary, #1e1e2e); color: var(--text-primary, #cdd6f4);
+  background: var(--color-background-elevated); color: var(--text-primary);
   font-size: 12px; font-weight: 500; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-  border: 1px solid var(--border, #45475a);
+  border: 1px solid var(--border);
   opacity: 0; pointer-events: none; transition: all 0.3s ease;
   z-index: 9999;
 }
