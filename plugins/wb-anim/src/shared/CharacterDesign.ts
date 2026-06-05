@@ -761,8 +761,8 @@ export class CharacterDesign {
     this.leftEl.innerHTML = `
       <div class="cd-panel">
         <div class="cd-header">
-          <span class="cd-header-icon">🎨</span>
           <span class="cd-header-title">角色概念设计</span>
+          <span class="cd-header-pill">动画角色</span>
         </div>
 
         <div class="cd-form">
@@ -3372,10 +3372,21 @@ const DESIGN_CSS = `
 }
 .cd-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .cd-header-icon { font-size: 20px; }
-.cd-header-title { font-size: 15px; font-weight: 700; color: var(--accent); }
+.cd-header-title { font-size: 15px; font-weight: 700; color: #d4ff48; }
+.cd-header-pill {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(212,255,72,0.28);
+  border-radius: 999px;
+  background: rgba(212,255,72,0.08);
+  color: #d4ff48;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 
 .cd-form { padding: 8px 16px; display: flex; flex-direction: column; gap: 10px; }
 .cd-field { display: flex; flex-direction: column; gap: 4px; }
