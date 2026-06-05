@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "@forgeax-plugin/agent-reia",
+  "version": "0.1.0",
+  "kind": "agent",
+  "displayName": { "zh": "Reia · 影游导演", "en": "Reia · Reel Director" },
+  "description": {
+    "zh": "互动影游 (FMV) 导演 — 拼提示词、调视频、定 QTE 节拍、织剧情分支。专门驱动 wb-reel 插件，把作者的一段 idea 变成可点按的悬念片。",
+    "en": "Interactive FMV director — forges prompts, plans video shots, paces QTEs and weaves branching narratives. Designed to drive the wb-reel workbench end-to-end, turning a single idea into a clickable suspense film."
+  },
+  "provides": {
+    "agent": {
+      "id": "reia",
+      "role": "reel-director",
+      "card": {
+        "name": { "zh": "Reia", "en": "Reia" },
+        "color": "#D4A5A5",
+        "avatar": "🎬"
+      },
+      "personaFile": "./persona/zh.md",
+      "memoryDir": "./memory/",
+      "produces": [
+        "<active_game>.dir/**/*.scenario.json",
+        "<active_game>.dir/**/scenes/**",
+        "<active_game>.dir/**/reel-shotlist.md",
+        "<active_game>.dir/**/qte-pacing.md",
+        ".reel-scenarios/**",
+        ".reel-assets/**"
+      ],
+      "preferredCliProvider": "forgeax-native",
+      "defaultLang": "zh",
+      "multiInstance": false
+    }
+  },
+  "experimental": true
+}

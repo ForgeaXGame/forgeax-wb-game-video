@@ -889,7 +889,11 @@ function injectStyles(): void {
   const s = document.createElement('style')
   s.id = CSS_ID
   s.textContent = `
-/* ── VFX2 Bootstrap Styles ─────────────────────────────── */
+/* ── VFX2 Bootstrap Styles ───────────────────────────────
+ * 注:本面板挂在 host viewport 上,host 已经提供 design SSOT 的 token,
+ *    所以这里的中性色/lime 强调色直接走 var(--color-*) + 旧 alias 兜底。
+ *    功能色编码(蓝=hit/橙=fire/金=impact/红=chip-act)为信息载体,保留原色不动。
+ * ──────────────────────────────────────────────────────── */
 #${INJECT_ID} {
   font-family: inherit;
 }
@@ -898,33 +902,33 @@ function injectStyles(): void {
   display: flex; align-items: center; gap: 6px;
   padding: 5px 10px;
   margin: 4px 0 2px;
-  background: rgba(255,255,255,.03);
+  background: var(--color-divider-subtle, rgba(255,255,255,.05));
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,.06);
+  border: 1px solid var(--color-divider-subtle, rgba(255,255,255,.05));
   font-size: 10px;
 }
-.v2b-ss-char  { color: #ccc; font-weight: 600; }
-.v2b-ss-world { color: #666; }
+.v2b-ss-char  { color: var(--color-text-primary, #fff); font-weight: 600; }
+.v2b-ss-world { color: var(--color-text-tertiary, rgba(255,255,255,.30)); }
 .v2b-ss-dots  { display: flex; gap: 3px; margin-left: 2px; }
 .v2b-ss-dot   { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-.v2b-ss-bloom-wrap { flex: 1; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+.v2b-ss-bloom-wrap { flex: 1; height: 3px; background: var(--color-divider-default, rgba(255,255,255,.10)); border-radius: 2px; overflow: hidden; }
 #v2b-bloom-fill { height: 100%; background: rgba(200,168,64,.7); border-radius: 2px; transition: width .3s; }
-.v2b-ss-elem { color: #888; font-size: 9px; white-space: nowrap; }
+.v2b-ss-elem { color: var(--color-text-secondary, rgba(255,255,255,.60)); font-size: 9px; white-space: nowrap; }
 
 /* ──  ── */
-.v2b-group { border-bottom: 1px solid rgba(255,255,255,.04); }
+.v2b-group { border-bottom: 1px solid var(--color-divider-subtle, rgba(255,255,255,.05)); }
 .v2b-gh {
   padding: 6px 10px 6px 12px;
   display: flex; align-items: center; gap: 6px;
   cursor: pointer; user-select: none;
-  font-size: 11px; font-weight: 600; color: #888;
+  font-size: 11px; font-weight: 600; color: var(--color-text-secondary, rgba(255,255,255,.60));
   letter-spacing: .3px;
 }
-.v2b-gh:hover { background: rgba(255,255,255,.03); }
+.v2b-gh:hover { background: var(--color-interaction-hover, rgba(255,255,255,.05)); }
 .v2b-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.v2b-gh-label { color: #bbb; }
-.v2b-gh-hint { font-size: 10px; color: #555; margin-left: 4px; }
-.v2b-arrow { margin-left: auto; font-size: 9px; color: #555; }
+.v2b-gh-label { color: var(--color-text-primary, #fff); }
+.v2b-gh-hint { font-size: 10px; color: var(--color-text-tertiary, rgba(255,255,255,.30)); margin-left: 4px; }
+.v2b-arrow { margin-left: auto; font-size: 9px; color: var(--color-text-tertiary, rgba(255,255,255,.30)); }
 .v2b-body {
   padding: 6px 10px 10px 12px;
   display: flex; flex-direction: column; gap: 7px;
@@ -933,20 +937,21 @@ function injectStyles(): void {
   display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
 }
 .v2b-lbl {
-  font-size: 10px; color: #666; min-width: 28px; flex-shrink: 0;
+  font-size: 10px; color: var(--color-text-tertiary, rgba(255,255,255,.30)); min-width: 28px; flex-shrink: 0;
 }
 .v2b-chips { display: flex; flex-wrap: wrap; gap: 3px; }
 .v2b-chip {
   padding: 2px 7px; border-radius: 10px;
-  font-size: 10px; background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.08); color: #666;
+  font-size: 10px; background: var(--color-interaction-hover, rgba(255,255,255,.05));
+  border: 1px solid var(--color-divider-default, rgba(255,255,255,.10));
+  color: var(--color-text-secondary, rgba(255,255,255,.60));
   cursor: pointer; font-family: inherit; transition: all .1s;
 }
-.v2b-chip:hover { background: rgba(255,255,255,.08); color: #aaa; }
+.v2b-chip:hover { background: var(--color-interaction-selected-neutral, rgba(255,255,255,.10)); color: var(--color-text-primary, #fff); }
 .v2b-chip.act {
-  background: rgba(212,255,72,.1);
+  background: var(--color-interaction-selected-brand, rgba(212,255,72,.10));
   border-color: rgba(212,255,72,.35);
-  color: #D4FF48;
+  color: var(--color-brand-primary, #d4ff48);
 }
 /*  CSS  #v2b-style-strip  */
 
@@ -954,14 +959,14 @@ function injectStyles(): void {
 .v2b-cat {
   padding: 10px 12px 3px;
   font-size: 9px; font-weight: 700;
-  color: rgba(255,255,255,.22);
+  color: var(--color-text-tertiary, rgba(255,255,255,.30));
   letter-spacing: 2px; text-transform: uppercase;
-  border-top: 1px solid rgba(255,255,255,.07);
+  border-top: 1px solid var(--color-divider-default, rgba(255,255,255,.10));
   margin-top: 2px;
 }
 .v2b-ai-hint {
-  font-size: 10px; color: #4a5050; line-height: 1.4;
-  background: rgba(255,255,255,.02); border-radius: 3px;
+  font-size: 10px; color: var(--color-text-tertiary, rgba(255,255,255,.30)); line-height: 1.4;
+  background: var(--color-divider-subtle, rgba(255,255,255,.05)); border-radius: 3px;
   padding: 3px 6px;
 }
 .v2b-btn-row { display: flex; gap: 5px; }
@@ -970,23 +975,24 @@ function injectStyles(): void {
   font-size: 10px; font-weight: 600; font-family: inherit;
   cursor: pointer; border: 1px solid transparent; transition: all .1s;
 }
+/* 功能色编码(蓝=hit/橙=fire/金=impact)为信息载体,保留原色不动 */
 .v2b-btn-hit    { background: rgba(74,144,226,.1); border-color: rgba(74,144,226,.3); color: #6aaeff; }
 .v2b-btn-hit:hover  { background: rgba(74,144,226,.2); }
 .v2b-btn-fire   { background: rgba(255,136,68,.1); border-color: rgba(255,136,68,.3); color: #ffaa66; }
 .v2b-btn-fire:hover { background: rgba(255,136,68,.2); }
 .v2b-btn-impact { background: rgba(200,168,64,.1); border-color: rgba(200,168,64,.3); color: #e8c850; }
 .v2b-btn-impact:hover { background: rgba(200,168,64,.2); }
-.v2b-btn-auto   { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); color: #666; }
-.v2b-btn-auto:hover  { color: #aaa; }
-.v2b-btn-small  { flex: none; padding: 3px 7px; background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); color: #666; }
+.v2b-btn-auto   { background: var(--color-interaction-hover, rgba(255,255,255,.05)); border-color: var(--color-divider-default, rgba(255,255,255,.10)); color: var(--color-text-secondary, rgba(255,255,255,.60)); }
+.v2b-btn-auto:hover  { color: var(--color-text-primary, #fff); }
+.v2b-btn-small  { flex: none; padding: 3px 7px; background: var(--color-interaction-hover, rgba(255,255,255,.05)); border-color: var(--color-divider-default, rgba(255,255,255,.10)); color: var(--color-text-secondary, rgba(255,255,255,.60)); }
 .v2b-num {
-  width: 60px; background: rgba(255,255,255,.05); color: #bbb;
-  border: 1px solid rgba(255,255,255,.1); border-radius: 3px;
+  width: 60px; background: var(--color-interaction-hover, rgba(255,255,255,.05)); color: var(--color-text-primary, #fff);
+  border: 1px solid var(--color-divider-default, rgba(255,255,255,.10)); border-radius: 3px;
   padding: 3px 5px; font-size: 10px; font-family: inherit;
 }
 .v2b-sel {
-  flex: 1; background: rgba(255,255,255,.05); color: #bbb;
-  border: 1px solid rgba(255,255,255,.1); border-radius: 3px;
+  flex: 1; background: var(--color-interaction-hover, rgba(255,255,255,.05)); color: var(--color-text-primary, #fff);
+  border: 1px solid var(--color-divider-default, rgba(255,255,255,.10)); border-radius: 3px;
   padding: 3px 5px; font-size: 10px; font-family: inherit; cursor: pointer;
 }
 .v2b-sel-full { width: 100%; flex: none; }
@@ -994,25 +1000,28 @@ function injectStyles(): void {
 .v2b-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
 .v2b-chip {
   padding: 2px 7px; border-radius: 2px; font-size: 10px; cursor: pointer;
-  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); color: #666;
+  background: var(--color-interaction-hover, rgba(255,255,255,.05));
+  border: 1px solid var(--color-divider-default, rgba(255,255,255,.10));
+  color: var(--color-text-secondary, rgba(255,255,255,.60));
   font-family: inherit; transition: all .1s;
 }
+/* 红=危险/移除 信息色,保留 */
 .v2b-chip.act { background: rgba(255,68,102,.12); color: #ff6688; }
-.v2b-chip:hover { color: #aaa; }
+.v2b-chip:hover { color: var(--color-text-primary, #fff); }
 .v2b-stat-tbl {
   display: grid; grid-template-columns: repeat(3,1fr); gap: 3px;
   padding: 4px 0; font-size: 10px;
 }
 .v2b-stat-cell {
-  background: rgba(255,255,255,.03); border-radius: 3px;
+  background: var(--color-divider-subtle, rgba(255,255,255,.05)); border-radius: 3px;
   padding: 3px 5px; display: flex; flex-direction: column; gap: 1px;
 }
-.v2b-stat-name { color: #555; font-size: 9px; }
-.v2b-stat-val  { color: #aaa; font-weight: 600; }
+.v2b-stat-name { color: var(--color-text-tertiary, rgba(255,255,255,.30)); font-size: 9px; }
+.v2b-stat-val  { color: var(--color-text-primary, #fff); font-weight: 600; }
 .v2b-dmg-result {
-  font-size: 10px; background: rgba(255,255,255,.03);
+  font-size: 10px; background: var(--color-divider-subtle, rgba(255,255,255,.05));
   border-radius: 3px; padding: 4px 7px; min-height: 26px;
-  color: #556; line-height: 1.6;
+  color: var(--color-text-secondary, rgba(255,255,255,.60)); line-height: 1.6;
 }
 .v2b-dmg-row { display: flex; justify-content: space-between; }
 .v2b-mp-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
@@ -1022,9 +1031,10 @@ function injectStyles(): void {
   border: 1px solid; font-size: 10px; cursor: default;
   transition: background .15s;
 }
-.v2b-mp-chip:hover { background: rgba(255,255,255,.07) !important; }
+.v2b-mp-chip:hover { background: var(--color-interaction-hover, rgba(255,255,255,.05)) !important; }
 .v2b-mp-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .v2b-mp-status {
+  /* 青绿=挂载点在线状态(信息色),保留 */
   background: rgba(0,229,204,.06); border: 1px solid rgba(0,229,204,.18);
   border-radius: 6px; padding: 6px 8px; margin-bottom: 4px;
 }

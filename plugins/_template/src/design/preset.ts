@@ -1,5 +1,5 @@
 /**
- * Tailwind preset that bridges the ForgeaX/Kubeela design tokens (`--fx-*`,
+ * Tailwind preset that bridges the ForgeaX/ForgeaX design tokens (`--fx-*`,
  * `--radius-*` from `tokens.css`) into Tailwind's semantic color/radius scale.
  *
  * Consumers spread this into their own `tailwind.config.ts`:
@@ -12,7 +12,7 @@
  *     content: ['./src/**\/*.{ts,tsx,html}', './index.html'],
  *   }
  *
- * The fallback values are the current Kubeela *dark* skin so a utility class
+ * The fallback values are the current ForgeaX *dark* skin so a utility class
  * still renders sanely if `tokens.css` has not loaded yet (no white flash).
  * The live `--fx-*` value always wins when present.
  *

@@ -131,6 +131,24 @@ function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8)
 }
 
+/** Fetch a same-origin asset URL and convert to a base64 data-URL (VFX
+ *  pipelines need data-URLs, not served paths). Best-effort; null on failure. */
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
 class GlobalStateManager {
   private design: CharacterDesignResult = {
     profile: { ...DEFAULT_PROFILE },
@@ -186,6 +204,65 @@ class GlobalStateManager {
     if (!slug || slug === this._slug) return
     this._slug = slug
     this.notify()
+  }
+
+  /**
+   * 跨工作台交接(走文件):wb-character 生成角色后把 active-character 指针落盘到
+   * .forgeax/games/<slug>/active-character.json。技能特效工作台挂载时按该指针
+   * 的 charId 从磁盘 manifest 把角色 portrait 读回来灌进 characterImage,让 VFX
+   * 管线立刻有角色输入,不再依赖与角色设计同源共享 localStorage。
+   *
+   * portrait 在磁盘上是图片字节(同源 /api/wb/character/asset?path=...),VFX 生成
+   * 要 base64 data-URL,所以 fetch → blob → dataURL 再 setCharacterImage。
+   * 已有同 charId 内存图时跳过磁盘重读。返回读到的 role,失败返回 null。
+   */
+  async loadCharacterFromDisk(charId: string): Promise<{ role: string } | null> {
+    if (!charId || !this._slug) return null
+    try {
+      const res = await fetch(
+        `/api/wb/character/characters/${encodeURIComponent(charId)}?slug=${encodeURIComponent(this._slug)}`,
+      )
+      if (!res.ok) return null
+      const j = await res.json() as {
+        manifest?: { charId?: string; name?: string; role?: string; portrait?: Record<string, string> }
+        urls?: Record<string, string>
+      }
+      const manifest = j.manifest
+      if (!manifest) return null
+      const role = manifest.role ?? 'hero'
+
+      this.updateProfile({
+        charId: manifest.charId ?? charId,
+        name: manifest.name ?? this.design.profile.name,
+        // wb-skill 的 CharacterRole 不含 'vehicle';载具不进技能特效管线,这里
+        // 只映射角色三态,其它一律 hero 兜底。
+        characterRole: (role === 'npc' || role === 'monster') ? role : 'hero',
+      })
+
+      const haveImage = !!this.design.characterImage
+      const sameChar = this.design.profile.charId === (manifest.charId ?? charId)
+      if (haveImage && sameChar) return { role }
+
+      const portraitUrl =
+        j.urls?.['portrait/front'] ??
+        (manifest.portrait?.front
+          ? `/api/wb/character/asset?path=${encodeURIComponent(
+              `.forgeax/games/${this._slug}/characters/${manifest.charId ?? charId}/${manifest.portrait.front}`,
+            )}`
+          : null)
+      if (!portraitUrl) return { role }
+
+      const dataUrl = await fetchAsDataUrl(portraitUrl)
+      if (dataUrl) {
+        this.design.characterImage = dataUrl
+        this.design.timestamp = Date.now()
+        this.save()
+        this.notify()
+      }
+      return { role }
+    } catch {
+      return null
+    }
   }
 
   /**

@@ -1,6 +1,6 @@
 /* =============================================================================
    FX BRIDGE LAYER — short `--fx-*` namespace consumed by the Tailwind preset
-   (see preset.ts). Maps the Kubeela semantic tokens onto the handful of names
+   (see preset.ts). Maps the ForgeaX semantic tokens onto the handful of names
    shadcn/Tailwind needs (background / foreground / border / accent / ...).
 
    This is the ONLY layer the framework migration adds. Components reference
@@ -9,7 +9,7 @@
    these (and the semantic layer) under a `[data-theme]` selector; no `.tsx`
    touched.
 
-   Kubeela is dark-only today, so the values live on `:root`.
+   ForgeaX is dark-only today, so the values live on `:root`.
    ============================================================================= */
 :root {
   --fx-bg:       var(--color-background-canvas);     /* page background  #0D0D0D */

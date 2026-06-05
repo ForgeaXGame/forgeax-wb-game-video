@@ -7,7 +7,7 @@ export const meta: PipelineMeta = {
   icon: '🦴',
   description: '拆分部件 → 自动绑骨 → 动作工坊 → 导出',
   version: '2.1.0',
-  placement: 'drawer',
+  placement: 'main',
   inputs: ['conceptImage'],
   outputs: ['spineSkel'],
   agentTags: ['character.spine', 'bone', 'animation'],

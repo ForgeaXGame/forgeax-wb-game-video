@@ -19,3 +19,6 @@
 [submodule "plugins/wb-reel"]
 	path = plugins/wb-reel
 	url = https://github.com/ForgeaXGame/forgeax-wb-reel.git
+[submodule "plugins/node-editor"]
+	path = plugins/node-editor
+	url = https://github.com/ForgeaXGame/forgeax-wb-node-editor.git

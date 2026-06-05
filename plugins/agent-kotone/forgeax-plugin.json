@@ -28,6 +28,7 @@
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
       "multiInstance": false,
+      "tools": ["narrative:*"],
       "defaultSkills": [
         { "source": "inline", "skillId": "write-character-bio" }
       ]

@@ -5,7 +5,7 @@
        import '@forgeax/design/tokens.css'
 
    Order matters: primitives → semantic → fx-bridge.
-   It carries the FULL Kubeela token system, so a plugin in its own iframe
+   It carries the FULL ForgeaX token system, so a plugin in its own iframe
    bundle gets every `--prim-* / --color-* / --fx-*` value without depending on
    the host injecting CSS at runtime (host only broadcasts the theme name).
    ============================================================================= */

@@ -18,6 +18,9 @@ export type PipelineOutput =
   | 'videoClip'
   | 'spineSkel'
 
+/** drawer 内的子分组：variant（生产变体，默认）/ aux（辅助工具）。 */
+export type PipelineGroup = 'variant' | 'aux'
+
 export interface PipelineMeta {
   id: string
   name: string
@@ -26,6 +29,8 @@ export interface PipelineMeta {
   version: string
   author?: string
   placement?: PipelinePlacement
+  /** drawer 内的子分组，仅当 placement === 'drawer' 有效，缺省 'variant'。 */
+  group?: PipelineGroup
   agentTags?: string[]
   inputs?: PipelineInput[]
   outputs?: PipelineOutput[]

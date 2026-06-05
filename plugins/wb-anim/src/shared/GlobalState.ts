@@ -131,6 +131,24 @@ function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8)
 }
 
+/** Fetch a same-origin image URL and convert to a base64 data-URL. Pipelines
+ *  that send images to the generate-image API need base64, not a URL. */
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
 class GlobalStateManager {
   private design: CharacterDesignResult = {
     profile: { ...DEFAULT_PROFILE },
@@ -145,6 +163,25 @@ class GlobalStateManager {
    * read this through getSlug() and refuse the upload if it's empty.
    */
   private _slug: string = ''
+
+  /**
+   * 上游(wb-character)交接过来的真实 role。wb-anim 的 CharacterRole 枚举不含
+   * 'vehicle',loadCharacterFromDisk 会把 vehicle 折叠成 'hero' 写进 profile,
+   * 所以 vehicle-design 管线无法从 profile 区分「上游是不是载具」。这里单独留一
+   * 份原始 role,供 vehicle-design 判断 characterImage 到底是不是一张载具设定图
+   * (是→可作参考图;不是→绝不可,否则角色色板会污染载具)。
+   */
+  private _upstreamRole: string = ''
+
+  /** 上游交接过来的真实 role(hero/npc/monster/vehicle),未交接时为空串。 */
+  getUpstreamRole(): string { return this._upstreamRole }
+
+  /** 直接设置上游 role。用于 manifest 写盘失败(charId 缺失)、loadCharacterFromDisk
+   *  拿不到 role 的兜底场景:此时仍用 handoff 信号里的 role 标记 upstream,
+   *  否则 vehicle-design 不会把 characterImage 同步成 designImage。 */
+  setUpstreamRole(role: string): void {
+    if (role) this._upstreamRole = role
+  }
 
   constructor() {
     this.load()
@@ -186,6 +223,73 @@ class GlobalStateManager {
     if (!slug || slug === this._slug) return
     this._slug = slug
     this.notify()
+  }
+
+  /**
+   * 跨工作台交接:wb-character「生成动画」→ 宿主把 { charId, role, slug } 写进
+   * localStorage 'forgeax:anim-handoff' 并切到本工作台。这里按 charId 从磁盘
+   * manifest 把角色 portrait 读回来灌进 characterImage,让各管线立刻有输入。
+   *
+   * portrait 在磁盘上是图片字节(同源 /api/wb/character/asset?path=...),但
+   * pixel-char 等管线生成时要 base64 data-URL(`designImage.replace(/^data:.../)`),
+   * 所以这里 fetch → blob → dataURL 再 setCharacterImage,不能直接塞 URL。
+   *
+   * 已经有同源 localStorage 同步过来的 characterImage 时(同一 charId、用户刚在
+   * 角色设计点的「生成动画」),跳过磁盘重读,避免覆盖更新的内存图。
+   *
+   * 返回读到的 role(供 main.ts 决定路由到哪条管线),失败返回 null。
+   */
+  async loadCharacterFromDisk(charId: string): Promise<{ role: string } | null> {
+    if (!charId || !this._slug) return null
+    try {
+      const res = await fetch(
+        `/api/wb/character/characters/${encodeURIComponent(charId)}?slug=${encodeURIComponent(this._slug)}`,
+      )
+      if (!res.ok) return null
+      const j = await res.json() as {
+        manifest?: { charId?: string; name?: string; role?: string; portrait?: Record<string, string> }
+        urls?: Record<string, string>
+      }
+      const manifest = j.manifest
+      if (!manifest) return null
+      const role = manifest.role ?? 'hero'
+      this._upstreamRole = role
+
+      // 把 charId / name / role 同步进本地 profile,后续管线 prompt 用得到。
+      this.updateProfile({
+        charId: manifest.charId ?? charId,
+        name: manifest.name ?? this.design.profile.name,
+        // wb-anim 的 CharacterRole 不含 'vehicle';vehicle 由 main.ts 直接路由到
+        // vehicle-design 管线、不进 profile.characterRole,这里只映射角色三态。
+        characterRole: (role === 'npc' || role === 'monster') ? role : 'hero',
+      })
+
+      // 已有同 charId 的内存图(localStorage 同步)就不重读磁盘。
+      const haveImage = !!this.design.characterImage
+      const sameChar = this.design.profile.charId === (manifest.charId ?? charId)
+      if (haveImage && sameChar) return { role }
+
+      const portraitUrl =
+        j.urls?.['portrait/front'] ??
+        (manifest.portrait?.front
+          ? `/api/wb/character/asset?path=${encodeURIComponent(
+              `.forgeax/games/${this._slug}/characters/${manifest.charId ?? charId}/${manifest.portrait.front}`,
+            )}`
+          : null)
+      if (!portraitUrl) return { role }
+
+      const dataUrl = await fetchAsDataUrl(portraitUrl)
+      if (dataUrl) {
+        // 直接写内存 + 通知,不触发 uploadAsset 回写(图本来就来自磁盘)。
+        this.design.characterImage = dataUrl
+        this.design.timestamp = Date.now()
+        this.save()
+        this.notify()
+      }
+      return { role }
+    } catch {
+      return null
+    }
   }
 
   /**

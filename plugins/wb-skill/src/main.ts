@@ -45,6 +45,11 @@ function applyPaneAttribute() {
 async function main() {
   applyPaneAttribute()
 
+  // Studio 把当前 game slug 拼进 iframe URL(?slug=)。bridge 的 studio:init 也会
+  // 带 slug,但那是异步的;跨工作台交接要尽早拿到 slug,所以先从 URL 兜底读一次。
+  const urlSlug = new URLSearchParams(location.search).get('slug')
+  if (urlSlug) globalState.setSlug(urlSlug)
+
   const bridge = new PlatformBridge()
   bridge.onMessage((msg: unknown) => {
     const m = msg as { type?: string; ctx?: { slug?: string | null } }
@@ -143,7 +148,55 @@ async function main() {
 
   import('./vfx2-bootstrap').catch(e => console.warn('[VFX2] bootstrap load failed:', e))
 
+  // 跨工作台交接(走文件):从工程目录的 active-character 指针读取上游角色设计
+  // 产出,按 charId 从磁盘 manifest 把角色 portrait 灌进 globalState(同时写回
+  // 'character-editor:global-design',vfx 管线的 CharacterState 直接读得到)。
+  // keep-alive 下本 iframe 可能早已 mount,宿主切过来会重写 handoff 信号触发
+  // 'storage' 事件,据此再消费一次。
+  void consumeCharacterHandoff()
+  window.addEventListener('storage', (ev: StorageEvent) => {
+    if (ev.key === ANIM_HANDOFF_KEY && ev.newValue) {
+      void consumeCharacterHandoff()
+    }
+  })
+
   console.log('[CharacterEditor] 就绪')
+}
+
+/** localStorage 快路径信号 key(宿主导航时写),与 interface / wb-anim 对齐。 */
+const ANIM_HANDOFF_KEY = 'forgeax:anim-handoff'
+
+/** 读工程目录 active-character 指针 + 加载上游角色。事实源是磁盘指针文件;
+ *  localStorage 信号只作快路径触发 + slug 兜底。 */
+async function consumeCharacterHandoff(): Promise<void> {
+  // 吃掉一次性快路径信号(取 slug),随即清掉。
+  let sigCharId = ''
+  try {
+    const raw = localStorage.getItem(ANIM_HANDOFF_KEY)
+    if (raw) {
+      try {
+        const sig = JSON.parse(raw) as { charId?: string; slug?: string }
+        if (sig.slug) globalState.setSlug(sig.slug)
+        if (sig.charId) sigCharId = sig.charId
+      } catch { /* ignore */ }
+      try { localStorage.removeItem(ANIM_HANDOFF_KEY) } catch { /* ignore */ }
+    }
+  } catch { /* unavailable */ }
+
+  const slug = globalState.getSlug()
+  if (!slug) return
+  let charId = sigCharId
+  try {
+    const res = await fetch(
+      `/api/wb/character/active-character?slug=${encodeURIComponent(slug)}`,
+    )
+    if (res.ok) {
+      const j = await res.json() as { charId?: string | null }
+      if (j.charId) charId = j.charId
+    }
+  } catch { /* server not ready — fall back to sig charId */ }
+  if (!charId) return
+  await globalState.loadCharacterFromDisk(charId)
 }
 
 main().catch((err) => {
