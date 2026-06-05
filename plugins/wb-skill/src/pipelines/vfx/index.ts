@@ -544,6 +544,8 @@ class VFXPipelineUI {
     this.left.innerHTML = ''
     const root = mk('div', 'vp')
 
+    root.appendChild(this.renderSidebarHeader())
+
     // Character status banner
     root.appendChild(this.renderCharacterBanner())
     const configuredCount = this.st.skills.filter(s => s.effectId).length
@@ -901,6 +903,15 @@ class VFXPipelineUI {
   }
 
   // ── Character banner ──────────────────────────────────────────────────────
+
+  private renderSidebarHeader(): HTMLElement {
+    const header = mk('div', 'vp-header')
+    header.innerHTML = `
+      <span class="vp-title">技能特效工作台</span>
+      <span class="vp-header-pill">技能特效</span>
+    `
+    return header
+  }
 
   private renderCharacterBanner(): HTMLElement {
     const profile  = readCharacterProfile()
@@ -1515,12 +1526,15 @@ function injectCSS(): void {
   let s = document.getElementById(CSS_ID) as HTMLStyleElement | null
   if (!s) { s = document.createElement('style'); s.id = CSS_ID; document.head.appendChild(s) }
   s.textContent = `
-.vp { display:flex;flex-direction:column;width:100%;min-height:max-content;overflow:visible;font-family:system-ui,sans-serif;padding:10px 10px 28px;gap:8px;box-sizing:border-box; }
+.vp { display:flex;flex-direction:column;width:100%;min-height:max-content;overflow:visible;font-family:system-ui,sans-serif;padding:0 10px 28px;gap:8px;box-sizing:border-box; }
 .vp::-webkit-scrollbar { width:6px;height:6px; }
 .vp::-webkit-scrollbar-track { background:transparent; }
 .vp::-webkit-scrollbar-thumb { background:rgba(212,255,72,.18);border-radius:999px; }
 .vp::-webkit-scrollbar-thumb:hover { background:rgba(212,255,72,.34); }
 .vp-empty { display:flex;flex-direction:column;align-items:center;gap:8px;padding:40px 20px;color:var(--text-secondary);text-align:center;font-size:13px; }
+.vp-header { display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.07); }
+.vp-title { font-size:15px;font-weight:700;color:#d4ff48;line-height:normal; }
+.vp-header-pill { margin-left:auto;padding:3px 8px;border:1px solid rgba(212,255,72,.28);border-radius:999px;background:rgba(212,255,72,.08);color:#d4ff48;font-size:11px;font-weight:700;line-height:1.2;letter-spacing:.04em;white-space:nowrap; }
 .vp-char-banner { padding:8px 10px;background:rgba(255,255,255,.018);border:1px solid rgba(255,255,255,.07);border-radius:10px;font-size:11px; }
 .vp-cb-row { display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.6; }
 .vp-cb-name { font-weight:700;color:var(--text-primary);font-size:12px; }
