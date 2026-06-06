@@ -366,12 +366,33 @@
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 15;
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--color-text-primary);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 255, 72, 0.24) transparent;
+}
+
+.editor-left::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.editor-left::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-left::-webkit-scrollbar-thumb {
+  background: rgba(212, 255, 72, 0.18);
+  border-radius: var(--radius-pill);
+}
+
+.editor-left::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 255, 72, 0.34);
 }
 
 .editor-left:empty::after {
@@ -893,7 +914,21 @@ body[data-pane="left"] .editor-left {
   position: static !important;
   top: 0 !important;
   width: 100% !important;
-  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  scrollbar-gutter: stable !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  padding-bottom: 16px !important;
   border-right: none !important;
 }
 
@@ -916,18 +951,15 @@ body[data-pane="center"] #viewport-wrap {
   inset: 0 !important;
 }
 
-/* ── Scrollbar(对齐 wb-reel 标杆) ─────────────────────────── */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+/* ── Scrollbar(对齐 Workbench 左侧边栏规范) ───────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-divider-default);
+  background: rgba(212, 255, 72, 0.18);
   border-radius: var(--radius-pill);
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-divider-strong);
-  background-clip: padding-box;
+  background: rgba(212, 255, 72, 0.34);
 }
 
 ::placeholder {

@@ -757,190 +757,243 @@ export class CharacterDesign {
   private buildLeft(): void {
     if (!this.leftEl) return
     const p = globalState.profile
+    const roleLabel = p.characterRole === 'npc'
+      ? '职业 NPC'
+      : p.characterRole === 'monster'
+        ? '怪物敌人'
+        : '主角英雄'
+    const identitySummary = p.name?.trim()
+      ? `${p.name.trim()} · ${roleLabel}`
+      : `未命名 · ${roleLabel}`
+    const world = WORLD_OPTIONS.find(o => o.id === p.worldSetting)
+    const worldLabel = world?.label ?? (p.worldSetting || '未选择世界观')
+    const style = ART_STYLE_OPTIONS.find(o => o.id === p.artStyle)
+    const styleLabel = p.artStyle === 'custom'
+      ? (p.artStyleCustom || '自定义画风')
+      : style?.label ?? '默认写实'
+    const professionSummary = p.characterRole === 'npc'
+      ? (p.npcOccupation || '未选择 NPC 职业')
+      : p.characterRole === 'monster'
+        ? [p.monsterCategory, p.monsterSubCategory, p.monsterRace].filter(Boolean).join(' / ') || '未选择怪物分类'
+        : `${p.charClass?.trim() || '未选择职业'} · ${p.combatType === 'ranged' ? '远程' : '近战'}`
+    const methodSummary = conceptGenButtonLabel(p.characterRole).replace(/^[^\s]+\s*/, '')
 
     this.leftEl.innerHTML = `
       <div class="cd-panel">
         <div class="cd-header">
           <span class="cd-header-title">角色概念设计</span>
-          <span class="cd-header-pill">技能角色</span>
+          <span class="cd-header-pill">${esc(roleLabel)}</span>
         </div>
 
         <div class="cd-form">
-          <div class="cd-field">
-            <label class="cd-label">角色名称</label>
-            <input class="cd-input" data-cd="name" type="text" placeholder="输入角色名称，如：焰影·洛" value="${esc(p.name)}" />
-          </div>
+          <details class="cd-workflow-card" open>
+            <summary class="cd-workflow-head">
+              <span class="cd-workflow-title"><span class="cd-step">1</span>基础设定</span>
+              <span class="cd-workflow-caret">⌄</span>
+            </summary>
+            <div class="cd-workflow-summary">${esc(identitySummary)}</div>
+            <div class="cd-workflow-body">
+              <div class="cd-field">
+                <label class="cd-label">角色名称</label>
+                <input class="cd-input" data-cd="name" type="text" placeholder="输入角色名称，如：焰影·洛" value="${esc(p.name)}" />
+              </div>
 
-          <div class="cd-field">
-            <label class="cd-label">角色定位 <span class="cd-optional">(主角英雄走完整战斗管线；职业 NPC 是普通路人；怪物是敌方生物/BOSS)</span></label>
-            <div class="cd-btn-group" data-group="role">
-              <button class="cd-chip ${(!p.characterRole || p.characterRole === 'hero') ? 'active' : ''}" data-val="hero">🦸 主角 / 英雄</button>
-              <button class="cd-chip ${p.characterRole === 'npc' ? 'active' : ''}" data-val="npc">🚶 职业 NPC / 路人</button>
-              <button class="cd-chip ${p.characterRole === 'monster' ? 'active' : ''}" data-val="monster">👾 怪物 / 敌人</button>
-            </div>
-          </div>
+              <div class="cd-field">
+                <label class="cd-label">角色定位 <span class="cd-optional">(主角 / NPC / 怪物)</span></label>
+                <div class="cd-btn-group" data-group="role">
+                  <button class="cd-chip ${(!p.characterRole || p.characterRole === 'hero') ? 'active' : ''}" data-val="hero">主角 / 英雄</button>
+                  <button class="cd-chip ${p.characterRole === 'npc' ? 'active' : ''}" data-val="npc">职业 NPC / 路人</button>
+                  <button class="cd-chip ${p.characterRole === 'monster' ? 'active' : ''}" data-val="monster">怪物 / 敌人</button>
+                </div>
+              </div>
 
-          <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
-            <label class="cd-label">形态 / 物种 <span class="cd-optional">(决定整套画风走向 — 非人形可参考空洞骑士 / Ori / Cuphead)</span></label>
-            <div class="cd-world-grid" data-group="bodytype">
-              ${BODY_TYPE_PRESETS.map(b => `<button class="cd-world-chip ${p.bodyType === b.id ? 'active' : ''}" data-val="${b.id}" title="${esc(b.hint)}\n参考：${esc(b.references)}"><span class="cd-world-icon">${b.icon}</span>${b.label}</button>`).join('')}
-            </div>
-          </div>
-
-          <div class="cd-field-row">
-            <div class="cd-field cd-field-half">
-              <label class="cd-label">性别</label>
-              <div class="cd-btn-group" data-group="gender">
-                <button class="cd-chip ${p.gender === 'male' ? 'active' : ''}" data-val="male">♂ 男</button>
-                <button class="cd-chip ${p.gender === 'female' ? 'active' : ''}" data-val="female">♀ 女</button>
+              <div class="cd-field-row">
+                <div class="cd-field cd-field-half">
+                  <label class="cd-label">性别</label>
+                  <div class="cd-btn-group" data-group="gender">
+                    <button class="cd-chip ${p.gender === 'male' ? 'active' : ''}" data-val="male">♂ 男</button>
+                    <button class="cd-chip ${p.gender === 'female' ? 'active' : ''}" data-val="female">♀ 女</button>
+                  </div>
+                </div>
+                <div class="cd-field cd-field-half">
+                  <label class="cd-label">年龄段</label>
+                  <select class="cd-select" data-cd="age">
+                    <option value="">选择年龄</option>
+                    ${AGE_OPTIONS.map(a => `<option value="${esc(a)}" ${p.age === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}
+                  </select>
+                </div>
               </div>
             </div>
-            <div class="cd-field cd-field-half">
-              <label class="cd-label">年龄段</label>
-              <select class="cd-select" data-cd="age">
-                <option value="">选择年龄</option>
-                ${AGE_OPTIONS.map(a => `<option value="${a}" ${p.age === a ? 'selected' : ''}>${a}</option>`).join('')}
-              </select>
+          </details>
+
+          <details class="cd-workflow-card">
+            <summary class="cd-workflow-head">
+              <span class="cd-workflow-title"><span class="cd-step">2</span>形态与世界</span>
+              <span class="cd-workflow-caret">⌄</span>
+            </summary>
+            <div class="cd-workflow-summary">${esc(worldLabel)} · ${esc(styleLabel)}</div>
+            <div class="cd-workflow-body">
+              <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
+                <label class="cd-label">形态 / 物种 <span class="cd-optional">(决定整套画风走向)</span></label>
+                <div class="cd-world-grid" data-group="bodytype">
+                  ${BODY_TYPE_PRESETS.map(b => `<button class="cd-world-chip ${p.bodyType === b.id ? 'active' : ''}" data-val="${esc(b.id)}" title="${esc(b.hint)}\n参考：${esc(b.references)}">${esc(b.label)}</button>`).join('')}
+                </div>
+              </div>
+
+              <div class="cd-field">
+                <label class="cd-label">世界观 / 风格</label>
+                <div class="cd-world-grid" data-group="world">
+                  ${WORLD_OPTIONS.map(w => `<button class="cd-world-chip ${p.worldSetting === w.id ? 'active' : ''}" data-val="${esc(w.id)}" title="${esc(w.desc)}">${esc(w.label)}</button>`).join('')}
+                </div>
+                <input class="cd-input cd-input-sm" data-cd="world-custom" type="text"
+                  placeholder="或自定义世界观..." value="${WORLD_OPTIONS.some(w => w.id === p.worldSetting) ? '' : esc(p.worldSetting)}" />
+              </div>
             </div>
-          </div>
+          </details>
 
-          <div class="cd-field">
-            <label class="cd-label">世界观 / 风格</label>
-            <div class="cd-world-grid" data-group="world">
-              ${WORLD_OPTIONS.map(w => `<button class="cd-world-chip ${p.worldSetting === w.id ? 'active' : ''}" data-val="${w.id}" title="${w.desc}"><span class="cd-world-icon">${w.icon}</span>${w.label}</button>`).join('')}
+          <details class="cd-workflow-card">
+            <summary class="cd-workflow-head">
+              <span class="cd-workflow-title"><span class="cd-step">3</span>职业与规则</span>
+              <span class="cd-workflow-caret">⌄</span>
+            </summary>
+            <div class="cd-workflow-summary">${esc(professionSummary)}</div>
+            <div class="cd-workflow-body">
+              <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
+                <label class="cd-label">职业 / 角色定位</label>
+                <div class="cd-class-grid" data-group="class">
+                  ${CLASS_OPTIONS.map(c => `<button class="cd-chip-sm ${p.charClass === c ? 'active' : ''}" data-val="${esc(c)}">${esc(c)}</button>`).join('')}
+                </div>
+                <input class="cd-input cd-input-sm" data-cd="class-custom" type="text"
+                  placeholder="或自定义职业..." value="${CLASS_OPTIONS.includes(p.charClass) ? '' : esc(p.charClass)}" />
+              </div>
+
+              <div class="cd-field" data-cd-role="npc-only" style="display:${p.characterRole === 'npc' ? '' : 'none'}">
+                <label class="cd-label">NPC 职业 <span class="cd-optional">(随「世界观」自动切换候选词表)</span></label>
+                <div class="cd-class-grid" data-group="npc-occupation">
+                  ${listNpcOccupations(p.worldSetting).map(o => `<button class="cd-chip-sm ${p.npcOccupation === o.zh ? 'active' : ''}" data-val="${esc(o.zh)}" title="${esc(o.en)}">${esc(o.zh)}</button>`).join('')}
+                </div>
+                <input class="cd-input cd-input-sm" data-cd="npc-occupation-custom" type="text"
+                  placeholder="或自定义 NPC 职业..." value="${listNpcOccupations(p.worldSetting).some(o => o.zh === p.npcOccupation) ? '' : esc(p.npcOccupation)}" />
+              </div>
+
+              <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
+                <label class="cd-label">战斗类型</label>
+                <div class="cd-btn-group" data-group="combat">
+                  <button class="cd-chip ${p.combatType === 'melee' ? 'active' : ''}" data-val="melee">近战</button>
+                  <button class="cd-chip ${p.combatType === 'ranged' ? 'active' : ''}" data-val="ranged">远程</button>
+                </div>
+              </div>
+
+              ${renderMonsterFields(p)}
             </div>
-            <input class="cd-input cd-input-sm" data-cd="world-custom" type="text"
-              placeholder="或自定义世界观..." value="${WORLD_OPTIONS.some(w => w.id === p.worldSetting) ? '' : esc(p.worldSetting)}" />
-          </div>
+          </details>
 
-          <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
-            <label class="cd-label">职业 / 角色定位</label>
-            <div class="cd-class-grid" data-group="class">
-              ${CLASS_OPTIONS.map(c => `<button class="cd-chip-sm ${p.charClass === c ? 'active' : ''}" data-val="${c}">${c}</button>`).join('')}
+          <details class="cd-workflow-card">
+            <summary class="cd-workflow-head">
+              <span class="cd-workflow-title"><span class="cd-step">4</span>画风与生成</span>
+              <span class="cd-workflow-caret">⌄</span>
+            </summary>
+            <div class="cd-workflow-summary">${esc(styleLabel)} · ${esc(methodSummary)}</div>
+            <div class="cd-workflow-body">
+              <div class="cd-field">
+                <label class="cd-label">画风风格 <span class="cd-optional">(可选 · 默认韩式写实)</span></label>
+                <div class="cd-world-grid" data-group="artstyle">
+                  <button class="cd-world-chip ${!p.artStyle ? 'active' : ''}" data-val="" title="韩式写实 DNF 风格">默认写实</button>
+                  ${ART_STYLE_OPTIONS.map(s => `<button class="cd-world-chip ${p.artStyle === s.id ? 'active' : ''}" data-val="${esc(s.id)}" title="${esc(s.hint)}">${esc(s.label)}</button>`).join('')}
+                  <button class="cd-world-chip ${p.artStyle === 'custom' ? 'active' : ''}" data-val="custom" title="自定义画风">自定义</button>
+                </div>
+                <input class="cd-input cd-input-sm" data-cd="artstyle-custom" type="text"
+                  placeholder="描述你想要的画风，例如：赛璐璐厚涂混合、90年代复古漫画风..."
+                  value="${esc(p.artStyleCustom)}"
+                  style="display:${p.artStyle === 'custom' ? '' : 'none'}" />
+              </div>
+
+              <div class="cd-field">
+                <label class="cd-label">补充描述 <span class="cd-optional">(可选)</span></label>
+                <textarea class="cd-textarea" data-cd="extra" rows="3"
+                  placeholder="补充外貌、性格、武器、配色等细节...&#10;例如：银白色长发，佩戴黑色面具，双持弯刀，暗红色披风">${esc(p.extraDesc)}</textarea>
+              </div>
+
+              <div class="cd-section cd-section-model">
+                <div class="cd-label">
+                  生图模型 <span class="cd-optional">(每套模型独立提示词)</span>
+                </div>
+                <div class="cd-btn-group" data-group="image-model">
+                  <button class="cd-chip ${globalState.getImageModel() === 'gemini' ? 'active' : ''}" data-val="gemini" title="Google Gemini 3 Pro Image（nanobanana-pro）· 速度快 · 擅长 booru/tag 风格">
+                    Gemini
+                  </button>
+                  <button class="cd-chip ${globalState.getImageModel() === 'gpt-image-2' ? 'active' : ''}" data-val="gpt-image-2" title="Azure OpenAI gpt-image-2 · 质量高 · 擅长自然语言描述 · ~60s">
+                    gpt-image-2
+                  </button>
+                </div>
+              </div>
+
+              <div class="cd-section">
+                <div class="cd-label">生成方式</div>
+                <div class="cd-method-row">
+                  <button class="cd-method active" data-method="text">AI 生成</button>
+                  <button class="cd-method" data-method="upload">图生图</button>
+                  <button class="cd-method" data-method="complete">补全设定</button>
+                  <button class="cd-method" data-method="direct">上传</button>
+                </div>
+              </div>
+
+              <div class="cd-method-body" data-body="text">
+                <div class="cd-gen-row">
+                  <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-text">
+                    ${conceptGenButtonLabel(p.characterRole)}
+                  </button>
+                </div>
+                <button class="cd-btn cd-btn-back" data-action="go-back" style="display:none;margin-top:6px">
+                  ← 返回上一步
+                </button>
+                <div class="cd-progress" data-cd="progress" style="display:none">
+                  <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
+                  <div class="cd-progress-text">生成中...</div>
+                </div>
+              </div>
+
+              <div class="cd-method-body" data-body="upload" style="display:none">
+                <div class="cd-drop" data-drop="ref">
+                  <div>拖拽参考图或点击上传</div>
+                  <div class="cd-drop-sub">AI 将参考图转换为 DNF 风格角色设定图</div>
+                </div>
+                <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-img2img" disabled>
+                  AI 风格转换
+                </button>
+                <div class="cd-progress" data-cd="progress-img" style="display:none">
+                  <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
+                  <div class="cd-progress-text">风格转换中...</div>
+                </div>
+              </div>
+
+              <div class="cd-method-body" data-body="complete" style="display:none">
+                <div class="cd-drop" data-drop="complete">
+                  <div>拖拽任意参考图或点击上传</div>
+                  <div class="cd-drop-sub">头像 / 草图 / 局部立绘 / 任意尺寸 — AI 会把这张图当作设计本身，<br/>只参考上面的「角色名称」做标签，其余字段从图里推断</div>
+                </div>
+                <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-complete" disabled>
+                  补全为完整设定图
+                </button>
+                <div class="cd-progress" data-cd="progress-complete" style="display:none">
+                  <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
+                  <div class="cd-progress-text">补全中...</div>
+                </div>
+              </div>
+
+              <div class="cd-method-body" data-body="direct" style="display:none">
+                <div class="cd-drop" data-drop="direct">
+                  <div>拖拽角色立绘到此处</div>
+                  <div class="cd-drop-sub">直接使用此图进入后续管线</div>
+                </div>
+              </div>
             </div>
-            <input class="cd-input cd-input-sm" data-cd="class-custom" type="text"
-              placeholder="或自定义职业..." value="${CLASS_OPTIONS.includes(p.charClass) ? '' : esc(p.charClass)}" />
-          </div>
-
-          <div class="cd-field" data-cd-role="npc-only" style="display:${p.characterRole === 'npc' ? '' : 'none'}">
-            <label class="cd-label">NPC 职业 <span class="cd-optional">(随「世界观」自动切换候选词表)</span></label>
-            <div class="cd-class-grid" data-group="npc-occupation">
-              ${listNpcOccupations(p.worldSetting).map(o => `<button class="cd-chip-sm ${p.npcOccupation === o.zh ? 'active' : ''}" data-val="${o.zh}" title="${esc(o.en)}">${o.zh}</button>`).join('')}
-            </div>
-            <input class="cd-input cd-input-sm" data-cd="npc-occupation-custom" type="text"
-              placeholder="或自定义 NPC 职业..." value="${listNpcOccupations(p.worldSetting).some(o => o.zh === p.npcOccupation) ? '' : esc(p.npcOccupation)}" />
-          </div>
-
-          <div class="cd-field" data-cd-role="hero-only" style="display:${p.characterRole === 'hero' || !p.characterRole ? '' : 'none'}">
-            <label class="cd-label">战斗类型</label>
-            <div class="cd-btn-group" data-group="combat">
-              <button class="cd-chip ${p.combatType === 'melee' ? 'active' : ''}" data-val="melee">⚔️ 近战</button>
-              <button class="cd-chip ${p.combatType === 'ranged' ? 'active' : ''}" data-val="ranged">🔫 远程</button>
-            </div>
-          </div>
-
-          ${renderMonsterFields(p)}
-
-          <div class="cd-field">
-            <label class="cd-label">画风风格 <span class="cd-optional">(可选 · 默认韩式写实)</span></label>
-            <div class="cd-world-grid" data-group="artstyle">
-              <button class="cd-world-chip ${!p.artStyle ? 'active' : ''}" data-val="" title="韩式写实 DNF 风格"><span class="cd-world-icon">🎮</span>默认写实</button>
-              ${ART_STYLE_OPTIONS.map(s => `<button class="cd-world-chip ${p.artStyle === s.id ? 'active' : ''}" data-val="${s.id}" title="${s.hint}"><span class="cd-world-icon">${s.icon}</span>${s.label}</button>`).join('')}
-              <button class="cd-world-chip ${p.artStyle === 'custom' ? 'active' : ''}" data-val="custom" title="自定义画风"><span class="cd-world-icon">✏️</span>自定义</button>
-            </div>
-            <input class="cd-input cd-input-sm" data-cd="artstyle-custom" type="text"
-              placeholder="描述你想要的画风，例如：赛璐璐厚涂混合、90年代复古漫画风..."
-              value="${esc(p.artStyleCustom)}"
-              style="display:${p.artStyle === 'custom' ? '' : 'none'}" />
-          </div>
-
-          <div class="cd-field">
-            <label class="cd-label">补充描述 <span class="cd-optional">(可选)</span></label>
-            <textarea class="cd-textarea" data-cd="extra" rows="3"
-              placeholder="补充外貌、性格、武器、配色等细节...&#10;例如：银白色长发，佩戴黑色面具，双持弯刀，暗红色披风">${esc(p.extraDesc)}</textarea>
-          </div>
-        </div>
-
-        <div class="cd-section cd-section-model">
-          <div class="cd-label">
-            生图模型 <span class="cd-optional">(全链路：概设 / 完整设定 / 视角 / 动画 / 载具 · 每套模型独立提示词)</span>
-          </div>
-          <div class="cd-btn-group" data-group="image-model">
-            <button class="cd-chip ${globalState.getImageModel() === 'gemini' ? 'active' : ''}" data-val="gemini" title="Google Gemini 3 Pro Image（nanobanana-pro）· 速度快 · 擅长 booru/tag 风格">
-              ✨ Gemini
-            </button>
-            <button class="cd-chip ${globalState.getImageModel() === 'gpt-image-2' ? 'active' : ''}" data-val="gpt-image-2" title="Azure OpenAI gpt-image-2 · 质量高 · 擅长自然语言描述 · ~60s">
-              🎨 gpt-image-2
-            </button>
-          </div>
-        </div>
-
-        <div class="cd-section">
-          <div class="cd-label">生成方式</div>
-          <div class="cd-method-row">
-            <button class="cd-method active" data-method="text">🤖 AI 生成</button>
-            <button class="cd-method" data-method="upload">🖼️ 图生图</button>
-            <button class="cd-method" data-method="complete">🪄 补全设定</button>
-            <button class="cd-method" data-method="direct">📤 上传</button>
-          </div>
-        </div>
-
-        <div class="cd-method-body" data-body="text">
-          <div class="cd-gen-row">
-            <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-text">
-              ${conceptGenButtonLabel(p.characterRole)}
-            </button>
-          </div>
-          <button class="cd-btn cd-btn-back" data-action="go-back" style="display:none;margin-top:6px">
-            ← 返回上一步
-          </button>
-          <div class="cd-progress" data-cd="progress" style="display:none">
-            <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
-            <div class="cd-progress-text">生成中...</div>
-          </div>
-        </div>
-
-        <div class="cd-method-body" data-body="upload" style="display:none">
-          <div class="cd-drop" data-drop="ref">
-            <div class="cd-drop-icon">📷</div>
-            <div>拖拽参考图或点击上传</div>
-            <div class="cd-drop-sub">AI 将参考图转换为 DNF 风格角色设定图</div>
-          </div>
-          <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-img2img" disabled>
-            🎨 AI 风格转换
-          </button>
-          <div class="cd-progress" data-cd="progress-img" style="display:none">
-            <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
-            <div class="cd-progress-text">风格转换中...</div>
-          </div>
-        </div>
-
-        <div class="cd-method-body" data-body="complete" style="display:none">
-          <div class="cd-drop" data-drop="complete">
-            <div class="cd-drop-icon">🪄</div>
-            <div>拖拽任意参考图或点击上传</div>
-            <div class="cd-drop-sub">头像 / 草图 / 局部立绘 / 任意尺寸 —  AI 会把这张图当作设计本身，<br/>只参考上面的「角色名称」做标签，其余（职业 / 世界观 / 画风 / 形态 等）全部从图里推断</div>
-          </div>
-          <button class="cd-btn cd-btn-primary cd-btn-gen" data-action="gen-complete" disabled>
-            🎨 补全为完整设定图
-          </button>
-          <div class="cd-progress" data-cd="progress-complete" style="display:none">
-            <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
-            <div class="cd-progress-text">补全中...</div>
-          </div>
-        </div>
-
-        <div class="cd-method-body" data-body="direct" style="display:none">
-          <div class="cd-drop" data-drop="direct">
-            <div class="cd-drop-icon">📤</div>
-            <div>拖拽角色立绘到此处</div>
-            <div class="cd-drop-sub">直接使用此图进入后续管线</div>
-          </div>
+          </details>
         </div>
 
         <div class="cd-history-section">
           <div class="cd-history-header">
-            <span class="cd-history-title">📂 历史概设</span>
+            <span class="cd-history-title">历史概设</span>
             <button class="cd-history-clear" data-action="clear-history">清空</button>
           </div>
           <div class="cd-history-list" data-cd="history"></div>
@@ -3388,11 +3441,85 @@ const DESIGN_CSS = `
   white-space: nowrap;
 }
 
-.cd-form { padding: 8px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cd-form { padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 8px; }
+.cd-workflow-card {
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.018);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.16);
+  overflow: hidden;
+}
+.cd-workflow-card[open] {
+  border-color: rgba(212,255,72,0.22);
+  background: rgba(212,255,72,0.025);
+}
+.cd-workflow-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 4px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.cd-workflow-head::-webkit-details-marker { display: none; }
+.cd-workflow-title {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.cd-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #071007;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 0 0 1px rgba(212,255,72,0.34), 0 0 10px rgba(212,255,72,0.12);
+}
+.cd-workflow-caret {
+  margin-left: auto;
+  color: rgba(212,255,72,0.72);
+  font-size: 13px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.cd-workflow-card[open] .cd-workflow-caret { transform: rotate(0); color: var(--accent); }
+.cd-workflow-summary {
+  padding: 0 10px 9px 35px;
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-workflow-card[open] .cd-workflow-summary { color: rgba(212,255,72,0.68); }
+.cd-workflow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0 10px 11px;
+}
+.cd-workflow-card:not([open]) .cd-workflow-body { display: none; }
 .cd-field { display: flex; flex-direction: column; gap: 4px; }
 .cd-field-row { display: flex; gap: 10px; }
-.cd-field-half { flex: 1; }
-.cd-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+.cd-field-half { flex: 1; min-width: 0; }
+.cd-label {
+  font-size: 11px; color: var(--text-secondary); text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
 .cd-optional { text-transform: none; opacity: 0.5; letter-spacing: 0; }
 
 .cd-input {
@@ -3408,6 +3535,11 @@ const DESIGN_CSS = `
   padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg-hover); color: var(--text-primary); font-size: 12px;
   font-family: inherit; outline: none; cursor: pointer; width: 100%;
+  color-scheme: dark;
+}
+.cd-select option {
+  background: #151811;
+  color: #f4f7ee;
 }
 
 .cd-btn-group { display: flex; gap: 4px; }
@@ -3439,20 +3571,20 @@ const DESIGN_CSS = `
   background: var(--bg-hover); color: var(--text-secondary); font-size: 11px;
   font-family: inherit; cursor: pointer; transition: all 0.15s;
 }
-.cd-world-icon { font-size: 13px; }
+.cd-world-icon { display: none; }
 .cd-world-chip:hover { border-color: var(--accent); color: var(--text-primary); }
 .cd-world-chip.active { background: var(--accent-dim, rgba(212,255,72,0.15)); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
-.cd-section { padding: 8px 16px 0; }
+.cd-section { padding: 0; }
 
 /* 全局生图模型切换器——放在「生成方式」正上方，视觉上稍微强调一下，
    让用户点「AI 生成 / 图生图 / …」之前就意识到"选错模型不同的提示词和
    费用"。用更柔和的浅色背景而不是强调色，避免喧宾夺主。 */
 .cd-section-model {
-  margin-top: 6px; padding: 10px 16px;
+  margin-top: 2px; padding: 9px 10px;
   background: rgba(212, 255, 72, 0.04);
-  border-top: 1px solid rgba(212, 255, 72, 0.12);
-  border-bottom: 1px solid rgba(212, 255, 72, 0.12);
+  border: 1px solid rgba(212, 255, 72, 0.12);
+  border-radius: 8px;
 }
 .cd-section-model .cd-btn-group { margin-top: 4px; }
 
@@ -3466,7 +3598,7 @@ const DESIGN_CSS = `
 .cd-method:hover { background: var(--bg-hover); color: var(--text-primary); }
 .cd-method.active { background: var(--bg-active); color: var(--accent); border-color: var(--accent); }
 
-.cd-method-body { padding: 10px 16px; }
+.cd-method-body { padding: 4px 0 0; }
 .cd-textarea {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg-hover); color: var(--text-primary); font-family: inherit; font-size: 12px;
