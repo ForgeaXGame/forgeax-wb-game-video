@@ -1,5 +1,6 @@
 // @source wb-character/src/pipelines/spine/editor/CharacterDesignTab.ts
 import type { StudioState, StudioTab, TabId, Profession } from './StudioState';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 export class CharacterDesignTab implements StudioTab {
   readonly id: TabId = 'design';
@@ -57,16 +58,16 @@ export class CharacterDesignTab implements StudioTab {
       <div class="sd-section">
         <div class="sd-section-title">② 角色生成</div>
         <div class="sd-method-tabs">
-          <button class="sd-method-tab active" data-method="text">💬 文字描述生成</button>
-          <button class="sd-method-tab" data-method="upload">🖼️ 上传图片风格化</button>
-          <button class="sd-method-tab" data-method="direct">📤 直接上传角色图</button>
+          <button class="sd-method-tab active" data-method="text">${spineBtnLabel('list', '文字描述生成')}</button>
+          <button class="sd-method-tab" data-method="upload">${spineBtnLabel('image', '上传图片风格化')}</button>
+          <button class="sd-method-tab" data-method="direct">${spineBtnLabel('upload', '直接上传角色图')}</button>
         </div>
 
         <div class="sd-method-panel" id="sd-method-text">
           <textarea class="sd-prompt" id="sd-text-prompt" rows="4"
             placeholder="描述你想要的角色，例如：&#10;一个穿着暗红色铠甲的骑士，持大剑，银色护甲，黑色披风...&#10;&#10;提示：会自动补充游戏角色风格化描述"></textarea>
           <div class="sd-gen-row">
-            <button class="sd-gen-btn" id="sd-gen-text">🎨 复制提示词 + 生成路径</button>
+            <button class="sd-gen-btn" id="sd-gen-text">${spineBtnLabel('sparkles', '复制提示词 + 生成路径')}</button>
           </div>
           <div class="sd-gen-hint">
             复制后在 Cursor Agent 中粘贴执行，或直接上传已有角色图
@@ -75,20 +76,20 @@ export class CharacterDesignTab implements StudioTab {
 
         <div class="sd-method-panel" id="sd-method-upload" style="display:none">
           <div class="sd-upload-zone" id="sd-upload-ref">
-            <div class="sd-upload-hint">📷 拖拽图片到此处，或点击上传</div>
+            <div class="sd-upload-hint">${spineIcon('image', 'spine-icon-svg')} 拖拽图片到此处，或点击上传</div>
             <div class="sd-upload-sub">支持头像、全身照、二次元图片</div>
           </div>
           <textarea class="sd-prompt" id="sd-style-prompt" rows="2"
             placeholder="风格化指令（可选）：例如 像素风、赛博朋克风格..."></textarea>
           <div class="sd-gen-row">
-            <button class="sd-gen-btn" id="sd-gen-img2img" disabled>🎨 复制图生图提示词</button>
+            <button class="sd-gen-btn" id="sd-gen-img2img" disabled>${spineBtnLabel('sparkles', '复制图生图提示词')}</button>
           </div>
           <div class="sd-gen-hint">将上传的图片与提示词一起发给 Cursor Agent 进行风格化</div>
         </div>
 
         <div class="sd-method-panel" id="sd-method-direct" style="display:none">
           <div class="sd-upload-zone" id="sd-upload-direct">
-            <div class="sd-upload-hint">📤 拖拽角色图片到此处</div>
+            <div class="sd-upload-hint">${spineIcon('upload', 'spine-icon-svg')} 拖拽角色图片到此处</div>
             <div class="sd-upload-sub">直接使用此图作为角色立绘，进入爆炸图转换</div>
           </div>
         </div>
@@ -104,13 +105,13 @@ export class CharacterDesignTab implements StudioTab {
       <div class="sd-preview-title">角色预览</div>
       <div class="sd-preview" id="sd-preview" style="flex:1;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);border-radius:10px;border:1px solid rgba(232,196,138,0.1);overflow:hidden;">
         <div class="sd-preview-empty">
-          <div class="sd-preview-empty-icon">🖼️</div>
+          <div class="sd-preview-empty-icon">${spineIcon('image')}</div>
           <div>选择生成方式后预览角色</div>
           <div class="sd-preview-tip">支持上传任意图片作为角色</div>
         </div>
       </div>
       <div class="sd-preview-actions" id="sd-preview-actions" style="display:none">
-        <button class="sd-action-btn" id="sd-clear">🗑️ 清除</button>
+        <button class="sd-action-btn" id="sd-clear">${spineBtnLabel('trash', '清除')}</button>
         <button class="sd-action-btn sd-action-primary" id="sd-confirm">确认 → 进入爆炸图</button>
       </div>
     `;
@@ -225,7 +226,7 @@ export class CharacterDesignTab implements StudioTab {
     const preview = this.q('#sd-preview') as HTMLElement;
     preview.innerHTML = `
       <div class="sd-preview-empty">
-        <div class="sd-preview-empty-icon">🖼️</div>
+        <div class="sd-preview-empty-icon">${spineIcon('image')}</div>
         <div>选择生成方式后预览角色</div>
       </div>
     `;

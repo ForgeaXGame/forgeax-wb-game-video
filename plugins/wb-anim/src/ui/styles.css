@@ -219,7 +219,26 @@
 }
 
 .pipeline-tab .tab-icon {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pipeline-icon-svg {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pipeline-loading-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .pipeline-tab.design-tab.has-char::after {
@@ -327,8 +346,9 @@
 }
 
 .pipeline-drawer-icon {
-  font-size: 18px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-top: 1px;
   flex-shrink: 0;
   color: var(--color-icon-secondary);
@@ -366,12 +386,33 @@
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 15;
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--color-text-primary);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 255, 72, 0.24) transparent;
+}
+
+.editor-left::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.editor-left::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-left::-webkit-scrollbar-thumb {
+  background: rgba(212, 255, 72, 0.18);
+  border-radius: var(--radius-pill);
+}
+
+.editor-left::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 255, 72, 0.34);
 }
 
 .editor-left:empty::after {
@@ -414,9 +455,17 @@
 
 .editor-center-overlay.active {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: stretch;
   pointer-events: auto;
+}
+
+/* 管线中心内容必须铺满 overlay；否则 row flex + justify center 会把子节点压成内容宽度 */
+.editor-center-overlay.active > * {
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 .editor-center-toolbar {
@@ -821,9 +870,40 @@
 }
 
 /* ── Spine step navigation (embedded in left panel) ──────────── */
+.spine-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.spine-header-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #d4ff48;
+  line-height: normal;
+}
+
+.spine-header-pill {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(212, 255, 72, 0.28);
+  border-radius: 999px;
+  background: rgba(212, 255, 72, 0.08);
+  color: #d4ff48;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .spine-step-nav {
   display: flex;
-  border-bottom: 1px solid var(--color-border-default);
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   background: var(--color-background-base);
   flex-shrink: 0;
   overflow-x: auto;
@@ -832,18 +912,18 @@
 .spine-step-btn {
   flex: 1;
   min-width: 0;
-  padding: 10px 4px;
-  border: none;
-  background: transparent;
+  padding: 7px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-family: inherit;
   cursor: pointer;
   text-align: center;
   transition:
     background var(--motion-duration-instant) var(--motion-ease-standard),
     color      var(--motion-duration-instant) var(--motion-ease-standard);
-  border-bottom: 2px solid transparent;
   white-space: nowrap;
 }
 
@@ -854,25 +934,47 @@
 
 .spine-step-btn.active {
   color: var(--color-brand-primary);
-  border-bottom-color: var(--color-brand-primary);
-  background: var(--color-interaction-selected-brand);
+  border-color: rgba(212, 255, 72, 0.26);
+  background: rgba(212, 255, 72, 0.08);
   font-weight: 600;
 }
 
 .spine-step-btn.completed {
-  color: var(--color-status-success);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 22%, transparent);
+  color: color-mix(in srgb, var(--color-brand-primary) 55%, var(--color-text-tertiary));
+  background: color-mix(in srgb, var(--color-brand-primary) 4%, transparent);
 }
 
 .spine-step-btn .step-icon {
-  display: block;
-  font-size: 16px;
+  display: inline-flex;
+  justify-content: center;
   margin-bottom: 2px;
+}
+
+.spine-icon-svg {
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .spine-left-body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.spine-center-view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ── Split-surface gating ─────────────────────────────────────────
@@ -893,7 +995,15 @@ body[data-pane="left"] .editor-left {
   position: static !important;
   top: 0 !important;
   width: 100% !important;
-  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  scrollbar-gutter: stable !important;
+  overscroll-behavior: contain !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
   border-right: none !important;
 }
 
@@ -916,18 +1026,15 @@ body[data-pane="center"] #viewport-wrap {
   inset: 0 !important;
 }
 
-/* ── Scrollbar(对齐 wb-reel 标杆) ─────────────────────────── */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+/* ── Scrollbar(对齐 Workbench 左侧栏规范) ─────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-divider-default);
+  background: rgba(212, 255, 72, 0.18);
   border-radius: var(--radius-pill);
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-divider-strong);
-  background-clip: padding-box;
+  background: rgba(212, 255, 72, 0.34);
 }
 
 ::placeholder {
@@ -938,4 +1045,55 @@ body[data-pane="center"] #viewport-wrap {
 ::selection {
   background: rgba(212, 255, 72, 0.25);
   color: var(--color-text-primary);
+}
+
+/* ── Toast 通知（符合 Workbench floating 层规范）──────────────── */
+.sd-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  max-width: 320px;
+  width: max-content;
+
+  background: var(--color-background-floating, #333333);
+  border: 1px solid var(--color-border-default, #404040);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text-secondary, rgba(255,255,255,0.6));
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: center;
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.sd-toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 成功 toast（含 ✅ 前缀时）自动高亮品牌色 */
+.sd-toast.sd-toast--success {
+  border-color: rgba(212, 255, 72, 0.3);
+  color: rgba(212, 255, 72, 0.9);
+}
+
+/* 错误 toast */
+.sd-toast.sd-toast--error {
+  border-color: rgba(255, 80, 80, 0.3);
+  color: rgba(255, 128, 128, 0.9);
 }

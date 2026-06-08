@@ -8,6 +8,7 @@ import { AnimWorkshopTab } from './AnimWorkshopTab';
 import { GameUploadTab } from './GameUploadTab';
 import { studioSave, studioLoad, studioDelete, EDITOR_STATE_KEY } from './StudioStorage';
 import { parseSpineJson, computeWorldTransforms, applyIKConstraints } from './SpineDataParser';
+import { spineIcon } from './spine-icons';
 
 const CSS_ID = 'spine-editor-css';
 
@@ -133,7 +134,7 @@ export class SpineEditor {
     for (const meta of TAB_META) {
       const btn = document.createElement('button');
       btn.className = 'se-act-btn';
-      btn.innerHTML = `<span>${meta.icon}</span><span class="se-act-label">${meta.label}</span>`;
+      btn.innerHTML = `<span>${spineIcon(meta.id, 'se-icon-svg')}</span><span class="se-act-label">${meta.label}</span>`;
       btn.addEventListener('click', () => this.switchTab(meta.id));
       actBar.appendChild(btn);
       this.actBtns.set(meta.id, btn);
@@ -221,7 +222,7 @@ export class SpineEditor {
       const step = document.createElement('span');
       step.className = 'se-step';
       step.dataset.tabId = meta.id;
-      step.innerHTML = `${meta.icon} ${meta.label}`;
+      step.innerHTML = `${spineIcon(meta.id, 'se-icon-svg')} ${meta.label}`;
       step.addEventListener('click', () => this.switchTab(meta.id));
       steps.appendChild(step);
 
@@ -240,7 +241,7 @@ export class SpineEditor {
 
     const resetBtn = document.createElement('button');
     resetBtn.className = 'studio-topbar-btn';
-    resetBtn.textContent = '🗑️ 重置';
+    resetBtn.innerHTML = `${spineIcon('trash', 'se-icon-svg')} 重置`;
     resetBtn.title = '清除所有数据重新开始';
     resetBtn.addEventListener('click', () => {
       if (confirm('确定要清除所有数据并重新开始？')) this.resetAll();
@@ -401,6 +402,12 @@ const STUDIO_CSS = `
   font-family: 'Orbitron',monospace; font-size: 13px; font-weight: 700;
   color: var(--color-brand-primary); letter-spacing: 2px; white-space: nowrap;
 }
+.se-icon-svg {
+  width: 16px; height: 16px;
+  display: inline-block; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 .se-topbar-steps {
   display: flex; align-items: center; gap: 2px; margin: 0 auto;
 }
@@ -412,7 +419,7 @@ const STUDIO_CSS = `
 }
 .se-step:hover { color: var(--color-text-secondary); }
 .se-step.active { color: var(--color-brand-primary); background: var(--color-interaction-selected-brand); }
-.se-step.completed { color: var(--color-status-success); }
+.se-step.completed { color: color-mix(in srgb, var(--color-brand-primary) 55%, var(--color-text-tertiary)); }
 .se-step-arrow { color: color-mix(in srgb, var(--color-brand-primary) 15%, transparent); font-size: 14px; }
 .se-topbar-actions { display: flex; gap: 6px; align-items: center; }
 
@@ -421,6 +428,7 @@ const STUDIO_CSS = `
   background: color-mix(in srgb, var(--color-status-error) 6%, transparent); border: 1px solid color-mix(in srgb, var(--color-status-error) 20%, transparent);
   color: var(--color-status-error); border-radius: 4px; cursor: pointer;
   font-family: inherit; transition: background 0.15s;
+  display: inline-flex; align-items: center; gap: 5px;
 }
 .studio-topbar-btn:hover { background: color-mix(in srgb, var(--color-status-error) 15%, transparent); }
 .studio-close-btn {
@@ -455,11 +463,13 @@ const STUDIO_CSS = `
   color: var(--color-brand-primary); background: var(--color-interaction-selected-brand);
   border-left-color: var(--color-brand-primary);
 }
-.se-act-btn.completed { color: var(--color-status-success); }
+.se-act-btn.completed { color: color-mix(in srgb, var(--color-brand-primary) 55%, var(--color-text-tertiary)); }
 .se-act-label {
   font-size: 8px; font-weight: 600; letter-spacing: 0.5px;
   line-height: 1; margin-top: 1px;
 }
+.se-act-btn .se-icon-svg { width: 15px; height: 15px; }
+.se-step .se-icon-svg { width: 13px; height: 13px; }
 
 /* ═══════════════════ Side panel ═══════════════════ */
 .se-side-panel {
@@ -565,7 +575,9 @@ const STUDIO_CSS = `
   border: 1px solid var(--color-brand-primary); color: var(--color-text-on-bright-primary);
   border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s;
   position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
+.sd-btn-icon { width: 15px; height: 15px; flex-shrink: 0; }
 .sd-gen-btn:hover:not(:disabled) { background: var(--color-brand-primary-hover); transform: translateY(-1px); }
 .sd-gen-btn:active:not(:disabled) { transform: scale(0.97); }
 .sd-gen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -603,17 +615,45 @@ const STUDIO_CSS = `
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   color: var(--color-text-tertiary); font-size: 13px;
 }
-.sd-preview-empty-icon { font-size: 48px; }
+.sd-preview-empty-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; opacity: 0.35;
+}
+.sd-preview-empty-icon .spine-icon-svg { width: 40px; height: 40px; }
+.sd-preview-tip { font-size: 11px; color: var(--color-text-tertiary); }
 .sd-preview-actions { display: flex; gap: 8px; }
 .sd-action-btn {
   flex: 1; padding: 10px; font-size: 13px; font-weight: 600;
-  background: var(--color-interaction-selected-brand); border: 1px solid color-mix(in srgb, var(--color-brand-primary) 25%, transparent);
-  color: var(--color-brand-primary); border-radius: 6px; cursor: pointer;
+  background: transparent; border: 1px solid color-mix(in srgb, var(--color-brand-primary) 22%, transparent);
+  color: var(--color-text-secondary); border-radius: 6px; cursor: pointer;
   font-family: inherit; transition: all 0.15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
-.sd-action-btn:hover:not(:disabled) { background: var(--color-interaction-selected-brand); transform: translateY(-1px); }
+.sd-action-btn:hover:not(:disabled) {
+  background: var(--color-interaction-hover);
+  color: var(--color-brand-primary);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 38%, transparent);
+}
 .sd-action-btn:active:not(:disabled) { transform: scale(0.97); }
-.sd-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.sd-action-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.sd-btn-ghost {
+  width: 100%; flex: unset; padding: 7px 10px; font-size: 12px; font-weight: 500;
+  background: transparent; border-color: var(--color-border-subtle); color: var(--color-text-tertiary);
+}
+.sd-btn-ghost:hover:not(:disabled) {
+  background: var(--color-interaction-hover); color: var(--color-text-secondary);
+  border-color: var(--color-border-default);
+}
+.sd-step-btn {
+  width: 100%; flex: unset; padding: 8px 10px; font-size: 12px; font-weight: 600;
+  background: transparent; color: var(--color-text-secondary);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 16%, transparent);
+}
+.sd-step-btn:not(:disabled):hover {
+  background: var(--color-interaction-hover); color: var(--color-brand-primary);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 32%, transparent);
+}
+.sd-step-btn .sd-btn-icon { opacity: 0.8; }
 .sd-action-primary {
   background: color-mix(in srgb, var(--color-status-success) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-status-success) 40%, transparent); color: var(--color-status-success);
@@ -625,19 +665,24 @@ const STUDIO_CSS = `
   position: absolute; bottom: 16px; right: 16px; z-index: 20;
 }
 .studio-next-btn {
-  padding: 10px 28px; font-size: 14px; font-weight: 600;
-  letter-spacing: 2px; border: 1px solid var(--color-brand-primary);
-  background: var(--color-brand-primary);
-  color: var(--color-text-on-bright-primary); border-radius: 6px; cursor: pointer;
+  width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.5px; border-radius: 6px; cursor: pointer;
   transition: all 0.2s; font-family: inherit;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  border: 1px solid color-mix(in srgb, var(--color-brand-primary) 22%, transparent);
+  background: transparent; color: var(--color-text-tertiary);
 }
-.studio-next-btn:hover:not(:disabled) {
+.studio-next-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.studio-next-btn:not(:disabled) {
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary);
+  color: var(--color-text-on-bright-primary);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.22);
+}
+.studio-next-btn:not(:disabled):hover {
   background: var(--color-brand-primary-hover);
-  border-color: var(--color-brand-primary-hover); box-shadow: 0 4px 20px color-mix(in srgb, var(--color-brand-primary) 15%, transparent);
+  border-color: var(--color-brand-primary-hover);
   transform: translateY(-1px);
 }
-.studio-next-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ═══════════════════ Tab 2: Explosion ═══════════════════ */
 .expl-sidebar-scroll {
@@ -671,12 +716,28 @@ const STUDIO_CSS = `
 .expl-info-col {
   display: none;
 }
-.expl-tmpl-preview {
-  background: var(--color-background-canvas); border-radius: 6px; overflow: hidden;
-  border: 1px solid var(--color-border-subtle); max-height: 240px;
+.expl-tmpl-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.expl-tmpl-img { display: block; width: 100%; height: auto; object-fit: contain; image-rendering: pixelated; }
-.expl-tmpl-info { font-size: 11px; color: var(--color-text-secondary); margin-top: 4px; }
+.expl-tmpl-preview {
+  flex-shrink: 0;
+  background: var(--color-background-canvas);
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  overflow: auto;
+  max-height: min(520px, 52vh);
+}
+.expl-tmpl-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.expl-tmpl-info { font-size: 10px; color: var(--color-text-tertiary); text-align: center; }
 .expl-tmpl-info code { color: var(--color-brand-primary); }
 .expl-tmpl-warn { color: var(--color-status-warning); font-weight: 600; }
 .expl-parts-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
@@ -707,7 +768,34 @@ const STUDIO_CSS = `
   width: 16px; height: 16px; border-radius: 50%; font-size: 9px; font-weight: 700;
   background: var(--color-interaction-selected-brand); color: var(--color-brand-primary); margin-right: 4px;
 }
-.expl-actions { display: flex; flex-direction: column; gap: 8px; }
+.expl-actions { display: flex; flex-direction: column; gap: 10px; }
+.expl-actions-primary { display: flex; flex-direction: column; gap: 6px; }
+.expl-actions-steps {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px; border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-background-canvas);
+}
+.expl-actions-steps-label {
+  font-size: 10px; font-weight: 600; color: var(--color-text-tertiary);
+  letter-spacing: 0.4px; margin-bottom: 2px;
+}
+.expl-section-row { display: flex; align-items: center; gap: 6px; }
+.expl-section-row .sd-section-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.expl-gender-toggle { margin-left: auto; display: flex; gap: 2px; }
+.expl-gender-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-family: inherit;
+  border: 1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent);
+  background: transparent; color: var(--color-text-tertiary); transition: all 0.15s;
+}
+.expl-gender-btn.expl-gender-active {
+  border-color: color-mix(in srgb, var(--color-brand-primary) 35%, transparent);
+  background: var(--color-interaction-selected-brand); color: var(--color-brand-primary);
+}
+.expl-gender-icon { width: 11px; height: 11px; }
+.expl-refresh-btn { font-size: 10px; padding: 2px 8px; margin-left: auto; flex: 0 0 auto; }
+.expl-arrow-icon { width: 28px; height: 28px; opacity: 0.35; }
 .expl-scale-info {
   font-size: 10px; color: var(--color-text-tertiary); padding: 0 4px;
   font-family: 'Orbitron',monospace; min-height: 14px;
@@ -862,6 +950,7 @@ const STUDIO_CSS = `
   border-radius: 6px; padding: 3px; backdrop-filter: blur(6px);
 }
 .ab-edit-mode-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   padding: 5px 14px; font-size: 12px; font-weight: 600;
   border: none; border-radius: 4px; cursor: pointer;
   background: transparent; color: var(--color-text-secondary);
@@ -876,7 +965,11 @@ const STUDIO_CSS = `
   position: absolute; display: flex; flex-direction: column; align-items: center; gap: 8px;
   color: var(--color-text-tertiary); font-size: 13px; pointer-events: none;
 }
-.ab-preview-empty-icon { font-size: 48px; }
+.ab-preview-empty-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; opacity: 0.35;
+}
+.ab-preview-empty-icon .spine-icon-svg { width: 40px; height: 40px; }
 .ab-preview-empty-sub { font-size: 11px; color: var(--color-text-disabled); }
 
 .ab-sidebar-section {
@@ -1041,6 +1134,11 @@ const STUDIO_CSS = `
   background: var(--color-interaction-selected-brand); border: 1px solid color-mix(in srgb, var(--color-brand-primary) 15%, transparent);
   color: var(--color-text-secondary); border-radius: 4px; cursor: pointer;
   transition: all 0.15s; font-family: inherit; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
+.aw-footer-next {
+  padding: 8px 12px; margin-top: auto;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .aw-source-btn:hover { background: var(--color-interaction-selected-brand); color: var(--color-brand-primary); }
 .aw-source-ai { border-color: color-mix(in srgb, var(--color-brand-primary) 25%, transparent); color: var(--color-brand-primary); }
@@ -1120,7 +1218,18 @@ const STUDIO_CSS = `
 
 /* ═══════════════════ Tab 5: Upload ═══════════════════ */
 .gu-header { text-align: center; }
-.gu-title { font-size: 24px; font-weight: 700; color: var(--color-brand-primary); margin-bottom: 4px; }
+.gu-title {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 18px; font-weight: 700; color: var(--color-brand-primary); margin-bottom: 4px;
+}
+.gu-title-icon { width: 20px; height: 20px; }
+.gu-check-svg { width: 14px; height: 14px; flex-shrink: 0; }
+.gu-check-svg.done { stroke: var(--color-status-success); }
+.gu-play-btn {
+  background: color-mix(in srgb, var(--color-status-success) 18%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-status-success) 40%, transparent) !important;
+  color: var(--color-status-success) !important;
+}
 .gu-subtitle { font-size: 13px; color: var(--color-text-secondary); }
 .gu-checklist { display: flex; flex-direction: column; gap: 8px; }
 .gu-check-item {
@@ -1195,6 +1304,7 @@ const STUDIO_CSS = `
   background: none; border: none; border-bottom: 2px solid transparent;
   color: var(--color-text-secondary); cursor: pointer; font-family: inherit;
   transition: all 0.15s; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
 }
 .se-left-tab:hover { color: var(--color-brand-primary); background: var(--color-interaction-hover); }
 .se-left-tab.active { color: var(--color-brand-primary); border-bottom-color: var(--color-brand-primary); background: var(--color-interaction-selected-brand); }
@@ -1420,6 +1530,7 @@ const STUDIO_CSS = `
 }
 .se-tmpl-title { font-size: 14px; font-weight: 700; color: var(--color-brand-primary); font-family: 'Orbitron', monospace; }
 .se-tmpl-import-btn {
+  display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer;
   background: var(--color-brand-primary); border: 1px solid var(--color-brand-primary);
   color: var(--color-text-on-bright-primary); transition: background 0.15s;
@@ -1574,8 +1685,10 @@ const STUDIO_CSS = `
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brand-primary) 25%, transparent) inset;
 }
 .spine-step-btn.completed {
-  border-color: color-mix(in srgb, var(--color-status-success) 35%, transparent);
-  color: var(--color-status-success);
+  /* 已完成态：用品牌色降调，区别于 active（当前），也区别于 status-success（操作成功反馈） */
+  border-color: color-mix(in srgb, var(--color-brand-primary) 22%, transparent);
+  color: color-mix(in srgb, var(--color-brand-primary) 55%, var(--color-text-tertiary));
+  background: color-mix(in srgb, var(--color-brand-primary) 4%, transparent);
 }
 .spine-step-btn .step-icon { font-size: 14px; line-height: 1; }
 .spine-left-body { padding: 4px 0; }

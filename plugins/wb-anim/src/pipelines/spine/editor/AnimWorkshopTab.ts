@@ -9,6 +9,7 @@ import { AIAnimPanel } from './AIAnimPanel';
 import { TemplateLibrary, cropAtlasRegions } from './TemplateLibrary';
 import type { SkeletonTemplate } from './TemplateLibrary';
 import { parseSpineJson } from './SpineDataParser';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 interface BoneSnapshot {
   bones: Map<string, {
@@ -106,16 +107,16 @@ export class AnimWorkshopTab implements StudioTab {
   private buildUI(): void {
     this.sidePanel.innerHTML = `
       <div class="se-left-tabs">
-        <button class="se-left-tab active" data-tab="anims">🎬 动作库</button>
-        <button class="se-left-tab" data-tab="bones">🦴 骨骼树</button>
-        <button class="se-left-tab" data-tab="templates">📂 模板</button>
+        <button class="se-left-tab active" data-tab="anims">${spineBtnLabel('anim', '动作库')}</button>
+        <button class="se-left-tab" data-tab="bones">${spineBtnLabel('bone', '骨骼树')}</button>
+        <button class="se-left-tab" data-tab="templates">${spineBtnLabel('folder', '模板')}</button>
       </div>
       <div class="aw-anims-wrap se-left-tab-content" id="aw-anims-wrap" style="display:block">
         <div class="aw-anim-source-bar">
           <div class="aw-source-title">动作来源</div>
           <div class="aw-source-btns">
-            <button class="aw-source-btn" id="aw-import-json">📁 导入JSON动作包</button>
-            <button class="aw-source-btn aw-source-ai" id="aw-ai-gen-btn">🤖 AI 生成动画</button>
+            <button class="aw-source-btn" id="aw-import-json">${spineBtnLabel('folder', '导入JSON动作包')}</button>
+            <button class="aw-source-btn aw-source-ai" id="aw-ai-gen-btn">${spineBtnLabel('bot', 'AI 生成动画')}</button>
           </div>
         </div>
         <div class="aw-anim-list-area" id="aw-anim-list-area">
@@ -124,7 +125,7 @@ export class AnimWorkshopTab implements StudioTab {
       </div>
       <div class="aw-bone-wrap se-left-tab-content" id="aw-bone-wrap" style="display:none"></div>
       <div class="aw-template-wrap se-left-tab-content" id="aw-template-wrap" style="display:none"></div>
-      <div style="padding:8px 12px;margin-top:auto;border-top:1px solid rgba(232,196,138,0.1);">
+      <div class="aw-footer-next">
         <button class="studio-next-btn" id="aw-next-step" style="width:100%;">确认 → 上传游戏</button>
       </div>
     `;
@@ -143,7 +144,7 @@ export class AnimWorkshopTab implements StudioTab {
       <span class="se-tb-zoom-label" id="aw-zoom-label">150%</span>
       <button class="se-tb-btn se-tb-zoom-btn" id="aw-zoom-in">+</button>
       <span class="se-tb-sep">|</span>
-      <button class="se-tb-btn se-tb-save-btn" id="aw-save-tmpl">💾 存模板</button>
+      <button class="se-tb-btn se-tb-save-btn" id="aw-save-tmpl">${spineBtnLabel('save', '存模板')}</button>
       <span class="aw-info" id="aw-info"></span>
     `;
 

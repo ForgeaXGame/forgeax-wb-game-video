@@ -1,6 +1,7 @@
 // @source wb-character/src/pipelines/spine/editor/TemplateLibrary.ts
 import type { RawSpineJson, EditorSkeleton } from './types';
 import { parseSpineJson } from './SpineDataParser';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 export interface SkeletonTemplate {
   id: string;
@@ -433,7 +434,7 @@ export class TemplateLibrary {
     header.className = 'se-tmpl-header';
     header.innerHTML = `
       <span class="se-tmpl-title">模板库</span>
-      <button class="se-tmpl-import-btn" title="导入外部 skeleton.json">📂 导入文件</button>
+      <button class="se-tmpl-import-btn" title="导入外部 skeleton.json">${spineBtnLabel('upload', '导入文件')}</button>
     `;
     this.root.appendChild(header);
 
