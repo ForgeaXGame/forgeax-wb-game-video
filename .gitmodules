@@ -10,9 +10,6 @@
 [submodule "plugins/wb-lowpoly-obj"]
 	path = plugins/wb-lowpoly-obj
 	url = https://github.com/ForgeaXGame/forgeax-wb-lowpoly-obj.git
-[submodule "plugins/wb-scene"]
-	path = plugins/wb-scene
-	url = https://github.com/ForgeaXGame/forgeax-wb-scene.git
 [submodule "plugins/wb-observatory"]
 	path = plugins/wb-observatory
 	url = https://github.com/ForgeaXGame/forgeax-wb-observatory.git
