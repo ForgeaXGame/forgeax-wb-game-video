@@ -78,6 +78,19 @@ interface HistoryRecord {
 const HISTORY_KEY = 'ce-video-history'
 const MAX_HISTORY = 30
 
+function vpIcon(name: string, cls = 'vp-icon-svg'): string {
+  const paths: Record<string, string> = {
+    refresh: '<path d="M21 12a9 9 0 0 1-15.3 6.4"/><path d="M3 12A9 9 0 0 1 18.3 5.6"/><path d="M3 19v-5h5"/><path d="M21 5v5h-5"/>',
+    box: '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/>',
+    film: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/>',
+    image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 15-5-5L5 19"/>',
+    screen: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8M12 18v4"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+    wand: '<path d="m15 4 5 5"/><path d="M14 5 3 16l5 5L19 10"/><path d="M4 4h.01M9 2h.01M2 9h.01M20 16h.01M16 21h.01"/>',
+  }
+  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name] ?? paths.film}</svg>`
+}
+
 function loadHistory(): HistoryRecord[] {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
 }
@@ -294,7 +307,7 @@ class VideoUI {
   }
 
   private renderHeader(): string {
-    return `<div class="vp-header"><span class="vp-icon">🎬</span><span class="vp-title">视频角色工作流</span></div>`
+    return `<div class="vp-header"><span class="vp-title">视频角色工作台</span><span class="vp-header-pill">视频角色</span></div>`
   }
 
   private renderStepNav(): string {
@@ -390,18 +403,18 @@ class VideoUI {
         }
         h += `<div class="vp-ta-actions">`
         h += `<input class="vp-ta-desc-input" data-vp-view-desc="${key}" placeholder="补充描述..." />`
-        h += `<button class="vp-ta-regen-btn" data-vp-regen-view="${key}">🔄</button>`
+        h += `<button class="vp-ta-regen-btn" data-vp-regen-view="${key}">${vpIcon('refresh')}</button>`
         h += `</div>`
         h += `</div>`
       }
       h += `</div></div>`
 
       h += `<div style="display:flex;gap:6px;margin-top:8px">`
-      h += `<button class="vp-btn" data-vp-action="gen-turnaround" style="flex:0 0 auto;width:auto;padding:8px 14px">🔄 重新生成</button>`
+      h += `<button class="vp-btn" data-vp-action="gen-turnaround" style="flex:0 0 auto;width:auto;padding:8px 14px">${vpIcon('refresh')}重新生成</button>`
       h += `<button class="vp-btn vp-btn-primary" data-vp-action="go-step3" style="flex:1">选择动作 →</button>`
       h += `</div>`
     } else {
-      h += `<button class="vp-btn vp-btn-primary" data-vp-action="gen-turnaround">🔄 生成三视图</button>`
+      h += `<button class="vp-btn vp-btn-primary" data-vp-action="gen-turnaround">${vpIcon('refresh')}生成三视图</button>`
     }
 
     h += `</div>`
@@ -478,12 +491,12 @@ class VideoUI {
     }
     h += `</div>`
 
-    h += `<button class="vp-btn vp-btn-primary" data-vp-action="generate">✨ 生成视频</button>`
+    h += `<button class="vp-btn vp-btn-primary" data-vp-action="generate">${vpIcon('film')}生成视频</button>`
 
     // Action Library panel
     h += `<div class="vp-lib-section">`
     h += `<button class="vp-lib-toggle" data-vp-action="toggle-lib-panel">`
-    h += `📦 动作库 (${doneCount}/${totalPresets}) ${this.actionLibExpanded ? '▾' : '▸'}</button>`
+    h += `${vpIcon('box')}动作库 (${doneCount}/${totalPresets}) ${this.actionLibExpanded ? '▾' : '▸'}</button>`
     if (this.actionLibExpanded) {
       if (this.actionLib.length === 0) {
         h += `<div class="vp-lib-empty">暂无已收录的动作</div>`
@@ -502,7 +515,7 @@ class VideoUI {
           h += `</div>`
         }
         h += `</div>`
-        h += `<button class="vp-btn vp-btn-sm" data-vp-action="clear-lib" style="margin-top:4px;width:auto">🗑 清空动作库</button>`
+        h += `<button class="vp-btn vp-btn-sm" data-vp-action="clear-lib" style="margin-top:4px;width:auto">清空动作库</button>`
       }
     }
     h += `</div>`
@@ -536,17 +549,17 @@ class VideoUI {
       const isCinematic = currentPreset?.isCinematic
       h += `<div class="vp-video-wrap"><video src="${proxied}" controls autoplay ${isCinematic ? '' : 'loop'} class="vp-video"></video></div>`
       if (isCinematic) {
-        h += `<div class="vp-hint" style="margin:8px 0;text-align:center">🎬 这是大招演出 CG，用于独立过场，无需后处理抠图</div>`
+        h += `<div class="vp-hint" style="margin:8px 0;text-align:center">这是大招演出 CG，用于独立过场，无需后处理抠图</div>`
       }
       const alreadyInLib = this.isInLib(this.selectedPreset, this.selectedView)
       h += `<div class="vp-actions-row">`
       if (alreadyInLib) {
         h += `<button class="vp-btn vp-btn-sm vp-btn-done" disabled>✓ 已收录</button>`
       } else {
-        h += `<button class="vp-btn vp-btn-sm vp-btn-accent" data-vp-action="add-to-lib">📥 收录到动作库</button>`
+        h += `<button class="vp-btn vp-btn-sm vp-btn-accent" data-vp-action="add-to-lib">${vpIcon('box')}收录到动作库</button>`
       }
-      h += `<a class="vp-btn vp-btn-sm" href="${proxied}" download="video.mp4">⬇ 下载视频</a>`
-      h += `<button class="vp-btn vp-btn-sm" data-vp-action="regenerate">🔄 重新生成</button>`
+      h += `<a class="vp-btn vp-btn-sm" href="${proxied}" download="video.mp4">${vpIcon('download')}下载视频</a>`
+      h += `<button class="vp-btn vp-btn-sm" data-vp-action="regenerate">${vpIcon('refresh')}重新生成</button>`
       if (!isCinematic) {
         h += `<button class="vp-btn vp-btn-sm vp-btn-primary" data-vp-action="go-step5">后处理 →</button>`
       }
@@ -597,7 +610,7 @@ class VideoUI {
       h += `<div class="vp-frame-count">${this.frames.length} 帧已抽取</div>`
     }
 
-    h += `<button class="vp-btn${this.extracting ? ' vp-btn-disabled' : ''}" data-vp-action="extract" ${this.extracting ? 'disabled' : ''}>📷 抽取帧</button>`
+    h += `<button class="vp-btn${this.extracting ? ' vp-btn-disabled' : ''}" data-vp-action="extract" ${this.extracting ? 'disabled' : ''}>${vpIcon('film')}抽取帧</button>`
     h += `</div>`
 
     // 4b: Frame strip
@@ -620,7 +633,7 @@ class VideoUI {
         h += `<div class="vp-status-inline">${this.removeBgProgress || '抠图中...'}</div>`
       }
       if (this.removeBgAvailable) {
-        h += `<button class="vp-btn${this.removingBg || this.bgRemoved ? ' vp-btn-disabled' : ''}" data-vp-action="remove-bg" ${this.removingBg || this.bgRemoved ? 'disabled' : ''}>🪄 MCP 专业抠图</button>`
+        h += `<button class="vp-btn${this.removingBg || this.bgRemoved ? ' vp-btn-disabled' : ''}" data-vp-action="remove-bg" ${this.removingBg || this.bgRemoved ? 'disabled' : ''}>${vpIcon('wand')}MCP 专业抠图</button>`
       }
       h += `<button class="vp-btn vp-btn-sm${this.removingBg || this.bgRemoved ? ' vp-btn-disabled' : ''}" data-vp-action="remove-bg-canvas" style="margin-top:4px" ${this.removingBg || this.bgRemoved ? 'disabled' : ''}>快速抠图（本地）</button>`
       if (this.bgRemoved) {
@@ -638,7 +651,7 @@ class VideoUI {
       }
 
       h += `<div class="vp-export-row">`
-      h += `<button class="vp-btn vp-btn-sm" data-vp-action="compose">🖼 合成序列图</button>`
+      h += `<button class="vp-btn vp-btn-sm" data-vp-action="compose">${vpIcon('image')}合成序列图</button>`
       h += `<button class="vp-btn vp-btn-sm" data-vp-action="export-gif">GIF</button>`
       h += `<button class="vp-btn vp-btn-sm" data-vp-action="export-zip">ZIP</button>`
       if (this.spritesheetUrl) {
@@ -651,7 +664,7 @@ class VideoUI {
       if (s5InLib) {
         h += `<button class="vp-btn vp-btn-sm vp-btn-done" disabled>✓ 已收录</button>`
       } else {
-        h += `<button class="vp-btn vp-btn-sm vp-btn-accent" data-vp-action="add-to-lib">📥 收录到动作库</button>`
+        h += `<button class="vp-btn vp-btn-sm vp-btn-accent" data-vp-action="add-to-lib">${vpIcon('box')}收录到动作库</button>`
       }
       h += `<button class="vp-btn vp-btn-sm vp-btn-primary" data-vp-action="go-step6">场景展示 →</button>`
       h += `</div>`
@@ -692,7 +705,7 @@ class VideoUI {
     h += `<span>${this.sceneScale.toFixed(1)}</span></div>`
 
     h += `<div class="vp-export-row">`
-    h += `<button class="vp-btn vp-btn-primary" data-vp-action="show-in-scene">${this.sceneFullscreen ? '🎬 全屏播放大招' : '📺 放入场景'}</button>`
+    h += `<button class="vp-btn vp-btn-primary" data-vp-action="show-in-scene">${vpIcon(this.sceneFullscreen ? 'film' : 'screen')}${this.sceneFullscreen ? '全屏播放大招' : '放入场景'}</button>`
     h += `<button class="vp-btn vp-btn-sm" data-vp-action="clear-scene">移除</button>`
     h += `</div></div>`
 
@@ -1311,15 +1324,28 @@ class VideoUI {
 
 const VP_CSS = `
 .vp-panel { font-family: system-ui, sans-serif; font-size: 12px; color: var(--text-primary); }
-.vp-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.vp-icon { font-size: 18px; }
-.vp-title { font-size: 14px; font-weight: 600; color: var(--accent); }
+.vp-header { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.vp-title { font-size: 15px; font-weight: 700; color: #d4ff48; line-height: normal; }
+.vp-header-pill {
+  margin-left: auto; padding: 3px 8px;
+  border: 1px solid rgba(212,255,72,0.28);
+  border-radius: 999px; background: rgba(212,255,72,0.08);
+  color: #d4ff48; font-size: 11px; font-weight: 700;
+  line-height: 1.2; letter-spacing: .04em; white-space: nowrap;
+}
+.vp-icon-svg {
+  width: 16px; height: 16px;
+  display: inline-block; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: -0.22em;
+}
 
 /* Step navigation */
-.vp-steps { display: flex; border-bottom: 1px solid var(--border); }
-.vp-step-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border: none; background: transparent; color: var(--text-secondary); font-size: 10px; cursor: pointer; border-bottom: 2px solid transparent; font-family: inherit; transition: all 0.15s; }
+.vp-steps { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.vp-step-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px; border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; background: rgba(255,255,255,0.018); color: var(--text-secondary); font-size: 10px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
 .vp-step-btn:hover:not(.locked) { background: var(--bg-hover); color: var(--text-primary); }
-.vp-step-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.vp-step-btn.active { color: var(--accent); border-color: rgba(212,255,72,0.26); background: rgba(212,255,72,0.08); font-weight: 600; }
 .vp-step-btn.locked { opacity: 0.35; cursor: not-allowed; }
 .vp-step-btn.done { color: var(--text-primary); }
 .vp-step-num { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
@@ -1328,10 +1354,10 @@ const VP_CSS = `
 .vp-step-label { white-space: nowrap; }
 
 /* Body */
-.vp-body { padding: 10px 14px; }
-.vp-section { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.vp-body { padding: 0 0 10px; }
+.vp-section { margin: 8px 10px 0; padding: 10px; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; background: rgba(255,255,255,0.018); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.16); }
 .vp-section:last-child { border-bottom: none; }
-.vp-section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.vp-section-title { font-size: 12px; font-weight: 800; color: var(--accent); letter-spacing: 0.03em; margin-bottom: 7px; }
 .vp-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
 
 /* Empty state */
@@ -1377,6 +1403,7 @@ const VP_CSS = `
   display: flex; align-items: center; justify-content: center; font-size: 12px;
   transition: background 0.15s;
 }
+.vp-ta-regen-btn .vp-icon-svg { width: 13px; height: 13px; }
 .vp-ta-regen-btn:hover { background: var(--accent); }
 .vp-hint { font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-top: 4px; }
 
@@ -1399,13 +1426,13 @@ const VP_CSS = `
 .vp-prompt-result { background: var(--bg-hover); padding: 8px; border-radius: var(--radius); font-size: 11px; line-height: 1.6; white-space: pre-wrap; border: 1px solid var(--border); }
 
 /* Buttons */
-.vp-btn { display: block; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; transition: background 0.15s; font-family: inherit; box-sizing: border-box; }
+.vp-btn { display: inline-flex; align-items:center; justify-content:center; gap:6px; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: center; text-decoration: none; transition: background 0.15s; font-family: inherit; box-sizing: border-box; }
 .vp-btn:hover { background: var(--bg-active); }
 .vp-btn-primary { background: var(--accent); color: var(--color-text-on-bright-primary); border-color: var(--accent); font-weight: 600; }
 .vp-btn-primary:hover { background: var(--accent-hover); }
 .vp-btn-disabled { opacity: 0.5; pointer-events: none; }
-.vp-btn-sm { display: inline-block; width: auto; padding: 5px 10px; font-size: 11px; }
-.vp-btn-xs { display: inline-block; width: auto; padding: 3px 8px; font-size: 10px; }
+.vp-btn-sm { display: inline-flex; width: auto; padding: 5px 10px; font-size: 11px; }
+.vp-btn-xs { display: inline-flex; width: auto; padding: 3px 8px; font-size: 10px; }
 .vp-btn-accent { background: var(--accent); color: var(--color-text-on-bright-primary); border-color: var(--accent); font-weight: 600; }
 .vp-btn-accent:hover { background: var(--accent-hover); }
 .vp-btn-done { background: var(--color-status-success); color: var(--color-text-primary); border-color: var(--color-status-success); opacity: 0.8; cursor: default; }
@@ -1414,7 +1441,7 @@ const VP_CSS = `
 
 /* Action Library panel */
 .vp-lib-section { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
-.vp-lib-toggle { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; cursor: pointer; text-align: left; font-family: inherit; transition: background 0.15s; }
+.vp-lib-toggle { display: inline-flex; align-items:center; gap:6px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; cursor: pointer; text-align: left; font-family: inherit; transition: background 0.15s; }
 .vp-lib-toggle:hover { background: var(--bg-active); }
 .vp-lib-empty { padding: 16px 0; text-align: center; color: var(--text-secondary); font-size: 11px; }
 .vp-lib-list { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }

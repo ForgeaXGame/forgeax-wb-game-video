@@ -57,6 +57,59 @@ const CSS_ID = 'pixel-pipeline-css'
 const STORAGE_KEY = 'pixel-pipeline:cfg'
 const PIPELINE_ID = 'pixel-char'
 
+function pxIcon(name: string, cls = 'px-icon'): string {
+  const paths: Record<string, string> = {
+    directions: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M12 5v14M5 12h14"/>',
+    sword: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    map: '<path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/>',
+    jump: '<path d="M6 19c5-10 9-10 12 0"/><path d="M8 15h3l2-4 3 2"/><circle cx="13" cy="6" r="2"/>',
+    mirror: '<path d="M12 3v18"/><path d="M8 7H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3"/><path d="M16 7h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3"/>',
+    pixels: '<rect x="4" y="4" width="5" height="5"/><rect x="15" y="4" width="5" height="5"/><rect x="4" y="15" width="5" height="5"/><rect x="15" y="15" width="5" height="5"/>',
+    mosaic: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/><path d="M8 8h8v8H8z"/>',
+    fold: '<path d="M4 20 20 4"/><path d="M5 5h14v14"/><path d="M8 16h8V8"/>',
+    layers: '<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+    brush: '<path d="M9 18c-2 0-4 1-5 3 3 0 6 0 7-2"/><path d="M20 4 10 14"/><path d="m14 6 4 4"/>',
+    frame: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/>',
+    vector: '<path d="M5 19 19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><path d="M8 5h8v8"/>',
+    scissors: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.6 8.6 19 19M8.6 15.4 19 5"/>',
+    palette: '<path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 4-4 4h-1.5a1.5 1.5 0 0 0 0 3H17c1 0 1.5.7 1.2 1.4A10 10 0 0 1 12 22Z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/><circle cx="16.5" cy="11.5" r="1"/>',
+    cube: '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    pen: '<path d="m12 19 7-7 3 3-7 7-4 1 1-4Z"/><path d="m18 13-7-7-6 6 7 7"/>',
+    box: '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+    refresh: '<path d="M21 12a9 9 0 0 1-15.3 6.4"/><path d="M3 12A9 9 0 0 1 18.3 5.6"/><path d="M3 19v-5h5"/><path d="M21 5v5h-5"/>',
+    user: '<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>',
+    users: '<path d="M16 21a6 6 0 0 0-12 0"/><circle cx="10" cy="7" r="4"/><path d="M22 21a5 5 0 0 0-4-4.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/>',
+    play: '<path d="m8 5 11 7-11 7V5Z"/>',
+    image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m21 15-5-5L5 19"/>',
+    film: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/>',
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    sparkles: '<path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/><path d="m5 14 .8 1.8L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-1.2L5 14Z"/>',
+  }
+  const icon = paths[name] ?? paths.pixels
+  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icon}</svg>`
+}
+
+function pixelArtStyleIcon(id: string): string {
+  const map: Record<string, string> = {
+    'match-reference': 'mirror',
+    'pixel-16bit': 'pixels',
+    'pixel-32bit': 'mosaic',
+    origami: 'fold',
+    'hd-2d': 'layers',
+    'hand-drawn-cartoon': 'brush',
+    'cel-anime': 'frame',
+    'vector-flat': 'vector',
+    'paper-cut': 'scissors',
+    watercolor: 'palette',
+    voxel: 'cube',
+    crayon: 'pen',
+  }
+  return pxIcon(map[id] ?? 'pixels', 'px-icon px-style-svg')
+}
+
 /**
  * Translate the in-memory `collectBlobs()` keys (turnaround, sheet:<id>,
  * clean:<id>, frames:<actionId>:<dir>:<i>) into the stable on-disk path under
@@ -495,7 +548,7 @@ class PixelPipelineUI {
   private injectNoCharacterBanner(left: HTMLElement): void {
     const banner = document.createElement('div')
     banner.style.cssText = 'padding:10px 12px;margin-bottom:8px;background:color-mix(in srgb, var(--color-status-warning) 14%, transparent);border:1px solid color-mix(in srgb, var(--color-status-warning) 40%, transparent);border-radius:6px;color:var(--color-text-secondary);font-size:12px;line-height:1.5;'
-    banner.innerHTML = `<strong style="color:var(--color-status-warning);">⚠️ 还未完成角色设计</strong><br>
+    banner.innerHTML = `<strong style="color:var(--color-status-warning);">提示：还未完成角色设计</strong><br>
       去 <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;">wb-character</code> 生成角色后再来跑像素流水线；当前可预览/调试 UI 但生成会缺基础图。`
     left.insertBefore(banner, left.firstChild)
   }
@@ -611,8 +664,8 @@ class PixelPipelineUI {
     this.leftEl.innerHTML = `
       <div class="px-panel">
         <div class="px-header">
-          <span class="px-header-icon">🎮</span>
-          <span class="px-header-title">像素角色 (Q版)</span>
+          <span class="px-header-title">角色动画工作台</span>
+          <span class="px-header-pill">角色动画</span>
         </div>
 
         <div class="px-tab-bar">
@@ -658,8 +711,8 @@ class PixelPipelineUI {
     `
 
     const steps: { id: Step; label: string; icon: string }[] = [
-      { id: 1, label: '四方向参考', icon: '🔄' },
-      { id: 2, label: '动作生成与处理', icon: '⚔️' },
+      { id: 1, label: '四方向参考', icon: 'directions' },
+      { id: 2, label: '动作生成与处理', icon: 'sword' },
     ]
 
     const stepsEl = body.querySelector('[data-px="steps"]') as HTMLElement
@@ -670,7 +723,7 @@ class PixelPipelineUI {
       el.className = `px-step${isActive ? ' active' : ''}${isDone ? ' done' : ''}`
       el.innerHTML = `
         <div class="px-step-head">
-          <span class="px-step-icon">${isDone ? '✅' : step.icon}</span>
+          <span class="px-step-icon">${pxIcon(isDone ? 'check' : step.icon, 'px-icon px-step-svg')}</span>
           <span class="px-step-label">${step.label}</span>
           ${isDone ? '<span class="px-step-done">已完成</span>' : ''}
         </div>
@@ -698,7 +751,7 @@ class PixelPipelineUI {
     if (groups.size === 0) {
       body.innerHTML = `
         <div class="px-lib-empty">
-          <div class="px-lib-empty-icon">📦</div>
+          <div class="px-lib-empty-icon">${pxIcon('box', 'px-icon px-empty-svg')}</div>
           <div class="px-lib-empty-text">动作库为空</div>
           <div class="px-lib-empty-hint">在「编辑」标签页生成动作后，保存到动作库即可在此查看</div>
         </div>`
@@ -741,21 +794,21 @@ class PixelPipelineUI {
 
     body.innerHTML = `
       <div class="px-lib-toolbar">
-        <button class="px-btn-pill" data-px="auto-align-scales" title="以待机动作的角色身高为基准，自动统一所有动作的缩放"><span class="px-btn-pill-icon">🎯</span> 自动统一大小</button>
+        <button class="px-btn-pill" data-px="auto-align-scales" title="以待机动作的角色身高为基准，自动统一所有动作的缩放"><span class="px-btn-pill-icon">${pxIcon('target', 'px-icon')}</span> 自动统一大小</button>
         <button class="px-btn-pill" data-px="reset-scales" title="清除所有动作的缩放调整">重置缩放</button>
       </div>
       <div class="px-lib-grid">${cards}</div>
       <div class="px-lib-footer">
         <div class="px-lib-footer-row px-lib-footer-primary">
-          <button class="px-btn-pill primary xl" data-px="publish-as-player" title="一键写入到 data/workspace/games/&lt;gameId&gt;/public/assets/art/characters/player/，刷新游戏即可作为主角"><span class="px-btn-pill-icon">🎮</span> 导入到游戏作为主角</button>
-          <button class="px-btn-pill accent xl" data-px="publish-as-npc" title="批量把当前动作库发布到游戏里的 NPC 槽位。默认只填充'空'槽位，已有的不会被顶替。"><span class="px-btn-pill-icon">👥</span> 批量发布到 NPC</button>
+          <button class="px-btn-pill primary xl" data-px="publish-as-player" title="一键写入到 data/workspace/games/&lt;gameId&gt;/public/assets/art/characters/player/，刷新游戏即可作为主角"><span class="px-btn-pill-icon">${pxIcon('user', 'px-icon')}</span> 导入到游戏作为主角</button>
+          <button class="px-btn-pill accent xl" data-px="publish-as-npc" title="批量把当前动作库发布到游戏里的 NPC 槽位。默认只填充'空'槽位，已有的不会被顶替。"><span class="px-btn-pill-icon">${pxIcon('users', 'px-icon')}</span> 批量发布到 NPC</button>
         </div>
         <div class="px-lib-footer-row px-lib-footer-secondary">
           <button class="px-btn-pill ghost" data-px="apply-all-lib" title="把动作库里的所有动作应用到当前工作区"><span class="px-btn-pill-icon">↻</span> 全部应用</button>
-          <button class="px-btn-pill ghost" data-px="inject-scene" title="把动作库发布到当前场景（Kino Studio 预览用）"><span class="px-btn-pill-icon">🎬</span> 放入场景</button>
-          <button class="px-btn-pill ghost" data-px="export-game" title="把动作库打包成 ZIP 导出"><span class="px-btn-pill-icon">📤</span> 导出</button>
-          <button class="px-btn-pill ghost" data-px="publish-game" title="发布到 phaser-2d 模板工程（共享卷）"><span class="px-btn-pill-icon">🚀</span> 发布到 phaser-2d</button>
-          <button class="px-btn-pill ghost danger" data-px="clear-lib" title="清空动作库、批次历史与内存中的参考图/帧，恢复到刚打开像素管线时的初始状态。换角色前建议先清一次。"><span class="px-btn-pill-icon">🗑️</span> 清空工作区</button>
+          <button class="px-btn-pill ghost" data-px="inject-scene" title="把动作库发布到当前场景（Kino Studio 预览用）"><span class="px-btn-pill-icon">${pxIcon('film', 'px-icon')}</span> 放入场景</button>
+          <button class="px-btn-pill ghost" data-px="export-game" title="把动作库打包成 ZIP 导出"><span class="px-btn-pill-icon">${pxIcon('upload', 'px-icon')}</span> 导出</button>
+          <button class="px-btn-pill ghost" data-px="publish-game" title="发布到 phaser-2d 模板工程（共享卷）"><span class="px-btn-pill-icon">${pxIcon('play', 'px-icon')}</span> 发布到 phaser-2d</button>
+          <button class="px-btn-pill ghost danger" data-px="clear-lib" title="清空动作库、批次历史与内存中的参考图/帧，恢复到刚打开像素管线时的初始状态。换角色前建议先清一次。"><span class="px-btn-pill-icon">${pxIcon('trash', 'px-icon')}</span> 清空工作区</button>
         </div>
       </div>`
 
@@ -951,16 +1004,16 @@ class PixelPipelineUI {
           <img src="${globalState.get().characterImage}" class="px-source-thumb" />
           <span class="px-source-label">当前设定图</span>
           <label class="px-link-btn" style="margin-left:auto;">
-            🔄 替换
+            ${pxIcon('refresh', 'px-icon')} 替换
             <input type="file" data-px="upload-character-sheet" accept="image/*" style="display:none" />
           </label>
         </div>`
     } else {
       html += `
         <div class="px-hint-box">
-          ⚠️ 还没有角色设定图。去「角色设计」标签页生成，或者
+          提示：还没有角色设定图。去「角色设计」标签页生成，或者
           <label class="px-link-btn" style="display:inline-block;margin-left:4px;">
-            📤 直接上传作为设定图
+            ${pxIcon('upload', 'px-icon')} 直接上传作为设定图
             <input type="file" data-px="upload-character-sheet" accept="image/*" style="display:none" />
           </label>
         </div>`
@@ -977,7 +1030,7 @@ class PixelPipelineUI {
     for (const m of GAMEPLAY_MODES) {
       const active = m.id === this.cfg.gameplayMode ? ' active' : ''
       const title = this.esc(m.description)
-      html += `<button class="px-ta-mode-btn${active}" data-gameplay-mode="${m.id}" title="${title}">${m.icon} ${m.label}</button>`
+      html += `<button class="px-ta-mode-btn${active}" data-gameplay-mode="${m.id}" title="${title}">${pxIcon(m.id === 'platformer' ? 'jump' : 'map', 'px-icon px-mode-svg')}<span>${m.label}</span></button>`
     }
     html += `</div>`
     html += `<div class="px-mode-hint">${this.esc(mode.description)}</div>`
@@ -989,7 +1042,7 @@ class PixelPipelineUI {
       const active = s.id === this.cfg.artStyleId ? ' active' : ''
       const title = this.esc(s.description)
       html += `<button class="px-style-chip${active}" data-art-style="${s.id}" title="${title}">
-        <span class="px-style-chip-icon">${s.icon}</span>
+        <span class="px-style-chip-icon">${pixelArtStyleIcon(s.id)}</span>
         <span class="px-style-chip-label">${this.esc(s.label)}</span>
       </button>`
     }
@@ -1031,7 +1084,7 @@ class PixelPipelineUI {
     let h = `<div class="px-step-desc">一键完成：生成 → 去背景 → 拆帧预览</div>`
 
     if (!hasRef) {
-      h += `<div class="px-hint-box">⚠️ 请先完成 Step 1（四方向参考图）</div>`
+      h += `<div class="px-hint-box">提示：请先完成 Step 1（四方向参考图）</div>`
       return h
     }
 
@@ -1107,7 +1160,7 @@ class PixelPipelineUI {
 
     h += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">`
     h += `<button class="px-btn primary" data-px="gen-actions-force" style="flex:1">
-      🎬 生成选中动作
+      ${pxIcon('film', 'px-icon px-btn-svg')}生成选中动作
     </button>`
     if (hasAnyResult && !allHaveResult) {
       h += `<button class="px-btn" data-px="gen-actions-continue" style="flex:1">
@@ -1133,8 +1186,8 @@ class PixelPipelineUI {
       </div>`
 
       h += `<div class="px-step2-actions">
-        <button class="px-btn-pill accent" data-px="save-to-lib"><span class="px-btn-pill-icon">📦</span> 保存到动作库</button>
-        <button class="px-btn-pill" data-px="export-all"><span class="px-btn-pill-icon">📤</span> 导出全部 (ZIP)</button>
+        <button class="px-btn-pill accent" data-px="save-to-lib"><span class="px-btn-pill-icon">${pxIcon('box', 'px-icon')}</span> 保存到动作库</button>
+        <button class="px-btn-pill" data-px="export-all"><span class="px-btn-pill-icon">${pxIcon('upload', 'px-icon')}</span> 导出全部 (ZIP)</button>
       </div>`
     }
 
@@ -1186,7 +1239,7 @@ class PixelPipelineUI {
       : ''
 
     const leftEmpty = `<div class="px-grid-empty px-droppable-hint">
-      <div class="px-empty-icon">🖼️</div>
+      <div class="px-empty-icon">${pxIcon('image', 'px-icon px-empty-svg')}</div>
       <div class="px-empty-title">拖拽角色图到这里</div>
       <div class="px-empty-sub">或点击选择文件</div>
     </div>`
@@ -1206,7 +1259,7 @@ class PixelPipelineUI {
       </div>`
     } else {
       rightCellContent = `<div class="px-grid-empty px-droppable-hint">
-        <div class="px-empty-icon">✨</div>
+        <div class="px-empty-icon">${pxIcon('sparkles', 'px-icon px-empty-svg')}</div>
         <div class="px-empty-title">等 AI 给你生成${isPlatformer ? '侧面' : '4 方向'}参考图</div>
         <div class="px-empty-sub">点击左侧『生成${isPlatformer ? '侧面' : '四方向'}参考图』开始</div>
         <div class="px-empty-hint">或直接拖拽成品参考图到这里</div>
@@ -1217,7 +1270,7 @@ class PixelPipelineUI {
       <div class="px-center">
         ${this.renderStageStrip()}
         <div class="px-center-title">四方向参考图</div>
-        <div class="px-grid" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="px-grid px-grid-ref">
           <div class="px-grid-cell px-droppable" data-drop-target="source" tabindex="0">
             <div class="px-grid-label">${leftLabel}</div>
             ${designImg ? `<img src="${designImg}" class="px-grid-img" data-px-hideable="source" />` : leftEmpty}
@@ -1387,7 +1440,7 @@ class PixelPipelineUI {
             <div class="px-cell-loading-text">${this.esc(this.progressText || '正在生成...')}</div>
             <div class="px-cell-loading-hint">完成的动作会自动出现在下方</div>
           </div>` : `<div class="px-grid-empty px-droppable-hint" style="margin-top:32px">
-            <div class="px-empty-icon">🎬</div>
+            <div class="px-empty-icon">${pxIcon('film', 'px-icon px-empty-svg')}</div>
             <div class="px-empty-title">勾选动作 → 点击『一键生成』</div>
             <div class="px-empty-sub">每个动作走 4 阶段：生成 → 扩图 → 去背景 → 拆帧</div>
           </div>`}
@@ -1463,7 +1516,7 @@ class PixelPipelineUI {
         html += `<div class="px-sheet-label">提示词（可修改后重生成）</div>`
         html += `<textarea class="px-prompt-textarea" data-px-prompt-text="${actionId}" spellcheck="false">${this.esc(storedPrompt)}</textarea>`
         html += `<div class="px-prompt-actions">`
-        html += `<button class="px-btn small" data-px-regen-prompt="${actionId}">🔄 用当前提示词重生成</button>`
+        html += `<button class="px-btn small" data-px-regen-prompt="${actionId}">${pxIcon('refresh', 'px-icon')} 用当前提示词重生成</button>`
         html += `<button class="px-btn small" data-px-reset-prompt="${actionId}" title="恢复默认模板生成的提示词">↺ 恢复默认</button>`
         html += `</div></div>`
       }
@@ -1485,7 +1538,7 @@ class PixelPipelineUI {
       }
 
       html += `<div class="px-action-card-footer">`
-      html += `<button class="px-btn small" data-regen-action="${actionId}">🔄 重新生成此动作</button>`
+      html += `<button class="px-btn small" data-regen-action="${actionId}">${pxIcon('refresh', 'px-icon')} 重新生成此动作</button>`
       html += `<button class="px-btn small" data-autocenter-action="${actionId}">⊙ 全部居中</button>`
       html += `</div>`
     }
@@ -3865,7 +3918,7 @@ class PixelPipelineUI {
         ok++
       } catch { fail++ }
     }
-    this.toast(`👥 发布完成：${ok} 成功${fail > 0 ? ` / ${fail} 失败` : ''}`)
+    this.toast(`发布完成：${ok} 成功${fail > 0 ? ` / ${fail} 失败` : ''}`)
   }
 
   private deriveSkillSlotId(actionId: string): ExportedSkill['slotId'] | null {
@@ -3936,7 +3989,7 @@ class PixelPipelineUI {
                     <div class="px-batch-action-meta">${dirCount}方向 ${frameCount}帧</div>
                   </div>
                   <div class="px-batch-action-ops">
-                    <button class="px-btn tiny" data-batch-add-lib="${b.id}::${a.actionId}" title="加入动作库">+📦</button>
+                    <button class="px-btn tiny" data-batch-add-lib="${b.id}::${a.actionId}" title="加入动作库">+${pxIcon('box', 'px-icon')}</button>
                     <button class="px-btn tiny" data-batch-replace="${b.id}::${a.actionId}" title="替换当前">↻</button>
                   </div>
                 </div>`
@@ -4048,7 +4101,7 @@ class PixelPipelineUI {
         <div class="px-center">
           <div class="px-center-title">动作库</div>
           <div class="px-lib-center-empty">
-            <div style="font-size:28px;opacity:0.4;margin-bottom:8px">📦</div>
+            <div style="margin-bottom:8px">${pxIcon('box', 'px-icon px-empty-svg')}</div>
             <div style="font-size:12px;color:var(--text-secondary)">点击左侧动作卡片查看详情</div>
           </div>
         </div>`
@@ -4484,30 +4537,54 @@ function injectCSS(): void {
 }
 .px-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
 }
-.px-header-icon { font-size: 20px; }
-.px-header-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.px-header-title { font-size: 15px; font-weight: 700; color: #d4ff48; line-height: normal; }
+.px-header-pill {
+  margin-left: auto; padding: 3px 8px;
+  border: 1px solid rgba(212,255,72,0.28);
+  border-radius: 999px; background: rgba(212,255,72,0.08);
+  color: #d4ff48; font-size: 11px; font-weight: 700;
+  line-height: 1.2; letter-spacing: .04em; white-space: nowrap;
+}
+.px-icon {
+  width: 16px; height: 16px;
+  display: inline-block; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: -0.2em;
+}
 
-.px-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.px-section {
+  margin: 8px 10px 0; padding: 10px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px; background: rgba(255,255,255,0.018);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.16);
+}
 .px-label {
-  font-size: 11px; font-weight: 600; color: var(--text-secondary);
-  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 12px; font-weight: 800; color: var(--accent);
+  margin-bottom: 7px; letter-spacing: 0.03em;
 }
 
 .px-steps { display: flex; flex-direction: column; gap: 2px; }
 .px-step {
-  border: 1px solid transparent; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.07); border-radius: 8px;
+  background: rgba(255,255,255,0.015);
   transition: all 0.15s; cursor: pointer;
 }
 .px-step:hover { background: var(--bg-hover); }
-.px-step.active { background: var(--bg-active); border-color: var(--accent); }
+.px-step.active { background: rgba(212,255,72,0.055); border-color: rgba(212,255,72,0.24); }
 .px-step.done .px-step-label { color: var(--success); }
 
 .px-step-head {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  display: flex; align-items: center; gap: 8px; padding: 9px 10px;
 }
-.px-step-icon { font-size: 14px; width: 22px; text-align: center; }
+.px-step-icon {
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--accent);color:#071007;font-size:10px;font-weight:900;
+}
+.px-step-svg { width:11px; height:11px; stroke-width:2.4; }
 .px-step-label { font-size: 12px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .px-step-done { font-size: 9px; color: var(--success); font-weight: 600; }
 
@@ -4519,7 +4596,8 @@ function injectCSS(): void {
 }
 
 .px-btn {
-  display: block; width: 100%; padding: 8px 12px;
+  display: inline-flex; align-items:center; justify-content:center; gap:6px;
+  width: 100%; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 6px;
   background: var(--bg-hover); color: var(--text-primary);
   font-size: 12px; font-weight: 600; font-family: inherit;
@@ -4530,6 +4608,7 @@ function injectCSS(): void {
 .px-btn:active { transform: scale(0.98); }
 .px-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .px-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+.px-btn-svg { width:15px; height:15px; stroke-width:2.2; }
 .px-btn.primary:hover { filter: brightness(1.1); }
 .px-btn.primary:disabled { filter: none; }
 .px-btn.busy { pointer-events: none; opacity: 0.65; }
@@ -4564,10 +4643,12 @@ function injectCSS(): void {
 /* ── Stage strip ──────────────────────────────────────────────────── */
 .px-stage-strip {
   display: flex; align-items: center; gap: 6px;
+  width: 100%;
   padding: 12px 4px 14px;
   margin: 0 -4px 4px;
   border-bottom: 1px solid var(--border);
   flex-wrap: nowrap;
+  box-sizing: border-box;
 }
 .px-stage-item {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -4734,17 +4815,24 @@ function injectCSS(): void {
 
 .px-center {
   padding: 16px; display: flex; flex-direction: column; gap: 12px;
-  height: 100%; overflow-y: auto; overflow-x: hidden;
+  width: 100%; height: 100%; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
   box-sizing: border-box;
 }
 .px-center-title {
   font-size: 14px; font-weight: 700; color: var(--text-primary);
 }
 
-.px-grid { display: grid; gap: 8px; flex: 1; min-height: 0; }
+.px-grid { display: grid; gap: 8px; flex: 1; min-height: 0; width: 100%; }
+.px-grid-ref {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(320px, 1fr);
+  gap: 12px;
+}
 .px-grid-cell {
   display: flex; flex-direction: column; background: rgba(0,0,0,0.2);
   border-radius: 6px; border: 1px solid var(--border); overflow: hidden;
+  min-height: 0;
 }
 .px-grid-label {
   padding: 5px 8px; font-size: 10px; font-weight: 600; color: var(--text-secondary);
@@ -4892,7 +4980,9 @@ function injectCSS(): void {
   flex: 1; padding: 7px 6px; border: 1px solid var(--border); border-radius: var(--radius);
   background: transparent; color: var(--text-secondary); font-size: 11px;
   font-family: inherit; cursor: pointer; transition: all 0.15s; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
 }
+.px-mode-svg { width:14px; height:14px; stroke-width:2; }
 .px-ta-mode-btn:hover { background: var(--bg-hover); }
 .px-ta-mode-btn.active {
   background: var(--bg-active); border-color: var(--accent); color: var(--text-primary); font-weight: 600;
@@ -4948,6 +5038,9 @@ function injectCSS(): void {
   color: var(--text-primary); font-weight: 600;
 }
 .px-style-chip-icon { font-size: 18px; line-height: 1; }
+.px-style-chip-icon .px-icon { width:18px; height:18px; stroke-width:1.9; }
+.px-empty-svg { width:28px; height:28px; opacity:0.45; }
+.px-btn-pill-icon .px-icon { width:14px; height:14px; stroke-width:2.2; }
 .px-style-chip-label {
   font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 100%;

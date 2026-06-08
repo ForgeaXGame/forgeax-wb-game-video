@@ -31,10 +31,10 @@ export interface StudioState {
 export type TabId = 'game' | 'design' | 'explosion' | 'bind' | 'anim' | 'upload';
 
 export const TAB_META: { id: TabId; label: string; icon: string }[] = [
-  { id: 'explosion', label: '拆分部件', icon: '✂️' },
-  { id: 'bind',      label: '自动绑骨', icon: '🦴' },
-  { id: 'anim',      label: '动作工坊', icon: '🎬' },
-  { id: 'upload',    label: '导出',     icon: '📦' },
+  { id: 'explosion', label: '拆分部件', icon: 'explosion' },
+  { id: 'bind',      label: '自动绑骨', icon: 'bind' },
+  { id: 'anim',      label: '动作工坊', icon: 'anim' },
+  { id: 'upload',    label: '导出',     icon: 'upload' },
 ];
 
 export function createDefaultState(): StudioState {

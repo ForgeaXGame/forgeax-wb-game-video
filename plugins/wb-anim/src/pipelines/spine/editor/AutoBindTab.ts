@@ -3,6 +3,7 @@ import type { StudioState, StudioTab, TabId, PartRegion } from './StudioState';
 import type { EditorSkeleton } from './types';
 import { BindingPanel } from './BindingPanel';
 import { parseSpineJson, computeWorldTransforms, applyIKConstraints } from './SpineDataParser';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 const PART_DEFS: { id: string; name: string; cx: number; cy: number; sizeHint: 'large' | 'medium' | 'small'; color: string }[] = [
   { id: 'head',        name: '头',     cx: 0.50, cy: 0.08, sizeHint: 'large',  color: '#ff6b6b' },
@@ -173,11 +174,11 @@ export class AutoBindTab implements StudioTab {
       <div class="ab-preview-wrap" id="ab-preview-wrap">
         <canvas class="ab-preview-canvas" id="ab-preview-canvas"></canvas>
         <div class="ab-edit-mode-bar" id="ab-edit-mode-bar">
-          <button class="ab-edit-mode-btn active" data-emode="image" title="编辑图像：选中/移动/缩放/旋转附件图片">🖼 图像</button>
-          <button class="ab-edit-mode-btn" data-emode="bone" title="编辑骨骼：选中/旋转/移动骨骼节点">🦴 骨骼</button>
+          <button class="ab-edit-mode-btn active" data-emode="image" title="编辑图像：选中/移动/缩放/旋转附件图片">${spineBtnLabel('image', '图像')}</button>
+          <button class="ab-edit-mode-btn" data-emode="bone" title="编辑骨骼：选中/旋转/移动骨骼节点">${spineBtnLabel('bone', '骨骼')}</button>
         </div>
         <div class="ab-preview-empty" id="ab-preview-empty">
-          <div class="ab-preview-empty-icon">🦴</div>
+          <div class="ab-preview-empty-icon">${spineIcon('bone')}</div>
           <div>上传爆炸图后点击「一键自动绑骨」</div>
           <div class="ab-preview-empty-sub">绑骨后可在此预览并调整部件位置</div>
         </div>

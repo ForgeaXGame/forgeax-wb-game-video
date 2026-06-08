@@ -2,6 +2,7 @@
 import type { StudioState, StudioTab, TabId } from './StudioState';
 import type { RawSpineJson, RawAttachment } from './types';
 import { saveCustomCharacter, CUSTOM_CHAR_KEY, studioSave, type CustomCharacterData } from './StudioStorage';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 export class GameUploadTab implements StudioTab {
   readonly id: TabId = 'upload';
@@ -39,28 +40,28 @@ export class GameUploadTab implements StudioTab {
   private buildUI(): void {
     this.sidePanel.innerHTML = `
       <div class="gu-header" style="text-align:center;">
-        <div class="gu-title" style="font-size:18px;">🚀 导出 & 上传</div>
+        <div class="gu-title">${spineIcon('rocket', 'spine-icon-svg gu-title-icon')} 导出 & 上传</div>
         <div class="gu-subtitle" style="font-size:11px;">导出 Spine 资产并加载到游戏</div>
       </div>
 
       <div class="gu-checklist">
         <div class="gu-check-item" id="gu-check-prof">
-          <span class="gu-check-icon">⬜</span>
+          <span class="gu-check-icon">${spineIcon('circle', 'gu-check-svg')}</span>
           <span class="gu-check-text">职业选择</span>
           <span class="gu-check-detail" id="gu-detail-prof">-</span>
         </div>
         <div class="gu-check-item" id="gu-check-char">
-          <span class="gu-check-icon">⬜</span>
+          <span class="gu-check-icon">${spineIcon('circle', 'gu-check-svg')}</span>
           <span class="gu-check-text">角色立绘</span>
           <span class="gu-check-detail" id="gu-detail-char">未生成</span>
         </div>
         <div class="gu-check-item" id="gu-check-bind">
-          <span class="gu-check-icon">⬜</span>
+          <span class="gu-check-icon">${spineIcon('circle', 'gu-check-svg')}</span>
           <span class="gu-check-text">骨骼绑定</span>
           <span class="gu-check-detail" id="gu-detail-bind">未绑定</span>
         </div>
         <div class="gu-check-item" id="gu-check-anim">
-          <span class="gu-check-icon">⬜</span>
+          <span class="gu-check-icon">${spineIcon('circle', 'gu-check-svg')}</span>
           <span class="gu-check-text">至少 1 个动画</span>
           <span class="gu-check-detail" id="gu-detail-anim">0 个动画</span>
         </div>
@@ -84,10 +85,10 @@ export class GameUploadTab implements StudioTab {
       </div>
 
       <div class="gu-actions" style="flex-direction:column;">
-        <button class="sd-gen-btn" id="gu-export-json" disabled>📦 导出 Spine JSON</button>
-        <button class="sd-gen-btn" id="gu-export-images" disabled>🖼️ 导出部件图片</button>
-        <button class="sd-action-btn sd-action-primary" id="gu-inject" disabled>🚀 注入到游戏 (HMR)</button>
-        <button class="sd-action-btn" id="gu-play" style="display:none; background:#2ecc71;">🎮 关闭编辑器 → 进入游戏</button>
+        <button class="sd-action-btn sd-step-btn" id="gu-export-json" disabled>${spineBtnLabel('box', '导出 Spine JSON')}</button>
+        <button class="sd-action-btn sd-step-btn" id="gu-export-images" disabled>${spineBtnLabel('image', '导出部件图片')}</button>
+        <button class="sd-gen-btn" id="gu-inject" disabled>${spineBtnLabel('rocket', '注入到游戏 (HMR)')}</button>
+        <button class="sd-action-btn gu-play-btn" id="gu-play" style="display:none;">${spineBtnLabel('gamepad', '关闭编辑器 → 进入游戏')}</button>
       </div>
 
       <div class="gu-log" id="gu-log"></div>
@@ -287,7 +288,7 @@ export class GameUploadTab implements StudioTab {
       this.addLog('❌ 注入失败: ' + (e as Error).message);
     } finally {
       btn.disabled = false;
-      btn.textContent = '🚀 注入到游戏 (HMR)';
+      btn.innerHTML = spineBtnLabel('rocket', '注入到游戏 (HMR)');
     }
   }
 
@@ -392,7 +393,8 @@ export class GameUploadTab implements StudioTab {
   private setCheck(id: string, done: boolean, detail: string): void {
     const el = this.q(`#${id}`) as HTMLElement;
     if (!el) return;
-    el.querySelector('.gu-check-icon')!.textContent = done ? '✅' : '⬜';
+    const iconEl = el.querySelector('.gu-check-icon')!;
+    iconEl.innerHTML = done ? spineIcon('check', 'gu-check-svg done') : spineIcon('circle', 'gu-check-svg');
     el.classList.toggle('done', done);
 
     const detailId = id.replace('gu-check-', 'gu-detail-');

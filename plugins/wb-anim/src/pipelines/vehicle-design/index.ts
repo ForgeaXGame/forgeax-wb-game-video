@@ -42,6 +42,24 @@ const CSS_ID = 'vehicle-pipeline-css'
 const STORAGE_KEY = 'vehicle-pipeline:cfg'
 const PIPELINE_ID = 'vehicle-design'
 
+function vhIcon(name: string, cls = 'vh-icon'): string {
+  const paths: Record<string, string> = {
+    views: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M12 5v14M5 12h14"/>',
+    film: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/>',
+    cross: '<path d="M12 3v18M3 12h18"/>',
+    grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
+    side: '<path d="M4 12h16"/><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/>',
+    diamond: '<path d="m12 3 9 9-9 9-9-9 9-9Z"/>',
+    paint: '<path d="M9 18c-2 0-4 1-5 3 3 0 6 0 7-2"/><path d="M20 4 10 14"/><path d="m14 6 4 4"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+    refresh: '<path d="M21 12a9 9 0 0 1-15.3 6.4"/><path d="M3 12A9 9 0 0 1 18.3 5.6"/><path d="M3 19v-5h5"/><path d="M21 5v5h-5"/>',
+    box: '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/>',
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  }
+  const icon = paths[name] ?? paths.views
+  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icon}</svg>`
+}
+
 /**
  * Translate `collectBlobs()` keys to disk paths under
  * <projectRoot>/.forgeax/games/<slug>/characters/<charId>/vehicle/.
@@ -369,8 +387,8 @@ class VehiclePipelineUI {
     this.leftEl.innerHTML = `
       <div class="vh-panel">
         <div class="vh-header">
-          <span class="vh-header-icon">🚀</span>
-          <span class="vh-header-title">载具动画</span>
+          <span class="vh-header-title">载具动画工作台</span>
+          <span class="vh-header-pill">载具动画</span>
         </div>
 
         <div class="vh-tab-bar">
@@ -422,14 +440,14 @@ class VehiclePipelineUI {
       <div class="vh-section">
         <div class="vh-label">步骤</div>
         <div class="vh-steps">
-          ${this.renderStepItem(1, '📐', '多视角参考', this.isStepDone(1))}
-          ${this.renderStepItem(2, '🎬', '动画生成', this.isStepDone(2))}
+          ${this.renderStepItem(1, 'views', '多视角参考', this.isStepDone(1))}
+          ${this.renderStepItem(2, 'film', '动画生成', this.isStepDone(2))}
         </div>
       </div>
       ${!this.img.designImage ? `
       <div class="vh-section">
         <div class="vh-hint vh-warn" style="padding:8px;border-radius:6px;background:color-mix(in srgb, var(--color-status-error) 14%, transparent);color:var(--color-status-error);font-size:12px">
-          ⚠️ 请先在「角色设计」工作台完成载具设定，生成设定图后点击「前往动画工作台」跳转到此处。
+          提示：请先在「角色设计」工作台完成载具设定，生成设定图后点击「前往动画工作台」跳转到此处。
         </div>
       </div>` : ''}
       ${this.img.designImage ? `
@@ -446,7 +464,7 @@ class VehiclePipelineUI {
     if (this.batchHistory.length === 0) {
       return `
         <div class="vh-history-empty">
-          <div class="vh-history-empty-icon">📦</div>
+          <div class="vh-history-empty-icon">${vhIcon('box', 'vh-icon vh-empty-svg')}</div>
           <div class="vh-history-empty-text">暂无历史记录</div>
           <div class="vh-history-empty-hint">生成动画后会自动保存到历史记录</div>
         </div>`
@@ -624,7 +642,7 @@ class VehiclePipelineUI {
     return `
       <div class="${cls}" data-vh-step="${step}">
         <div class="vh-step-head">
-          <span class="vh-step-icon">${icon}</span>
+          <span class="vh-step-icon">${vhIcon(done ? 'target' : icon, 'vh-icon vh-step-svg')}</span>
           <span class="vh-step-label">${label}</span>
           ${done ? '<span class="vh-step-done">✓</span>' : ''}
         </div>
@@ -692,7 +710,7 @@ class VehiclePipelineUI {
         <div class="vh-viewmode-list">
           ${VIEW_MODES.map(m => `
             <button class="vh-viewmode-card${m.id === c.viewModeId ? ' active' : ''}" data-vh-vm="${m.id}">
-              <span class="vh-viewmode-icon">${({ 'four-dir': '✚', 'topdown-plus': '⊞', 'side-only': '↔', 'isometric': '◇' } as Record<string,string>)[m.id] || '📐'}</span>
+              <span class="vh-viewmode-icon">${vhIcon(({ 'four-dir': 'cross', 'topdown-plus': 'grid', 'side-only': 'side', 'isometric': 'diamond' } as Record<string,string>)[m.id] || 'views')}</span>
               <div class="vh-viewmode-info">
                 <span class="vh-viewmode-name">${m.label}</span>
                 <span class="vh-viewmode-desc">${m.description}</span>
@@ -703,7 +721,7 @@ class VehiclePipelineUI {
       </div>
       <div class="vh-section" style="display:flex;flex-direction:column;gap:6px;">
         <button class="vh-btn primary vh-btn-xl" data-vh="gen-design-and-views">
-          🎨 生成设定图 → 多视角 → 动画
+          ${vhIcon('paint', 'vh-icon vh-btn-svg')}生成设定图 → 多视角 → 动画
         </button>
         ${this.img.designImage ? '<button class="vh-btn" data-vh="gen-design">仅重新生成设定图</button>' : ''}
       </div>
@@ -713,10 +731,10 @@ class VehiclePipelineUI {
   private renderStep2Left(vm: ViewMode | undefined): string {
     const c = this.cfg
     const viewIcons: Record<string, string> = {
-      'four-dir': '✚',
-      'topdown-plus': '⊞',
-      'side-only': '↔',
-      'isometric': '◇',
+      'four-dir': 'cross',
+      'topdown-plus': 'grid',
+      'side-only': 'side',
+      'isometric': 'diamond',
     }
     return `
       <div class="vh-section">
@@ -724,7 +742,7 @@ class VehiclePipelineUI {
         <div class="vh-viewmode-list">
           ${VIEW_MODES.map(m => `
             <button class="vh-viewmode-card${m.id === c.viewModeId ? ' active' : ''}" data-vh-vm="${m.id}">
-              <span class="vh-viewmode-icon">${viewIcons[m.id] || '📐'}</span>
+              <span class="vh-viewmode-icon">${vhIcon(viewIcons[m.id] || 'views')}</span>
               <div class="vh-viewmode-info">
                 <span class="vh-viewmode-name">${m.label}</span>
                 <span class="vh-viewmode-desc">${m.description}</span>
@@ -763,7 +781,7 @@ class VehiclePipelineUI {
     let buttonsHtml: string
     buttonsHtml = `<div class="vh-section" style="display:flex;flex-direction:column;gap:6px;">`
     buttonsHtml += `<button class="vh-btn primary" data-vh="gen-all" ${!this.img.viewsImage ? 'disabled' : ''}>
-      🎬 生成选中动画
+      ${vhIcon('film', 'vh-icon vh-btn-svg')}生成选中动画
     </button>`
     if (hasAnyResult && !allHaveResult) {
       buttonsHtml += `<button class="vh-btn" data-vh="gen-continue" ${!this.img.viewsImage ? 'disabled' : ''}>
@@ -772,7 +790,7 @@ class VehiclePipelineUI {
     }
     if (hasAnyResult) {
       buttonsHtml += `<button class="vh-btn-pill accent" data-vh="export-all">
-        <span class="vh-btn-pill-icon">📤</span> 导出全部 (ZIP)
+        <span class="vh-btn-pill-icon">${vhIcon('upload', 'vh-icon')}</span> 导出全部 (ZIP)
       </button>`
     }
     buttonsHtml += `</div>`
@@ -1042,7 +1060,7 @@ class VehiclePipelineUI {
       el.innerHTML = `
         <div class="vh-center">
           <div class="vh-empty">
-            <div style="font-size:48px;margin-bottom:12px;">📐</div>
+            <div style="margin-bottom:12px;">${vhIcon('views', 'vh-icon vh-empty-svg')}</div>
             <div>${this.img.designImage ? '选择视角模式，然后点击「生成多视角参考图」' : '请先在「角色设计」工作台完成载具设定'}</div>
           </div>
         </div>
@@ -1058,7 +1076,7 @@ class VehiclePipelineUI {
       el.innerHTML = `
         <div class="vh-center">
           <div class="vh-empty">
-            <div style="font-size:48px;margin-bottom:12px;">🎬</div>
+            <div style="margin-bottom:12px;">${vhIcon('film', 'vh-icon vh-empty-svg')}</div>
             <div>${this.img.viewsImage ? '选择动画状态，然后点击「继续生成」或「全部重新生成」' : '请先完成「多视角参考」步骤'}</div>
           </div>
         </div>
@@ -1138,7 +1156,7 @@ class VehiclePipelineUI {
           html += `<textarea class="vh-prompt-textarea" data-vh-prompt-text="${animId}:${v}" spellcheck="false"${idx === 0 ? '' : ' hidden'}>${esc(content)}</textarea>`
         })
         html += `<div class="vh-prompt-actions">`
-        html += `<button class="vh-btn small" data-vh-regen-prompt="${animId}">🔄 用当前提示词重生成</button>`
+        html += `<button class="vh-btn small" data-vh-regen-prompt="${animId}">${vhIcon('refresh', 'vh-icon')} 用当前提示词重生成</button>`
         html += `<button class="vh-btn small" data-vh-reset-prompt="${animId}" title="恢复默认模板生成的提示词">↺ 恢复默认</button>`
         html += `</div></div>`
       }
@@ -1174,10 +1192,10 @@ class VehiclePipelineUI {
       }
 
       html += `<div class="vh-card-footer">`
-      html += `<button class="vh-btn small" data-vh-regen="${animId}">🔄 重新生成</button>`
+      html += `<button class="vh-btn small" data-vh-regen="${animId}">${vhIcon('refresh', 'vh-icon')} 重新生成</button>`
       html += `<button class="vh-btn small" data-vh-center-all="${animId}">⊙ 全部居中</button>`
-      html += `<button class="vh-btn small" data-vh-add-lib="${animId}" title="把此动画加入动作库以便调缩放和放入场景">📦 加入动作库</button>`
-      html += `<button class="vh-btn small" data-vh-export-one="${animId}">📤 导出</button>`
+      html += `<button class="vh-btn small" data-vh-add-lib="${animId}" title="把此动画加入动作库以便调缩放和放入场景">${vhIcon('box', 'vh-icon')} 加入动作库</button>`
+      html += `<button class="vh-btn small" data-vh-export-one="${animId}">${vhIcon('upload', 'vh-icon')} 导出</button>`
       html += `</div>`
     }
 
@@ -2334,9 +2352,9 @@ class VehiclePipelineUI {
     if (groups.size === 0) {
       body.innerHTML = `
         <div class="vh-lib-empty">
-          <div class="vh-lib-empty-icon">📦</div>
+        <div class="vh-lib-empty-icon">${vhIcon('box', 'vh-icon vh-empty-svg')}</div>
           <div class="vh-lib-empty-text">动作库为空</div>
-          <div class="vh-lib-empty-hint">在「编辑」标签页生成动画后，点击动画卡片上的「📦 加入动作库」即可在此查看、调整缩放、放入场景</div>
+        <div class="vh-lib-empty-hint">在「编辑」标签页生成动画后，点击动画卡片上的「加入动作库」即可在此查看、调整缩放、放入场景</div>
         </div>`
       return
     }
@@ -2375,14 +2393,14 @@ class VehiclePipelineUI {
     body.innerHTML = `
       <div class="vh-lib-toolbar">
         <button class="vh-btn-pill" data-vh-lib="auto-align" title="以 idle 的载具尺寸为基准，自动统一所有动画的缩放">
-          <span class="vh-btn-pill-icon">🎯</span> 自动统一大小
+          <span class="vh-btn-pill-icon">${vhIcon('target', 'vh-icon')}</span> 自动统一大小
         </button>
         <button class="vh-btn-pill" data-vh-lib="reset-scales" title="清除所有动画的缩放调整">重置缩放</button>
       </div>
       <div class="vh-lib-grid">${cards}</div>
       <div class="vh-lib-footer-bar">
-        <button class="vh-btn-pill" data-vh-lib="inject-scene"><span class="vh-btn-pill-icon">🎬</span> 放入场景</button>
-        <button class="vh-btn-pill" data-vh-lib="export-zip"><span class="vh-btn-pill-icon">📤</span> 导出 ZIP</button>
+        <button class="vh-btn-pill" data-vh-lib="inject-scene"><span class="vh-btn-pill-icon">${vhIcon('film', 'vh-icon')}</span> 放入场景</button>
+        <button class="vh-btn-pill" data-vh-lib="export-zip"><span class="vh-btn-pill-icon">${vhIcon('upload', 'vh-icon')}</span> 导出 ZIP</button>
         <button class="vh-btn-pill danger" data-vh-lib="clear">清空</button>
       </div>`
 
@@ -2800,51 +2818,72 @@ function injectCSS(): void {
 }
 .vh-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
   flex-shrink: 0;
 }
-.vh-header-icon { font-size: 20px; }
-.vh-header-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.vh-header-title { font-size: 15px; font-weight: 700; color: #d4ff48; line-height: normal; }
+.vh-header-pill {
+  margin-left: auto; padding: 3px 8px;
+  border: 1px solid rgba(212,255,72,0.28);
+  border-radius: 999px; background: rgba(212,255,72,0.08);
+  color: #d4ff48; font-size: 11px; font-weight: 700;
+  line-height: 1.2; letter-spacing: .04em; white-space: nowrap;
+}
+.vh-icon {
+  width: 16px; height: 16px;
+  display: inline-block; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: -0.2em;
+}
 
 /* Tab Bar */
 .vh-tab-bar {
-  display: flex; gap: 0; border-bottom: 2px solid var(--border);
-  padding: 0 16px; flex-shrink: 0;
+  display: flex; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding: 8px 10px; flex-shrink: 0;
 }
 .vh-tab-btn {
-  flex: 1; padding: 9px 0; border: none; background: transparent;
+  flex: 1; padding: 7px 8px; border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px; background: rgba(255,255,255,0.018);
   color: var(--text-secondary); font-size: 12px; font-weight: 600;
   font-family: inherit; cursor: pointer; transition: all 0.15s;
   text-align: center; position: relative;
 }
 .vh-tab-btn:hover { color: var(--text-primary); }
-.vh-tab-btn.active { color: var(--accent); }
-.vh-tab-btn.active::after {
-  content: ''; position: absolute; bottom: -2px; left: 12px; right: 12px;
-  height: 2px; background: var(--accent); border-radius: 1px;
-}
+.vh-tab-btn.active { color: var(--accent); border-color: rgba(212,255,72,0.26); background: rgba(212,255,72,0.08); }
 .vh-tab-body { flex: 1; overflow-y: auto; min-height: 0; }
 
-.vh-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.vh-section {
+  margin: 8px 10px 0; padding: 10px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px; background: rgba(255,255,255,0.018);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.16);
+}
 .vh-label {
-  font-size: 11px; font-weight: 600; color: var(--text-secondary);
-  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+  font-size: 12px; font-weight: 800; color: var(--accent);
+  margin-bottom: 7px; letter-spacing: 0.03em;
 }
 .vh-label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.7; }
 
 /* Steps */
 .vh-steps { display: flex; flex-direction: column; gap: 2px; }
 .vh-step {
-  border: 1px solid transparent; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.07); border-radius: 8px;
+  background: rgba(255,255,255,0.015);
   transition: all 0.15s; cursor: pointer;
 }
 .vh-step:hover { background: var(--bg-hover); }
-.vh-step.active { background: var(--bg-active); border-color: var(--accent); }
+.vh-step.active { background: rgba(212,255,72,0.055); border-color: rgba(212,255,72,0.24); }
 .vh-step.done .vh-step-label { color: var(--color-status-success); }
 .vh-step-head {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  display: flex; align-items: center; gap: 8px; padding: 9px 10px;
 }
-.vh-step-icon { font-size: 14px; width: 22px; text-align: center; }
+.vh-step-icon {
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--accent);color:#071007;font-size:10px;font-weight:900;
+}
+.vh-step-svg { width:11px; height:11px; stroke-width:2.4; }
 .vh-step-label { font-size: 12px; font-weight: 600; color: var(--text-primary); flex: 1; }
 .vh-step-done { font-size: 9px; color: var(--color-status-success); font-weight: 600; }
 
@@ -2894,7 +2933,10 @@ function injectCSS(): void {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   border-color: var(--accent);
 }
-.vh-viewmode-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+.vh-viewmode-icon { display:flex;align-items:center;justify-content:center;width:28px;text-align:center;flex-shrink:0;color:var(--text-secondary); }
+.vh-viewmode-card.active .vh-viewmode-icon { color: var(--accent); }
+.vh-empty-svg { width:34px; height:34px; opacity:0.45; }
+.vh-btn-pill-icon .vh-icon { width:14px; height:14px; stroke-width:2.2; }
 .vh-viewmode-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .vh-viewmode-name { font-size: 12px; font-weight: 600; }
 .vh-viewmode-desc { font-size: 10px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2914,7 +2956,8 @@ function injectCSS(): void {
 
 /* Buttons */
 .vh-btn {
-  display: block; width: 100%; padding: 8px 12px;
+  display: inline-flex; align-items:center; justify-content:center; gap:6px;
+  width: 100%; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 6px;
   background: var(--bg-hover); color: var(--text-primary);
   font-size: 12px; font-weight: 600; font-family: inherit;
@@ -2925,6 +2968,7 @@ function injectCSS(): void {
 .vh-btn:active { transform: scale(0.98); }
 .vh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .vh-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+.vh-btn-svg { width:15px; height:15px; stroke-width:2.2; }
 .vh-btn.primary:hover { filter: brightness(1.1); }
 .vh-btn.primary:disabled { filter: none; }
 .vh-btn.vh-btn-xl {
@@ -3088,7 +3132,8 @@ function injectCSS(): void {
 /* ── Center Panel ─────────────────────────────────────────────────── */
 .vh-center {
   padding: 16px; display: flex; flex-direction: column; gap: 12px;
-  height: 100%; overflow-y: auto; overflow-x: hidden;
+  width: 100%; height: 100%; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
   box-sizing: border-box;
 }
 .vh-center-title {

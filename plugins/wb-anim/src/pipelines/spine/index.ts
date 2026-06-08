@@ -12,6 +12,7 @@ import { studioSave, studioLoad, EDITOR_STATE_KEY } from './editor/StudioStorage
 import { parseSpineJson, computeWorldTransforms, applyIKConstraints } from './editor/SpineDataParser'
 import { globalState } from '../../shared/GlobalState'
 import { forgeaxHost } from '../../platform/HostSdkBridge'
+import { spineIcon } from './editor/spine-icons'
 
 let ctx: PipelineContext
 
@@ -136,13 +137,18 @@ class SpineInlineUI {
     // 软提示：未完成角色设计时仍渲染全部步骤 UI，只在顶部插一条警告条
     // （详见 pixel-char 同名方法）。让用户能调试每步细节面板。
 
+    const header = document.createElement('div')
+    header.className = 'spine-header'
+    header.innerHTML = '<span class="spine-header-title">Spine 动画工作台</span><span class="spine-header-pill">Spine</span>'
+    leftPanel.appendChild(header)
+
     this.navEl = document.createElement('div')
     this.navEl.className = 'spine-step-nav'
 
     for (const meta of TAB_META) {
       const btn = document.createElement('button')
       btn.className = 'spine-step-btn'
-      btn.innerHTML = `<span class="step-icon">${meta.icon}</span>${meta.label}`
+      btn.innerHTML = `<span class="step-icon">${spineIcon(meta.id)}</span>${meta.label}`
       btn.addEventListener('click', () => this.switchTab(meta.id))
       this.navEl.appendChild(btn)
       this.stepBtns.set(meta.id, btn)
@@ -151,7 +157,7 @@ class SpineInlineUI {
     if (!globalState.hasCharacter) {
       const banner = document.createElement('div')
       banner.style.cssText = 'padding:10px 12px;margin:0 0 8px 0;background:rgba(255,170,40,0.08);border:1px solid rgba(255,170,40,0.35);border-radius:6px;color:var(--text-secondary);font-size:12px;line-height:1.5;'
-      banner.innerHTML = `<strong style="color:#ffb84d;">⚠️ 还未完成角色设计</strong><br>
+      banner.innerHTML = `<strong style="color:#ffb84d;">提示：还未完成角色设计</strong><br>
         去 <code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;">wb-character</code> 生成角色后再跑 Spine 流水线；当前可预览/调试各步骤 UI。`
       leftPanel.appendChild(banner)
     }

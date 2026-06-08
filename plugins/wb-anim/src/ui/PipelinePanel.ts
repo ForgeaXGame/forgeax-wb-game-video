@@ -5,6 +5,17 @@ import type { CameraStore } from '../core/CameraStore'
 import type { PreviewControls } from './PreviewControls'
 import { globalState } from '../shared/GlobalState'
 
+function pipelineIcon(id: string, cls = 'pipeline-icon-svg'): string {
+  const paths: Record<string, string> = {
+    'pixel-char': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    spine: '<path d="M12 2v20"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="M12 12 6 8M12 12l6-4M12 19l-5 3M12 19l5 3"/>',
+    video: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5v14M16 5v14M4 9h16M4 15h16"/>',
+    'vehicle-design': '<path d="M4 14h16l-2-5H6l-2 5Z"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M7 9V6h10v3"/>',
+    default: '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 13l9 5 9-5"/>',
+  }
+  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[id] ?? paths.default}</svg>`
+}
+
 export interface ExtraPanels {
   center: HTMLElement
   right: HTMLElement
@@ -76,7 +87,7 @@ export class PipelinePanel {
     for (const m of mainMetas) {
       const tab = document.createElement('button')
       tab.className = 'pipeline-tab main-tab'
-      tab.innerHTML = `<span class="tab-icon">${m.icon}</span>${m.name}`
+      tab.innerHTML = `<span class="tab-icon">${pipelineIcon(m.id)}</span>${m.name}`
       tab.addEventListener('click', () => { void this.activate(m) })
       this.tabsContainer.appendChild(tab)
       this.tabEls.set(m.id, tab)
@@ -187,12 +198,12 @@ export class PipelinePanel {
       h.textContent = text
       return h
     }
-    const item = (icon: string, name: string, desc: string, onClick: () => void) => {
+    const item = (meta: PipelineMeta, onClick: () => void) => {
       const it = document.createElement('button')
       it.className = 'pipeline-drawer-item'
-      it.innerHTML = `<span class="pipeline-drawer-icon">${icon}</span>` +
-        `<span class="pipeline-drawer-text"><span class="pipeline-drawer-name">${name}</span>` +
-        `<span class="pipeline-drawer-desc">${desc}</span></span>`
+      it.innerHTML = `<span class="pipeline-drawer-icon">${pipelineIcon(meta.id)}</span>` +
+        `<span class="pipeline-drawer-text"><span class="pipeline-drawer-name">${meta.name}</span>` +
+        `<span class="pipeline-drawer-desc">${meta.description}</span></span>`
       it.addEventListener('click', () => { panel.style.display = 'none'; onClick() })
       return it
     }
@@ -207,7 +218,7 @@ export class PipelinePanel {
     if (variantGroup.length) {
       panel.appendChild(groupHead('生产变体'))
       for (const m of variantGroup) {
-        panel.appendChild(item(m.icon, m.name, m.description, () => { void this.activate(m) }))
+        panel.appendChild(item(m, () => { void this.activate(m) }))
         this.tabEls.set(m.id, trigger)
       }
     }
@@ -215,7 +226,7 @@ export class PipelinePanel {
     if (auxGroup.length) {
       panel.appendChild(groupHead('辅助工具'))
       for (const m of auxGroup) {
-        panel.appendChild(item(m.icon, m.name, m.description, () => { void this.activate(m) }))
+        panel.appendChild(item(m, () => { void this.activate(m) }))
         this.tabEls.set(m.id, trigger)
       }
     }
@@ -295,7 +306,7 @@ export class PipelinePanel {
     this.leftPanel.innerHTML = `
       <div class="pipeline-loading">
         <div class="pipeline-loading-spinner"></div>
-        <div class="pipeline-loading-text">${meta.icon} ${meta.name} 加载中…</div>
+        <div class="pipeline-loading-text">${pipelineIcon(meta.id)}${meta.name} 加载中…</div>
       </div>
     `
   }
