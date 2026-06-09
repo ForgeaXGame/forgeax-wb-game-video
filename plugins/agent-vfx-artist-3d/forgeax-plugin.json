@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
-  "id": "@forgeax-plugin/agent-vfx-artist",
+  "id": "@forgeax-plugin/agent-vfx-artist-3d",
   "version": "0.1.0",
   "kind": "agent",
   "displayName": {
-    "zh": "特效设计师",
-    "en": "VFX Artist"
+    "zh": "3D 特效设计师",
+    "en": "3D VFX Artist"
   },
   "description": {
-    "zh": "专精 wb-skill 工作台 · 技能特效 / 命中粒子 / buff 光环 / 招式拖尾。把 Iori 的技能 spec + 动画设计师的动作锚点(vfx_anchor)接起来,产出 vfx-config 与粒子帧序。不画角色立绘 / 不做动作动画。",
-    "en": "Specializes in the wb-skill workbench — skill VFX, hit particles, buff auras, attack trails. Bridges Iori's skill spec and the Animator's vfx_anchor frames to produce vfx-config plus particle frame sequences. Doesn't draw characters or animate motion."
+    "zh": "专精 wb-skill 工作台 · 3D 技能特效 / 命中粒子 / buff 光环 / 招式拖尾。把 Iori 的技能 spec + 2D 动画设计师的动作锚点(vfx_anchor)接起来,产出 3D vfx-config 与粒子帧序。不画角色立绘 / 不做动作动画。",
+    "en": "Specializes in the wb-skill workbench — 3D skill VFX, hit particles, buff auras, attack trails. Bridges Iori's skill spec and the 2D Animator's vfx_anchor frames to produce 3D vfx-config plus particle frame sequences. Doesn't draw characters or animate motion."
   },
   "provides": {
     "agent": {
-      "id": "vfx-artist",
-      "role": "vfx-artist",
+      "id": "vfx-artist-3d",
+      "role": "vfx-artist-3d",
       "card": {
         "name": {
-          "zh": "特效设计师",
-          "en": "VFX Artist"
+          "zh": "3D 特效设计师",
+          "en": "3D VFX Artist"
         },
         "color": "#A8E6CF",
         "avatar": "✨"

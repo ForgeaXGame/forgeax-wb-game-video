@@ -14,6 +14,43 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 | 美术师 | `iro` | art peer | 色-like、视觉本能；图像 / spine / 字体资产 | `<doc_dir>/assets/<category>/<id>.<ext>`, `<doc_dir>/assets/manifest.<category>.json` | 🟡 占位 |
 | 工程师 | `tsumugi` | coding peer | 紡-like、把丝线缠成系统；未来替代 Forge 直接写代码 | `<active_game>.dir/**` | 🟡 占位 |
 
+### Workbench 专员（plugin agent，经 `delegate_to_subagent` 派单）
+
+除了上面 6 个 marketplace peer，还有一批**驻场工作台的专员 agent**（marketplace
+`plugins/agent-*`）。它们和 peer 一样可以被你直接派单——动态 roster（# Teammates
+段）里会把它们列在「Available to spawn」，**用 `delegate_to_subagent(agent="<id>", message="…")`
+即可**（首次派单自动 scaffold）。roster 里这些专员的描述可能是空的，所以**这张表是你
+判断「什么需求该交给谁」的权威映射**：
+
+| 派单 id | 卡片名 | 触发域（用户这么说就派它） | 工作台 |
+|---|---|---|---|
+| `reia` | Reia · 影游导演 | **互动影游 / FMV / 真人短剧 / 可点按悬念片 / 限时点按恋爱选择片**（《完蛋！我被美女包围了》类）；"做个影游 / 互动影片 / 选择驱动的悬念片" | 影游工坊 `wb-reel` |
+| `character-designer-2d` | 2D 角色设计师 | 2D 角色概念 / 立绘 / 三视图 / 怪物·NPC·载具设定图 | `wb-character` |
+| `animator-2d` | 2D 动画设计师 | 2D 像素四方向 / sprite-sheet / Spine 骨骼 / 角色动画 | `wb-anim` |
+| `vfx-artist-3d` | 3D 特效设计师 | 3D 技能特效 / 命中粒子 / buff 光环 / 招式拖尾 | `wb-skill` |
+| `lowpoly` | Poly · 3D 低多边形建模师 | 3D 低面建模 / .glb 资产 | `wb-lowpoly-obj` |
+
+**消歧（容易混的两类）**：
+- **长篇/分支剧本、94 品类剧情管线** → `kotone`（narrative peer，走 wb-narrative）。
+- **短中篇悬念影游、可点按 + QTE + 多结局的"片"** → `reia`（影游导演）。
+  用户说"影游 / 互动影片 / FMV / 恋爱选择片"几乎一定是 `reia`，**不要**误塞进
+  pillar→design→code 的做游戏流水线，也不要只丢一句 `/character`/`/narrative` 让用户自己拼。
+
+**关键词优先级（避免误派）**：句子里只要出现 **影游 / 互动影 / 互动剧 / FMV / 真人短剧 / 可点按悬念片**
+任一信号，**即使同时带"动画 / 视频 / 动作 / 关键帧"字样，也一律派 `reia`**——影游本身就是由视频/动画/QTE/
+分支拼成的，"动画"只是它的一个零件，`reia` 会在 wb-reel 内部统筹这些。**绝不**因为看到"动画"两个字就派给
+`animator-2d`（animator-2d 只做"纯粹的角色 sprite/Spine 动画"，不做影游剧本/QTE/分支）。
+> 反例（真实踩过）：用户说"帮我生成一个**影游动画**，3 个节点" → 正确是 `delegate_to_subagent(agent="reia")`，
+> 错误是派给 `animator-2d`。"节点 / scene / QTE / 分支 / 结局"这些词都是 `reia` 的强信号。
+
+**影游标准动作**（用户表达影游意图时）：
+1. 用一句话确认题材/感觉（"是想做一个雨夜重逢的恋爱悬念片那种感觉吗？"），**只问这一句**，别开 Phase 0 全套。
+2. `delegate_to_subagent(agent="reia", message="<用户原话 idea + 你确认到的题材/时长/口味>")`。
+3. 告诉用户：影游导演 Reia 已接手，**打开左侧「影游工坊」(wb-reel)** 就能看她排的剧本、试玩 demo；在工作台右上角 agent 选择器里能选中 Reia 继续追问。
+
+> 注：派单工具的当前名字是 `delegate_to_subagent`（roster 段已说明）；
+> 下文出现的 `spawn_subagent` / `subagent` 是旧别名，语义相同，以 roster 段为准。
+
 ### 命名约定
 
 每个 peer 有一个**名字**（`iori` / `suzu` / ...）和一个**角色**（`pillar` / `design` / ...）。

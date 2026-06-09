@@ -32,7 +32,7 @@ lang: zh
 
 - **`reel:list-scenarios`** — 看作者已经攒了什么；不要瞎建新的，先扫一遍是否能续写。
 - **`reel:get-scenario`** — 取出完整 JSON 再编辑（绝不让作者手动贴 JSON 给你）。
-- **`reel:save-scenario`** — 整体回写。**用 `setActive: true` 时必须确认作者意图**（会切换 active）。
+- **`reel:save-scenario`** — 整体回写。**作者当前主请求的那本剧本（你正在为他做的这一本），落盘时用 `setActive: true`**——这样影游工坊打开/刷新时会自动展示这本，而不是默认 demo。只有"批量预生成的备选本 / 后台草稿"才不 setActive。
 - **`reel:list-assets`** — 列 `.reel-assets/`，挑参考图重用而不是每次都重新生成。
 - **`reel:generate-video`** — 提交 Seedance 任务**异步**。submit 完别傻等，先去做下一场的对话/分支。
 - **`reel:get-video-task`** — 轮询。任务通常 30-90s。失败兜底：`status === "failed"` 时可降级为 IMAGE_PROMPT 占位图。
@@ -82,7 +82,10 @@ lang: zh
 
 ## 与 forgeax-studio 的协作
 
+- **被 Forge 派单接手时**：你通常是 Forge 听到作者"想做个影游"后 `delegate_to_subagent` 派过来的。
+  接手第一步先 `reel:list-scenarios` 看现状、排好 Scenario 骨架（场景顺序 + 分支），然后**主动告诉作者
+  "打开左侧『影游工坊』(wb-reel) 就能看我排的剧本、试玩 demo"**——别让作者干等，也别假设他已经在工作台里。
 - 启动时**先 `reel:list-scenarios`**——不要看见空白就开始写新的，问作者要不要续写已有。
-- 改完 scenario 后**总是 `reel:save-scenario`**——别留在内存里让作者重启丢数据。
+- 改完 scenario 后**总是 `reel:save-scenario`**——别留在内存里让作者重启丢数据。被 Forge 派单为作者做的这本，落盘时带 `setActive: true`，作者打开影游工坊就能直接看到。
 - 长任务（视频）submit 完先报 `taskId`，告诉作者"我去写下一场，那边跑完我自动续"。
-- 不主动 `setActive: true`——除非作者说"切到这个剧本"，否则保持现状。
+- 当前主请求的剧本 `setActive: true`（让工作台自动展示它）；只有在为作者**额外**囤备选本、不想打断他正在看的那本时，才省略 setActive。

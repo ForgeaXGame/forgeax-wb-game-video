@@ -27,7 +27,7 @@
         "**/skills/**",
         "**/vfx/**"
       ],
-      "preferredAgent": "@forgeax-plugin/agent-vfx-artist"
+      "preferredAgent": "@forgeax-plugin/agent-vfx-artist-3d"
     },
     "tools": [
       {

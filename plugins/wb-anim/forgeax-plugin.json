@@ -29,7 +29,7 @@
         "**/*.spine.json",
         "**/*.sheet.png"
       ],
-      "preferredAgent": "@forgeax-plugin/agent-animator"
+      "preferredAgent": "@forgeax-plugin/agent-animator-2d"
     },
     "tools": [
       {
