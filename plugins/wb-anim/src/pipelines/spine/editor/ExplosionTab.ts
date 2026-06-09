@@ -171,6 +171,8 @@ export class ExplosionTab implements StudioTab {
   private resizeObs: ResizeObserver | null = null;
   private generating = false;
   private lastPrompt = '';
+  private generatedCandidates: string[] = [];
+  private generatedCandidatesAspect = '';
 
   constructor(parent: HTMLElement, onStateChange: () => void) {
     this.onStateChange = onStateChange;
@@ -211,22 +213,18 @@ export class ExplosionTab implements StudioTab {
         </div>
 
         <div class="expl-divider"></div>
-        <div class="sd-section-title">一键生成流程</div>
-        <div class="expl-steps-info">
-          <div class="expl-step-item"><span class="expl-step-num">1</span><span>Gemini 3.0 Pro 看图 → 生成提示词</span></div>
-          <div class="expl-step-item"><span class="expl-step-num">2</span><span>Nano Banana 2 生成拆件图</span></div>
-          <div class="expl-step-item"><span class="expl-step-num">3</span><span>一键抠图（去白底）</span></div>
-        </div>
-
-        <div class="expl-divider"></div>
         <div class="expl-actions">
           <div class="expl-actions-primary">
             <button class="sd-gen-btn" id="expl-gen-parts" disabled>
               ${spineBtnLabel('paint', '一键生成角色拆件图')}
             </button>
             <div class="cd-progress" id="expl-progress" style="display:none">
-              <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
-              <div class="cd-progress-text" id="expl-progress-text">生成中...</div>
+              <div class="expl-progress-head">
+                <span class="expl-progress-step" id="expl-progress-step">准备中</span>
+                <span class="expl-progress-percent" id="expl-progress-percent">0%</span>
+              </div>
+              <div class="cd-progress-bar"><div class="cd-progress-fill" id="expl-progress-fill"></div></div>
+              <div class="cd-progress-text" id="expl-progress-text">正在准备生成任务...</div>
             </div>
             <button class="sd-action-btn sd-btn-ghost" id="expl-reroll" style="display:none;">
               ${spineBtnLabel('refresh', '不满意，重新抽卡')}
@@ -234,9 +232,6 @@ export class ExplosionTab implements StudioTab {
           </div>
           <div class="expl-actions-steps">
             <div class="expl-actions-steps-label">后续处理</div>
-            <button class="sd-action-btn sd-step-btn" id="expl-remove-bg" disabled>
-              ${spineBtnLabel('eraser', '一键抠图（去白底）')}
-            </button>
             <button class="sd-action-btn sd-step-btn" id="expl-auto-crop" disabled>
               ${spineBtnLabel('scissors', '自动标注部件')}
             </button>
@@ -245,11 +240,6 @@ export class ExplosionTab implements StudioTab {
             </button>
           </div>
           <button class="studio-next-btn" id="expl-confirm" disabled>确认 → 进入绑骨</button>
-        </div>
-
-        <div class="expl-divider"></div>
-        <div class="expl-upload-row" style="display:flex;gap:6px;">
-          <button class="sd-action-btn" id="expl-upload-result" style="flex:1;font-size:11px;">${spineBtnLabel('upload', '上传已有拆件图')}</button>
         </div>
 
         <div class="expl-divider"></div>
@@ -278,11 +268,7 @@ export class ExplosionTab implements StudioTab {
           <div class="expl-arrow-label">Claude<br>+<br>Gemini</div>
         </div>
         <div class="expl-preview-panel">
-          <div class="sd-section-title" id="expl-right-title">拆件图结果
-            <button class="sd-gen-btn" id="expl-gen-parts-center" style="margin-left:auto;padding:4px 12px;font-size:12px;">
-              ${spineBtnLabel('paint', '一键生成')}
-            </button>
-          </div>
+          <div class="sd-section-title" id="expl-right-title">拆件图结果</div>
           <div class="expl-result-box" id="expl-result">
             <div class="sd-preview-empty">
               <div class="sd-preview-empty-icon">${spineIcon('scissors')}</div>
@@ -297,12 +283,9 @@ export class ExplosionTab implements StudioTab {
     `;
 
     this.q('#expl-upload-btn')?.addEventListener('click', () => this.pickImage('source'));
-    this.q('#expl-upload-result')?.addEventListener('click', () => this.pickImage('result'));
     this.q('#expl-upload-result2')?.addEventListener('click', () => this.pickImage('result'));
     this.q('#expl-gen-parts')?.addEventListener('click', () => this.runFullPipeline());
-    this.q('#expl-gen-parts-center')?.addEventListener('click', () => this.runFullPipeline());
     this.q('#expl-reroll')?.addEventListener('click', () => this.reroll());
-    this.q('#expl-remove-bg')?.addEventListener('click', () => this.removeWhiteBackground());
     this.q('#expl-auto-crop')?.addEventListener('click', () => this.enterAnnotateMode('auto'));
     this.q('#expl-manual-crop')?.addEventListener('click', () => this.enterAnnotateMode('manual'));
     this.q('#expl-confirm')?.addEventListener('click', () => this.confirm());
@@ -391,11 +374,22 @@ export class ExplosionTab implements StudioTab {
 
   // ── 完整管线 ──────────────────────────────────────────────
 
-  private showProgress(show: boolean, text = ''): void {
+  private showProgress(show: boolean, text = '', percent?: number): void {
     const el = this.q('#expl-progress') as HTMLElement;
     if (el) el.style.display = show ? '' : 'none';
     const txt = this.q('#expl-progress-text') as HTMLElement;
     if (txt && text) txt.textContent = text;
+    const step = this.q('#expl-progress-step') as HTMLElement;
+    const pct = this.q('#expl-progress-percent') as HTMLElement;
+    const fill = this.q('#expl-progress-fill') as HTMLElement;
+    const inferred = percent ?? (text.startsWith('1/3') ? 33 : text.startsWith('2/3') ? 66 : text.startsWith('3/3') ? 90 : 15);
+    const clamped = Math.max(0, Math.min(100, inferred));
+    if (step && text) {
+      const match = text.match(/^(\d\/\d)\s*(.*)$/);
+      step.textContent = match ? `步骤 ${match[1]}` : '处理中';
+    }
+    if (pct) pct.textContent = `${clamped}%`;
+    if (fill) fill.style.width = `${clamped}%`;
   }
 
   private async runFullPipeline(): Promise<void> {
@@ -407,11 +401,14 @@ export class ExplosionTab implements StudioTab {
     }
     if (this.generating) return;
     this.generating = true;
+    this.generatedCandidates = [];
+    this.generatedCandidatesAspect = '';
     this.clearInlineError();
 
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     if (btn) btn.disabled = true;
-    this.showProgress(true, '1/3 压缩图片...');
+    this.showProgress(true, '1/3 压缩图片...', 12);
+    let keepProgressVisible = false;
 
     try {
       const templateUrl = this.getTemplateUrl();
@@ -428,7 +425,7 @@ export class ExplosionTab implements StudioTab {
       console.log('[Spine] Template detected aspect ratio:', templateAspect);
 
       // ── Step 1: Gemini 3.0 Pro 看图生成提示词 ──
-      this.showProgress(true, '1/3 Gemini 3.0 Pro 正在分析角色，生成拆件提示词...');
+      this.showProgress(true, '1/3 Gemini 3.0 Pro 正在分析角色，生成拆件提示词...', 33);
 
       const charDesc = this.getCharDesc();
       console.log('[Spine] Step 1: calling Gemini 3.0 Pro for text prompt, charDesc:', charDesc);
@@ -479,7 +476,7 @@ ${PARTS_TEMPLATE}`;
       // ── Step 2: Nano Banana 2 并行生成 4 张拆件图 ──
       const NUM_CANDIDATES = 4;
       console.log('[Spine] Step 2: calling Nano Banana 2 x' + NUM_CANDIDATES);
-      this.showProgress(true, `2/3 Nano Banana 2 正在并行生成 ${NUM_CANDIDATES} 张拆件图...`);
+      this.showProgress(true, `2/3 Nano Banana 2 正在并行生成 ${NUM_CANDIDATES} 张拆件图...`, 66);
 
       const imgPayload = {
         prompt: finalPrompt,
@@ -510,8 +507,9 @@ ${PARTS_TEMPLATE}`;
       }
 
       // ── Step 3: 展示候选图供选择 ──
-      this.showProgress(true, '3/3 处理中...');
+      this.showProgress(true, '3/3 处理中...', 90);
       this.showCandidateGrid(successResults, templateAspect);
+      keepProgressVisible = true;
 
     } catch (e: any) {
       console.error('[Spine] ❌ Pipeline error:', e);
@@ -520,7 +518,7 @@ ${PARTS_TEMPLATE}`;
     } finally {
       this.generating = false;
       btn.disabled = false;
-      this.showProgress(false);
+      if (!keepProgressVisible) this.showProgress(false);
       this.updateButtons();
     }
   }
@@ -532,10 +530,13 @@ ${PARTS_TEMPLATE}`;
     }
     if (this.generating) return;
     this.generating = true;
+    this.generatedCandidates = [];
+    this.generatedCandidatesAspect = '';
 
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     btn.disabled = true;
-    this.showProgress(true, '重新抽卡中...');
+    this.showProgress(true, '重新抽卡中...', 20);
+    let keepProgressVisible = false;
 
     try {
       const charImg = await compressImage(this.state.characterImage, 1024, 1024, 0.9);
@@ -545,7 +546,7 @@ ${PARTS_TEMPLATE}`;
       const templateAspect = await this.detectAspectRatio(templateDataUrl);
 
       const NUM_CANDIDATES = 4;
-      this.showProgress(true, `Nano Banana 2 并行生成 ${NUM_CANDIDATES} 张拆件图...`);
+      this.showProgress(true, `Nano Banana 2 并行生成 ${NUM_CANDIDATES} 张拆件图...`, 65);
 
       const payload = {
         prompt: this.lastPrompt,
@@ -576,13 +577,14 @@ ${PARTS_TEMPLATE}`;
       }
 
       this.showCandidateGrid(candidates, templateAspect);
+      keepProgressVisible = true;
     } catch (e: any) {
       const msg = e?.message || String(e);
       this.showToast(msg.includes('无法加载图片') ? `❌ ${msg}` : `❌ 请求失败: ${msg}`);
     } finally {
       this.generating = false;
       btn.disabled = false;
-      this.showProgress(false);
+      if (!keepProgressVisible) this.showProgress(false);
       this.updateButtons();
     }
   }
@@ -626,111 +628,48 @@ ${PARTS_TEMPLATE}`;
     return this.isFemale() ? TEMPLATE_FEMALE_URL : TEMPLATE_MALE_URL;
   }
 
-  // ── 白底去除 ──────────────────────────────────────────────
-
-  private async removeWhiteBgFromDataUrl(dataUrl: string): Promise<string> {
-    const img = await this.loadImage(dataUrl);
-    console.log('[Spine] removeWhiteBg: image loaded', img.width, 'x', img.height);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-    ctx.drawImage(img, 0, 0);
-
-    let imageData: ImageData;
-    try {
-      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    } catch (secErr) {
-      console.error('[Spine] getImageData SecurityError:', secErr);
-      throw secErr;
-    }
-    const { data, width, height } = imageData;
-    console.log('[Spine] removeWhiteBg: got imageData, pixels:', width * height);
-
-    // 采样四角（真正的四个角）判断背景颜色
-    const sampleCorners = [
-      0,                                        // top-left
-      (width - 1) * 4,                          // top-right
-      (height - 1) * width * 4,                 // bottom-left
-      ((height - 1) * width + width - 1) * 4,   // bottom-right
-    ];
-    let brightSum = 0;
-    for (const c of sampleCorners) {
-      if (c + 2 < data.length) brightSum += (data[c] + data[c + 1] + data[c + 2]) / 3;
-    }
-    const avgBrightness = brightSum / sampleCorners.length;
-    const isDarkBg = avgBrightness < 80;
-    console.log('[Spine] removeWhiteBg: avgCornerBrightness=', avgBrightness.toFixed(1), 'isDarkBg=', isDarkBg);
-
-    const threshold = 220;
-    const edgeSoftness = 35;
-    let removedCount = 0;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      const brightness = Math.max(r, g, b);
-      const saturation = brightness > 0 ? 1 - Math.min(r, g, b) / brightness : 0;
-
-      if (isDarkBg) {
-        // 黑/深色背景：去除低亮度低饱和度像素
-        if (brightness < 25) {
-          data[i + 3] = 0;
-          removedCount++;
-        } else if (brightness < (25 + edgeSoftness) && saturation < 0.2) {
-          data[i + 3] = Math.round(Math.max(0, (brightness - 25) / edgeSoftness) * 255);
-        }
-      } else {
-        // 白/浅色背景：去除高亮度低饱和度像素
-        if (r >= threshold && g >= threshold && b >= threshold) {
-          data[i + 3] = 0;
-          removedCount++;
-        } else if (brightness > (threshold - edgeSoftness) && saturation < 0.15) {
-          data[i + 3] = Math.round(Math.max(0, (threshold - brightness) / edgeSoftness) * 255);
-        }
-      }
-    }
-    console.log('[Spine] removeWhiteBg: removed', removedCount, 'pixels');
-
-    ctx.putImageData(imageData, 0, 0);
-    const result = canvas.toDataURL('image/png');
-    console.log('[Spine] removeWhiteBg: output size', (result.length / 1024).toFixed(0), 'KB');
-    return result;
-  }
-
   private showCandidateGrid(candidates: string[], _aspect: string): void {
+    this.generatedCandidates = candidates;
+    this.generatedCandidatesAspect = _aspect;
     const resultBox = this.q('#expl-result') as HTMLElement;
+    if (!resultBox) {
+      this.showInlineError('生成完成，但结果面板未找到，请重新打开拆件页');
+      return;
+    }
     // 只更新标题文字节点，不清除标题里的按钮子元素
     const title = this.q('#expl-right-title') as HTMLElement;
     if (title) {
       const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
       if (firstTextNode) {
-        firstTextNode.textContent = `选择最佳拆件图 (${candidates.length} 张) `;
+        firstTextNode.textContent = `生成完成 · 选择最佳拆件图 (${candidates.length} 张) `;
       } else {
-        title.insertBefore(document.createTextNode(`选择最佳拆件图 (${candidates.length} 张) `), title.firstChild);
+        title.insertBefore(document.createTextNode(`生成完成 · 选择最佳拆件图 (${candidates.length} 张) `), title.firstChild);
       }
     }
     resultBox.innerHTML = '';
 
+    resultBox.style.background = 'var(--color-background-canvas)';
+    resultBox.style.alignItems = 'stretch';
+    resultBox.style.justifyContent = 'stretch';
+
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;width:100%;height:100%;overflow:auto;';
+    grid.className = 'expl-candidate-grid';
     resultBox.appendChild(grid);
 
     for (let i = 0; i < candidates.length; i++) {
       const cell = document.createElement('div');
       // 棋盘格背景让白色部件和黑色部件都可见
-      cell.style.cssText = 'position:relative;cursor:pointer;border:2px solid transparent;border-radius:8px;overflow:hidden;background:repeating-conic-gradient(#2a2a2e 0% 25%, #1a1a22 0% 50%) 0 0 / 12px 12px;transition:border-color 0.2s;';
+      cell.className = 'expl-candidate-card';
       cell.innerHTML = `
-        <img src="${candidates[i]}" style="width:100%;height:100%;object-fit:contain;">
-        <div style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;">#${i + 1}</div>
+        <img class="expl-candidate-img" src="${candidates[i]}" alt="候选拆件图 ${i + 1}">
+        <div class="expl-candidate-badge">#${i + 1}</div>
+        <div class="expl-candidate-hint">点击选择</div>
       `;
-      cell.addEventListener('mouseenter', () => cell.style.borderColor = '#4fc3f7');
-      cell.addEventListener('mouseleave', () => cell.style.borderColor = 'transparent');
       cell.addEventListener('click', () => this.selectCandidate(candidates[i]));
       grid.appendChild(cell);
     }
 
-    this.showProgress(false);
+    this.showProgress(true, `3/3 已生成 ${candidates.length} 张候选拆件图，请在右侧选择一张`, 100);
     this.generating = false;
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     if (btn) btn.disabled = false;
@@ -739,7 +678,8 @@ ${PARTS_TEMPLATE}`;
 
   private selectCandidate(rawDataUrl: string): void {
     // 直接保存原始图像，不在选择阶段做 canvas 处理（避免 iframe 环境下 canvas 安全限制）
-    // 白底去除使用侧边栏「一键抠图」按钮单独处理
+    this.generatedCandidates = [];
+    this.generatedCandidatesAspect = '';
     this.state!.explosionImage = rawDataUrl;
     this.state!.partRegions = [];
     this.showResultPreview(rawDataUrl);
@@ -747,29 +687,7 @@ ${PARTS_TEMPLATE}`;
     if (rerollBtn) rerollBtn.style.display = '';
     this.triggerSaveOnly();
     this.updateButtons();
-    this.showToast('✅ 已选择！可用「一键抠图」去白底，或直接标注部件');
-  }
-
-  private async removeWhiteBackground(): Promise<void> {
-    if (!this.state?.explosionImage) return;
-    const btn = this.q('#expl-remove-bg') as HTMLButtonElement;
-    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 抠图中...'; }
-    try {
-      console.log('[Spine] removeWhiteBackground start, imgLen:', this.state.explosionImage.length);
-      const result = await this.removeWhiteBgFromDataUrl(this.state.explosionImage);
-      console.log('[Spine] removeWhiteBackground done, resultLen:', result.length);
-      this.state.explosionImage = result;
-      this.state.partRegions = [];
-      // 不调用 onStateChange 避免触发 switchTab 重渲染
-      this.showResultPreview(result);
-      this.showToast('✅ 背景已去除');
-    } catch (e) {
-      console.error('[Spine] removeWhiteBackground FAILED:', e);
-      this.showInlineError('抠图失败: ' + (e as Error).message);
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = spineBtnLabel('eraser', '一键抠图（去白底）'); }
-      this.updateButtons();
-    }
+    this.showToast('✅ 已选择！可直接标注部件');
   }
 
   // ── 标注模式 ──────────────────────────────────────────────
@@ -1524,8 +1442,6 @@ ${PARTS_TEMPLATE}`;
     const set = (id: string, disabled: boolean) => { const el = this.q(`#${id}`) as HTMLButtonElement; if (el) el.disabled = disabled; };
     // Don't disable the gen button — let the click handler show an inline error instead.
     set('expl-gen-parts', false);
-    set('expl-gen-parts-center', false);
-    set('expl-remove-bg', !hasResult);
     set('expl-auto-crop', !hasResult);
     set('expl-manual-crop', !hasResult);
     set('expl-confirm', !hasResult && !hasParts);
@@ -1659,7 +1575,9 @@ ${PARTS_TEMPLATE}`;
     if (this.annotCanvas) { this.updateButtons(); return; }
     if (state.characterImage) this.showSourcePreview(state.characterImage);
     const assignedParts = state.partRegions?.filter(r => r.width > 0).length ?? 0;
-    if (state.explosionImage) {
+    if (this.generatedCandidates.length > 0 && assignedParts === 0) {
+      this.showCandidateGrid(this.generatedCandidates, this.generatedCandidatesAspect);
+    } else if (state.explosionImage) {
       if (assignedParts > 0) {
         this.showPartGridPreview();
         const title = this.q('#expl-right-title') as HTMLElement;
