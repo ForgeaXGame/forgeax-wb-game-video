@@ -1,0 +1,25 @@
+{
+  "name": "@forgeax-plugin/wb-gen3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ForgeaX workbench plugin: no-quota Gen3D provider benchmark shell for Meshy, Hunyuan3D, and related pipelines.",
+  "scripts": {
+    "dev": "vite --host --port 15175",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --port 15175"
+  },
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

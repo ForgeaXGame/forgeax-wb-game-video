@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:generate-meshy-text-mock returns",
+  "type": "object",
+  "properties": {
+    "ok": { "const": true },
+    "mode": { "const": "static-m2" },
+    "quotaSafe": { "const": true },
+    "cacheKey": { "type": "string" },
+    "providerId": { "const": "meshy" },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "mocked": { "const": true },
+        "format": { "const": "glb" },
+        "uri": { "type": "null" }
+      },
+      "required": ["mocked", "format", "uri"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "providerId": { "const": "meshy" },
+        "providerName": { "const": "Meshy" },
+        "mode": { "const": "text" },
+        "prompt": { "type": "string" },
+        "promptCategory": { "enum": ["character", "prop", "scene"] },
+        "status": { "const": "mock" },
+        "artifactKind": { "const": "glb" },
+        "quotaConsumed": { "const": false },
+        "quality": {
+          "type": "object",
+          "properties": {
+            "geometry": { "type": "null" },
+            "topology": { "type": "null" },
+            "texture": { "type": "null" },
+            "pbr": { "type": "null" },
+            "prompt_fidelity": { "type": "null" },
+            "total": { "type": "null" }
+          },
+          "required": ["geometry", "topology", "texture", "pbr", "prompt_fidelity", "total"],
+          "additionalProperties": false
+        },
+        "notes": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "providerId",
+        "providerName",
+        "mode",
+        "prompt",
+        "promptCategory",
+        "status",
+        "artifactKind",
+        "quotaConsumed",
+        "quality",
+        "notes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["ok", "mode", "quotaSafe", "cacheKey", "providerId", "artifact", "result"],
+  "additionalProperties": false
+}

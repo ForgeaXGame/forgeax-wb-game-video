@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "id": "@forgeax-plugin/wb-gen3d",
+  "version": "0.1.0",
+  "kind": "workbench",
+  "displayName": {
+    "zh": "3D 生成评测台",
+    "en": "Gen3D Benchmark"
+  },
+  "description": {
+    "zh": "Hunyuan3D / Meshy 等 3D 生成管线的供应商能力矩阵、缓存优先结果列表与质量评分工作台。M1 仅提供无配额占位壳。",
+    "en": "Provider capability matrix, cache-first result listing, and quality scoring workbench for Hunyuan3D, Meshy, and related 3D generation pipelines. M1 is a no-quota shell."
+  },
+  "author": { "name": "forgeax", "email": "dev@forgeax.local" },
+  "icon": "🧪",
+  "keywords": ["3d", "generation", "benchmark", "meshy", "hunyuan3d", "quality", "glb"],
+
+  "provides": {
+    "workbench": {
+      "id": "wb-gen3d",
+      "lens": "by-category",
+      "icon": "🧪",
+      "position": 155,
+      "panelSize": "lg",
+      "surface": "split",
+      "panes": {
+        "left": { "width": 320, "scrollable": true },
+        "center": { "minHeight": 600, "scrollable": true }
+      },
+      "bus": { "surfaceId": "gen3d" },
+      "matchProduces": [
+        "**/.forgeax/games/*/gen3d/**",
+        "**/gen3d-results/**"
+      ]
+    },
+    "tools": [
+      {
+        "id": "gen3d:provider-status",
+        "args": "./schemas/provider-status.args.json",
+        "returns": "./schemas/provider-status.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "读取 3D 生成供应商能力矩阵；M1 返回静态、无配额数据。",
+          "en": "Read the 3D generation provider capability matrix. M1 returns static no-quota data."
+        }
+      },
+      {
+        "id": "gen3d:list-results",
+        "args": "./schemas/list-results.args.json",
+        "returns": "./schemas/list-results.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "列出评测结果；M1 仅返回本地占位样例，不读取缓存也不调远端。",
+          "en": "List benchmark results. M1 returns local placeholder samples only, with no cache reads or remote calls."
+        }
+      },
+      {
+        "id": "gen3d:generate-meshy-text-mock",
+        "args": "./schemas/generate-meshy-text-mock.args.json",
+        "returns": "./schemas/generate-meshy-text-mock.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "生成确定性的 Meshy 文生 3D mock 结果；不读取缓存也不调用远端。",
+          "en": "Generate a deterministic Meshy text-to-3D mock result with no cache reads or remote calls."
+        }
+      }
+    ],
+    "events": [
+      { "name": "gen3d.provider.status-read" },
+      { "name": "gen3d.results.listed" }
+    ]
+  },
+
+  "entry": {
+    "backend": "./server/tool-handlers.ts",
+    "frontend": "./dist/index.html",
+    "standalone": {
+      "start": "npm run dev",
+      "port": 15175,
+      "readyProbe": "/",
+      "dev": { "watch": true, "hmr": true },
+      "embeddedAlso": true,
+      "devOnly": false
+    }
+  },
+
+  "permissions": [],
+  "hot": false,
+  "experimental": true,
+  "compatibleWith": { "forgeax-bus": "^1.0.0" }
+}
