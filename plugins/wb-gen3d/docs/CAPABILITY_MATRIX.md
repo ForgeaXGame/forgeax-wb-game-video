@@ -30,7 +30,8 @@ blocked in workbench UI or AI-facing schemas.
 | Hunyuan REST | `motion_retarget` v1 | Verified end-to-end | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. |
 | Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
-| Future provider | Tripo3D / Rodin / Luma / others | Not migrated | hidden | Add only after comparison requirements and provider contracts are explicit. |
+| Rodin | Pending generation modes | Key and API contract pending | hidden | Third provider after Hunyuan and Meshy. Add only after user supplies key/API details and output shape is verified. |
+| Future provider | Tripo3D / Luma / others | Not migrated | hidden | Add only after provider contracts are explicit. |
 
 ## Provider Boundary Rules
 
@@ -40,9 +41,22 @@ blocked in workbench UI or AI-facing schemas.
   underscore path names, not hyphenated names.
 - Meshy `refine` is provider-specific and should not be generalized into
   Hunyuan schemas.
+- Rodin is a planned third provider, but must remain hidden until key, request
+  schema, cost model, and output formats are documented.
 - Unknown or unverified modes should be invisible by default. A warning label is
   not enough because some endpoints can consume quota or silently return default
   output.
+- `motion_retarget` inputs must be durable manifest files with
+  `role=rigged_model`, `format=fbx`, and verified humanoid skeleton metadata.
+  The URL sent to an external provider is a short-lived share/upload URL created
+  from that stored blob, not the canonical asset reference.
+
+## Product Pipeline Boundary
+
+`wb-gen3d` is the 3D generation entrypoint. It should accept upstream character
+image/reference assets, then output durable 3D asset manifests for rigging,
+animation, and game-generation agents. Benchmark rows should attach to the same
+asset manifests instead of being a separate artifact universe.
 
 ## Benchmark Data Requirements
 
@@ -56,4 +70,3 @@ single lucky or unlucky run:
   `prompt_fidelity`.
 - Each score must include rater, timestamp, and notes. PBR can be `null` when a
   task did not request PBR.
-

@@ -69,7 +69,7 @@ export function App({ pane }: AppProps) {
       <header className="topbar">
         <div className="brand">
           <FlaskConical size={18} aria-hidden="true" />
-          <span>Gen3D Benchmark</span>
+          <span>3D 角色生成</span>
         </div>
         <div className="status-pill">
           <ShieldCheck size={14} aria-hidden="true" />

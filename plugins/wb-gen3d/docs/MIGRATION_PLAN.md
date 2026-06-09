@@ -1,22 +1,25 @@
-# Gen3D Benchmark Workbench Migration Plan
+# Gen3D Generation Workbench Migration Plan
 
-Status: M2 no-quota vertical slice.
+Status: M2 no-quota vertical slice; product direction updated 2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
-`/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as a workbench plugin for
-3D generation provider benchmarking. The source lab remains read-only for this
-migration; do not copy credentials, cache files, generated outputs, or the
-Flask/Python app structure.
+`/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
+generation entrypoint for game assets. Benchmarking and provider comparison
+remain supporting views for quality, cost, and provider choice. The source lab
+remains read-only for this migration; do not copy credentials, cache files,
+generated outputs, or the Flask/Python app structure.
 
 ## Chosen Shape
 
 - Plugin id: `wb-gen3d`
 - Marketplace package id: `@forgeax-plugin/wb-gen3d`
-- Product role: benchmark/comparison workbench for 3D generation pipelines
+- Product role: 3D generation entrypoint for game assets, with benchmark/comparison as supporting evidence
 - Initial implementation boundary: `packages/marketplace/plugins/wb-gen3d/`
+- Provider order: Hunyuan first, Meshy second, Rodin third after key/API details arrive
 
-The workbench should compare provider behavior and preserve operational
-conclusions. It should not become a direct transplant of `hunyuan3d-lab`.
+The workbench should generate durable ForgeaX 3D asset manifests, preserve
+operational conclusions, and feed downstream rigging/animation/game-generation
+modules. It should not become a direct transplant of `hunyuan3d-lab`.
 
 ## Success Criteria
 
@@ -26,6 +29,13 @@ conclusions. It should not become a direct transplant of `hunyuan3d-lab`.
 - Unverified provider modes are absent from user-facing UI and tool schemas.
 - Hunyuan workflow entries and Hunyuan REST sub-capabilities stay separate in
   schemas, code, and documentation.
+- Provider URLs are downloaded immediately into durable storage before being
+  advertised as game assets.
+- Other modules consume stable asset ids/manifests, not temporary provider URLs.
+- FBX URLs passed to rigging or animation providers are temporary transport URLs;
+  they are never the canonical stored asset reference.
+- The storage layer is adapter-based: local dev blobs first, object storage
+  later without changing the asset manifest contract.
 - Benchmark scoring uses the five-dimension rubric: `geometry`, `topology`,
   `texture`, `pbr`, and `prompt_fidelity`.
 - All edits stay inside this plugin directory unless a later milestone receives
@@ -90,7 +100,35 @@ Verification:
 - Same input is deterministic in mock mode.
 - No remote call occurs by default.
 
-### M3 - Hunyuan Workflow Provider
+### M3 - Asset Contract And Storage Adapter
+
+Goal: define the stable output contract before real provider calls.
+
+Deliverables:
+
+- `Gen3DAssetManifest` type/schema with `assetId`, `gameSlug`, `kind`,
+  `provider`, `providerMode`, `sourceJobId`, `sourceInputAssetIds`, `files[]`,
+  readiness flags, timestamps, and quality score placeholders.
+- `files[]` roles for at least `source_mesh`, `rigged_model`, `preview_image`,
+  `texture`, `animation_clip`, and `animated_model`. Rigged FBX files must be
+  able to mark `hasSkeleton`, `skeletonProfile`, and `animationInputReady`.
+- Local dev blob store under `.forgeax/assets/gen3d-blobs/`.
+- Per-game metadata/index under `.forgeax/games/<slug>/gen3d/`.
+- `AssetStorage` adapter interface that can later target Tencent COS/S3/R2/MinIO.
+- `AssetStorage` share/upload method for short-lived external provider access to
+  a durable blob, especially `role=rigged_model` FBX inputs for animation.
+
+Verification:
+
+- A mock generation produces a durable manifest and local blob/index references.
+- Manifest can be consumed without knowing the original provider URL.
+- Manifest consumers can choose a file by role/format instead of parsing file
+  names or URLs.
+- A rigged FBX handoff can produce a temporary external URL without making that
+  URL the stored source of truth.
+- Large blob paths stay gitignored and outside source-controlled plugin code.
+
+### M4 - Hunyuan Workflow Provider
 
 Goal: add Hunyuan main workflows after schema boundaries are clear.
 
@@ -105,8 +143,10 @@ Verification:
 - Workflow model ids use `*-wf` entries.
 - Hidden geometry/world modes remain hidden until separately verified.
 - Submit/poll/audit/cache behavior does not leak keys.
+- Provider result URLs are downloaded immediately into durable storage and
+  represented as asset manifests.
 
-### M4 - Hunyuan REST Subtools
+### M5 - Hunyuan REST Subtools
 
 Goal: add verified Hunyuan REST sub-capabilities as separate tools.
 
@@ -124,14 +164,51 @@ Verification:
 
 - REST paths use underscores, for example `/openapi/v1/3d/motion_retarget_v2`.
 - v1 motion retarget input clearly requires a rigged humanoid FBX.
+- Motion retarget must resolve its input from `assetId + role=rigged_model +
+  format=fbx`; plain mesh FBX files and GLB-to-FBX conversions are not enough
+  unless skeleton metadata is verified.
+- Any FBX URL sent to Hunyuan REST must come from `AssetStorage` temporary
+  share/upload, then the returned animation output must be downloaded back into
+  the durable asset contract.
 - Unknown modes cannot silently consume quota from UI or AI-exposed schemas.
 
-### M5 - Benchmark UX
+### M6 - Meshy Provider
 
-Goal: make provider comparison the primary workbench value.
+Goal: add Meshy as the second provider after Hunyuan generation/storage safety
+is proven.
+
+Expose first:
+
+- `text` preview
+- `image`
+- `views`
+- `refine` as Meshy-only second stage
+
+Verification:
+
+- Meshy `SUCCEEDED` status is normalized for cache hits.
+- `refine` stays provider-specific.
+- Meshy outputs use the same asset manifest/storage contract as Hunyuan.
+
+### M7 - Rodin Provider
+
+Goal: add Rodin as the third provider after user supplies key and API details.
+
+Verification:
+
+- Key/env format is documented and not hardcoded.
+- Cost model and output formats are represented in provider capability metadata.
+- Rodin stays hidden until one end-to-end output shape is verified.
+
+### M8 - Generation And Benchmark UX
+
+Goal: make generation the primary workflow and comparison the evidence layer.
 
 Likely deliverables:
 
+- Generation entry supporting upstream character image/reference asset inputs.
+- Result card that surfaces durable asset ids and downstream readiness.
+- Handoff action/metadata for rigging and animation workbenches.
 - Comparison set view grouped by prompt and provider.
 - Result card metadata for provider, mode, prompt category, status, cost, and
   artifact links.
@@ -151,3 +228,5 @@ Verification:
 - No direct copy of cache files or generated models.
 - No local credentials, `.env`, COS keys, or audit logs in plugin source.
 - No global Studio UI or server changes during M0-M2 without explicit approval.
+- No long-term storage of large generated files only in the app server process
+  or in git-tracked directories.

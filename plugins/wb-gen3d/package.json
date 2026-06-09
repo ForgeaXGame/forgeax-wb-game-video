@@ -5,7 +5,7 @@
   "type": "module",
   "description": "ForgeaX workbench plugin: no-quota Gen3D provider benchmark shell for Meshy, Hunyuan3D, and related pipelines.",
   "scripts": {
-    "dev": "vite --host --port 15175",
+    "dev": "vite --host",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --port 15175"

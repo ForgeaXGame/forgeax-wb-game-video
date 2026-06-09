@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 const SRC_DIR = new URL('./src/', import.meta.url).pathname;
 const SHARED_DIR = new URL('./shared/', import.meta.url).pathname;
+const devPort = Number(process.env.VITE_DEV_PORT ?? 15175);
 
 export default defineConfig({
   base: './',
@@ -14,7 +15,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 15175,
+    port: devPort,
+    host: true,
     strictPort: true,
   },
   build: {

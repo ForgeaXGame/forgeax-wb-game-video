@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": {
-    "zh": "3D 生成评测台",
-    "en": "Gen3D Benchmark"
+    "zh": "3D 角色生成",
+    "en": "3D Character Generation"
   },
   "description": {
     "zh": "Hunyuan3D / Meshy 等 3D 生成管线的供应商能力矩阵、缓存优先结果列表与质量评分工作台。M1 仅提供无配额占位壳。",
@@ -79,7 +79,7 @@
       "port": 15175,
       "readyProbe": "/",
       "dev": { "watch": true, "hmr": true },
-      "embeddedAlso": true,
+      "embeddedAlso": false,
       "devOnly": false
     }
   },
