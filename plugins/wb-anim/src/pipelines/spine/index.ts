@@ -28,6 +28,9 @@ class SpineInlineUI {
   private ready = false
   private dummyParent: HTMLDivElement
   private unsubGlobal: (() => void) | null = null
+  private tabBc: BroadcastChannel | null = null
+  private tabBcSelfId = Math.random().toString(36).slice(2, 10)
+  private applyingTabBroadcast = false
 
   constructor() {
     injectCSS()
@@ -37,6 +40,7 @@ class SpineInlineUI {
     document.body.appendChild(this.dummyParent)
 
     this.createTabs()
+    this.setupTabSync()
     this.syncGlobalDesign()
     this.asyncRestore()
 
@@ -176,12 +180,17 @@ class SpineInlineUI {
 
     this.state.activeTab = id
     this.currentTabId = id
+    this.broadcastActiveTab(id)
 
     this.tabs.forEach(t => t.deactivate())
 
     this.bodyEl!.innerHTML = ''
     this.panels.center.innerHTML = ''
     this.panels.center.classList.remove('active')
+    this.panels.center.classList.remove('has-toolbar')
+    this.panels.center.classList.remove('has-bottom')
+    this.panels.toolbar.innerHTML = ''
+    this.panels.toolbar.classList.remove('active')
     this.panels.right.innerHTML = ''
     this.panels.right.classList.remove('visible')
     this.panels.bottom.innerHTML = ''
@@ -210,6 +219,12 @@ class SpineInlineUI {
       this.panels.center.classList.add('active')
     }
 
+    if (tab.centerToolbar) {
+      this.panels.toolbar.appendChild(tab.centerToolbar)
+      this.panels.toolbar.classList.add('active')
+      this.panels.center.classList.add('has-toolbar')
+    }
+
     if (tab.rightPanel) {
       this.panels.right.appendChild(tab.rightPanel)
       this.panels.right.classList.add('visible')
@@ -220,6 +235,7 @@ class SpineInlineUI {
     if (tab.bottomPanel) {
       this.panels.bottom.appendChild(tab.bottomPanel)
       this.panels.bottom.classList.add('visible')
+      this.panels.center.classList.add('has-bottom')
     }
 
     window.dispatchEvent(new Event('resize'))
@@ -228,6 +244,32 @@ class SpineInlineUI {
   private onStateChange(): void {
     this.switchTab(this.state.activeTab)
     this.scheduleAutoSave()
+  }
+
+  private setupTabSync(): void {
+    try {
+      this.tabBc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.spine-active-tab')
+    } catch {
+      this.tabBc = null
+      return
+    }
+    this.tabBc.onmessage = (e: MessageEvent) => {
+      const data = e.data as { from?: string; tabId?: TabId } | null
+      if (!data || data.from === this.tabBcSelfId || !data.tabId) return
+      if (data.tabId === this.state.activeTab) return
+      if (!TAB_META.some(m => m.id === data.tabId)) return
+      this.applyingTabBroadcast = true
+      try {
+        this.switchTab(data.tabId)
+      } finally {
+        this.applyingTabBroadcast = false
+      }
+    }
+  }
+
+  private broadcastActiveTab(tabId: TabId): void {
+    if (!this.tabBc || this.applyingTabBroadcast) return
+    try { this.tabBc.postMessage({ from: this.tabBcSelfId, tabId }) } catch { /* ignore */ }
   }
 
   private scheduleAutoSave(): void {
@@ -301,6 +343,7 @@ class SpineInlineUI {
   dispose(): void {
     this.unsubGlobal?.()
     if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.tabBc?.close()
     this.tabs.forEach(t => t.dispose())
     this.dummyParent.remove()
   }

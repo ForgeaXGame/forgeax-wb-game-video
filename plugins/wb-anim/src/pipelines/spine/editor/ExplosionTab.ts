@@ -104,6 +104,15 @@ function compressImage(dataUrl: string, maxW: number, maxH: number, quality = 0.
   });
 }
 
+function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = dataUrl;
+  });
+}
+
 const PARTS_TEMPLATE = `You are generating a CHARACTER PARTS BREAKDOWN sheet for 2D skeletal animation (Spine 2D).
 
 You have two reference images:
@@ -173,6 +182,8 @@ export class ExplosionTab implements StudioTab {
   private lastPrompt = '';
   private generatedCandidates: string[] = [];
   private generatedCandidatesAspect = '';
+  private resultBc: BroadcastChannel | null = null;
+  private resultBcSelfId = Math.random().toString(36).slice(2, 10);
 
   constructor(parent: HTMLElement, onStateChange: () => void) {
     this.onStateChange = onStateChange;
@@ -187,10 +198,137 @@ export class ExplosionTab implements StudioTab {
     this.centerView.className = 'spine-center-view';
 
     this.buildUI();
+    this.setupResultSync();
   }
 
   private q(selector: string): HTMLElement | null {
     return this.sidePanel.querySelector(selector) ?? this.centerView.querySelector(selector) ?? null;
+  }
+
+  private visibleCenterElement<T extends HTMLElement = HTMLElement>(selector: string): T | null {
+    const local = this.centerView.querySelector<T>(selector);
+    if (local?.isConnected) return local;
+    const all = Array.from(document.querySelectorAll<T>(selector));
+    return all.find(el => el.isConnected && el.offsetParent !== null) ?? all.find(el => el.isConnected) ?? local ?? null;
+  }
+
+  private connectedCenterElements<T extends HTMLElement = HTMLElement>(selector: string): T[] {
+    const seen = new Set<T>();
+    const add = (el: T | null) => {
+      if (el?.isConnected) seen.add(el);
+    };
+    add(this.centerView.querySelector<T>(selector));
+    for (const el of Array.from(document.querySelectorAll<T>(selector))) add(el);
+    return Array.from(seen);
+  }
+
+  private dataUrlToObjectUrl(dataUrl: string): string {
+    const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+    if (!match) return dataUrl;
+    const [, mime, b64] = match;
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: mime || 'image/png' }));
+  }
+
+  private async removeWhiteBgFromDataUrl(dataUrl: string): Promise<string> {
+    const img = await loadDataUrlImage(dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('无法创建抠图画布');
+
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const hardWhite = 246;
+    const softWhite = 218;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max - min;
+      if (max < softWhite || saturation > 28) continue;
+
+      if (min >= hardWhite && saturation <= 18) {
+        data[i + 3] = 0;
+      } else {
+        const whiteness = Math.max(0, Math.min(1, (min - softWhite) / (hardWhite - softWhite)));
+        data[i + 3] = Math.round(data[i + 3] * (1 - whiteness));
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
+
+  private async removeWhiteBgFromCandidates(candidates: string[]): Promise<string[]> {
+    return Promise.all(candidates.map(async (candidate, index) => {
+      try {
+        return await this.removeWhiteBgFromDataUrl(candidate);
+      } catch (e) {
+        console.warn(`[Spine] auto remove white bg failed for candidate ${index + 1}:`, e);
+        return candidate;
+      }
+    }));
+  }
+
+  private setupResultSync(): void {
+    try {
+      this.resultBc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.spine-results');
+    } catch {
+      this.resultBc = null;
+      return;
+    }
+    this.resultBc.onmessage = (e: MessageEvent) => {
+      const data = e.data as {
+        type?: string;
+        from?: string;
+        candidates?: string[];
+        aspect?: string;
+        mode?: 'auto' | 'manual';
+      } | null;
+      if (!data || data.from === this.resultBcSelfId) return;
+      if (data.type === 'spine-candidates') {
+        if (!Array.isArray(data.candidates) || data.candidates.length === 0) return;
+        this.showCandidateGrid(data.candidates, data.aspect || '', false);
+      }
+      if (data.type === 'spine-annotate' && (data.mode === 'auto' || data.mode === 'manual')) {
+        void this.enterAnnotateMode(data.mode, false);
+      }
+    };
+  }
+
+  private broadcastCandidates(candidates: string[], aspect: string): void {
+    if (!this.resultBc) return;
+    try {
+      this.resultBc.postMessage({
+        type: 'spine-candidates',
+        from: this.resultBcSelfId,
+        candidates,
+        aspect,
+      });
+    } catch (e) {
+      console.warn('[Spine] broadcast generated candidates failed:', e);
+    }
+  }
+
+  private broadcastAnnotateMode(mode: 'auto' | 'manual'): void {
+    if (!this.resultBc) return;
+    try {
+      this.resultBc.postMessage({
+        type: 'spine-annotate',
+        from: this.resultBcSelfId,
+        mode,
+      });
+    } catch (e) {
+      console.warn('[Spine] broadcast annotate mode failed:', e);
+    }
   }
 
   private buildUI(): void {
@@ -232,12 +370,10 @@ export class ExplosionTab implements StudioTab {
           </div>
           <div class="expl-actions-steps">
             <div class="expl-actions-steps-label">后续处理</div>
-            <button class="sd-action-btn sd-step-btn" id="expl-auto-crop" disabled>
-              ${spineBtnLabel('scissors', '自动标注部件')}
+            <button class="sd-action-btn sd-step-btn expl-annotate-btn" id="expl-annotate" disabled>
+              ${spineBtnLabel('scissors', '标注部件')}
             </button>
-            <button class="sd-action-btn sd-step-btn" id="expl-manual-crop" disabled>
-              ${spineBtnLabel('hand', '手动标注部件')}
-            </button>
+            <div class="expl-annotate-hint" id="expl-annotate-hint">请先成功生成拆件图，生成后即可标注部件。</div>
           </div>
           <button class="studio-next-btn" id="expl-confirm" disabled>确认 → 进入绑骨</button>
         </div>
@@ -286,8 +422,7 @@ export class ExplosionTab implements StudioTab {
     this.q('#expl-upload-result2')?.addEventListener('click', () => this.pickImage('result'));
     this.q('#expl-gen-parts')?.addEventListener('click', () => this.runFullPipeline());
     this.q('#expl-reroll')?.addEventListener('click', () => this.reroll());
-    this.q('#expl-auto-crop')?.addEventListener('click', () => this.enterAnnotateMode('auto'));
-    this.q('#expl-manual-crop')?.addEventListener('click', () => this.enterAnnotateMode('manual'));
+    this.q('#expl-annotate')?.addEventListener('click', () => this.enterAnnotateMode('auto'));
     this.q('#expl-confirm')?.addEventListener('click', () => this.confirm());
     this.q('#expl-refresh-history')?.addEventListener('click', () => this.loadHistory());
 
@@ -361,15 +496,18 @@ export class ExplosionTab implements StudioTab {
   }
 
   private showResultPreview(dataUrl: string): void {
-    const box = this.q('#expl-result') as HTMLElement;
-    if (!box) return;
-    const img = document.createElement('img');
-    img.className = 'expl-preview-img';
-    img.src = dataUrl;
-    box.innerHTML = '';
-    // 高对比度棋盘格，透明区域清晰可见
-    box.style.background = 'repeating-conic-gradient(#555 0% 25%, #111 0% 50%) 0 0 / 14px 14px';
-    box.appendChild(img);
+    const boxes = this.connectedCenterElements('#expl-result');
+    if (boxes.length === 0) return;
+    const src = this.dataUrlToObjectUrl(dataUrl);
+    for (const box of boxes) {
+      const img = document.createElement('img');
+      img.className = 'expl-preview-img';
+      img.src = src;
+      box.innerHTML = '';
+      // 高对比度棋盘格，透明区域清晰可见
+      box.style.background = 'repeating-conic-gradient(#555 0% 25%, #111 0% 50%) 0 0 / 14px 14px';
+      box.appendChild(img);
+    }
   }
 
   // ── 完整管线 ──────────────────────────────────────────────
@@ -506,9 +644,10 @@ ${PARTS_TEMPLATE}`;
         return;
       }
 
-      // ── Step 3: 展示候选图供选择 ──
-      this.showProgress(true, '3/3 处理中...', 90);
-      this.showCandidateGrid(successResults, templateAspect);
+      // ── Step 3: 自动抠图并展示候选图 ──
+      this.showProgress(true, '3/3 自动抠图去白底...', 90);
+      const cutoutResults = await this.removeWhiteBgFromCandidates(successResults);
+      this.showCandidateGrid(cutoutResults, templateAspect);
       keepProgressVisible = true;
 
     } catch (e: any) {
@@ -576,7 +715,9 @@ ${PARTS_TEMPLATE}`;
         return;
       }
 
-      this.showCandidateGrid(candidates, templateAspect);
+      this.showProgress(true, '3/3 自动抠图去白底...', 90);
+      const cutoutCandidates = await this.removeWhiteBgFromCandidates(candidates);
+      this.showCandidateGrid(cutoutCandidates, templateAspect);
       keepProgressVisible = true;
     } catch (e: any) {
       const msg = e?.message || String(e);
@@ -628,17 +769,23 @@ ${PARTS_TEMPLATE}`;
     return this.isFemale() ? TEMPLATE_FEMALE_URL : TEMPLATE_MALE_URL;
   }
 
-  private showCandidateGrid(candidates: string[], _aspect: string): void {
+  private showCandidateGrid(candidates: string[], _aspect: string, broadcast = true): void {
     this.generatedCandidates = candidates;
     this.generatedCandidatesAspect = _aspect;
-    const resultBox = this.q('#expl-result') as HTMLElement;
-    if (!resultBox) {
+    if (this.state && candidates[0]) {
+      this.state.explosionImage = candidates[0];
+      this.state.partRegions = [];
+      this.triggerSaveOnly();
+    }
+    if (broadcast) this.broadcastCandidates(candidates, _aspect);
+    const resultBoxes = this.connectedCenterElements('#expl-result');
+    if (resultBoxes.length === 0) {
       this.showInlineError('生成完成，但结果面板未找到，请重新打开拆件页');
       return;
     }
     // 只更新标题文字节点，不清除标题里的按钮子元素
-    const title = this.q('#expl-right-title') as HTMLElement;
-    if (title) {
+    const titles = this.connectedCenterElements('#expl-right-title');
+    for (const title of titles) {
       const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
       if (firstTextNode) {
         firstTextNode.textContent = `生成完成 · 选择最佳拆件图 (${candidates.length} 张) `;
@@ -646,33 +793,67 @@ ${PARTS_TEMPLATE}`;
         title.insertBefore(document.createTextNode(`生成完成 · 选择最佳拆件图 (${candidates.length} 张) `), title.firstChild);
       }
     }
-    resultBox.innerHTML = '';
 
-    resultBox.style.background = 'var(--color-background-canvas)';
-    resultBox.style.alignItems = 'stretch';
-    resultBox.style.justifyContent = 'stretch';
+    const objectUrls = candidates.map(candidate => this.dataUrlToObjectUrl(candidate));
+    for (const resultBox of resultBoxes) {
+      resultBox.innerHTML = '';
 
-    const grid = document.createElement('div');
-    grid.className = 'expl-candidate-grid';
-    resultBox.appendChild(grid);
+      resultBox.style.background = 'var(--color-background-canvas)';
+      resultBox.style.display = 'flex';
+      resultBox.style.flexDirection = 'column';
+      resultBox.style.alignItems = 'stretch';
+      resultBox.style.justifyContent = 'stretch';
 
-    for (let i = 0; i < candidates.length; i++) {
-      const cell = document.createElement('div');
-      // 棋盘格背景让白色部件和黑色部件都可见
-      cell.className = 'expl-candidate-card';
-      cell.innerHTML = `
-        <img class="expl-candidate-img" src="${candidates[i]}" alt="候选拆件图 ${i + 1}">
-        <div class="expl-candidate-badge">#${i + 1}</div>
-        <div class="expl-candidate-hint">点击选择</div>
-      `;
-      cell.addEventListener('click', () => this.selectCandidate(candidates[i]));
-      grid.appendChild(cell);
+      const preview = document.createElement('div');
+      preview.className = 'expl-generated-preview';
+
+      const mainImg = document.createElement('img');
+      mainImg.className = 'expl-generated-main-img';
+      mainImg.alt = '已生成拆件图预览';
+      mainImg.decoding = 'async';
+      mainImg.src = objectUrls[0];
+      preview.appendChild(mainImg);
+
+      const strip = document.createElement('div');
+      strip.className = 'expl-candidate-strip';
+      preview.appendChild(strip);
+      resultBox.appendChild(preview);
+
+      for (let i = 0; i < candidates.length; i++) {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = `expl-candidate-thumb${i === 0 ? ' active' : ''}`;
+        const img = document.createElement('img');
+        img.alt = `候选拆件图 ${i + 1}`;
+        img.decoding = 'async';
+        img.loading = 'eager';
+        img.addEventListener('error', () => {
+          cell.classList.add('expl-candidate-thumb-error');
+        });
+        img.src = objectUrls[i];
+        cell.appendChild(img);
+        cell.title = `候选拆件图 ${i + 1}`;
+        cell.addEventListener('click', () => {
+          mainImg.src = objectUrls[i];
+          if (this.state) {
+            this.state.explosionImage = candidates[i];
+            this.state.partRegions = [];
+            this.triggerSaveOnly();
+          }
+          for (const el of Array.from(strip.children)) el.classList.remove('active');
+          cell.classList.add('active');
+          this.updateButtons();
+        });
+        strip.appendChild(cell);
+      }
     }
 
-    this.showProgress(true, `3/3 已生成 ${candidates.length} 张候选拆件图，请在右侧选择一张`, 100);
+    this.showProgress(true, `3/3 已生成并自动抠图 ${candidates.length} 张，已显示第 1 张`, 100);
     this.generating = false;
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     if (btn) btn.disabled = false;
+    const rerollBtn = this.q('#expl-reroll') as HTMLElement;
+    if (rerollBtn) rerollBtn.style.display = '';
     this.updateButtons();
   }
 
@@ -692,11 +873,12 @@ ${PARTS_TEMPLATE}`;
 
   // ── 标注模式 ──────────────────────────────────────────────
 
-  private async enterAnnotateMode(mode: 'auto' | 'manual'): Promise<void> {
+  private async enterAnnotateMode(mode: 'auto' | 'manual', broadcast = true): Promise<void> {
     if (!this.state?.explosionImage) {
       this.showInlineError('请先选择或生成拆件图');
       return;
     }
+    if (broadcast) this.broadcastAnnotateMode(mode);
     this.annotMode = mode;
     let img: HTMLImageElement;
     try {
@@ -1035,8 +1217,14 @@ ${PARTS_TEMPLATE}`;
 
     const actionsRow = document.createElement('div');
     actionsRow.className = 'expl-annotate-actions';
-    actionsRow.innerHTML = `<button class="expl-crop-btn" id="expl-annotate-done">${spineBtnLabel('check', '完成标注')}</button>`;
+    actionsRow.innerHTML = `
+      ${this.annotMode === 'auto'
+        ? `<button class="expl-crop-btn expl-reannotate-btn" id="expl-reannotate">${spineBtnLabel('refresh', '重新标注')}</button>`
+        : ''}
+      <button class="expl-crop-btn" id="expl-annotate-done">${spineBtnLabel('check', '完成标注')}</button>
+    `;
     sidebar.appendChild(actionsRow);
+    actionsRow.querySelector('#expl-reannotate')?.addEventListener('click', () => this.rerunAutoAnnotate());
     actionsRow.querySelector('#expl-annotate-done')?.addEventListener('click', () => this.exitAnnotateMode());
 
     const canvasWrap = document.createElement('div');
@@ -1116,6 +1304,19 @@ ${PARTS_TEMPLATE}`;
         item.appendChild(swapBtn);
       }
 
+      if (assigned && this.annotMode === 'manual') {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'expl-annot-btn expl-annot-delete';
+        deleteBtn.innerHTML = spineIcon('refresh', 'spine-icon-svg expl-retry-icon');
+        deleteBtn.title = `重来：撤销「${label}」当前选框并重新框选`;
+        deleteBtn.setAttribute('aria-label', `重新框选${label}`);
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.clearPartRegion(i);
+        });
+        item.appendChild(deleteBtn);
+      }
+
       item.addEventListener('click', () => {
         if (this.annotMode === 'manual') { this.manualTarget = i; this.refreshPartList(); }
         else if (this.swapSource >= 0 && this.swapSource !== i) this.doSwap(i);
@@ -1138,6 +1339,41 @@ ${PARTS_TEMPLATE}`;
   private refreshPartList(): void {
     const list = this.centerView.querySelector('#expl-annotate-list') as HTMLElement;
     if (list) this.renderPartList(list);
+  }
+  private rerunAutoAnnotate(): void {
+    if (!this.annotImg || !this.state) return;
+    try {
+      this.state.partRegions = this.detectParts(this.annotImg);
+      this.swapSource = -1;
+      this.selectedRegion = -1;
+      this.hoveredRegion = -1;
+      this.showToast(`✅ 已重新自动标注 ${this.state.partRegions.filter(r => r.width > 0).length} 个部件`);
+      this.refreshPartList();
+      this.updateButtons();
+      this.triggerSaveOnly();
+    } catch (e) {
+      console.error('[Spine] rerunAutoAnnotate failed:', e);
+      this.showToast('自动重新标注失败，请切换手动模式调整');
+    }
+  }
+  private clearPartRegion(idx: number): void {
+    if (!this.state?.partRegions?.[idx]) return;
+    const region = this.state.partRegions[idx];
+    const label = region.name || PART_NAMES[idx] || `部件 ${idx + 1}`;
+    region.x = 0;
+    region.y = 0;
+    region.width = 0;
+    region.height = 0;
+    region.imageData = '';
+    this.selRect = null;
+    this.selectedRegion = -1;
+    this.hoveredRegion = -1;
+    this.swapSource = -1;
+    if (this.annotMode === 'manual') this.manualTarget = idx;
+    this.showToast(`已撤销「${label}」当前选框，可重新框选`);
+    this.refreshPartList();
+    this.updateButtons();
+    this.triggerSaveOnly();
   }
   private startSwap(idx: number): void {
     const label = this.state?.partRegions?.[idx]?.name || PART_NAMES[idx];
@@ -1442,9 +1678,15 @@ ${PARTS_TEMPLATE}`;
     const set = (id: string, disabled: boolean) => { const el = this.q(`#${id}`) as HTMLButtonElement; if (el) el.disabled = disabled; };
     // Don't disable the gen button — let the click handler show an inline error instead.
     set('expl-gen-parts', false);
-    set('expl-auto-crop', !hasResult);
-    set('expl-manual-crop', !hasResult);
+    set('expl-annotate', !hasResult);
     set('expl-confirm', !hasResult && !hasParts);
+    const annotateHint = this.q('#expl-annotate-hint') as HTMLElement;
+    if (annotateHint) {
+      annotateHint.textContent = hasResult
+        ? '拆件图已生成，可点击标注部件；进入后可切换自动/手动模式。'
+        : '请先成功生成拆件图，生成后即可标注部件。';
+      annotateHint.classList.toggle('ready', hasResult);
+    }
 
     // Show/hide a hint on the source panel when no character image uploaded
     const sourceEmpty = this.q('#expl-source .sd-preview-empty') as HTMLElement;
@@ -1597,5 +1839,12 @@ ${PARTS_TEMPLATE}`;
   }
 
   deactivate(): void { this.stopAnnotateLoop(); this.resizeObs?.disconnect(); }
-  dispose(): void { this.stopAnnotateLoop(); this.resizeObs?.disconnect(); this.container.remove(); this.sidePanel.remove(); this.centerView.remove(); }
+  dispose(): void {
+    this.stopAnnotateLoop();
+    this.resizeObs?.disconnect();
+    this.resultBc?.close();
+    this.container.remove();
+    this.sidePanel.remove();
+    this.centerView.remove();
+  }
 }

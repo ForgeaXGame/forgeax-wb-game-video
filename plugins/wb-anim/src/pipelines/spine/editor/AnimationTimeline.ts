@@ -1,5 +1,6 @@
 // @source wb-character/src/pipelines/spine/editor/AnimationTimeline.ts
 import type { EditorSkeleton, EditorAnimation } from './types';
+import { spineIcon } from './spine-icons';
 
 const FRAME_RATE = 30;
 const TRACK_H = 22;
@@ -10,11 +11,12 @@ const SNAP_THRESHOLD = 0.5;
 
 type ChannelType = 'rotate' | 'translate' | 'scale' | 'shear';
 const CHANNEL_COLORS: Record<ChannelType, string> = {
-  rotate: '#ff6b6b',
-  translate: '#4dabf7',
-  scale: '#51cf66',
-  shear: '#cc5de8',
+  rotate: '#d4ff48',
+  translate: '#7fb7ff',
+  scale: '#65d49a',
+  shear: '#c6a4ff',
 };
+const PLAYHEAD_COLOR = '#d4ff48';
 
 interface KfHit {
   boneName: string;
@@ -46,6 +48,11 @@ export class AnimationTimeline {
   private playBtn!: HTMLButtonElement;
   private timeLabel!: HTMLSpanElement;
   private speedLabel!: HTMLSpanElement;
+  private vScrollEl!: HTMLDivElement;
+  private vScrollThumb!: HTMLDivElement;
+  private isDraggingVScroll = false;
+  private vScrollDragStartY = 0;
+  private vScrollDragStartValue = 0;
 
   private tracks: { boneName: string; channel: ChannelType; expanded: boolean }[] = [];
   private collapsedBones = new Set<string>();
@@ -86,22 +93,22 @@ export class AnimationTimeline {
     left.className = 'tl-toolbar-left';
     bar.appendChild(left);
 
-    const addBtn = (parent: HTMLElement, text: string, title: string, cb: () => void) => {
+    const addBtn = (parent: HTMLElement, content: string, title: string, cb: () => void) => {
       const b = document.createElement('button');
       b.className = 'tl-btn';
-      b.textContent = text;
+      b.innerHTML = content;
       b.title = title;
       b.addEventListener('click', cb);
       parent.appendChild(b);
       return b;
     };
 
-    addBtn(left, '⏮', '回到起点 (Home)', () => this.goToStart());
-    addBtn(left, '⏪', '上一帧 (←)', () => this.prevFrame());
-    this.playBtn = addBtn(left, '▶', '播放/暂停 (Space)', () => this.togglePlay());
-    addBtn(left, '⏩', '下一帧 (→)', () => this.nextFrame());
-    addBtn(left, '⏭', '跳到末尾 (End)', () => this.goToEnd());
-    addBtn(left, '■', '停止', () => this.stop());
+    addBtn(left, spineIcon('skipBack', 'spine-icon-svg tl-icon-svg'), '回到起点 (Home)', () => this.goToStart());
+    addBtn(left, spineIcon('stepBack', 'spine-icon-svg tl-icon-svg'), '上一帧 (←)', () => this.prevFrame());
+    this.playBtn = addBtn(left, spineIcon('play', 'spine-icon-svg tl-icon-svg'), '播放/暂停 (Space)', () => this.togglePlay());
+    addBtn(left, spineIcon('stepForward', 'spine-icon-svg tl-icon-svg'), '下一帧 (→)', () => this.nextFrame());
+    addBtn(left, spineIcon('skipForward', 'spine-icon-svg tl-icon-svg'), '跳到末尾 (End)', () => this.goToEnd());
+    addBtn(left, spineIcon('stop', 'spine-icon-svg tl-icon-svg'), '停止', () => this.stop());
 
     const sep1 = document.createElement('span');
     sep1.className = 'tl-sep';
@@ -114,7 +121,7 @@ export class AnimationTimeline {
       this.currentAnim = name ? this.skeleton?.animations.get(name) ?? null : null;
       this._time = 0;
       this._playing = false;
-      this.playBtn.textContent = '▶';
+      this.setPlayButtonIcon(false);
       this.rebuildTracks();
       this.emitChange();
     });
@@ -129,17 +136,17 @@ export class AnimationTimeline {
     right.className = 'tl-toolbar-right';
     bar.appendChild(right);
 
-    addBtn(right, '◆+', '在当前时间添加关键帧 (K)', () => this.addKeyframeAtCurrent());
-    addBtn(right, '◆−', '删除选中关键帧 (Del)', () => this.deleteSelectedKeyframes());
-    addBtn(right, '📋', '复制选中关键帧 (Ctrl+C)', () => this.copyKeyframes());
-    addBtn(right, '📌', '粘贴关键帧 (Ctrl+V)', () => this.pasteKeyframes());
+    addBtn(right, spineIcon('keyframePlus', 'spine-icon-svg tl-icon-svg'), '在当前时间添加关键帧 (K)', () => this.addKeyframeAtCurrent());
+    addBtn(right, spineIcon('keyframeMinus', 'spine-icon-svg tl-icon-svg'), '删除选中关键帧 (Del)', () => this.deleteSelectedKeyframes());
+    addBtn(right, spineIcon('copy', 'spine-icon-svg tl-icon-svg'), '复制选中关键帧 (Ctrl+C)', () => this.copyKeyframes());
+    addBtn(right, spineIcon('paste', 'spine-icon-svg tl-icon-svg'), '粘贴关键帧 (Ctrl+V)', () => this.pasteKeyframes());
 
     const sep2 = document.createElement('span');
     sep2.className = 'tl-sep';
     right.appendChild(sep2);
 
-    addBtn(right, '−', '缩小时间轴', () => this.zoomTimeline(0.8));
-    addBtn(right, '+', '放大时间轴', () => this.zoomTimeline(1.25));
+    addBtn(right, spineIcon('zoomOut', 'spine-icon-svg tl-icon-svg'), '缩小时间轴', () => this.zoomTimeline(0.8));
+    addBtn(right, spineIcon('zoomIn', 'spine-icon-svg tl-icon-svg'), '放大时间轴', () => this.zoomTimeline(1.25));
 
     const sep3 = document.createElement('span');
     sep3.className = 'tl-sep';
@@ -148,7 +155,7 @@ export class AnimationTimeline {
     const speedBtn = addBtn(right, '1×', '播放速度', () => this.cycleSpeed());
     this.speedLabel = speedBtn as unknown as HTMLSpanElement;
 
-    const loopBtn = addBtn(right, '🔁', '循环播放', () => {
+    const loopBtn = addBtn(right, spineIcon('loop', 'spine-icon-svg tl-icon-svg'), '循环播放', () => {
       this._loop = !this._loop;
       loopBtn.classList.toggle('active', this._loop);
     });
@@ -178,6 +185,32 @@ export class AnimationTimeline {
     canvasWrap.appendChild(this.canvasEl);
     this.ctx = this.canvasEl.getContext('2d')!;
 
+    this.vScrollEl = document.createElement('div');
+    this.vScrollEl.className = 'tl-v-scroll';
+    this.vScrollThumb = document.createElement('div');
+    this.vScrollThumb.className = 'tl-v-scroll-thumb';
+    this.vScrollEl.appendChild(this.vScrollThumb);
+    this.vScrollEl.setAttribute('aria-label', '时间轴纵向滚动');
+    this.vScrollEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const rect = this.vScrollEl.getBoundingClientRect();
+      const thumbRect = this.vScrollThumb.getBoundingClientRect();
+      if (e.target === this.vScrollThumb) {
+        this.isDraggingVScroll = true;
+        this.vScrollDragStartY = e.clientY;
+        this.vScrollDragStartValue = this.trackScrollY;
+        document.addEventListener('mousemove', this.onVScrollDrag);
+        document.addEventListener('mouseup', this.onVScrollDragEnd);
+        return;
+      }
+      const max = this.getMaxTrackScroll();
+      const trackH = Math.max(1, rect.height - thumbRect.height);
+      const y = e.clientY - rect.top - thumbRect.height / 2;
+      this.trackScrollY = this.clampTrackScroll((y / trackH) * max);
+      this.syncVerticalScrollbar();
+    });
+    canvasWrap.appendChild(this.vScrollEl);
+
     new ResizeObserver(() => this.resizeCanvas()).observe(wrap);
   }
 
@@ -195,30 +228,76 @@ export class AnimationTimeline {
     this.labelCanvas.style.width = `${LABEL_W}px`;
     this.labelCanvas.style.height = `${rect.height}px`;
 
-    const trackW = (rect.width - LABEL_W) * this.dpr;
+    const trackCssW = Math.max(1, rect.width - LABEL_W - 10);
+    const trackW = trackCssW * this.dpr;
     const trackH = rect.height * this.dpr;
     this.canvasEl.width = trackW;
     this.canvasEl.height = trackH;
-    this.canvasEl.style.width = `${rect.width - LABEL_W}px`;
+    this.canvasEl.style.width = `${trackCssW}px`;
     this.canvasEl.style.height = `${rect.height}px`;
+    this.syncVerticalScrollbar();
   }
 
+  private getMaxTrackScroll(): number {
+    const visibleH = Math.max(0, this.containerHeight - RULER_H);
+    return Math.max(0, this.tracks.length * TRACK_H - visibleH);
+  }
+
+  private clampTrackScroll(value: number): number {
+    return Math.max(0, Math.min(this.getMaxTrackScroll(), value));
+  }
+
+  private syncVerticalScrollbar(): void {
+    if (!this.vScrollEl || !this.vScrollThumb) return;
+    const max = this.getMaxTrackScroll();
+    this.trackScrollY = this.clampTrackScroll(this.trackScrollY);
+    this.vScrollEl.style.display = max > 1 ? '' : 'none';
+    if (max <= 1) return;
+
+    const visibleH = Math.max(1, this.containerHeight - RULER_H);
+    const contentH = Math.max(visibleH, this.tracks.length * TRACK_H);
+    const trackH = Math.max(1, this.vScrollEl.getBoundingClientRect().height);
+    const thumbH = Math.max(18, Math.min(trackH, (visibleH / contentH) * trackH));
+    const top = (this.trackScrollY / max) * Math.max(0, trackH - thumbH);
+    this.vScrollThumb.style.height = `${thumbH}px`;
+    this.vScrollThumb.style.transform = `translateY(${top}px)`;
+  }
+
+  private onVScrollDrag = (e: MouseEvent): void => {
+    if (!this.isDraggingVScroll) return;
+    const max = this.getMaxTrackScroll();
+    const trackH = this.vScrollEl.getBoundingClientRect().height;
+    const thumbH = this.vScrollThumb.getBoundingClientRect().height;
+    const travel = Math.max(1, trackH - thumbH);
+    const dy = e.clientY - this.vScrollDragStartY;
+    this.trackScrollY = this.clampTrackScroll(this.vScrollDragStartValue + (dy / travel) * max);
+    this.syncVerticalScrollbar();
+  };
+
+  private onVScrollDragEnd = (): void => {
+    this.isDraggingVScroll = false;
+    document.removeEventListener('mousemove', this.onVScrollDrag);
+    document.removeEventListener('mouseup', this.onVScrollDragEnd);
+  };
+
   private setupInteraction(): void {
-    this.canvasEl.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-    this.canvasEl.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-    this.canvasEl.addEventListener('mouseup', () => this.onCanvasMouseUp());
-    this.canvasEl.addEventListener('mouseleave', () => this.onCanvasMouseUp());
-    this.canvasEl.addEventListener('dblclick', (e) => this.onCanvasDblClick(e));
-    this.canvasEl.addEventListener('wheel', (e) => {
+    const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         this.zoomTimeline(e.deltaY < 0 ? 1.15 : 0.87);
       } else if (e.shiftKey) {
         this.scrollX = Math.max(0, this.scrollX + e.deltaY * 0.5);
       } else {
-        this.trackScrollY = Math.max(0, this.trackScrollY + e.deltaY * 0.5);
+        this.trackScrollY = this.clampTrackScroll(this.trackScrollY + e.deltaY * 0.5);
+        this.syncVerticalScrollbar();
       }
-    }, { passive: false });
+    };
+    this.canvasEl.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
+    this.canvasEl.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
+    this.canvasEl.addEventListener('mouseup', () => this.onCanvasMouseUp());
+    this.canvasEl.addEventListener('mouseleave', () => this.onCanvasMouseUp());
+    this.canvasEl.addEventListener('dblclick', (e) => this.onCanvasDblClick(e));
+    this.canvasEl.addEventListener('wheel', handleWheel, { passive: false });
 
     this.canvasEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -230,6 +309,7 @@ export class AnimationTimeline {
         this.selectedBone = t.boneName;
       }
     });
+    this.labelCanvas.addEventListener('wheel', handleWheel, { passive: false });
 
     this.root.addEventListener('keydown', (e) => this.onKeyDown(e));
     this.root.tabIndex = 0;
@@ -246,6 +326,11 @@ export class AnimationTimeline {
     else if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); this.copyKeyframes(); }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); this.pasteKeyframes(); }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); this.selectAllKeyframes(); }
+  }
+
+  private setPlayButtonIcon(playing: boolean): void {
+    if (!this.playBtn) return;
+    this.playBtn.innerHTML = spineIcon(playing ? 'pause' : 'play', 'spine-icon-svg tl-icon-svg');
   }
 
   private timeToX(t: number): number {
@@ -309,7 +394,7 @@ export class AnimationTimeline {
       const t = Math.max(0, this.xToTime(mx));
       this._time = this.snapTime(t);
       this._playing = false;
-      this.playBtn.textContent = '▶';
+      this.setPlayButtonIcon(false);
       this.emitChange();
       return;
     }
@@ -338,7 +423,7 @@ export class AnimationTimeline {
       const t = Math.max(0, this.xToTime(mx));
       this._time = this.snapTime(t);
       this._playing = false;
-      this.playBtn.textContent = '▶';
+      this.setPlayButtonIcon(false);
       this.emitChange();
     }
   }
@@ -461,6 +546,11 @@ export class AnimationTimeline {
     ctx.font = '10px sans-serif';
     ctx.textBaseline = 'middle';
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER_H, W, Math.max(0, H - RULER_H));
+    ctx.clip();
+
     let lastBone = '';
     for (let i = 0; i < this.tracks.length; i++) {
       const y = RULER_H + i * TRACK_H - this.trackScrollY;
@@ -484,6 +574,8 @@ export class AnimationTimeline {
       const label = `${t.boneName}.${t.channel.slice(0, 3)}`;
       ctx.fillText(label, 14, y + TRACK_H / 2 + 1, W - 18);
     }
+
+    ctx.restore();
 
     ctx.strokeStyle = 'rgba(232,196,138,0.15)';
     ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W, H); ctx.stroke();
@@ -514,8 +606,13 @@ export class AnimationTimeline {
     }
 
     this.drawRuler(ctx, W);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER_H, W, Math.max(0, H - RULER_H));
+    ctx.clip();
     this.drawGrid(ctx, W, H);
     this.drawKeyframes(ctx, W, H);
+    ctx.restore();
     this.drawPlayhead(ctx, H);
 
     ctx.restore();
@@ -613,8 +710,8 @@ export class AnimationTimeline {
       if (arr.length > 1) {
         const sx = this.timeToX(arr[0].time);
         const ex = this.timeToX(arr[arr.length - 1].time);
-        ctx.fillStyle = color.replace(')', ',0.08)').replace('rgb', 'rgba');
-        ctx.fillRect(sx, y + 2, ex - sx, TRACK_H - 4);
+        ctx.fillStyle = this.hexToRgba(color, 0.16);
+        ctx.fillRect(sx, y + 4, ex - sx, TRACK_H - 8);
       }
 
       for (const kf of arr) {
@@ -632,10 +729,10 @@ export class AnimationTimeline {
         ctx.translate(x, cy);
         ctx.rotate(Math.PI / 4);
         const s = isSelected ? DIAMOND + 1 : DIAMOND;
-        ctx.fillStyle = isSelected ? '#ffe066' : (isHovered ? '#ffd43b' : color);
+        ctx.fillStyle = isSelected ? PLAYHEAD_COLOR : (isHovered ? '#e8ff8a' : color);
         ctx.fillRect(-s / 2, -s / 2, s, s);
         if (isSelected) {
-          ctx.strokeStyle = '#fff';
+          ctx.strokeStyle = 'rgba(255,255,255,0.85)';
           ctx.lineWidth = 1;
           ctx.strokeRect(-s / 2, -s / 2, s, s);
         }
@@ -646,17 +743,26 @@ export class AnimationTimeline {
 
   private drawPlayhead(ctx: CanvasRenderingContext2D, H: number): void {
     const x = this.timeToX(this._time);
-    ctx.strokeStyle = '#ff6b6b';
+    ctx.strokeStyle = PLAYHEAD_COLOR;
     ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
 
-    ctx.fillStyle = '#ff6b6b';
+    ctx.fillStyle = PLAYHEAD_COLOR;
     ctx.beginPath();
     ctx.moveTo(x - 5, 0);
     ctx.lineTo(x + 5, 0);
     ctx.lineTo(x, 8);
     ctx.closePath();
     ctx.fill();
+  }
+
+  private hexToRgba(hex: string, alpha: number): string {
+    const clean = hex.replace('#', '');
+    const value = parseInt(clean.length === 3 ? clean.split('').map(ch => ch + ch).join('') : clean, 16);
+    const r = (value >> 16) & 255;
+    const g = (value >> 8) & 255;
+    const b = value & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   private getMajorInterval(): number {
@@ -681,6 +787,7 @@ export class AnimationTimeline {
         }
       }
     }
+    this.syncVerticalScrollbar();
   }
 
   setSkeleton(skel: EditorSkeleton): void {
@@ -707,7 +814,7 @@ export class AnimationTimeline {
       } else {
         this._time = this.currentAnim.duration;
         this._playing = false;
-        this.playBtn.textContent = '▶';
+        this.setPlayButtonIcon(false);
       }
     }
     this.autoScrollToPlayhead();
@@ -737,14 +844,14 @@ export class AnimationTimeline {
   togglePlay(): void {
     if (!this.currentAnim) return;
     this._playing = !this._playing;
-    this.playBtn.textContent = this._playing ? '⏸' : '▶';
+    this.setPlayButtonIcon(this._playing);
     this.emitChange();
   }
 
   private stop(): void {
     this._playing = false;
     this._time = 0;
-    this.playBtn.textContent = '▶';
+    this.setPlayButtonIcon(false);
     this.updateTimeLabel();
     this.emitChange();
   }
@@ -752,7 +859,7 @@ export class AnimationTimeline {
   private goToStart(): void {
     this._time = 0;
     this._playing = false;
-    this.playBtn.textContent = '▶';
+    this.setPlayButtonIcon(false);
     this.updateTimeLabel();
     this.emitChange();
   }
@@ -760,7 +867,7 @@ export class AnimationTimeline {
   private goToEnd(): void {
     this._time = this.currentAnim?.duration ?? 0;
     this._playing = false;
-    this.playBtn.textContent = '▶';
+    this.setPlayButtonIcon(false);
     this.updateTimeLabel();
     this.emitChange();
   }
@@ -769,7 +876,7 @@ export class AnimationTimeline {
     const frame = 1 / FRAME_RATE;
     this._time = Math.max(0, Math.round((this._time - frame) * FRAME_RATE) / FRAME_RATE);
     this._playing = false;
-    this.playBtn.textContent = '▶';
+    this.setPlayButtonIcon(false);
     this.updateTimeLabel();
     this.emitChange();
   }
@@ -779,7 +886,7 @@ export class AnimationTimeline {
     const dur = this.currentAnim?.duration ?? 1;
     this._time = Math.min(dur, Math.round((this._time + frame) * FRAME_RATE) / FRAME_RATE);
     this._playing = false;
-    this.playBtn.textContent = '▶';
+    this.setPlayButtonIcon(false);
     this.updateTimeLabel();
     this.emitChange();
   }
