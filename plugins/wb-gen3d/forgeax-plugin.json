@@ -62,11 +62,42 @@
           "zh": "生成确定性的 Meshy 文生 3D mock 资产并落盘为持久 manifest；不调用远端。",
           "en": "Generate a deterministic Meshy text-to-3D mock asset persisted as a durable manifest, with no remote calls."
         }
+      },
+      {
+        "id": "gen3d:text-to-3d",
+        "args": "./schemas/text-to-3d.args.json",
+        "returns": "./schemas/text-to-3d.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "文生 3D：经 Hunyuan workflow 生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock，保持无配额安全。",
+          "en": "Text-to-3D via Hunyuan workflow, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured (quota-safe)."
+        }
+      },
+      {
+        "id": "gen3d:image-to-3d",
+        "args": "./schemas/image-to-3d.args.json",
+        "returns": "./schemas/image-to-3d.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "图生 3D：经 Hunyuan workflow 生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Image-to-3D via Hunyuan workflow, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+        }
+      },
+      {
+        "id": "gen3d:views-to-3d",
+        "args": "./schemas/views-to-3d.args.json",
+        "returns": "./schemas/views-to-3d.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "多视图生 3D：经 Hunyuan workflow 命名视图槽生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Multi-view-to-3D via Hunyuan workflow named view slots, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+        }
       }
     ],
     "events": [
       { "name": "gen3d.provider.status-read" },
-      { "name": "gen3d.assets.listed" }
+      { "name": "gen3d.assets.listed" },
+      { "name": "gen3d.asset.generated" }
     ]
   },
 

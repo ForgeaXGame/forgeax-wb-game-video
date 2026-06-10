@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:text-to-3d args",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Text prompt describing the 3D asset to generate."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "enableFbxUrl": {
+      "type": "boolean",
+      "default": false,
+      "description": "Request an FBX output URL in addition to GLB."
+    },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 30000
+    }
+  },
+  "required": ["prompt"],
+  "additionalProperties": false
+}

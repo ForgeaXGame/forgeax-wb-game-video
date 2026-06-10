@@ -1,6 +1,6 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M3 asset contract + storage adapter complete (mock-backed); product direction updated 2026-06-09.
+Status: M4 Hunyuan workflow provider complete (real client built, quota-safe by default); product direction updated 2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -137,21 +137,49 @@ Verification (all passing as of 2026-06-10):
 
 ### M4 - Hunyuan Workflow Provider
 
+Status: complete (real client built; quota-safe by default).
+
 Goal: add Hunyuan main workflows after schema boundaries are clear.
 
 Expose only verified main modes:
 
-- `text` via `hunyuan-3d-v3.1-text2gen-wf`
-- `image` via `hunyuan-3d-v3.1-image2gen-wf`
-- `views` via `hunyuan-3d-v3.1-views2gen-wf`
+- `text` via `hunyuan-3d-v3.1-text2gen-wf` (`gen3d:text-to-3d`)
+- `image` via `hunyuan-3d-v3.1-image2gen-wf` (`gen3d:image-to-3d`)
+- `views` via `hunyuan-3d-v3.1-views2gen-wf` (`gen3d:views-to-3d`)
 
-Verification:
+Decoupled modules landed per ADR-0001:
 
-- Workflow model ids use `*-wf` entries.
-- Hidden geometry/world modes remain hidden until separately verified.
-- Submit/poll/audit/cache behavior does not leak keys.
-- Provider result URLs are downloaded immediately into durable storage and
-  represented as asset manifests.
+- `server/providers/hunyuan-workflow.ts` — real submit/poll client. Bearer auth
+  (`Authorization: Bearer <key>`, no signing), two endpoints differentiated by
+  `model` (`/openapi/v1/workflow/invoke/async` + `/openapi/v1/workflow/detail`),
+  case-tolerant status, `extract_urls` from `data[].*_url`. `fetchImpl`/
+  `downloadImpl` are injectable for quota-safe tests.
+- `server/rate-guard.ts` — sliding 60s submit guard (default 3/min).
+- `server/audit.ts` — append-only `audit.jsonl`, timing/outcome only, no secrets.
+- `server/cache.ts` — `cacheKey -> assetId` only (never provider URLs); on hit the
+  manifest is read from the store, never a dead URL.
+- `server/generate.ts#generateCacheFirst` — cache lookup → provider → blobs →
+  manifest → remember (write-after-success).
+- `server/env.ts` — reads `HUNYUAN_API_KEY` / `HUNYUAN_BASE_URL` from process env or
+  plugin-local `.env`; master switch `GEN3D_ENABLE_REAL_PROVIDERS=1` gates real
+  calls. Default OFF ⇒ all generation falls back to deterministic mock.
+
+Verification (all passing as of 2026-06-10, no real call made):
+
+- Workflow model ids use `*-wf` entries; hidden geometry/world modes stay hidden.
+- No-key path: `provider-status` reports `quotaSafe=true`; `gen3d:text-to-3d`
+  falls back to mock and persists a durable manifest (no network).
+- Cache-first: repeat input returns the same `assetId` with `cacheHit=true`;
+  a different input yields a new asset.
+- Injected-fetch simulation: exactly one submit, correct `*-wf` model id, poll
+  echoes the task id, `glb_url`+`preview_image_url` are extracted and downloaded
+  into bytes, manifest `providerMode='real'`.
+- Storage layout: cache/audit sidecar files coexist with per-asset dirs under
+  `.forgeax/assets/gen3d/`; `listManifests` only descends asset directories.
+- typecheck + build pass.
+
+Pending live verification: a real submit/poll once the operator supplies
+`HUNYUAN_API_KEY` and sets `GEN3D_ENABLE_REAL_PROVIDERS=1` in the plugin `.env`.
 
 ### M5 - Hunyuan REST Subtools
 

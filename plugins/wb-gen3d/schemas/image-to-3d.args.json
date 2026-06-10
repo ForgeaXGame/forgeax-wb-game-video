@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:image-to-3d args",
+  "type": "object",
+  "properties": {
+    "imageUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source image URL (reachable by the provider) for image-to-3D."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "enableFbxUrl": { "type": "boolean", "default": false },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 30000
+    }
+  },
+  "required": ["imageUrl"],
+  "additionalProperties": false
+}

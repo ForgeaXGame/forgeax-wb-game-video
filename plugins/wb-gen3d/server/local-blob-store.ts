@@ -85,17 +85,19 @@ export class LocalBlobStore implements AssetStorage {
   }
 
   async listManifests(): Promise<Gen3DAssetManifest[]> {
-    let entries: string[];
+    let entries: import('node:fs').Dirent[];
     try {
-      entries = await readdir(gen3dRoot());
+      entries = await readdir(gen3dRoot(), { withFileTypes: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw error;
     }
     const manifests: Gen3DAssetManifest[] = [];
     for (const entry of entries) {
-      if (entry === 'blobs') continue;
-      const manifest = await this.getManifest(entry);
+      // Asset manifests live in per-assetId directories. Skip the shared blobs
+      // dir and any sidecar files (cache.jsonl, audit.jsonl).
+      if (!entry.isDirectory() || entry.name === 'blobs') continue;
+      const manifest = await this.getManifest(entry.name);
       if (manifest) manifests.push(manifest);
     }
     return manifests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

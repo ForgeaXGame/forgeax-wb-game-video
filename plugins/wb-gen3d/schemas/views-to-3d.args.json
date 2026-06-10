@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:views-to-3d args",
+  "type": "object",
+  "properties": {
+    "views": {
+      "type": "object",
+      "description": "Named view-slot image URLs. front_image_url is required; others optional.",
+      "properties": {
+        "front_image_url": { "type": "string", "minLength": 1 },
+        "back_image_url": { "type": "string" },
+        "left_image_url": { "type": "string" },
+        "right_image_url": { "type": "string" },
+        "top_image_url": { "type": "string" },
+        "bottom_image_url": { "type": "string" },
+        "front_left_image_url": { "type": "string" },
+        "front_right_image_url": { "type": "string" }
+      },
+      "required": ["front_image_url"],
+      "additionalProperties": false
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "enableFbxUrl": { "type": "boolean", "default": false },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 30000
+    }
+  },
+  "required": ["views"],
+  "additionalProperties": false
+}

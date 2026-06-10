@@ -4,10 +4,13 @@ Last updated: 2026-06-10 Asia/Hong_Kong
 
 ## Current State
 
-M0-M3 complete for `wb-gen3d` inside the marketplace submodule. Implementation
-remains quota-safe: the only generation path is a deterministic Meshy text mock
-that produces a durable `Gen3DAssetManifest` through the storage adapter. No real
-provider calls exist.
+M0-M4 complete for `wb-gen3d` inside the marketplace submodule. The Hunyuan
+workflow provider (`text`/`image`/`views` via `*-wf`) is built with a real
+submit/poll client, but **real calls are OFF by default**: the master switch
+`GEN3D_ENABLE_REAL_PROVIDERS=1` plus a `HUNYUAN_API_KEY` must both be set, else
+every generation tool falls back to the deterministic mock (quota-safe). The
+ADR-0001 decoupled modules (providers / cache / rate-guard / audit / env) are
+landed. No live provider call has been made yet.
 
 Product direction (2026-06-09): `wb-gen3d` is the production 3D generation
 entrypoint for game assets, not a benchmark tool. Provider comparison is
@@ -17,6 +20,7 @@ background knowledge in docs only, not runtime code or UI (see
 Created files:
 
 - `.gitignore`
+- `.env.example` (var names only; real `.env` is gitignored)
 - `forgeax-plugin.json`
 - `index.html`
 - `package.json`
@@ -33,21 +37,28 @@ Created files:
 - `schemas/list-assets.returns.json`
 - `schemas/generate-meshy-text-mock.args.json`
 - `schemas/generate-meshy-text-mock.returns.json`
+- `schemas/text-to-3d.args.json` / `schemas/text-to-3d.returns.json`
+- `schemas/image-to-3d.args.json` / `schemas/image-to-3d.returns.json`
+- `schemas/views-to-3d.args.json` / `schemas/views-to-3d.returns.json`
 - `schemas/gen3d-asset-manifest.json`
 - `shared/manifest.ts` (Gen3DAssetManifest contract)
 - `shared/catalog.ts` (capability matrix + ProviderResult + mock generator)
+- `server/env.ts` (env + feature-gate resolution)
 - `server/asset-storage.ts` (AssetStorage adapter interface)
 - `server/local-blob-store.ts` (LocalBlobStore dev impl)
-- `server/generate.ts` (ProviderResult -> manifest orchestration)
+- `server/cache.ts` (cacheKey -> assetId dedup)
+- `server/rate-guard.ts` (sliding-window submit guard)
+- `server/audit.ts` (append-only audit trail, no secrets)
+- `server/providers/hunyuan-workflow.ts` (real submit/poll client, injectable transport)
+- `server/generate.ts` (ProviderResult -> manifest orchestration + cache-first)
 - `server/tool-handlers.ts`
 - `src/main.tsx`
 - `src/App.tsx`
 - `src/styles.css`
 
-No provider adapters, env templates, cache files, generated assets, or API calls
-have been added. `dist/` is ignored and should be generated locally with
-`npm run build` when needed. Durable assets land under `.forgeax/assets/gen3d/`
-(outside source control).
+No secrets, env values, cache files, or generated assets are committed. `dist/`
+and `.env` are ignored. Durable assets, `cache.jsonl`, and `audit.jsonl` land
+under `.forgeax/assets/gen3d/` (outside source control).
 
 ## Branch Context
 
@@ -129,14 +140,34 @@ The M3 storage contract is the baseline for future development:
 ## Implemented Tools
 
 - `gen3d:provider-status`: returns the static provider capability matrix and
-  quality rubric dimensions (planning data only, not a runtime scorer).
+  quality rubric dimensions (planning data only, not a runtime scorer). Now also
+  reports `quotaSafe` and `realProvidersEnabled` based on whether a real provider
+  is configured.
 - `gen3d:list-assets`: lists persisted `Gen3DAssetManifest` records from the
   global library, optionally filtered by provider.
 - `gen3d:generate-meshy-text-mock`: deterministic no-quota Meshy text-to-3D mock
   that persists a durable manifest (source_mesh GLB + preview_image PNG blobs)
-  via the storage adapter and returns the manifest. Inputs are prompt, prompt
-  category, PBR toggle, and target polycount. `assetId` is random per call;
+  via the storage adapter and returns the manifest. `assetId` is random per call;
   `cacheKey` is deterministic for the same input.
+- `gen3d:text-to-3d` / `gen3d:image-to-3d` / `gen3d:views-to-3d`: Hunyuan
+  workflow generation (cache-first). When real providers are configured they call
+  the `*-wf` submit/poll endpoints, download output URLs into blobs, and persist a
+  `Gen3DAssetManifest`. When not configured they fall back to the deterministic
+  mock (`usedMock: true`). Returns `{ ok, cacheKey, cacheHit, usedMock, manifest }`.
+
+## Real Provider Activation (quota-safe by default)
+
+Real Hunyuan calls require BOTH, set in a plugin-local `.env` (gitignored; copy
+`.env.example`):
+
+- `GEN3D_ENABLE_REAL_PROVIDERS=1`
+- `HUNYUAN_API_KEY=<uuid>` and `HUNYUAN_BASE_URL=http://hunyuanapi.woa.com`
+
+Auth is plain `Authorization: Bearer <key>` (no request signing). Submit + poll
+share two endpoints (`/openapi/v1/workflow/invoke/async`,
+`/openapi/v1/workflow/detail`) differentiated by the `model` field. The
+`RateGuard` caps submits (default 3/min). With the switch unset/0 or no key,
+generation stays mock-only and never touches the network.
 
 ## Verification So Far
 
@@ -147,29 +178,21 @@ npm run typecheck
 npm run build
 ```
 
-Both passed on 2026-06-10. An out-of-tree bun smoke also confirmed the M3
-persistence path: a mock generation writes `manifest.json` + content-addressed
-blobs under a temp `FORGEAX_PROJECT_ROOT`, `gen3d:list-assets` reads them back
-without any provider URL, and identical inputs produce a new random `assetId`
-with a stable `cacheKey`.
+Both passed on 2026-06-10. An out-of-tree bun smoke (no real network) confirmed:
+the no-key path falls back to mock and persists a durable manifest; cache-first
+returns the same `assetId` on a repeat input (`cacheHit=true`) and a new asset for
+a different input; and an injected-`fetch` simulation of the Hunyuan client drives
+submit → poll → `extract_urls` → download → manifest with exactly one submit, the
+correct `*-wf` model id, and `providerMode='real'`.
 
 ## Next Step
 
-M3 (asset contract + storage adapter) is done. Next is **M4 — Hunyuan workflow
-provider** (`text`/`image`/`views` via `*-wf` model ids), still cache-first. Do
-not add real Hunyuan, Meshy, or Rodin calls until rate limiting, env
-allow-listing, audit logs, and a cache layer are explicit. The remaining
-internal-architecture modules from ADR-0001 (`cache.ts`, `rate-guard.ts`,
-`audit.ts`, real `providers/`) are not yet implemented and should land alongside
-the first real provider call.
-
-Scope check before any commit:
-
-```bash
-git -C /Users/laurenceelu/dev/ForgeaXGame/forgeax-studio/packages/marketplace status --short --branch
-```
-
-Expected changed paths should stay under `plugins/wb-gen3d/`.
+M4 (Hunyuan workflow provider) is done and quota-safe. Remaining for M4 is a
+**live verification** once the operator supplies `HUNYUAN_API_KEY` and sets
+`GEN3D_ENABLE_REAL_PROVIDERS=1`: run one real `gen3d:text-to-3d` and confirm the
+downloaded GLB/preview persist into a manifest. After that, **M5 — Hunyuan REST
+subtools** (`pose_standardization`, `motion_retarget` v1); keep `auto_rigging`
+experimental and `motion_retarget_v2` blocked.
 
 ## Do Not Expose Yet
 

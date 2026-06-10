@@ -4,7 +4,14 @@
   "type": "object",
   "properties": {
     "ok": { "const": true },
-    "quotaSafe": { "const": true },
+    "quotaSafe": {
+      "type": "boolean",
+      "description": "True when no real provider is configured, so all generation falls back to mock."
+    },
+    "realProvidersEnabled": {
+      "type": "boolean",
+      "description": "True when a real provider (e.g. Hunyuan workflow) is configured and the master switch is on."
+    },
     "generatedAt": { "type": "string" },
     "rubric": {
       "type": "array",
@@ -33,6 +40,6 @@
       }
     }
   },
-  "required": ["ok", "quotaSafe", "generatedAt", "rubric", "capabilities"],
+  "required": ["ok", "quotaSafe", "realProvidersEnabled", "generatedAt", "rubric", "capabilities"],
   "additionalProperties": false
 }

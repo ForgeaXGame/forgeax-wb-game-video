@@ -14,6 +14,8 @@ import {
   type ManifestFile,
 } from '../shared/manifest';
 import type { AssetStorage } from './asset-storage';
+import * as cache from './cache';
+import { audit } from './audit';
 
 export async function persistGeneration(
   result: ProviderResult,
@@ -65,4 +67,43 @@ export async function persistGeneration(
 
   await storage.putManifest(manifest);
   return manifest;
+}
+
+export interface CachedGenerationResult {
+  manifest: Gen3DAssetManifest;
+  cacheHit: boolean;
+}
+
+// Cache-first generation. On a cacheKey hit, returns the existing manifest
+// (loaded from the store, never a stale provider URL). Otherwise runs the
+// producer, persists a durable manifest, then records cacheKey -> assetId only
+// after the full success (write-after-success). The producer is provider-
+// agnostic: it returns a pure ProviderResult.
+export async function generateCacheFirst(
+  cacheKey: string,
+  storage: AssetStorage,
+  produce: () => Promise<ProviderResult>,
+): Promise<CachedGenerationResult> {
+  const cachedId = await cache.lookup(cacheKey);
+  if (cachedId) {
+    const existing = await storage.getManifest(cachedId);
+    if (existing) {
+      const sample = existing;
+      await audit({
+        ts: new Date().toISOString(),
+        provider: sample.provider,
+        mode: sample.mode,
+        event: 'cache_hit',
+        cacheKey,
+        assetId: cachedId,
+      });
+      return { manifest: existing, cacheHit: true };
+    }
+    // Mapping points at a missing manifest; fall through and regenerate.
+  }
+
+  const result = await produce();
+  const manifest = await persistGeneration(result, storage);
+  await cache.remember(cacheKey, manifest.assetId);
+  return { manifest, cacheHit: false };
 }
