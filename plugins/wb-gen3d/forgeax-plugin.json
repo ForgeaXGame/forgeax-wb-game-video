@@ -119,7 +119,7 @@
       "port": 15175,
       "readyProbe": "/",
       "dev": { "watch": true, "hmr": true },
-      "embeddedAlso": false,
+      "embeddedAlso": true,
       "devOnly": false
     }
   },

@@ -283,12 +283,12 @@ Verification:
 
 ### M8 - Generation And Benchmark UX
 
-Status: in progress — core generation loop UI landed (2026-06-10). Preview-image
-rendering and downstream handoff actions deferred (see notes).
+Status: in progress — core generation loop + three.js model preview landed
+(2026-06-10). Downstream handoff actions and quality scoring deferred.
 
 Goal: make generation the primary workflow and comparison the evidence layer.
 
-Done (core loop):
+Done (core loop + preview):
 
 - `src/lib/toolClient.ts` — thin `POST /api/tools/call` client (`caller.kind:
   'user'`) over the Studio tools router.
@@ -302,18 +302,39 @@ Done (core loop):
 - `vite.config.ts` — dev `/api` proxy to the Studio server (`http://localhost:18900`,
   override via `FORGEAX_SERVER_ORIGIN`) so standalone dev reaches tools; when
   embedded in Studio the dist is served same-origin and the proxy is unused.
+- **Blob serving** (2026-06-10): server `/api/gen3d-blobs/*` static route
+  (`packages/server/src/main.ts`, commit `bf78703`) maps the prefix to
+  `.forgeax/assets/gen3d/` on disk. `LocalBlobStore` receives
+  `localUrlBase='/api/gen3d-blobs'`; frontend `blobUrl()` helper also derives
+  URLs from `storageKey` for pre-existing assets.
+- **three.js model preview** (2026-06-10): `src/components/ModelViewer.tsx`
+  (GLTFLoader + OrbitControls, auto-frame, autoRotate, full dispose on unmount).
+  `ResultCard` and selected-asset view both render GLB models in-canvas +
+  `preview_image` as `<img>`. Asset library cards are clickable to inspect any
+  previously generated asset.
+- **Embedded same-origin serving** (2026-06-10): the workbench now loads inside
+  Studio from `/plugins/wb-gen3d/` (manifest `entry.standalone.embeddedAlso:true`),
+  served by a second `serveStatic` block in `packages/server/src/main.ts`, exactly
+  like every other workbench frontend. This replaces the cross-origin standalone
+  dev port (:15175): when that dev server was not running, the in-page iframe sat
+  on the loading placeholder forever. `npm run dev` on :15175 still works for
+  standalone development outside Studio.
 
 Verification:
 
 - typecheck + build pass (2026-06-10).
+- End-to-end: GLB (37 MB) and PNG served at HTTP 200 via the blob route; three.js
+  renders the model in standalone dev (:15175) through the vite proxy.
+- Embedded in Studio (2026-06-10): the iframe resolves to `/plugins/wb-gen3d/`
+  (same-origin, `readyState=complete`), both left/center panes render the real UI;
+  `/plugins/wb-gen3d/` + its hashed JS both return HTTP 200 from the host server.
 
-Known limitation (preview images): `LocalBlobStore` is constructed without a
-`localUrlBase` in `server/tool-handlers.ts`, so every manifest file's `localUrl`
-is currently `null` and there is no blob-serving HTTP route yet. The result card
-therefore shows a placeholder (role + byte size) instead of a real `<img>`
-preview. Wiring a same-origin blob route + passing `localUrlBase` is a separate
-(server-touching) follow-up, intentionally out of the plugin-scoped core-loop
-milestone.
+Server dependency: this milestone touches `packages/server/src/main.ts` with two
+`serveStatic` blocks — `/api/gen3d-blobs/*` (generated GLB/PNG blobs, same-origin)
+and `/plugins/wb-gen3d/*` (the built workbench dist, same-origin). These are the
+only M8 changes outside `plugins/wb-gen3d/`.
+
+Remaining M8 items:
 
 - Generation entry supporting upstream character image/reference asset inputs.
 - Result card that surfaces durable asset ids and downstream readiness.

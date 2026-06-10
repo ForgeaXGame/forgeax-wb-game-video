@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-10 Asia/Hong_Kong (M8 core generation-loop UI)
+Last updated: 2026-06-10 Asia/Hong_Kong (M8 three.js model preview + blob route)
 
 ## Current State
 
@@ -63,6 +63,8 @@ Created files:
 - `src/main.tsx`
 - `src/App.tsx` (M8: production generation UI driving real `gen3d:*` tools)
 - `src/lib/toolClient.ts` (M8: `POST /api/tools/call` client)
+- `src/lib/blobUrl.ts` (M8: storageKey → same-origin URL resolver)
+- `src/components/ModelViewer.tsx` (M8: three.js GLB renderer with OrbitControls)
 - `src/styles.css`
 
 No secrets, env values, cache files, or generated assets are committed. `dist/`
@@ -225,17 +227,37 @@ live-verified. **M8 core generation-loop UI is now landed** (`src/App.tsx`
 rewritten from the M3 mock preview to drive the real `gen3d:text/image/views-to-3d`
 tools over `POST /api/tools/call`, with provider-status banner, manifest result
 card, and `gen3d:list-assets` library; `src/lib/toolClient.ts` is the HTTP
-client; `vite.config.ts` gained a dev `/api` proxy). typecheck + build pass.
+client; `vite.config.ts` gained a dev `/api` proxy). **Blob serving + three.js
+model preview are also landed** (2026-06-10):
+
+- Server gained `/api/gen3d-blobs/*` static route (`packages/server/src/main.ts`,
+  commit `bf78703` on branch `laurenceelu/feat-20260609-gen3d-blob-route`) mapping
+  the URL prefix to `.forgeax/assets/gen3d/` on disk (immutable cache, CORS).
+- `LocalBlobStore` now receives `localUrlBase='/api/gen3d-blobs'` so new assets
+  carry a same-origin `localUrl`; the frontend `blobUrl()` helper also derives URLs
+  from `storageKey` for assets generated before this change.
+- `ModelViewer` component (three.js + GLTFLoader + OrbitControls) renders GLB
+  models in the result card; `PreviewThumb` renders `preview_image` PNGs.
+- Asset library cards are clickable to inspect any previously generated asset.
+- Embedded same-origin serving: the manifest now sets
+  `entry.standalone.embeddedAlso:true` and the server gained a second
+  `serveStatic` block `/plugins/wb-gen3d/*` (`packages/server/src/main.ts`) that
+  serves the built `dist/`. The Studio iframe therefore loads from
+  `/plugins/wb-gen3d/` (same-origin) like every other workbench, instead of the
+  cross-origin standalone dev port :15175 — which, when not running, left the
+  in-page panel stuck on the loading placeholder. `npm run dev` (:15175) is still
+  the standalone-dev path outside Studio.
+
+typecheck + build pass. End-to-end verified: GLB (37MB) and PNG served at 200 via
+the blob route, three.js loads and renders the model in standalone dev (:15175);
+embedded in Studio, both panes load from same-origin `/plugins/wb-gen3d/`
+(`readyState=complete`) and render the real UI — no more stuck "加载中".
 
 Immediate follow-ups for M8:
 
-1. **Blob preview route** — manifest `localUrl` is `null` today (LocalBlobStore
-   has no `localUrlBase` and there's no blob-serving route), so the result card
-   shows a placeholder instead of the real preview image. Wiring a same-origin
-   blob route is a server-touching change, out of the plugin-scoped core loop.
-2. `pose-standardization` as an upstream preprocessing step in the UI.
-3. Downstream rigging/animation handoff action + metadata.
-4. Quality-rubric scoring UI.
+1. `pose-standardization` as an upstream preprocessing step in the UI.
+2. Downstream rigging/animation handoff action + metadata.
+3. Quality-rubric scoring UI.
 
 Remaining backend work: **`motion_retarget` v1** (`POST
 /openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
