@@ -28,7 +28,7 @@
         ".reel-assets/**"
       ],
       "agentTags": ["reel", "fmv", "interactive-film", "影游", "互动影游", "qte", "branch", "scenario", "suspense"],
-      "tools": ["reel:*"],
+      "tools": ["reel:*", "narrative:list-runs", "narrative:read-file"],
       "preferredCliProvider": "forgeax-native",
       "defaultLang": "zh",
       "multiInstance": false
