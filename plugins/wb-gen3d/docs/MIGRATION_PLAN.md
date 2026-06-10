@@ -1,6 +1,9 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M4 Hunyuan workflow provider complete (real client built, quota-safe by default); product direction updated 2026-06-09.
+Status: M5 partial — Hunyuan REST `pose_standardization` complete and
+live-verified (2026-06-10); `motion_retarget` v1 deferred until a rigged-FBX
+asset path exists. M4 Hunyuan workflow provider complete; product direction
+updated 2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -190,12 +193,34 @@ blobs and persisted into a manifest — `source_mesh/glb` (~41.9 MB),
 
 ### M5 - Hunyuan REST Subtools
 
+Status: partial — `pose_standardization` complete and live-verified
+(2026-06-10); `motion_retarget` v1 deferred until a rigged-FBX asset path exists.
+
 Goal: add verified Hunyuan REST sub-capabilities as separate tools.
 
-Expose first:
+Unlike M4 workflow modes (async submit/poll), REST sub-capabilities are
+synchronous: a single POST under `/openapi/v1/3d/` returns the result, no
+task_id/poll loop. Implemented in `server/providers/hunyuan-rest.ts` (Bearer
+auth, injectable `fetchImpl`/`downloadImpl`, `RateGuard`-gated, audit on
+outcome only).
 
-- `pose_standardization`
-- `motion_retarget` v1 with built-in integer motion types 9-16
+Done:
+
+- `pose_standardization` via `POST /openapi/v1/3d/images/pose_standardization`
+  (model `hunyuan-3d-images-pose-standardization`), tool
+  `gen3d:pose-standardization`. This is upstream preprocessing (image →
+  A/T-pose image), NOT 3D generation: the output image is downloaded into a
+  durable `preview_image` blob and the tool returns `storageKey`/`sha256`/
+  `localUrl`/`sourceUrl`. It does not write a `Gen3DAssetManifest`. Quota-safe
+  by default (mock image blob when `GEN3D_ENABLE_REAL_PROVIDERS≠1`).
+
+Deferred to a later milestone:
+
+- `motion_retarget` v1 (`POST /openapi/v1/3d/motion_retarget`, model
+  `hunyuan-3d-motion-retarget`, integer motion types 9-16). Its input must
+  resolve from `assetId + role=rigged_model + format=fbx` with verified
+  skeleton metadata, which no current generation path produces (only
+  `wb-3d-pipeline` rigging can). Defer until a rigged-FBX asset exists.
 
 Keep blocked or experimental:
 
@@ -205,6 +230,18 @@ Keep blocked or experimental:
 Verification:
 
 - REST paths use underscores, for example `/openapi/v1/3d/motion_retarget_v2`.
+- Injected-fetch smoke (no network): exactly one synchronous POST, correct REST
+  path + model + Bearer auth, `data[].url` extracted and downloaded into bytes,
+  an error response throws `provider_failed`.
+- typecheck + build pass.
+- Live verification (2026-06-10, internal network, operator-approved): one real
+  `gen3d:pose-standardization` on the doc human image completed in ~20s with
+  `usedMock=false`, a real `sourceJobId`, and a 501 KB standardized PNG
+  persisted as a content-addressed blob. Audit recorded `rest_succeeded` with no
+  secrets.
+
+For the deferred `motion_retarget` v1 (when picked up later):
+
 - v1 motion retarget input clearly requires a rigged humanoid FBX.
 - Motion retarget must resolve its input from `assetId + role=rigged_model +
   format=fbx`; plain mesh FBX files and GLB-to-FBX conversions are not enough

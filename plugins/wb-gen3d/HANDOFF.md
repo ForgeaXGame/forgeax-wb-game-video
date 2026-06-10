@@ -1,16 +1,22 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-10 Asia/Hong_Kong
+Last updated: 2026-06-10 Asia/Hong_Kong (M5 pose_standardization)
 
 ## Current State
 
-M0-M4 complete for `wb-gen3d` inside the marketplace submodule. The Hunyuan
-workflow provider (`text`/`image`/`views` via `*-wf`) is built with a real
-submit/poll client, but **real calls are OFF by default**: the master switch
-`GEN3D_ENABLE_REAL_PROVIDERS=1` plus a `HUNYUAN_API_KEY` must both be set, else
-every generation tool falls back to the deterministic mock (quota-safe). The
-ADR-0001 decoupled modules (providers / cache / rate-guard / audit / env) are
-landed. No live provider call has been made yet.
+M0-M4 complete for `wb-gen3d` inside the marketplace submodule, plus M5
+`pose_standardization` (the first Hunyuan REST subtool), implemented and
+live-verified. The Hunyuan workflow provider (`text`/`image`/`views` via
+`*-wf`) is built with a real submit/poll client, but **real calls are OFF by
+default**: the master switch `GEN3D_ENABLE_REAL_PROVIDERS=1` plus a
+`HUNYUAN_API_KEY` must both be set, else every generation tool falls back to the
+deterministic mock (quota-safe). The ADR-0001 decoupled modules (providers /
+cache / rate-guard / audit / env) are landed.
+
+M5 `motion_retarget` v1 is deferred: its input must be a rigged humanoid FBX
+(`role=rigged_model`, verified skeleton), which no current generation path
+produces — only `wb-3d-pipeline` rigging can. Pick it up once a rigged-FBX asset
+exists.
 
 Product direction (2026-06-09): `wb-gen3d` is the production 3D generation
 entrypoint for game assets, not a benchmark tool. Provider comparison is
@@ -40,6 +46,7 @@ Created files:
 - `schemas/text-to-3d.args.json` / `schemas/text-to-3d.returns.json`
 - `schemas/image-to-3d.args.json` / `schemas/image-to-3d.returns.json`
 - `schemas/views-to-3d.args.json` / `schemas/views-to-3d.returns.json`
+- `schemas/pose-standardization.args.json` / `schemas/pose-standardization.returns.json`
 - `schemas/gen3d-asset-manifest.json`
 - `shared/manifest.ts` (Gen3DAssetManifest contract)
 - `shared/catalog.ts` (capability matrix + ProviderResult + mock generator)
@@ -50,6 +57,7 @@ Created files:
 - `server/rate-guard.ts` (sliding-window submit guard)
 - `server/audit.ts` (append-only audit trail, no secrets)
 - `server/providers/hunyuan-workflow.ts` (real submit/poll client, injectable transport)
+- `server/providers/hunyuan-rest.ts` (synchronous REST subtool client, injectable transport)
 - `server/generate.ts` (ProviderResult -> manifest orchestration + cache-first)
 - `server/tool-handlers.ts`
 - `src/main.tsx`
@@ -154,6 +162,14 @@ The M3 storage contract is the baseline for future development:
   the `*-wf` submit/poll endpoints, download output URLs into blobs, and persist a
   `Gen3DAssetManifest`. When not configured they fall back to the deterministic
   mock (`usedMock: true`). Returns `{ ok, cacheKey, cacheHit, usedMock, manifest }`.
+- `gen3d:pose-standardization`: Hunyuan REST subtool (synchronous `POST
+  /openapi/v1/3d/images/pose_standardization`). Upstream preprocessing only:
+  standardizes a simple cartoon full-body image to an A/T-pose image. The output
+  image is downloaded into a durable `preview_image` blob and the tool returns
+  `{ ok, usedMock, sourceJobId, storageKey, bytes, sha256, localUrl, sourceUrl }`.
+  It does NOT produce a `Gen3DAssetManifest` — the `storageKey` is meant to feed a
+  later `gen3d:image-to-3d` call. Quota-safe by default (mock image blob when no
+  real provider is configured).
 
 ## Real Provider Activation (quota-safe by default)
 
@@ -192,13 +208,26 @@ a real `sourceJobId`, and four downloaded blobs persisted into a manifest
 `texture/png` ~17.5 MB). Network host `http://hunyuanapi.woa.com` is reachable
 from the internal network (bare probe returns 401 without auth).
 
+M5 `pose_standardization` verification (2026-06-10): an injected-fetch smoke (no
+network) confirmed exactly one synchronous POST with the correct REST path,
+model, and Bearer auth, `data[].url` extraction + download into bytes, and that
+an error response throws `provider_failed`; typecheck + build pass. Live
+(operator-approved): one real `gen3d:pose-standardization` on the doc human image
+completed in ~20s with `usedMock=false`, a real `sourceJobId`, and a 501 KB
+standardized PNG persisted as a content-addressed blob; audit recorded
+`rest_succeeded` with no secrets.
+
 ## Next Step
 
-M4 (Hunyuan workflow provider) is done and live-verified. Next is **M5 — Hunyuan
-REST subtools** (`pose_standardization`, `motion_retarget` v1 with integer motion
-types 9-16); keep `auto_rigging` experimental and `motion_retarget_v2` blocked.
-A possible front-end follow-up: wire `App.tsx` from the M3 manifest preview to a
-production UI that drives `gen3d:text/image/views-to-3d`.
+M4 (Hunyuan workflow provider) and M5 `pose_standardization` are done and
+live-verified. Remaining M5 work is **`motion_retarget` v1** (`POST
+/openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
+motion types 9-16), which is **deferred** until a rigged humanoid FBX asset path
+exists (`role=rigged_model` + verified skeleton, produced by `wb-3d-pipeline`,
+not by generation). Keep `auto_rigging` experimental and `motion_retarget_v2`
+blocked. A possible front-end follow-up: wire `App.tsx` from the M3 manifest
+preview to a production UI that drives `gen3d:text/image/views-to-3d` and offers
+`gen3d:pose-standardization` as an upstream preprocessing step.
 
 Note (not yet acted on): real `text` output returns both a GLB and an OBJ
 `source_mesh`. The current `URL_KEY_TO_FILE` keeps one file per `role:format`, so

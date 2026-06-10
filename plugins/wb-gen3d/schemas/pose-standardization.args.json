@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:pose-standardization args",
+  "type": "object",
+  "properties": {
+    "imageUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URL of a full-body simple/cartoon character portrait to standardize to an A/T-pose. Only simple cartoon full-body images are supported by the provider."
+    },
+    "footnote": {
+      "type": "string",
+      "description": "Optional free-text note passed through to the provider request."
+    }
+  },
+  "required": ["imageUrl"],
+  "additionalProperties": false
+}

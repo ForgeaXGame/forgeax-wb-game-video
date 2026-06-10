@@ -128,17 +128,19 @@ export const CAPABILITIES: readonly ProviderCapability[] = [
     providerId: 'hunyuan_rest',
     providerName: 'Hunyuan REST',
     capability: 'pose_standardization',
-    sourceStatus: 'Verified end-to-end',
-    exposure: 'planned',
-    notes: 'Image to A/T-pose standardization. gen3d upstream preprocessing.',
+    sourceStatus: 'Implemented + live-verified 2026-06-10',
+    exposure: 'mock-first',
+    notes:
+      'Tool gen3d:pose-standardization. Synchronous REST; image to A/T-pose standardization (upstream preprocessing, persists a blob, no manifest). Real call confirmed ~20s. Falls back to mock when GEN3D_ENABLE_REAL_PROVIDERS≠1.',
   },
   {
     providerId: 'hunyuan_rest',
     providerName: 'Hunyuan REST',
     capability: 'motion_retarget v1',
-    sourceStatus: 'Verified end-to-end',
+    sourceStatus: 'Verified end-to-end in lab',
     exposure: 'planned',
-    notes: 'Built-in integer motion types 9-16; input requires rigged humanoid FBX.',
+    notes:
+      'Built-in integer motion types 9-16; input requires a rigged humanoid FBX. Deferred until a rigged_model asset path exists (wb-3d-pipeline).',
   },
   {
     providerId: 'hunyuan_rest',

@@ -17,6 +17,7 @@ import {
   type HunyuanGenerateInput,
   type ViewSlot,
 } from './providers/hunyuan-workflow';
+import { HunyuanRestProvider } from './providers/hunyuan-rest';
 
 // Single dev-time storage adapter. Swap for a COS/S3/R2/MinIO adapter in
 // production without changing the tool contracts.
@@ -184,6 +185,78 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   );
 }
 
+// Hunyuan REST sub-capability: pose_standardization. This is an UPSTREAM
+// preprocessing tool (image → standardized portrait image), not 3D generation.
+// It does NOT produce a Gen3DAssetManifest. The output image is persisted as a
+// standalone preview_image blob; the result returns the durable storageKey so a
+// later image-to-3d call can consume it. Quota-safe by default: with no real
+// provider configured it falls back to a deterministic mock image blob.
+
+interface PoseStandardizationArgs {
+  imageUrl: string;
+  footnote?: string;
+}
+
+interface PoseStandardizationResult {
+  ok: true;
+  usedMock: boolean;
+  sourceJobId: string | null;
+  // The standardized image as a durable blob (preview_image role). Not a mesh
+  // asset; no manifest is written. Use storageKey as the upstream input for a
+  // subsequent gen3d:image-to-3d call.
+  storageKey: string;
+  bytes: number;
+  sha256: string;
+  localUrl: string | null;
+  sourceUrl: string | null;
+}
+
+async function poseStandardization(
+  args: PoseStandardizationArgs,
+): Promise<PoseStandardizationResult> {
+  const imageUrl = args.imageUrl?.trim();
+  if (!imageUrl) {
+    throw Object.assign(new Error('imageUrl is required'), { code: 'invalid_image_url' });
+  }
+  const footnote = args.footnote?.trim() || undefined;
+  const env = getHunyuanEnv();
+
+  let imageData: Uint8Array;
+  let sourceJobId: string | null;
+  let sourceUrl: string | null;
+  let usedMock: boolean;
+
+  if (env) {
+    const provider = new HunyuanRestProvider({ env });
+    const result = await provider.poseStandardization({ imageUrl, footnote });
+    imageData = result.imageData;
+    sourceJobId = result.sourceJobId;
+    sourceUrl = result.sourceUrl;
+    usedMock = false;
+  } else {
+    // Deterministic no-quota fallback: reuse the mock preview image bytes so the
+    // storage path runs without a network call.
+    const { result } = generateMeshyTextMockResult({ prompt: `pose:${imageUrl}` });
+    const preview = result.files.find((f) => f.role === 'preview_image');
+    imageData = preview?.data ?? new Uint8Array();
+    sourceJobId = null;
+    sourceUrl = null;
+    usedMock = true;
+  }
+
+  const stored = await storage.putBlob({ data: imageData, format: 'png', role: 'preview_image' });
+  return {
+    ok: true,
+    usedMock,
+    sourceJobId,
+    storageKey: stored.storageKey,
+    bytes: stored.bytes,
+    sha256: stored.sha256,
+    localUrl: stored.localUrl,
+    sourceUrl,
+  };
+}
+
 export const tools = {
   'gen3d:provider-status': async () => getProviderStatus(),
   'gen3d:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
@@ -191,6 +264,8 @@ export const tools = {
   'gen3d:text-to-3d': async (args: TextTo3DArgs) => textTo3D(args),
   'gen3d:image-to-3d': async (args: ImageTo3DArgs) => imageTo3D(args),
   'gen3d:views-to-3d': async (args: ViewsTo3DArgs) => viewsTo3D(args),
+  'gen3d:pose-standardization': async (args: PoseStandardizationArgs) =>
+    poseStandardization(args),
 };
 
 export default tools;

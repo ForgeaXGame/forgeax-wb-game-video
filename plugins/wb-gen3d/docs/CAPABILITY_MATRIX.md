@@ -21,13 +21,13 @@ blocked in workbench UI or AI-facing schemas.
 | Meshy | `image` / image-to-3D | Implemented in lab | planned | Requires image input handling and artifact display. |
 | Meshy | `views` / multi-image-to-3D | Implemented in lab | planned | Meshy accepts image URL arrays, not Hunyuan's named 8 slots. |
 | Meshy | `refine` | Implemented in lab | planned | Meshy-only second stage; do not model it as a generic provider mode. |
-| Hunyuan workflow | `text` | Verified main mode | planned | Use `hunyuan-3d-v3.1-text2gen-wf`. Async submit + poll. |
-| Hunyuan workflow | `image` | Verified main mode | planned | Use `hunyuan-3d-v3.1-image2gen-wf`. Async submit + poll. |
-| Hunyuan workflow | `views` | Verified main mode | planned | Use `hunyuan-3d-v3.1-views2gen-wf`; Hunyuan uses named view slots. |
+| Hunyuan workflow | `text` | **Implemented + live-verified 2026-06-10** | mock-first | Tool `gen3d:text-to-3d`. Real call confirmed: ~292s, GLB+OBJ+preview+texture blobs persisted. Falls back to deterministic mock when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. |
+| Hunyuan workflow | `image` | Implemented (client built, not live-tested) | mock-first | Tool `gen3d:image-to-3d`. Same submit/poll path; mock fallback until live test. |
+| Hunyuan workflow | `views` | Implemented (client built, not live-tested) | mock-first | Tool `gen3d:views-to-3d`. Named 8-slot view inputs; mock fallback until live test. |
 | Hunyuan workflow | `text2geometry`, `image2geometry`, `views2geometry` | Endpoint reachable, field sanity incomplete | hidden | Keep constants internal only until output shape is verified. |
 | Hunyuan workflow | world scene/panorama/reconstruction modes | Endpoint reachable, field sanity incomplete | hidden | Do not expose from workbench until mode mapping and outputs are proven. |
-| Hunyuan REST | `pose_standardization` | Verified end-to-end | planned | Image to A/T-pose standardization. Separate REST subtool, not a workflow model. |
-| Hunyuan REST | `motion_retarget` v1 | Verified end-to-end | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. |
+| Hunyuan REST | `pose_standardization` | **Implemented + live-verified 2026-06-10** | mock-first | Tool `gen3d:pose-standardization`. Synchronous REST `POST /openapi/v1/3d/images/pose_standardization`. Upstream preprocessing (image→A/T-pose image); persists a blob, no manifest. Real call confirmed ~20s, 501 KB PNG. Mock fallback when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. |
+| Hunyuan REST | `motion_retarget` v1 | Verified end-to-end in lab | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. Deferred until a `role=rigged_model` asset path exists (`wb-3d-pipeline`). |
 | Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
 | Rodin | Pending generation modes | Key and API contract pending | hidden | Third provider after Hunyuan and Meshy. Add only after user supplies key/API details and output shape is verified. |

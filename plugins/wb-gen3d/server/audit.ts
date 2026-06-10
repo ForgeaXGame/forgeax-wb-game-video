@@ -13,7 +13,10 @@ export type AuditEvent =
   | 'poll_failed'
   | 'poll_timeout'
   | 'cache_hit'
-  | 'rate_blocked';
+  | 'rate_blocked'
+  | 'rest_succeeded'
+  | 'rest_failed'
+  | 'rest_no_output';
 
 export interface AuditRecord {
   ts: string;

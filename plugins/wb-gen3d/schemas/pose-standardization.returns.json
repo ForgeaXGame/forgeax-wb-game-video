@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:pose-standardization returns",
+  "type": "object",
+  "properties": {
+    "ok": { "const": true },
+    "usedMock": {
+      "type": "boolean",
+      "description": "True when no real provider was configured and a deterministic mock image was used (quota-safe fallback)."
+    },
+    "sourceJobId": {
+      "type": ["string", "null"],
+      "description": "Remote provider job id, for audit. Null in mock mode. Never a stored-asset reference."
+    },
+    "storageKey": {
+      "type": "string",
+      "description": "Durable blob key for the standardized image (preview_image role). Not a 3D asset manifest; use as the upstream input for a later gen3d:image-to-3d call."
+    },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string" },
+    "localUrl": { "type": ["string", "null"] },
+    "sourceUrl": {
+      "type": ["string", "null"],
+      "description": "The provider's temporary output URL the image was downloaded from. Audit only; never the canonical reference."
+    }
+  },
+  "required": ["ok", "usedMock", "sourceJobId", "storageKey", "bytes", "sha256", "localUrl", "sourceUrl"],
+  "additionalProperties": false
+}

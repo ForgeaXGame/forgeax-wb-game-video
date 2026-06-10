@@ -92,6 +92,16 @@
           "zh": "多视图生 3D：经 Hunyuan workflow 命名视图槽生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
           "en": "Multi-view-to-3D via Hunyuan workflow named view slots, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
         }
+      },
+      {
+        "id": "gen3d:pose-standardization",
+        "args": "./schemas/pose-standardization.args.json",
+        "returns": "./schemas/pose-standardization.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "姿态标准化（Hunyuan REST 子能力，上游预处理）：把简单卡通人物全身图标准化为 A/T-pose，输出图落盘为持久 blob 供后续图生 3D 使用；不产出 3D 资产 manifest。未配置真实 provider 时回退确定性 mock。",
+          "en": "Pose standardization (Hunyuan REST sub-capability, upstream preprocessing): standardize a simple cartoon full-body character image to an A/T-pose. The output image is persisted as a durable blob for later image-to-3D; it does NOT produce a 3D asset manifest. Falls back to a deterministic mock when no real provider is configured."
+        }
       }
     ],
     "events": [
