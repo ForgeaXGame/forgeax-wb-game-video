@@ -1,24 +1,15 @@
-import { useMemo, useState } from 'react';
-import {
-  Activity,
-  Ban,
-  Box,
-  FlaskConical,
-  Gauge,
-  ListFilter,
-  ShieldCheck,
-} from 'lucide-react';
+import { useState } from 'react';
+import { Activity, Ban, Box, Boxes, Gauge, ListFilter, ShieldCheck } from 'lucide-react';
 import {
   CAPABILITIES,
-  MOCK_RESULTS,
-  QUALITY_RUBRIC,
-  generateMeshyTextMock,
-  type BenchmarkResultSummary,
+  generateMeshyTextMockResult,
   type Exposure,
   type MeshyTextMockArgs,
   type ProviderCapability,
+  type ProviderResult,
   type PromptCategory,
 } from '@shared/catalog';
+import { computeReadiness, type FileRole } from '@shared/manifest';
 
 interface AppProps {
   pane: 'left' | 'center' | 'standalone';
@@ -51,29 +42,80 @@ const providerCounts = CAPABILITIES.reduce<Record<string, number>>((acc, item) =
   return acc;
 }, {});
 
+// Frontend-only manifest preview. The pure mock produces the same file roles a
+// real generation would; durable persistence (blobs + manifest.json) happens in
+// the backend tool gen3d:generate-meshy-text-mock, not here.
+interface AssetPreview {
+  cacheKey: string;
+  provider: string;
+  mode: string;
+  prompt: string | null;
+  files: { role: FileRole; format: string }[];
+  readinessLabel: string;
+}
+
+function toPreview(args: MeshyTextMockArgs): AssetPreview {
+  const { cacheKey, result } = generateMeshyTextMockResult(args);
+  return summarize(cacheKey, result);
+}
+
+function summarize(cacheKey: string, result: ProviderResult): AssetPreview {
+  const readiness = computeReadiness(
+    result.files.map((file) => ({
+      fileId: '',
+      role: file.role,
+      format: file.format,
+      storageKey: '',
+      bytes: file.data.byteLength,
+      sha256: '',
+      localUrl: null,
+      hasSkeleton: false,
+      skeletonProfile: 'unknown' as const,
+      animationInputReady: false,
+    })),
+  );
+  const readinessLabel = [
+    readiness.hasSourceMesh ? 'mesh' : null,
+    readiness.rigged ? 'rigged' : null,
+    readiness.animated ? 'animated' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ') || 'pending';
+  return {
+    cacheKey,
+    provider: result.provider,
+    mode: result.mode,
+    prompt: result.prompt,
+    files: result.files.map((file) => ({ role: file.role, format: file.format })),
+    readinessLabel,
+  };
+}
+
 function AppFrame({ children }: { children: React.ReactNode }) {
   return <div className="app-shell">{children}</div>;
 }
 
 export function App({ pane }: AppProps) {
-  const [generatedResults, setGeneratedResults] = useState<BenchmarkResultSummary[]>([]);
-  const results = useMemo(() => [...generatedResults, ...MOCK_RESULTS], [generatedResults]);
+  const [previews, setPreviews] = useState<AssetPreview[]>([]);
 
   function handleGenerate(args: MeshyTextMockArgs) {
-    const generated = generateMeshyTextMock(args).result;
-    setGeneratedResults((current) => [generated, ...current.filter((item) => item.id !== generated.id)]);
+    const preview = toPreview(args);
+    setPreviews((current) => [
+      preview,
+      ...current.filter((item) => item.cacheKey !== preview.cacheKey),
+    ]);
   }
 
   return (
     <AppFrame>
       <header className="topbar">
         <div className="brand">
-          <FlaskConical size={18} aria-hidden="true" />
-          <span>3D 角色生成</span>
+          <Boxes size={18} aria-hidden="true" />
+          <span>3D 资产生成</span>
         </div>
         <div className="status-pill">
           <ShieldCheck size={14} aria-hidden="true" />
-          <span>M1 no-quota shell</span>
+          <span>M3 manifest contract · no-quota</span>
         </div>
       </header>
 
@@ -82,14 +124,14 @@ export function App({ pane }: AppProps) {
       </aside>
 
       <main className="center-pane">
-        <Dashboard pane={pane} results={results} />
+        <Dashboard pane={pane} previews={previews} />
       </main>
 
       <aside className="right-pane">
-        <RubricPanel />
+        <ContractPanel />
       </aside>
 
-      <footer className="footer">static capability catalog · no provider calls</footer>
+      <footer className="footer">global asset library · durable manifest contract · no provider calls</footer>
     </AppFrame>
   );
 }
@@ -109,17 +151,13 @@ function Sidebar({ onGenerate }: { onGenerate: (args: MeshyTextMockArgs) => void
     <div className="stack">
       <section className="panel compact">
         <div className="panel-title">
-          <FlaskConical size={15} aria-hidden="true" />
-          <span>Meshy Text Mock</span>
+          <Box size={15} aria-hidden="true" />
+          <span>Generate (mock)</span>
         </div>
         <form className="mock-form" onSubmit={submitMock}>
           <label>
             <span>Prompt</span>
-            <textarea
-              value={prompt}
-              rows={4}
-              onChange={(event) => setPrompt(event.target.value)}
-            />
+            <textarea value={prompt} rows={4} onChange={(event) => setPrompt(event.target.value)} />
           </label>
           <label>
             <span>Category</span>
@@ -152,8 +190,8 @@ function Sidebar({ onGenerate }: { onGenerate: (args: MeshyTextMockArgs) => void
             <span>PBR</span>
           </label>
           <button type="submit" disabled={!prompt.trim()}>
-            <FlaskConical size={14} aria-hidden="true" />
-            Generate mock
+            <Box size={14} aria-hidden="true" />
+            Preview manifest
           </button>
         </form>
       </section>
@@ -198,24 +236,24 @@ function Sidebar({ onGenerate }: { onGenerate: (args: MeshyTextMockArgs) => void
   );
 }
 
-function Dashboard({ pane, results }: { pane: AppProps['pane']; results: readonly BenchmarkResultSummary[] }) {
+function Dashboard({ pane, previews }: { pane: AppProps['pane']; previews: readonly AssetPreview[] }) {
   return (
     <div className="dashboard" data-current-pane={pane}>
       <section className="hero-band">
         <div>
           <p className="eyebrow">Hunyuan3D / Meshy</p>
-          <h1>Provider benchmark card</h1>
+          <h1>3D asset generation</h1>
         </div>
-        <div className="hero-stats" aria-label="M1 workbench status">
+        <div className="hero-stats" aria-label="M3 workbench status">
           <Stat label="Capabilities" value={CAPABILITIES.length} />
-          <Stat label="Mock results" value={results.length} />
+          <Stat label="Manifest previews" value={previews.length} />
           <Stat label="Remote calls" value={0} />
         </div>
       </section>
 
       <section className="grid-two">
         <CapabilityTable items={sortedCapabilities} />
-        <ResultList results={results} />
+        <AssetList previews={previews} />
       </section>
     </div>
   );
@@ -251,56 +289,63 @@ function CapabilityTable({ items }: { items: readonly ProviderCapability[] }) {
   );
 }
 
-function ResultList({ results }: { results: readonly BenchmarkResultSummary[] }) {
+function AssetList({ previews }: { previews: readonly AssetPreview[] }) {
   return (
     <section className="panel results-panel">
       <div className="panel-title">
-        <Box size={15} aria-hidden="true" />
-        <span>Result Queue</span>
+        <Boxes size={15} aria-hidden="true" />
+        <span>Manifest Preview</span>
       </div>
       <div className="result-list">
-        {results.map((result) => (
-          <article className="result-card" key={result.id}>
-            <div className="result-card-head">
-              <div>
-                <strong>{result.providerName}</strong>
-                <span>{result.mode} · {result.promptCategory}</span>
+        {previews.length === 0 ? (
+          <p className="small-copy">Preview a mock generation to see its durable manifest shape.</p>
+        ) : (
+          previews.map((preview) => (
+            <article className="result-card" key={preview.cacheKey}>
+              <div className="result-card-head">
+                <div>
+                  <strong>{preview.provider}</strong>
+                  <span>{preview.mode}</span>
+                </div>
+                <span className="mock-badge">mock</span>
               </div>
-              <span className="mock-badge">mock</span>
-            </div>
-            <p>{result.prompt}</p>
-            <dl>
-              <div>
-                <dt>Artifact</dt>
-                <dd>{result.artifactKind.toUpperCase()}</dd>
-              </div>
-              <div>
-                <dt>Quota</dt>
-                <dd>{result.quotaConsumed ? 'used' : 'none'}</dd>
-              </div>
-              <div>
-                <dt>Score</dt>
-                <dd>{result.quality.total ?? 'pending'}</dd>
-              </div>
-            </dl>
-          </article>
-        ))}
+              <p>{preview.prompt}</p>
+              <dl>
+                <div>
+                  <dt>Files</dt>
+                  <dd>{preview.files.map((file) => `${file.role}.${file.format}`).join(', ')}</dd>
+                </div>
+                <div>
+                  <dt>Readiness</dt>
+                  <dd>{preview.readinessLabel}</dd>
+                </div>
+                <div>
+                  <dt>Cache key</dt>
+                  <dd>{preview.cacheKey}</dd>
+                </div>
+              </dl>
+            </article>
+          ))
+        )}
       </div>
     </section>
   );
 }
 
-function RubricPanel() {
+function ContractPanel() {
   return (
     <section className="panel compact rubric-panel">
       <div className="panel-title">
         <ShieldCheck size={15} aria-hidden="true" />
-        <span>Rubric</span>
+        <span>File Roles</span>
       </div>
       <div className="rubric-list">
-        {QUALITY_RUBRIC.map((dimension) => (
-          <span key={dimension}>{dimension}</span>
-        ))}
+        <span>source_mesh</span>
+        <span>preview_image</span>
+        <span>texture</span>
+        <span>rigged_model</span>
+        <span>animation_clip</span>
+        <span>animated_model</span>
       </div>
     </section>
   );

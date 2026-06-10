@@ -4,7 +4,6 @@
   "type": "object",
   "properties": {
     "ok": { "const": true },
-    "mode": { "const": "static-m1" },
     "quotaSafe": { "const": true },
     "generatedAt": { "type": "string" },
     "rubric": {
@@ -19,7 +18,7 @@
         "type": "object",
         "properties": {
           "providerId": {
-            "enum": ["meshy", "hunyuan_workflow", "hunyuan_rest", "future"]
+            "enum": ["meshy", "hunyuan_workflow", "hunyuan_rest", "rodin"]
           },
           "providerName": { "type": "string" },
           "capability": { "type": "string" },
@@ -34,6 +33,6 @@
       }
     }
   },
-  "required": ["ok", "mode", "quotaSafe", "generatedAt", "rubric", "capabilities"],
+  "required": ["ok", "quotaSafe", "generatedAt", "rubric", "capabilities"],
   "additionalProperties": false
 }

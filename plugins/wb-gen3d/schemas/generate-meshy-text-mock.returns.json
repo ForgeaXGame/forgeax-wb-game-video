@@ -4,63 +4,107 @@
   "type": "object",
   "properties": {
     "ok": { "const": true },
-    "mode": { "const": "static-m2" },
     "quotaSafe": { "const": true },
     "cacheKey": { "type": "string" },
-    "providerId": { "const": "meshy" },
-    "artifact": {
+    "manifest": {
       "type": "object",
       "properties": {
-        "mocked": { "const": true },
-        "format": { "const": "glb" },
-        "uri": { "type": "null" }
-      },
-      "required": ["mocked", "format", "uri"],
-      "additionalProperties": false
-    },
-    "result": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "providerId": { "const": "meshy" },
-        "providerName": { "const": "Meshy" },
-        "mode": { "const": "text" },
-        "prompt": { "type": "string" },
-        "promptCategory": { "enum": ["character", "prop", "scene"] },
-        "status": { "const": "mock" },
-        "artifactKind": { "const": "glb" },
-        "quotaConsumed": { "const": false },
+        "manifestVersion": { "const": 1 },
+        "assetId": { "type": "string" },
+        "kind": { "enum": ["mesh", "animation"] },
+        "provider": { "enum": ["meshy", "hunyuan_workflow", "hunyuan_rest", "rodin"] },
+        "providerMode": { "enum": ["mock", "real"] },
+        "mode": { "enum": ["text", "image", "views", "refine"] },
+        "sourceJobId": { "type": ["string", "null"] },
+        "sourceInputAssetIds": { "type": "array", "items": { "type": "string" } },
+        "prompt": { "type": ["string", "null"] },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": { "type": "string" },
+              "role": {
+                "enum": [
+                  "source_mesh",
+                  "rigged_model",
+                  "preview_image",
+                  "texture",
+                  "animation_clip",
+                  "animated_model"
+                ]
+              },
+              "format": {
+                "enum": ["glb", "fbx", "obj", "mtl", "usdz", "stl", "png", "jpg", "mp4"]
+              },
+              "storageKey": { "type": "string" },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string" },
+              "localUrl": { "type": ["string", "null"] },
+              "hasSkeleton": { "type": "boolean" },
+              "skeletonProfile": { "enum": ["humanoid", "unknown"] },
+              "animationInputReady": { "type": "boolean" }
+            },
+            "required": [
+              "fileId",
+              "role",
+              "format",
+              "storageKey",
+              "bytes",
+              "sha256",
+              "localUrl",
+              "hasSkeleton",
+              "skeletonProfile",
+              "animationInputReady"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readiness": {
+          "type": "object",
+          "properties": {
+            "hasSourceMesh": { "type": "boolean" },
+            "rigged": { "type": "boolean" },
+            "animated": { "type": "boolean" }
+          },
+          "required": ["hasSourceMesh", "rigged", "animated"],
+          "additionalProperties": false
+        },
         "quality": {
           "type": "object",
           "properties": {
-            "geometry": { "type": "null" },
-            "topology": { "type": "null" },
-            "texture": { "type": "null" },
-            "pbr": { "type": "null" },
-            "prompt_fidelity": { "type": "null" },
-            "total": { "type": "null" }
+            "geometry": { "type": ["number", "null"] },
+            "topology": { "type": ["number", "null"] },
+            "texture": { "type": ["number", "null"] },
+            "pbr": { "type": ["number", "null"] },
+            "prompt_fidelity": { "type": ["number", "null"] },
+            "total": { "type": ["number", "null"] }
           },
           "required": ["geometry", "topology", "texture", "pbr", "prompt_fidelity", "total"],
           "additionalProperties": false
         },
-        "notes": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
       "required": [
-        "id",
-        "providerId",
-        "providerName",
+        "manifestVersion",
+        "assetId",
+        "kind",
+        "provider",
+        "providerMode",
         "mode",
+        "sourceJobId",
+        "sourceInputAssetIds",
         "prompt",
-        "promptCategory",
-        "status",
-        "artifactKind",
-        "quotaConsumed",
+        "files",
+        "readiness",
         "quality",
-        "notes"
+        "createdAt",
+        "updatedAt"
       ],
       "additionalProperties": false
     }
   },
-  "required": ["ok", "mode", "quotaSafe", "cacheKey", "providerId", "artifact", "result"],
+  "required": ["ok", "quotaSafe", "cacheKey", "manifest"],
   "additionalProperties": false
 }

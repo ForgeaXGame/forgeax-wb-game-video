@@ -8,12 +8,12 @@
     "en": "3D Character Generation"
   },
   "description": {
-    "zh": "Hunyuan3D / Meshy 等 3D 生成管线的供应商能力矩阵、缓存优先结果列表与质量评分工作台。M1 仅提供无配额占位壳。",
-    "en": "Provider capability matrix, cache-first result listing, and quality scoring workbench for Hunyuan3D, Meshy, and related 3D generation pipelines. M1 is a no-quota shell."
+    "zh": "Hunyuan3D / Meshy 等 provider 的 3D 资产生成入口：选 provider + 输入，产出持久化的游戏可用 3D 资产 manifest。",
+    "en": "3D asset generation entrypoint for providers like Hunyuan3D and Meshy: pick a provider and input, produce durable game-ready 3D asset manifests."
   },
   "author": { "name": "forgeax", "email": "dev@forgeax.local" },
   "icon": "🧪",
-  "keywords": ["3d", "generation", "benchmark", "meshy", "hunyuan3d", "quality", "glb"],
+  "keywords": ["3d", "generation", "meshy", "hunyuan3d", "asset", "glb"],
 
   "provides": {
     "workbench": {
@@ -29,8 +29,7 @@
       },
       "bus": { "surfaceId": "gen3d" },
       "matchProduces": [
-        "**/.forgeax/games/*/gen3d/**",
-        "**/gen3d-results/**"
+        "**/.forgeax/assets/gen3d/**"
       ]
     },
     "tools": [
@@ -40,18 +39,18 @@
         "returns": "./schemas/provider-status.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "读取 3D 生成供应商能力矩阵；M1 返回静态、无配额数据。",
-          "en": "Read the 3D generation provider capability matrix. M1 returns static no-quota data."
+          "zh": "读取 3D 生成供应商能力矩阵；返回静态、无配额数据。",
+          "en": "Read the 3D generation provider capability matrix. Returns static no-quota data."
         }
       },
       {
-        "id": "gen3d:list-results",
-        "args": "./schemas/list-results.args.json",
-        "returns": "./schemas/list-results.returns.json",
+        "id": "gen3d:list-assets",
+        "args": "./schemas/list-assets.args.json",
+        "returns": "./schemas/list-assets.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "列出评测结果；M1 仅返回本地占位样例，不读取缓存也不调远端。",
-          "en": "List benchmark results. M1 returns local placeholder samples only, with no cache reads or remote calls."
+          "zh": "列出已生成的持久化 3D 资产 manifest，可按 provider 过滤。",
+          "en": "List durable generated 3D asset manifests, optionally filtered by provider."
         }
       },
       {
@@ -60,14 +59,14 @@
         "returns": "./schemas/generate-meshy-text-mock.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "生成确定性的 Meshy 文生 3D mock 结果；不读取缓存也不调用远端。",
-          "en": "Generate a deterministic Meshy text-to-3D mock result with no cache reads or remote calls."
+          "zh": "生成确定性的 Meshy 文生 3D mock 资产并落盘为持久 manifest；不调用远端。",
+          "en": "Generate a deterministic Meshy text-to-3D mock asset persisted as a durable manifest, with no remote calls."
         }
       }
     ],
     "events": [
       { "name": "gen3d.provider.status-read" },
-      { "name": "gen3d.results.listed" }
+      { "name": "gen3d.assets.listed" }
     ]
   },
 

@@ -1,6 +1,6 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M2 no-quota vertical slice; product direction updated 2026-06-09.
+Status: M3 asset contract + storage adapter complete (mock-backed); product direction updated 2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -102,31 +102,38 @@ Verification:
 
 ### M3 - Asset Contract And Storage Adapter
 
+Status: complete (mock-backed, no-quota).
+
 Goal: define the stable output contract before real provider calls.
 
 Deliverables:
 
-- `Gen3DAssetManifest` type/schema with `assetId`, `gameSlug`, `kind`,
-  `provider`, `providerMode`, `sourceJobId`, `sourceInputAssetIds`, `files[]`,
-  readiness flags, timestamps, and quality score placeholders.
-- `files[]` roles for at least `source_mesh`, `rigged_model`, `preview_image`,
-  `texture`, `animation_clip`, and `animated_model`. Rigged FBX files must be
-  able to mark `hasSkeleton`, `skeletonProfile`, and `animationInputReady`.
-- Local dev blob store under `.forgeax/assets/gen3d-blobs/`.
-- Per-game metadata/index under `.forgeax/games/<slug>/gen3d/`.
-- `AssetStorage` adapter interface that can later target Tencent COS/S3/R2/MinIO.
-- `AssetStorage` share/upload method for short-lived external provider access to
-  a durable blob, especially `role=rigged_model` FBX inputs for animation.
+- `Gen3DAssetManifest` type/schema with `assetId`, `kind`, `provider`,
+  `providerMode`, `mode`, `sourceJobId`, `sourceInputAssetIds`, `files[]`,
+  `readiness` flags, `quality` placeholders, and timestamps.
+  (`shared/manifest.ts`, `schemas/gen3d-asset-manifest.json`.)
+- `files[]` roles for `source_mesh`, `rigged_model`, `preview_image`,
+  `texture`, `animation_clip`, and `animated_model`. Rigged FBX files carry
+  `hasSkeleton`, `skeletonProfile`, and `animationInputReady`.
+- `AssetStorage` adapter interface (`server/asset-storage.ts`) with a local dev
+  implementation `LocalBlobStore` (`server/local-blob-store.ts`).
+- Global asset library (not bound to a game, per ADR-0001 / CONTEXT.md):
+  `.forgeax/assets/gen3d/<assetId>/manifest.json` plus content-addressed blobs
+  under `.forgeax/assets/gen3d/blobs/<sha256-prefix>/<sha256>.<ext>`.
+- `AssetStorage.shareUrl` for short-lived external provider access to a durable
+  blob, especially `role=rigged_model` FBX inputs for animation.
 
-Verification:
+Verification (all passing as of 2026-06-10):
 
 - A mock generation produces a durable manifest and local blob/index references.
-- Manifest can be consumed without knowing the original provider URL.
-- Manifest consumers can choose a file by role/format instead of parsing file
-  names or URLs.
-- A rigged FBX handoff can produce a temporary external URL without making that
-  URL the stored source of truth.
-- Large blob paths stay gitignored and outside source-controlled plugin code.
+- Manifest can be consumed without knowing the original provider URL
+  (`gen3d:list-assets` reads persisted manifests back).
+- Manifest consumers can choose a file by role/format (`selectFile`) instead of
+  parsing file names or URLs.
+- A rigged FBX handoff can produce a temporary external URL (`shareUrl`) without
+  making that URL the stored source of truth.
+- Large blob paths stay under `.forgeax/` and outside source-controlled plugin
+  code.
 
 ### M4 - Hunyuan Workflow Provider
 

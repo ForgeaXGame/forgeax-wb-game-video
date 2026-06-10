@@ -1,16 +1,18 @@
-# Handoff - Gen3D Benchmark Workbench
+# Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-09 Asia/Hong_Kong
+Last updated: 2026-06-10 Asia/Hong_Kong
 
 ## Current State
 
-M0-M2 have been started for `wb-gen3d` inside the marketplace
-submodule. Current implementation remains quota-safe and uses static/mock data
-only.
+M0-M3 complete for `wb-gen3d` inside the marketplace submodule. Implementation
+remains quota-safe: the only generation path is a deterministic Meshy text mock
+that produces a durable `Gen3DAssetManifest` through the storage adapter. No real
+provider calls exist.
 
-Product direction was updated on 2026-06-09: `wb-gen3d` should become the
-production 3D generation entrypoint for game assets. Benchmark/provider
-comparison remains a supporting view for quality and cost decisions.
+Product direction (2026-06-09): `wb-gen3d` is the production 3D generation
+entrypoint for game assets, not a benchmark tool. Provider comparison is
+background knowledge in docs only, not runtime code or UI (see
+`docs/adr/0001-production-tool-architecture.md`).
 
 Created files:
 
@@ -20,24 +22,32 @@ Created files:
 - `package.json`
 - `tsconfig.json`
 - `vite.config.ts`
+- `CONTEXT.md`
 - `docs/MIGRATION_PLAN.md`
 - `docs/CAPABILITY_MATRIX.md`
+- `docs/adr/0001-production-tool-architecture.md`
 - `HANDOFF.md`
 - `schemas/provider-status.args.json`
 - `schemas/provider-status.returns.json`
-- `schemas/list-results.args.json`
-- `schemas/list-results.returns.json`
+- `schemas/list-assets.args.json`
+- `schemas/list-assets.returns.json`
 - `schemas/generate-meshy-text-mock.args.json`
 - `schemas/generate-meshy-text-mock.returns.json`
+- `schemas/gen3d-asset-manifest.json`
+- `shared/manifest.ts` (Gen3DAssetManifest contract)
+- `shared/catalog.ts` (capability matrix + ProviderResult + mock generator)
+- `server/asset-storage.ts` (AssetStorage adapter interface)
+- `server/local-blob-store.ts` (LocalBlobStore dev impl)
+- `server/generate.ts` (ProviderResult -> manifest orchestration)
 - `server/tool-handlers.ts`
-- `shared/catalog.ts`
 - `src/main.tsx`
 - `src/App.tsx`
 - `src/styles.css`
 
 No provider adapters, env templates, cache files, generated assets, or API calls
 have been added. `dist/` is ignored and should be generated locally with
-`npm run build` when needed.
+`npm run build` when needed. Durable assets land under `.forgeax/assets/gen3d/`
+(outside source control).
 
 ## Branch Context
 
@@ -92,40 +102,41 @@ Most important source conclusions already carried into this plugin:
 
 ## Asset Storage And Rigged FBX Contract
 
-Future development should use this storage contract as the baseline:
+The M3 storage contract is the baseline for future development:
 
-- Long-term generated output lives in a `Gen3DAssetManifest` plus blob files.
-  Metadata/index files belong under `.forgeax/games/<slug>/gen3d/`; local dev
-  blobs belong under `.forgeax/assets/gen3d-blobs/` and must stay gitignored.
-- `files[]` should describe durable file roles, for example `source_mesh`,
-  `rigged_model`, `preview_image`, `texture`, `animation_clip`, or
-  `animated_model`. Each file should carry `fileId`, `format`, `storageKey`,
-  `bytes`, `sha256`, and same-origin `localUrl` when it can be streamed by
-  Studio.
+- Long-term generated output lives in a `Gen3DAssetManifest` plus blob files in a
+  global, game-agnostic library (ADR-0001 / CONTEXT.md):
+  `.forgeax/assets/gen3d/<assetId>/manifest.json` plus content-addressed blobs at
+  `.forgeax/assets/gen3d/blobs/<sha256-prefix>/<sha256>.<ext>`. Everything under
+  `.forgeax/` stays out of source control. Games reference assets by `assetId`;
+  generation does not require choosing a game first.
+- `files[]` describe durable file roles: `source_mesh`, `rigged_model`,
+  `preview_image`, `texture`, `animation_clip`, `animated_model`. Each file
+  carries `fileId`, `format`, `storageKey`, `bytes`, `sha256`, `localUrl`, plus
+  rigging readiness (`hasSkeleton`, `skeletonProfile`, `animationInputReady`).
 - Hunyuan `motion_retarget` input is not "any FBX". It must resolve from
-  `assetId + role=rigged_model + format=fbx` and the file metadata must mark a
-  verified skeleton, for example `hasSkeleton: true`,
-  `skeletonProfile: "humanoid"`, and `animationInputReady: true`.
-- Converting GLB or OBJ to FBX does not make it animation-ready. If the model is
-  not already rigged, the pipeline must run/verify a rigging step before exposing
-  motion-retarget actions.
-- External animation or rigging providers may require a URL they can fetch. Use
-  an `AssetStorage` share/upload step to create a short-lived public or provider
-  upload URL for the durable `rigged_model` blob. That URL is a request-time
-  transport detail and should not become the canonical asset reference.
-- Provider outputs from rigging or animation must be downloaded back into the
-  same storage contract and represented as new manifest files or derived
-  `files[]` entries before being advertised to downstream workbenches or agents.
+  `assetId + role=rigged_model + format=fbx` with verified skeleton metadata
+  (`hasSkeleton: true`, `skeletonProfile: "humanoid"`, `animationInputReady:
+  true`). Generation never sets these; only a verified rigging step in
+  `wb-3d-pipeline` may.
+- Converting GLB or OBJ to FBX does not make it animation-ready.
+- External rigging/animation providers that need a fetchable URL get one via
+  `AssetStorage.shareUrl` — a request-time transport URL, never the canonical
+  asset reference.
+- Provider outputs from rigging/animation must be downloaded back into the same
+  storage contract before downstream consumption.
 
 ## Implemented Tools
 
 - `gen3d:provider-status`: returns the static provider capability matrix and
-  quality rubric dimensions.
-- `gen3d:list-results`: returns M1 placeholder results, optionally filtered by
-  provider or prompt category.
-- `gen3d:generate-meshy-text-mock`: returns a deterministic no-quota Meshy
-  text-to-3D mock result. Inputs are prompt, prompt category, PBR toggle, and
-  target polycount.
+  quality rubric dimensions (planning data only, not a runtime scorer).
+- `gen3d:list-assets`: lists persisted `Gen3DAssetManifest` records from the
+  global library, optionally filtered by provider.
+- `gen3d:generate-meshy-text-mock`: deterministic no-quota Meshy text-to-3D mock
+  that persists a durable manifest (source_mesh GLB + preview_image PNG blobs)
+  via the storage adapter and returns the manifest. Inputs are prompt, prompt
+  category, PBR toggle, and target polycount. `assetId` is random per call;
+  `cacheKey` is deterministic for the same input.
 
 ## Verification So Far
 
@@ -136,29 +147,29 @@ npm run typecheck
 npm run build
 ```
 
-Both passed on 2026-06-09. The build output was removed afterward because
-plugin-local `.gitignore` excludes `dist/`, matching the existing marketplace
-pattern.
+Both passed on 2026-06-10. An out-of-tree bun smoke also confirmed the M3
+persistence path: a mock generation writes `manifest.json` + content-addressed
+blobs under a temp `FORGEAX_PROJECT_ROOT`, `gen3d:list-assets` reads them back
+without any provider URL, and identical inputs produce a new random `assetId`
+with a stable `cacheKey`.
 
 ## Next Step
 
-Continue with the asset contract/storage milestone before real provider calls.
-The next real integration should be Hunyuan workflow first and still be
-cache-first; do not add real Hunyuan, Meshy, or Rodin calls until rate limiting,
-env allow-listing, audit logs, cache behavior, and durable asset persistence are
-explicit.
+M3 (asset contract + storage adapter) is done. Next is **M4 — Hunyuan workflow
+provider** (`text`/`image`/`views` via `*-wf` model ids), still cache-first. Do
+not add real Hunyuan, Meshy, or Rodin calls until rate limiting, env
+allow-listing, audit logs, and a cache layer are explicit. The remaining
+internal-architecture modules from ADR-0001 (`cache.ts`, `rate-guard.ts`,
+`audit.ts`, real `providers/`) are not yet implemented and should land alongside
+the first real provider call.
 
-Suggested first M1 verification:
+Scope check before any commit:
 
 ```bash
-cd /Users/laurenceelu/dev/ForgeaXGame/forgeax-studio/packages/marketplace
-git status --short --branch
-git diff --name-only origin/main...HEAD
+git -C /Users/laurenceelu/dev/ForgeaXGame/forgeax-studio/packages/marketplace status --short --branch
 ```
 
-Expected changed paths should stay under:
-
-`plugins/wb-gen3d/`
+Expected changed paths should stay under `plugins/wb-gen3d/`.
 
 ## Do Not Expose Yet
 
