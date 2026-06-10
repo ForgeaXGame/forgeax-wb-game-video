@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-10 Asia/Hong_Kong (M8 three.js model preview + blob route)
+Last updated: 2026-06-10 Asia/Hong_Kong (Meshy provider + pose UI committed; next = UI refactor, see "Next Session: UI Refactor Plan")
 
 ## Current State
 
@@ -160,11 +160,16 @@ The M3 storage contract is the baseline for future development:
   that persists a durable manifest (source_mesh GLB + preview_image PNG blobs)
   via the storage adapter and returns the manifest. `assetId` is random per call;
   `cacheKey` is deterministic for the same input.
-- `gen3d:text-to-3d` / `gen3d:image-to-3d` / `gen3d:views-to-3d`: Hunyuan
-  workflow generation (cache-first). When real providers are configured they call
-  the `*-wf` submit/poll endpoints, download output URLs into blobs, and persist a
-  `Gen3DAssetManifest`. When not configured they fall back to the deterministic
-  mock (`usedMock: true`). Returns `{ ok, cacheKey, cacheHit, usedMock, manifest }`.
+- `gen3d:text-to-3d` / `gen3d:image-to-3d` / `gen3d:views-to-3d`: mode generation
+  with a `provider` param (Hunyuan workflow `*-wf` OR Meshy), cache-first. When the
+  chosen provider's env is configured they call the real submit/poll endpoints,
+  download output URLs into blobs, and persist a `Gen3DAssetManifest`. When not
+  configured they fall back to the deterministic mock (`usedMock: true`). Returns
+  `{ ok, cacheKey, cacheHit, usedMock, manifest }`.
+- `gen3d:refine-mesh`: Meshy-only second stage — add texture to a prior Meshy
+  text `preview` task (`previewTaskId` = the manifest `sourceJobId`). Persists a
+  new durable manifest (`mode='refine'`, cache-first). Mock fallback when Meshy is
+  not configured.
 - `gen3d:pose-standardization`: Hunyuan REST subtool (synchronous `POST
   /openapi/v1/3d/images/pose_standardization`). Upstream preprocessing only:
   standardizes a simple cartoon full-body image to an A/T-pose image. The output
@@ -222,8 +227,9 @@ standardized PNG persisted as a content-addressed blob; audit recorded
 
 ## Next Step
 
-M4 (Hunyuan workflow provider) and M5 `pose_standardization` are done and
-live-verified. **M8 core generation-loop UI is now landed** (`src/App.tsx`
+M4 (Hunyuan workflow provider), M5 `pose_standardization`, and M6 (Meshy
+provider — `text`/`image`/`views` + `refine-mesh`) are done and live-verified.
+**M8 core generation-loop UI is landed** (`src/App.tsx`
 rewritten from the M3 mock preview to drive the real `gen3d:text/image/views-to-3d`
 tools over `POST /api/tools/call`, with provider-status banner, manifest result
 card, and `gen3d:list-assets` library; `src/lib/toolClient.ts` is the HTTP
@@ -253,11 +259,13 @@ the blob route, three.js loads and renders the model in standalone dev (:15175);
 embedded in Studio, both panes load from same-origin `/plugins/wb-gen3d/`
 (`readyState=complete`) and render the real UI — no more stuck "加载中".
 
-Immediate follow-ups for M8:
+Immediate follow-ups for M8 (now folded into the UI refactor — see "Next
+Session: UI Refactor Plan"):
 
-1. `pose-standardization` as an upstream preprocessing step in the UI.
-2. Downstream rigging/animation handoff action + metadata.
-3. Quality-rubric scoring UI.
+1. ~~`pose-standardization` as an upstream preprocessing step in the UI~~ — DONE
+   (`PosePreprocess` in `src/App.tsx`).
+2. Downstream rigging/animation handoff action + metadata (reserved UI slot).
+3. Quality-rubric scoring UI (reserved UI slot).
 
 Remaining backend work: **`motion_retarget` v1** (`POST
 /openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
@@ -269,6 +277,108 @@ blocked.
 Note (not yet acted on): real `text` output returns both a GLB and an OBJ
 `source_mesh`. The current `URL_KEY_TO_FILE` keeps one file per `role:format`, so
 both are stored. Decide later whether to prefer GLB and drop OBJ.
+
+## Pending Work (do NOT lose — push incrementally)
+
+The UI refactor (below) is the immediate next-session priority. These backend
+items remain and must keep being pushed forward over time:
+
+| Item | Status | Blocker / note |
+| --- | --- | --- |
+| **UI refactor** (Workbench editor pattern) | NEXT (this handoff) | see "Next Session" below |
+| `motion_retarget` v1 (Hunyuan REST) | deferred | needs a rigged humanoid FBX (`role=rigged_model`, verified skeleton) from `wb-3d-pipeline`; generation never produces it |
+| Rodin provider | not started | awaiting key/API + one verified output shape |
+| Quality-rubric scoring runtime | not started | today only static rubric dims from `provider-status`; no real scorer |
+| GLB/OBJ dedup | decision pending | real `text` returns both GLB+OBJ `source_mesh`; decide prefer-GLB-drop-OBJ |
+| views L/R inputs in UI | not started | backend `views-to-3d` already supports front/back/left/right; UI exposes only front/back (fold into the UI refactor) |
+| `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until a verified output shape exists (see "Do Not Expose Yet") |
+
+## Next Session: UI Refactor Plan (confirmed 2026-06-10)
+
+Problem: the generation UI works but is hard to use and ships a bespoke teal
+theme (`src/styles.css` `--accent:#55a7a0` …) divorced from the repo design
+system. Refactor it into the ForgeaX Workbench tool-editor pattern, using the
+character editor (`packages/marketplace/plugins/wb-character/src/`) as an EXAMPLE
+ONLY — do not copy its layout/fields.
+
+This is **UI-ONLY**. Untouched: `callTool`/`toolClient`, the 8 `gen3d:*`
+contracts + schemas, `server/**` providers/`env.ts`/storage, `ModelViewer`
+three.js logic, cache-first/mock fallback, pose→generate data flow, `refine`
+`previewTaskId` semantics, `blobUrl` resolution.
+
+Governing SSOT — read FIRST (skill mandatory workflow):
+
+- `.cursor/skills/forgeax-editor-ui-pattern/{EDITOR_UI_PATTERN,WORKBENCH_LEFT_SIDEBAR,EXAMPLES}.md`
+- `packages/interface/src/styles/{tokens.css,motion.css,forgeax-preview/DESIGN-SYSTEM.md}`
+- `.cursor/rules/ui-token-alignment.mdc`
+- Theming precedent (plugins vendor a tokens copy; iframe does NOT inherit host
+  tokens): `wb-ui/src/ui/tokens.css`, `wb-narrative/viz/src/styles/forgeax-tokens.css`
+
+Slot map:
+
+| Pattern slot | wb-gen3d content |
+| --- | --- |
+| pane-header | "3D 角色生成" + lime pill (provider mode real/quota-safe · asset count) |
+| `EditorLeftPanel` (staged) | Step1 Provider · Step2 mode+input · Step2.5 pose (conditional) · Step3 params · `ToolActionRow`=Generate |
+| `EditorCenterWorkspace` | `ModelViewer` (GLB) hero + manifest facts + refine CTA (Meshy text); empty/loading/error |
+| `EditorRightPanel` | asset library (`.motion-row`) + selected inspector; RESERVED: quality-score card, downstream-handoff action |
+| `EditorBottomPanel` (optional) | generation progress/status (Hunyuan takes minutes) |
+| `EditorToastLayer` | error/success |
+
+Staged left sidebar (step card = number → title → live summary → collapsible
+body; only the current step open):
+
+1. Provider — 混元 / Meshy (segmented).
+2. 输入方式 — 文生 / 图生 / 多视图 (segmented); body = prompt / imageUrl /
+   views (front required + back + ADD left + right).
+3. 姿态标准化 (optional, image/views) — existing `PosePreprocess`, "用作输入".
+4. 生成参数 — `targetPolycount`, PBR, Meshy-text→refine note.
+- `ToolActionRow`: Generate, right-aligned, `--primary` + `--color-text-on-bright-primary`.
+
+Reserved slots (placeholders now, wire when backend lands — per confirmed
+`uiscope = slots`):
+
+- Quality-score card (right inspector): the 5 rubric dims from `provider-status`,
+  rendered `disabled / 待评分运行时`.
+- Downstream rigging/animation handoff (result-card action): disabled, tooltip
+  "需先经 wb-3d-pipeline 绑骨".
+
+Icon map (single, `lucide-react`, reuse the same glyph for the same action across
+step/CTA/empty/toast): text `Type`, image `Image`, views `Images`, pose
+`PersonStanding`, generate `WandSparkles`, refine `Brush`, library `Library`,
+refresh `RefreshCw`, quality `Gauge`, handoff `Share2`, real/quota
+`ShieldAlert`/`ShieldCheck`. Drop the current "same glyph (`Boxes`) for generate
++ library + brand".
+
+Tokens/motion: replace the bespoke palette with `--color-*` / `--primary` /
+`--color-status-*` / `--motion-*` + `.motion-row`/`.motion-panel-in`; use the
+locked pane-header (lime `#d4ff48` pill) + 6px lime scrollbar constants from
+`WORKBENCH_LEFT_SIDEBAR.md`. Bright primary buttons keep
+`--color-text-on-bright-primary` through hover/active/focus.
+
+States (every major slot needs a non-blank fallback): empty library, empty
+selection, loading (task/progress), error (reason + retry + copyable details),
+blocked (refine = Meshy-text only; handoff = needs rig).
+
+Files (all inside the plugin): new `src/styles/tokens.css` (vendored); rewrite
+`src/styles.css` + `src/App.tsx` (split into PaneHeader / SetupSidebar / StepCard
+/ Workspace / AssetLibrary / InspectorReserved); `ModelViewer.tsx` class/container
+only — no three.js logic change. Do NOT touch `server/**`, `schemas/**`,
+`shared/**`, `toolClient.ts`, `blobUrl.ts`, or `forgeax-plugin.json` (ask first if
+`panelSize`/`panes` need a tweak).
+
+Phases (each independently reviewable): ① tokens + pane-header → ② staged left
+panel (incl. L/R views) → ③ center workspace + states → ④ right panel library +
+reserved cards → ⑤ validate.
+
+Validate: `npm run typecheck` + `npm run build`; visual check standalone
+`:15175` + embedded `/plugins/wb-gen3d/`; run the `WORKBENCH_LEFT_SIDEBAR.md` §10
+checklist (pane-header constants, scrollbar, option density, icon sync, all states,
+business logic untouched).
+
+Boundary reminder: only the wb-gen3d plugin dir. Do NOT bump the studio submodule
+pointer, touch other plugins / core / build, or change lockfiles unless the user
+explicitly asks for integration/release.
 
 ## Do Not Expose Yet
 
