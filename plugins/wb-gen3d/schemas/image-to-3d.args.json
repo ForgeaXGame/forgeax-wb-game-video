@@ -8,6 +8,12 @@
       "minLength": 1,
       "description": "Source image URL (reachable by the provider) for image-to-3D."
     },
+    "provider": {
+      "type": "string",
+      "enum": ["hunyuan_workflow", "meshy"],
+      "default": "hunyuan_workflow",
+      "description": "Generation provider. Defaults to hunyuan_workflow."
+    },
     "enablePbr": { "type": "boolean", "default": true },
     "enableFbxUrl": { "type": "boolean", "default": false },
     "targetPolycount": {

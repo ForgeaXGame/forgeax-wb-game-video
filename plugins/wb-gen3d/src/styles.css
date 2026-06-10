@@ -723,3 +723,78 @@ body[data-pane="center"] .center-pane {
 
 .tag-mock { color: var(--ok); background: rgba(118, 182, 120, 0.12); }
 .tag-real { color: var(--warn); background: rgba(216, 178, 95, 0.14); }
+
+/* ---- pose standardization preprocessing (M8) ---- */
+
+.pose-pre {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.pose-hint { margin-top: 8px; }
+
+.pose-form { margin-top: 10px; }
+
+.pose-error { color: var(--danger); }
+
+.pose-warn { color: var(--warn); }
+
+.pose-result {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: flex-start;
+}
+
+.pose-result .preview-thumb { width: 84px; height: 84px; }
+
+.pose-result-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pose-use-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid rgba(139, 216, 199, 0.5);
+  border-radius: 6px;
+  background: rgba(85, 167, 160, 0.18);
+  color: var(--accent-strong);
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.pose-use-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- provider selector + refine action (M6 Meshy) ---- */
+
+.provider-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.provider-select span { color: var(--muted); font-size: 12px; }
+
+.provider-select select {
+  flex: 1;
+  max-width: 62%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  color: var(--text);
+  padding: 6px 8px;
+  outline: none;
+}
+
+.provider-select select:focus { border-color: rgba(139, 216, 199, 0.6); }
+
+.refine-btn { margin-top: 12px; }

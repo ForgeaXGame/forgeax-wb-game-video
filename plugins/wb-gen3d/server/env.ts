@@ -73,6 +73,33 @@ export function getHunyuanEnv(): HunyuanEnv | null {
   };
 }
 
+export interface MeshyEnv {
+  apiKey: string;
+  baseUrl: string;
+  defaultPolycount: number;
+  pollIntervalMs: number;
+  pollTimeoutMs: number;
+  rateLimitPerMin: number;
+}
+
+// Returns null when the real Meshy path is not fully configured. Unlike Hunyuan,
+// Meshy has a stable public base URL default (api.meshy.ai), so only the key is
+// required. Callers must fall back to mock when this is null.
+export function getMeshyEnv(): MeshyEnv | null {
+  if (!realProvidersEnabled()) return null;
+  const apiKey = read('MESHY_API_KEY');
+  if (!apiKey) return null;
+  const baseUrl = read('MESHY_BASE_URL') ?? 'https://api.meshy.ai';
+  return {
+    apiKey,
+    baseUrl: baseUrl.replace(/\/+$/, ''),
+    defaultPolycount: toInt(read('MESHY_DEFAULT_POLYCOUNT'), 30000),
+    pollIntervalMs: toInt(read('MESHY_POLL_INTERVAL_MS'), 5000),
+    pollTimeoutMs: toInt(read('MESHY_POLL_TIMEOUT_MS'), 600000),
+    rateLimitPerMin: toInt(read('MESHY_RATE_LIMIT_PER_MIN'), 3),
+  };
+}
+
 function toInt(value: string | undefined, fallback: number): number {
   const n = value ? Number.parseInt(value, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : fallback;

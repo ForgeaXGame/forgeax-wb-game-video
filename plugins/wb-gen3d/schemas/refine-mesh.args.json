@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:refine-mesh args",
+  "type": "object",
+  "properties": {
+    "previewTaskId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Meshy preview task id (the sourceJobId of a prior gen3d:text-to-3d call with provider=meshy). Meshy-only second stage that adds texture to a white-mesh preview."
+    },
+    "texturePrompt": {
+      "type": "string",
+      "description": "Optional text guidance for texture generation (<=600 chars)."
+    },
+    "enablePbr": { "type": "boolean", "default": true }
+  },
+  "required": ["previewTaskId"],
+  "additionalProperties": false
+}

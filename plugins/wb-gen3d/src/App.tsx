@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, Image as ImageIcon, Images, RefreshCw, ShieldAlert, ShieldCheck, Type } from 'lucide-react';
+import { Boxes, Image as ImageIcon, Images, PersonStanding, RefreshCw, ShieldAlert, ShieldCheck, Type } from 'lucide-react';
 import type { Gen3DAssetManifest, ManifestFile } from '@shared/manifest';
 import { selectFile } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
-import { blobUrl } from '@/lib/blobUrl';
+import { blobUrl, BLOB_BASE } from '@/lib/blobUrl';
 import { ModelViewer } from '@/components/ModelViewer';
 
 interface AppProps {
@@ -11,6 +11,7 @@ interface AppProps {
 }
 
 type Mode = 'text' | 'image' | 'views';
+type GenProvider = 'hunyuan_workflow' | 'meshy';
 
 interface ProviderStatus {
   ok: true;
@@ -30,6 +31,20 @@ interface GenerateResult {
 interface ListAssetsResult {
   ok: true;
   assets: Gen3DAssetManifest[];
+}
+
+// gen3d:pose-standardization result. Upstream image→image preprocessing, not a
+// mesh asset (no manifest). storageKey/localUrl are the durable local blob;
+// sourceUrl is the provider-hosted URL the remote generator can fetch.
+interface PoseResult {
+  ok: true;
+  usedMock: boolean;
+  sourceJobId: string | null;
+  storageKey: string;
+  bytes: number;
+  sha256: string;
+  localUrl: string | null;
+  sourceUrl: string | null;
 }
 
 const modeMeta: Record<Mode, { toolId: string; label: string; icon: typeof Type }> = {
@@ -79,6 +94,25 @@ export function App({ pane }: AppProps) {
     [refreshAssets],
   );
 
+  // Meshy-only second stage: texture a prior white-mesh preview. previewTaskId is
+  // the manifest.sourceJobId of a real Meshy text result.
+  const handleRefine = useCallback(
+    async (previewTaskId: string) => {
+      setBusy(true);
+      setError(null);
+      const r = await callTool<GenerateResult>('gen3d:refine-mesh', { previewTaskId });
+      setBusy(false);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setLatest(r.result);
+      setSelected(null);
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -94,7 +128,7 @@ export function App({ pane }: AppProps) {
       </aside>
 
       <main className="center-pane">
-        <ResultArea latest={latest} selected={selected} error={error} />
+        <ResultArea latest={latest} selected={selected} error={error} busy={busy} onRefine={handleRefine} />
       </main>
 
       <aside className="right-pane">
@@ -134,6 +168,7 @@ function GeneratePanel({
   onGenerate: (mode: Mode, args: unknown) => void;
 }) {
   const [mode, setMode] = useState<Mode>('text');
+  const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
   const [frontUrl, setFrontUrl] = useState('');
@@ -141,7 +176,7 @@ function GeneratePanel({
   const [enablePbr, setEnablePbr] = useState(true);
   const [targetPolycount, setTargetPolycount] = useState(30000);
 
-  const common = { enablePbr, targetPolycount };
+  const common = { provider, enablePbr, targetPolycount };
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -160,9 +195,21 @@ function GeneratePanel({
     !busy &&
     (mode === 'text' ? prompt.trim().length > 0 : mode === 'image' ? imageUrl.trim().length > 0 : frontUrl.trim().length > 0);
 
+  const handleUsePose = (url: string) => {
+    if (mode === 'image') setImageUrl(url);
+    else if (mode === 'views') setFrontUrl(url);
+  };
+
   return (
     <div className="stack">
       <section className="panel compact">
+        <div className="provider-select">
+          <span>Provider</span>
+          <select value={provider} onChange={(e) => setProvider(e.target.value as GenProvider)}>
+            <option value="hunyuan_workflow">混元 Hunyuan</option>
+            <option value="meshy">Meshy</option>
+          </select>
+        </div>
         <div className="mode-tabs" role="tablist" aria-label="Generation mode">
           {(Object.keys(modeMeta) as Mode[]).map((m) => {
             const Icon = modeMeta[m].icon;
@@ -181,6 +228,10 @@ function GeneratePanel({
             );
           })}
         </div>
+
+        {(mode === 'image' || mode === 'views') && (
+          <PosePreprocess mode={mode} onUse={handleUsePose} />
+        )}
 
         <form className="mock-form" onSubmit={submit}>
           {mode === 'text' && (
@@ -228,6 +279,11 @@ function GeneratePanel({
             {busy ? 'Generating…' : 'Generate'}
           </button>
         </form>
+        {provider === 'meshy' && mode === 'text' && (
+          <p className="small-copy">
+            Meshy 文生为 preview 白模；生成后在结果卡片点「加贴图 (refine)」补纹理。
+          </p>
+        )}
         <p className="small-copy">
           未配置真实 provider 时自动回退确定性 mock，不消耗配额。生成结果落盘为持久 manifest。
         </p>
@@ -236,14 +292,101 @@ function GeneratePanel({
   );
 }
 
+// Optional upstream preprocessing for image/views modes: standardize a simple
+// cartoon full-body portrait to an A/T-pose via gen3d:pose-standardization,
+// then feed the result into the generator input. Real generation must consume
+// the provider-hosted sourceUrl (the remote server can fetch it); the local
+// same-origin URL is only for in-page preview.
+function PosePreprocess({ mode, onUse }: { mode: Mode; onUse: (url: string) => void }) {
+  const [srcUrl, setSrcUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<PoseResult | null>(null);
+
+  async function standardize() {
+    const imageUrl = srcUrl.trim();
+    if (!imageUrl) return;
+    setBusy(true);
+    setError(null);
+    const r = await callTool<PoseResult>('gen3d:pose-standardization', { imageUrl });
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      setResult(null);
+      return;
+    }
+    setResult(r.result);
+  }
+
+  const previewUrl = result ? result.localUrl ?? `${BLOB_BASE}/${result.storageKey}` : null;
+  const feedUrl = result ? result.sourceUrl ?? result.localUrl ?? `${BLOB_BASE}/${result.storageKey}` : '';
+  const targetLabel = mode === 'image' ? '图生 3D 输入' : '正视图输入';
+
+  return (
+    <div className="pose-pre">
+      <div className="panel-title">
+        <PersonStanding size={14} aria-hidden="true" />
+        <span>姿态标准化（可选上游预处理）</span>
+      </div>
+      <p className="small-copy pose-hint">
+        把简单卡通全身图标准化为 A/T-pose，再用作下方生成输入。仅适合简单卡通全身图。
+      </p>
+      <div className="mock-form pose-form">
+        <label>
+          <span>源图 URL</span>
+          <input
+            type="url"
+            value={srcUrl}
+            placeholder="https://…/character.png"
+            onChange={(e) => setSrcUrl(e.target.value)}
+          />
+        </label>
+        <button type="button" disabled={busy || srcUrl.trim().length === 0} onClick={standardize}>
+          <PersonStanding size={14} aria-hidden="true" />
+          {busy ? '标准化中…' : '标准化姿态'}
+        </button>
+      </div>
+      {error && <p className="small-copy pose-error">{error}</p>}
+      {result && (
+        <div className="pose-result">
+          {previewUrl ? (
+            <img className="preview-thumb" src={previewUrl} alt="standardized pose" />
+          ) : (
+            <div className="preview-thumb preview-thumb--empty" aria-hidden="true">
+              <ImageIcon size={18} />
+            </div>
+          )}
+          <div className="pose-result-meta">
+            <span className={`mock-badge ${result.usedMock ? '' : 'real-badge'}`}>
+              {result.usedMock ? 'mock' : 'real'}
+            </span>
+            <button type="button" className="pose-use-btn" onClick={() => onUse(feedUrl)}>
+              用作{targetLabel} ↓
+            </button>
+            {!result.usedMock && !result.sourceUrl && (
+              <p className="small-copy pose-warn">
+                真实模式但缺 sourceUrl，已回退本地 URL（远端 provider 可能取不到）。
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultArea({
   latest,
   selected,
   error,
+  busy,
+  onRefine,
 }: {
   latest: GenerateResult | null;
   selected: Gen3DAssetManifest | null;
   error: string | null;
+  busy: boolean;
+  onRefine: (previewTaskId: string) => void;
 }) {
   return (
     <div className="dashboard">
@@ -279,10 +422,10 @@ function ResultArea({
                 </span>
               </div>
             </div>
-            <ManifestPreview manifest={selected} />
+            <ManifestPreview manifest={selected} busy={busy} onRefine={onRefine} />
           </article>
         ) : latest ? (
-          <ResultCard result={latest} />
+          <ResultCard result={latest} busy={busy} onRefine={onRefine} />
         ) : (
           <p className="small-copy">输入 prompt / 图片 / 多视图并点击 Generate，或从右侧资产库选择一个查看模型。</p>
         )}
@@ -291,7 +434,15 @@ function ResultArea({
   );
 }
 
-function ResultCard({ result }: { result: GenerateResult }) {
+function ResultCard({
+  result,
+  busy,
+  onRefine,
+}: {
+  result: GenerateResult;
+  busy: boolean;
+  onRefine: (previewTaskId: string) => void;
+}) {
   const { manifest } = result;
   return (
     <article className="result-card">
@@ -307,7 +458,7 @@ function ResultCard({ result }: { result: GenerateResult }) {
           {result.cacheHit && <span className="cache-badge">cache hit</span>}
         </div>
       </div>
-      <ManifestPreview manifest={manifest} />
+      <ManifestPreview manifest={manifest} busy={busy} onRefine={onRefine} />
     </article>
   );
 }
@@ -315,10 +466,23 @@ function ResultCard({ result }: { result: GenerateResult }) {
 // Shared preview body: a three.js GLB viewer (source_mesh) when present, the
 // preview_image thumbnail, plus the durable manifest facts. Used for both the
 // latest result and a selected library asset.
-function ManifestPreview({ manifest }: { manifest: Gen3DAssetManifest }) {
+function ManifestPreview({
+  manifest,
+  busy,
+  onRefine,
+}: {
+  manifest: Gen3DAssetManifest;
+  busy?: boolean;
+  onRefine?: (previewTaskId: string) => void;
+}) {
   const meshFile = selectFile(manifest.files, 'source_mesh', 'glb');
   const previewFile = manifest.files.find((f) => f.role === 'preview_image') ?? null;
   const meshUrl = blobUrl(meshFile);
+
+  // Refine is a Meshy-only second stage that textures a white-mesh `text` preview.
+  // Only real previews carry a usable sourceJobId (mocks set it null).
+  const refineTaskId =
+    onRefine && manifest.provider === 'meshy' && manifest.mode === 'text' ? manifest.sourceJobId : null;
 
   const readinessLabel =
     [
@@ -360,6 +524,16 @@ function ManifestPreview({ manifest }: { manifest: Gen3DAssetManifest }) {
           </div>
         </dl>
       </div>
+      {refineTaskId && onRefine && (
+        <button
+          type="button"
+          className="pose-use-btn refine-btn"
+          disabled={busy}
+          onClick={() => onRefine(refineTaskId)}
+        >
+          {busy ? '处理中…' : '加贴图 (refine)'}
+        </button>
+      )}
     </>
   );
 }

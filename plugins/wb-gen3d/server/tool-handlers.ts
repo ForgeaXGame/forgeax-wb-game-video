@@ -11,12 +11,13 @@ import type { Gen3DAssetManifest, GenerationMode, ProviderId } from '../shared/m
 import type { AssetStorage } from './asset-storage';
 import { LocalBlobStore } from './local-blob-store';
 import { generateCacheFirst, persistGeneration } from './generate';
-import { getHunyuanEnv } from './env';
+import { getHunyuanEnv, getMeshyEnv } from './env';
 import {
   HunyuanWorkflowProvider,
   type HunyuanGenerateInput,
   type ViewSlot,
 } from './providers/hunyuan-workflow';
+import { MeshyProvider, type MeshyGenerateInput } from './providers/meshy';
 import { HunyuanRestProvider } from './providers/hunyuan-rest';
 
 // Single dev-time storage adapter. Swap for a COS/S3/R2/MinIO adapter in
@@ -37,11 +38,11 @@ interface ProviderStatusResult {
 }
 
 function getProviderStatus(): ProviderStatusResult {
-  const hunyuanReady = getHunyuanEnv() !== null;
+  const anyReal = getHunyuanEnv() !== null || getMeshyEnv() !== null;
   return {
     ok: true,
-    quotaSafe: !hunyuanReady,
-    realProvidersEnabled: hunyuanReady,
+    quotaSafe: !anyReal,
+    realProvidersEnabled: anyReal,
     generatedAt: new Date().toISOString(),
     rubric: QUALITY_RUBRIC,
     capabilities: CAPABILITIES,
@@ -83,6 +84,7 @@ async function generateMeshyTextMock(args: MeshyTextMockArgs): Promise<GenerateM
 
 interface TextTo3DArgs {
   prompt: string;
+  provider?: ProviderId;
   enablePbr?: boolean;
   enableFbxUrl?: boolean;
   targetPolycount?: number;
@@ -90,6 +92,7 @@ interface TextTo3DArgs {
 
 interface ImageTo3DArgs {
   imageUrl: string;
+  provider?: ProviderId;
   enablePbr?: boolean;
   enableFbxUrl?: boolean;
   targetPolycount?: number;
@@ -97,6 +100,7 @@ interface ImageTo3DArgs {
 
 interface ViewsTo3DArgs {
   views: Partial<Record<ViewSlot, string>>;
+  provider?: ProviderId;
   enablePbr?: boolean;
   enableFbxUrl?: boolean;
   targetPolycount?: number;
@@ -110,57 +114,92 @@ interface GenerateResult {
   manifest: Gen3DAssetManifest;
 }
 
-function mockFallback(mode: GenerationMode, prompt: string | null): ProviderResult {
-  // Reuse the deterministic mock byte payloads regardless of mode so the path
-  // works without quota. prompt may be null for image/views.
+function mockFallback(provider: ProviderId, mode: GenerationMode, prompt: string | null): ProviderResult {
+  // Reuse the deterministic mock byte payloads regardless of provider/mode so
+  // the path works without quota. prompt may be null for image/views. The mock
+  // is tagged with the requested provider so the manifest reflects user intent.
   const { result } = generateMeshyTextMockResult({ prompt: prompt ?? mode });
-  return { ...result, mode, provider: 'hunyuan_workflow', sourceJobId: null };
+  return { ...result, provider, mode, sourceJobId: null };
 }
 
+// Only these two providers back the mode tools today. Default (and any
+// non-meshy value) resolves to Hunyuan workflow for backward compatibility.
+type GenProvider = 'hunyuan_workflow' | 'meshy';
+
+function resolveProvider(provider: ProviderId | undefined): GenProvider {
+  return provider === 'meshy' ? 'meshy' : 'hunyuan_workflow';
+}
+
+function resolvePolycount(target: number | undefined, provider: GenProvider): number {
+  if (target !== undefined) return clampTargetPolycount(target);
+  if (provider === 'meshy') return clampTargetPolycount(getMeshyEnv()?.defaultPolycount ?? 30000);
+  return clampTargetPolycount(getHunyuanEnv()?.defaultFaceCount ?? 30000);
+}
+
+// Provider-aware cache-first generation. Picks the real provider when its env is
+// configured, else falls back to the deterministic mock (quota-safe). cacheKey
+// is computed by the caller (includes the provider), so caches stay isolated.
 async function runGeneration(
+  provider: GenProvider,
   mode: GenerationMode,
   cacheKey: string,
-  hunyuanInput: HunyuanGenerateInput,
+  inputs: { hunyuan: HunyuanGenerateInput; meshy: MeshyGenerateInput },
   mockPrompt: string | null,
 ): Promise<GenerateResult> {
-  const env = getHunyuanEnv();
   let usedMock = false;
   const produce = async (): Promise<ProviderResult> => {
-    if (env) {
-      const provider = new HunyuanWorkflowProvider({ env });
-      return provider.generate(hunyuanInput);
+    if (provider === 'meshy') {
+      const env = getMeshyEnv();
+      if (env) return new MeshyProvider({ env }).generate(inputs.meshy);
+    } else {
+      const env = getHunyuanEnv();
+      if (env) return new HunyuanWorkflowProvider({ env }).generate(inputs.hunyuan);
     }
     usedMock = true;
-    return mockFallback(mode, mockPrompt);
+    return mockFallback(provider, mode, mockPrompt);
   };
   const { manifest, cacheHit } = await generateCacheFirst(cacheKey, storage, produce);
   return { ok: true, cacheKey, cacheHit, usedMock, manifest };
 }
 
-function resolveFaceCount(target: number | undefined): number {
-  if (target !== undefined) return clampTargetPolycount(target);
-  const env = getHunyuanEnv();
-  return clampTargetPolycount(env?.defaultFaceCount ?? 30000);
-}
-
 async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
   const prompt = args.prompt.trim();
   if (!prompt) throw Object.assign(new Error('prompt is required'), { code: 'invalid_prompt' });
-  const faceCount = resolveFaceCount(args.targetPolycount);
+  const provider = resolveProvider(args.provider);
+  const faceCount = resolvePolycount(args.targetPolycount, provider);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
-  const cacheKey = makeCacheKey('hunyuan_workflow', 'text', { prompt, faceCount, enablePbr, enableFbxUrl });
-  return runGeneration('text', cacheKey, { mode: 'text', prompt, faceCount, enablePbr, enableFbxUrl }, prompt);
+  const cacheKey = makeCacheKey(provider, 'text', { prompt, faceCount, enablePbr, enableFbxUrl });
+  return runGeneration(
+    provider,
+    'text',
+    cacheKey,
+    {
+      hunyuan: { mode: 'text', prompt, faceCount, enablePbr, enableFbxUrl },
+      meshy: { mode: 'text', prompt, targetPolycount: faceCount, enablePbr },
+    },
+    prompt,
+  );
 }
 
 async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
   const imageUrl = args.imageUrl.trim();
   if (!imageUrl) throw Object.assign(new Error('imageUrl is required'), { code: 'invalid_image_url' });
-  const faceCount = resolveFaceCount(args.targetPolycount);
+  const provider = resolveProvider(args.provider);
+  const faceCount = resolvePolycount(args.targetPolycount, provider);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
-  const cacheKey = makeCacheKey('hunyuan_workflow', 'image', { imageUrl, faceCount, enablePbr, enableFbxUrl });
-  return runGeneration('image', cacheKey, { mode: 'image', imageUrl, faceCount, enablePbr, enableFbxUrl }, null);
+  const cacheKey = makeCacheKey(provider, 'image', { imageUrl, faceCount, enablePbr, enableFbxUrl });
+  return runGeneration(
+    provider,
+    'image',
+    cacheKey,
+    {
+      hunyuan: { mode: 'image', imageUrl, faceCount, enablePbr, enableFbxUrl },
+      meshy: { mode: 'image', imageUrl, targetPolycount: faceCount, enablePbr },
+    },
+    null,
+  );
 }
 
 async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
@@ -168,25 +207,79 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   if (!front) {
     throw Object.assign(new Error('views.front_image_url is required'), { code: 'invalid_views' });
   }
-  const faceCount = resolveFaceCount(args.targetPolycount);
+  const provider = resolveProvider(args.provider);
+  const faceCount = resolvePolycount(args.targetPolycount, provider);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
   const normalizedViews: Record<string, string> = {};
   for (const [slot, url] of Object.entries(args.views)) {
     if (url && url.trim()) normalizedViews[slot] = url.trim();
   }
-  const cacheKey = makeCacheKey('hunyuan_workflow', 'views', {
+  // Meshy multi-image takes an ordered URL array (front/back/left/right first),
+  // not Hunyuan's named view slots.
+  const meshyUrls = [
+    normalizedViews.front_image_url,
+    normalizedViews.back_image_url,
+    normalizedViews.left_image_url,
+    normalizedViews.right_image_url,
+  ].filter((u): u is string => Boolean(u));
+  const cacheKey = makeCacheKey(provider, 'views', {
     ...normalizedViews,
     faceCount,
     enablePbr,
     enableFbxUrl,
   });
   return runGeneration(
+    provider,
     'views',
     cacheKey,
-    { mode: 'views', views: normalizedViews as Partial<Record<ViewSlot, string>>, faceCount, enablePbr, enableFbxUrl },
+    {
+      hunyuan: {
+        mode: 'views',
+        views: normalizedViews as Partial<Record<ViewSlot, string>>,
+        faceCount,
+        enablePbr,
+        enableFbxUrl,
+      },
+      meshy: { mode: 'views', imageUrls: meshyUrls, targetPolycount: faceCount, enablePbr },
+    },
     null,
   );
+}
+
+// Meshy-only second stage: add texture to a prior Meshy text `preview` task.
+// previewTaskId is the sourceJobId of a prior gen3d:text-to-3d (provider=meshy)
+// result. Produces a new durable manifest (mode='refine'). Quota-safe: falls
+// back to mock when Meshy is not configured.
+interface RefineMeshArgs {
+  previewTaskId: string;
+  texturePrompt?: string;
+  enablePbr?: boolean;
+}
+
+async function refineMesh(args: RefineMeshArgs): Promise<GenerateResult> {
+  const previewTaskId = args.previewTaskId?.trim();
+  if (!previewTaskId) {
+    throw Object.assign(new Error('previewTaskId is required'), { code: 'invalid_preview_task' });
+  }
+  const enablePbr = args.enablePbr ?? true;
+  const texturePrompt = args.texturePrompt?.trim() || undefined;
+  const cacheKey = makeCacheKey('meshy', 'refine', {
+    previewTaskId,
+    enablePbr,
+    texturePrompt: texturePrompt ?? '',
+  });
+  let usedMock = false;
+  const produce = async (): Promise<ProviderResult> => {
+    const env = getMeshyEnv();
+    if (env) {
+      return new MeshyProvider({ env }).generate({ mode: 'refine', previewTaskId, texturePrompt, enablePbr });
+    }
+    usedMock = true;
+    return mockFallback('meshy', 'refine', `refine:${previewTaskId}`);
+  };
+  const { manifest, cacheHit } = await generateCacheFirst(cacheKey, storage, produce);
+  return { ok: true, cacheKey, cacheHit, usedMock, manifest };
 }
 
 // Hunyuan REST sub-capability: pose_standardization. This is an UPSTREAM
@@ -268,6 +361,7 @@ export const tools = {
   'gen3d:text-to-3d': async (args: TextTo3DArgs) => textTo3D(args),
   'gen3d:image-to-3d': async (args: ImageTo3DArgs) => imageTo3D(args),
   'gen3d:views-to-3d': async (args: ViewsTo3DArgs) => viewsTo3D(args),
+  'gen3d:refine-mesh': async (args: RefineMeshArgs) => refineMesh(args),
   'gen3d:pose-standardization': async (args: PoseStandardizationArgs) =>
     poseStandardization(args),
 };

@@ -89,8 +89,18 @@
         "returns": "./schemas/views-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "多视图生 3D：经 Hunyuan workflow 命名视图槽生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
-          "en": "Multi-view-to-3D via Hunyuan workflow named view slots, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+          "zh": "多视图生 3D：选 provider（Hunyuan workflow 命名视图槽 / Meshy 有序图数组）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Multi-view-to-3D via the chosen provider (Hunyuan workflow named view slots / Meshy ordered image array), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+        }
+      },
+      {
+        "id": "gen3d:refine-mesh",
+        "args": "./schemas/refine-mesh.args.json",
+        "returns": "./schemas/refine-mesh.returns.json",
+        "exposedToAI": true,
+        "description": {
+          "zh": "精修网格（Meshy 专属第二阶段）：对一个 Meshy 文生 preview 任务加贴图，落盘新的持久 manifest（mode=refine，cache-first）。未配置 Meshy 时回退确定性 mock。",
+          "en": "Refine mesh (Meshy-only second stage): add texture to a Meshy text preview task, persisted as a new durable manifest (mode=refine, cache-first). Falls back to a deterministic mock when Meshy is not configured."
         }
       },
       {

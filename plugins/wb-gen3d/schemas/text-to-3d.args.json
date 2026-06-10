@@ -8,6 +8,12 @@
       "minLength": 1,
       "description": "Text prompt describing the 3D asset to generate."
     },
+    "provider": {
+      "type": "string",
+      "enum": ["hunyuan_workflow", "meshy"],
+      "default": "hunyuan_workflow",
+      "description": "Generation provider. Defaults to hunyuan_workflow. Meshy text is a white-mesh preview; add texture via gen3d:refine-mesh."
+    },
     "enablePbr": { "type": "boolean", "default": true },
     "enableFbxUrl": {
       "type": "boolean",

@@ -19,6 +19,12 @@
       "required": ["front_image_url"],
       "additionalProperties": false
     },
+    "provider": {
+      "type": "string",
+      "enum": ["hunyuan_workflow", "meshy"],
+      "default": "hunyuan_workflow",
+      "description": "Generation provider. Defaults to hunyuan_workflow. Meshy uses an ordered image array (front/back/left/right)."
+    },
     "enablePbr": { "type": "boolean", "default": true },
     "enableFbxUrl": { "type": "boolean", "default": false },
     "targetPolycount": {

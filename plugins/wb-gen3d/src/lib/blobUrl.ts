@@ -5,7 +5,7 @@ import type { ManifestFile } from '@shared/manifest';
 // but fall back to deriving it from the always-present storageKey so assets
 // generated before that change still preview. Mirrors the server route in
 // packages/server/src/main.ts: /api/gen3d-blobs/<storageKey>.
-const BLOB_BASE = '/api/gen3d-blobs';
+export const BLOB_BASE = '/api/gen3d-blobs';
 
 export function blobUrl(file: ManifestFile | null | undefined): string | null {
   if (!file) return null;
