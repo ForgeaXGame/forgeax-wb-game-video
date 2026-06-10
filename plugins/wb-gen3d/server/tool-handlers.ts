@@ -132,10 +132,16 @@ async function runGeneration(
   return { ok: true, cacheKey, cacheHit, usedMock, manifest };
 }
 
+function resolveFaceCount(target: number | undefined): number {
+  if (target !== undefined) return clampTargetPolycount(target);
+  const env = getHunyuanEnv();
+  return clampTargetPolycount(env?.defaultFaceCount ?? 30000);
+}
+
 async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
   const prompt = args.prompt.trim();
   if (!prompt) throw Object.assign(new Error('prompt is required'), { code: 'invalid_prompt' });
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? 30000);
+  const faceCount = resolveFaceCount(args.targetPolycount);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
   const cacheKey = makeCacheKey('hunyuan_workflow', 'text', { prompt, faceCount, enablePbr, enableFbxUrl });
@@ -145,7 +151,7 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
 async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
   const imageUrl = args.imageUrl.trim();
   if (!imageUrl) throw Object.assign(new Error('imageUrl is required'), { code: 'invalid_image_url' });
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? 30000);
+  const faceCount = resolveFaceCount(args.targetPolycount);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
   const cacheKey = makeCacheKey('hunyuan_workflow', 'image', { imageUrl, faceCount, enablePbr, enableFbxUrl });
@@ -157,7 +163,7 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   if (!front) {
     throw Object.assign(new Error('views.front_image_url is required'), { code: 'invalid_views' });
   }
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? 30000);
+  const faceCount = resolveFaceCount(args.targetPolycount);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
   const normalizedViews: Record<string, string> = {};

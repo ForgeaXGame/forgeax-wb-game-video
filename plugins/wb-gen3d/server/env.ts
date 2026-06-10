@@ -50,6 +50,7 @@ export function realProvidersEnabled(): boolean {
 export interface HunyuanEnv {
   apiKey: string;
   baseUrl: string;
+  defaultFaceCount: number;
   pollIntervalMs: number;
   pollTimeoutMs: number;
   rateLimitPerMin: number;
@@ -65,6 +66,7 @@ export function getHunyuanEnv(): HunyuanEnv | null {
   return {
     apiKey,
     baseUrl: baseUrl.replace(/\/+$/, ''),
+    defaultFaceCount: toInt(read('HUNYUAN_DEFAULT_FACE_COUNT'), 30000),
     pollIntervalMs: toInt(read('HUNYUAN_POLL_INTERVAL_MS'), 5000),
     pollTimeoutMs: toInt(read('HUNYUAN_POLL_TIMEOUT_MS'), 600000),
     rateLimitPerMin: toInt(read('HUNYUAN_RATE_LIMIT_PER_MIN'), 3),

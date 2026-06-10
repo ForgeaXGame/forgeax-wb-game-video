@@ -185,14 +185,24 @@ a different input; and an injected-`fetch` simulation of the Hunyuan client driv
 submit → poll → `extract_urls` → download → manifest with exactly one submit, the
 correct `*-wf` model id, and `providerMode='real'`.
 
+Live verification (2026-06-10, internal network, operator-approved): one real
+`gen3d:text-to-3d` completed in ~292s with `providerMode=real`, `usedMock=false`,
+a real `sourceJobId`, and four downloaded blobs persisted into a manifest
+(`source_mesh/glb` ~41.9 MB, `source_mesh/obj` ~600 KB, `preview_image/png`,
+`texture/png` ~17.5 MB). Network host `http://hunyuanapi.woa.com` is reachable
+from the internal network (bare probe returns 401 without auth).
+
 ## Next Step
 
-M4 (Hunyuan workflow provider) is done and quota-safe. Remaining for M4 is a
-**live verification** once the operator supplies `HUNYUAN_API_KEY` and sets
-`GEN3D_ENABLE_REAL_PROVIDERS=1`: run one real `gen3d:text-to-3d` and confirm the
-downloaded GLB/preview persist into a manifest. After that, **M5 — Hunyuan REST
-subtools** (`pose_standardization`, `motion_retarget` v1); keep `auto_rigging`
-experimental and `motion_retarget_v2` blocked.
+M4 (Hunyuan workflow provider) is done and live-verified. Next is **M5 — Hunyuan
+REST subtools** (`pose_standardization`, `motion_retarget` v1 with integer motion
+types 9-16); keep `auto_rigging` experimental and `motion_retarget_v2` blocked.
+A possible front-end follow-up: wire `App.tsx` from the M3 manifest preview to a
+production UI that drives `gen3d:text/image/views-to-3d`.
+
+Note (not yet acted on): real `text` output returns both a GLB and an OBJ
+`source_mesh`. The current `URL_KEY_TO_FILE` keeps one file per `role:format`, so
+both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 ## Do Not Expose Yet
 

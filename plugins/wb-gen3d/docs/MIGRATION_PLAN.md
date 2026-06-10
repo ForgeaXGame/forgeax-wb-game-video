@@ -181,6 +181,13 @@ Verification (all passing as of 2026-06-10, no real call made):
 Pending live verification: a real submit/poll once the operator supplies
 `HUNYUAN_API_KEY` and sets `GEN3D_ENABLE_REAL_PROVIDERS=1` in the plugin `.env`.
 
+Live verification (2026-06-10, internal network): one real `gen3d:text-to-3d`
+completed in ~292s with `providerMode=real`, `usedMock=false`. Real
+`sourceJobId` returned; four output files downloaded into content-addressed
+blobs and persisted into a manifest — `source_mesh/glb` (~41.9 MB),
+`source_mesh/obj` (~600 KB), `preview_image/png`, `texture/png` (~17.5 MB).
+`readiness.hasSourceMesh=true`. M4 is fully verified end-to-end.
+
 ### M5 - Hunyuan REST Subtools
 
 Goal: add verified Hunyuan REST sub-capabilities as separate tools.
