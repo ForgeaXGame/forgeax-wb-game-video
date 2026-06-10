@@ -20,8 +20,12 @@ import {
 import { HunyuanRestProvider } from './providers/hunyuan-rest';
 
 // Single dev-time storage adapter. Swap for a COS/S3/R2/MinIO adapter in
-// production without changing the tool contracts.
-const storage: AssetStorage = new LocalBlobStore();
+// production without changing the tool contracts. localUrlBase mirrors the
+// Studio server's /api/gen3d-blobs/* static route (packages/server/src/main.ts)
+// so persisted manifest files carry a same-origin URL the UI can render
+// (<img> preview + three.js GLTFLoader). In standalone dev the plugin's vite
+// /api proxy forwards this to the Studio server.
+const storage: AssetStorage = new LocalBlobStore({ localUrlBase: '/api/gen3d-blobs' });
 
 interface ProviderStatusResult {
   ok: true;

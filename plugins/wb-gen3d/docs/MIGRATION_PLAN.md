@@ -1,9 +1,11 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M5 partial — Hunyuan REST `pose_standardization` complete and
-live-verified (2026-06-10); `motion_retarget` v1 deferred until a rigged-FBX
-asset path exists. M4 Hunyuan workflow provider complete; product direction
-updated 2026-06-09.
+Status: M8 in progress — core generation-loop UI landed (2026-06-10): mode tabs
+(text/image/views) drive the real `gen3d:*` tools over `POST /api/tools/call`,
+with a provider-status banner, manifest result card, and asset-library list. M5
+Hunyuan REST `pose_standardization` complete and live-verified (2026-06-10);
+`motion_retarget` v1 deferred until a rigged-FBX asset path exists. M4 Hunyuan
+workflow provider complete; product direction updated 2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -281,9 +283,37 @@ Verification:
 
 ### M8 - Generation And Benchmark UX
 
+Status: in progress — core generation loop UI landed (2026-06-10). Preview-image
+rendering and downstream handoff actions deferred (see notes).
+
 Goal: make generation the primary workflow and comparison the evidence layer.
 
-Likely deliverables:
+Done (core loop):
+
+- `src/lib/toolClient.ts` — thin `POST /api/tools/call` client (`caller.kind:
+  'user'`) over the Studio tools router.
+- `src/App.tsx` rewritten from the M3 frontend-only mock preview into a
+  production UI that drives the real backend tools: mode tabs (`text`/`image`/
+  `views`) → input form → `gen3d:text/image/views-to-3d`; a provider-status
+  banner from `gen3d:provider-status` (quota-safe vs real); a result card
+  showing the persisted `Gen3DAssetManifest` (asset id, files by role,
+  readiness, source job, real/mock + cache-hit badges); and an asset library
+  panel backed by `gen3d:list-assets`.
+- `vite.config.ts` — dev `/api` proxy to the Studio server (`http://localhost:18900`,
+  override via `FORGEAX_SERVER_ORIGIN`) so standalone dev reaches tools; when
+  embedded in Studio the dist is served same-origin and the proxy is unused.
+
+Verification:
+
+- typecheck + build pass (2026-06-10).
+
+Known limitation (preview images): `LocalBlobStore` is constructed without a
+`localUrlBase` in `server/tool-handlers.ts`, so every manifest file's `localUrl`
+is currently `null` and there is no blob-serving HTTP route yet. The result card
+therefore shows a placeholder (role + byte size) instead of a real `<img>`
+preview. Wiring a same-origin blob route + passing `localUrlBase` is a separate
+(server-touching) follow-up, intentionally out of the plugin-scoped core-loop
+milestone.
 
 - Generation entry supporting upstream character image/reference asset inputs.
 - Result card that surfaces durable asset ids and downstream readiness.

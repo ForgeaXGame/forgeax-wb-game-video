@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-10 Asia/Hong_Kong (M5 pose_standardization)
+Last updated: 2026-06-10 Asia/Hong_Kong (M8 core generation-loop UI)
 
 ## Current State
 
@@ -61,7 +61,8 @@ Created files:
 - `server/generate.ts` (ProviderResult -> manifest orchestration + cache-first)
 - `server/tool-handlers.ts`
 - `src/main.tsx`
-- `src/App.tsx`
+- `src/App.tsx` (M8: production generation UI driving real `gen3d:*` tools)
+- `src/lib/toolClient.ts` (M8: `POST /api/tools/call` client)
 - `src/styles.css`
 
 No secrets, env values, cache files, or generated assets are committed. `dist/`
@@ -220,14 +221,28 @@ standardized PNG persisted as a content-addressed blob; audit recorded
 ## Next Step
 
 M4 (Hunyuan workflow provider) and M5 `pose_standardization` are done and
-live-verified. Remaining M5 work is **`motion_retarget` v1** (`POST
+live-verified. **M8 core generation-loop UI is now landed** (`src/App.tsx`
+rewritten from the M3 mock preview to drive the real `gen3d:text/image/views-to-3d`
+tools over `POST /api/tools/call`, with provider-status banner, manifest result
+card, and `gen3d:list-assets` library; `src/lib/toolClient.ts` is the HTTP
+client; `vite.config.ts` gained a dev `/api` proxy). typecheck + build pass.
+
+Immediate follow-ups for M8:
+
+1. **Blob preview route** — manifest `localUrl` is `null` today (LocalBlobStore
+   has no `localUrlBase` and there's no blob-serving route), so the result card
+   shows a placeholder instead of the real preview image. Wiring a same-origin
+   blob route is a server-touching change, out of the plugin-scoped core loop.
+2. `pose-standardization` as an upstream preprocessing step in the UI.
+3. Downstream rigging/animation handoff action + metadata.
+4. Quality-rubric scoring UI.
+
+Remaining backend work: **`motion_retarget` v1** (`POST
 /openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
 motion types 9-16), which is **deferred** until a rigged humanoid FBX asset path
 exists (`role=rigged_model` + verified skeleton, produced by `wb-3d-pipeline`,
 not by generation). Keep `auto_rigging` experimental and `motion_retarget_v2`
-blocked. A possible front-end follow-up: wire `App.tsx` from the M3 manifest
-preview to a production UI that drives `gen3d:text/image/views-to-3d` and offers
-`gen3d:pose-standardization` as an upstream preprocessing step.
+blocked.
 
 Note (not yet acted on): real `text` output returns both a GLB and an OBJ
 `source_mesh`. The current `URL_KEY_TO_FILE` keeps one file per `role:format`, so
