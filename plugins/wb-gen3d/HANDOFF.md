@@ -1,6 +1,38 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-11 Asia/Hong_Kong (Workbench UI refactor landed, commit `af986ce`; next = M8 handoff/quality scoring)
+Last updated: 2026-06-11 Asia/Hong_Kong (M9–M12 plan finalized for handoff; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+
+## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
+
+> The next executing agent should follow
+> **`docs/PLAN-2026-06-11-rodin-cos-pergame.md`** — the SSOT for the new work.
+> It adds M9-M12 on top of the M0-M8 history below and, per operator direction
+> (2026-06-11), **reverses the global asset library to a per-game v2 file
+> contract** (supersedes ADR-0001; write ADR-0002 during M9). All key decisions
+> were already confirmed with the user during the 2026-06-11 grill — do not
+> re-litigate them; just execute.
+
+New work, in order:
+
+1. **M9 — per-game storage refactor (do FIRST; everything depends on it).**
+   New `server/per-game-store.ts` (`AssetStorage` file+sidecar impl) writing
+   `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`; asset
+   id = path (drop UUID + content-addressed blobs); slug from host bridge
+   `STUDIO_INIT` (mirror wb-character); `gen3d:delete-asset` (confirm-destructive);
+   new server route `/api/game-assets/:slug/*` (plugin-external — confirm
+   authorization first).
+2. **M10 — local image upload via plugin COS adapter** (`gen3d:upload-image`,
+   base64 → 24h presigned URL); SetupSidebar file-picker inputs; bigger prompt
+   box; "角色编辑器" hint.
+3. **M11 — Rodin provider** (`server/providers/rodin.ts`, multipart Bearer;
+   text/image/views; `quality_override`); UI selector; mock-first until key.
+4. **M12 — UI upgrade** (pose-standardization moved to top; polycount slider +
+   per-provider presets; result grid/skeleton/face-vertex info; dense asset grid
+   + delete-with-confirm).
+
+The "Asset Storage", "Relationship To Per-Game Assets", and M8-handoff items
+below are **historical context** — M9 supersedes the global library. Treat the
+plan as the target, not the ADR-0001 storage description.
 
 ## Current State
 
@@ -127,6 +159,12 @@ Most important source conclusions already carried into this plugin:
 
 ## Asset Storage And Rigged FBX Contract
 
+> SUPERSEDED BY M9 (see plan + future ADR-0002): the global content-addressed
+> library described here is being replaced by a per-game v2 file contract
+> (`${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`, asset
+> id = path). The rigged-FBX role/readiness semantics below still hold; the
+> storage location and asset-id model change. Kept here as historical baseline.
+
 The M3 storage contract is the baseline for future development:
 
 - Long-term generated output lives in a `Gen3DAssetManifest` plus blob files in a
@@ -166,8 +204,10 @@ v2 target layout adds `assets/2d/` and `assets/3d/characters/` path slots — se
 | Global staging | `.forgeax/assets/gen3d/` | AI generation output, cross-game reuse |
 | Game runtime | `.forgeax/games/<slug>/assets/` | Engine-consumable assets (shoot-opt pack, future handoff targets) |
 
-Handoff from gen3d → game `assets/3d/characters/` (copy + `.meta.json`) is M8
-remaining; not implemented yet.
+Handoff from gen3d → game `assets/3d/characters/` (copy + `.meta.json`) was the
+old M8-remaining item; **M9 supersedes it** — the per-game file model writes
+generation output straight into `${gameRoot}/assets/3d/{characters|meshes}/`, so
+there is no separate "global → game" copy step.
 
 ## Implemented Tools
 
@@ -248,6 +288,11 @@ standardized PNG persisted as a content-addressed blob; audit recorded
 
 ## Next Step
 
+> **New direction (2026-06-11): next work = M9-M12 in
+> `docs/PLAN-2026-06-11-rodin-cos-pergame.md` (start with M9).** The status below
+> is the M0-M8 baseline the plan builds on; read it for context, then execute the
+> plan.
+
 M4 (Hunyuan workflow provider), M5 `pose_standardization`, and M6 (Meshy
 provider — `text`/`image`/`views` + `refine-mesh`) are done and live-verified.
 **M8 core generation-loop UI is landed** (`src/App.tsx`
@@ -308,14 +353,20 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 ## Pending Work (do NOT lose — push incrementally)
 
+> SSOT for the M9-M12 items: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
+
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **M8 handoff UI** (gen3d → game assets) | NEXT | copy/import to `${gameRoot}/assets/3d/characters/` + `.meta.json`; wire `InspectorReserved` handoff action |
+| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **NEXT** (planned) | do first; supersedes ADR-0001 global library → write ADR-0002; `/api/game-assets/:slug/*` is plugin-external, confirm authorization |
+| **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | planned | new dep `cos-nodejs-sdk-v5`; `COS_*` in plugin `.env` only |
+| **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | planned | awaiting `RODIN_API_KEY`; mock-first until key + one verified output shape |
+| **M12 UI upgrade** (pose-top, polycount slider+presets, result grid/skeleton/info, dense asset grid + delete) | planned | UI-only, on top of M9-M11 |
+| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | planned | append — do NOT rewrite M0-M8 history |
+| ~~M8 handoff UI~~ (gen3d → game assets) | **superseded by M9** | per-game file model writes straight into `assets/3d/` |
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
 | `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |
-| Rodin provider | not started | awaiting key/API + one verified output shape |
 | Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only; no real scorer |
-| GLB/OBJ dedup | decision pending | real `text` returns both GLB+OBJ `source_mesh`; decide prefer-GLB-drop-OBJ |
+| GLB/OBJ dedup | decision pending → settle in M9 | real `text` returns both GLB+OBJ `source_mesh`; per-game plan = prefer GLB, OBJ optional |
 | ~~UI refactor~~ (Workbench editor pattern) | **done** `af986ce` 2026-06-11 | tokens + staged sidebar + center/right column |
 | ~~views L/R inputs in UI~~ | **done** 2026-06-11 | 「添加左/右视图」in `SetupSidebar` |
 | `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
@@ -406,5 +457,7 @@ until explicitly bumped for integration.
 - Hunyuan geometry and world workflow modes.
 - Hunyuan REST `motion_retarget_v2`.
 - Hunyuan REST `auto_rigging` as a default/user-facing mode.
-- Rodin until key/API details and one verified output shape exist.
+- Rodin *real* output until `RODIN_API_KEY` + one verified output shape exist.
+  (M11 may land the UI selector + provider mock-first; keep real calls gated
+  behind `GEN3D_ENABLE_REAL_PROVIDERS` + key like Hunyuan/Meshy.)
 - Any provider mode that has not produced a verified output shape.
