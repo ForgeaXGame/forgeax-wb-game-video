@@ -444,6 +444,10 @@
   right: var(--right-width);
 }
 
+.editor-center.has-bottom {
+  bottom: var(--aw-timeline-height, 220px);
+}
+
 .editor-center-overlay {
   position: absolute;
   inset: 0;
@@ -459,6 +463,10 @@
   align-items: stretch;
   justify-content: stretch;
   pointer-events: auto;
+}
+
+.editor-center.has-toolbar .editor-center-overlay {
+  top: 36px;
 }
 
 /* 管线中心内容必须铺满 overlay；否则 row flex + justify center 会把子节点压成内容宽度 */
@@ -507,6 +515,18 @@
 .editor-right.visible {
   display: flex;
 }
+.editor-right.aw-right-collapsed {
+  width: 20px;
+  overflow: hidden;
+}
+
+body.aw-right-collapsed .editor-center.has-right,
+body.aw-right-collapsed #ui-root > .editor-center.has-right {
+  right: 20px !important;
+}
+body.aw-right-collapsed .editor-bottom.has-right {
+  right: 20px !important;
+}
 
 /* ── Bottom panel ────────────────────────────────────────────── */
 .editor-bottom {
@@ -527,6 +547,11 @@
 
 .editor-bottom.visible {
   display: block;
+  height: var(--aw-timeline-height, 220px);
+}
+
+.editor-bottom.visible > * {
+  height: 100%;
 }
 
 /* ── Scene Preview Panel (left sidebar) ──────────────────────── */
@@ -1010,6 +1035,17 @@ body[data-pane="left"] .editor-left {
 body[data-pane="center"] .editor-left,
 body[data-pane="center"] .editor-right,
 body[data-pane="center"] .editor-bottom { display: none !important; }
+body[data-pane="center"] .editor-right.visible {
+  display: flex !important;
+}
+body[data-pane="center"] .editor-bottom.visible {
+  display: block !important;
+  left: 0 !important;
+  height: var(--aw-timeline-height, 220px) !important;
+}
+body[data-pane="center"] .editor-bottom.visible.has-right {
+  right: var(--right-width) !important;
+}
 /* Topbar (pipeline tabs: 像素 / 载具 / 技能特效…) stays visible above the
  * center viewport — host sidebar only carries the form, the pipeline switcher
  * belongs over the viewport.  Its absolute top:0 + topbar-height already
@@ -1021,6 +1057,21 @@ body[data-pane="center"] #ui-root > .editor-center {
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
+}
+body[data-pane="center"] .editor-center.has-right,
+body[data-pane="center"] #ui-root > .editor-center.has-right {
+  right: var(--right-width) !important;
+}
+body[data-pane="center"].aw-right-collapsed .editor-center.has-right,
+body[data-pane="center"].aw-right-collapsed #ui-root > .editor-center.has-right {
+  right: 20px !important;
+}
+body[data-pane="center"] .editor-center.has-bottom,
+body[data-pane="center"] #ui-root > .editor-center.has-bottom {
+  bottom: var(--aw-timeline-height, 220px) !important;
+}
+body[data-pane="center"].aw-right-collapsed .editor-bottom.visible.has-right {
+  right: 20px !important;
 }
 body[data-pane="center"] #viewport-wrap {
   inset: 0 !important;

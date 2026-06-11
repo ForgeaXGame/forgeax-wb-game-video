@@ -90,6 +90,7 @@ export interface PipelinePanels {
   center: HTMLElement
   right: HTMLElement
   bottom: HTMLElement
+  toolbar: HTMLElement
 }
 
 export interface IPipeline {

@@ -41,6 +41,9 @@ export class AnimWorkshopTab implements StudioTab {
   private lastTime = 0;
   private zoomLabel!: HTMLSpanElement;
   private attachmentDataUrls = new Map<string, string>();
+  private workshopBc: BroadcastChannel | null = null;
+  private workshopBcSelfId = Math.random().toString(36).slice(2, 10);
+  private rightCollapsed = false;
 
   private undoStack: BoneSnapshot[] = [];
   private redoStack: BoneSnapshot[] = [];
@@ -86,10 +89,11 @@ export class AnimWorkshopTab implements StudioTab {
 
     this.rightPanel = document.createElement('div');
     this.rightPanel.className = 'aw-side-right';
-    this.rightPanel.style.cssText = 'display:flex;flex-direction:column;overflow-y:auto;';
+    this.rightPanel.style.cssText = 'display:flex;height:100%;overflow:hidden;';
 
     this.buildUI();
     this.wireEvents();
+    this.setupWorkshopSync();
     this.setupCanvasInteraction();
     this.setupKeyboard();
     this.setupTimelineResize();
@@ -104,6 +108,40 @@ export class AnimWorkshopTab implements StudioTab {
       ?? null;
   }
 
+  private setupWorkshopSync(): void {
+    try {
+      this.workshopBc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.spine-workshop');
+    } catch {
+      this.workshopBc = null;
+      return;
+    }
+    this.workshopBc.onmessage = (e: MessageEvent) => {
+      const data = e.data as {
+        type?: string;
+        from?: string;
+        name?: string;
+        play?: boolean;
+        visible?: boolean;
+      } | null;
+      if (!data || data.from === this.workshopBcSelfId) return;
+      if (data.type === 'select-animation' && data.name) {
+        this.applyAnimationSelection(data.name, !!data.play, false);
+      }
+      if (data.type === 'set-ai-panel' && typeof data.visible === 'boolean') {
+        this.setAIPanelVisible(data.visible, false);
+      }
+    };
+  }
+
+  private broadcastWorkshop(message: Record<string, unknown>): void {
+    if (!this.workshopBc) return;
+    try {
+      this.workshopBc.postMessage({ ...message, from: this.workshopBcSelfId });
+    } catch (e) {
+      console.warn('[Spine] broadcast workshop command failed:', e);
+    }
+  }
+
   private buildUI(): void {
     this.sidePanel.innerHTML = `
       <div class="se-left-tabs">
@@ -111,7 +149,7 @@ export class AnimWorkshopTab implements StudioTab {
         <button class="se-left-tab" data-tab="bones">${spineBtnLabel('bone', '骨骼树')}</button>
         <button class="se-left-tab" data-tab="templates">${spineBtnLabel('folder', '模板')}</button>
       </div>
-      <div class="aw-anims-wrap se-left-tab-content" id="aw-anims-wrap" style="display:block">
+      <div class="aw-anims-wrap se-left-tab-content" id="aw-anims-wrap" style="display:flex">
         <div class="aw-anim-source-bar">
           <div class="aw-source-title">动作来源</div>
           <div class="aw-source-btns">
@@ -131,18 +169,15 @@ export class AnimWorkshopTab implements StudioTab {
     `;
 
     this.centerToolbar.innerHTML = `
-      <button class="se-tb-btn se-mode-btn active" data-mode="edit">编辑</button>
-      <button class="se-tb-btn se-mode-btn" data-mode="browse">浏览</button>
-      <span class="se-tb-sep">|</span>
       <label class="se-tb-check"><input type="checkbox" id="aw-show-bones" checked> 骨骼</label>
       <label class="se-tb-check"><input type="checkbox" id="aw-show-ik" checked> IK</label>
       <span class="se-tb-sep">|</span>
-      <button class="se-tb-btn se-tb-undo" id="aw-undo" title="撤回">↩</button>
-      <button class="se-tb-btn se-tb-redo" id="aw-redo" title="重做">↪</button>
+      <button class="se-tb-btn se-tb-icon-btn se-tb-undo" id="aw-undo" title="撤回">${spineIcon('undo', 'spine-icon-svg se-tb-svg')}</button>
+      <button class="se-tb-btn se-tb-icon-btn se-tb-redo" id="aw-redo" title="重做">${spineIcon('redo', 'spine-icon-svg se-tb-svg')}</button>
       <span class="se-tb-sep">|</span>
-      <button class="se-tb-btn se-tb-zoom-btn" id="aw-zoom-out">−</button>
+      <button class="se-tb-btn se-tb-icon-btn se-tb-zoom-btn" id="aw-zoom-out" title="缩小">${spineIcon('zoomOut', 'spine-icon-svg se-tb-svg')}</button>
       <span class="se-tb-zoom-label" id="aw-zoom-label">150%</span>
-      <button class="se-tb-btn se-tb-zoom-btn" id="aw-zoom-in">+</button>
+      <button class="se-tb-btn se-tb-icon-btn se-tb-zoom-btn" id="aw-zoom-in" title="放大">${spineIcon('zoomIn', 'spine-icon-svg se-tb-svg')}</button>
       <span class="se-tb-sep">|</span>
       <button class="se-tb-btn se-tb-save-btn" id="aw-save-tmpl">${spineBtnLabel('save', '存模板')}</button>
       <span class="aw-info" id="aw-info"></span>
@@ -159,8 +194,13 @@ export class AnimWorkshopTab implements StudioTab {
     `;
 
     this.rightPanel.innerHTML = `
-      <div id="aw-prop-wrap"></div>
-      <div id="aw-ai-wrap" class="se-ai-container" style="display:none"></div>
+      <div class="aw-right-collapse-rail">
+        <button class="aw-right-collapse-btn" id="aw-right-collapse" type="button" title="折叠右侧栏">${spineIcon('arrow', 'spine-icon-svg aw-collapse-svg')}</button>
+      </div>
+      <div class="aw-right-content">
+        <div id="aw-prop-wrap" class="aw-right-section"></div>
+        <div id="aw-ai-wrap" class="se-ai-container aw-right-section" style="display:none"></div>
+      </div>
     `;
 
     this.canvas = canvas;
@@ -190,15 +230,6 @@ export class AnimWorkshopTab implements StudioTab {
       });
     });
 
-    this.centerToolbar.querySelectorAll('.se-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mode = (btn as HTMLElement).dataset.mode as 'browse' | 'edit';
-        this.editorState.mode = mode;
-        this.centerToolbar.querySelectorAll('.se-mode-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-    });
-
     this.q('#aw-show-bones')?.addEventListener('change', (e) => {
       this.editorState.showBones = (e.target as HTMLInputElement).checked;
     });
@@ -217,8 +248,9 @@ export class AnimWorkshopTab implements StudioTab {
       this.updateZoomLabel();
     });
     this.q('#aw-import-json')?.addEventListener('click', () => this.promptLoadJson());
-    this.q('#aw-ai-gen-btn')?.addEventListener('click', () => this.toggleAIPanel());
+    this.q('#aw-ai-gen-btn')?.addEventListener('click', () => this.toggleAIPanel(true));
     this.q('#aw-save-tmpl')?.addEventListener('click', () => this.saveAsTemplate());
+    this.q('#aw-right-collapse')?.addEventListener('click', () => this.setRightCollapsed(!this.rightCollapsed));
     this.q('#aw-next-step')?.addEventListener('click', () => {
       this.syncAnimationsToState();
       if (this.state) {
@@ -226,6 +258,20 @@ export class AnimWorkshopTab implements StudioTab {
         this.onStateChange?.();
       }
     });
+  }
+
+  private setRightCollapsed(collapsed: boolean): void {
+    this.rightCollapsed = collapsed;
+    this.rightPanel.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('aw-right-collapsed', collapsed);
+    const host = this.rightPanel.parentElement;
+    host?.classList.toggle('aw-right-collapsed', collapsed);
+    const btn = this.q('#aw-right-collapse') as HTMLButtonElement | null;
+    if (btn) {
+      btn.title = collapsed ? '展开右侧栏' : '折叠右侧栏';
+      btn.classList.toggle('collapsed', collapsed);
+    }
+    window.dispatchEvent(new Event('resize'));
   }
 
   private wireEvents(): void {
@@ -329,9 +375,7 @@ export class AnimWorkshopTab implements StudioTab {
     };
 
     this.aiPanel.onAnimationSelected = (animName) => {
-      this.timeline.selectAnimation(animName);
-      this.renderer.resetAnimationOffsets();
-      this.refreshAnimListUI();
+      this.applyAnimationSelection(animName, false, true);
     };
   }
 
@@ -410,10 +454,16 @@ export class AnimWorkshopTab implements StudioTab {
     if (!handle || !tlArea) return;
 
     let startY = 0, startH = 0;
+    const applyHeight = (height: number) => {
+      const next = Math.max(120, Math.min(420, height));
+      document.documentElement.style.setProperty('--aw-timeline-height', `${next}px`);
+      tlArea.style.height = 'auto';
+    };
+    applyHeight(220);
     const onMove = (e: MouseEvent) => {
       const delta = startY - e.clientY;
-      const newH = Math.max(100, Math.min(500, startH + delta));
-      tlArea.style.height = `${newH}px`;
+      applyHeight(startH + delta);
+      window.dispatchEvent(new Event('resize'));
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
@@ -423,7 +473,7 @@ export class AnimWorkshopTab implements StudioTab {
     handle.addEventListener('mousedown', (e) => {
       e.preventDefault();
       startY = e.clientY;
-      startH = tlArea.getBoundingClientRect().height;
+      startH = this.bottomPanel.parentElement?.getBoundingClientRect().height || tlArea.getBoundingClientRect().height || 220;
       handle.classList.add('dragging');
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -435,7 +485,7 @@ export class AnimWorkshopTab implements StudioTab {
     const animsWrap = this.sidePanel.querySelector('#aw-anims-wrap') as HTMLElement;
     const tmplWrap = this.sidePanel.querySelector('#aw-template-wrap') as HTMLElement;
     const boneWrap = this.sidePanel.querySelector('#aw-bone-wrap') as HTMLElement;
-    animsWrap.style.display = tab === 'anims' ? 'block' : 'none';
+    animsWrap.style.display = tab === 'anims' ? 'flex' : 'none';
     tmplWrap.style.display = tab === 'templates' ? 'block' : 'none';
     boneWrap.style.display = tab === 'bones' ? 'block' : 'none';
     this.sidePanel.querySelectorAll('.se-left-tab').forEach(t => {
@@ -443,12 +493,31 @@ export class AnimWorkshopTab implements StudioTab {
     });
   }
 
-  private toggleAIPanel(): void {
+  private toggleAIPanel(broadcast = true): void {
     const wrap = this.rightPanel.querySelector('#aw-ai-wrap') as HTMLElement;
-    const isHidden = wrap.style.display === 'none';
-    wrap.style.display = isHidden ? 'block' : 'none';
+    const nextVisible = wrap.style.display === 'none';
+    this.setAIPanelVisible(nextVisible, broadcast);
+  }
+
+  private setAIPanelVisible(visible: boolean, broadcast = true): void {
+    const wrap = this.rightPanel.querySelector('#aw-ai-wrap') as HTMLElement;
+    if (!wrap) return;
+    wrap.style.display = visible ? 'block' : 'none';
     const btn = this.q('#aw-ai-gen-btn') as HTMLElement;
-    if (btn) btn.classList.toggle('aw-source-active', isHidden);
+    if (btn) btn.classList.toggle('aw-source-active', visible);
+    if (visible) this.aiPanel.refreshAnimList();
+    if (broadcast) this.broadcastWorkshop({ type: 'set-ai-panel', visible });
+  }
+
+  private applyAnimationSelection(name: string, play = false, broadcast = true): void {
+    if (!this.skeleton?.animations.has(name)) return;
+    this.timeline.selectAnimation(name);
+    this.renderer.resetAnimationOffsets();
+    if (play && !this.timeline.playing) {
+      this.timeline.togglePlay();
+    }
+    this.refreshAnimListUI();
+    if (broadcast) this.broadcastWorkshop({ type: 'select-animation', name, play });
   }
 
   refreshAnimListUI(): void {
@@ -490,19 +559,17 @@ export class AnimWorkshopTab implements StudioTab {
 
       const playBtn = document.createElement('button');
       playBtn.className = 'aw-anim-act-btn';
-      playBtn.textContent = '▶';
+      playBtn.innerHTML = spineIcon('play', 'spine-icon-svg aw-anim-act-svg');
       playBtn.title = '播放';
       playBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.timeline.selectAnimation(name);
-        this.renderer.resetAnimationOffsets();
-        this.timeline.togglePlay();
+        this.applyAnimationSelection(name, true, true);
       });
       actions.appendChild(playBtn);
 
       const delBtn = document.createElement('button');
       delBtn.className = 'aw-anim-act-btn aw-anim-act-del';
-      delBtn.textContent = '✕';
+      delBtn.innerHTML = spineIcon('trash', 'spine-icon-svg aw-anim-act-svg');
       delBtn.title = '删除';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -520,9 +587,7 @@ export class AnimWorkshopTab implements StudioTab {
       item.appendChild(actions);
 
       item.addEventListener('click', () => {
-        this.timeline.selectAnimation(name);
-        this.renderer.resetAnimationOffsets();
-        this.refreshAnimListUI();
+        this.applyAnimationSelection(name, false, true);
       });
 
       area.appendChild(item);
@@ -851,10 +916,13 @@ export class AnimWorkshopTab implements StudioTab {
   deactivate(): void {
     this.syncAnimationsToState();
     this.stopLoop();
+    this.setRightCollapsed(false);
   }
 
   dispose(): void {
     this.stopLoop();
+    this.setRightCollapsed(false);
+    this.workshopBc?.close();
     this.container.remove();
     this.sidePanel.remove();
     this.centerView.remove();

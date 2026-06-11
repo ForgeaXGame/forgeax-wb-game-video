@@ -1,6 +1,7 @@
 // @source wb-character/src/pipelines/spine/editor/AIAnimPanel.ts
 import type { EditorSkeleton, EditorAnimation } from './types';
 import { buildSkeletonDescriptorText } from './SpineDataParser';
+import { spineIcon, spineBtnLabel } from './spine-icons';
 
 type GenerateMode = 'demo' | 'backend' | 'clipboard' | 'custom_api' | 'claude';
 type WeaponType = 'sword' | 'gun' | 'bow' | 'staff' | 'spear' | 'fist' | 'unknown';
@@ -797,6 +798,7 @@ export class AIAnimPanel {
   private weaponBadge!: HTMLSpanElement;
   private presetGrid!: HTMLDivElement;
   private statusEl!: HTMLDivElement;
+  private progressEl!: HTMLDivElement;
   private modeSelect!: HTMLSelectElement;
   private customApiSection!: HTMLDivElement;
   private llmUrlInput!: HTMLInputElement;
@@ -889,11 +891,11 @@ export class AIAnimPanel {
     this.modeSelect = document.createElement('select');
     this.modeSelect.className = 'se-ai-input';
     this.modeSelect.innerHTML = `
-      <option value="claude">🤖 Claude Opus（本地服务端调用，推荐）</option>
-      <option value="demo">🎮 演示模式（内置动画模板，无需配置）</option>
-      <option value="backend">🔒 后端代理（使用服务器 API Key）</option>
-      <option value="clipboard">📋 复制提示词（复制后在 Cursor 中让 AI 生成）</option>
-      <option value="custom_api">🔑 自定义 API（自行配置，Key 存本地）</option>
+      <option value="claude">Claude Opus（本地服务端调用，推荐）</option>
+      <option value="demo">演示模式（内置动画模板，无需配置）</option>
+      <option value="backend">后端代理（使用服务器 API Key）</option>
+      <option value="clipboard">复制提示词（复制后在 Cursor 中让 AI 生成）</option>
+      <option value="custom_api">自定义 API（自行配置，Key 存本地）</option>
     `;
     this.modeSelect.value = localStorage.getItem('se-ai-mode') ?? 'claude';
     this.modeSelect.addEventListener('change', () => {
@@ -935,7 +937,7 @@ export class AIAnimPanel {
 
     const secNote = document.createElement('div');
     secNote.className = 'se-ai-sec-note';
-    secNote.textContent = '⚠️ API Key 仅存储在浏览器 localStorage 中（明文），不会上传服务器。但页面内 JS 可访问，请注意安全。';
+    secNote.textContent = '提示：API Key 仅存储在浏览器 localStorage 中（明文），不会上传服务器。但页面内 JS 可访问，请注意安全。';
     this.customApiSection.appendChild(secNote);
 
     this.updateModeUI();
@@ -991,8 +993,8 @@ export class AIAnimPanel {
       if (hasRef && !hasBuiltIn) {
         const quickBtn = document.createElement('button');
         quickBtn.className = 'se-ai-quick-gen-btn';
-        quickBtn.textContent = '⚡';
-        quickBtn.title = '一键模板生成（推荐，基于专业参考数据）';
+        quickBtn.innerHTML = spineIcon('thumbsUp', 'spine-icon-svg se-ai-recommend-svg');
+        quickBtn.title = '推荐模板生成（基于专业参考数据）';
         quickBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           this.quickGenerateFromTemplate(p);
@@ -1009,13 +1011,13 @@ export class AIAnimPanel {
     const anim = this.skeleton.animations.get(animId);
     if (!anim) return;
     this.onAnimationGenerated?.(anim);
-    this.statusEl.textContent = `✅ 已加载内置动画「${animId}」(${Object.keys(anim.boneTimelines).length} 根骨骼)`;
+    this.statusEl.textContent = `已加载内置动画「${animId}」(${Object.keys(anim.boneTimelines).length} 根骨骼)`;
     this.statusEl.className = 'se-ai-status success';
   }
 
   private quickGenerateFromTemplate(preset: typeof PRESETS[0]): void {
     if (!this.skeleton) {
-      this.statusEl.textContent = '❌ 未加载骨骼，请先从模板库选择一个骨架。';
+      this.statusEl.textContent = '未加载骨骼，请先从模板库选择一个骨架。';
       return;
     }
     const refKey = getRefKeyForAnim(preset.id, this.weaponType);
@@ -1034,7 +1036,7 @@ export class AIAnimPanel {
     const json = buildFewShotJSON(this.skeleton, refAnim, name, dur);
     if (!json || json.startsWith('/* ERROR')) {
       console.error("buildAnimFromRef failed:", json);
-      this.statusEl.textContent = '❌ 模板生成失败: 无法将骨骼映射到动画。';
+      this.statusEl.textContent = '模板生成失败: 无法将骨骼映射到动画。';
       this.statusEl.className = 'se-ai-status';
       return;
     }
@@ -1048,12 +1050,12 @@ export class AIAnimPanel {
     const boneCount = Object.keys(fixedAnim.boneTimelines).length;
 
     if (boneCount < 2) {
-      this.statusEl.textContent = '⚠️ 骨骼角色映射不足（需要更多骨骼标识为 upper_arm/hip/chest 等角色）。无法从模板生成。';
+      this.statusEl.textContent = '骨骼角色映射不足（需要更多骨骼标识为 upper_arm/hip/chest 等角色）。无法从模板生成。';
       this.statusEl.className = 'se-ai-status';
       return;
     }
 
-    this.statusEl.textContent = `✅ 模板生成完成：「${preset.name}」→ ${boneCount} 根骨骼，基于专业参考数据。`;
+    this.statusEl.textContent = `模板生成完成：「${preset.name}」→ ${boneCount} 根骨骼，基于专业参考数据。`;
     this.statusEl.className = 'se-ai-status success';
     this.nameInput.value = name;
     this.resultArea.innerHTML = '';
@@ -1091,13 +1093,13 @@ export class AIAnimPanel {
 
     const genBtn = document.createElement('button');
     genBtn.className = 'se-ai-gen-btn';
-    genBtn.textContent = '🚀 生成动画';
+    genBtn.innerHTML = spineBtnLabel('rocket', '生成动画');
     genBtn.addEventListener('click', () => this.generate());
     btnRow.appendChild(genBtn);
 
     const importBtn = document.createElement('button');
     importBtn.className = 'se-ai-import-btn';
-    importBtn.textContent = '📥 导入动画 JSON';
+    importBtn.innerHTML = spineBtnLabel('upload', '导入动画 JSON');
     importBtn.addEventListener('click', () => this.importAnimJson());
     btnRow.appendChild(importBtn);
   }
@@ -1107,9 +1109,19 @@ export class AIAnimPanel {
     this.statusEl.className = 'se-ai-status';
     this.root.appendChild(this.statusEl);
 
+    this.progressEl = document.createElement('div');
+    this.progressEl.className = 'se-ai-progress';
+    this.progressEl.innerHTML = '<div class="se-ai-progress-bar"></div>';
+    this.root.appendChild(this.progressEl);
+
     this.resultArea = document.createElement('div');
     this.resultArea.className = 'se-ai-result';
     this.root.appendChild(this.resultArea);
+  }
+
+  private setGeneratingState(active: boolean): void {
+    this.isGenerating = active;
+    if (this.progressEl) this.progressEl.classList.toggle('active', active);
   }
 
   private buildAnimList(): void {
@@ -1156,7 +1168,7 @@ export class AIAnimPanel {
 
       const playBtn = document.createElement('button');
       playBtn.className = 'se-ai-anim-btn';
-      playBtn.textContent = '▶';
+      playBtn.innerHTML = spineIcon('play', 'spine-icon-svg se-ai-anim-svg');
       playBtn.title = '播放';
       playBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1166,7 +1178,7 @@ export class AIAnimPanel {
 
       const renameBtn = document.createElement('button');
       renameBtn.className = 'se-ai-anim-btn';
-      renameBtn.textContent = '✏️';
+      renameBtn.innerHTML = spineIcon('paint', 'spine-icon-svg se-ai-anim-svg');
       renameBtn.title = '重命名';
       renameBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1176,7 +1188,7 @@ export class AIAnimPanel {
 
       const delBtn = document.createElement('button');
       delBtn.className = 'se-ai-anim-btn se-ai-anim-del';
-      delBtn.textContent = '✕';
+      delBtn.innerHTML = spineIcon('trash', 'spine-icon-svg se-ai-anim-svg');
       delBtn.title = '删除';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1231,7 +1243,7 @@ export class AIAnimPanel {
     const hasRef = refKey !== null;
     const weaponInfo = this.weaponType !== 'unknown' ? ` (${WEAPON_LABELS[this.weaponType]}风格)` : '';
     if (hasRef) {
-      this.statusEl.textContent = `📋 预设「${preset.name}」${weaponInfo} — 推荐使用"Demo生成"模式，内置专业参考模板。`;
+      this.statusEl.textContent = `预设「${preset.name}」${weaponInfo} — 推荐使用"Demo生成"模式，内置专业参考模板。`;
     } else {
       this.statusEl.textContent = `已填入预设「${preset.name}」${weaponInfo}，可修改后点击"生成动画"。`;
     }
@@ -1240,12 +1252,12 @@ export class AIAnimPanel {
 
   private async generate(): Promise<void> {
     if (!this.skeleton) {
-      this.statusEl.textContent = '❌ 未加载骨骼，请先从模板库选择一个骨架。';
+      this.statusEl.textContent = '未加载骨骼，请先从模板库选择一个骨架。';
       return;
     }
     const prompt = this.promptInput.value.trim();
     if (!prompt) {
-      this.statusEl.textContent = '❌ 请输入提示词或点击上方预设按钮。';
+      this.statusEl.textContent = '请输入提示词或点击上方预设按钮。';
       return;
     }
     if (this.isGenerating) {
@@ -1266,7 +1278,7 @@ export class AIAnimPanel {
       }
     }
 
-    this.isGenerating = true;
+    this.setGeneratingState(true);
     this.statusEl.textContent = '正在构建提示词...';
     this.statusEl.className = 'se-ai-status active';
     this.resultArea.innerHTML = '';
@@ -1280,8 +1292,8 @@ export class AIAnimPanel {
       fullPrompt = this.buildLLMPrompt(skelDesc, prompt, name, dur);
     } catch (e) {
       console.error(e);
-      this.isGenerating = false;
-      this.statusEl.textContent = '❌ 构建提示词失败: ' + (e as Error).message;
+      this.setGeneratingState(false);
+      this.statusEl.textContent = '构建提示词失败: ' + (e as Error).message;
       this.statusEl.className = 'se-ai-status';
       return;
     }
@@ -1293,11 +1305,11 @@ export class AIAnimPanel {
       if (mode === 'clipboard') {
         try {
           await navigator.clipboard.writeText(fullPrompt);
-          this.statusEl.textContent = '📋 提示词已复制到剪贴板！请粘贴给 Cursor Agent，让它生成 JSON 后用下方「导入动画 JSON」按钮导入。';
+          this.statusEl.textContent = '提示词已复制到剪贴板！请粘贴给 Cursor Agent，让它生成 JSON 后用下方「导入动画 JSON」按钮导入。';
           this.statusEl.className = 'se-ai-status success';
         } catch (clipboardErr) {
           console.error("Clipboard error:", clipboardErr);
-          this.statusEl.textContent = '⚠️ 复制到剪贴板失败，请手动从下方预览区域复制。';
+          this.statusEl.textContent = '复制到剪贴板失败，请手动从下方预览区域复制。';
           this.statusEl.className = 'se-ai-status';
         }
         
@@ -1305,34 +1317,34 @@ export class AIAnimPanel {
         promptPreview.className = 'se-ai-prompt-preview';
         promptPreview.textContent = fullPrompt;
         this.resultArea.appendChild(promptPreview);
-        this.isGenerating = false;
+        this.setGeneratingState(false);
         return;
       }
 
       if (mode === 'claude') {
-        this.statusEl.textContent = '🤖 正在通过 Claude Opus 生成动画（可能需要 10-30 秒）...';
+        this.statusEl.textContent = '正在通过 Claude Opus 生成动画（可能需要 10-30 秒）...';
         try {
           const raw = await callClaudeLocal(fullPrompt);
           console.log('[AIAnimPanel] Claude raw response length:', raw.length);
           resultAnim = this.parseRawResponse(raw, name, dur);
-          this.statusEl.textContent = `✅ Claude 动画生成完成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
+          this.statusEl.textContent = `Claude 动画生成完成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
           this.statusEl.className = 'se-ai-status success';
         } catch (err: any) {
           console.error('[AIAnimPanel] Claude generation failed:', err);
           const errMsg = err?.message || String(err);
-          this.statusEl.innerHTML = `⚠️ Claude 调用失败：<strong>${errMsg}</strong><br>已回退到演示模板。`;
+          this.statusEl.innerHTML = `Claude 调用失败：<strong>${errMsg}</strong><br>已回退到演示模板。`;
           this.statusEl.className = 'se-ai-status';
           resultAnim = this.generateDemoAnimation(name, dur);
         }
       } else if (mode === 'backend') {
-        this.statusEl.textContent = '🔒 正在通过后端代理调用 LLM...';
+        this.statusEl.textContent = '正在通过后端代理调用 LLM...';
         try {
           const raw = await callBackendProxy(fullPrompt);
           resultAnim = this.parseRawResponse(raw, name, dur);
-          this.statusEl.textContent = `✅ 后端代理生成完成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
+          this.statusEl.textContent = `后端代理生成完成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
           this.statusEl.className = 'se-ai-status success';
         } catch (err) {
-          this.statusEl.textContent = `⚠️ 后端代理失败 (${err})，回退到演示模式。如后端未配置 /api/llm/chat 端点则此模式不可用。`;
+          this.statusEl.textContent = `后端代理失败 (${err})，回退到演示模式。如后端未配置 /api/llm/chat 端点则此模式不可用。`;
           this.statusEl.className = 'se-ai-status';
           resultAnim = this.generateDemoAnimation(name, dur);
         }
@@ -1340,38 +1352,38 @@ export class AIAnimPanel {
         const url = this.llmUrlInput.value.trim();
         const key = this.llmKeyInput.value.trim();
         if (!url || !key) {
-          this.statusEl.textContent = '❌ 请填写 Base URL 和 API Key。';
-          this.isGenerating = false;
+          this.statusEl.textContent = '请填写 Base URL 和 API Key。';
+          this.setGeneratingState(false);
           return;
         }
-        this.statusEl.textContent = '🔑 正在调用自定义 LLM API...';
+        this.statusEl.textContent = '正在调用自定义 LLM API...';
         const raw = await callLLM(fullPrompt, url, key, this.modelInput.value.trim() || undefined);
         resultAnim = this.parseRawResponse(raw, name, dur);
-        this.statusEl.textContent = `✅ LLM 动画已生成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
+        this.statusEl.textContent = `LLM 动画已生成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画。`;
         this.statusEl.className = 'se-ai-status success';
       } else {
         await new Promise(r => setTimeout(r, 300));
         resultAnim = this.generateDemoAnimation(name, dur);
         const refUsed = getRefKeyForAnim(name, this.weaponType) !== null;
         this.statusEl.textContent = refUsed
-          ? `✅ 基于专业参考模板生成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画（推荐模式）。`
-          : `🎮 Demo 动画已生成（内置模板）。攻击动画建议用 attack1-attack3 预设获取专业质量。`;
+          ? `基于专业参考模板生成：${Object.keys(resultAnim.boneTimelines).length} 根骨骼参与动画（推荐模式）。`
+          : `Demo 动画已生成（内置模板）。攻击动画建议用 attack1-attack3 预设获取专业质量。`;
         this.statusEl.className = 'se-ai-status success';
       }
     } catch (err) {
-      this.statusEl.textContent = `❌ 生成失败：${err}。回退到演示模式。`;
+      this.statusEl.textContent = `生成失败：${err}。回退到演示模式。`;
       this.statusEl.className = 'se-ai-status';
       resultAnim = this.generateDemoAnimation(name, dur);
     }
 
     this.showResult(resultAnim);
-    this.isGenerating = false;
+    this.setGeneratingState(false);
   }
 
   private showResult(resultAnim: EditorAnimation): void {
     const applyBtn = document.createElement('button');
     applyBtn.className = 'se-ai-apply-btn';
-    applyBtn.textContent = '✅ 应用动画到预览';
+    applyBtn.innerHTML = spineBtnLabel('check', '应用动画到预览');
     applyBtn.addEventListener('click', () => {
       this.onAnimationGenerated?.(resultAnim);
     });
@@ -1381,12 +1393,12 @@ export class AIAnimPanel {
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'se-ai-import-btn';
-    copyBtn.textContent = '📋 复制完整 JSON';
+    copyBtn.innerHTML = spineBtnLabel('copy', '复制完整 JSON');
     copyBtn.style.margin = '4px 0';
     copyBtn.addEventListener('click', async () => {
       await navigator.clipboard.writeText(fullJson);
-      copyBtn.textContent = '✅ 已复制';
-      setTimeout(() => { copyBtn.textContent = '📋 复制完整 JSON'; }, 1500);
+      copyBtn.innerHTML = spineBtnLabel('check', '已复制');
+      setTimeout(() => { copyBtn.innerHTML = spineBtnLabel('copy', '复制完整 JSON'); }, 1500);
     });
     this.resultArea.appendChild(copyBtn);
 
@@ -1433,12 +1445,12 @@ export class AIAnimPanel {
         const parsed = JSON.parse(jsonStr);
         const anim = this.parseLLMResponse(parsed, parsed.name ?? 'imported', parsed.duration ?? 1.0);
         this.onAnimationGenerated?.(anim);
-        this.statusEl.textContent = `✅ 已导入动画 "${anim.name}"，${Object.keys(anim.boneTimelines).length} 根骨骼。`;
+        this.statusEl.textContent = `已导入动画 "${anim.name}"，${Object.keys(anim.boneTimelines).length} 根骨骼。`;
         this.statusEl.className = 'se-ai-status success';
         textarea.remove();
         confirmBtn.remove();
       } catch (err) {
-        this.statusEl.textContent = `❌ JSON 解析失败：${err}`;
+        this.statusEl.textContent = `JSON 解析失败：${err}`;
         this.statusEl.className = 'se-ai-status';
       }
     });

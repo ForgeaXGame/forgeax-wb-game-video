@@ -1,6 +1,6 @@
 // @source wb-character/src/pipelines/spine/editor/AutoBindTab.ts
 import type { StudioState, StudioTab, TabId, PartRegion } from './StudioState';
-import type { EditorSkeleton } from './types';
+import type { EditorSkeleton, RawSpineJson } from './types';
 import { BindingPanel } from './BindingPanel';
 import { parseSpineJson, computeWorldTransforms, applyIKConstraints } from './SpineDataParser';
 import { spineIcon, spineBtnLabel } from './spine-icons';
@@ -78,6 +78,9 @@ export class AutoBindTab implements StudioTab {
   private editMode: 'image' | 'bone' = 'image';
   private selectedBone: string | null = null;
   private boneDrag: { boneName: string; startX: number; startY: number; origRot: number } | null = null;
+  private bindBc: BroadcastChannel | null = null;
+  private bindBcSelfId = Math.random().toString(36).slice(2, 10);
+  private draggingLayerId: string | null = null;
 
   private partScreenCache = new Map<string, {
     screenX: number; screenY: number;
@@ -103,10 +106,45 @@ export class AutoBindTab implements StudioTab {
     this.centerToolbar.className = 'ab-toolbar';
 
     this.buildUI();
+    this.setupBindingSync();
   }
 
   private q(selector: string): HTMLElement | null {
     return this.sidePanel.querySelector(selector) ?? this.centerView.querySelector(selector) ?? this.centerToolbar.querySelector(selector) ?? null;
+  }
+
+  private setupBindingSync(): void {
+    try {
+      this.bindBc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.spine-binding');
+    } catch {
+      this.bindBc = null;
+      return;
+    }
+    this.bindBc.onmessage = (e: MessageEvent) => {
+      const data = e.data as {
+        type?: string;
+        from?: string;
+        bindingJson?: RawSpineJson;
+        cropImages?: [string, string][];
+      } | null;
+      if (!data || data.from === this.bindBcSelfId || data.type !== 'spine-binding-complete') return;
+      if (!data.bindingJson || !Array.isArray(data.cropImages)) return;
+      this.applyBindingResult(data.bindingJson, new Map(data.cropImages), false);
+    };
+  }
+
+  private broadcastBindingResult(bindingJson: RawSpineJson, cropImages: Map<string, string>): void {
+    if (!this.bindBc) return;
+    try {
+      this.bindBc.postMessage({
+        type: 'spine-binding-complete',
+        from: this.bindBcSelfId,
+        bindingJson,
+        cropImages: Array.from(cropImages.entries()),
+      });
+    } catch (e) {
+      console.warn('[Spine] broadcast binding result failed:', e);
+    }
   }
 
   private buildUI(): void {
@@ -123,6 +161,7 @@ export class AutoBindTab implements StudioTab {
             <button class="ab-sidebar-btn ab-btn-primary" id="ab-run-auto" disabled>一键自动绑骨</button>
             <button class="ab-sidebar-btn" id="ab-upload-expl">上传爆炸图</button>
           </div>
+          <div class="ab-auto-status" id="ab-auto-status">请先生成或上传拆件图</div>
         </div>
 
         <div class="ab-sidebar-section">
@@ -165,7 +204,30 @@ export class AutoBindTab implements StudioTab {
         </div>
       </div>
 
-      <div class="studio-next-float">
+      <div class="ab-manual-sidebar" id="ab-manual-sidebar" style="display:none">
+        <div class="ab-sidebar-section">
+          <div class="ab-sidebar-title">手动绑骨说明</div>
+          <div class="ab-manual-help">
+            <div>1. 在右侧画布中上传或使用当前拆件图。</div>
+            <div>2. 左键框选部件，右键可打开操作菜单。</div>
+            <div>3. 全部部件确认后点击右下角完成。</div>
+          </div>
+        </div>
+        <div class="ab-sidebar-section">
+          <div class="ab-sidebar-title">快捷操作</div>
+          <div class="ab-sidebar-actions">
+            <button class="ab-sidebar-btn" id="ab-manual-upload">上传爆炸图</button>
+            <button class="ab-sidebar-btn" id="ab-manual-load-current">使用当前拆件图</button>
+            <button class="ab-sidebar-btn" id="ab-manual-back-auto">返回自动模式</button>
+          </div>
+        </div>
+        <div class="ab-sidebar-section">
+          <div class="ab-sidebar-title">提示</div>
+          <div class="ab-manual-help muted">手动工具区在右侧画布内，左侧只保留说明和快捷入口。</div>
+        </div>
+      </div>
+
+      <div class="studio-next-float ab-next-float">
         <button class="studio-next-btn" id="ab-confirm" disabled>确认 → 动作工坊</button>
       </div>
     `;
@@ -189,7 +251,7 @@ export class AutoBindTab implements StudioTab {
     this.centerToolbar.innerHTML = `
       <span class="ab-status" id="ab-status">等待图像...</span>
       <span class="ab-toolbar-sep"></span>
-      <span class="ab-toolbar-hint" id="ab-toolbar-hint">选中部件后可拖拽调整位置</span>
+      <span class="ab-toolbar-hint" id="ab-toolbar-hint">滚轮缩放，按住空白区域左键拖动画布</span>
     `;
 
     this.previewCanvas = this.q('#ab-preview-canvas') as HTMLCanvasElement;
@@ -198,18 +260,8 @@ export class AutoBindTab implements StudioTab {
     const manualArea = this.q('#ab-manual-panel') as HTMLElement;
     this.bindingPanel = new BindingPanel(manualArea);
 
-    this.bindingPanel.onAutoBindComplete = (skel, json, cropImages) => {
-      if (this.state) {
-        this.state.bindingJson = json;
-        this.state.bindingSkeleton = parseSpineJson(json);
-        if (cropImages) {
-          this.state.attachmentImages = new Map(cropImages);
-        }
-        this.onStateChange?.();
-        this.loadPreview(skel, cropImages);
-        (this.q('#ab-confirm') as HTMLButtonElement).disabled = false;
-        this.showStatus('绑骨完成！点击部件可调整位置');
-      }
+    this.bindingPanel.onAutoBindComplete = (_skel, json, cropImages) => {
+      this.applyBindingResult(json, cropImages, true);
     };
 
     this.sidePanel.querySelectorAll('.ab-mode-btn').forEach(btn => {
@@ -222,6 +274,9 @@ export class AutoBindTab implements StudioTab {
 
     this.q('#ab-run-auto')?.addEventListener('click', () => this.runAutoBind());
     this.q('#ab-upload-expl')?.addEventListener('click', () => this.uploadExplosion());
+    this.q('#ab-manual-upload')?.addEventListener('click', () => this.uploadExplosion());
+    this.q('#ab-manual-load-current')?.addEventListener('click', () => this.loadCurrentImageIntoManualPanel());
+    this.q('#ab-manual-back-auto')?.addEventListener('click', () => this.switchMode('auto'));
     this.q('#ab-confirm')?.addEventListener('click', () => this.confirm());
 
     this.centerView.querySelectorAll('.ab-edit-mode-btn').forEach(btn => {
@@ -370,7 +425,8 @@ export class AutoBindTab implements StudioTab {
           cvs.style.cursor = 'move';
         } else {
           this.selectPart(null);
-          cvs.style.cursor = 'default';
+          this.panDrag = { startX: e.clientX, startY: e.clientY, origPx: this.previewPanX, origPy: this.previewPanY };
+          cvs.style.cursor = 'grabbing';
         }
       } else {
         const hitBone = this.hitTestBones(mx, my);
@@ -387,7 +443,8 @@ export class AutoBindTab implements StudioTab {
           cvs.style.cursor = 'crosshair';
         } else {
           this.selectBone(null);
-          cvs.style.cursor = 'default';
+          this.panDrag = { startX: e.clientX, startY: e.clientY, origPx: this.previewPanX, origPy: this.previewPanY };
+          cvs.style.cursor = 'grabbing';
         }
       }
     });
@@ -449,7 +506,7 @@ export class AutoBindTab implements StudioTab {
             if (handle === 'scale') { cvs.style.cursor = 'nwse-resize'; return; }
           }
           const hover = this.hitTestParts(mx, my);
-          cvs.style.cursor = hover ? 'pointer' : 'default';
+          cvs.style.cursor = hover ? 'pointer' : 'grab';
         }
       } else {
         if (this.boneDrag && this.previewSkeleton) {
@@ -484,7 +541,7 @@ export class AutoBindTab implements StudioTab {
         if (!this.boneDrag) {
           const { mx, my } = this.canvasMousePos(e);
           const hover = this.hitTestBones(mx, my);
-          cvs.style.cursor = hover ? 'pointer' : 'default';
+          cvs.style.cursor = hover ? 'pointer' : 'grab';
         }
       }
     };
@@ -496,9 +553,9 @@ export class AutoBindTab implements StudioTab {
       this.scaleDrag = null;
       this.boneDrag = null;
       if (this.editMode === 'image') {
-        cvs.style.cursor = this.selectedPart ? 'move' : 'default';
+        cvs.style.cursor = this.selectedPart ? 'move' : 'grab';
       } else {
-        cvs.style.cursor = this.selectedBone ? 'crosshair' : 'default';
+        cvs.style.cursor = this.selectedBone ? 'crosshair' : 'grab';
       }
     };
 
@@ -573,11 +630,11 @@ export class AutoBindTab implements StudioTab {
     this.boneDrag = null;
     const hint = this.q('#ab-toolbar-hint') as HTMLElement;
     if (mode === 'image') {
-      hint.textContent = '点击图片选中部件 · Shift拖拽平移 · 滚轮缩放视图';
+      hint.textContent = '点击图片选中部件 · 空白处拖动画布 · 滚轮缩放视图';
     } else {
-      hint.textContent = '点击骨骼节点选中 · 拖拽旋转骨骼 · Shift拖拽平移';
+      hint.textContent = '点击骨骼节点选中 · 空白处拖动画布 · 滚轮缩放视图';
     }
-    this.previewCanvas!.style.cursor = 'default';
+    this.previewCanvas!.style.cursor = 'grab';
     this.buildPartsList();
   }
 
@@ -593,8 +650,8 @@ export class AutoBindTab implements StudioTab {
       hint.textContent = `「${def?.name}」· 拖拽移动 · 角落缩放 · 绿圆旋转 · Shift吸附15°`;
       this.previewCanvas!.style.cursor = 'move';
     } else {
-      hint.textContent = '点击图片选中部件 · Shift拖拽平移 · 滚轮缩放视图';
-      this.previewCanvas!.style.cursor = 'default';
+      hint.textContent = '点击图片选中部件 · 空白处拖动画布 · 滚轮缩放视图';
+      this.previewCanvas!.style.cursor = 'grab';
     }
   }
 
@@ -603,11 +660,11 @@ export class AutoBindTab implements StudioTab {
     this.selectedPart = null;
     const hint = this.q('#ab-toolbar-hint') as HTMLElement;
     if (boneName) {
-      hint.textContent = `骨骼「${boneName}」· 拖拽旋转 · Shift拖拽平移`;
+      hint.textContent = `骨骼「${boneName}」· 拖拽旋转 · 空白处拖动画布`;
       this.previewCanvas!.style.cursor = 'crosshair';
     } else {
-      hint.textContent = '点击骨骼节点选中 · 拖拽旋转骨骼 · Shift拖拽平移';
-      this.previewCanvas!.style.cursor = 'default';
+      hint.textContent = '点击骨骼节点选中 · 空白处拖动画布 · 滚轮缩放视图';
+      this.previewCanvas!.style.cursor = 'grab';
     }
   }
 
@@ -748,6 +805,8 @@ export class AutoBindTab implements StudioTab {
 
       const row = document.createElement('div');
       row.className = 'ab-layer-row' + (this.selectedPart === partId ? ' selected' : '');
+      row.draggable = true;
+      row.dataset.partId = partId;
 
       const dot = document.createElement('span');
       dot.className = 'ab-layer-dot';
@@ -764,6 +823,12 @@ export class AutoBindTab implements StudioTab {
       idx.textContent = `${reversed.length - i}`;
       row.appendChild(idx);
 
+      const grip = document.createElement('span');
+      grip.className = 'ab-layer-grip';
+      grip.textContent = '⋮⋮';
+      grip.title = '拖拽调整图层顺序';
+      row.appendChild(grip);
+
       const btns = document.createElement('span');
       btns.className = 'ab-layer-btns';
 
@@ -772,6 +837,7 @@ export class AutoBindTab implements StudioTab {
       upBtn.textContent = '▲';
       upBtn.title = '上移一层（更靠前）';
       upBtn.disabled = i === 0;
+      upBtn.draggable = false;
       upBtn.addEventListener('click', (e) => { e.stopPropagation(); this.moveLayer(partId, 'up'); });
       btns.appendChild(upBtn);
 
@@ -780,10 +846,37 @@ export class AutoBindTab implements StudioTab {
       downBtn.textContent = '▼';
       downBtn.title = '下移一层（更靠后）';
       downBtn.disabled = i === reversed.length - 1;
+      downBtn.draggable = false;
       downBtn.addEventListener('click', (e) => { e.stopPropagation(); this.moveLayer(partId, 'down'); });
       btns.appendChild(downBtn);
 
       row.appendChild(btns);
+
+      row.addEventListener('dragstart', (e) => {
+        this.draggingLayerId = partId;
+        row.classList.add('dragging');
+        e.dataTransfer?.setData('text/plain', partId);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragover', (e) => {
+        if (!this.draggingLayerId || this.draggingLayerId === partId) return;
+        e.preventDefault();
+        row.classList.add('drop-target');
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      });
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('drop-target');
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        row.classList.remove('drop-target');
+        const sourceId = this.draggingLayerId || e.dataTransfer?.getData('text/plain') || '';
+        this.reorderLayer(sourceId, partId);
+      });
+      row.addEventListener('dragend', () => {
+        this.draggingLayerId = null;
+        list.querySelectorAll('.ab-layer-row').forEach(el => el.classList.remove('dragging', 'drop-target'));
+      });
 
       row.addEventListener('click', () => {
         this.selectPart(this.selectedPart === partId ? null : partId);
@@ -791,6 +884,25 @@ export class AutoBindTab implements StudioTab {
 
       list.appendChild(row);
     }
+  }
+
+  private reorderLayer(sourceId: string, targetId: string): void {
+    if (!sourceId || sourceId === targetId) return;
+    const activeParts = this.drawOrder.filter(id => this.previewImages.has(id));
+    for (const id of this.previewImages.keys()) {
+      if (!activeParts.includes(id)) activeParts.push(id);
+    }
+    const topToBottom = [...activeParts].reverse();
+    const from = topToBottom.indexOf(sourceId);
+    const to = topToBottom.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = topToBottom.splice(from, 1);
+    topToBottom.splice(to, 0, moved);
+    const nextActiveOrder = [...topToBottom].reverse();
+    const inactive = this.drawOrder.filter(id => !activeParts.includes(id));
+    this.drawOrder = [...inactive, ...nextActiveOrder];
+    this.buildLayerList();
+    this.showStatus('已调整图层顺序');
   }
 
   private moveLayer(partId: string, direction: 'up' | 'down'): void {
@@ -805,25 +917,47 @@ export class AutoBindTab implements StudioTab {
       [this.drawOrder[idx], this.drawOrder[idx - 1]] = [this.drawOrder[idx - 1], this.drawOrder[idx]];
     }
     this.buildLayerList();
+    this.showStatus('已调整图层顺序');
   }
 
   private switchMode(mode: 'auto' | 'manual'): void {
     this.mode = mode;
+    this.sidePanel.querySelectorAll('.ab-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
+    });
     const sidebar = this.q('#ab-auto-sidebar') as HTMLElement;
+    const manualSidebar = this.q('#ab-manual-sidebar') as HTMLElement;
     const previewWrap = this.q('#ab-preview-wrap') as HTMLElement;
     const manualPanel = this.q('#ab-manual-panel') as HTMLElement;
 
     if (mode === 'auto') {
       sidebar.style.display = 'flex';
+      manualSidebar.style.display = 'none';
       previewWrap.style.display = 'flex';
       this.centerToolbar.style.display = 'flex';
       manualPanel.style.display = 'none';
     } else {
       sidebar.style.display = 'none';
+      manualSidebar.style.display = 'flex';
       previewWrap.style.display = 'none';
       this.centerToolbar.style.display = 'none';
       manualPanel.style.display = 'block';
       this.bindingPanel.setSkeleton();
+      void this.loadCurrentImageIntoManualPanel();
+    }
+  }
+
+  private async loadCurrentImageIntoManualPanel(): Promise<void> {
+    const imageData = this.state?.explosionImage || this.state?.characterImage;
+    if (!imageData) {
+      this.showStatus('没有可用的拆件图，请先上传或生成');
+      return;
+    }
+    try {
+      await this.bindingPanel.loadImageFromDataUrl(imageData);
+      this.showStatus('已载入当前拆件图，可在右侧手动框选');
+    } catch (e) {
+      this.showStatus('载入当前拆件图失败: ' + (e as Error).message);
     }
   }
 
@@ -852,9 +986,13 @@ export class AutoBindTab implements StudioTab {
   private updateAutoPanel(): void {
     const hasImg = !!(this.state?.explosionImage || this.state?.characterImage);
     const hasParts = (this.state?.partRegions?.length ?? 0) > 0;
-    (this.q('#ab-run-auto') as HTMLButtonElement).disabled = !hasImg && !hasParts;
+    const btn = this.q('#ab-run-auto') as HTMLButtonElement;
+    btn.disabled = !hasImg && !hasParts;
+    btn.title = btn.disabled ? '请先生成或上传拆件图' : '根据当前拆件图和标注部件自动生成骨骼绑定';
     if (hasImg || hasParts) {
       this.showStatus('图像已加载，点击「一键自动绑骨」');
+    } else {
+      this.showStatus('请先生成或上传拆件图');
     }
     this.buildPartsList();
   }
@@ -890,11 +1028,16 @@ export class AutoBindTab implements StudioTab {
       }
       this.bindingPanel.clearAllRegions();
 
+      let addedRegions = 0;
       for (const r of regions) {
         if (!r.imageData || r.width === 0) continue;
         this.bindingPanel.addRegionProgrammatically(
           r.id, r.x, r.y, r.width, r.height, r.imageData
         );
+        addedRegions++;
+      }
+      if (addedRegions === 0) {
+        throw new Error('没有可绑定的有效部件，请先在「拆分部件」中完成标注');
       }
 
       await new Promise(r => setTimeout(r, 100));
@@ -905,6 +1048,19 @@ export class AutoBindTab implements StudioTab {
       btn.disabled = false;
       btn.textContent = '一键自动绑骨';
     }
+  }
+
+  private applyBindingResult(bindingJson: RawSpineJson, cropImages: Map<string, string>, broadcast: boolean): void {
+    if (!this.state) return;
+    const skeleton = parseSpineJson(bindingJson);
+    this.state.bindingJson = bindingJson;
+    this.state.bindingSkeleton = skeleton;
+    this.state.attachmentImages = new Map(cropImages);
+    this.onStateChange?.();
+    this.loadPreview(skeleton, cropImages);
+    (this.q('#ab-confirm') as HTMLButtonElement).disabled = false;
+    this.showStatus('绑骨完成！点击部件可调整位置');
+    if (broadcast) this.broadcastBindingResult(bindingJson, cropImages);
   }
 
   private loadPreview(skel: EditorSkeleton, cropImages: Map<string, string>): void {
@@ -1342,6 +1498,8 @@ export class AutoBindTab implements StudioTab {
   private showStatus(msg: string): void {
     const el = this.q('#ab-status') as HTMLElement;
     if (el) el.textContent = msg;
+    const autoStatus = this.q('#ab-auto-status') as HTMLElement;
+    if (autoStatus) autoStatus.textContent = msg;
   }
 
   private confirm(): void {
@@ -1477,6 +1635,7 @@ export class AutoBindTab implements StudioTab {
 
   dispose(): void {
     this.stopRenderLoop();
+    this.bindBc?.close();
     this.container.remove();
     this.sidePanel.remove();
     this.centerView.remove();

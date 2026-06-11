@@ -295,6 +295,7 @@ export class PipelinePanel {
       center: this.extra.center,
       right: this.extra.right,
       bottom: this.extra.bottom,
+      toolbar: this.extra.toolbar,
     }
     this.clearLoadingHint()
     pipeline.createUI(this.leftPanel, panels)
@@ -353,6 +354,8 @@ export class PipelinePanel {
     this.leftPanel.innerHTML = ''
     this.extra.center.innerHTML = ''
     this.extra.center.classList.remove('active')
+    this.extra.center.classList.remove('has-toolbar')
+    this.extra.center.classList.remove('has-bottom')
     this.extra.toolbar.innerHTML = ''
     this.extra.toolbar.classList.remove('active')
     this.extra.right.innerHTML = ''
