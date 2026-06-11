@@ -3,6 +3,20 @@
   "title": "gen3d:generate-meshy-text-mock args",
   "type": "object",
   "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Injected by the workbench host; required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes",
+      "description": "3D asset slot (subdir under assets/3d/)."
+    },
+    "assetName": {
+      "type": "string",
+      "description": "Desired base file name (without extension). Sanitized + de-duplicated by the store."
+    },
     "prompt": {
       "type": "string",
       "minLength": 1,

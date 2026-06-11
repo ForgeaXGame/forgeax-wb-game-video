@@ -3,6 +3,10 @@
   "title": "gen3d:pose-standardization args",
   "type": "object",
   "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. The standardized image is written to scratch under .forgeax/games/<slug>/.gen3d/tmp/ (a transfer artifact, not an asset). Injected by the workbench host; required."
+    },
     "imageUrl": {
       "type": "string",
       "minLength": 1,

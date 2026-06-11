@@ -169,12 +169,8 @@ function ResultCard({
         <PreviewThumb file={previewFile} />
         <dl>
           <div>
-            <dt>Asset id</dt>
-            <dd className="mono">{manifest.assetId}</dd>
-          </div>
-          <div>
-            <dt>Files</dt>
-            <dd>{manifest.files.map((f) => `${f.role}.${f.format}`).join(', ')}</dd>
+            <dt>Asset path</dt>
+            <dd className="mono">{manifest.assetPath}</dd>
           </div>
           <div>
             <dt>Readiness</dt>

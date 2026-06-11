@@ -1,9 +1,12 @@
 # Gen3D Provider Capability Matrix
 
-Status: source-derived planning matrix. Updated 2026-06-11: Rodin is now
-mock-first/planned for M11 implementation, but real Rodin calls remain gated
-until key + output shape are verified. Do not expose rows marked hidden or
-blocked in workbench UI or AI-facing schemas.
+Status: source-derived planning matrix. Updated 2026-06-11: Rodin provider is
+**live-verified** (M11) — `server/providers/rodin.ts` multipart submit
+`/api/v2/rodin` → poll `/api/v2/status` → `/api/v2/download`, provider enum + UI
+selector wired, and one real text-to-3D run confirmed end-to-end through the
+Studio server (GLB + webp preview persisted per-game, `providerMode='real'`).
+Real calls stay gated behind `GEN3D_ENABLE_REAL_PROVIDERS=1` + `RODIN_API_KEY`.
+Do not expose rows marked hidden or blocked in workbench UI or AI-facing schemas.
 
 ## Exposure Legend
 
@@ -32,7 +35,8 @@ blocked in workbench UI or AI-facing schemas.
 | Hunyuan REST | `motion_retarget` v1 | Verified end-to-end in lab | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. Deferred until a `role=rigged_model` asset path exists (`wb-3d-pipeline`). |
 | Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
-| Rodin | `text` / `image` / `views` | API contract planned; key pending | mock-first | M11 provider after Hunyuan and Meshy. UI/provider plumbing may land with mock fallback; real calls require `RODIN_API_KEY` and one verified output shape. Target defaults: `tier=Regular`, `material=PBR`, `quality_override`, GLB output. |
+| Rodin | `text` | **Implemented + live-verified 2026-06-11** | mock-first | `server/providers/rodin.ts`: multipart `POST /api/v2/rodin` → poll `POST /api/v2/status` (subscription_key, all sub-jobs Done) → `POST /api/v2/download` (task_uuid). Real text-to-3D confirmed end-to-end via `gen3d:text-to-3d` (provider=rodin): GLB + **`preview.webp`** persisted per-game, `providerMode='real'`. Defaults `tier=Regular`, `material=PBR`, `geometry_file_format=glb`; polycount via `quality_override` low/medium/high (UI ~8k/18k/50k). Falls back to mock when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. Requires Business subscription. |
+| Rodin | `image` / `views` | Implemented (same client; not live-tested) | mock-first | Image/multi-view share the verified submit/poll/download path (`images` files, `condition_mode=concat` for views). Mock fallback until a live image run is run. |
 | Future provider | Tripo3D / Luma / others | Not migrated | hidden | Add only after provider contracts are explicit. |
 
 ## Provider Boundary Rules
@@ -43,9 +47,9 @@ blocked in workbench UI or AI-facing schemas.
   underscore path names, not hyphenated names.
 - Meshy `refine` is provider-specific and should not be generalized into
   Hunyuan schemas.
-- Rodin may be added mock-first as the third provider. Real calls must remain
-  behind `GEN3D_ENABLE_REAL_PROVIDERS` + `RODIN_API_KEY` until request schema,
-  cost model, and output formats are verified with one end-to-end result.
+- Rodin is live as the third provider; `text` is verified end-to-end. Real calls
+  must remain behind `GEN3D_ENABLE_REAL_PROVIDERS` + `RODIN_API_KEY`. `image`/
+  `views` reuse the same verified client but still need one live run each.
 - Unknown or unverified modes should be invisible by default. A warning label is
   not enough because some endpoints can consume quota or silently return default
   output.

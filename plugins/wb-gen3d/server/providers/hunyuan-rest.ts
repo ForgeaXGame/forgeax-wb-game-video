@@ -26,6 +26,7 @@ export type DownloadLike = (url: string) => Promise<Uint8Array>;
 
 export interface HunyuanRestDeps {
   env: HunyuanEnv;
+  slug: string;
   fetchImpl?: FetchLike;
   downloadImpl?: DownloadLike;
   rateGuard?: RateGuard;
@@ -48,12 +49,14 @@ export interface PoseStandardizationResult {
 
 export class HunyuanRestProvider {
   private readonly env: HunyuanEnv;
+  private readonly slug: string;
   private readonly fetchImpl: FetchLike;
   private readonly downloadImpl: DownloadLike;
   private readonly rateGuard: RateGuard;
 
   constructor(deps: HunyuanRestDeps) {
     this.env = deps.env;
+    this.slug = deps.slug;
     this.fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
     this.downloadImpl =
       deps.downloadImpl ??
@@ -79,7 +82,7 @@ export class HunyuanRestProvider {
 
     if (isFailed(resp)) {
       const message = errorMessage(resp);
-      await audit({
+      await audit(this.slug, {
         ts: new Date().toISOString(),
         provider: 'hunyuan_rest',
         mode: 'image',
@@ -94,7 +97,7 @@ export class HunyuanRestProvider {
 
     const url = extractResultImageUrl(resp);
     if (!url) {
-      await audit({
+      await audit(this.slug, {
         ts: new Date().toISOString(),
         provider: 'hunyuan_rest',
         mode: 'image',
@@ -107,7 +110,7 @@ export class HunyuanRestProvider {
     }
 
     const imageData = await this.downloadImpl(url);
-    await audit({
+    await audit(this.slug, {
       ts: new Date().toISOString(),
       provider: 'hunyuan_rest',
       mode: 'image',

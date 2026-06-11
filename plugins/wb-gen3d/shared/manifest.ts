@@ -1,7 +1,10 @@
 // Gen3DAssetManifest — the durable handoff contract between wb-gen3d and
-// downstream modules (wb-3d-pipeline, game generation). See docs/adr/0001 and
-// CONTEXT.md. Asset is a global, game-agnostic record keyed by a random
-// assetId; downstream modules reference assets by assetId, never by provider URL.
+// downstream modules (wb-3d-pipeline, game generation). See docs/adr/0002 and
+// CONTEXT.md. M9: an Asset is a per-game file, keyed by its game-relative path
+// (`assetPath`, e.g. assets/3d/characters/hero.glb), NOT a random UUID. The main
+// GLB is the identity; same-basename sidefiles (preview PNG, external texture)
+// are dependencies. Downstream modules reference assets by assetPath, never by
+// provider URL.
 
 export type ProviderId = 'meshy' | 'hunyuan_workflow' | 'hunyuan_rest' | 'rodin';
 
@@ -13,6 +16,15 @@ export type ProviderMode = 'mock' | 'real';
 
 export type AssetKind = 'mesh' | 'animation';
 
+// Where the asset lands in the game's 3D asset tree. The value maps 1:1 to a
+// directory under assets/3d/ (see ADR-0002 / 03-WORKSPACE-LAYOUT.md).
+export type AssetSlot = 'characters' | 'meshes';
+
+export const ASSET_SLOT_DIRS: Record<AssetSlot, string> = {
+  characters: 'characters',
+  meshes: 'meshes',
+};
+
 // Durable file roles. source_mesh/preview_image/texture come from generation;
 // rigged_model/animation_clip/animated_model are appended by wb-3d-pipeline.
 export type FileRole =
@@ -23,7 +35,7 @@ export type FileRole =
   | 'animation_clip'
   | 'animated_model';
 
-export type FileFormat = 'glb' | 'fbx' | 'obj' | 'mtl' | 'usdz' | 'stl' | 'png' | 'jpg' | 'mp4';
+export type FileFormat = 'glb' | 'fbx' | 'obj' | 'mtl' | 'usdz' | 'stl' | 'png' | 'jpg' | 'webp' | 'mp4';
 
 export type SkeletonProfile = 'humanoid' | 'unknown';
 
@@ -31,7 +43,8 @@ export interface ManifestFile {
   fileId: string;
   role: FileRole;
   format: FileFormat;
-  // Opaque storage key resolved by AssetStorage; never a provider URL.
+  // Game-relative path of the on-disk file (e.g. assets/3d/characters/hero.glb).
+  // The main source_mesh GLB path equals the manifest's assetPath identity.
   storageKey: string;
   bytes: number;
   sha256: string;
@@ -58,15 +71,18 @@ export interface QualityScore {
 
 export interface Gen3DAssetManifest {
   manifestVersion: 1;
-  assetId: string;
+  // Canonical identity: the game-relative path of the main GLB (ADR-0002).
+  assetPath: string;
+  // The 3D asset slot this lives in (characters | meshes).
+  assetSlot: AssetSlot;
   kind: AssetKind;
   provider: ProviderId;
   providerMode: ProviderMode;
   mode: GenerationMode;
   // Original provider job/task id, for audit. Not a stored-asset reference.
   sourceJobId: string | null;
-  // Upstream asset ids consumed to produce this one (e.g. image→mesh, mesh→rig).
-  sourceInputAssetIds: string[];
+  // Upstream asset paths consumed to produce this one (e.g. image→mesh).
+  sourceInputAssetPaths: string[];
   prompt: string | null;
   files: ManifestFile[];
   // Readiness flags answer "what can downstream do with this asset".
@@ -78,6 +94,51 @@ export interface Gen3DAssetManifest {
   quality: QualityScore;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── v2 workspace-contract sidecar (03-WORKSPACE-LAYOUT.md) ──────────────────
+//
+// On disk every asset file gets a `<name>.glb.meta.json` sidecar in the v2
+// contract shape. gen3d-private fields (provider/mode/job/cacheKey/readiness…)
+// live under `custom`. Same-basename sidefiles go in `dependencies[]`.
+
+export interface SidecarDependency {
+  // Path relative to the sidecar's directory (e.g. hero.png, hero.texture.png).
+  path: string;
+  // sha256:<hex>.
+  hash: string;
+  // Role of the dependency file (preview_image, texture, …).
+  kind: string;
+}
+
+export interface AssetSidecar {
+  schemaVersion: 1;
+  producer: {
+    plugin: string;
+    pluginVersion: string;
+    pipelineId?: string;
+  };
+  createdAt: string;
+  // sha256:<hex> of the main asset file.
+  contentHash: string;
+  size: number;
+  // Asset type label (e.g. gen3d-character, gen3d-mesh).
+  type: string;
+  dependencies: SidecarDependency[];
+  // gen3d-private namespace. Not part of the cross-plugin contract.
+  custom: {
+    provider: ProviderId;
+    providerMode: ProviderMode;
+    mode: GenerationMode;
+    assetSlot: AssetSlot;
+    sourceJobId: string | null;
+    prompt: string | null;
+    sourceInputAssetPaths: string[];
+    faceCount?: number;
+    readiness: Gen3DAssetManifest['readiness'];
+    // The cacheKey that produced this asset, for delete→tombstone reverse lookup.
+    cacheKey?: string;
+  };
 }
 
 export const FILE_ROLES: readonly FileRole[] = [
@@ -111,8 +172,8 @@ export function computeReadiness(files: readonly ManifestFile[]): Gen3DAssetMani
 }
 
 // Resolve the single file a consumer wants by role (+ optional format), instead
-// of parsing file names or URLs. motion_retarget uses this to require a rigged
-// FBX: selectFile(files, 'rigged_model', 'fbx') plus animationInputReady.
+// of parsing file names or URLs. The main mesh is selectFile(files,
+// 'source_mesh', 'glb'); the preview is selectFile(files, 'preview_image').
 export function selectFile(
   files: readonly ManifestFile[],
   role: FileRole,

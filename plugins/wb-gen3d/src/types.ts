@@ -5,7 +5,7 @@
 import type { Gen3DAssetManifest } from '@shared/manifest';
 
 export type Mode = 'text' | 'image' | 'views';
-export type GenProvider = 'hunyuan_workflow' | 'meshy';
+export type GenProvider = 'hunyuan_workflow' | 'meshy' | 'rodin';
 
 export interface ProviderStatus {
   ok: true;
@@ -27,9 +27,16 @@ export interface ListAssetsResult {
   assets: Gen3DAssetManifest[];
 }
 
-// gen3d:pose-standardization result. Upstream image→image preprocessing, not a
-// mesh asset (no manifest). storageKey/localUrl are the durable local blob;
-// sourceUrl is the provider-hosted URL the remote generator can fetch.
+// gen3d:upload-image result. Local image hosted on COS (transfer artifact, not
+// an asset). url is a time-limited presigned URL fed into image/views/pose
+// inputs so URL-fetching providers can reach the file.
+export interface UploadImageResult {
+  ok: true;
+  url: string;
+  bytes: number;
+  sha256: string;
+  expiresInSec: number;
+}
 export interface PoseResult {
   ok: true;
   usedMock: boolean;

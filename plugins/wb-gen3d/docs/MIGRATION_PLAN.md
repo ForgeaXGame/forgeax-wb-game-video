@@ -1,12 +1,13 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M8 landed; M9-M12 ready for execution (2026-06-11 handoff). Workbench UI
-refactor landed (2026-06-11, `af986ce`): token-aligned staged sidebar + center
-workspace + asset library column; core generation-loop UI landed (2026-06-10).
-M5 `pose_standardization` live-verified; `motion_retarget` v1 deferred. M9
-supersedes ADR-0001's global asset library with a per-game file contract; see
-`docs/PLAN-2026-06-11-rodin-cos-pergame.md` and
-`docs/adr/0002-per-game-file-asset-storage.md`.
+Status: M8 landed; M9-M12 implemented (mock-first / quota-safe) 2026-06-11.
+Workbench UI refactor landed (2026-06-11, `af986ce`): token-aligned staged
+sidebar + center workspace + asset library column; core generation-loop UI
+landed (2026-06-10). M5 `pose_standardization` live-verified; `motion_retarget`
+v1 deferred. M9 supersedes ADR-0001's global asset library with a per-game file
+contract; see `docs/PLAN-2026-06-11-rodin-cos-pergame.md` and
+`docs/adr/0002-per-game-file-asset-storage.md`. Real Hunyuan public-COS
+reachability + Rodin remain pending live verification behind operator keys.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -364,29 +365,47 @@ Verification:
 
 ### M9-M12 - 2026-06-11 Addendum
 
-Status: ready for execution. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
+Status: implemented (mock-first / quota-safe). SSOT:
+`docs/PLAN-2026-06-11-rodin-cos-pergame.md`. typecheck + build pass. Real
+provider calls (Hunyuan public-COS reachability, Rodin) remain gated behind
+operator-supplied keys + `GEN3D_ENABLE_REAL_PROVIDERS=1` and are pending live
+verification.
 
-Addendum scope:
+Addendum scope (all landed unless noted):
 
-- **M9 per-game storage refactor**: replace global `assetId` library with
-  `assetPath` under `.forgeax/games/<slug>/assets/3d/{characters|meshes}/`, plus
-  sidecar `.meta.json`, cache hit reuse, non-cache collision suffixing, list, and
-  confirmed delete.
-- **M10 local upload + COS**: plugin-local image upload tool returns a temporary
-  transfer URL for Hunyuan/Meshy; Rodin can use bytes/multipart. Secrets stay in
-  plugin-local `.env` only.
-- **M11 Rodin provider**: text/image/views, `tier=Regular`, `quality_override`,
-  mock-first until `RODIN_API_KEY` and one real output shape are verified.
-- **M12 UI upgrade**: pose standardization moved upward, low/medium/high
-  discrete polycount buttons + provider presets, model grid/skeleton/info, dense
-  asset library, delete with confirmation.
+- **M9 per-game storage refactor** — DONE: replaced the global `assetId` library
+  with `assetPath` under `.forgeax/games/<slug>/assets/3d/{characters|meshes}/`,
+  plus sidecar `<name>.glb.meta.json` (v2 contract shape, gen3d fields under
+  `custom`, sidefiles in `dependencies[]`), per-game `cache.jsonl`/`audit.jsonl`,
+  cache-hit path reuse, non-cache collision suffixing, dir-scan list, and a
+  confirmed `gen3d:delete-asset` that tombstones the cacheKey. Server route
+  `/api/game-assets/:slug/*` (read-only, `assets/3d/**` only) added to
+  `packages/server/src/main.ts` (operator-approved, the only plugin-external
+  change). Pose/upload intermediates land in the scratch area, not the library.
+- **M10 local upload + COS** — DONE: `cos-nodejs-sdk-v5` + `server/cos-uploader.ts`
+  + `getCosEnv()`; tool `gen3d:upload-image` (base64 → ≤8MB backend validation →
+  COS presigned URL, no extra server route). `SetupSidebar` image/views/pose
+  source inputs use `ImageInputField` (local picker → upload → URL backfill, with
+  manual-URL fallback); prompt textarea enlarged with char count. Secrets stay in
+  plugin-local `.env`; `.env.example` lists names only.
+- **M11 Rodin provider** — DONE (mock-first): `server/providers/rodin.ts`
+  (multipart submit `/api/v2/rodin` → poll `/api/v2/status` → `/api/v2/download`),
+  `getRodinEnv()`, provider enum extended across types/ui-meta/catalog/
+  tool-handlers/schemas, UI selector entry. `tier=Regular`, `quality_override`,
+  `geometry_file_format=glb`; injectable fetch/download for quota-safe smoke.
+  Real calls pending `RODIN_API_KEY` + one verified output shape.
+- **M12 UI upgrade** — DONE: pose standardization moved above input; target
+  polycount is now low/medium/high discrete buttons mapped per provider
+  (Meshy 8k/30k/100k, Hunyuan 10k/40k/120k, Rodin ~8k/18k/50k); `ModelViewer`
+  gained a grid-floor toggle, a skeleton toggle (enabled only when a SkinnedMesh
+  is present), and a faces/vertices/bbox info HUD; `Workspace` result card
+  trimmed; `AssetLibrary` is now a dense preview-thumbnail grid leading with the
+  prompt's first line, with per-card delete confirmation.
 
 Documentation closeout done 2026-06-11:
 
 - Added ADR-0002 for the per-game file storage reversal.
-- Updated `CONTEXT.md`, this migration plan, capability matrix, and handoff log
-  to point future executors at M9-M12.
-- No runtime implementation was done in this closeout pass.
+- Updated `CONTEXT.md`, this migration plan, capability matrix, and handoff log.
 
 ## Non-Goals
 

@@ -100,7 +100,61 @@ export function getMeshyEnv(): MeshyEnv | null {
   };
 }
 
+export interface RodinEnv {
+  apiKey: string;
+  baseUrl: string;
+  pollIntervalMs: number;
+  pollTimeoutMs: number;
+  rateLimitPerMin: number;
+}
+
+// Returns null when the real Rodin (Hyper3D) path is not fully configured.
+// Like the other providers it is gated by GEN3D_ENABLE_REAL_PROVIDERS; the
+// public base URL (api.hyper3d.com) is the default, so only the key is
+// required. Callers must fall back to mock when this is null.
+export function getRodinEnv(): RodinEnv | null {
+  if (!realProvidersEnabled()) return null;
+  const apiKey = read('RODIN_API_KEY');
+  if (!apiKey) return null;
+  const baseUrl = read('RODIN_BASE_URL') ?? 'https://api.hyper3d.com';
+  return {
+    apiKey,
+    baseUrl: baseUrl.replace(/\/+$/, ''),
+    pollIntervalMs: toInt(read('RODIN_POLL_INTERVAL_MS'), 5000),
+    pollTimeoutMs: toInt(read('RODIN_POLL_TIMEOUT_MS'), 600000),
+    rateLimitPerMin: toInt(read('RODIN_RATE_LIMIT_PER_MIN'), 3),
+  };
+}
+
 function toInt(value: string | undefined, fallback: number): number {
   const n = value ? Number.parseInt(value, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export interface CosEnv {
+  secretId: string;
+  secretKey: string;
+  bucket: string;
+  region: string;
+  // Presigned URL lifetime in seconds (input images are transfer artifacts).
+  signExpiresSec: number;
+}
+
+// Returns null when COS upload is not fully configured. Unlike provider envs,
+// COS upload is a transport convenience and is NOT gated by
+// GEN3D_ENABLE_REAL_PROVIDERS: a user can upload a local image to host it even
+// in mock mode. Callers fall back to "URL only" when this is null.
+export function getCosEnv(): CosEnv | null {
+  const secretId = read('COS_SECRET_ID');
+  const secretKey = read('COS_SECRET_KEY');
+  const bucket = read('COS_BUCKET');
+  const region = read('COS_REGION');
+  if (!secretId || !secretKey || !bucket || !region) return null;
+  return {
+    secretId,
+    secretKey,
+    bucket,
+    region,
+    signExpiresSec: toInt(read('COS_SIGN_EXPIRES_SEC'), 24 * 3600),
+  };
 }

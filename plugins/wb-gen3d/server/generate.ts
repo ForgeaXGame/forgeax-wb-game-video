@@ -1,72 +1,50 @@
-// Generation orchestration — turns a pure ProviderResult into a durable
-// Gen3DAssetManifest via AssetStorage. This is the layer that knows about both
-// providers and storage; providers and the store stay unaware of each other
-// (ADR-0001 decoupling). assetId is a random UUID because 3D generation is
-// non-deterministic; request-level dedup is the cache layer's job (later).
-
-import { randomUUID } from 'node:crypto';
+// Generation orchestration — turns a pure ProviderResult into a durable per-game
+// asset (main GLB + sidefiles + sidecar) via the AssetStorage adapter. This is
+// the layer that knows about both providers and storage; providers and the
+// store stay unaware of each other (ADR-0001 decoupling). Identity is the
+// game-relative assetPath (ADR-0002), not a random UUID.
 
 import type { ProviderResult } from '../shared/catalog';
-import {
-  computeReadiness,
-  emptyQuality,
-  type Gen3DAssetManifest,
-  type ManifestFile,
-} from '../shared/manifest';
-import type { AssetStorage } from './asset-storage';
+import type { AssetSlot, Gen3DAssetManifest } from '../shared/manifest';
+import type { AssetFileInput, AssetStorage } from './asset-storage';
 import * as cache from './cache';
 import { audit } from './audit';
+
+export interface PersistInput {
+  slug: string;
+  assetSlot: AssetSlot;
+  assetName: string;
+  faceCount?: number;
+  cacheKey: string;
+  sourceInputAssetPaths?: string[];
+}
 
 export async function persistGeneration(
   result: ProviderResult,
   storage: AssetStorage,
+  ctx: PersistInput,
 ): Promise<Gen3DAssetManifest> {
-  const assetId = randomUUID();
-  const now = new Date().toISOString();
-
-  const files: ManifestFile[] = [];
-  for (const file of result.files) {
-    const stored = await storage.putBlob({
-      data: file.data,
-      format: file.format,
-      role: file.role,
-    });
-    const isRiggedFbx = file.role === 'rigged_model' && file.format === 'fbx';
-    files.push({
-      fileId: randomUUID(),
-      role: file.role,
-      format: file.format,
-      storageKey: stored.storageKey,
-      bytes: stored.bytes,
-      sha256: stored.sha256,
-      localUrl: stored.localUrl,
-      // Generation never produces a verified skeleton. Rigging readiness is set
-      // only by a verified rigging step in wb-3d-pipeline, never inferred here.
-      hasSkeleton: false,
-      skeletonProfile: isRiggedFbx ? 'unknown' : 'unknown',
-      animationInputReady: false,
-    });
-  }
-
-  const manifest: Gen3DAssetManifest = {
-    manifestVersion: 1,
-    assetId,
-    kind: 'mesh',
-    provider: result.provider,
-    providerMode: result.providerMode,
-    mode: result.mode,
-    sourceJobId: result.sourceJobId,
-    sourceInputAssetIds: [],
-    prompt: result.prompt,
+  const files: AssetFileInput[] = result.files.map((f) => ({
+    data: f.data,
+    format: f.format,
+    role: f.role,
+  }));
+  return storage.writeAsset({
+    slug: ctx.slug,
+    assetSlot: ctx.assetSlot,
+    assetName: ctx.assetName,
     files,
-    readiness: computeReadiness(files),
-    quality: emptyQuality(),
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  await storage.putManifest(manifest);
-  return manifest;
+    meta: {
+      provider: result.provider,
+      providerMode: result.providerMode,
+      mode: result.mode,
+      sourceJobId: result.sourceJobId,
+      prompt: result.prompt,
+      sourceInputAssetPaths: ctx.sourceInputAssetPaths ?? [],
+      ...(ctx.faceCount !== undefined ? { faceCount: ctx.faceCount } : {}),
+      cacheKey: ctx.cacheKey,
+    },
+  });
 }
 
 export interface CachedGenerationResult {
@@ -75,35 +53,35 @@ export interface CachedGenerationResult {
 }
 
 // Cache-first generation. On a cacheKey hit, returns the existing manifest
-// (loaded from the store, never a stale provider URL). Otherwise runs the
-// producer, persists a durable manifest, then records cacheKey -> assetId only
-// after the full success (write-after-success). The producer is provider-
-// agnostic: it returns a pure ProviderResult.
+// (loaded from the per-game store by assetPath, never a stale provider URL).
+// A cache hit reuses the existing path and ignores any freshly-typed assetName.
+// Otherwise runs the producer, persists a durable per-game asset, then records
+// cacheKey -> assetPath only after the full success (write-after-success).
 export async function generateCacheFirst(
-  cacheKey: string,
   storage: AssetStorage,
+  ctx: PersistInput,
   produce: () => Promise<ProviderResult>,
 ): Promise<CachedGenerationResult> {
-  const cachedId = await cache.lookup(cacheKey);
-  if (cachedId) {
-    const existing = await storage.getManifest(cachedId);
+  const cachedPath = await cache.lookup(ctx.slug, ctx.cacheKey);
+  if (cachedPath) {
+    const existing = await storage.getAsset(ctx.slug, cachedPath);
     if (existing) {
-      const sample = existing;
-      await audit({
+      await audit(ctx.slug, {
         ts: new Date().toISOString(),
-        provider: sample.provider,
-        mode: sample.mode,
+        provider: existing.provider,
+        mode: existing.mode,
         event: 'cache_hit',
-        cacheKey,
-        assetId: cachedId,
+        cacheKey: ctx.cacheKey,
+        assetPath: cachedPath,
       });
       return { manifest: existing, cacheHit: true };
     }
-    // Mapping points at a missing manifest; fall through and regenerate.
+    // Mapping points at a missing file (deleted without tombstone); fall through
+    // and regenerate rather than crash.
   }
 
   const result = await produce();
-  const manifest = await persistGeneration(result, storage);
-  await cache.remember(cacheKey, manifest.assetId);
+  const manifest = await persistGeneration(result, storage, ctx);
+  await cache.remember(ctx.slug, ctx.cacheKey, manifest.assetPath);
   return { manifest, cacheHit: false };
 }

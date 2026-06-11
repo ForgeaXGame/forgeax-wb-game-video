@@ -54,8 +54,10 @@ Canonical identity is `assetPath`, a game-relative path such as
 - **副文件（外部单独贴图等）进 `dependencies[]`**（带 `path/hash/kind`），不自创
   `files[]`。gen3d 私有字段（provider/providerMode/mode/sourceJobId/faceCount/
   readiness 等）塞进 `custom{}` 命名空间。
-- 预览 PNG 用同基名 `<name>.png` 放 mesh 同级目录（契约未禁止，且预览与 mesh 强
-  绑，比塞 `assets/2d/` 实用）。
+- 预览图用同基名 `<name>.<fmt>` 放 mesh 同级目录（契约未禁止，且预览与 mesh 强
+  绑，比塞 `assets/2d/` 实用）。`fmt` 取实际格式：Hunyuan 是 `png`，Rodin 真实
+  返回 `preview.webp`（`FileFormat` 已含 `webp`），所以是 `<name>.png` /
+  `<name>.webp` 而非写死 `.png`。
 - **OBJ 取舍**：角色优先存 GLB，真实 `text` 同时返回的 OBJ **默认丢弃只留 GLB**。
 - 删除时删 `<name>.*` 全家桶 + `<name>.glb.meta.json`。
 

@@ -47,6 +47,8 @@ export type DownloadLike = (url: string) => Promise<Uint8Array>;
 
 export interface MeshyProviderDeps {
   env: MeshyEnv;
+  // Active game slug for the per-game audit trail (ADR-0002). Smokes may pass any.
+  slug: string;
   fetchImpl?: FetchLike;
   downloadImpl?: DownloadLike;
   rateGuard?: RateGuard;
@@ -64,6 +66,7 @@ const MODEL_URL_TO_FILE: Record<string, { role: FileRole; format: FileFormat }> 
 
 export class MeshyProvider {
   private readonly env: MeshyEnv;
+  private readonly slug: string;
   private readonly fetchImpl: FetchLike;
   private readonly downloadImpl: DownloadLike;
   private readonly rateGuard: RateGuard;
@@ -71,6 +74,7 @@ export class MeshyProvider {
 
   constructor(deps: MeshyProviderDeps) {
     this.env = deps.env;
+    this.slug = deps.slug;
     this.fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
     this.downloadImpl =
       deps.downloadImpl ?? (async (url) => new Uint8Array(await (await fetch(url)).arrayBuffer()));
@@ -91,7 +95,7 @@ export class MeshyProvider {
     if (!sourceJobId) {
       throw Object.assign(new Error('meshy submit returned no task id'), { code: 'provider_no_task' });
     }
-    await audit({ ts: new Date().toISOString(), provider: 'meshy', mode: input.mode, event: 'submit', sourceJobId });
+    await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode: input.mode, event: 'submit', sourceJobId });
 
     const urls = await this.poll(input.mode, sourceJobId);
 
@@ -169,16 +173,16 @@ export class MeshyProvider {
       const resp = await this.get(`${pathForMode(mode)}/${taskId}`);
       const status = String(resp.status ?? '').toUpperCase();
       if (status === SUCCESS) {
-        await audit({ ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
+        await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
         return extractUrls(resp);
       }
       if (FAILURE.has(status)) {
-        await audit({ ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_failed', sourceJobId: taskId, detail: taskErrorMessage(resp) ?? status });
+        await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_failed', sourceJobId: taskId, detail: taskErrorMessage(resp) ?? status });
         throw Object.assign(new Error(`meshy task ${status}: ${taskErrorMessage(resp) ?? ''}`), { code: 'provider_failed' });
       }
       await this.sleep(this.env.pollIntervalMs);
     }
-    await audit({ ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_timeout', sourceJobId: taskId });
+    await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_timeout', sourceJobId: taskId });
     throw Object.assign(new Error('meshy poll timed out'), { code: 'provider_timeout' });
   }
 

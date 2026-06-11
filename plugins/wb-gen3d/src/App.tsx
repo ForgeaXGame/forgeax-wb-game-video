@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
+import { hasActiveGame } from '@/lib/gameSlug';
 import type { GenerateResult, ListAssetsResult, Mode, ProviderStatus } from '@/types';
 import { modeMeta } from '@/ui-meta';
 import { SetupSidebar } from '@/components/SetupSidebar';
@@ -23,13 +24,17 @@ export function App({ pane }: AppProps) {
   const [selected, setSelected] = useState<Gen3DAssetManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // No game in the URL → store tools would reject (missing_game); render an
+  // empty/disabled state instead of firing calls that always fail.
+  const gameActive = hasActiveGame();
   // The last submit, replayed by the workspace error "重试" action.
   const lastActionRef = useRef<null | (() => void)>(null);
 
   const refreshAssets = useCallback(async () => {
+    if (!gameActive) return;
     const r = await callTool<ListAssetsResult>('gen3d:list-assets', {});
     if (r.ok) setAssets(r.result.assets);
-  }, []);
+  }, [gameActive]);
 
   const refreshStatus = useCallback(async () => {
     const r = await callTool<ProviderStatus>('gen3d:provider-status', {});
@@ -40,6 +45,20 @@ export function App({ pane }: AppProps) {
     void refreshStatus();
     void refreshAssets();
   }, [refreshStatus, refreshAssets]);
+
+  const deleteAsset = useCallback(
+    async (assetPath: string) => {
+      const r = await callTool('gen3d:delete-asset', { assetPath });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSelected((cur) => (cur?.assetPath === assetPath ? null : cur));
+      setLatest((cur) => (cur?.manifest.assetPath === assetPath ? null : cur));
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
 
   const runGenerate = useCallback(
     async (mode: Mode, args: unknown) => {
@@ -108,6 +127,7 @@ export function App({ pane }: AppProps) {
           status={status}
           assetCount={assets.length}
           busy={busy}
+          gameActive={gameActive}
           onGenerate={handleGenerate}
         />
       )}
@@ -129,9 +149,11 @@ export function App({ pane }: AppProps) {
               <div className="gx-rightcol">
                 <AssetLibrary
                   assets={assets}
-                  selectedId={selected?.assetId ?? null}
+                  selectedId={selected?.assetPath ?? null}
+                  gameActive={gameActive}
                   onRefresh={refreshAssets}
                   onSelect={setSelected}
+                  onDelete={deleteAsset}
                 />
                 <InspectorReserved selected={selected} />
               </div>

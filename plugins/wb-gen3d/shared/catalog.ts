@@ -158,6 +158,32 @@ export const CAPABILITIES: readonly ProviderCapability[] = [
     exposure: 'blocked',
     notes: 'Endpoint may return 200 while falling back to default motion.',
   },
+  {
+    providerId: 'rodin',
+    providerName: 'Rodin (Hyper3D)',
+    capability: 'text / text-to-3D',
+    sourceStatus: 'Implemented mock-first 2026-06-11; live verify pending key',
+    exposure: 'mock-first',
+    notes:
+      'POST /api/v2/rodin multipart (no image → text mode), poll /api/v2/status by subscription_key, fetch URLs via /api/v2/download. tier=Regular, material=PBR, geometry_file_format=glb, quality_override controls poly count. Falls back to mock when RODIN_API_KEY/GEN3D_ENABLE_REAL_PROVIDERS are unset.',
+  },
+  {
+    providerId: 'rodin',
+    providerName: 'Rodin (Hyper3D)',
+    capability: 'image / image-to-3D',
+    sourceStatus: 'Implemented mock-first 2026-06-11; live verify pending key',
+    exposure: 'mock-first',
+    notes:
+      'Image present selects Image-to-3D. Rodin takes bytes: the provider downloads the (uploaded/COS) image URL and attaches it as a multipart file, sidestepping provider-side URL fetch.',
+  },
+  {
+    providerId: 'rodin',
+    providerName: 'Rodin (Hyper3D)',
+    capability: 'views / multi-image-to-3D',
+    sourceStatus: 'Implemented mock-first 2026-06-11; live verify pending key',
+    exposure: 'mock-first',
+    notes: 'Multiple images attached with condition_mode=concat. Each view URL is downloaded to bytes first.',
+  },
 ];
 
 export function clampTargetPolycount(value: number): number {

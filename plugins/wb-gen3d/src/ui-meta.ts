@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Gauge,
   Share2,
+  Trash2,
+  Upload,
   ShieldAlert,
   ShieldCheck,
 } from 'lucide-react';
@@ -29,6 +31,8 @@ export const EDITOR_ICON_MAP = {
   refresh: RefreshCw,
   quality: Gauge,
   handoff: Share2,
+  delete: Trash2,
+  upload: Upload,
   real: ShieldAlert,
   quota: ShieldCheck,
 } as const;
@@ -42,4 +46,30 @@ export const modeMeta: Record<Mode, { toolId: string; label: string; icon: typeo
 export const providerMeta: Record<GenProvider, { label: string }> = {
   hunyuan_workflow: { label: '混元 Hunyuan' },
   meshy: { label: 'Meshy' },
+  rodin: { label: 'Rodin' },
 };
+
+// Polycount is exposed as three discrete tiers (low/mid/high) instead of a
+// continuous number — Rodin's quality_override is effectively quantized anyway,
+// and Meshy/Hunyuan's exact face counts are noise to most users. Each provider
+// maps a tier to its own face count (the kept numbers are real targets; the
+// Rodin numbers are display-reference values for its quality_override).
+export type PolycountTier = 'low' | 'mid' | 'high';
+
+export const POLYCOUNT_TIERS: PolycountTier[] = ['low', 'mid', 'high'];
+
+export const polycountTierMeta: Record<PolycountTier, { label: string }> = {
+  low: { label: '低' },
+  mid: { label: '中' },
+  high: { label: '高' },
+};
+
+const TIER_FACE_COUNTS: Record<GenProvider, Record<PolycountTier, number>> = {
+  meshy: { low: 8000, mid: 30000, high: 100000 },
+  hunyuan_workflow: { low: 10000, mid: 40000, high: 120000 },
+  rodin: { low: 8000, mid: 18000, high: 50000 },
+};
+
+export function tierToFaceCount(provider: GenProvider, tier: PolycountTier): number {
+  return TIER_FACE_COUNTS[provider][tier];
+}

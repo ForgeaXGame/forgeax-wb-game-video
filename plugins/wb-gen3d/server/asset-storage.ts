@@ -1,49 +1,71 @@
-// AssetStorage — adapter boundary for durable 3D asset persistence.
+// AssetStorage — adapter boundary for durable per-game 3D asset persistence.
 //
-// The adapter owns blob bytes + manifests. It does NOT know which provider
-// produced an asset (asset-store decoupling rule, ADR-0001). Production can swap
-// LocalBlobStore for a Tencent COS/S3/R2/MinIO adapter without changing this
-// interface or the Gen3DAssetManifest contract.
+// M9 (ADR-0002): an asset is a named file in the active game's runtime asset
+// library, identified by its game-relative path (assetPath). The adapter owns
+// all path logic (write file + sidecar, list, delete, name collision) so a
+// future path change touches one place. It does NOT know which provider
+// produced an asset (decoupling rule, ADR-0001). The local impl writes to
+// .forgeax/games/<slug>/assets/3d/{characters|meshes}/; a future COS/S3 adapter
+// could swap without changing this interface or the manifest contract.
 
-import type { FileFormat, FileRole, Gen3DAssetManifest } from '../shared/manifest';
+import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest } from '../shared/manifest';
 
-export interface PutBlobInput {
-  // Raw bytes to persist. Provider URLs must be downloaded into bytes before
-  // reaching the store; the store never holds a provider/browser URL.
+// One produced file (already downloaded into bytes; never a provider URL).
+export interface AssetFileInput {
   data: Uint8Array;
   format: FileFormat;
   role: FileRole;
 }
 
-export interface PutBlobResult {
-  storageKey: string;
-  sha256: string;
-  bytes: number;
-  // Same-origin Studio URL for local preview/download, or null if the adapter
-  // cannot stream the blob from Studio.
-  localUrl: string | null;
-}
-
-export interface ShareUrlInput {
-  storageKey: string;
-  // Lifetime hint in seconds for the short-lived external URL.
-  expiresInSeconds?: number;
-}
-
-export interface ShareUrlResult {
-  // Request-time transport URL handed to an external provider (e.g. Hunyuan
-  // motion_retarget). NEVER the canonical asset reference; do not persist it as
-  // such. The durable truth stays storageKey + manifest.
-  url: string;
-  expiresAt: string | null;
+export interface WriteAssetInput {
+  slug: string;
+  assetSlot: AssetSlot;
+  // Desired base name (without extension). The store sanitizes it and, on a
+  // non-cache name collision, appends a numeric suffix instead of overwriting.
+  assetName: string;
+  files: AssetFileInput[];
+  // gen3d-private metadata persisted under the sidecar `custom` namespace.
+  meta: {
+    provider: Gen3DAssetManifest['provider'];
+    providerMode: Gen3DAssetManifest['providerMode'];
+    mode: Gen3DAssetManifest['mode'];
+    sourceJobId: string | null;
+    prompt: string | null;
+    sourceInputAssetPaths: string[];
+    faceCount?: number;
+    cacheKey?: string;
+  };
 }
 
 export interface AssetStorage {
-  putBlob(input: PutBlobInput): Promise<PutBlobResult>;
-  putManifest(manifest: Gen3DAssetManifest): Promise<void>;
-  getManifest(assetId: string): Promise<Gen3DAssetManifest | null>;
-  listManifests(): Promise<Gen3DAssetManifest[]>;
-  // Create a short-lived URL an external provider can fetch. Local dev returns a
-  // same-origin file URL; production adapters return a presigned object-store URL.
-  shareUrl(input: ShareUrlInput): Promise<ShareUrlResult>;
+  // Persist a full asset (main GLB + same-basename sidefiles + sidecar) into the
+  // game's asset tree and return the resulting manifest (assetPath = main GLB).
+  writeAsset(input: WriteAssetInput): Promise<Gen3DAssetManifest>;
+  // Load a manifest by game-relative assetPath (reads the sidecar).
+  getAsset(slug: string, assetPath: string): Promise<Gen3DAssetManifest | null>;
+  // List manifests in a game, optionally filtered by slot (scans the directory).
+  listAssets(slug: string, assetSlot?: AssetSlot): Promise<Gen3DAssetManifest[]>;
+  // Delete the asset file + sidecar + same-basename sidefiles. Returns the
+  // cacheKey recorded in the sidecar (for a cache tombstone) or null.
+  deleteAsset(slug: string, assetPath: string): Promise<{ cacheKey: string | null }>;
+  // Persist a transfer/scratch artifact (pose-standardized image, uploaded
+  // input). NOT an asset: lives under .gen3d/tmp/, no manifest, no delete UI.
+  putScratch(input: PutScratchInput): Promise<PutScratchResult>;
+}
+
+// Scratch (transfer) artifacts — pose-standardized images, uploaded inputs. NOT
+// assets: they live under .forgeax/games/<slug>/.gen3d/tmp/, never in the asset
+// library, and have no delete UI (CONTEXT.md "临时/中转产物").
+export interface PutScratchInput {
+  slug: string;
+  data: Uint8Array;
+  format: FileFormat;
+}
+
+export interface PutScratchResult {
+  // Scratch storage key (relative to the project root) for same-origin preview.
+  storageKey: string;
+  sha256: string;
+  bytes: number;
+  localUrl: string | null;
 }

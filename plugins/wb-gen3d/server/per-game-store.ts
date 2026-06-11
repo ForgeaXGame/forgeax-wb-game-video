@@ -1,0 +1,378 @@
+// PerGameAssetStore — dev-time AssetStorage backed by the local filesystem,
+// per-game (ADR-0002 / 03-WORKSPACE-LAYOUT.md).
+//
+// Layout (active game's runtime asset library):
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb.meta.json
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.png          (preview)
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.texture.png  (external texture)
+//
+// Identity is the game-relative path of the main GLB. The on-disk sidecar uses
+// the v2 workspace contract (schemaVersion/producer/dependencies[]/custom{}).
+// gen3d-private fields live under `custom`. The runtime mechanism (kernel
+// writeAsset/_index.json/path-slots) is known debt, not built here — we align
+// the disk FORMAT only (ADR-0002 §"已知债务").
+//
+// OBJ source_mesh is dropped by default: only the GLB main mesh is kept.
+
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+
+import {
+  ASSET_SLOT_DIRS,
+  computeReadiness,
+  emptyQuality,
+  type AssetSidecar,
+  type AssetSlot,
+  type FileFormat,
+  type Gen3DAssetManifest,
+  type ManifestFile,
+  type SidecarDependency,
+} from '../shared/manifest';
+import type {
+  AssetFileInput,
+  AssetStorage,
+  PutScratchInput,
+  PutScratchResult,
+  WriteAssetInput,
+} from './asset-storage';
+
+const PLUGIN_ID = 'wb-gen3d';
+const PLUGIN_VERSION = '0.1.0';
+
+function projectRoot(): string {
+  // Match the marketplace convention (see node-editor runtime.ts).
+  return process.env.FORGEAX_PROJECT_ROOT ?? resolve(process.cwd(), '.forgeax-runtime');
+}
+
+// Reject path segments that would escape their parent. Mirrors the server's
+// PathManager.safeSegment so slug handling is consistent on both sides.
+function safeSlug(slug: string): string {
+  if (!slug || slug.includes('/') || slug.includes('\\') || slug === '..' || slug.includes('\0')) {
+    throw Object.assign(new Error(`unsafe slug ${JSON.stringify(slug)}`), { code: 'invalid_slug' });
+  }
+  return slug;
+}
+
+function gameRoot(slug: string): string {
+  return resolve(projectRoot(), '.forgeax', 'games', safeSlug(slug));
+}
+
+function slotDir(slug: string, slot: AssetSlot): string {
+  return resolve(gameRoot(slug), 'assets', '3d', ASSET_SLOT_DIRS[slot]);
+}
+
+// Game-relative path of a file in a slot (forward slashes; this is the asset id).
+function relPath(slot: AssetSlot, fileName: string): string {
+  return `assets/3d/${ASSET_SLOT_DIRS[slot]}/${fileName}`;
+}
+
+function sha256Hex(data: Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex');
+}
+
+// Sanitize a user/AI base name into a safe lowercase file stem. Falls back to a
+// generic stem when the input has no usable characters.
+function sanitizeBaseName(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return cleaned || 'asset';
+}
+
+const LOCAL_URL_PREFIX = '/api/game-assets';
+
+function localUrlFor(slug: string, rel: string): string {
+  // rel is "assets/3d/<slot>/<file>"; the route mounts at .../assets/3d/.
+  const tail = rel.replace(/^assets\/3d\//, '');
+  return `${LOCAL_URL_PREFIX}/${encodeURIComponent(slug)}/3d/${tail}`;
+}
+
+// One generation may return several files. Keep exactly one main GLB
+// (source_mesh) as identity; OBJ source_mesh is dropped. The remaining files
+// become same-basename sidefiles: preview_image → <name>.<fmt> (png/jpg/webp),
+// texture → <name>.texture.png, any other → <name>.<role>.<ext>.
+interface PlannedFile {
+  input: AssetFileInput;
+  fileName: string;
+  isMain: boolean;
+}
+
+function planFiles(baseName: string, files: readonly AssetFileInput[]): PlannedFile[] {
+  const main = files.find((f) => f.role === 'source_mesh' && f.format === 'glb');
+  if (!main) {
+    throw Object.assign(new Error('no GLB source_mesh in generation result'), {
+      code: 'no_main_mesh',
+    });
+  }
+  const planned: PlannedFile[] = [{ input: main, fileName: `${baseName}.glb`, isMain: true }];
+  for (const f of files) {
+    if (f === main) continue;
+    // Drop OBJ/MTL source_mesh sidefiles: GLB only (ADR-0002).
+    if (f.role === 'source_mesh') continue;
+    let fileName: string;
+    if (f.role === 'preview_image') fileName = `${baseName}.${f.format}`;
+    else if (f.role === 'texture') fileName = `${baseName}.texture.${f.format}`;
+    else fileName = `${baseName}.${f.role}.${f.format}`;
+    planned.push({ input: f, fileName, isMain: false });
+  }
+  return planned;
+}
+
+export class PerGameAssetStore implements AssetStorage {
+  // Pick a non-colliding base name. Caller passes the desired name; on a name
+  // collision (a different request produced the same name) we suffix -2, -3, …
+  // rather than overwrite. Cache hits never reach here (the orchestrator returns
+  // the existing asset before writing).
+  private async resolveFreeName(slug: string, slot: AssetSlot, desired: string): Promise<string> {
+    const base = sanitizeBaseName(desired);
+    const dir = slotDir(slug, slot);
+    let existing: Set<string>;
+    try {
+      existing = new Set(await readdir(dir));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return base;
+      throw error;
+    }
+    if (!existing.has(`${base}.glb`)) return base;
+    for (let i = 2; i < 1000; i += 1) {
+      if (!existing.has(`${base}-${i}.glb`)) return `${base}-${i}`;
+    }
+    return `${base}-${Date.now()}`;
+  }
+
+  async writeAsset(input: WriteAssetInput): Promise<Gen3DAssetManifest> {
+    const { slug, assetSlot, meta } = input;
+    const baseName = await this.resolveFreeName(slug, assetSlot, input.assetName);
+    const dir = slotDir(slug, assetSlot);
+    await mkdir(dir, { recursive: true });
+
+    const planned = planFiles(baseName, input.files);
+    const now = new Date().toISOString();
+    const manifestFiles: ManifestFile[] = [];
+    const dependencies: SidecarDependency[] = [];
+    let mainRel = '';
+    let mainSha = '';
+    let mainBytes = 0;
+
+    for (const p of planned) {
+      const abs = resolve(dir, p.fileName);
+      await writeFile(abs, p.input.data);
+      const sha256 = sha256Hex(p.input.data);
+      const rel = relPath(assetSlot, p.fileName);
+      const bytes = p.input.data.byteLength;
+      const isRiggedFbx = p.input.role === 'rigged_model' && p.input.format === 'fbx';
+      manifestFiles.push({
+        fileId: rel,
+        role: p.input.role,
+        format: p.input.format,
+        storageKey: rel,
+        bytes,
+        sha256,
+        localUrl: localUrlFor(slug, rel),
+        // Generation never produces a verified skeleton; only a verified rigging
+        // step in wb-3d-pipeline may set these (never inferred here).
+        hasSkeleton: false,
+        skeletonProfile: isRiggedFbx ? 'unknown' : 'unknown',
+        animationInputReady: false,
+      });
+      if (p.isMain) {
+        mainRel = rel;
+        mainSha = sha256;
+        mainBytes = bytes;
+      } else {
+        dependencies.push({ path: p.fileName, hash: `sha256:${sha256}`, kind: p.input.role });
+      }
+    }
+
+    const readiness = computeReadiness(manifestFiles);
+    const sidecar: AssetSidecar = {
+      schemaVersion: 1,
+      producer: { plugin: PLUGIN_ID, pluginVersion: PLUGIN_VERSION },
+      createdAt: now,
+      contentHash: `sha256:${mainSha}`,
+      size: mainBytes,
+      type: assetSlot === 'characters' ? 'gen3d-character' : 'gen3d-mesh',
+      dependencies,
+      custom: {
+        provider: meta.provider,
+        providerMode: meta.providerMode,
+        mode: meta.mode,
+        assetSlot,
+        sourceJobId: meta.sourceJobId,
+        prompt: meta.prompt,
+        sourceInputAssetPaths: meta.sourceInputAssetPaths,
+        ...(meta.faceCount !== undefined ? { faceCount: meta.faceCount } : {}),
+        readiness,
+        ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
+      },
+    };
+    const sidecarAbs = resolve(dir, `${baseName}.glb.meta.json`);
+    await writeFile(sidecarAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+
+    return {
+      manifestVersion: 1,
+      assetPath: mainRel,
+      assetSlot,
+      kind: 'mesh',
+      provider: meta.provider,
+      providerMode: meta.providerMode,
+      mode: meta.mode,
+      sourceJobId: meta.sourceJobId,
+      sourceInputAssetPaths: meta.sourceInputAssetPaths,
+      prompt: meta.prompt,
+      files: manifestFiles,
+      readiness,
+      quality: emptyQuality(),
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  async getAsset(slug: string, assetPath: string): Promise<Gen3DAssetManifest | null> {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return null;
+    const dir = slotDir(slug, slot);
+    const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+    let raw: string;
+    try {
+      raw = await readFile(sidecarAbs, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    const sidecar = JSON.parse(raw) as AssetSidecar;
+    return sidecarToManifest(slug, slot, fileName, sidecar);
+  }
+
+  async listAssets(slug: string, assetSlot?: AssetSlot): Promise<Gen3DAssetManifest[]> {
+    const slots: AssetSlot[] = assetSlot ? [assetSlot] : ['characters', 'meshes'];
+    const out: Gen3DAssetManifest[] = [];
+    for (const slot of slots) {
+      const dir = slotDir(slug, slot);
+      let entries: string[];
+      try {
+        entries = await readdir(dir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      for (const name of entries) {
+        if (!name.endsWith('.glb.meta.json')) continue;
+        const fileName = name.replace(/\.meta\.json$/, '');
+        const manifest = await this.getAsset(slug, relPath(slot, fileName));
+        if (manifest) out.push(manifest);
+      }
+    }
+    return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async deleteAsset(slug: string, assetPath: string): Promise<{ cacheKey: string | null }> {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return { cacheKey: null };
+    const dir = slotDir(slug, slot);
+    const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+
+    let cacheKey: string | null = null;
+    let deps: SidecarDependency[] = [];
+    try {
+      const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      cacheKey = sidecar.custom?.cacheKey ?? null;
+      deps = sidecar.dependencies ?? [];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+
+    // Remove main GLB + sidecar + every same-basename sidefile.
+    await rm(resolve(dir, fileName), { force: true });
+    await rm(sidecarAbs, { force: true });
+    for (const dep of deps) {
+      await rm(resolve(dir, dep.path), { force: true });
+    }
+    return { cacheKey };
+  }
+
+  // ─── Scratch (transfer) artifacts — NOT assets ────────────────────────────
+  async putScratch(input: PutScratchInput): Promise<PutScratchResult> {
+    const sha256 = sha256Hex(input.data);
+    const rel = `.gen3d/tmp/${sha256}.${input.format}`;
+    const abs = resolve(gameRoot(input.slug), rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, input.data);
+    // Scratch artifacts are not served by the read-only assets route (which is
+    // limited to assets/3d/**). localUrl is null: the in-page preview uses a
+    // data/object URL the caller already holds, and the durable bytes live here.
+    return { storageKey: rel, sha256, bytes: input.data.byteLength, localUrl: null };
+  }
+}
+
+// "assets/3d/<slot>/<file>" → { slot, fileName }. Returns slot=null if the path
+// is not a recognized 3D slot path.
+function parseAssetPath(assetPath: string): { slot: AssetSlot | null; fileName: string } {
+  const m = /^assets\/3d\/(characters|meshes)\/([^/]+)$/.exec(assetPath);
+  if (!m) return { slot: null, fileName: '' };
+  return { slot: m[1] as AssetSlot, fileName: m[2] };
+}
+
+function sidecarToManifest(
+  slug: string,
+  slot: AssetSlot,
+  fileName: string,
+  sidecar: AssetSidecar,
+): Gen3DAssetManifest {
+  const c = sidecar.custom;
+  const mainRel = relPath(slot, fileName);
+  const baseName = fileName.replace(/\.glb$/, '');
+  const files: ManifestFile[] = [
+    {
+      fileId: mainRel,
+      role: 'source_mesh',
+      format: 'glb',
+      storageKey: mainRel,
+      bytes: sidecar.size,
+      sha256: sidecar.contentHash.replace(/^sha256:/, ''),
+      localUrl: localUrlFor(slug, mainRel),
+      hasSkeleton: false,
+      skeletonProfile: 'unknown',
+      animationInputReady: false,
+    },
+  ];
+  for (const dep of sidecar.dependencies ?? []) {
+    const rel = relPath(slot, dep.path);
+    const format = (dep.path.split('.').pop() ?? 'png') as FileFormat;
+    files.push({
+      fileId: rel,
+      role: (dep.kind as ManifestFile['role']) ?? 'preview_image',
+      format,
+      storageKey: rel,
+      bytes: 0,
+      sha256: dep.hash.replace(/^sha256:/, ''),
+      localUrl: localUrlFor(slug, rel),
+      hasSkeleton: false,
+      skeletonProfile: 'unknown',
+      animationInputReady: false,
+    });
+  }
+  void baseName;
+  return {
+    manifestVersion: 1,
+    assetPath: mainRel,
+    assetSlot: slot,
+    kind: 'mesh',
+    provider: c.provider,
+    providerMode: c.providerMode,
+    mode: c.mode,
+    sourceJobId: c.sourceJobId,
+    sourceInputAssetPaths: c.sourceInputAssetPaths ?? [],
+    prompt: c.prompt,
+    files,
+    readiness: c.readiness ?? computeReadiness(files),
+    quality: emptyQuality(),
+    createdAt: sidecar.createdAt,
+    updatedAt: sidecar.createdAt,
+  };
+}

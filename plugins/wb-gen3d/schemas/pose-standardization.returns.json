@@ -14,7 +14,7 @@
     },
     "storageKey": {
       "type": "string",
-      "description": "Durable blob key for the standardized image (preview_image role). Not a 3D asset manifest; use as the upstream input for a later gen3d:image-to-3d call."
+      "description": "Scratch (transfer) key for the standardized image under .forgeax/games/<slug>/.gen3d/tmp/. NOT a 3D asset (no manifest, not in list-assets); use as the upstream input for a later gen3d:image-to-3d call."
     },
     "bytes": { "type": "integer", "minimum": 0 },
     "sha256": { "type": "string" },

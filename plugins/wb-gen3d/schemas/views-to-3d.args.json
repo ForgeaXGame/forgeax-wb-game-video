@@ -3,6 +3,20 @@
   "title": "gen3d:views-to-3d args",
   "type": "object",
   "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. Injected by the workbench host; required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes",
+      "description": "3D asset slot (subdir under assets/3d/)."
+    },
+    "assetName": {
+      "type": "string",
+      "description": "Desired base file name (without extension). Sanitized + de-duplicated by the store."
+    },
     "views": {
       "type": "object",
       "description": "Named view-slot image URLs. front_image_url is required; others optional.",
@@ -21,9 +35,9 @@
     },
     "provider": {
       "type": "string",
-      "enum": ["hunyuan_workflow", "meshy"],
+      "enum": ["hunyuan_workflow", "meshy", "rodin"],
       "default": "hunyuan_workflow",
-      "description": "Generation provider. Defaults to hunyuan_workflow. Meshy uses an ordered image array (front/back/left/right)."
+      "description": "Generation provider. Defaults to hunyuan_workflow. Meshy uses an ordered image array (front/back/left/right). Rodin attaches images with condition_mode=concat; mock-first until its key is supplied."
     },
     "enablePbr": { "type": "boolean", "default": true },
     "enableFbxUrl": { "type": "boolean", "default": false },

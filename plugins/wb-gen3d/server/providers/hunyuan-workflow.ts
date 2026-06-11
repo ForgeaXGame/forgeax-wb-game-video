@@ -52,6 +52,8 @@ export type DownloadLike = (url: string) => Promise<Uint8Array>;
 
 export interface HunyuanProviderDeps {
   env: HunyuanEnv;
+  // Active game slug for the per-game audit trail (ADR-0002). Smokes may pass any.
+  slug: string;
   fetchImpl?: FetchLike;
   downloadImpl?: DownloadLike;
   rateGuard?: RateGuard;
@@ -70,6 +72,7 @@ const URL_KEY_TO_FILE: Record<string, { role: FileRole; format: FileFormat }> = 
 
 export class HunyuanWorkflowProvider {
   private readonly env: HunyuanEnv;
+  private readonly slug: string;
   private readonly fetchImpl: FetchLike;
   private readonly downloadImpl: DownloadLike;
   private readonly rateGuard: RateGuard;
@@ -77,6 +80,7 @@ export class HunyuanWorkflowProvider {
 
   constructor(deps: HunyuanProviderDeps) {
     this.env = deps.env;
+    this.slug = deps.slug;
     this.fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
     this.downloadImpl =
       deps.downloadImpl ??
@@ -99,7 +103,7 @@ export class HunyuanWorkflowProvider {
       (submitResp.task_id as string) ??
       (submitResp.id as string) ??
       null;
-    await audit({ ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'submit', sourceJobId });
+    await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'submit', sourceJobId });
 
     const urls = await this.poll(model, sourceJobId, mode);
 
@@ -136,16 +140,16 @@ export class HunyuanWorkflowProvider {
       const resp = await this.post(PATH_QUERY, { model, task_id: taskId });
       const status = String(resp.status ?? resp.Status ?? '').toLowerCase();
       if (SUCCESS.has(status)) {
-        await audit({ ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
+        await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
         return extractUrls(resp);
       }
       if (FAILURE.has(status)) {
-        await audit({ ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_failed', sourceJobId: taskId, detail: status });
+        await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_failed', sourceJobId: taskId, detail: status });
         throw Object.assign(new Error(`hunyuan workflow failed: ${status}`), { code: 'provider_failed' });
       }
       await this.sleep(this.env.pollIntervalMs);
     }
-    await audit({ ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_timeout', sourceJobId: taskId });
+    await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_timeout', sourceJobId: taskId });
     throw Object.assign(new Error('hunyuan workflow poll timed out'), { code: 'provider_timeout' });
   }
 

@@ -3,6 +3,15 @@
   "title": "gen3d:list-assets args",
   "type": "object",
   "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Injected by the workbench host; required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "description": "Optional slot filter (subdir under assets/3d/). Omit to list all slots."
+    },
     "provider": {
       "enum": ["all", "meshy", "hunyuan_workflow", "hunyuan_rest", "rodin"],
       "default": "all"

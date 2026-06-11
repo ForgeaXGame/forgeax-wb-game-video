@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 plan finalized + second grill-review revisions applied to plan/ADR/CONTEXT; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 implemented; **Rodin real text-to-3D verified end-to-end** through the Studio server — GLB + webp preview persisted per-game, `providerMode='real'`. `/api/game-assets/:slug/*` server route now actually landed in `main.ts` (was missing). webp preview support added across the file contract. Real Hunyuan public-COS reachability + real Rodin image/views still pending. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
 
@@ -11,6 +11,77 @@ Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 plan finalized + second grill-re
 > contract**. ADR-0002 records this reversal of ADR-0001's global storage model.
 > All key decisions were already confirmed with the user during the 2026-06-11
 > grill — do not re-litigate them; just execute.
+
+## 2026-06-11 M9-M12 Landed (mock-first / quota-safe)
+
+M9-M12 are now **implemented** (typecheck + build pass). All real provider
+paths stay gated behind operator keys + `GEN3D_ENABLE_REAL_PROVIDERS=1`; nothing
+below makes a network call by default.
+
+- **M9 — per-game storage**: `server/per-game-store.ts` writes
+  `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `<name>.glb.meta.json`
+  (v2 contract sidecar; gen3d fields under `custom`, sidefiles in
+  `dependencies[]`, `custom.cacheKey` stored for delete reverse-lookup). Manifest
+  identity is now `assetPath` (UUID `assetId` + content-addressed blobs dropped);
+  `cache.jsonl`/`audit.jsonl` moved per-game; cacheKey includes `assetSlot`,
+  excludes `assetName`; cache hit reuses the existing path, non-cache name
+  collisions auto-suffix (`name-2.glb`). `gen3d:delete-asset`
+  (confirm-destructive) removes the GLB + sidecar + preview and tombstones the
+  cacheKey. Frontend reads `?slug=` from the iframe URL and threads it through all
+  tool calls; no active game ⇒ Generate disabled + empty state. Pose/upload
+  intermediates land in scratch (`.gen3d/tmp/`), not the library.
+- **M9 server route (plugin-external, operator-approved)**: `/api/game-assets/:slug/*`
+  in `packages/server/src/main.ts` — read-only, safe-slug + `..`-rejection +
+  `assets/3d/` prefix assertion, serving only display files under
+  `.forgeax/games/<slug>/assets/3d/**`. Old `/api/gen3d-blobs` left as-is.
+  **(2026-06-11: this route was missing from `main.ts` — earlier edit was lost;
+  it has now actually been (re-)landed and verified serving real GLB + webp,
+  with traversal/`..` rejected.)**
+- **M10 — local upload + COS**: `cos-nodejs-sdk-v5` + `server/cos-uploader.ts`;
+  `gen3d:upload-image` (base64 → ≤8MB backend validation → COS presigned URL,
+  reuses the JSON tools route, no extra server route). `SetupSidebar` source-image
+  inputs use `ImageInputField` (local picker → upload → URL backfill + manual
+  fallback); prompt textarea enlarged + char count; "角色编辑器" hint added.
+  `COS_*` live in plugin `.env` only.
+- **M11 — Rodin provider (mock-first)**: `server/providers/rodin.ts` (multipart
+  `POST /api/v2/rodin` → poll `/api/v2/status` → `/api/v2/download`),
+  `getRodinEnv()`, provider enum across types/ui-meta/catalog/tool-handlers/
+  schemas, UI selector entry. `tier=Regular`, `quality_override`,
+  `geometry_file_format=glb`; injectable fetch/download for quota-safe smoke.
+- **M12 — UI upgrade**: pose standardization moved above input; polycount is now
+  low/medium/high discrete buttons mapped per provider (Meshy 8k/30k/100k,
+  Hunyuan 10k/40k/120k, Rodin ~8k/18k/50k); `ModelViewer` gained a grid-floor
+  toggle, a skeleton toggle (enabled only when a SkinnedMesh exists), and a
+  faces/vertices/bbox HUD; `Workspace` result card trimmed; `AssetLibrary` is now
+  a dense preview-thumbnail grid leading with the prompt's first line + per-card
+  delete confirmation.
+
+Pending live verification (operator, with keys): Hunyuan fetching a **public**
+COS URL from its internal network (explicit risk item — fallbacks in
+CAPABILITY_MATRIX); real Rodin **image / views** runs (text is verified, see
+below). M10 logic was exercised by out-of-tree bun smoke scripts (injected
+fetch/download, no network); those scratch scripts are not committed.
+
+### 2026-06-11 (evening) — Rodin real API verified + webp + server route fix
+
+Ran a real Rodin `text-to-3d` through the live Studio server with
+`GEN3D_ENABLE_REAL_PROVIDERS=1` + `RODIN_API_KEY` (Business sub). Findings/fixes:
+
+- **Rodin real path works end-to-end**: submit `/api/v2/rodin` → poll
+  `/api/v2/status` (6 sub-jobs all `Done`) → download `/api/v2/download` returned
+  `base_basic_pbr.glb` + `preview.webp`; persisted per-game with
+  `providerMode='real'` and served back via `/api/game-assets/:slug/*`.
+- **`/api/game-assets/:slug/*` was actually missing** from `main.ts` (the earlier
+  "landed" edit had been lost), so every generated asset URL 404'd. Re-added with
+  safe-slug + `..` rejection + `assets/3d/` prefix assertion; verified GLB/webp
+  serve 200 and traversal returns 4xx.
+- **webp preview was being dropped**: Rodin's preview is `preview.webp`, but
+  `classifyFile()` returned `null` for `.webp` and `FileFormat` lacked it, and
+  `per-game-store.ts` hardcoded preview ext to `.png`. Fixed: `FileFormat` now
+  includes `'webp'`; `classifyFile()` maps `.webp` → `preview_image`; preview
+  files are now stored with their real format ext (`<name>.<fmt>`), so webp
+  thumbnails persist and render.
+- Smoke-test asset + temp files cleaned up after verification.
 
 ## 2026-06-11 Second grill-review revisions (READ FIRST)
 
@@ -424,11 +495,11 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **NEXT** (planned) | do first; supersedes ADR-0001 global library; ADR-0002 written; `/api/game-assets/:slug/*` is plugin-external, confirm authorization |
-| **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | planned | new dep `cos-nodejs-sdk-v5`; `COS_*` in plugin `.env` only |
-| **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | planned | awaiting `RODIN_API_KEY`; mock-first until key + one verified output shape |
-| **M12 UI upgrade** (pose-top, low/med/high polycount buttons+presets, result grid/skeleton/info, dense asset grid + delete) | planned | UI-only, on top of M9-M11 |
-| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | closeout done | append-only handoff completed; update again when implementation lands |
+| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **DONE** (mock-first) | supersedes ADR-0001 global library; ADR-0002 written; `/api/game-assets/:slug/*` server route landed (operator-approved) |
+| **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | **DONE** | dep `cos-nodejs-sdk-v5` added; `COS_*` in plugin `.env` only; real COS upload pending key |
+| **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | **DONE** (mock-first) | awaiting `RODIN_API_KEY` + one verified output shape for real calls |
+| **M12 UI upgrade** (pose-top, low/med/high polycount buttons+presets, result grid/skeleton/info, dense asset grid + delete) | **DONE** | UI-only, on M9-M11 |
+| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | **DONE** | updated to reflect landed implementation |
 | ~~M8 handoff UI~~ (gen3d → game assets) | **superseded by M9** | per-game file model writes straight into `assets/3d/` |
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
 | `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |

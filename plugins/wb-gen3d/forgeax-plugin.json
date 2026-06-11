@@ -29,7 +29,7 @@
       },
       "bus": { "surfaceId": "gen3d" },
       "matchProduces": [
-        "**/.forgeax/assets/gen3d/**"
+        "**/.forgeax/games/*/assets/3d/**"
       ]
     },
     "tools": [
@@ -49,8 +49,19 @@
         "returns": "./schemas/list-assets.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "列出已生成的持久化 3D 资产 manifest，可按 provider 过滤。",
-          "en": "List durable generated 3D asset manifests, optionally filtered by provider."
+          "zh": "列出当前游戏已生成的持久化 3D 资产 manifest，可按 slot / provider 过滤。",
+          "en": "List the active game's durable 3D asset manifests, optionally filtered by slot / provider."
+        }
+      },
+      {
+        "id": "gen3d:delete-asset",
+        "args": "./schemas/delete-asset.args.json",
+        "returns": "./schemas/delete-asset.returns.json",
+        "exposedToAI": false,
+        "confirm": true,
+        "description": {
+          "zh": "删除当前游戏的一个 3D 资产（主 GLB + sidecar + 同名附属文件），并对其 cacheKey 打 tombstone 防止缓存复活。破坏性操作，仅经 UI 确认触发。",
+          "en": "Delete a 3D asset from the active game (main GLB + sidecar + same-basename sidefiles) and tombstone its cacheKey so it never resurrects from a cache hit. Destructive; UI-confirm only."
         }
       },
       {
@@ -69,8 +80,8 @@
         "returns": "./schemas/text-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "文生 3D：经 Hunyuan workflow 生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock，保持无配额安全。",
-          "en": "Text-to-3D via Hunyuan workflow, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured (quota-safe)."
+          "zh": "文生 3D：选 provider（混元 workflow / Meshy / Rodin）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock，保持无配额安全。",
+          "en": "Text-to-3D via the chosen provider (Hunyuan workflow / Meshy / Rodin), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured (quota-safe)."
         }
       },
       {
@@ -79,8 +90,8 @@
         "returns": "./schemas/image-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "图生 3D：经 Hunyuan workflow 生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
-          "en": "Image-to-3D via Hunyuan workflow, persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+          "zh": "图生 3D：选 provider（混元 workflow / Meshy / Rodin）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Image-to-3D via the chosen provider (Hunyuan workflow / Meshy / Rodin), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
         }
       },
       {
@@ -89,8 +100,8 @@
         "returns": "./schemas/views-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "多视图生 3D：选 provider（Hunyuan workflow 命名视图槽 / Meshy 有序图数组）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
-          "en": "Multi-view-to-3D via the chosen provider (Hunyuan workflow named view slots / Meshy ordered image array), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+          "zh": "多视图生 3D：选 provider（Hunyuan workflow 命名视图槽 / Meshy 有序图数组 / Rodin concat 多图）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Multi-view-to-3D via the chosen provider (Hunyuan workflow named view slots / Meshy ordered image array / Rodin concat multi-image), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
         }
       },
       {
@@ -111,6 +122,16 @@
         "description": {
           "zh": "姿态标准化（Hunyuan REST 子能力，上游预处理）：把简单卡通人物全身图标准化为 A/T-pose，输出图落盘为持久 blob 供后续图生 3D 使用；不产出 3D 资产 manifest。未配置真实 provider 时回退确定性 mock。",
           "en": "Pose standardization (Hunyuan REST sub-capability, upstream preprocessing): standardize a simple cartoon full-body character image to an A/T-pose. The output image is persisted as a durable blob for later image-to-3D; it does NOT produce a 3D asset manifest. Falls back to a deterministic mock when no real provider is configured."
+        }
+      },
+      {
+        "id": "gen3d:upload-image",
+        "args": "./schemas/upload-image.args.json",
+        "returns": "./schemas/upload-image.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "本地图片上传（中转产物，非资产）：解码 base64（≤8MB）上传到 COS，返回 24h 预签名 URL 供图生/多视图/姿态标准化等 URL-fetch provider 使用。未配置 COS 时报错，提示改为手填 URL。",
+          "en": "Local image upload (transfer artifact, NOT an asset): decode base64 (≤8MB), upload to COS, return a 24h presigned URL for URL-fetching providers (image/views/pose tools). Errors with cos_not_configured when COS is absent so the UI can ask the user to paste a URL."
         }
       }
     ],

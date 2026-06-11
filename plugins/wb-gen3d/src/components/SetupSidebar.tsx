@@ -3,8 +3,17 @@ import { Plus } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
 import { BLOB_BASE } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
-import { EDITOR_ICON_MAP, modeMeta, providerMeta } from '@/ui-meta';
+import {
+  EDITOR_ICON_MAP,
+  modeMeta,
+  providerMeta,
+  POLYCOUNT_TIERS,
+  polycountTierMeta,
+  tierToFaceCount,
+  type PolycountTier,
+} from '@/ui-meta';
 import { StepCard } from '@/components/StepCard';
+import { ImageInputField } from '@/components/ImageInputField';
 
 type StepId = 'provider' | 'input' | 'pose' | 'params';
 
@@ -16,11 +25,13 @@ export function SetupSidebar({
   status,
   assetCount,
   busy,
+  gameActive,
   onGenerate,
 }: {
   status: ProviderStatus | null;
   assetCount: number;
   busy: boolean;
+  gameActive: boolean;
   onGenerate: (mode: Mode, args: unknown) => void;
 }) {
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
@@ -34,7 +45,7 @@ export function SetupSidebar({
   const [rightUrl, setRightUrl] = useState('');
   const [showMoreViews, setShowMoreViews] = useState(false);
   const [enablePbr, setEnablePbr] = useState(true);
-  const [targetPolycount, setTargetPolycount] = useState(30000);
+  const [polycountTier, setPolycountTier] = useState<PolycountTier>('mid');
   const [poseResult, setPoseResult] = useState<PoseResult | null>(null);
 
   const usesImageInput = mode === 'image' || mode === 'views';
@@ -55,6 +66,7 @@ export function SetupSidebar({
 
   const canSubmit =
     !busy &&
+    gameActive &&
     (mode === 'text'
       ? prompt.trim().length > 0
       : mode === 'image'
@@ -63,6 +75,7 @@ export function SetupSidebar({
 
   function submit() {
     if (!canSubmit) return;
+    const targetPolycount = tierToFaceCount(provider, polycountTier);
     const common = { provider, enablePbr, targetPolycount };
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
@@ -126,8 +139,25 @@ export function SetupSidebar({
             </p>
           </StepCard>
 
+          {usesImageInput && (
+            <StepCard
+              index={2}
+              title="姿态标准化（可选）"
+              summary={poseResult ? '已生成标准化图' : '未使用'}
+              open={openStep === 'pose'}
+              onToggle={() => toggle('pose')}
+            >
+              <PosePreprocess
+                mode={mode}
+                result={poseResult}
+                onResult={setPoseResult}
+                onUse={handleUsePose}
+              />
+            </StepCard>
+          )}
+
           <StepCard
-            index={2}
+            index={usesImageInput ? 3 : 2}
             title="输入方式"
             summary={`${modeMeta[mode].label} · ${inputSummary}`}
             open={openStep === 'input'}
@@ -154,73 +184,62 @@ export function SetupSidebar({
 
             {mode === 'text' && (
               <label className="field">
-                <span className="field-label">描述 Prompt</span>
+                <span className="field-label">
+                  描述 Prompt <span className="field-count">{prompt.trim().length} 字</span>
+                </span>
                 <textarea
-                  className="fx-textarea"
+                  className="fx-textarea fx-textarea--lg"
                   value={prompt}
-                  rows={4}
+                  rows={6}
+                  placeholder="描述你想生成的角色 / 物件，越具体越好。例：身披红色斗篷的卡通骑士，手持长剑，低多边形风格。"
                   onChange={(e) => setPrompt(e.target.value)}
                 />
               </label>
             )}
 
+            {usesImageInput && (
+              <p className="step-note">
+                可在「角色编辑器」生成三视图 / 立绘后导入，或本地上传图片自动托管。
+              </p>
+            )}
+
             {mode === 'image' && (
-              <label className="field">
-                <span className="field-label">图片 URL</span>
-                <input
-                  className="fx-input"
-                  type="url"
-                  value={imageUrl}
-                  placeholder="https://…/character.png"
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
-              </label>
+              <ImageInputField
+                label="图片 URL"
+                value={imageUrl}
+                placeholder="https://…/character.png"
+                onChange={setImageUrl}
+              />
             )}
 
             {mode === 'views' && (
               <>
-                <label className="field">
-                  <span className="field-label">正视图 URL（必填）</span>
-                  <input
-                    className="fx-input"
-                    type="url"
-                    value={frontUrl}
-                    placeholder="https://…/front.png"
-                    onChange={(e) => setFrontUrl(e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span className="field-label">背视图 URL（可选）</span>
-                  <input
-                    className="fx-input"
-                    type="url"
-                    value={backUrl}
-                    placeholder="https://…/back.png"
-                    onChange={(e) => setBackUrl(e.target.value)}
-                  />
-                </label>
+                <ImageInputField
+                  label="正视图 URL（必填）"
+                  value={frontUrl}
+                  placeholder="https://…/front.png"
+                  onChange={setFrontUrl}
+                />
+                <ImageInputField
+                  label="背视图 URL（可选）"
+                  value={backUrl}
+                  placeholder="https://…/back.png"
+                  onChange={setBackUrl}
+                />
                 {showMoreViews ? (
                   <>
-                    <label className="field">
-                      <span className="field-label">左视图 URL（可选）</span>
-                      <input
-                        className="fx-input"
-                        type="url"
-                        value={leftUrl}
-                        placeholder="https://…/left.png"
-                        onChange={(e) => setLeftUrl(e.target.value)}
-                      />
-                    </label>
-                    <label className="field">
-                      <span className="field-label">右视图 URL（可选）</span>
-                      <input
-                        className="fx-input"
-                        type="url"
-                        value={rightUrl}
-                        placeholder="https://…/right.png"
-                        onChange={(e) => setRightUrl(e.target.value)}
-                      />
-                    </label>
+                    <ImageInputField
+                      label="左视图 URL（可选）"
+                      value={leftUrl}
+                      placeholder="https://…/left.png"
+                      onChange={setLeftUrl}
+                    />
+                    <ImageInputField
+                      label="右视图 URL（可选）"
+                      value={rightUrl}
+                      placeholder="https://…/right.png"
+                      onChange={setRightUrl}
+                    />
                   </>
                 ) : (
                   <button
@@ -236,42 +255,35 @@ export function SetupSidebar({
             )}
           </StepCard>
 
-          {usesImageInput && (
-            <StepCard
-              index={3}
-              title="姿态标准化（可选）"
-              summary={poseResult ? '已生成标准化图' : '未使用'}
-              open={openStep === 'pose'}
-              onToggle={() => toggle('pose')}
-            >
-              <PosePreprocess
-                mode={mode}
-                result={poseResult}
-                onResult={setPoseResult}
-                onUse={handleUsePose}
-              />
-            </StepCard>
-          )}
-
           <StepCard
             index={usesImageInput ? 4 : 3}
             title="生成参数"
-            summary={`${targetPolycount.toLocaleString()} 面 · PBR ${enablePbr ? '开' : '关'}`}
+            summary={`${polycountTierMeta[polycountTier].label}面数 · PBR ${enablePbr ? '开' : '关'}`}
             open={openStep === 'params'}
             onToggle={() => toggle('params')}
           >
-            <label className="field">
-              <span className="field-label">目标面数 targetPolycount</span>
-              <input
-                className="fx-input"
-                type="number"
-                min={1000}
-                max={300000}
-                step={1000}
-                value={targetPolycount}
-                onChange={(e) => setTargetPolycount(Number(e.target.value))}
-              />
-            </label>
+            <div className="field">
+              <span className="field-label">
+                目标面数{' '}
+                <span className="field-count">
+                  ≈ {tierToFaceCount(provider, polycountTier).toLocaleString()} 面
+                </span>
+              </span>
+              <div className="fx-segmented" role="radiogroup" aria-label="目标面数">
+                {POLYCOUNT_TIERS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="radio"
+                    aria-checked={polycountTier === t}
+                    className={`fx-segmented-btn ${polycountTier === t ? 'is-selected' : ''}`}
+                    onClick={() => setPolycountTier(t)}
+                  >
+                    <span>{polycountTierMeta[t].label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="fx-check">
               <input type="checkbox" checked={enablePbr} onChange={(e) => setEnablePbr(e.target.checked)} />
               <span>启用 PBR 材质</span>
@@ -287,6 +299,7 @@ export function SetupSidebar({
       </div>
 
       <div className="gx-action-row">
+        {!gameActive && <span className="step-note step-note--warn">未选择游戏，无法生成</span>}
         <button type="button" className="fx-btn fx-btn--primary" disabled={!canSubmit} onClick={submit}>
           <GenerateIcon size={15} aria-hidden="true" />
           {busy ? '生成中…' : '生成 3D'}
@@ -374,16 +387,7 @@ function PosePreprocess({
       <p className="step-note">
         把简单卡通全身图标准化为 A/T-pose 再用作生成输入。仅适合简单卡通全身图。
       </p>
-      <label className="field">
-        <span className="field-label">源图 URL</span>
-        <input
-          className="fx-input"
-          type="url"
-          value={srcUrl}
-          placeholder="https://…/character.png"
-          onChange={(e) => setSrcUrl(e.target.value)}
-        />
-      </label>
+      <ImageInputField label="源图 URL" value={srcUrl} placeholder="https://…/character.png" onChange={setSrcUrl} />
       <button
         type="button"
         className="fx-btn fx-btn--sm"
