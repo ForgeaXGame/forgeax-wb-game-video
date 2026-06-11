@@ -31,9 +31,30 @@ Providers：Hunyuan REST（`auto_rigging` / `motion_retarget` / `low_poly`）/ �
 
 ### Asset
 
-一个持久的、game 可用的 3D 产物。由 `assetId`（随机 UUID）唯一标识，拥有一组 File（按角色区分）。
-下游模块通过 manifest 消费 Asset，不通过 provider URL。
-同输入多次生成产出不同 Asset（3D 生成是非确定性的）；去重由 cache 层负责。
+一个持久的、game 可用的 3D 产物。M9 起 canonical identity 是 game 内相对路径
+（例如 `assets/3d/characters/hero.glb`），不再是随机 UUID 或 provider URL。
+下游模块通过 manifest + sidecar 消费 Asset，不通过 provider URL。
+
+### Asset Path
+
+Asset 的稳定身份字段，值是 game 内相对路径，例如 `assets/3d/characters/hero.glb`。
+_Avoid_: 对新 manifest 继续使用 `assetId` 表示路径。
+
+### Asset Name
+
+用户可读的资产文件名基底，用来形成 game 内相对路径。普通生成不会自动覆盖同名
+Asset；命中同一请求时复用已有路径，需要新版本时走显式的变体生成。
+
+### Asset Slot
+
+Asset 在 game 里的 3D 资产槽位，值直接对应目录：`characters` 表示角色资产，
+`meshes` 表示通用 3D 模型。_Avoid_: `assetType=prop`。
+
+### Transfer URL
+
+临时传输地址，只用于让外部 provider 读取输入图、输入模型或中间文件。
+Transfer URL 不是 Asset 身份，也不是下游模块应该保存的引用；provider 返回的产物
+必须下载回 per-game 资产文件后才算进入 ForgeaX 资产契约。
 
 ## 产品定位
 
@@ -71,33 +92,30 @@ Meshy 专属：`refine`（基于 preview 加贴图的第二阶段，等 Meshy �
 
 ### Gen3DAssetManifest
 
-一次生成产出的持久化记录。包含 assetId、来源 provider/mode/job 信息、files[] 列表、状态标志。
-是 wb-gen3d 与 wb-3d-pipeline 之间的传递契约。
+一次生成产出的持久化记录。M9 起它描述某个 game 内路径资产及其来源
+provider/mode/job 信息、文件角色和状态标志。新 manifest 用 `assetPath` 作身份字段。
+它是 wb-gen3d 与 wb-3d-pipeline 之间的传递契约。
 
 ### File（manifest 内）
 
-一个存储的 blob。属性：role / format / storageKey / bytes / sha256。
-不直接对外暴露 URL；需要时通过 storage adapter 生成临时访问地址。
+Asset 的一个文件角色，例如主 mesh、预览图、贴图、绑骨模型或动画片段。
+文件可被 Studio 用本地预览 URL 展示；外部 provider 需要访问时必须使用临时传输 URL。
 
 ### 资产存储模型
 
-全局资产库（不绑定 game）。生成时不需要指定 gameSlug。
-游戏引用资产时通过 assetId 松散关联。
+Per-game runtime asset library。生成时必须归属一个 game；资产直接落在该 game 的
+运行时资产目录里，路径本身就是稳定引用。
 
 ```
-.forgeax/assets/gen3d/
-  <assetId>/manifest.json
-  blobs/<sha256-prefix>/<sha256>.<ext>
+.forgeax/games/<slug>/assets/3d/
+  characters/<name>.glb
+  characters/<name>.meta.json
+  meshes/<name>.glb
+  meshes/<name>.meta.json
 ```
 
-先有资产、后决定用在哪个游戏。跨游戏复用是免费的。
-
-**与 per-game 运行时资产库的关系：** ForgeaX 官方还有
-`.forgeax/games/<slug>/assets/`（项目财产，引擎直接加载；例：`shoot-opt` 的
-`*.pack.json`）。v2 目标在 `assets/2d/`、`assets/3d/characters/` 等 path slot
-落盘（见 studio `docs/v2-vision/node-runtime-architecture/03-WORKSPACE-LAYOUT.md`）。
-wb-gen3d 全局库是**生成 staging 层**；入戏到 game 目录是后续 handoff，不是生成时
-必选步骤。
+不再维护 gen3d 专属的全局 staging 资产库作为主模型。跨 game 复用需要显式复制
+或导入，而不是共享同一个全局 assetId。
 
 ### ProviderResult
 
@@ -107,8 +125,10 @@ Provider 不知道 cache 和 asset-store 的存在；ProviderResult 是纯数据
 ### Cache
 
 请求级去重。key = `(providerId, mode, normalized_payload)` 的 hash。
-只存成功结果的 `hash → assetId` 映射，不存 provider 响应或 URL。
+只存成功结果的 `hash → game 内相对路径` 映射，不存 provider 响应或 URL。
 命中后直接从 asset-store 读取 manifest 返回。
+
+普通生成命中 Cache 时复用已有 Asset；“同输入再抽一版”是显式变体生成，不是默认行为。
 
 设计原则：cache 不依赖 provider 响应格式（源 lab ADR-0002 精神的极致化）。
 写入时机：provider 调用 + blob 下载 + manifest 写入全部成功后，cache 才追加一条映射。
@@ -121,3 +141,6 @@ Provider 不知道 cache 和 asset-store 的存在；ProviderResult 是纯数据
 | `pose_standardization` 归属 | 归 gen3d（图片预处理），不归 3d-pipeline |
 | Hunyuan REST 归属 | 跨两个模块：pose_standardization 归 gen3d，其余归 3d-pipeline |
 | `refine` | 仅 Meshy 专属的第二阶段，不泛化到其他 provider |
+| `assetType=prop` | 说 `assetSlot=meshes`；UI 可显示“道具 / 物件” |
+| 新资产身份字段 | 说 `assetPath`，不要把路径继续叫 `assetId` |
+| provider URL / presigned URL | 说 `Transfer URL`；它只是临时传输手段 |

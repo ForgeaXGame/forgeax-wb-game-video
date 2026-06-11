@@ -1,6 +1,8 @@
 # Gen3D Provider Capability Matrix
 
-Status: source-derived planning matrix. Do not expose rows marked hidden or
+Status: source-derived planning matrix. Updated 2026-06-11: Rodin is now
+mock-first/planned for M11 implementation, but real Rodin calls remain gated
+until key + output shape are verified. Do not expose rows marked hidden or
 blocked in workbench UI or AI-facing schemas.
 
 ## Exposure Legend
@@ -30,7 +32,7 @@ blocked in workbench UI or AI-facing schemas.
 | Hunyuan REST | `motion_retarget` v1 | Verified end-to-end in lab | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. Deferred until a `role=rigged_model` asset path exists (`wb-3d-pipeline`). |
 | Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
-| Rodin | Pending generation modes | Key and API contract pending | hidden | Third provider after Hunyuan and Meshy. Add only after user supplies key/API details and output shape is verified. |
+| Rodin | `text` / `image` / `views` | API contract planned; key pending | mock-first | M11 provider after Hunyuan and Meshy. UI/provider plumbing may land with mock fallback; real calls require `RODIN_API_KEY` and one verified output shape. Target defaults: `tier=Regular`, `material=PBR`, `quality_override`, GLB output. |
 | Future provider | Tripo3D / Luma / others | Not migrated | hidden | Add only after provider contracts are explicit. |
 
 ## Provider Boundary Rules
@@ -41,8 +43,9 @@ blocked in workbench UI or AI-facing schemas.
   underscore path names, not hyphenated names.
 - Meshy `refine` is provider-specific and should not be generalized into
   Hunyuan schemas.
-- Rodin is a planned third provider, but must remain hidden until key, request
-  schema, cost model, and output formats are documented.
+- Rodin may be added mock-first as the third provider. Real calls must remain
+  behind `GEN3D_ENABLE_REAL_PROVIDERS` + `RODIN_API_KEY` until request schema,
+  cost model, and output formats are verified with one end-to-end result.
 - Unknown or unverified modes should be invisible by default. A warning label is
   not enough because some endpoints can consume quota or silently return default
   output.

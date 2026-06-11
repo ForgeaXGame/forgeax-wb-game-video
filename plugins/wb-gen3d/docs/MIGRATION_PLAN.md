@@ -1,10 +1,12 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M8 in progress — Workbench UI refactor landed (2026-06-11, `af986ce`):
-token-aligned staged sidebar + center workspace + asset library column; core
-generation-loop UI landed (2026-06-10). M5 `pose_standardization` live-verified;
-`motion_retarget` v1 deferred. M4 Hunyuan workflow complete. Product direction
-2026-06-09.
+Status: M8 landed; M9-M12 ready for execution (2026-06-11 handoff). Workbench UI
+refactor landed (2026-06-11, `af986ce`): token-aligned staged sidebar + center
+workspace + asset library column; core generation-loop UI landed (2026-06-10).
+M5 `pose_standardization` live-verified; `motion_retarget` v1 deferred. M9
+supersedes ADR-0001's global asset library with a per-game file contract; see
+`docs/PLAN-2026-06-11-rodin-cos-pergame.md` and
+`docs/adr/0002-per-game-file-asset-storage.md`.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -35,7 +37,7 @@ modules. It should not become a direct transplant of `hunyuan3d-lab`.
   schemas, code, and documentation.
 - Provider URLs are downloaded immediately into durable storage before being
   advertised as game assets.
-- Other modules consume stable asset ids/manifests, not temporary provider URLs.
+- Other modules consume stable asset paths/manifests, not temporary provider URLs.
 - FBX URLs passed to rigging or animation providers are temporary transport URLs;
   they are never the canonical stored asset reference.
 - The storage layer is adapter-based: local dev blobs first, object storage
@@ -106,7 +108,8 @@ Verification:
 
 ### M3 - Asset Contract And Storage Adapter
 
-Status: complete (mock-backed, no-quota).
+Status: complete (mock-backed, no-quota); storage model superseded for future
+work by M9 / ADR-0002.
 
 Goal: define the stable output contract before real provider calls.
 
@@ -272,7 +275,10 @@ Verification:
 
 ### M7 - Rodin Provider
 
-Goal: add Rodin as the third provider after user supplies key and API details.
+Goal: add Rodin as the third provider. Carried forward as M11 in
+`docs/PLAN-2026-06-11-rodin-cos-pergame.md`: mock-first UI/provider plumbing may
+land before the real key, while real calls stay gated until key + output shape are
+verified.
 
 Verification:
 
@@ -342,8 +348,8 @@ only M8 changes outside `plugins/wb-gen3d/`.
 
 Remaining M8 items:
 
-- Handoff action: gen3d global library → `.forgeax/games/<slug>/assets/3d/characters/`
-  (copy/import + `.meta.json` sidecar).
+- ~~Handoff action: gen3d global library → `.forgeax/games/<slug>/assets/3d/characters/`~~
+  — superseded by M9 per-game storage; generation writes directly to `assets/3d/`.
 - Downstream rigging/animation handoff metadata (wire `InspectorReserved`).
 - Quality scoring UI for the five-dimension rubric (wire `InspectorReserved`).
 - ~~Workbench editor-pattern UI refactor~~ — done 2026-06-11.
@@ -355,6 +361,32 @@ Verification:
 - Comparison report readiness can distinguish pilot observations from supported
   recommendations.
 - Missing PBR can be represented without corrupting the total score.
+
+### M9-M12 - 2026-06-11 Addendum
+
+Status: ready for execution. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
+
+Addendum scope:
+
+- **M9 per-game storage refactor**: replace global `assetId` library with
+  `assetPath` under `.forgeax/games/<slug>/assets/3d/{characters|meshes}/`, plus
+  sidecar `.meta.json`, cache hit reuse, non-cache collision suffixing, list, and
+  confirmed delete.
+- **M10 local upload + COS**: plugin-local image upload tool returns a temporary
+  transfer URL for Hunyuan/Meshy; Rodin can use bytes/multipart. Secrets stay in
+  plugin-local `.env` only.
+- **M11 Rodin provider**: text/image/views, `tier=Regular`, `quality_override`,
+  mock-first until `RODIN_API_KEY` and one real output shape are verified.
+- **M12 UI upgrade**: pose standardization moved upward, polycount slider +
+  provider presets, model grid/skeleton/info, dense asset library, delete with
+  confirmation.
+
+Documentation closeout done 2026-06-11:
+
+- Added ADR-0002 for the per-game file storage reversal.
+- Updated `CONTEXT.md`, this migration plan, capability matrix, and handoff log
+  to point future executors at M9-M12.
+- No runtime implementation was done in this closeout pass.
 
 ## Non-Goals
 

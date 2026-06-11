@@ -14,9 +14,10 @@
 - 本地上传图片：插件内加腾讯 COS 适配器，从插件 `.env` 读 `COS_SECRET_ID/KEY/BUCKET/REGION`；上传工具回 24h 预签名 URL 给混元/Meshy，Rodin 直接用字节。
 - Rodin：text/image/views 全接，`tier=Regular`、`quality_override` 控面数；进 UI 供应商选择器(mock 回退)，拿到 key 后实测转正。
 - 生成参数：统一连续滑块 + 每家预设(Meshy 8k/30k/100k、混元 10k/40k/120k、Rodin 8k/18k/50k)，Rodin 映射 `quality_override`。
-- **存储改为 per-game v2 文件契约（取代 ADR-0001 全局库）**：生成物以具名文件写到 `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json` sidecar；资产 ID=路径；丢弃随机 UUID + 内容寻址 blob；`cache→路径`；`list` 扫目录；`delete` 删文件+sidecar(无需引用计数)。
-- slug 来自 host bridge `STUDIO_INIT`(复用 wb-character 机制)；无 active game 时生成按钮置灰 + 空态提示。
-- 资产类型选择器：角色→`assets/3d/characters/`，道具→`assets/3d/meshes/`，默认角色。
+- **存储改为 per-game v2 文件契约（取代 ADR-0001 全局库）**：生成物以具名文件写到 `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json` sidecar；新 manifest 身份字段为 `assetPath`（值是 game 内相对路径），丢弃随机 UUID + 内容寻址 blob；`cache→assetPath`；`list` 扫目录；`delete` 删文件+sidecar(无需引用计数)。
+- 普通生成不自动覆盖同名文件：同一规范化请求命中 cache 时复用已有路径；不同请求撞名时自动加后缀（如 `name-2.glb`）；“同 prompt 再抽一版”后续作为显式变体生成/绕过 cache 动作，不混入普通生成。
+- slug 来自 host 注入的 iframe URL query（`?slug=<gameSlug>`，当前代码已这样做）；host bridge/ctx 只作兼容增强。无 active game 时生成按钮置灰 + 空态提示。
+- 资产槽位选择器：`assetSlot=characters`→`assets/3d/characters/`（UI 显示“角色”），`assetSlot=meshes`→`assets/3d/meshes/`（UI 显示“道具 / 物件”），默认 `characters`。
 - 姿态标准化置顶：顺序 供应商 → 姿态标准化 → 输入方式 → 生成参数；保持可选；源图支持本地上传。
 - 结果区：grid 开关 + 面数/顶点数/包围盒尺寸常显；「显示骨骼」仅当 GLB 含 SkinnedMesh 时可用，否则置灰。
 - 提示文案指向「角色编辑器」(wb-character)。
@@ -45,7 +46,7 @@ flowchart LR
 
 - `docs/MIGRATION_PLAN.md`：**不重写**。在末尾追加 M9–M12；M7(Rodin)/M8(handoff) 状态更新；顶部 Status 行加一句"per-game 重构进行中(详见 ADR-0002)"。
 - 新建 `docs/adr/0002-per-game-file-asset-storage.md`：记录"per-game 文件契约取代 ADR-0001 全局库"这一难以反转的反转决策(为何、代价、迁移)。
-- `CONTEXT.md`：更新术语——Asset 由"随机 UUID + manifest"改为"资产 ID=`assets/3d/...` 相对路径 + `.meta.json` sidecar"；存储模型节改写为 per-game；加 Rodin/上传术语。
+- `CONTEXT.md`：更新术语——Asset 由"随机 UUID + manifest"改为"`assetPath=assets/3d/...` + `.meta.json` sidecar"；存储模型节改写为 per-game；加 Rodin/上传术语。
 - `docs/CAPABILITY_MATRIX.md`：Rodin 行从 hidden 升为 mock-first/planned，补 Hyper3D 端点与档位。
 - `HANDOFF.md`：更新 Current State / Pending Work（本次已更新指向本计划）。
 
@@ -57,13 +58,14 @@ flowchart LR
 
 - 新 `server/per-game-store.ts` 实现 `AssetStorage`(替代 `LocalBlobStore`)：把所有路径逻辑(写文件、sidecar、list、delete)封进适配器，便于以后改路径只动一处。
   - 写：`${projectRoot}/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.<ext>` + 同名 `.meta.json`(v2 sidecar：`producer/createdAt/contentHash/size/type/custom`，把现有 `Gen3DAssetManifest` 字段塞进 `custom`：provider/providerMode/mode/sourceJobId/faceCount/readiness 等)。
+  - 命名：工具接受可选 `assetName`；未填时从 prompt/输入生成安全文件名。cache 命中返回既有路径；非 cache 撞名不覆盖，自动后缀化。
   - `localUrl` = `/api/game-assets/<slug>/3d/.../<name>.glb`。
-- 改 `shared/manifest.ts`：资产标识从 `assetId`(UUID) 过渡到 `path`；`selectFile` 按文件后缀/角色解析(角色文件即主 GLB，预览即同名 `.png`)。下游 wb-3d-pipeline 尚未建，契约现在改最便宜(CONTEXT 已注明)。
-- 改 `server/cache.ts` + `generate.ts`：`cacheKey → 相对路径`(命中后读该文件的 sidecar 返回)。
-- 改 `server/tool-handlers.ts`：所有 mode 工具 + `list-assets` 接受 `slug` + `assetType`(character/prop) 参数；`list` 扫 per-game 目录读 sidecar。
+- 改 `shared/manifest.ts`：资产标识从旧 `assetId`(UUID) 改为新 `assetPath`；`selectFile` 按文件后缀/角色解析(角色文件即主 GLB，预览即同名 `.png`)。下游 wb-3d-pipeline 尚未建，契约现在改最便宜(CONTEXT 已注明)。旧 `assetId` 只可作为读取旧全局库时的兼容字段，不作为新 manifest 必填。
+- 改 `server/cache.ts` + `generate.ts`：`cacheKey → assetPath`(命中后读该路径的 sidecar 返回)。`sourceInputAssetIds` 同步改名为 `sourceInputAssetPaths`。
+- 改 `server/tool-handlers.ts`：所有 mode 工具接受 `slug` + `assetSlot`(`characters`/`meshes`) + 可选 `assetName` 参数；`list-assets` 接受 `slug` + `assetSlot` 过滤；`list` 扫 per-game 目录读 sidecar。
 - 新工具 `gen3d:delete-asset`(args: slug, path)：删 `.glb` + `.meta.json` + 预览；schema 标 `requireConfirm: "destructive"`(参照 `wb-3d-lowpoly` 的 `lowpoly:projects.remove`)。
-- slug 注入：在 `src/` 加最小 host-bridge 监听(镜像 `wb-character/src/platform/HostSdkBridge.ts` + `GlobalState` 的 `STUDIO_INIT`→`setSlug`)，`App.tsx` 持有 slug 并下传所有工具调用；无 slug → 生成置灰 + 空态。
-- **服务端(插件外，需授权)**：`packages/server/src/main.ts` 加 per-game 静态路由 `/api/game-assets/:slug/*` → `.forgeax/games/<slug>/assets/`(沿用现有 `/api/gen3d-blobs` serveStatic 写法 + CORS)。旧 `/api/gen3d-blobs` 暂留兼容旧全局资产。
+- slug 注入：前端启动时先读 iframe URL query 的 `slug`（当前 host 已在 `StandalonePluginIframe` 拼入）；可兼容监听 host bridge/ctx 的 slug 更新，但不要把 `STUDIO_INIT` 作为唯一来源。`App.tsx` 持有 slug 并下传所有工具调用；无 slug → 生成置灰 + 空态。
+- **服务端(插件外，需授权)**：`packages/server/src/main.ts` 加 per-game 静态路由 `/api/game-assets/:slug/*` → `.forgeax/games/<slug>/assets/3d/`。该路由只读、只允许安全 slug、只服务 `assets/3d/**` 下的展示文件（GLB/GLTF/bin/图片/JSON 等），不得成为 `.forgeax/games/<slug>/` 的通用文件服务；删除仍只走 `gen3d:delete-asset` 工具确认。旧 `/api/gen3d-blobs` 暂留兼容旧全局资产。
 - 验证：mock 路径下生成→落到 `assets/3d/characters/`、sidecar 正确、cache 命中复用路径、list 扫出、delete 删净；typecheck + build。
 
 ### M10 — 本地图片上传 + COS（需求 #2）
@@ -101,7 +103,7 @@ flowchart LR
 
 ## 触及插件外 / 需注意
 
-- `packages/server/src/main.ts`：新增 `/api/game-assets/:slug/*` 静态路由(有先例：现有 `/api/gen3d-blobs` 与 `/plugins/wb-gen3d` 两块都在此处，曾获授权)。这是唯一插件外改动，开工前请确认授权。
+- `packages/server/src/main.ts`：新增 `/api/game-assets/:slug/*` 静态路由(有先例：现有 `/api/gen3d-blobs` 与 `/plugins/wb-gen3d` 两块都在此处，曾获授权)。这是唯一插件外改动，开工前请确认授权；实现必须是只读预览 route，限定在 `.forgeax/games/<slug>/assets/3d/**`，不能暴露整个 game 目录。
 - 新依赖：`cos-nodejs-sdk-v5`(COS)；`three` 已有(grid/skeleton/info 无需新依赖)；Rodin multipart 用 Bun 内置 `FormData/Blob`，无需依赖。
 - 密钥：`COS_*` 与 `RODIN_API_KEY` 只进插件本地 `.env`(gitignored)，不进源码/schema/文档；`.env.example` 只加变量名。
 - 契约反转：M9 改 `Gen3DAssetManifest`/资产标识属于难反转决策 → 写 ADR-0002；因下游 wb-3d-pipeline 未建，现在改成本最低。
@@ -109,14 +111,14 @@ flowchart LR
 ## 验证策略（每个里程碑）
 
 - 每步 `npm run typecheck && npm run build`(插件目录)。
-- M9：mock 全链路(生成→per-game 文件→list→delete)；slug 缺失置灰。
+- M9：mock 全链路(生成→per-game 文件→list→delete)；slug 缺失置灰；cache 命中复用路径；不同请求同名自动后缀且不覆盖。
 - M10/M11：注入 fetch 的 quota-safe 冒烟(不联网)；拿 key 后操作员授权下实测各一条。
 - 视觉：standalone(`npm run dev` :15175) + 嵌入 Studio 左/中栏三处核对。
 
 ## 执行任务清单（交接给执行 agent）
 
-- [ ] **M9-store**：新建 `server/per-game-store.ts`(AssetStorage 文件+sidecar 实现)，改 `shared/manifest.ts` 资产标识为路径、`cache.ts`/`generate.ts` 改 cacheKey→路径
-- [ ] **M9-tools-slug**：`tool-handlers` 接受 slug+assetType；新增 `gen3d:delete-asset`(requireConfirm destructive)；前端加 host-bridge STUDIO_INIT slug 注入 + 无 game 置灰空态
+- [ ] **M9-store**：新建 `server/per-game-store.ts`(AssetStorage 文件+sidecar 实现)，改 `shared/manifest.ts` 新身份字段为 `assetPath`、`cache.ts`/`generate.ts` 改 cacheKey→assetPath；加 `assetName` 安全命名、cache 复用、撞名后缀不覆盖规则
+- [ ] **M9-tools-slug**：`tool-handlers` 接受 slug+assetSlot；新增 `gen3d:delete-asset`(requireConfirm destructive)；前端从 iframe URL query 读取 slug（bridge/ctx 兼容增强）+ 无 game 置灰空态
 - [ ] **M9-server-route**：`packages/server/src/main.ts` 加 `/api/game-assets/:slug/*` 静态路由(需授权)
 - [ ] **M10-cos**：加 `cos-nodejs-sdk-v5` + `server/cos-uploader.ts` + env 扩展；新工具 `gen3d:upload-image`(base64→COS presigned URL)
 - [ ] **M10-input-ui**：`SetupSidebar` image/views/pose 源图改本地上传(file picker→upload→回填)；prompt 文本框加大显著；加『角色编辑器』提示

@@ -3,6 +3,9 @@
 - **Status**: Accepted
 - **Date**: 2026-06-09
 - **Deciders**: laurenceelu
+- **Partially superseded by**: [ADR-0002](./0002-per-game-file-asset-storage.md)
+  for storage identity/path only. Product direction, tool surface, and module
+  decoupling remain accepted.
 
 ## Context
 

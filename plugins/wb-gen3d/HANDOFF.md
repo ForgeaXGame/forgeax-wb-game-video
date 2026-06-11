@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-11 Asia/Hong_Kong (M9–M12 plan finalized for handoff; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 handoff/log finalized; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
 
@@ -8,19 +8,45 @@ Last updated: 2026-06-11 Asia/Hong_Kong (M9–M12 plan finalized for handoff; ne
 > **`docs/PLAN-2026-06-11-rodin-cos-pergame.md`** — the SSOT for the new work.
 > It adds M9-M12 on top of the M0-M8 history below and, per operator direction
 > (2026-06-11), **reverses the global asset library to a per-game v2 file
-> contract** (supersedes ADR-0001; write ADR-0002 during M9). All key decisions
-> were already confirmed with the user during the 2026-06-11 grill — do not
-> re-litigate them; just execute.
+> contract**. ADR-0002 records this reversal of ADR-0001's global storage model.
+> All key decisions were already confirmed with the user during the 2026-06-11
+> grill — do not re-litigate them; just execute.
+
+## 2026-06-11 Closeout Log
+
+This closeout was written after the `grill-with-docs` session hit context limit.
+It is documentation-only: no runtime code, schemas, env files, generated assets,
+or secrets were changed in this handoff pass.
+
+Updated SSOT set for the next executor:
+
+- `docs/PLAN-2026-06-11-rodin-cos-pergame.md` — execution plan for M9-M12.
+- `docs/adr/0002-per-game-file-asset-storage.md` — accepted decision replacing
+  ADR-0001's global asset library with per-game file storage.
+- `CONTEXT.md` — canonical terms: `assetPath`, `assetSlot`, Asset Name, transfer
+  URL, per-game runtime asset library.
+- `docs/MIGRATION_PLAN.md` — historical M0-M8 retained, with an M9-M12 addendum.
+- `docs/CAPABILITY_MATRIX.md` — Rodin is mock-first/planned; real calls stay
+  gated until key + output shape are verified.
+
+Scope guard for implementation: M9 is mostly plugin-local, but the read-only
+`/api/game-assets/:slug/*` preview route touches `packages/server/src/main.ts`.
+Confirm authorization before that one plugin-external edit, and keep it limited
+to `.forgeax/games/<slug>/assets/3d/**`.
 
 New work, in order:
 
 1. **M9 — per-game storage refactor (do FIRST; everything depends on it).**
    New `server/per-game-store.ts` (`AssetStorage` file+sidecar impl) writing
-   `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`; asset
-   id = path (drop UUID + content-addressed blobs); slug from host bridge
-   `STUDIO_INIT` (mirror wb-character); `gen3d:delete-asset` (confirm-destructive);
-   new server route `/api/game-assets/:slug/*` (plugin-external — confirm
-   authorization first).
+   `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`; new
+   manifest identity field is `assetPath` (drop UUID `assetId` +
+   content-addressed blobs); `assetSlot` is
+   `characters` or `meshes`; ordinary generation reuses cache hits and never
+   overwrites same-name assets (suffix on non-cache collisions); slug from iframe URL query
+   `?slug=<gameSlug>` first, with host bridge/ctx only as compatibility;
+   `gen3d:delete-asset` (confirm-destructive); new server route
+   `/api/game-assets/:slug/*` (plugin-external — confirm authorization first;
+   read-only and limited to `.forgeax/games/<slug>/assets/3d/**`).
 2. **M10 — local image upload via plugin COS adapter** (`gen3d:upload-image`,
    base64 → 24h presigned URL); SetupSidebar file-picker inputs; bigger prompt
    box; "角色编辑器" hint.
@@ -32,7 +58,7 @@ New work, in order:
 
 The "Asset Storage", "Relationship To Per-Game Assets", and M8-handoff items
 below are **historical context** — M9 supersedes the global library. Treat the
-plan as the target, not the ADR-0001 storage description.
+plan + ADR-0002 as the target, not the ADR-0001 storage description.
 
 ## Current State
 
@@ -67,7 +93,9 @@ Created files:
 - `CONTEXT.md`
 - `docs/MIGRATION_PLAN.md`
 - `docs/CAPABILITY_MATRIX.md`
+- `docs/PLAN-2026-06-11-rodin-cos-pergame.md`
 - `docs/adr/0001-production-tool-architecture.md`
+- `docs/adr/0002-per-game-file-asset-storage.md`
 - `HANDOFF.md`
 - `schemas/provider-status.args.json`
 - `schemas/provider-status.returns.json`
@@ -148,7 +176,7 @@ Most important source conclusions already carried into this plugin:
   paths.
 - Provider result URLs should be downloaded immediately and persisted through an
   asset-storage adapter.
-- Downstream modules should consume stable asset ids/manifests, not temporary
+- Downstream modules should consume stable asset paths/manifests, not temporary
   provider URLs.
 - Rigging and animation integrations must treat FBX URLs as request-time access
   URLs only. The stored source of truth is the asset manifest plus blob storage,
@@ -159,7 +187,7 @@ Most important source conclusions already carried into this plugin:
 
 ## Asset Storage And Rigged FBX Contract
 
-> SUPERSEDED BY M9 (see plan + future ADR-0002): the global content-addressed
+> SUPERSEDED BY M9 (see plan + ADR-0002): the global content-addressed
 > library described here is being replaced by a per-game v2 file contract
 > (`${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`, asset
 > id = path). The rigged-FBX role/readiness semantics below still hold; the
@@ -357,11 +385,11 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **NEXT** (planned) | do first; supersedes ADR-0001 global library → write ADR-0002; `/api/game-assets/:slug/*` is plugin-external, confirm authorization |
+| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **NEXT** (planned) | do first; supersedes ADR-0001 global library; ADR-0002 written; `/api/game-assets/:slug/*` is plugin-external, confirm authorization |
 | **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | planned | new dep `cos-nodejs-sdk-v5`; `COS_*` in plugin `.env` only |
 | **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | planned | awaiting `RODIN_API_KEY`; mock-first until key + one verified output shape |
 | **M12 UI upgrade** (pose-top, polycount slider+presets, result grid/skeleton/info, dense asset grid + delete) | planned | UI-only, on top of M9-M11 |
-| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | planned | append — do NOT rewrite M0-M8 history |
+| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | closeout done | append-only handoff completed; update again when implementation lands |
 | ~~M8 handoff UI~~ (gen3d → game assets) | **superseded by M9** | per-game file model writes straight into `assets/3d/` |
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
 | `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |
