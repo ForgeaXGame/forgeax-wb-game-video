@@ -40,6 +40,13 @@ Providers：Hunyuan REST（`auto_rigging` / `motion_retarget` / `low_poly`）/ �
 Asset 的稳定身份字段，值是 game 内相对路径，例如 `assets/3d/characters/hero.glb`。
 _Avoid_: 对新 manifest 继续使用 `assetId` 表示路径。
 
+一次生成的**多个文件共享同一基名**：`hero.glb` 是身份主文件，`hero.png`（预览）、
+`hero.texture.png`（外部单独贴图）是同基名副文件。sidecar 文件名是
+**`hero.glb.meta.json`**（保留完整文件名再加 `.meta.json`），字段对齐 v2 工作区契约
+schema（`schemaVersion/producer{}/createdAt/contentHash/size/type/dependencies[]/custom{}`），
+副文件进 `dependencies[]`、gen3d 私有字段进 `custom{}`，身份只认主 `hero.glb`。
+OBJ 默认丢弃，只留 GLB。删除即删 `hero.*` 全家桶 + sidecar。
+
 ### Asset Name
 
 用户可读的资产文件名基底，用来形成 game 内相对路径。普通生成不会自动覆盖同名
@@ -55,6 +62,12 @@ Asset 在 game 里的 3D 资产槽位，值直接对应目录：`characters` 表
 临时传输地址，只用于让外部 provider 读取输入图、输入模型或中间文件。
 Transfer URL 不是 Asset 身份，也不是下游模块应该保存的引用；provider 返回的产物
 必须下载回 per-game 资产文件后才算进入 ForgeaX 资产契约。
+
+**临时/中转产物（非 Asset）**：`gen3d:upload-image` 上传的输入图、
+`gen3d:pose-standardization` 标准化后的中间图都是**中转产物**，不是 Asset——
+不落 `assets/3d/`、不进 `list-assets`、UI 不显示为资产、无删除 UI。它们落 scratch
+区（`.forgeax/games/<slug>/.gen3d/tmp/`）或 COS（拿 Transfer URL 给下一步用），
+生命周期=中转。判定准则：**最终游戏可用的 mesh 才是 Asset；喂给生成的输入图不是。**
 
 ## 产品定位
 
@@ -109,9 +122,9 @@ Per-game runtime asset library。生成时必须归属一个 game；资产直接
 ```
 .forgeax/games/<slug>/assets/3d/
   characters/<name>.glb
-  characters/<name>.meta.json
+  characters/<name>.glb.meta.json
   meshes/<name>.glb
-  meshes/<name>.meta.json
+  meshes/<name>.glb.meta.json
 ```
 
 不再维护 gen3d 专属的全局 staging 资产库作为主模型。跨 game 复用需要显式复制
@@ -124,14 +137,25 @@ Provider 不知道 cache 和 asset-store 的存在；ProviderResult 是纯数据
 
 ### Cache
 
-请求级去重。key = `(providerId, mode, normalized_payload)` 的 hash。
+请求级去重。key = `(providerId, mode, assetSlot, normalized_payload)` 的 hash。
 只存成功结果的 `hash → game 内相对路径` 映射，不存 provider 响应或 URL。
 命中后直接从 asset-store 读取 manifest 返回。
+
+`assetSlot` 是 cacheKey 的一部分（`characters` 与 `meshes` 各自独立缓存，不串味）。
+`assetName` **不进** cacheKey——它只是贴在结果上的标签，不是身份。命中缓存时复用
+已有路径并**忽略本次新填的 `assetName`**（旧资产已有名字），UI 须明确提示"复用了
+已有资产（缓存命中）"，避免用户误以为新名字已生效。
 
 普通生成命中 Cache 时复用已有 Asset；“同输入再抽一版”是显式变体生成，不是默认行为。
 
 设计原则：cache 不依赖 provider 响应格式（源 lab ADR-0002 精神的极致化）。
 写入时机：provider 调用 + blob 下载 + manifest 写入全部成功后，cache 才追加一条映射。
+
+**删除与 tombstone**：sidecar 的 `custom` 存一份 `cacheKey`，`gen3d:delete-asset` 删
+文件时按它往 cache.jsonl 追加一条 tombstone（`{cacheKey, deleted:true}`）；`lookup`
+遇 tombstone 视为未命中。这样用户故意删掉的资产**不会因 cache 命中而复活/重烧配额**。
+(注：即使没打墓碑，现有 `generateCacheFirst` 在命中却读不到文件时也会穿透重生成、
+不崩——但那会"删了又回来 + 白烧配额"，故 tombstone 是 UX/配额防护。)
 
 ## 命名与边界
 

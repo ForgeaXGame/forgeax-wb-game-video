@@ -53,6 +53,14 @@ blocked in workbench UI or AI-facing schemas.
   `role=rigged_model`, `format=fbx`, and verified humanoid skeleton metadata.
   The URL sent to an external provider is a short-lived share/upload URL created
   from that stored blob, not the canonical asset reference.
+- **Hunyuan image inputs are fetched by the Hunyuan server-side, and Hunyuan is
+  an internal-network OpenAPI** (`http://hunyuanapi.woa.com`). A **public** COS
+  presigned URL (from M10 local upload) may be unreachable from that internal
+  service. Treat "Hunyuan can fetch a public COS URL" as an explicit
+  verification item: if it fails, fall back to image-byte inlining (if Hunyuan
+  supports base64), an internal-reachable COS endpoint, or temporarily restrict
+  Hunyuan to manually-pasted URLs. Meshy (`api.meshy.ai`) and Rodin
+  (`hyper3d.com`) are public and unaffected.
 
 ## Product Pipeline Boundary
 

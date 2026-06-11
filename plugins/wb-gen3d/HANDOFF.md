@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 handoff/log finalized; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 plan finalized + second grill-review revisions applied to plan/ADR/CONTEXT; next = M9 per-game storage refactor — see `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
 
@@ -11,6 +11,41 @@ Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 handoff/log finalized; next = M9
 > contract**. ADR-0002 records this reversal of ADR-0001's global storage model.
 > All key decisions were already confirmed with the user during the 2026-06-11
 > grill — do not re-litigate them; just execute.
+
+## 2026-06-11 Second grill-review revisions (READ FIRST)
+
+A second `grill-with-docs` pass on 2026-06-11 (evening) cross-checked the plan
+against the real code and the v2 workspace contract, then revised 10 key
+decisions with the user. The plan's top "review 修订摘要" block is the SSOT;
+summary:
+
+1. cacheKey includes `assetSlot`, excludes `assetName`; a hit reuses the old
+   path and ignores the freshly-typed name (UI shows "cache hit").
+2. Multi-file asset = main GLB is identity + same-basename sidefiles; sidefiles
+   go in sidecar `dependencies[]`; OBJ dropped by default (GLB only).
+3. **Align v2 workspace-contract disk format** (`<name>.glb.meta.json` + the
+   contract sidecar schema). Runtime mechanism (path-slot / `writeAsset()` /
+   `_index.json` / ownership conflict) is recorded as ADR-0002 known debt, NOT
+   built this round. Target path stays `assets/3d/{characters|meshes}/` (the
+   "move to a private `assets/gen3d/`" idea was considered and rejected — keep
+   "generation = immediately game-usable"; ownership conflict stays as debt).
+4. base64 upload uses the existing JSON route (verified no bodyLimit); backend
+   hard-validates ≤8MB. **Hunyuan is an internal-network API → fetching a public
+   COS URL is an explicit verification item + fallback** (byte inline / internal
+   COS / Hunyuan URL-only).
+5. Polycount control = **low/medium/high discrete buttons** (continuous slider
+   dropped — it was fake for Rodin's `quality_override`).
+6. `delete-asset` writes a cache tombstone (sidecar `custom` stores the cacheKey
+   for reverse lookup) so deleted assets don't resurrect / re-burn quota.
+7. cache.jsonl / audit.jsonl **move per-game** (was a plan omission; a global
+   cache would mis-hit across games with game-relative paths).
+8. The new server route reuses `defaultProjectRoot` / `safeSegment` +
+   `..`-rejection + prefix assertion — no new wheel.
+9. Old global library: **clean break, no migration** — drop the `assetId` field;
+   old `.forgeax/assets/gen3d/` is discarded test data (delete manually).
+10. pose-standardization / upload intermediate images are Transfer scratch
+    artifacts (`.forgeax/games/<slug>/.gen3d/tmp/`), NOT assets — not in the
+    library, no delete UI.
 
 ## 2026-06-11 Closeout Log
 
@@ -38,23 +73,27 @@ New work, in order:
 
 1. **M9 — per-game storage refactor (do FIRST; everything depends on it).**
    New `server/per-game-store.ts` (`AssetStorage` file+sidecar impl) writing
-   `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `.meta.json`; new
+   `${gameRoot}/assets/3d/{characters|meshes}/<name>.glb` + `<name>.glb.meta.json`
+   (sidecar aligned to v2 workspace contract: schema + `dependencies[]`); new
    manifest identity field is `assetPath` (drop UUID `assetId` +
    content-addressed blobs); `assetSlot` is
-   `characters` or `meshes`; ordinary generation reuses cache hits and never
-   overwrites same-name assets (suffix on non-cache collisions); slug from iframe URL query
+   `characters` or `meshes`; cacheKey includes `assetSlot`, excludes `assetName`;
+   ordinary generation reuses cache hits and never
+   overwrites same-name assets (suffix on non-cache collisions); cache.jsonl /
+   audit.jsonl also move per-game; slug from iframe URL query
    `?slug=<gameSlug>` first, with host bridge/ctx only as compatibility;
-   `gen3d:delete-asset` (confirm-destructive); new server route
-   `/api/game-assets/:slug/*` (plugin-external — confirm authorization first;
-   read-only and limited to `.forgeax/games/<slug>/assets/3d/**`).
+   `gen3d:delete-asset` (confirm-destructive, writes cache tombstone); new server
+   route `/api/game-assets/:slug/*` (plugin-external — confirm authorization
+   first; read-only and limited to `.forgeax/games/<slug>/assets/3d/**`).
 2. **M10 — local image upload via plugin COS adapter** (`gen3d:upload-image`,
-   base64 → 24h presigned URL); SetupSidebar file-picker inputs; bigger prompt
-   box; "角色编辑器" hint.
+   base64 → 24h presigned URL, backend hard-validates ≤8MB); SetupSidebar
+   file-picker inputs; bigger prompt box; "角色编辑器" hint. Note Hunyuan
+   internal-network COS-fetch risk + fallback.
 3. **M11 — Rodin provider** (`server/providers/rodin.ts`, multipart Bearer;
    text/image/views; `quality_override`); UI selector; mock-first until key.
-4. **M12 — UI upgrade** (pose-standardization moved to top; polycount slider +
-   per-provider presets; result grid/skeleton/face-vertex info; dense asset grid
-   + delete-with-confirm).
+4. **M12 — UI upgrade** (pose-standardization moved to top; **low/medium/high
+   discrete polycount buttons** + per-provider values; result grid/skeleton/
+   face-vertex info; dense asset grid showing prompt + delete-with-confirm).
 
 The "Asset Storage", "Relationship To Per-Game Assets", and M8-handoff items
 below are **historical context** — M9 supersedes the global library. Treat the
@@ -388,7 +427,7 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 | **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **NEXT** (planned) | do first; supersedes ADR-0001 global library; ADR-0002 written; `/api/game-assets/:slug/*` is plugin-external, confirm authorization |
 | **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | planned | new dep `cos-nodejs-sdk-v5`; `COS_*` in plugin `.env` only |
 | **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | planned | awaiting `RODIN_API_KEY`; mock-first until key + one verified output shape |
-| **M12 UI upgrade** (pose-top, polycount slider+presets, result grid/skeleton/info, dense asset grid + delete) | planned | UI-only, on top of M9-M11 |
+| **M12 UI upgrade** (pose-top, low/med/high polycount buttons+presets, result grid/skeleton/info, dense asset grid + delete) | planned | UI-only, on top of M9-M11 |
 | **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | closeout done | append-only handoff completed; update again when implementation lands |
 | ~~M8 handoff UI~~ (gen3d → game assets) | **superseded by M9** | per-game file model writes straight into `assets/3d/` |
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |

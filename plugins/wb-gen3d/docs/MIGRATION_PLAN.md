@@ -377,9 +377,9 @@ Addendum scope:
   plugin-local `.env` only.
 - **M11 Rodin provider**: text/image/views, `tier=Regular`, `quality_override`,
   mock-first until `RODIN_API_KEY` and one real output shape are verified.
-- **M12 UI upgrade**: pose standardization moved upward, polycount slider +
-  provider presets, model grid/skeleton/info, dense asset library, delete with
-  confirmation.
+- **M12 UI upgrade**: pose standardization moved upward, low/medium/high
+  discrete polycount buttons + provider presets, model grid/skeleton/info, dense
+  asset library, delete with confirmation.
 
 Documentation closeout done 2026-06-11:
 
