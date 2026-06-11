@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-10 Asia/Hong_Kong (Meshy provider + pose UI committed; next = UI refactor, see "Next Session: UI Refactor Plan")
+Last updated: 2026-06-11 Asia/Hong_Kong (Workbench UI refactor landed, commit `af986ce`; next = M8 handoff/quality scoring)
 
 ## Current State
 
@@ -61,11 +61,14 @@ Created files:
 - `server/generate.ts` (ProviderResult -> manifest orchestration + cache-first)
 - `server/tool-handlers.ts`
 - `src/main.tsx`
-- `src/App.tsx` (M8: production generation UI driving real `gen3d:*` tools)
+- `src/App.tsx` (M8: shell + shared tool state; routes left/center panes)
 - `src/lib/toolClient.ts` (M8: `POST /api/tools/call` client)
 - `src/lib/blobUrl.ts` (M8: storageKey → same-origin URL resolver)
 - `src/components/ModelViewer.tsx` (M8: three.js GLB renderer with OrbitControls)
-- `src/styles.css`
+- `src/components/SetupSidebar.tsx` / `StepCard.tsx` (M8 UI refactor: staged left pane)
+- `src/components/Workspace.tsx` / `AssetLibrary.tsx` (M8 UI refactor: center + right column)
+- `src/types.ts` / `src/ui-meta.ts` (shared types + semantic icon map)
+- `src/styles/tokens.css` (vendored design tokens) + `src/styles.css`
 
 No secrets, env values, cache files, or generated assets are committed. `dist/`
 and `.env` are ignored. Durable assets, `cache.jsonl`, and `audit.jsonl` land
@@ -147,6 +150,24 @@ The M3 storage contract is the baseline for future development:
   asset reference.
 - Provider outputs from rigging/animation must be downloaded back into the same
   storage contract before downstream consumption.
+
+### Relationship To Per-Game Assets (`.forgeax/games/<slug>/assets/`)
+
+ForgeaX also has an official **per-game runtime asset library** (project property,
+not plugin property). Example: `packages/games/shoot-opt/assets/` symlinked at
+runtime to `.forgeax/games/shoot-opt/assets/` (pack.json + GUID materials).
+v2 target layout adds `assets/2d/` and `assets/3d/characters/` path slots — see
+`docs/v2-vision/node-runtime-architecture/03-WORKSPACE-LAYOUT.md`.
+
+**wb-gen3d global library and per-game assets are layered, not competing:**
+
+| Layer | Path | Role |
+| --- | --- | --- |
+| Global staging | `.forgeax/assets/gen3d/` | AI generation output, cross-game reuse |
+| Game runtime | `.forgeax/games/<slug>/assets/` | Engine-consumable assets (shoot-opt pack, future handoff targets) |
+
+Handoff from gen3d → game `assets/3d/characters/` (copy + `.meta.json`) is M8
+remaining; not implemented yet.
 
 ## Implemented Tools
 
@@ -259,13 +280,20 @@ the blob route, three.js loads and renders the model in standalone dev (:15175);
 embedded in Studio, both panes load from same-origin `/plugins/wb-gen3d/`
 (`readyState=complete`) and render the real UI — no more stuck "加载中".
 
-Immediate follow-ups for M8 (now folded into the UI refactor — see "Next
-Session: UI Refactor Plan"):
+**UI refactor landed (2026-06-11, commit `af986ce`):** Workbench tool-editor
+pattern — vendored tokens, staged left sidebar (`SetupSidebar`/`StepCard`),
+center workspace + asset library right column (embedded center pane; no separate
+right iframe in `forgeax-plugin.json`). Old teal theme removed. Tool contracts
+unchanged. typecheck + build pass; visual validation across standalone/left/center
+panes done.
 
-1. ~~`pose-standardization` as an upstream preprocessing step in the UI~~ — DONE
-   (`PosePreprocess` in `src/App.tsx`).
-2. Downstream rigging/animation handoff action + metadata (reserved UI slot).
-3. Quality-rubric scoring UI (reserved UI slot).
+Remaining M8 UI items:
+
+1. ~~`pose-standardization` upstream step~~ — DONE (`PosePreprocess` in `SetupSidebar`).
+2. ~~views L/R inputs~~ — DONE (「添加左/右视图」in views mode).
+3. Downstream rigging/animation handoff action + metadata (reserved: `InspectorReserved`).
+4. Quality-rubric scoring UI (reserved: `InspectorReserved`, disabled placeholder).
+5. gen3d → game `assets/3d/characters/` handoff (copy/import + sidecar meta).
 
 Remaining backend work: **`motion_retarget` v1** (`POST
 /openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
@@ -280,33 +308,28 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 ## Pending Work (do NOT lose — push incrementally)
 
-The UI refactor (below) is the immediate next-session priority. These backend
-items remain and must keep being pushed forward over time:
-
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **UI refactor** (Workbench editor pattern) | NEXT (this handoff) | see "Next Session" below |
-| `motion_retarget` v1 (Hunyuan REST) | deferred | needs a rigged humanoid FBX (`role=rigged_model`, verified skeleton) from `wb-3d-pipeline`; generation never produces it |
+| **M8 handoff UI** (gen3d → game assets) | NEXT | copy/import to `${gameRoot}/assets/3d/characters/` + `.meta.json`; wire `InspectorReserved` handoff action |
+| **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
+| `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |
 | Rodin provider | not started | awaiting key/API + one verified output shape |
-| Quality-rubric scoring runtime | not started | today only static rubric dims from `provider-status`; no real scorer |
+| Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only; no real scorer |
 | GLB/OBJ dedup | decision pending | real `text` returns both GLB+OBJ `source_mesh`; decide prefer-GLB-drop-OBJ |
-| views L/R inputs in UI | not started | backend `views-to-3d` already supports front/back/left/right; UI exposes only front/back (fold into the UI refactor) |
-| `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until a verified output shape exists (see "Do Not Expose Yet") |
+| ~~UI refactor~~ (Workbench editor pattern) | **done** `af986ce` 2026-06-11 | tokens + staged sidebar + center/right column |
+| ~~views L/R inputs in UI~~ | **done** 2026-06-11 | 「添加左/右视图」in `SetupSidebar` |
+| `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
 
-## Next Session: UI Refactor Plan (confirmed 2026-06-10)
+## Completed: UI Refactor (2026-06-10 plan → 2026-06-11 landed)
 
-Problem: the generation UI works but is hard to use and ships a bespoke teal
-theme (`src/styles.css` `--accent:#55a7a0` …) divorced from the repo design
-system. Refactor it into the ForgeaX Workbench tool-editor pattern, using the
-character editor (`packages/marketplace/plugins/wb-character/src/`) as an EXAMPLE
-ONLY — do not copy its layout/fields.
+**Status: landed** in marketplace commit `af986ce` (2026-06-11). UI-only; all
+`gen3d:*` tool contracts and server code unchanged.
 
-This is **UI-ONLY**. Untouched: `callTool`/`toolClient`, the 8 `gen3d:*`
-contracts + schemas, `server/**` providers/`env.ts`/storage, `ModelViewer`
-three.js logic, cache-first/mock fallback, pose→generate data flow, `refine`
-`previewTaskId` semantics, `blobUrl` resolution.
+Original problem: bespoke teal theme divorced from the repo design system.
+Refactored into the ForgeaX Workbench tool-editor pattern (wb-character as
+reference only).
 
-Governing SSOT — read FIRST (skill mandatory workflow):
+Governing SSOT (for future UI tweaks):
 
 - `.cursor/skills/forgeax-editor-ui-pattern/{EDITOR_UI_PATTERN,WORKBENCH_LEFT_SIDEBAR,EXAMPLES}.md`
 - `packages/interface/src/styles/{tokens.css,motion.css,forgeax-preview/DESIGN-SYSTEM.md}`
@@ -367,18 +390,16 @@ only — no three.js logic change. Do NOT touch `server/**`, `schemas/**`,
 `shared/**`, `toolClient.ts`, `blobUrl.ts`, or `forgeax-plugin.json` (ask first if
 `panelSize`/`panes` need a tweak).
 
-Phases (each independently reviewable): ① tokens + pane-header → ② staged left
-panel (incl. L/R views) → ③ center workspace + states → ④ right panel library +
-reserved cards → ⑤ validate.
+Phases (all complete 2026-06-11): ① tokens + pane-header → ② staged left panel
+(incl. L/R views) → ③ center workspace + states → ④ asset library + reserved
+inspector in center right column → ⑤ typecheck/build/visual + §10 checklist.
 
-Validate: `npm run typecheck` + `npm run build`; visual check standalone
-`:15175` + embedded `/plugins/wb-gen3d/`; run the `WORKBENCH_LEFT_SIDEBAR.md` §10
-checklist (pane-header constants, scrollbar, option density, icon sync, all states,
-business logic untouched).
+**Note:** asset library lives in the center pane right column because
+`forgeax-plugin.json` only declares `left` + `center` panes (no separate right
+iframe). Standalone dev: `npm run dev` on `:15175`.
 
-Boundary reminder: only the wb-gen3d plugin dir. Do NOT bump the studio submodule
-pointer, touch other plugins / core / build, or change lockfiles unless the user
-explicitly asks for integration/release.
+Submodule pointer in forgeax-studio parent repo may still show `M packages/marketplace`
+until explicitly bumped for integration.
 
 ## Do Not Expose Yet
 

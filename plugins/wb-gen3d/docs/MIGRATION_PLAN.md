@@ -1,11 +1,10 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M8 in progress — core generation-loop UI landed (2026-06-10): mode tabs
-(text/image/views) drive the real `gen3d:*` tools over `POST /api/tools/call`,
-with a provider-status banner, manifest result card, and asset-library list. M5
-Hunyuan REST `pose_standardization` complete and live-verified (2026-06-10);
-`motion_retarget` v1 deferred until a rigged-FBX asset path exists. M4 Hunyuan
-workflow provider complete; product direction updated 2026-06-09.
+Status: M8 in progress — Workbench UI refactor landed (2026-06-11, `af986ce`):
+token-aligned staged sidebar + center workspace + asset library column; core
+generation-loop UI landed (2026-06-10). M5 `pose_standardization` live-verified;
+`motion_retarget` v1 deferred. M4 Hunyuan workflow complete. Product direction
+2026-06-09.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -283,8 +282,9 @@ Verification:
 
 ### M8 - Generation And Benchmark UX
 
-Status: in progress — core generation loop + three.js model preview landed
-(2026-06-10). Downstream handoff actions and quality scoring deferred.
+Status: in progress — UI refactor landed (2026-06-11); core generation loop +
+three.js preview landed (2026-06-10). Handoff to game assets + quality scoring
+deferred.
 
 Goal: make generation the primary workflow and comparison the evidence layer.
 
@@ -319,6 +319,12 @@ Done (core loop + preview):
   dev port (:15175): when that dev server was not running, the in-page iframe sat
   on the loading placeholder forever. `npm run dev` on :15175 still works for
   standalone development outside Studio.
+- **Workbench UI refactor** (2026-06-11, commit `af986ce`): vendored
+  `src/styles/tokens.css`; split `App.tsx` into `SetupSidebar`/`StepCard`/
+  `Workspace`/`AssetLibrary`; token-aligned pane header + staged accordion;
+  asset library in center right column (no right iframe in manifest); L/R view
+  inputs; reserved quality/handoff inspector. UI-only — tool contracts unchanged.
+  typecheck + build pass.
 
 Verification:
 
@@ -336,14 +342,12 @@ only M8 changes outside `plugins/wb-gen3d/`.
 
 Remaining M8 items:
 
-- Generation entry supporting upstream character image/reference asset inputs.
-- Result card that surfaces durable asset ids and downstream readiness.
-- Handoff action/metadata for rigging and animation workbenches.
-- Comparison set view grouped by prompt and provider.
-- Result card metadata for provider, mode, prompt category, status, cost, and
-  artifact links.
-- Quality scoring UI for the five-dimension rubric.
-- Notes for cost, failures, limits, and provider-specific caveats.
+- Handoff action: gen3d global library → `.forgeax/games/<slug>/assets/3d/characters/`
+  (copy/import + `.meta.json` sidecar).
+- Downstream rigging/animation handoff metadata (wire `InspectorReserved`).
+- Quality scoring UI for the five-dimension rubric (wire `InspectorReserved`).
+- ~~Workbench editor-pattern UI refactor~~ — done 2026-06-11.
+- ~~views L/R inputs~~ — done 2026-06-11.
 
 Verification:
 

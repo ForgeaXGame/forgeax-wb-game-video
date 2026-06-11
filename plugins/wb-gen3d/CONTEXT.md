@@ -92,6 +92,13 @@ Meshy 专属：`refine`（基于 preview 加贴图的第二阶段，等 Meshy �
 
 先有资产、后决定用在哪个游戏。跨游戏复用是免费的。
 
+**与 per-game 运行时资产库的关系：** ForgeaX 官方还有
+`.forgeax/games/<slug>/assets/`（项目财产，引擎直接加载；例：`shoot-opt` 的
+`*.pack.json`）。v2 目标在 `assets/2d/`、`assets/3d/characters/` 等 path slot
+落盘（见 studio `docs/v2-vision/node-runtime-architecture/03-WORKSPACE-LAYOUT.md`）。
+wb-gen3d 全局库是**生成 staging 层**；入戏到 game 目录是后续 handoff，不是生成时
+必选步骤。
+
 ### ProviderResult
 
 Provider 适配器的统一输出类型。包含 provider 返回的 URL 列表 + 元数据。
