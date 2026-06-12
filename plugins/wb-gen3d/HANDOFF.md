@@ -2,7 +2,17 @@
 
 Last updated: 2026-06-12 Asia/Hong_Kong (Rodin **image-to-3D** now real-verified end-to-end through `RodinProvider` + temp COS: real character image → public presigned URL → 9.44 MB GLB + webp preview, `providerMode='real'`. COS public reachability PASS. Rodin **views**-to-3D still unverified; real Hunyuan public-COS fetch still pending. GLB/OBJ dedup confirmed already-landed in code (ADR-0002). Earlier M9-M12 history below. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
-## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
+## 下一步工作 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12）
+
+> **当前 next work 是 M13**（不是下面的 M9-M12 —— 那批已落地并并入 main）。执行 / 评审 SSOT：
+> [`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`](./docs/PLAN-2026-06-12-rig-motion-lowpoly.md)；
+> 关键决策：[`docs/adr/0003-rig-motion-lowpoly-pipeline.md`](./docs/adr/0003-rig-motion-lowpoly-pipeline.md)。
+> 产线：高模 GLB →① low_poly 减面 →② auto_rigging 绑骨（出带骨 FBX）→③ motion_retarget v1 动作。
+> 方案要点：全程混元、验证先行（**Gate 0** 先验混元内网能否抓我们公网 COS 的模型 URL）、
+> 资产模型走「同基名附加 FBX」（rig/motion 产物 append 到源资产，不另起资产）。
+> **执行前需操作员拍板**：① motion v1 的 8 个动作名（int 9–16）映射来源；② low_poly 后高模是否保留。
+
+## 历史基线：2026-06-11 Plan (M9-M12)（已完成、已并入 main）
 
 > The next executing agent should follow
 > **`docs/PLAN-2026-06-11-rodin-cos-pergame.md`** — the SSOT for the new work.
@@ -285,6 +295,12 @@ Expected branch:
 The top-level Studio repo should remain on the matching feature branch. The
 top-level repo only needs to record the submodule pointer when integration or a
 commit step explicitly requires it.
+
+> **2026-06-12 — INTEGRATED TO MAIN.** The whole wb-gen3d line (M3–M12) plus the
+> server routes are now merged into each repo's `main`: marketplace@`43b0715`,
+> server@`807bebd`, studio superproject@`1092ad4`. The studio pointer is no longer
+> dirty/dangling. Continued work happens on the feature branch (kept in sync with
+> main) and lands on main following the team's direct-push convention.
 
 ## Source Reference
 
@@ -616,7 +632,8 @@ inspector in center right column → ⑤ typecheck/build/visual + §10 checklist
 iframe). Standalone dev: `npm run dev` on `:15175`.
 
 Submodule pointer in forgeax-studio parent repo may still show `M packages/marketplace`
-until explicitly bumped for integration.
+until explicitly bumped for integration. (2026-06-12: bumped and merged to
+studio main@`1092ad4` — no longer dirty.)
 
 ## Do Not Expose Yet
 
