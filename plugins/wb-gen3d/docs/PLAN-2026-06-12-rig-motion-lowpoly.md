@@ -141,15 +141,27 @@ URL**（transfer URL，非资产引用）；混元返回的 URL **立即下载�
 {
   "model": "hunyuan-3d-motion-retarget",
   "fbx_url": "<绑骨后人形 FBX 公网 URL>",   // 必填
-  "motion_type": 9,                          // 必填，int 9–16，共 8 个固定动作
+  "motion_type": 9,                          // 必填，int 9–16，共 8 个固定动作（见下表）
   "n": 1
 }
 // → data[].fbx_url（动画 FBX，含 mesh+skeleton+animation）
 ```
 
-> 状态：lab 内已实测可用（int 9–16）。**8 个动作的具体名称未在 lab 文档列出**
-> （PROGRESS.md 只确认"int 9-16 共 8 动作已实测可用"）——执行 M13-3 前需用
-> motion_retarget v1 的 PDF 或一次探针补全 9–16 的动作名映射（开放问题，见末尾）。
+> 状态：lab 内已实测可用（int 9–16）。**8 个动作映射已由操作员拍板（2026-06-12）**，
+> 不再依赖 motion v1 的 PDF / 探针补名：
+
+| `motion_type` | 动作 | 游戏应用场景示例 |
+|---|---|---|
+| 9  | 跨步 | 战斗位移、闪避动作、战术移动 |
+| 10 | 摔倒 | 死亡动画、受击倒地、失败反馈 |
+| 11 | 跳跃 | 跳跃平台、翻越障碍、技能起跳 |
+| 12 | 踢腿 | 格斗技能、踢击连段、交互动作 |
+| 13 | 挥击 | 近战攻击、武器挥砍、打击动作 |
+| 14 | 步行 | 日常巡逻、NPC 漫游、场景行走 |
+| 15 | 跑步 | 追逐战斗、快速移动、冲刺动作 |
+| 16 | 跳舞 | 胜利庆祝、皮肤展示、互动表演 |
+
+> UI 动作按钮文案用「动作」列；动画文件名仍按 `animated_model.motion-<k>.fbx`（k = int 9–16）。
 
 ### ④ motion_retarget_v2 —— **封锁，不接、不暴露**
 
@@ -247,6 +259,8 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
   `lowPoly()` → 下载低模 GLB(+image 预览) → `persistGeneration` 落**新派生资产**
   （`sourceInputAssetPaths=[高模 assetPath]`，`mode` 复用或新增标记）。cache-first：
   `makeCacheKey('hunyuan_rest','lowpoly',{inputHash, polygonType, detailLevel, assetSlot})`。
+- **高模保留（已拍板）**：减面只**新增**低模派生资产，**不动/不删高模**（高模留作可再出别的
+  LOD）；删除由用户在资产库手动操作，工具不自动删、不提示删。
 - **mock 回退**：无真机时复用确定性 mock GLB 字节，落一个 `-lowpoly` 派生资产（标
   `providerMode:'mock'`），保证全链路无配额可跑。
 - **schema**：`schemas/retopo-lowpoly.args.json` / `.returns.json`；`forgeax-plugin.json`
@@ -283,7 +297,8 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 - **mock 回退**：占位动画 FBX 字节（标 mock）。
 - **schema** + tool（`exposedToAI:true`）。`motion_retarget_v2` / `auto_rigging` 之外
   的混元能力保持不暴露。
-- **UI**：动作选择给 8 个按钮（int 9–16），仅当目标资产 `readiness.rigged` 时可用。
+- **UI**：动作选择给 8 个按钮（跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞，对应 int 9–16；
+  见 §③ 动作映射表），仅当目标资产 `readiness.rigged` 时可用。
 - 验证：mock 下对已绑骨资产 append 动画 FBX、`readiness.animated=true`、多动作各自成文件；
   typecheck+build。
 
@@ -314,7 +329,6 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 | **混元内网拉公网 COS（Gate 0）** | 整条链不通 | 混元自有/内网 COS；字节内联；手填可达 URL |
 | `auto_rigging` 从未端到端验证 | 绑骨可能失败/输出形态不符 | Gate 1 先验；失败则据实修订或暂缓 |
 | low_poly 真机未跑过（合约来自 PDF） | 字段/输出形态可能有偏差 | Gate 0 首调即验，按响应修订 |
-| motion v1 的 8 个动作名未知 | 动作按钮文案/映射缺失 | 用 motion v1 PDF 或探针补（见开放问题） |
 | `auto_rigging` 人形约束 | 非人形/结构不清会失败 | 文案提示仅人形角色；失败回显 reason |
 | FBX 不能直接进引擎播放 | 库里有 FBX 但引擎暂不可播 | 本轮只产 FBX 资产；FBX→GLB 转换列后续 |
 | motion_retarget_v2 静默回退 | 误用会白扣配额 | **保持封锁不暴露** |
@@ -348,12 +362,13 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 
 ## 开放问题（执行前需澄清）
 
-1. **motion_retarget v1 的 8 个动作名（int 9–16）**：lab 文档只确认"可用"，未列名。
-   需 motion v1 的 PDF 或一次探针补全映射（UI 按钮文案依赖它）。
-2. **高模是否保留**：low_poly 产新派生资产后，高模资产是保留（可再出别的 LOD）还是
-   提示删除？默认保留，用户可手动删（待确认）。
-3. **FBX→GLB 引擎可播**：本轮只产 FBX；何时补转换让引擎实时播放动画，待排期。
-4. **auto_rigging 可选贴图入参**：是否需要把 PBR 贴图 URL 一并传给绑骨（影响输出
+> ✅ **已拍板（2026-06-12）**：
+> - motion v1 的 8 个动作名（int 9–16）映射已确定，见 §③ 动作映射表
+>   （跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞）。
+> - **low_poly 减面后高模默认保留**（可再出别的 LOD），用户可手动删除；工具不自动删、不提示删。
+
+1. **FBX→GLB 引擎可播**：本轮只产 FBX；何时补转换让引擎实时播放动画，待排期。
+2. **auto_rigging 可选贴图入参**：是否需要把 PBR 贴图 URL 一并传给绑骨（影响输出
    贴图质量）？默认只传 `glb_url`，按需再加。
 
 ## 文档来源（评审可追溯）

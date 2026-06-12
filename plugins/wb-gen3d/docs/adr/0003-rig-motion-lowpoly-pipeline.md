@@ -30,12 +30,15 @@ animated_model` 角色、骨架 readiness 标志、`computeReadiness()`，注释
    `auto_rigging`、动作=`motion_retarget` v1。这是**产品策略选择**（混元为主线），
    不是技术受限。Meshy/Rodin 这轮不接绑骨/动画。
 
-2. **动作只用 v1（8 个固定动作，`motion_type` int 9–16）**。`motion_retarget_v2`
-   保持封锁、不进 UI/AI schema（ADR-0008 静默回退风险未解）。
+2. **动作只用 v1（8 个固定动作，`motion_type` int 9–16）**。8 个动作映射已由操作员
+   拍板（2026-06-12）：9 跨步 / 10 摔倒 / 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 /
+   15 跑步 / 16 跳舞（详见 PLAN §③）。`motion_retarget_v2` 保持封锁、不进 UI/AI
+   schema（ADR-0008 静默回退风险未解）。
 
 3. **资产模型 = 在同一网格资产上"追加"派生文件**，而非每步造新主资产：
    - `low_poly` 输出是完整低模 GLB → 落**新派生 GLB 资产**（`writeAsset`，
-     `sourceInputAssetPaths=[高模]`）。
+     `sourceInputAssetPaths=[高模]`）。**高模默认保留**（2026-06-12 拍板，可再出别的
+     LOD），删除由用户手动操作，工具不自动删。
    - `auto_rigging` 的**带骨 FBX** 作 `rigged_model` 同基名附属文件**追加**到目标
      网格资产；`motion_retarget` 的**动画 FBX** 作 `animated_model` 追加（文件名带
      `motion-<k>` 以多动作并存）。`readiness.rigged / animated` 随之翻动。
@@ -88,5 +91,5 @@ animated_model` 角色、骨架 readiness 标志、`computeReadiness()`，注释
 - 三步均 mock-first、真机门控 `GEN3D_ENABLE_REAL_PROVIDERS` + `HUNYUAN_API_KEY`。
 - low_poly 异步两段（submit→poll task），其余两步同步——给 `HunyuanRestProvider`
   分别加 `lowPoly()`(异步) / `autoRig()` / `applyMotion()`(同步)。
-- 开放问题（执行前澄清）：motion v1 的 8 个动作名映射、高模是否保留、FBX→GLB 排期、
-  auto_rigging 是否带 PBR 贴图入参——见 PLAN "开放问题"。
+- 开放问题（执行前澄清）：FBX→GLB 排期、auto_rigging 是否带 PBR 贴图入参——见 PLAN
+  "开放问题"。（motion v1 动作名映射、low_poly 后高模保留 2026-06-12 均已拍板。）

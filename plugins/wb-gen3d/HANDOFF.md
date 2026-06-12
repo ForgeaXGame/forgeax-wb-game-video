@@ -10,7 +10,8 @@ Last updated: 2026-06-12 Asia/Hong_Kong (Rodin **image-to-3D** now real-verified
 > 产线：高模 GLB →① low_poly 减面 →② auto_rigging 绑骨（出带骨 FBX）→③ motion_retarget v1 动作。
 > 方案要点：全程混元、验证先行（**Gate 0** 先验混元内网能否抓我们公网 COS 的模型 URL）、
 > 资产模型走「同基名附加 FBX」（rig/motion 产物 append 到源资产，不另起资产）。
-> **执行前需操作员拍板**：① motion v1 的 8 个动作名（int 9–16）映射来源；② low_poly 后高模是否保留。
+> **执行前关键决策（2026-06-12 均已拍板）**：① motion v1 的 8 个动作名 = 9 跨步 / 10 摔倒 /
+> 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞；② low_poly 减面后高模默认保留、可手动删。
 
 ## 历史基线：2026-06-11 Plan (M9-M12)（已完成、已并入 main）
 
