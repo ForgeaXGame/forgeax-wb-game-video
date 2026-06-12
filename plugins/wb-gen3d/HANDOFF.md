@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-11 Asia/Hong_Kong (M9-M12 implemented; **Rodin real text-to-3D verified end-to-end** through the Studio server — GLB + webp preview persisted per-game, `providerMode='real'`. `/api/game-assets/:slug/*` server route now actually landed in `main.ts` (was missing). webp preview support added across the file contract. Real Hunyuan public-COS reachability + real Rodin image/views still pending. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-12 Asia/Hong_Kong (Rodin **image-to-3D** now real-verified end-to-end through `RodinProvider` + temp COS: real character image → public presigned URL → 9.44 MB GLB + webp preview, `providerMode='real'`. COS public reachability PASS. Rodin **views**-to-3D still unverified; real Hunyuan public-COS fetch still pending. GLB/OBJ dedup confirmed already-landed in code (ADR-0002). Earlier M9-M12 history below. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## Handoff: Next Work Is The 2026-06-11 Plan (M9-M12)
 
@@ -61,6 +61,34 @@ COS URL from its internal network (explicit risk item — fallbacks in
 CAPABILITY_MATRIX); real Rodin **image / views** runs (text is verified, see
 below). M10 logic was exercised by out-of-tree bun smoke scripts (injected
 fetch/download, no network); those scratch scripts are not committed.
+
+### 2026-06-12 — Rodin **image-to-3D** real verified + COS public reachability
+
+Operator-provided temp COS creds (lightai bucket) + `RODIN_API_KEY` (64-char,
+Hyper3D). Ran quota-safe probes first, then one real image-to-3D:
+
+- **COS upload → public reachability PASS** (the URL-fetching-provider
+  prerequisite): `CosUploader.upload()` puts under `wb-gen3d/inputs/<sha256>.<ext>`;
+  the presigned URL is **publicly GET-able with no auth header** (200, bytes
+  match) — confirms Hunyuan/Meshy could fetch a public COS URL. `COS_SIGN_EXPIRES_SEC`
+  is the env name (operator's `COS_PRESIGN_EXPIRES` was renamed on write); the
+  hardcoded `wb-gen3d/inputs` prefix already satisfies the requested `wb-gen3d/`
+  path, so `COS_PREFIX` is not used.
+- **Rodin auth reachable**: empty-multipart probe → `201 INVALID_REQUEST`
+  (params, not auth) → key valid, no job started.
+- **Rodin text submit envelope confirmed**: returns `uuid` + `jobs.subscription_key`
+  (provider's envelope parse is correct; matches the earlier text verification).
+- **Rodin image-to-3D real PASS** (2026-06-12, ~98s, burns quota): a real
+  character illustration → COS → `RodinProvider` image mode submit/poll(6 sub-jobs)
+  /download returned a **9.44 MB GLB (`glTF` 2.0 magic verified)** + **5.4 KB
+  `preview.webp`**, `providerMode='real'`, real `sourceJobId`. The model matches
+  the source character. Synthetic flat-color test images get rejected with
+  `IMAGE_CONTENT_VIOLATION` (content moderation), so image-to-3D needs a real
+  photo/illustration — not a code issue. **Rodin views-to-3D still unverified.**
+- GLB/OBJ dedup is **already settled in code** (not pending): `per-game-store.ts`
+  `planFiles()` keeps the GLB `source_mesh` as identity and drops OBJ/MTL
+  `source_mesh` sidefiles (ADR-0002, "GLB only"). The "GLB/OBJ dedup decision
+  pending" note below is stale.
 
 ### 2026-06-11 (evening) — Rodin real API verified + webp + server route fix
 
@@ -504,7 +532,7 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
 | `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |
 | Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only; no real scorer |
-| GLB/OBJ dedup | decision pending → settle in M9 | real `text` returns both GLB+OBJ `source_mesh`; per-game plan = prefer GLB, OBJ optional |
+| **GLB/OBJ dedup** | **DONE** (ADR-0002) | `per-game-store.ts` `planFiles()` keeps GLB `source_mesh` as identity, drops OBJ/MTL `source_mesh`; was "pending" but already landed in M9 |
 | ~~UI refactor~~ (Workbench editor pattern) | **done** `af986ce` 2026-06-11 | tokens + staged sidebar + center/right column |
 | ~~views L/R inputs in UI~~ | **done** 2026-06-11 | 「添加左/右视图」in `SetupSidebar` |
 | `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
