@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
-import { BLOB_BASE } from '@/lib/blobUrl';
+import { scratchPreviewUrl } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
 import {
   EDITOR_ICON_MAP,
@@ -360,6 +360,7 @@ function PosePreprocess({
   const [srcUrl, setSrcUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const ImgIcon = EDITOR_ICON_MAP.image;
   const PoseIcon = EDITOR_ICON_MAP.pose;
 
@@ -378,9 +379,12 @@ function PosePreprocess({
     onResult(r.result);
   }
 
-  const previewUrl = result ? (result.localUrl ?? `${BLOB_BASE}/${result.storageKey}`) : null;
-  const feedUrl = result ? (result.sourceUrl ?? result.localUrl ?? `${BLOB_BASE}/${result.storageKey}`) : '';
+  const previewUrl = result ? scratchPreviewUrl(result) : null;
+  const feedUrl = result ? (result.sourceUrl ?? result.localUrl ?? previewUrl ?? '') : '';
   const targetLabel = mode === 'image' ? '图生输入' : '正视图输入';
+
+  useEffect(() => setPreviewFailed(false), [previewUrl]);
+  const showPreview = previewUrl !== null && !previewFailed;
 
   return (
     <>
@@ -400,8 +404,13 @@ function PosePreprocess({
       {error && <p className="step-note step-note--warn">{error}</p>}
       {result && (
         <div className="pose-result">
-          {previewUrl ? (
-            <img className="preview-thumb" src={previewUrl} alt="standardized pose" />
+          {showPreview ? (
+            <img
+              className="preview-thumb"
+              src={previewUrl}
+              alt=""
+              onError={() => setPreviewFailed(true)}
+            />
           ) : (
             <div className="preview-thumb preview-thumb--empty" aria-hidden="true">
               <ImgIcon size={18} />

@@ -85,11 +85,16 @@ function sanitizeBaseName(raw: string): string {
 }
 
 const LOCAL_URL_PREFIX = '/api/game-assets';
+const SCRATCH_URL_PREFIX = '/api/gen3d-scratch';
 
 function localUrlFor(slug: string, rel: string): string {
   // rel is "assets/3d/<slot>/<file>"; the route mounts at .../assets/3d/.
   const tail = rel.replace(/^assets\/3d\//, '');
   return `${LOCAL_URL_PREFIX}/${encodeURIComponent(slug)}/3d/${tail}`;
+}
+
+function scratchUrlFor(slug: string, sha256: string, format: FileFormat): string {
+  return `${SCRATCH_URL_PREFIX}/${encodeURIComponent(slug)}/${sha256}.${format}`;
 }
 
 // One generation may return several files. Keep exactly one main GLB
@@ -303,10 +308,13 @@ export class PerGameAssetStore implements AssetStorage {
     const abs = resolve(gameRoot(input.slug), rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, input.data);
-    // Scratch artifacts are not served by the read-only assets route (which is
-    // limited to assets/3d/**). localUrl is null: the in-page preview uses a
-    // data/object URL the caller already holds, and the durable bytes live here.
-    return { storageKey: rel, sha256, bytes: input.data.byteLength, localUrl: null };
+    // Scratch lives under .gen3d/tmp/ (not assets/3d/**). Preview via /api/gen3d-scratch.
+    return {
+      storageKey: rel,
+      sha256,
+      bytes: input.data.byteLength,
+      localUrl: scratchUrlFor(input.slug, sha256, input.format),
+    };
   }
 }
 

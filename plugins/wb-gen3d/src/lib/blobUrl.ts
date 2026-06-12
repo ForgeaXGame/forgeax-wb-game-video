@@ -13,3 +13,19 @@ export function blobUrl(file: ManifestFile | null | undefined): string | null {
   if (file.storageKey) return `${BLOB_BASE}/${file.storageKey}`;
   return null;
 }
+
+// Scratch / pose-standardization preview: prefer the per-game scratch route;
+// fall back to the provider-hosted sourceUrl when local bytes are not yet served.
+export function scratchPreviewUrl(result: {
+  localUrl: string | null;
+  sourceUrl: string | null;
+  storageKey: string;
+}): string | null {
+  if (result.localUrl) return result.localUrl;
+  if (result.sourceUrl) return result.sourceUrl;
+  // Legacy global blobs only — scratch keys (.gen3d/tmp/…) are NOT under gen3d-blobs.
+  if (result.storageKey && !result.storageKey.startsWith('.gen3d/')) {
+    return `${BLOB_BASE}/${result.storageKey}`;
+  }
+  return null;
+}
