@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { selectFile } from '@shared/manifest';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
@@ -95,13 +95,26 @@ function LibCard({
   const previewUrl = blobUrl(selectFile(asset.files, 'preview_image'));
   const caption = (asset.prompt ?? asset.mode).split('\n')[0]!.trim();
   const slot = slotLabel[asset.assetSlot] ?? asset.assetSlot;
+  // A preview <img> can transiently fail (request raced the just-written file,
+  // dev-proxy hiccup, or a missing/corrupt sidefile). Without this the tile
+  // renders a broken-image glyph with the full prompt spilling out as alt text.
+  // Fall back to the same placeholder as a no-preview asset, and retry whenever
+  // the URL changes (refresh / refine produces a new preview).
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => setPreviewFailed(false), [previewUrl]);
+  const showImg = previewUrl !== null && !previewFailed;
 
   return (
     <div className={`lib-card motion-row ${selected ? 'is-selected' : ''}`}>
       <button type="button" className="lib-card-main" onClick={onSelect} title={caption}>
         <div className="lib-card-thumb">
-          {previewUrl ? (
-            <img src={previewUrl} alt={caption} loading="lazy" />
+          {showImg ? (
+            <img
+              src={previewUrl}
+              alt=""
+              loading="lazy"
+              onError={() => setPreviewFailed(true)}
+            />
           ) : (
             <div className="lib-card-thumb--empty" aria-hidden="true">
               <ImgIcon size={20} />
