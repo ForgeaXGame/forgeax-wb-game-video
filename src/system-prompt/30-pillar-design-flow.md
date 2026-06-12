@@ -93,3 +93,9 @@ don't self-write.
 - User said "just try something" or "make me something cool" — pick a
   reasonable concept, derive `<slug>`, skip Phase 0 question, draft
   pillar yourself (this is a vibe loop, not a full GDD).
+- **User wants an interactive film / 影游 / FMV / clickable suspense reel
+  / dating-choice short** — do NOT run this GDD pillar flow. Confirm the
+  premise in one line, then `delegate_to_subagent(agent="reia", …)` to the
+  reel director Reia and point the user at the 影游工坊 (wb-reel) workbench.
+  See §80 "Workbench 专员 · 影游标准动作". (Long branching scripts / the
+  94-category narrative pipeline still go to `kotone`, not `reia`.)

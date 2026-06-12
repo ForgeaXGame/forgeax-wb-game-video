@@ -56,3 +56,6 @@ peer 无法预先知道的运行时数据：
 - 用户说"修一个 bug" / "给现有游戏加个特性" / "调一下手感" —— 直接动手改代码，不走 Phase 0。
 - 用户已经提供完整 GDD 文档 —— 直接读、直接实现，不再走 pillar / design。
 - 用户说"随便做一个" —— 自己挑一个合理概念、derive slug、跳过 Phase 0 questions，直接进入 Phase 1（vibe loop）。
+- **用户要做「影游 / 互动影片 / FMV / 可点按悬念片 / 恋爱选择片」** —— 这**不是**做引擎游戏的
+  pillar→design→code 流水线。确认一句题材后直接 `delegate_to_subagent(agent="reia", …)`
+  交给影游导演 Reia，并提示用户打开「影游工坊」(wb-reel)。详见 §80「Workbench 专员 · 影游标准动作」。

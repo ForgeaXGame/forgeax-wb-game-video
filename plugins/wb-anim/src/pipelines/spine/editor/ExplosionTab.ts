@@ -1,16 +1,8 @@
 // @source wb-character/src/pipelines/spine/editor/ExplosionTab.ts
 import type { StudioState, StudioTab, TabId, PartRegion } from './StudioState';
-import { spineIcon, spineBtnLabel } from './spine-icons';
 
-/** Resolve public/ assets for both standalone dev (:15174) and Studio embed (/plugins/wb-anim/). */
-function spineAssetUrl(file: string): string {
-  const base = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? './';
-  const root = base.endsWith('/') ? base : `${base}/`;
-  return `${root}assets/spine/${file}`;
-}
-
-const TEMPLATE_MALE_URL = spineAssetUrl('template_parts_male.png');
-const TEMPLATE_FEMALE_URL = spineAssetUrl('template_parts_female.png');
+const TEMPLATE_MALE_URL = '/assets/spine/template_parts_male.png';
+const TEMPLATE_FEMALE_URL = '/assets/spine/template_parts_female.png';
 
 // Processing order: torso → upper arms → forearms → thighs → calves → feet → hands → weapon.
 // Hands come AFTER thighs to prevent hand seeds from stealing thigh pixels.
@@ -70,22 +62,41 @@ function imageToBase64(dataUrl: string): string {
 }
 
 async function loadImageAsDataUrl(url: string): Promise<string> {
-  // Use fetch() to download the image as a Blob and convert to data URL.
-  // This avoids canvas CORS taint issues when the image is served from the
-  // same origin but without explicit Access-Control-Allow-Origin headers.
+  // 先走 fetch→blob→FileReader 这条路:同源静态资源无需 CORS,且不依赖 <img>
+  // 的格式嗅探。早期模板图(template_parts_female)曾是 JPEG 字节却用 .png 后缀,
+  // Tauri WKWebView 在 MIME(image/png) 与真实字节(JPEG)不符时会让 <img> 直接
+  // onerror,导致 Spine 全流程在 Step 0 崩。fetch 不做 MIME 校验,blob 原样返回,
+  // 直接 readAsDataURL 得到合法 image dataURL(下游 imageToBase64 只需要 base64
+  // 体,不在乎是 png 还是 jpeg,Gemini 那边按真实 mimeType 解析即可),省掉再过一次
+  // <img>+canvas 的脆弱环节。fetch 不可用(如 file://)时才回退到 <img> 方案。
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error(`无法读取图片: ${url}`));
-      reader.readAsDataURL(blob);
-    });
-  } catch (e: any) {
-    throw new Error(`无法加载图片: ${url} (${e.message})`);
+    const resp = await fetch(url, { cache: 'no-cache' });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result as string);
+        fr.onerror = () => reject(new Error(`FileReader 读取失败: ${url}`));
+        fr.readAsDataURL(blob);
+      });
+    }
+    console.warn('[Spine] loadImageAsDataUrl fetch 非 200,回退 <img>:', url, resp.status);
+  } catch (e) {
+    console.warn('[Spine] loadImageAsDataUrl fetch 异常,回退 <img>:', url, e);
   }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error(`<img> 加载失败: ${url}`));
+    img.src = url;
+  });
 }
 
 function compressImage(dataUrl: string, maxW: number, maxH: number, quality = 0.8): Promise<string> {
@@ -104,19 +115,10 @@ function compressImage(dataUrl: string, maxW: number, maxH: number, quality = 0.
   });
 }
 
-function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('图片加载失败'));
-    img.src = dataUrl;
-  });
-}
-
 const PARTS_TEMPLATE = `You are generating a CHARACTER PARTS BREAKDOWN sheet for 2D skeletal animation (Spine 2D).
 
 You have two reference images:
-1. LAYOUT TEMPLATE: A portrait-oriented image showing 15 disconnected body parts and 1 large weapon on a PURE WHITE (#FFFFFF) background. Each part is completely separated from every other part with visible white space between them.
+1. LAYOUT TEMPLATE: A portrait-oriented image showing 15 disconnected body parts and 1 large weapon on a pure white background. Each part is completely separated from every other part with visible white space between them.
 2. CHARACTER DESIGN: A detailed character concept sheet of [ENTER_BRIEF_CHARACTER_IDENTITY].
 
 CRITICAL RULES:
@@ -125,8 +127,7 @@ CRITICAL RULES:
 3. The template character is a placeholder. Completely replace with [ENTER_BRIEF_CHARACTER_IDENTITY] from the CHARACTER DESIGN — including body proportions, clothing, and weapon.
 4. The character's HEAD MUST BE FACING RIGHT. Do NOT draw facing left or forward.
 5. At joints (shoulders, elbows, knees), draw smooth rounded overlaps (padding) for animation. But the parts themselves must NOT touch each other on the sheet.
-6. BACKGROUND: The ENTIRE canvas background MUST be solid pure white (#FFFFFF). No dark background. No gradient. No black. No grey. The background between and around all parts must be white. This is MANDATORY.
-7. COLORS: Draw the character parts in their ACTUAL colors from the CHARACTER DESIGN. Do NOT draw in white or grayscale. Use the character's real colors.
+6. Pure white background. No boxes, frames, or colored backgrounds.
 
 === GENERATE THESE 16 ISOLATED PARTS EXACTLY WHERE THEY ARE ===
 
@@ -147,7 +148,7 @@ CRITICAL RULES:
 15. [Row 6 Right, Right Boot]: [ENTER_R_BOOT].
 16. [Far Right Vertical, Weapon]: [ENTER_WEAPON_DESC]. Perfectly VERTICAL orientation.
 
-Style: [ENTER_STYLE_KEYWORDS]. All 16 parts completely isolated on a SOLID PURE WHITE background. Background is WHITE. Parts are COLORED.`;
+Style: [ENTER_STYLE_KEYWORDS]. All 16 parts completely isolated on a pure white background.`;
 
 export class ExplosionTab implements StudioTab {
   readonly id: TabId = 'explosion';
@@ -180,10 +181,6 @@ export class ExplosionTab implements StudioTab {
   private resizeObs: ResizeObserver | null = null;
   private generating = false;
   private lastPrompt = '';
-  private generatedCandidates: string[] = [];
-  private generatedCandidatesAspect = '';
-  private resultBc: BroadcastChannel | null = null;
-  private resultBcSelfId = Math.random().toString(36).slice(2, 10);
 
   constructor(parent: HTMLElement, onStateChange: () => void) {
     this.onStateChange = onStateChange;
@@ -195,234 +192,116 @@ export class ExplosionTab implements StudioTab {
     this.sidePanel.style.cssText = 'display:flex;flex-direction:column;height:100%;overflow:hidden;';
 
     this.centerView = document.createElement('div');
-    this.centerView.className = 'spine-center-view';
+    this.centerView.style.cssText = 'display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;';
 
     this.buildUI();
-    this.setupResultSync();
   }
 
   private q(selector: string): HTMLElement | null {
     return this.sidePanel.querySelector(selector) ?? this.centerView.querySelector(selector) ?? null;
   }
 
-  private visibleCenterElement<T extends HTMLElement = HTMLElement>(selector: string): T | null {
-    const local = this.centerView.querySelector<T>(selector);
-    if (local?.isConnected) return local;
-    const all = Array.from(document.querySelectorAll<T>(selector));
-    return all.find(el => el.isConnected && el.offsetParent !== null) ?? all.find(el => el.isConnected) ?? local ?? null;
-  }
-
-  private connectedCenterElements<T extends HTMLElement = HTMLElement>(selector: string): T[] {
-    const seen = new Set<T>();
-    const add = (el: T | null) => {
-      if (el?.isConnected) seen.add(el);
-    };
-    add(this.centerView.querySelector<T>(selector));
-    for (const el of Array.from(document.querySelectorAll<T>(selector))) add(el);
-    return Array.from(seen);
-  }
-
-  private dataUrlToObjectUrl(dataUrl: string): string {
-    const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
-    if (!match) return dataUrl;
-    const [, mime, b64] = match;
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return URL.createObjectURL(new Blob([bytes], { type: mime || 'image/png' }));
-  }
-
-  private async removeWhiteBgFromDataUrl(dataUrl: string): Promise<string> {
-    const img = await loadDataUrlImage(dataUrl);
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) throw new Error('无法创建抠图画布');
-
-    ctx.drawImage(img, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const hardWhite = 246;
-    const softWhite = 218;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const saturation = max - min;
-      if (max < softWhite || saturation > 28) continue;
-
-      if (min >= hardWhite && saturation <= 18) {
-        data[i + 3] = 0;
-      } else {
-        const whiteness = Math.max(0, Math.min(1, (min - softWhite) / (hardWhite - softWhite)));
-        data[i + 3] = Math.round(data[i + 3] * (1 - whiteness));
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL('image/png');
-  }
-
-  private async removeWhiteBgFromCandidates(candidates: string[]): Promise<string[]> {
-    return Promise.all(candidates.map(async (candidate, index) => {
-      try {
-        return await this.removeWhiteBgFromDataUrl(candidate);
-      } catch (e) {
-        console.warn(`[Spine] auto remove white bg failed for candidate ${index + 1}:`, e);
-        return candidate;
-      }
-    }));
-  }
-
-  private setupResultSync(): void {
-    try {
-      this.resultBc = new BroadcastChannel('forgeax-plugin.@forgeax-plugin/wb-anim.spine-results');
-    } catch {
-      this.resultBc = null;
-      return;
-    }
-    this.resultBc.onmessage = (e: MessageEvent) => {
-      const data = e.data as {
-        type?: string;
-        from?: string;
-        candidates?: string[];
-        aspect?: string;
-        mode?: 'auto' | 'manual';
-      } | null;
-      if (!data || data.from === this.resultBcSelfId) return;
-      if (data.type === 'spine-candidates') {
-        if (!Array.isArray(data.candidates) || data.candidates.length === 0) return;
-        this.showCandidateGrid(data.candidates, data.aspect || '', false);
-      }
-      if (data.type === 'spine-annotate' && (data.mode === 'auto' || data.mode === 'manual')) {
-        void this.enterAnnotateMode(data.mode, false);
-      }
-    };
-  }
-
-  private broadcastCandidates(candidates: string[], aspect: string): void {
-    if (!this.resultBc) return;
-    try {
-      this.resultBc.postMessage({
-        type: 'spine-candidates',
-        from: this.resultBcSelfId,
-        candidates,
-        aspect,
-      });
-    } catch (e) {
-      console.warn('[Spine] broadcast generated candidates failed:', e);
-    }
-  }
-
-  private broadcastAnnotateMode(mode: 'auto' | 'manual'): void {
-    if (!this.resultBc) return;
-    try {
-      this.resultBc.postMessage({
-        type: 'spine-annotate',
-        from: this.resultBcSelfId,
-        mode,
-      });
-    } catch (e) {
-      console.warn('[Spine] broadcast annotate mode failed:', e);
-    }
-  }
-
   private buildUI(): void {
     this.sidePanel.innerHTML = `
       <div class="expl-sidebar-scroll" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;">
-        <div class="expl-tmpl-block">
-          <div class="sd-section-title expl-section-row">
-            拆件模板
-            <div id="expl-gender-toggle" class="expl-gender-toggle">
-              <button class="expl-gender-btn expl-gender-active" data-gender="male">${spineIcon('male', 'spine-icon-svg expl-gender-icon')} 男</button>
-              <button class="expl-gender-btn" data-gender="female">${spineIcon('female', 'spine-icon-svg expl-gender-icon')} 女</button>
-            </div>
+        <div class="sd-section-title" style="display:flex;align-items:center;gap:6px;">
+          拆件模板
+          <div id="expl-gender-toggle" style="margin-left:auto;display:flex;gap:2px;">
+            <button class="expl-gender-btn expl-gender-active" data-gender="male" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid rgba(232,196,138,0.3);background:rgba(232,196,138,0.15);color:#e8c48a;cursor:pointer;">♂ 男</button>
+            <button class="expl-gender-btn" data-gender="female" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid rgba(232,196,138,0.15);background:transparent;color:rgba(232,196,138,0.5);cursor:pointer;">♀ 女</button>
           </div>
-          <div class="expl-tmpl-preview" id="expl-tmpl-preview">
-            <img id="expl-tmpl-img" class="expl-tmpl-img" src="${this.getTemplateUrl()}" alt="角色拆分模板">
-          </div>
-          <div class="expl-tmpl-info">
-            白底实体模板 · 16 部件（含武器）
-          </div>
+        </div>
+        <div class="expl-tmpl-preview" id="expl-tmpl-preview">
+          <img id="expl-tmpl-img" class="expl-tmpl-img" src="${this.getTemplateUrl()}" alt="角色拆分模板">
+        </div>
+        <div class="expl-tmpl-info" style="font-size:10px;opacity:0.6;text-align:center;">
+          白底实体模板 · 16 部件（含武器）
+        </div>
+
+        <div class="expl-divider"></div>
+        <div class="sd-section-title">一键生成流程</div>
+        <div class="expl-steps-info">
+          <div class="expl-step-item"><span class="expl-step-num">1</span><span>Gemini 3.0 Pro 看图 → 生成提示词</span></div>
+          <div class="expl-step-item"><span class="expl-step-num">2</span><span>Nano Banana 2 生成拆件图</span></div>
+          <div class="expl-step-item"><span class="expl-step-num">3</span><span>一键抠图（去白底）</span></div>
         </div>
 
         <div class="expl-divider"></div>
         <div class="expl-actions">
-          <div class="expl-actions-primary">
-            <button class="sd-gen-btn" id="expl-gen-parts" disabled>
-              ${spineBtnLabel('paint', '一键生成角色拆件图')}
-            </button>
-            <div class="cd-progress" id="expl-progress" style="display:none">
-              <div class="expl-progress-head">
-                <span class="expl-progress-step" id="expl-progress-step">准备中</span>
-                <span class="expl-progress-percent" id="expl-progress-percent">0%</span>
-              </div>
-              <div class="cd-progress-bar"><div class="cd-progress-fill" id="expl-progress-fill"></div></div>
-              <div class="cd-progress-text" id="expl-progress-text">正在准备生成任务...</div>
-            </div>
-            <button class="sd-action-btn sd-btn-ghost" id="expl-reroll" style="display:none;">
-              ${spineBtnLabel('refresh', '不满意，重新抽卡')}
-            </button>
+          <button class="sd-gen-btn" id="expl-gen-parts" disabled>
+            🎨 一键生成角色拆件图
+          </button>
+          <div class="cd-progress" id="expl-progress" style="display:none">
+            <div class="cd-progress-bar"><div class="cd-progress-fill"></div></div>
+            <div class="cd-progress-text" id="expl-progress-text">生成中...</div>
           </div>
-          <div class="expl-actions-steps">
-            <div class="expl-actions-steps-label">后续处理</div>
-            <button class="sd-action-btn sd-step-btn expl-annotate-btn" id="expl-annotate" disabled>
-              ${spineBtnLabel('scissors', '标注部件')}
-            </button>
-            <div class="expl-annotate-hint" id="expl-annotate-hint">请先成功生成拆件图，生成后即可标注部件。</div>
-          </div>
-          <button class="studio-next-btn" id="expl-confirm" disabled>确认 → 进入绑骨</button>
+          <button class="sd-gen-btn" id="expl-reroll" style="display:none;">
+            🔄 不满意，重新抽卡
+          </button>
+          <button class="sd-gen-btn" id="expl-remove-bg" disabled>
+            🧹 一键抠图（去白底）
+          </button>
+          <button class="sd-gen-btn" id="expl-auto-crop" disabled>
+            ✂️ 自动标注部件
+          </button>
+          <button class="sd-gen-btn" id="expl-manual-crop" disabled>
+            ✋ 手动标注部件
+          </button>
+          <button class="studio-next-btn" id="expl-confirm" disabled style="margin-top:8px;">确认 → 进入绑骨</button>
         </div>
 
         <div class="expl-divider"></div>
-        <div class="sd-section-title expl-section-row">
-          ${spineIcon('list', 'spine-icon-svg sd-section-icon')} 历史记录
-          <button class="sd-action-btn expl-refresh-btn" id="expl-refresh-history">${spineBtnLabel('refresh', '刷新')}</button>
+        <div class="expl-upload-row" style="display:flex;gap:6px;">
+          <button class="sd-action-btn" id="expl-upload-result" style="flex:1;font-size:11px;">📤 上传已有拆件图</button>
+        </div>
+
+        <div class="expl-divider"></div>
+        <div class="sd-section-title" style="display:flex;align-items:center;gap:6px;">
+          📋 历史记录
+          <button class="sd-action-btn" id="expl-refresh-history" style="font-size:10px;padding:2px 8px;margin-left:auto;">刷新</button>
         </div>
         <div id="expl-history-list" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;"></div>
       </div>
     `;
 
     this.centerView.innerHTML = `
-      <div class="expl-previews">
-        <div class="expl-preview-panel">
+      <div class="expl-previews" style="flex:1;display:flex;align-items:stretch;gap:0;padding:16px;min-height:0;">
+        <div class="expl-preview-panel" style="flex:1;display:flex;flex-direction:column;gap:8px;">
           <div class="sd-section-title">角色设定图</div>
-          <div class="expl-source-box" id="expl-source">
+          <div class="expl-source-box" id="expl-source" style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;background:rgba(0,0,0,0.3);border-radius:10px;border:1px solid rgba(232,196,138,0.1);overflow:hidden;position:relative;">
             <div class="sd-preview-empty">
-              <div class="sd-preview-empty-icon">${spineIcon('image')}</div>
+              <div class="sd-preview-empty-icon">🖼️</div>
               <div>请先在"角色设计"完成角色</div>
             </div>
           </div>
-          <div class="expl-upload-row"><button class="sd-action-btn" id="expl-upload-btn">${spineBtnLabel('upload', '上传角色设定图')}</button></div>
+          <div class="expl-upload-row"><button class="sd-action-btn" id="expl-upload-btn">📤 上传角色设定图</button></div>
         </div>
-        <div class="expl-arrow-col">
-          <div class="expl-arrow">${spineIcon('arrow', 'spine-icon-svg expl-arrow-icon')}</div>
+        <div class="expl-arrow-col" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:60px;flex-shrink:0;">
+          <div class="expl-arrow">→</div>
           <div class="expl-arrow-label">Claude<br>+<br>Gemini</div>
         </div>
-        <div class="expl-preview-panel">
+        <div class="expl-preview-panel" style="flex:1;display:flex;flex-direction:column;gap:8px;">
           <div class="sd-section-title" id="expl-right-title">拆件图结果</div>
-          <div class="expl-result-box" id="expl-result">
+          <div class="expl-result-box" id="expl-result" style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;background:rgba(0,0,0,0.3);border-radius:10px;border:1px solid rgba(232,196,138,0.1);overflow:hidden;position:relative;">
             <div class="sd-preview-empty">
-              <div class="sd-preview-empty-icon">${spineIcon('scissors')}</div>
+              <div class="sd-preview-empty-icon">✂️</div>
               <div>点击「一键生成角色拆件图」</div>
               <div class="sd-preview-tip">Claude 分析 → Gemini 生成 → 自动抠图</div>
-              <div class="expl-inline-msg" id="expl-inline-msg" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(255,80,80,0.15);border:1px solid rgba(255,80,80,0.3);border-radius:6px;color:#ff8080;font-size:12px;text-align:left;max-width:260px;word-break:break-all;"></div>
             </div>
           </div>
-          <div class="expl-upload-row"><button class="sd-action-btn" id="expl-upload-result2">${spineBtnLabel('upload', '上传拆件图')}</button></div>
+          <div class="expl-upload-row"><button class="sd-action-btn" id="expl-upload-result2">📤 上传拆件图</button></div>
         </div>
       </div>
     `;
 
     this.q('#expl-upload-btn')?.addEventListener('click', () => this.pickImage('source'));
+    this.q('#expl-upload-result')?.addEventListener('click', () => this.pickImage('result'));
     this.q('#expl-upload-result2')?.addEventListener('click', () => this.pickImage('result'));
     this.q('#expl-gen-parts')?.addEventListener('click', () => this.runFullPipeline());
     this.q('#expl-reroll')?.addEventListener('click', () => this.reroll());
-    this.q('#expl-annotate')?.addEventListener('click', () => this.enterAnnotateMode('auto'));
+    this.q('#expl-remove-bg')?.addEventListener('click', () => this.removeWhiteBackground());
+    this.q('#expl-auto-crop')?.addEventListener('click', () => this.enterAnnotateMode('auto'));
+    this.q('#expl-manual-crop')?.addEventListener('click', () => this.enterAnnotateMode('manual'));
     this.q('#expl-confirm')?.addEventListener('click', () => this.confirm());
     this.q('#expl-refresh-history')?.addEventListener('click', () => this.loadHistory());
 
@@ -496,74 +375,57 @@ export class ExplosionTab implements StudioTab {
   }
 
   private showResultPreview(dataUrl: string): void {
-    const boxes = this.connectedCenterElements('#expl-result');
-    if (boxes.length === 0) return;
-    const src = this.dataUrlToObjectUrl(dataUrl);
-    for (const box of boxes) {
-      const img = document.createElement('img');
-      img.className = 'expl-preview-img';
-      img.src = src;
-      box.innerHTML = '';
-      // 高对比度棋盘格，透明区域清晰可见
-      box.style.background = 'repeating-conic-gradient(#555 0% 25%, #111 0% 50%) 0 0 / 14px 14px';
-      box.appendChild(img);
-    }
+    const box = this.q('#expl-result') as HTMLElement;
+    if (!box) return;
+    const img = document.createElement('img');
+    img.className = 'expl-preview-img';
+    img.src = dataUrl;
+    box.innerHTML = '';
+    box.appendChild(img);
   }
 
   // ── 完整管线 ──────────────────────────────────────────────
 
-  private showProgress(show: boolean, text = '', percent?: number): void {
+  private showProgress(show: boolean, text = ''): void {
     const el = this.q('#expl-progress') as HTMLElement;
     if (el) el.style.display = show ? '' : 'none';
     const txt = this.q('#expl-progress-text') as HTMLElement;
     if (txt && text) txt.textContent = text;
-    const step = this.q('#expl-progress-step') as HTMLElement;
-    const pct = this.q('#expl-progress-percent') as HTMLElement;
-    const fill = this.q('#expl-progress-fill') as HTMLElement;
-    const inferred = percent ?? (text.startsWith('1/3') ? 33 : text.startsWith('2/3') ? 66 : text.startsWith('3/3') ? 90 : 15);
-    const clamped = Math.max(0, Math.min(100, inferred));
-    if (step && text) {
-      const match = text.match(/^(\d\/\d)\s*(.*)$/);
-      step.textContent = match ? `步骤 ${match[1]}` : '处理中';
-    }
-    if (pct) pct.textContent = `${clamped}%`;
-    if (fill) fill.style.width = `${clamped}%`;
   }
 
   private async runFullPipeline(): Promise<void> {
     console.log('[Spine] runFullPipeline called, characterImage exists:', !!this.state?.characterImage,
       'length:', this.state?.characterImage?.length);
     if (!this.state?.characterImage) {
-      this.showInlineError('请先上传角色设定图，再点击一键生成');
+      this.showToast('请先完成角色设计或上传角色设定图');
       return;
     }
     if (this.generating) return;
     this.generating = true;
-    this.generatedCandidates = [];
-    this.generatedCandidatesAspect = '';
-    this.clearInlineError();
 
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     if (btn) btn.disabled = true;
-    this.showProgress(true, '1/3 压缩图片...', 12);
-    let keepProgressVisible = false;
+    this.showProgress(true, '1/3 压缩图片...');
 
     try {
       const templateUrl = this.getTemplateUrl();
       console.log('[Spine] Step 0: preparing images, template:', templateUrl);
+      console.log('[Spine] Step 0a: compressing characterImage…');
       const charImg = await compressImage(this.state.characterImage, 1024, 1024, 0.9);
       const charBase64 = imageToBase64(charImg);
       console.log('[Spine] charBase64 size:', (charBase64.length / 1024).toFixed(0), 'KB');
 
+      console.log('[Spine] Step 0b: loading template via loadImageAsDataUrl…');
       const templateDataUrl = await loadImageAsDataUrl(templateUrl);
       const templateBase64 = imageToBase64(templateDataUrl);
       console.log('[Spine] templateBase64 size:', (templateBase64.length / 1024).toFixed(0), 'KB');
 
+      console.log('[Spine] Step 0c: detecting aspect ratio…');
       const templateAspect = await this.detectAspectRatio(templateDataUrl);
       console.log('[Spine] Template detected aspect ratio:', templateAspect);
 
       // ── Step 1: Gemini 3.0 Pro 看图生成提示词 ──
-      this.showProgress(true, '1/3 Gemini 3.0 Pro 正在分析角色，生成拆件提示词...', 33);
+      this.showProgress(true, '1/3 Gemini 3.0 Pro 正在分析角色，生成拆件提示词...');
 
       const charDesc = this.getCharDesc();
       console.log('[Spine] Step 1: calling Gemini 3.0 Pro for text prompt, charDesc:', charDesc);
@@ -594,12 +456,12 @@ ${PARTS_TEMPLATE}`;
           { base64: templateBase64, mimeType: 'image/png' },
           { base64: charBase64, mimeType: 'image/jpeg' },
         ],
-        // Text analysis — let server pick a vision-capable text model (not image-gen model).
+        model: 'gemini-3-pro-image-preview',
       });
 
       console.log('[Spine] Gemini 3.0 Pro text response:', chatResult.success, chatResult.error);
       if (!chatResult.success || !chatResult.text) {
-        this.showInlineError('❌ 提示词生成失败: ' + (chatResult.error || '未知错误'));
+        this.showToast('提示词生成失败: ' + (chatResult.error || '未知错误'));
         return;
       }
 
@@ -614,7 +476,7 @@ ${PARTS_TEMPLATE}`;
       // ── Step 2: Nano Banana 2 并行生成 4 张拆件图 ──
       const NUM_CANDIDATES = 4;
       console.log('[Spine] Step 2: calling Nano Banana 2 x' + NUM_CANDIDATES);
-      this.showProgress(true, `2/3 Nano Banana 2 正在并行生成 ${NUM_CANDIDATES} 张拆件图...`, 66);
+      this.showProgress(true, `2/3 Nano Banana 2 正在并行生成 ${NUM_CANDIDATES} 张拆件图...`);
 
       const imgPayload = {
         prompt: finalPrompt,
@@ -640,24 +502,21 @@ ${PARTS_TEMPLATE}`;
 
       console.log(`[Spine] Got ${successResults.length}/${NUM_CANDIDATES} images`);
       if (successResults.length === 0) {
-        this.showInlineError('❌ 图片生成失败: ' + (imgResults[0]?.error || '未知错误'));
+        this.showToast('全部生成失败: ' + (imgResults[0]?.error || '未知错误'));
         return;
       }
 
-      // ── Step 3: 自动抠图并展示候选图 ──
-      this.showProgress(true, '3/3 自动抠图去白底...', 90);
-      const cutoutResults = await this.removeWhiteBgFromCandidates(successResults);
-      this.showCandidateGrid(cutoutResults, templateAspect);
-      keepProgressVisible = true;
+      // ── Step 3: 展示候选图供选择 ──
+      this.showProgress(true, '3/3 处理中...');
+      this.showCandidateGrid(successResults, templateAspect);
 
     } catch (e: any) {
       console.error('[Spine] ❌ Pipeline error:', e);
-      const msg = e?.message || String(e);
-      this.showInlineError(msg.includes('无法加载图片') ? `❌ ${msg}` : `❌ 生成失败: ${msg}`);
+      this.showToast('❌ 请求失败: ' + e.message);
     } finally {
       this.generating = false;
       btn.disabled = false;
-      if (!keepProgressVisible) this.showProgress(false);
+      this.showProgress(false);
       this.updateButtons();
     }
   }
@@ -669,13 +528,10 @@ ${PARTS_TEMPLATE}`;
     }
     if (this.generating) return;
     this.generating = true;
-    this.generatedCandidates = [];
-    this.generatedCandidatesAspect = '';
 
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     btn.disabled = true;
-    this.showProgress(true, '重新抽卡中...', 20);
-    let keepProgressVisible = false;
+    this.showProgress(true, '重新抽卡中...');
 
     try {
       const charImg = await compressImage(this.state.characterImage, 1024, 1024, 0.9);
@@ -685,7 +541,7 @@ ${PARTS_TEMPLATE}`;
       const templateAspect = await this.detectAspectRatio(templateDataUrl);
 
       const NUM_CANDIDATES = 4;
-      this.showProgress(true, `Nano Banana 2 并行生成 ${NUM_CANDIDATES} 张拆件图...`, 65);
+      this.showProgress(true, `Nano Banana 2 并行生成 ${NUM_CANDIDATES} 张拆件图...`);
 
       const payload = {
         prompt: this.lastPrompt,
@@ -715,17 +571,13 @@ ${PARTS_TEMPLATE}`;
         return;
       }
 
-      this.showProgress(true, '3/3 自动抠图去白底...', 90);
-      const cutoutCandidates = await this.removeWhiteBgFromCandidates(candidates);
-      this.showCandidateGrid(cutoutCandidates, templateAspect);
-      keepProgressVisible = true;
+      this.showCandidateGrid(candidates, templateAspect);
     } catch (e: any) {
-      const msg = e?.message || String(e);
-      this.showToast(msg.includes('无法加载图片') ? `❌ ${msg}` : `❌ 请求失败: ${msg}`);
+      this.showToast('❌ 请求失败: ' + e.message);
     } finally {
       this.generating = false;
       btn.disabled = false;
-      if (!keepProgressVisible) this.showProgress(false);
+      this.showProgress(false);
       this.updateButtons();
     }
   }
@@ -769,141 +621,117 @@ ${PARTS_TEMPLATE}`;
     return this.isFemale() ? TEMPLATE_FEMALE_URL : TEMPLATE_MALE_URL;
   }
 
-  private showCandidateGrid(candidates: string[], _aspect: string, broadcast = true): void {
-    this.generatedCandidates = candidates;
-    this.generatedCandidatesAspect = _aspect;
-    if (this.state && candidates[0]) {
-      this.state.explosionImage = candidates[0];
-      this.state.partRegions = [];
-      this.triggerSaveOnly();
-    }
-    if (broadcast) this.broadcastCandidates(candidates, _aspect);
-    const resultBoxes = this.connectedCenterElements('#expl-result');
-    if (resultBoxes.length === 0) {
-      this.showInlineError('生成完成，但结果面板未找到，请重新打开拆件页');
-      return;
-    }
-    // 只更新标题文字节点，不清除标题里的按钮子元素
-    const titles = this.connectedCenterElements('#expl-right-title');
-    for (const title of titles) {
-      const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
-      if (firstTextNode) {
-        firstTextNode.textContent = `生成完成 · 选择最佳拆件图 (${candidates.length} 张) `;
+  // ── 白底去除 ──────────────────────────────────────────────
+
+  private async removeWhiteBgFromDataUrl(dataUrl: string): Promise<string> {
+    const img = await this.loadImage(dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const { data } = imageData;
+    const threshold = 240;
+    const edgeSoftness = 30;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (r >= threshold && g >= threshold && b >= threshold) {
+        data[i + 3] = 0;
       } else {
-        title.insertBefore(document.createTextNode(`生成完成 · 选择最佳拆件图 (${candidates.length} 张) `), title.firstChild);
+        const brightness = Math.max(r, g, b);
+        const saturation = brightness > 0 ? 1 - Math.min(r, g, b) / brightness : 0;
+        if (brightness > (threshold - edgeSoftness) && saturation < 0.15) {
+          data[i + 3] = Math.round(Math.min(1, Math.max(0, (threshold - brightness) / edgeSoftness)) * 255);
+        }
       }
     }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
 
-    const objectUrls = candidates.map(candidate => this.dataUrlToObjectUrl(candidate));
-    for (const resultBox of resultBoxes) {
-      resultBox.innerHTML = '';
+  private showCandidateGrid(candidates: string[], _aspect: string): void {
+    const resultBox = this.q('#expl-result') as HTMLElement;
+    const title = this.q('#expl-right-title') as HTMLElement;
+    if (title) title.textContent = `选择最佳拆件图 (${candidates.length} 张)`;
+    resultBox.innerHTML = '';
 
-      resultBox.style.background = 'var(--color-background-canvas)';
-      resultBox.style.display = 'flex';
-      resultBox.style.flexDirection = 'column';
-      resultBox.style.alignItems = 'stretch';
-      resultBox.style.justifyContent = 'stretch';
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;width:100%;height:100%;overflow:auto;';
+    resultBox.appendChild(grid);
 
-      const preview = document.createElement('div');
-      preview.className = 'expl-generated-preview';
-
-      const mainImg = document.createElement('img');
-      mainImg.className = 'expl-generated-main-img';
-      mainImg.alt = '已生成拆件图预览';
-      mainImg.decoding = 'async';
-      mainImg.src = objectUrls[0];
-      preview.appendChild(mainImg);
-
-      const strip = document.createElement('div');
-      strip.className = 'expl-candidate-strip';
-      preview.appendChild(strip);
-      resultBox.appendChild(preview);
-
-      for (let i = 0; i < candidates.length; i++) {
-        const cell = document.createElement('button');
-        cell.type = 'button';
-        cell.className = `expl-candidate-thumb${i === 0 ? ' active' : ''}`;
-        const img = document.createElement('img');
-        img.alt = `候选拆件图 ${i + 1}`;
-        img.decoding = 'async';
-        img.loading = 'eager';
-        img.addEventListener('error', () => {
-          cell.classList.add('expl-candidate-thumb-error');
-        });
-        img.src = objectUrls[i];
-        cell.appendChild(img);
-        cell.title = `候选拆件图 ${i + 1}`;
-        cell.addEventListener('click', () => {
-          mainImg.src = objectUrls[i];
-          if (this.state) {
-            this.state.explosionImage = candidates[i];
-            this.state.partRegions = [];
-            this.triggerSaveOnly();
-          }
-          for (const el of Array.from(strip.children)) el.classList.remove('active');
-          cell.classList.add('active');
-          this.updateButtons();
-        });
-        strip.appendChild(cell);
-      }
+    for (let i = 0; i < candidates.length; i++) {
+      const cell = document.createElement('div');
+      cell.style.cssText = 'position:relative;cursor:pointer;border:2px solid transparent;border-radius:8px;overflow:hidden;background:#1a1a2e;transition:border-color 0.2s;';
+      cell.innerHTML = `
+        <img src="${candidates[i]}" style="width:100%;height:100%;object-fit:contain;">
+        <div style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;">#${i + 1}</div>
+      `;
+      cell.addEventListener('mouseenter', () => cell.style.borderColor = '#4fc3f7');
+      cell.addEventListener('mouseleave', () => cell.style.borderColor = 'transparent');
+      cell.addEventListener('click', () => this.selectCandidate(candidates[i]));
+      grid.appendChild(cell);
     }
 
-    this.showProgress(true, `3/3 已生成并自动抠图 ${candidates.length} 张，已显示第 1 张`, 100);
+    this.showProgress(false);
     this.generating = false;
     const btn = this.q('#expl-gen-parts') as HTMLButtonElement;
     if (btn) btn.disabled = false;
-    const rerollBtn = this.q('#expl-reroll') as HTMLElement;
-    if (rerollBtn) rerollBtn.style.display = '';
     this.updateButtons();
   }
 
-  private selectCandidate(rawDataUrl: string): void {
-    // 直接保存原始图像，不在选择阶段做 canvas 处理（避免 iframe 环境下 canvas 安全限制）
-    this.generatedCandidates = [];
-    this.generatedCandidatesAspect = '';
-    this.state!.explosionImage = rawDataUrl;
-    this.state!.partRegions = [];
-    this.showResultPreview(rawDataUrl);
-    const rerollBtn = this.q('#expl-reroll') as HTMLElement;
-    if (rerollBtn) rerollBtn.style.display = '';
-    this.triggerSaveOnly();
-    this.updateButtons();
-    this.showToast('✅ 已选择！可直接标注部件');
+  private async selectCandidate(rawDataUrl: string): Promise<void> {
+    this.showProgress(true, '正在去除白色背景...');
+    try {
+      const transparentDataUrl = await this.removeWhiteBgFromDataUrl(rawDataUrl);
+      this.state!.explosionImage = transparentDataUrl;
+      this.state!.partRegions = [];
+      this.showResultPreview(transparentDataUrl);
+      const rerollBtn = this.q('#expl-reroll') as HTMLElement;
+      if (rerollBtn) rerollBtn.style.display = '';
+      this.triggerSaveOnly();
+      this.showToast('✅ 已选择！可继续标注或重新生成');
+    } catch (e: any) {
+      this.showToast('❌ 处理失败: ' + e.message);
+    } finally {
+      this.showProgress(false);
+      this.updateButtons();
+    }
+  }
+
+  private async removeWhiteBackground(): Promise<void> {
+    if (!this.state?.explosionImage) return;
+    const btn = this.q('#expl-remove-bg') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ 抠图中...';
+    try {
+      const result = await this.removeWhiteBgFromDataUrl(this.state.explosionImage);
+      this.state.explosionImage = result;
+      this.state.partRegions = [];
+      this.onStateChange?.();
+      this.showResultPreview(result);
+      this.showToast('✅ 白色背景已去除');
+    } catch (e) {
+      this.showToast('❌ 抠图失败: ' + (e as Error).message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🧹 一键抠图（去白底）';
+      this.updateButtons();
+    }
   }
 
   // ── 标注模式 ──────────────────────────────────────────────
 
-  private async enterAnnotateMode(mode: 'auto' | 'manual', broadcast = true): Promise<void> {
-    if (!this.state?.explosionImage) {
-      this.showInlineError('请先选择或生成拆件图');
-      return;
-    }
-    if (broadcast) this.broadcastAnnotateMode(mode);
+  private async enterAnnotateMode(mode: 'auto' | 'manual'): Promise<void> {
+    if (!this.state?.explosionImage) return;
     this.annotMode = mode;
-    let img: HTMLImageElement;
-    try {
-      img = await this.loadImage(this.state.explosionImage);
-    } catch (e) {
-      console.error('[Spine] enterAnnotateMode: loadImage failed', e);
-      this.showInlineError('加载拆件图失败，请重试');
-      return;
-    }
+    const img = await this.loadImage(this.state.explosionImage);
     this.annotImg = img;
 
     if (mode === 'auto') {
-      try {
-        const regions = this.detectParts(img);
-        this.state.partRegions = regions;
-        this.showToast(`✅ 检测到 ${regions.length} 个部件 · 左侧可交换标签`);
-      } catch (e) {
-        console.error('[Spine] detectParts failed, falling back to empty regions:', e);
-        // canvas getImageData 失败时退化：给用户空列表，进入手动框选模式
-        this.state.partRegions = PART_NAMES.map((n, i) => ({
-          id: PART_IDS[i], name: n, x: 0, y: 0, width: 0, height: 0, imageData: '',
-        }));
-        this.annotMode = 'manual';
-        this.showToast('自动检测不可用，已切换手动模式');
-      }
+      const regions = this.detectParts(img);
+      this.state.partRegions = regions;
+      this.showToast(`✅ 检测到 ${regions.length} 个部件 · 左侧可交换标签`);
     } else {
       if (this.state.partRegions.length === 0) {
         this.state.partRegions = PART_NAMES.map((n, i) => ({
@@ -1176,12 +1004,7 @@ ${PARTS_TEMPLATE}`;
     const resultBox = this.q('#expl-result') as HTMLElement;
     const title = this.q('#expl-right-title') as HTMLElement;
     resultBox.innerHTML = '';
-    if (title) {
-      const txt = this.annotMode === 'auto' ? '自动标注 · 在原图上查看 ' : '手动标注 · 在图上框选 ';
-      const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
-      if (firstTextNode) firstTextNode.textContent = txt;
-      else title.insertBefore(document.createTextNode(txt), title.firstChild);
-    }
+    if (title) title.textContent = this.annotMode === 'auto' ? '自动标注 · 在原图上查看' : '手动标注 · 在图上框选';
 
     const uploadRow = resultBox.parentElement?.querySelector('.expl-upload-row') as HTMLElement;
     if (uploadRow) uploadRow.style.display = 'none';
@@ -1217,14 +1040,8 @@ ${PARTS_TEMPLATE}`;
 
     const actionsRow = document.createElement('div');
     actionsRow.className = 'expl-annotate-actions';
-    actionsRow.innerHTML = `
-      ${this.annotMode === 'auto'
-        ? `<button class="expl-crop-btn expl-reannotate-btn" id="expl-reannotate">${spineBtnLabel('refresh', '重新标注')}</button>`
-        : ''}
-      <button class="expl-crop-btn" id="expl-annotate-done">${spineBtnLabel('check', '完成标注')}</button>
-    `;
+    actionsRow.innerHTML = `<button class="expl-crop-btn" id="expl-annotate-done">✅ 完成标注</button>`;
     sidebar.appendChild(actionsRow);
-    actionsRow.querySelector('#expl-reannotate')?.addEventListener('click', () => this.rerunAutoAnnotate());
     actionsRow.querySelector('#expl-annotate-done')?.addEventListener('click', () => this.exitAnnotateMode());
 
     const canvasWrap = document.createElement('div');
@@ -1304,19 +1121,6 @@ ${PARTS_TEMPLATE}`;
         item.appendChild(swapBtn);
       }
 
-      if (assigned && this.annotMode === 'manual') {
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'expl-annot-btn expl-annot-delete';
-        deleteBtn.innerHTML = spineIcon('refresh', 'spine-icon-svg expl-retry-icon');
-        deleteBtn.title = `重来：撤销「${label}」当前选框并重新框选`;
-        deleteBtn.setAttribute('aria-label', `重新框选${label}`);
-        deleteBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.clearPartRegion(i);
-        });
-        item.appendChild(deleteBtn);
-      }
-
       item.addEventListener('click', () => {
         if (this.annotMode === 'manual') { this.manualTarget = i; this.refreshPartList(); }
         else if (this.swapSource >= 0 && this.swapSource !== i) this.doSwap(i);
@@ -1339,41 +1143,6 @@ ${PARTS_TEMPLATE}`;
   private refreshPartList(): void {
     const list = this.centerView.querySelector('#expl-annotate-list') as HTMLElement;
     if (list) this.renderPartList(list);
-  }
-  private rerunAutoAnnotate(): void {
-    if (!this.annotImg || !this.state) return;
-    try {
-      this.state.partRegions = this.detectParts(this.annotImg);
-      this.swapSource = -1;
-      this.selectedRegion = -1;
-      this.hoveredRegion = -1;
-      this.showToast(`✅ 已重新自动标注 ${this.state.partRegions.filter(r => r.width > 0).length} 个部件`);
-      this.refreshPartList();
-      this.updateButtons();
-      this.triggerSaveOnly();
-    } catch (e) {
-      console.error('[Spine] rerunAutoAnnotate failed:', e);
-      this.showToast('自动重新标注失败，请切换手动模式调整');
-    }
-  }
-  private clearPartRegion(idx: number): void {
-    if (!this.state?.partRegions?.[idx]) return;
-    const region = this.state.partRegions[idx];
-    const label = region.name || PART_NAMES[idx] || `部件 ${idx + 1}`;
-    region.x = 0;
-    region.y = 0;
-    region.width = 0;
-    region.height = 0;
-    region.imageData = '';
-    this.selRect = null;
-    this.selectedRegion = -1;
-    this.hoveredRegion = -1;
-    this.swapSource = -1;
-    if (this.annotMode === 'manual') this.manualTarget = idx;
-    this.showToast(`已撤销「${label}」当前选框，可重新框选`);
-    this.refreshPartList();
-    this.updateButtons();
-    this.triggerSaveOnly();
   }
   private startSwap(idx: number): void {
     const label = this.state?.partRegions?.[idx]?.name || PART_NAMES[idx];
@@ -1473,7 +1242,7 @@ ${PARTS_TEMPLATE}`;
     this.refreshPartList();
   }
 
-  private startAnnotateLoop(): void { this.stopAnnotateLoop(); const loop = () => { try { this.drawAnnotateCanvas(); } catch (e) { console.error('[Spine] drawAnnotateCanvas error:', e); } this.annotRafId = requestAnimationFrame(loop); }; this.annotRafId = requestAnimationFrame(loop); }
+  private startAnnotateLoop(): void { this.stopAnnotateLoop(); const loop = () => { this.drawAnnotateCanvas(); this.annotRafId = requestAnimationFrame(loop); }; this.annotRafId = requestAnimationFrame(loop); }
   private stopAnnotateLoop(): void { if (this.annotRafId) { cancelAnimationFrame(this.annotRafId); this.annotRafId = 0; } }
 
   private drawAnnotateCanvas(): void {
@@ -1535,12 +1304,7 @@ ${PARTS_TEMPLATE}`;
 
     const assigned = this.state?.partRegions?.filter(r => r.width > 0).length ?? 0;
     const title = this.q('#expl-right-title') as HTMLElement;
-    if (title) {
-      const txt = assigned > 0 ? `已标注 ${assigned}/${PART_NAMES.length} 个部件 ` : '拆件图结果 ';
-      const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
-      if (firstTextNode) firstTextNode.textContent = txt;
-      else title.insertBefore(document.createTextNode(txt), title.firstChild);
-    }
+    if (title) title.textContent = assigned > 0 ? `已标注 ${assigned}/${PART_NAMES.length} 个部件` : '拆件图结果';
 
     if (this.state?.explosionImage) {
       if (assigned > 0) {
@@ -1610,37 +1374,8 @@ ${PARTS_TEMPLATE}`;
 
   // ── Helpers ──────────────────────────────────────────────
 
-  /**
-   * 加载图片为 HTMLImageElement。
-   * 对于大的 data URL（>500KB base64），先转成 Blob URL 再加载，
-   * 避免部分浏览器对超长 data URL 的限制，同时保留 canvas 操作权限。
-   */
   private loadImage(src: string): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      let blobUrl = '';
-      const cleanup = () => { if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = ''; } };
-
-      // 将大 data URL 转为 blob URL，规避长字符串限制
-      if (src.startsWith('data:') && src.length > 500_000) {
-        try {
-          const [header, b64] = src.split(',');
-          const mime = header.replace('data:', '').replace(';base64', '');
-          const bytes = atob(b64);
-          const arr = new Uint8Array(bytes.length);
-          for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-          blobUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
-          src = blobUrl;
-        } catch {
-          // 转换失败则直接用原始 data URL
-        }
-      }
-
-      const img = new Image();
-      if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
-      img.onload = () => { cleanup(); resolve(img); };
-      img.onerror = (e) => { cleanup(); reject(e); };
-      img.src = src;
-    });
+    return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
   }
 
   private detectAspectRatio(dataUrl: string): Promise<string> {
@@ -1676,64 +1411,21 @@ ${PARTS_TEMPLATE}`;
     const hasResult = !!this.state?.explosionImage;
     const hasParts = (this.state?.partRegions.length ?? 0) > 0;
     const set = (id: string, disabled: boolean) => { const el = this.q(`#${id}`) as HTMLButtonElement; if (el) el.disabled = disabled; };
-    // Don't disable the gen button — let the click handler show an inline error instead.
-    set('expl-gen-parts', false);
-    set('expl-annotate', !hasResult);
+    set('expl-gen-parts', !hasSource);
+    set('expl-remove-bg', !hasResult);
+    set('expl-auto-crop', !hasResult);
+    set('expl-manual-crop', !hasResult);
     set('expl-confirm', !hasResult && !hasParts);
-    const annotateHint = this.q('#expl-annotate-hint') as HTMLElement;
-    if (annotateHint) {
-      annotateHint.textContent = hasResult
-        ? '拆件图已生成，可点击标注部件；进入后可切换自动/手动模式。'
-        : '请先成功生成拆件图，生成后即可标注部件。';
-      annotateHint.classList.toggle('ready', hasResult);
-    }
-
-    // Show/hide a hint on the source panel when no character image uploaded
-    const sourceEmpty = this.q('#expl-source .sd-preview-empty') as HTMLElement;
-    if (sourceEmpty) {
-      sourceEmpty.innerHTML = hasSource
-        ? ''
-        : `<div class="sd-preview-empty-icon">${spineIcon('image')}</div>
-           <div style="font-size:12px;font-weight:600;color:#e8c48a;">⬅ 请先上传角色设定图</div>
-           <div style="font-size:11px;opacity:0.6;">在侧边栏点击「上传角色设定图」<br>或先在「角色设计」步骤完成设计</div>`;
-    }
 
     const rerollBtn = this.q('#expl-reroll') as HTMLElement;
     if (rerollBtn) rerollBtn.style.display = (hasResult && this.lastPrompt) ? '' : 'none';
   }
 
-  private showInlineError(msg: string): void {
-    const el = this.q('#expl-inline-msg') as HTMLElement;
-    if (el) { el.textContent = msg; el.style.display = ''; }
-    else this.showToast(msg);
-  }
-
-  private clearInlineError(): void {
-    const el = this.q('#expl-inline-msg') as HTMLElement;
-    if (el) { el.style.display = 'none'; el.textContent = ''; }
-  }
-
   private showToast(msg: string): void {
-    const doc = this.centerView.ownerDocument ?? document;
-    let toast = doc.querySelector('.sd-toast') as HTMLElement;
-    if (!toast) {
-      toast = doc.createElement('div');
-      toast.className = 'sd-toast';
-      doc.body.appendChild(toast);
-    }
-    // 根据消息内容自动选择修饰符 class
-    toast.classList.remove('sd-toast--success', 'sd-toast--error');
-    if (msg.startsWith('✅') || msg.startsWith('✓')) toast.classList.add('sd-toast--success');
-    else if (msg.startsWith('❌') || msg.startsWith('⚠')) toast.classList.add('sd-toast--error');
-
-    // 去除 emoji 前缀，保持文字简洁
-    const cleanMsg = msg.replace(/^[✅✓❌⚠️⏳]\s*/, '');
-    toast.textContent = cleanMsg;
-
-    // 清除旧的定时器后再显示
-    clearTimeout((toast as any)._hideTimer);
-    toast.classList.add('show');
-    (toast as any)._hideTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+    let toast = document.querySelector('.sd-toast') as HTMLElement;
+    if (!toast) { toast = document.createElement('div'); toast.className = 'sd-toast'; document.body.appendChild(toast); }
+    toast.textContent = msg; toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
   }
 
   // ── History ──────────────────────────────────────────────
@@ -1817,18 +1509,11 @@ ${PARTS_TEMPLATE}`;
     if (this.annotCanvas) { this.updateButtons(); return; }
     if (state.characterImage) this.showSourcePreview(state.characterImage);
     const assignedParts = state.partRegions?.filter(r => r.width > 0).length ?? 0;
-    if (this.generatedCandidates.length > 0 && assignedParts === 0) {
-      this.showCandidateGrid(this.generatedCandidates, this.generatedCandidatesAspect);
-    } else if (state.explosionImage) {
+    if (state.explosionImage) {
       if (assignedParts > 0) {
         this.showPartGridPreview();
         const title = this.q('#expl-right-title') as HTMLElement;
-        if (title) {
-          const firstTextNode = Array.from(title.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
-          const txt = `已标注 ${assignedParts}/${PART_NAMES.length} 个部件 `;
-          if (firstTextNode) firstTextNode.textContent = txt;
-          else title.insertBefore(document.createTextNode(txt), title.firstChild);
-        }
+        if (title) title.textContent = `已标注 ${assignedParts}/${PART_NAMES.length} 个部件`;
       } else {
         this.showResultPreview(state.explosionImage);
       }
@@ -1839,12 +1524,5 @@ ${PARTS_TEMPLATE}`;
   }
 
   deactivate(): void { this.stopAnnotateLoop(); this.resizeObs?.disconnect(); }
-  dispose(): void {
-    this.stopAnnotateLoop();
-    this.resizeObs?.disconnect();
-    this.resultBc?.close();
-    this.container.remove();
-    this.sidePanel.remove();
-    this.centerView.remove();
-  }
+  dispose(): void { this.stopAnnotateLoop(); this.resizeObs?.disconnect(); this.container.remove(); this.sidePanel.remove(); this.centerView.remove(); }
 }
