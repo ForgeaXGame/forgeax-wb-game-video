@@ -1,7 +1,9 @@
 # Gen3D Provider Capability Matrix
 
-Status: source-derived planning matrix. Updated 2026-06-11: Rodin provider is
-**live-verified** (M11) — `server/providers/rodin.ts` multipart submit
+Status: source-derived planning matrix. Updated 2026-06-12: M13 rig/motion/low_poly
+pipeline planned (`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`, ADR-0003); motion
+v1 action names (int 9–16) and low_poly high-poly retention decided. Rodin provider
+is **live-verified** (M11) — `server/providers/rodin.ts` multipart submit
 `/api/v2/rodin` → poll `/api/v2/status` → `/api/v2/download`, provider enum + UI
 selector wired, and one real text-to-3D run confirmed end-to-end through the
 Studio server (GLB + webp preview persisted per-game, `providerMode='real'`).
@@ -32,8 +34,9 @@ Do not expose rows marked hidden or blocked in workbench UI or AI-facing schemas
 | Hunyuan workflow | `text2geometry`, `image2geometry`, `views2geometry` | Endpoint reachable, field sanity incomplete | hidden | Keep constants internal only until output shape is verified. |
 | Hunyuan workflow | world scene/panorama/reconstruction modes | Endpoint reachable, field sanity incomplete | hidden | Do not expose from workbench until mode mapping and outputs are proven. |
 | Hunyuan REST | `pose_standardization` | **Implemented + live-verified 2026-06-10** | mock-first | Tool `gen3d:pose-standardization`. Synchronous REST `POST /openapi/v1/3d/images/pose_standardization`. Upstream preprocessing (image→A/T-pose image); persists a blob, no manifest. Real call confirmed ~20s, 501 KB PNG. Mock fallback when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. |
-| Hunyuan REST | `motion_retarget` v1 | Verified end-to-end in lab | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. Deferred until a `role=rigged_model` asset path exists (`wb-3d-pipeline`). |
-| Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
+| Hunyuan REST | `low_poly` | Contract PDF-verified 2026-06-12; not live-tested in wb-gen3d | planned | M13-1 (grill 2026-06-12): **optional geometry/LOD side-branch, NOT pre-rig** — low_poly is geometry-only and does NOT preserve texture (output OBJ has no MTL; quad retopo re-UVs). async submit/poll (`hunyuan-3d-low-poly-v1.5`); outputs FBX/OBJ/GLB + render image. High-poly source retained by default. Gate 0 verifies Hunyuan's internal net can egress-fetch a public COS URL (public GET ≠ internal egress). |
+| Hunyuan REST | `auto_rigging` | Contract PDF-verified 2026-06-12; endpoint not fully verified | experimental → M13-2 | M13-2 (grill 2026-06-12): **humanoid only, `characters` slot**. Input textured GLB via `glb_url` (embedded texture, no separate texture inputs — those are OBJ-path only); doc claims materials preserved. Outputs **GLB+FBX** (self-contained); append `rigged_model` **GLB(canonical)+FBX(motion transport)**. Gate 1 verifies texture actually survives before default AI exposure. |
+| Hunyuan REST | `motion_retarget` v1 | Contract PDF-verified 2026-06-12; verified end-to-end in lab | planned | M13-3 (grill 2026-06-12): sync `POST /openapi/v1/3d/motion_retarget`; int motion types 9–16 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞). Input = rigged humanoid FBX (`role=rigged_model`, via `fbx_url`); outputs **GLB+FBX**; append `animated_model` **GLB(canonical)+FBX** per motion with structured `motionType` (not filename). `characters` slot only. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
 | Rodin | `text` | **Implemented + live-verified 2026-06-11** | mock-first | `server/providers/rodin.ts`: multipart `POST /api/v2/rodin` → poll `POST /api/v2/status` (subscription_key, all sub-jobs Done) → `POST /api/v2/download` (task_uuid). Real text-to-3D confirmed end-to-end via `gen3d:text-to-3d` (provider=rodin): GLB + **`preview.webp`** persisted per-game, `providerMode='real'`. Defaults `tier=Regular`, `material=PBR`, `geometry_file_format=glb`; polycount via `quality_override` low/medium/high (UI ~8k/18k/50k). Falls back to mock when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. Requires Business subscription. |
 | Rodin | `image` / `views` | Implemented (same client; not live-tested) | mock-first | Image/multi-view share the verified submit/poll/download path (`images` files, `condition_mode=concat` for views). Mock fallback until a live image run is run. |

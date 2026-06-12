@@ -136,11 +136,20 @@ export const CAPABILITIES: readonly ProviderCapability[] = [
   {
     providerId: 'hunyuan_rest',
     providerName: 'Hunyuan REST',
+    capability: 'low_poly',
+    sourceStatus: 'Contract from internal PDF; not live-tested in wb-gen3d',
+    exposure: 'planned',
+    notes:
+      'M13-1 gen3d:retopo-lowpoly. Async submit/poll (hunyuan-3d-low-poly-v1.5). High-poly source retained by default (2026-06-12). Gate 0 verifies Hunyuan can fetch public COS model URLs.',
+  },
+  {
+    providerId: 'hunyuan_rest',
+    providerName: 'Hunyuan REST',
     capability: 'motion_retarget v1',
     sourceStatus: 'Verified end-to-end in lab',
     exposure: 'planned',
     notes:
-      'Built-in integer motion types 9-16; input requires a rigged humanoid FBX. Deferred until a rigged_model asset path exists (wb-3d-pipeline).',
+      'M13-3 gen3d:apply-motion. int motion types 9-16 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞, decided 2026-06-12). Input = rigged humanoid FBX (role=rigged_model).',
   },
   {
     providerId: 'hunyuan_rest',
@@ -148,7 +157,7 @@ export const CAPABILITIES: readonly ProviderCapability[] = [
     capability: 'auto_rigging',
     sourceStatus: 'Endpoint reachable, not fully verified',
     exposure: 'experimental',
-    notes: 'Do not expose as a default mode until end-to-end output is verified.',
+    notes: 'M13-2 gen3d:auto-rig. Gate 1 verifies end-to-end output before default AI exposure.',
   },
   {
     providerId: 'hunyuan_rest',

@@ -1,17 +1,59 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-12 Asia/Hong_Kong (Rodin **image-to-3D** now real-verified end-to-end through `RodinProvider` + temp COS: real character image → public presigned URL → 9.44 MB GLB + webp preview, `providerMode='real'`. COS public reachability PASS. Rodin **views**-to-3D still unverified; real Hunyuan public-COS fetch still pending. GLB/OBJ dedup confirmed already-landed in code (ADR-0002). Earlier M9-M12 history below. SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **方案已定 + grill 收尾** —
+PLAN/ADR-0003 **Accepted**；代码未开工。M3–M12 已并入 main。Rodin image-to-3D
+real-verified; Hunyuan internal-net egress→public COS **Gate 0 待真机**。SSOT: M13 =
+`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; history M9–M12 =
+`docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## 下一步工作 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12）
 
 > **当前 next work 是 M13**（不是下面的 M9-M12 —— 那批已落地并并入 main）。执行 / 评审 SSOT：
 > [`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`](./docs/PLAN-2026-06-12-rig-motion-lowpoly.md)；
 > 关键决策：[`docs/adr/0003-rig-motion-lowpoly-pipeline.md`](./docs/adr/0003-rig-motion-lowpoly-pipeline.md)。
-> 产线：高模 GLB →① low_poly 减面 →② auto_rigging 绑骨（出带骨 FBX）→③ motion_retarget v1 动作。
-> 方案要点：全程混元、验证先行（**Gate 0** 先验混元内网能否抓我们公网 COS 的模型 URL）、
-> 资产模型走「同基名附加 FBX」（rig/motion 产物 append 到源资产，不另起资产）。
-> **执行前关键决策（2026-06-12 均已拍板）**：① motion v1 的 8 个动作名 = 9 跨步 / 10 摔倒 /
-> 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞；② low_poly 减面后高模默认保留、可手动删。
+> 产线（**2026-06-12 grill 修订**）：**带贴图高模 GLB →① auto_rigging 绑骨 →② motion_retarget v1 动作**；
+> rig/motion 都输出 **GLB+FBX**，**GLB 作 canonical 落库主体**、FBX 仅作 rig→motion 中转。
+> **low_poly 降级为可选几何/LOD 旁路**（纯几何、不保贴图、quad 换 UV，不前置绑骨）。
+> 方案要点：全程混元、验证先行（**Gate 0** 先验混元**内网**能否抓我们**公网** COS 的模型 URL——
+> 注意"公网能 GET"≠"混元内网能 egress 到公网"，须用一笔真机 low_poly/rig 调用实测）、资产模型走
+> 「同基名追加 GLB(主)+FBX(中转)」（rig/motion 产物 append 到源资产，不另起资产）。
+> **执行前关键决策（2026-06-12 拍板 + grill 修订）**：① motion v1 的 8 动作 = 9 跨步 / 10 摔倒 /
+> 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞；② low_poly 后高模默认保留、可手动删；
+> ③ **贴图必须存活 → 带贴图高模直绑、low_poly 不前置**；④ **GLB 作落库主体**；⑤ **v1 直绑高模**
+> （低模+带贴图需 re-bake，列后续）；⑥ rig/motion **仅人形**（`characters` 槽软门控）；
+> ⑦ append 用 **per-asset 锁** 防并发丢条目；⑧ **motion_type 结构化**存元数据、不靠文件名。
+
+## M13 执行交接（grill 收尾 2026-06-12 — 下一个 agent 按此顺序开工）
+
+**不要重新 litigate 以下决策**（已全部写入 PLAN 顶部修订块 + ADR-0003）：
+
+| # | 决策 | 要点 |
+|---|---|---|
+| 1 | 贴图必须存活 | 最终动画 GLB 必须带原模型材质 |
+| 2 | 主产线 | 带贴图高模 GLB → auto_rigging → motion_retarget v1 |
+| 3 | low_poly | **可选旁路**，不前置绑骨（纯几何、不保贴图） |
+| 4 | 落库格式 | **GLB canonical** + FBX 仅 rig→motion 中转；每跳下载 glb+fbx |
+| 5 | v1 直绑高模 | "低模+带贴图"需 re-bake，列后续 |
+| 6 | 仅人形 | `assetSlot=characters` 软门控；失败回显 reason |
+| 7 | 并发安全 | append/delete 用 per-asset 异步锁 |
+| 8 | motion_type | 结构化字段（SidecarDependency/ManifestFile），幂等/UI 不解析文件名 |
+| 9 | 8 动作配额 | 一次一个 motion_type；**不做一键全量 8 动作**（防烧配额+RateGuard） |
+
+**推荐执行顺序**（PLAN 任务清单）：
+
+1. **M13-0 Gate 0/1** — out-of-tree 脚本：混元内网能否 fetch 公网 COS URL + auto_rigging/motion 输出形态 + **贴图是否保住 + T-pose**。
+2. **store-append** — `appendDerivedFiles`/`readAssetFile` + sidecar 骨架/motionType 字段 + per-asset 锁 + `sidecarToManifest` 修复 + cos-uploader glb/fbx。
+3. **M13-2 auto-rig**（核心，先于 M13-1）— `gen3d:auto-rig` + schema + plugin.json。
+4. **M13-3 apply-motion**（核心）— `gen3d:apply-motion` + 8 动作 UI + schema。
+5. **M13-1 retopo-lowpoly**（可选旁路）— `gen3d:retopo-lowpoly` + schema。
+6. **M13-4 UI** — sidebar 绑骨→动作 + ModelViewer **AnimationMixer** 播放 + readiness 展示。
+
+**Gate 1 必验三项**（绑骨真机一笔）：① rigged GLB 目视有材质；② 输出是 T-pose；③ 多 mesh 输入时混元行为。
+
+**混元官方 PDF 来源**（合约 SSOT，已核对）：
+- `hunyuan-3d-low-poly-v1.5.pdf`
+- `hunyuan-3d-auto-rigging.pdf`
+- `hunyuan-3d-motion-retarget.pdf`
 
 ## 历史基线：2026-06-11 Plan (M9-M12)（已完成、已并入 main）
 
@@ -81,7 +123,10 @@ Hyper3D). Ran quota-safe probes first, then one real image-to-3D:
 - **COS upload → public reachability PASS** (the URL-fetching-provider
   prerequisite): `CosUploader.upload()` puts under `wb-gen3d/inputs/<sha256>.<ext>`;
   the presigned URL is **publicly GET-able with no auth header** (200, bytes
-  match) — confirms Hunyuan/Meshy could fetch a public COS URL. `COS_SIGN_EXPIRES_SEC`
+  match). **NOTE (grill 2026-06-12): this only proves reachability from the public
+  internet; it does NOT prove Hunyuan's *internal* network (`hunyuanapi.woa.com`)
+  can egress to fetch it — that is still Gate 0, to be verified by a real
+  low_poly/rig submit.** `COS_SIGN_EXPIRES_SEC`
   is the env name (operator's `COS_PRESIGN_EXPIRES` was renamed on write); the
   hardcoded `wb-gen3d/inputs` prefix already satisfies the requested `wb-gen3d/`
   path, so `COS_PREFIX` is not used.
@@ -220,10 +265,11 @@ default**: the master switch `GEN3D_ENABLE_REAL_PROVIDERS=1` plus a
 deterministic mock (quota-safe). The ADR-0001 decoupled modules (providers /
 cache / rate-guard / audit / env) are landed.
 
-M5 `motion_retarget` v1 is deferred: its input must be a rigged humanoid FBX
-(`role=rigged_model`, verified skeleton), which no current generation path
-produces — only `wb-3d-pipeline` rigging can. Pick it up once a rigged-FBX asset
-exists.
+M13 `auto_rigging` / `motion_retarget` v1 / `low_poly`(optional) are **planned, not
+implemented** (SSOT `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`, ADR-0003 **Accepted**,
+grill 2026-06-12). Core pipeline: textured high-poly GLB → rig → motion; low_poly is
+optional side-branch. Execution starts at Gate 0 (Hunyuan internal egress fetch of public
+COS model URLs — note: public GET ≠ Hunyuan fetch).
 
 Product direction (2026-06-09): `wb-gen3d` is the production 3D generation
 entrypoint for game assets, not a benchmark tool. Provider comparison is
@@ -363,8 +409,8 @@ The M3 storage contract is the baseline for future development:
 - Hunyuan `motion_retarget` input is not "any FBX". It must resolve from
   `assetId + role=rigged_model + format=fbx` with verified skeleton metadata
   (`hasSkeleton: true`, `skeletonProfile: "humanoid"`, `animationInputReady:
-  true`). Generation never sets these; only a verified rigging step in
-  `wb-3d-pipeline` may.
+  true`). Generation never sets these; M13 `gen3d:auto-rig` (planned) will append
+  `rigged_model` **GLB (canonical) + FBX (motion transport)** with verified skeleton metadata.
 - Converting GLB or OBJ to FBX does not make it animation-ready.
 - External rigging/animation providers that need a fetchable URL get one via
   `AssetStorage.shareUrl` — a request-time transport URL, never the canonical
@@ -515,20 +561,18 @@ right iframe in `forgeax-plugin.json`). Old teal theme removed. Tool contracts
 unchanged. typecheck + build pass; visual validation across standalone/left/center
 panes done.
 
-Remaining M8 UI items:
+Remaining M8 UI items (non-M13, lower priority):
 
 1. ~~`pose-standardization` upstream step~~ — DONE (`PosePreprocess` in `SetupSidebar`).
 2. ~~views L/R inputs~~ — DONE (「添加左/右视图」in views mode).
-3. Downstream rigging/animation handoff action + metadata (reserved: `InspectorReserved`).
-4. Quality-rubric scoring UI (reserved: `InspectorReserved`, disabled placeholder).
-5. gen3d → game `assets/3d/characters/` handoff (copy/import + sidecar meta).
+3. Quality-rubric scoring UI (reserved: `InspectorReserved`, disabled placeholder).
+4. gen3d → game `assets/3d/characters/` handoff (copy/import + sidecar meta) — largely superseded by M9 per-game writes; any remaining polish is non-blocking.
 
-Remaining backend work: **`motion_retarget` v1** (`POST
-/openapi/v1/3d/motion_retarget`, model `hunyuan-3d-motion-retarget`, integer
-motion types 9-16), which is **deferred** until a rigged humanoid FBX asset path
-exists (`role=rigged_model` + verified skeleton, produced by `wb-3d-pipeline`,
-not by generation). Keep `auto_rigging` experimental and `motion_retarget_v2`
-blocked.
+M13 backend (planned, not implemented; **grill 2026-06-12 reorder**):
+**`gen3d:auto-rig` → `gen3d:apply-motion`** (textured high-poly GLB → rig → motion);
+**`gen3d:retopo-lowpoly` is an OPTIONAL geometry/LOD side-branch, NOT a pre-rig step**
+(Hunyuan REST `auto_rigging` / `motion_retarget` v1 / `low_poly`). Keep
+`motion_retarget_v2` blocked. See top-of-file M13 section + ADR-0003.
 
 Note (not yet acted on): real `text` output returns both a GLB and an OBJ
 `source_mesh`. The current `URL_KEY_TO_FILE` keeps one file per `role:format`, so
@@ -536,22 +580,23 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 ## Pending Work (do NOT lose — push incrementally)
 
-> SSOT for the M9-M12 items: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
+> **Current next work = M13** — see top-of-file section + `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`.
+> Historical M9-M12 SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
 
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **M9 per-game storage refactor** (`per-game-store` + slug bridge + `gen3d:delete-asset` + server route) | **DONE** (mock-first) | supersedes ADR-0001 global library; ADR-0002 written; `/api/game-assets/:slug/*` server route landed (operator-approved) |
-| **M10 local upload + COS** (`gen3d:upload-image`, SetupSidebar pickers, bigger prompt box) | **DONE** | dep `cos-nodejs-sdk-v5` added; `COS_*` in plugin `.env` only; real COS upload pending key |
-| **M11 Rodin provider** (multipart, text/image/views, `quality_override`) | **DONE** (mock-first) | awaiting `RODIN_API_KEY` + one verified output shape for real calls |
-| **M12 UI upgrade** (pose-top, low/med/high polycount buttons+presets, result grid/skeleton/info, dense asset grid + delete) | **DONE** | UI-only, on M9-M11 |
-| **docs** (MIGRATION_PLAN M9-M12, ADR-0002, CONTEXT, CAPABILITY_MATRIX) | **DONE** | updated to reflect landed implementation |
-| ~~M8 handoff UI~~ (gen3d → game assets) | **superseded by M9** | per-game file model writes straight into `assets/3d/` |
-| **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder exists; needs runtime scorer |
-| `motion_retarget` v1 (Hunyuan REST) | deferred | needs rigged humanoid FBX from `wb-3d-pipeline` |
-| Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only; no real scorer |
-| **GLB/OBJ dedup** | **DONE** (ADR-0002) | `per-game-store.ts` `planFiles()` keeps GLB `source_mesh` as identity, drops OBJ/MTL `source_mesh`; was "pending" but already landed in M9 |
-| ~~UI refactor~~ (Workbench editor pattern) | **done** `af986ce` 2026-06-11 | tokens + staged sidebar + center/right column |
-| ~~views L/R inputs in UI~~ | **done** 2026-06-11 | 「添加左/右视图」in `SetupSidebar` |
+| **M13 rig/motion/low_poly** (Gate 0 → auto-rig → apply-motion → UI; retopo = optional) | **planned, docs Accepted** | grill 2026-06-12; code not started; Gate 0 = Hunyuan internal egress→public COS |
+| **M13-0 Gate 0/1 verification** | not started | out-of-tree probe; verify texture survival + T-pose at Gate 1 |
+| **store-append** (`appendDerivedFiles`, skeleton+motionType fields, per-asset lock) | not started | prerequisite for M13-2/3 |
+| **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder; needs runtime scorer |
+| Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only |
+| **GLB/OBJ dedup** | **DONE** (ADR-0002) | `per-game-store.ts` `planFiles()` keeps GLB, drops OBJ |
+| ~~M9 per-game storage~~ | **DONE** | ADR-0002; server route landed |
+| ~~M10 upload + COS~~ | **DONE** | restart server if env cached |
+| ~~M11 Rodin~~ | **DONE** (image live-verified) | views still unverified |
+| ~~M12 UI upgrade~~ | **DONE** | |
+| ~~UI refactor~~ | **done** `af986ce` 2026-06-11 | |
+| ~~views L/R inputs~~ | **done** 2026-06-11 | |
 | `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
 
 ## Completed: UI Refactor (2026-06-10 plan → 2026-06-11 landed)
@@ -597,8 +642,8 @@ Reserved slots (placeholders now, wire when backend lands — per confirmed
 
 - Quality-score card (right inspector): the 5 rubric dims from `provider-status`,
   rendered `disabled / 待评分运行时`.
-- Downstream rigging/animation handoff (result-card action): disabled, tooltip
-  "需先经 wb-3d-pipeline 绑骨".
+- Downstream rigging/animation handoff (result-card action): M13 will wire
+  auto-rig → apply-motion in sidebar (+ optional retopo side-branch; see PLAN M13-4); until then disabled.
 
 Icon map (single, `lucide-react`, reuse the same glyph for the same action across
 step/CTA/empty/toast): text `Type`, image `Image`, views `Images`, pose

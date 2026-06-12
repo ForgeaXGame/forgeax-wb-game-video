@@ -198,7 +198,7 @@ function ResultCard({
           type="button"
           className="fx-btn fx-btn--sm handoff-btn"
           disabled
-          title="需先经 wb-3d-pipeline 绑骨"
+          title="绑骨/动作：M13 计划中（gen3d:auto-rig → gen3d:apply-motion）"
         >
           <HandoffIcon size={14} /> 下游绑骨/动画
         </button>
