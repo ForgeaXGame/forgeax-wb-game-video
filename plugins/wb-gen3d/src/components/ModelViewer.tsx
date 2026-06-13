@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+// One selectable preview clip. Each applied motion is a self-contained GLB
+// (ADR-0003), so switching motions = switching which GLB the viewer loads.
+// `motionType` is the structural label (provider-private int today; a stable
+// semantic key later) and is kept opaque here so the viewer never needs to
+// know which retarget engine produced the clip.
+export interface ViewerClip {
+  url: string;
+  label: string;
+  key: string;
+}
 
 interface ModelStats {
   faces: number;
@@ -21,7 +32,16 @@ interface ModelStats {
 // A grid floor and a skeleton overlay are toggled from React state; their three
 // objects are created once at load and only have `.visible` flipped, so toggling
 // never touches the renderer lifecycle.
-export function ModelViewer({ url }: { url: string }) {
+export function ModelViewer({
+  url,
+  clips,
+}: {
+  // Fallback single-GLB url (back-compat: callers that don't pass `clips`).
+  url: string;
+  // Selectable preview clips (rest pose + each applied motion). When provided,
+  // the first entry is the initial selection and a chip row lets the user swap.
+  clips?: ViewerClip[];
+}) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const skeletonRef = useRef<THREE.SkeletonHelper | null>(null);
@@ -33,6 +53,21 @@ export function ModelViewer({ url }: { url: string }) {
   const [showGrid, setShowGrid] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [playing, setPlaying] = useState(true);
+
+  // Resolve the selectable clip list once per props change. Falls back to a
+  // single synthetic entry around `url` so the rest of the component has one
+  // code path regardless of whether the caller passed `clips`.
+  const clipList = useMemo<ViewerClip[]>(
+    () => (clips && clips.length > 0 ? clips : [{ url, label: '模型', key: '__single__' }]),
+    [clips, url],
+  );
+  const [activeKey, setActiveKey] = useState<string>(clipList[0]!.key);
+  // Keep the selection valid when the clip set changes (e.g. a new motion was
+  // applied, or a different asset was selected): snap back to the first entry.
+  useEffect(() => {
+    if (!clipList.some((c) => c.key === activeKey)) setActiveKey(clipList[0]!.key);
+  }, [clipList, activeKey]);
+  const activeUrl = (clipList.find((c) => c.key === activeKey) ?? clipList[0]!).url;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -80,7 +115,7 @@ export function ModelViewer({ url }: { url: string }) {
     let model: THREE.Object3D | null = null;
 
     loader.load(
-      url,
+      activeUrl,
       (gltf) => {
         if (disposed) return;
         model = gltf.scene;
@@ -206,8 +241,10 @@ export function ModelViewer({ url }: { url: string }) {
     };
     // showGrid/showSkeleton are intentionally excluded: toggling them must not
     // rebuild the scene; the dedicated effects below flip `.visible` instead.
+    // Switching `activeUrl` (motion chip) DOES rebuild: each motion is a separate
+    // GLB, and a full teardown/reload is the leak-safe way to swap it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [activeUrl]);
 
   useEffect(() => {
     if (gridRef.current) gridRef.current.visible = showGrid;
@@ -230,6 +267,22 @@ export function ModelViewer({ url }: { url: string }) {
       {status === 'error' && (
         <div className="model-viewer-overlay model-viewer-overlay--error" title={errMsg}>
           模型加载失败
+        </div>
+      )}
+
+      {clipList.length > 1 && (
+        <div className="model-viewer-clips" role="group" aria-label="切换动作">
+          {clipList.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              className={`mv-toggle mv-clip ${c.key === activeKey ? 'is-on' : ''}`}
+              aria-pressed={c.key === activeKey}
+              onClick={() => setActiveKey(c.key)}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
       )}
 

@@ -159,6 +159,23 @@ function ResultCard({
   const riggedGlb = selectFile(manifest.files, 'rigged_model', 'glb');
   const viewerFile = animatedGlb ?? riggedGlb ?? meshFile;
   const meshUrl = blobUrl(viewerFile);
+  // Build the viewer's selectable clip list: a static base pose (rigged or raw
+  // mesh, no animation) followed by every applied motion as its own clip. Each
+  // animated_model GLB carries the clip for exactly one motionType, so the chip
+  // row lets the user switch which motion plays (one GLB reload per switch).
+  const motionClips = selectFiles(manifest.files, 'animated_model', 'glb')
+    .map((f) => {
+      const url = blobUrl(f);
+      if (!url || f.motionType === undefined) return null;
+      return { url, label: motionMeta[f.motionType]?.label ?? `动作 ${f.motionType}`, key: `m${f.motionType}` };
+    })
+    .filter((c): c is { url: string; label: string; key: string } => c !== null);
+  const baseFile = riggedGlb ?? meshFile;
+  const baseUrl = blobUrl(baseFile);
+  const viewerClips =
+    motionClips.length > 0
+      ? [...(baseUrl ? [{ url: baseUrl, label: '原模型', key: 'base' }] : []), ...motionClips]
+      : undefined;
   // Refine is Meshy-only second stage texturing a white-mesh text preview. Only
   // real previews carry a usable sourceJobId.
   const refineTaskId = manifest.provider === 'meshy' && manifest.mode === 'text' ? manifest.sourceJobId : null;
@@ -182,7 +199,7 @@ function ResultCard({
       </div>
 
       {meshUrl ? (
-        <ModelViewer key={meshUrl} url={meshUrl} />
+        <ModelViewer key={manifest.assetPath} url={meshUrl} clips={viewerClips} />
       ) : (
         <div className="model-viewer--empty">
           <Box size={28} />

@@ -490,6 +490,18 @@ body[data-pane='center'] .gx-center { height: 100%; }
 
 .mv-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Motion switcher: top-left chip row, wraps so many motions never collide with
+   the top-right grid/skeleton/play toolbar. */
+.model-viewer-clips {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100% - 180px);
+}
+
 .model-viewer-info {
   position: absolute;
   left: 8px;
