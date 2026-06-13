@@ -119,12 +119,19 @@ export function ModelViewer({
       (gltf) => {
         if (disposed) return;
         model = gltf.scene;
-        // Frame the model: recenter to origin and pull the camera back to fit
-        // the bounding sphere so any-scale GLB lands sensibly in view.
+        // Frame the model: center it horizontally on the origin but anchor its
+        // FEET (bounding-box floor) to y=0, not its center. Centering on the
+        // bbox center makes a motion GLB float, because its bind/first-frame
+        // pose differs from the rest pose (e.g. a jump clip starts mid-air), so
+        // the bbox center sits higher and the model drifts upward off the floor.
+        // Anchoring the floor keeps the model standing on the ground regardless
+        // of pose, so rest pose and every applied motion share the same ground.
         const box = new THREE.Box3().setFromObject(model);
         const sphere = box.getBoundingSphere(new THREE.Sphere());
         const dimensions = box.getSize(new THREE.Vector3());
-        model.position.sub(sphere.center);
+        model.position.x -= sphere.center.x;
+        model.position.z -= sphere.center.z;
+        model.position.y -= box.min.y;
         scene.add(model);
 
         // Accumulate geometry stats and detect a skeleton in one traversal.
@@ -142,17 +149,21 @@ export function ModelViewer({
         });
 
         const r = sphere.radius || 1;
+        // After floor-anchoring, the model spans y∈[0, dimensions.y]; look at
+        // its mid-height so it's vertically centered in frame.
+        const midY = dimensions.y / 2;
         const dist = r / Math.sin((camera.fov * Math.PI) / 180 / 2);
-        camera.position.set(0, r * 0.3, dist * 1.25);
+        camera.position.set(0, midY + r * 0.3, dist * 1.25);
         camera.near = r / 100;
         camera.far = dist * 10;
         camera.updateProjectionMatrix();
-        controls.target.set(0, 0, 0);
+        controls.target.set(0, midY, 0);
         controls.update();
 
-        // Grid floor sized to the model, placed at its base.
+        // Grid floor sized to the model, placed at the ground plane (y=0) where
+        // the model's feet are anchored.
         const grid = new THREE.GridHelper(r * 4, 20, 0x3a4250, 0x252b34);
-        grid.position.y = -sphere.center.y - dimensions.y / 2;
+        grid.position.y = 0;
         grid.visible = showGrid;
         scene.add(grid);
         gridRef.current = grid;
