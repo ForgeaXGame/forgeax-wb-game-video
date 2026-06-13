@@ -10,6 +10,20 @@ M3–M12 已并入 main。Rodin image-to-3D real-verified; Hunyuan internal-net 
 COS **Gate 0 待真机**。SSOT: M13 = `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; history
 M9–M12 = `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
+## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
+
+Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（见
+`forgeax-plugin.json`），**不是** `src/`。`dist/` 是 gitignored 的本地产物——所以
+即使源码改动已 commit，**不重新 `bun run build`，浏览器仍跑旧 bundle**。
+
+实例：`39da1e9`「预览器脚底贴地锚定」修复后用户仍看到动作模型上漂，排查发现
+源码逻辑正确（three.js 实测：锚定后动画全程 `box.min.y≡0`、脚底贴地不漂），
+但浏览器加载的 `dist` bundle 构建于修复前 26 分钟——纯属忘了 rebuild。
+
+**铁律**：改 `src/**`（含 `ModelViewer.tsx` 等）后，在插件目录跑
+`bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
+`bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
+
 ## 下一步工作 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12）
 
 > **当前 next work 是 M13**（不是下面的 M9-M12 —— 那批已落地并并入 main）。执行 / 评审 SSOT：
