@@ -8,7 +8,8 @@
 // standalone smokes, from the plugin-local .env. Nothing here is logged.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 let loaded = false;
 
@@ -17,7 +18,9 @@ let loaded = false;
 function loadPluginEnvOnce(): void {
   if (loaded) return;
   loaded = true;
-  const envPath = resolve(import.meta.dir, '..', '.env');
+  // Stable across runtimes: import.meta.dir is bun-specific, but
+  // import.meta.url + fileURLToPath works in bun, node, and tsc typecheck.
+  const envPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env');
   if (!existsSync(envPath)) return;
   for (const rawLine of readFileSync(envPath, 'utf8').split('\n')) {
     const line = rawLine.trim();
