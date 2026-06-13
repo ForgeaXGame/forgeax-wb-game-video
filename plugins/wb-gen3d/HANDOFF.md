@@ -1,10 +1,14 @@
 # Handoff - Gen3D Generation Workbench
 
-Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **方案已定 + grill 收尾** —
-PLAN/ADR-0003 **Accepted**；代码未开工。M3–M12 已并入 main。Rodin image-to-3D
-real-verified; Hunyuan internal-net egress→public COS **Gate 0 待真机**。SSOT: M13 =
-`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; history M9–M12 =
-`docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **代码完成 (mock-first)** —
+PLAN/ADR-0003 **Accepted**；store-append + hunyuan-rest 三方法 + 三工具 (`gen3d:auto-rig`
+/ `gen3d:apply-motion` / `gen3d:retopo-lowpoly`) + schema + plugin.json + UI (绑骨→动作
+step 流 + ModelViewer AnimationMixer 播放 + AssetLibrary readiness/motion 徽标) 全落地，
+typecheck/build 通过，mock 全链 sanity 通过（generate→rig→motion×2→lowpoly→list +
+幂等/not-rigged 守卫）。三工具均 `exposedToAI:false`、Gate 0/1 真机验证通过前只走 mock。
+M3–M12 已并入 main。Rodin image-to-3D real-verified; Hunyuan internal-net egress→public
+COS **Gate 0 待真机**。SSOT: M13 = `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; history
+M9–M12 = `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
 
 ## 下一步工作 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12）
 
@@ -39,14 +43,14 @@ real-verified; Hunyuan internal-net egress→public COS **Gate 0 待真机**。S
 | 8 | motion_type | 结构化字段（SidecarDependency/ManifestFile），幂等/UI 不解析文件名 |
 | 9 | 8 动作配额 | 一次一个 motion_type；**不做一键全量 8 动作**（防烧配额+RateGuard） |
 
-**推荐执行顺序**（PLAN 任务清单）：
+**推荐执行顺序**（PLAN 任务清单 · 状态 2026-06-12）：
 
-1. **M13-0 Gate 0/1** — out-of-tree 脚本：混元内网能否 fetch 公网 COS URL + auto_rigging/motion 输出形态 + **贴图是否保住 + T-pose**。
-2. **store-append** — `appendDerivedFiles`/`readAssetFile` + sidecar 骨架/motionType 字段 + per-asset 锁 + `sidecarToManifest` 修复 + cos-uploader glb/fbx。
-3. **M13-2 auto-rig**（核心，先于 M13-1）— `gen3d:auto-rig` + schema + plugin.json。
-4. **M13-3 apply-motion**（核心）— `gen3d:apply-motion` + 8 动作 UI + schema。
-5. **M13-1 retopo-lowpoly**（可选旁路）— `gen3d:retopo-lowpoly` + schema。
-6. **M13-4 UI** — sidebar 绑骨→动作 + ModelViewer **AnimationMixer** 播放 + readiness 展示。
+1. **M13-0 Gate 0/1** — ✅ **PASSED 2026-06-13**（probe `scripts/m13-gate-probe.ts`，Hunyuan 内网 `hunyuanapi.woa.com` + lightai COS）：Gate 0 内网可达 ✓ / 响应形态 `data[].glb_url`+`fbx_url` ✓ / **贴图存活 ✓**（rigged+animated GLB 都内嵌 images=3/textures=3）/ 22 关节人形骨架 ✓ / motion 14 步行动画 ✓。剩 operator 目视 T-pose+动画，然后把三工具 `exposedToAI` 翻 true。
+2. **store-append** — ✅ **DONE**：`appendDerivedFiles`/`readAssetFile` + sidecar 骨架/motionType 字段 + per-asset 锁 + `sidecarToManifest` 修复 + cos-uploader glb/fbx。
+3. **M13-2 auto-rig** — ✅ **DONE (mock-first)**：`gen3d:auto-rig` + schema + plugin.json（`exposedToAI:false`，humanoid/characters 软门控，幂等）。
+4. **M13-3 apply-motion** — ✅ **DONE (mock-first)**：`gen3d:apply-motion` + 8 动作 UI + schema（int 9–16，多动作并存，按 motionType 幂等，not-rigged 守卫）。
+5. **M13-1 retopo-lowpoly** — ✅ **DONE (mock-first)**：`gen3d:retopo-lowpoly` + schema（可选旁路，新衍生低模资产，cache-first，高模保留）。
+6. **M13-4 UI** — ✅ **DONE**：Workspace 结果卡 `DownstreamPanel`（绑骨→动作 step 流 + 8 动作 grid + 低模旁路按钮）+ ModelViewer **AnimationMixer** 播放/暂停 + AssetLibrary readiness/motion 徽标。
 
 **Gate 1 必验三项**（绑骨真机一笔）：① rigged GLB 目视有材质；② 输出是 T-pose；③ 多 mesh 输入时混元行为。
 
@@ -585,10 +589,15 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 | Item | Status | Blocker / note |
 | --- | --- | --- |
-| **M13 rig/motion/low_poly** (Gate 0 → auto-rig → apply-motion → UI; retopo = optional) | **planned, docs Accepted** | grill 2026-06-12; code not started; Gate 0 = Hunyuan internal egress→public COS |
-| **M13-0 Gate 0/1 verification** | not started | out-of-tree probe; verify texture survival + T-pose at Gate 1 |
-| **store-append** (`appendDerivedFiles`, skeleton+motionType fields, per-asset lock) | not started | prerequisite for M13-2/3 |
+| **M13 rig/motion/low_poly** (store-append → auto-rig → apply-motion → lowpoly → UI) | **code-complete (mock-first)** | three tools + schemas + plugin.json + UI landed; typecheck/build + mock full-chain sanity pass; `exposedToAI:false` until Gate 0/1 |
+| **M13-0 Gate 0/1 verification** | ✅ **PASSED 2026-06-13 (auto-verified parts)** | probe `scripts/m13-gate-probe.ts` (out-of-tree) hit Hunyuan 内网 + lightai COS: Gate 0 reachability ✓, response shape ✓, **texture survival ✓** (rigged/animated GLB embed images=3/textures=3), 22-joint humanoid skeleton ✓, motion 14 animation ✓. **Remaining = operator visual T-pose/animation eyeball + flip `exposedToAI:true`** (see `.probe-out/<ts>/SUMMARY.md`). |
+| ~~store-append~~ (`appendDerivedFiles`, skeleton+motionType fields, per-asset lock) | **DONE** | `per-game-store.ts` + `asset-storage.ts` + `manifest.ts` |
+| ~~M13-2 auto-rig~~ | **DONE (mock-first)** | `gen3d:auto-rig`, humanoid/characters soft-gate, idempotent |
+| ~~M13-3 apply-motion~~ | **DONE (mock-first)** | `gen3d:apply-motion`, int 9–16, idempotent per motion, not-rigged guard |
+| ~~M13-1 retopo-lowpoly~~ | **DONE (mock-first)** | `gen3d:retopo-lowpoly`, new derived asset, cache-first, source retained |
+| ~~M13-4 UI~~ | **DONE** | DownstreamPanel rig→motion + ModelViewer AnimationMixer + AssetLibrary readiness/motion badges |
 | **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder; needs runtime scorer |
+| gen3d → game assets handoff (quality scoring) | not started | M8 remaining polish (non-blocking) |
 | Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only |
 | **GLB/OBJ dedup** | **DONE** (ADR-0002) | `per-game-store.ts` `planFiles()` keeps GLB, drops OBJ |
 | ~~M9 per-game storage~~ | **DONE** | ADR-0002; server route landed |
@@ -597,7 +606,7 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 | ~~M12 UI upgrade~~ | **DONE** | |
 | ~~UI refactor~~ | **done** `af986ce` 2026-06-11 | |
 | ~~views L/R inputs~~ | **done** 2026-06-11 | |
-| `auto_rigging` / `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
+| `motion_retarget_v2` | blocked | keep out of UI/AI schemas until verified output shape exists |
 
 ## Completed: UI Refactor (2026-06-10 plan → 2026-06-11 landed)
 

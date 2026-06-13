@@ -27,6 +27,16 @@ export interface ListAssetsResult {
   assets: Gen3DAssetManifest[];
 }
 
+// gen3d:auto-rig / gen3d:apply-motion result. Both append derived files to an
+// existing asset (the main GLB identity is unchanged) and return the updated
+// manifest, so the UI re-selects it by the same assetPath.
+export interface RigMotionResult {
+  ok: true;
+  usedMock: boolean;
+  assetPath: string;
+  manifest: Gen3DAssetManifest;
+}
+
 // gen3d:upload-image result. Local image hosted on COS (transfer artifact, not
 // an asset). url is a time-limited presigned URL fed into image/views/pose
 // inputs so URL-fetching providers can reach the file.

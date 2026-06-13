@@ -129,8 +129,10 @@ Meshy 专属：`refine`（基于 preview 加贴图的第二阶段，等 Meshy �
 | `gen3d:provider-status` | 读取 provider 能力矩阵 |
 | `gen3d:list-assets` | 列出已生成的资产 |
 
-M13 计划新增（未实现）：`gen3d:retopo-lowpoly`（减面）、`gen3d:auto-rig`（绑骨）、
-`gen3d:apply-motion`（动作，motion v1 int 9–16）。
+M13 新增（**代码完成 mock-first，2026-06-12；`exposedToAI:false`，Gate 0/1 真机验证前只走 mock**）：
+`gen3d:retopo-lowpoly`（减面，可选旁路，产出新衍生低模资产）、`gen3d:auto-rig`（绑骨，
+追加 rigged_model GLB+FBX，仅 characters）、`gen3d:apply-motion`（动作，motion v1 int 9–16，
+追加 animated_model GLB+FBX，按 motionType 幂等）。
 
 未来加 provider 只需在已有 tool 的 provider enum 加值，不需新建 tool。
 `gen3d:refine-mesh`（Meshy 专属）等 Meshy 实装时再加。

@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import { selectFile } from '@shared/manifest';
+import { selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
@@ -128,6 +128,16 @@ function LibCard({
         <small className="lib-card-meta">
           {asset.provider} · {slot}
         </small>
+        {(asset.readiness.rigged || asset.readiness.animated) && (
+          <div className="lib-card-readiness">
+            {asset.readiness.rigged && <span className="lib-readiness-tag">绑骨</span>}
+            {asset.readiness.animated && (
+              <span className="lib-readiness-tag lib-readiness-tag--anim">
+                动作 ×{selectFiles(asset.files, 'animated_model').length}
+              </span>
+            )}
+          </div>
+        )}
       </button>
 
       {confirming ? (

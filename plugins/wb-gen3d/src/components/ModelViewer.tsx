@@ -9,6 +9,8 @@ interface ModelStats {
   // World-space bounding box dimensions (x/y/z) after framing.
   size: THREE.Vector3;
   hasSkeleton: boolean;
+  // Number of animation clips embedded in the GLB (animated_model exports).
+  clipCount: number;
 }
 
 // ModelViewer — render a GLB at `url` in a self-contained three.js canvas with
@@ -23,11 +25,14 @@ export function ModelViewer({ url }: { url: string }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const skeletonRef = useRef<THREE.SkeletonHelper | null>(null);
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const actionRef = useRef<THREE.AnimationAction | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState('');
   const [stats, setStats] = useState<ModelStats | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
+  const [playing, setPlaying] = useState(true);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -40,6 +45,8 @@ export function ModelViewer({ url }: { url: string }) {
     setStats(null);
     gridRef.current = null;
     skeletonRef.current = null;
+    mixerRef.current = null;
+    actionRef.current = null;
 
     const width = mount.clientWidth || 480;
     const height = mount.clientHeight || 320;
@@ -122,7 +129,26 @@ export function ModelViewer({ url }: { url: string }) {
           skeletonRef.current = skeleton;
         }
 
-        setStats({ faces: Math.round(faces), vertices, size: dimensions, hasSkeleton });
+        // Animated GLBs (animated_model exports) embed clips; play the first one
+        // via an AnimationMixer driven by the shared clock in the RAF loop. When
+        // a clip plays, stop auto-rotate so the motion (not the orbit) reads.
+        const clips = gltf.animations ?? [];
+        if (clips.length > 0) {
+          const mixer = new THREE.AnimationMixer(model);
+          const action = mixer.clipAction(clips[0]!);
+          action.play();
+          mixerRef.current = mixer;
+          actionRef.current = action;
+          controls.autoRotate = false;
+        }
+
+        setStats({
+          faces: Math.round(faces),
+          vertices,
+          size: dimensions,
+          hasSkeleton,
+          clipCount: clips.length,
+        });
         setStatus('ready');
       },
       undefined,
@@ -144,10 +170,13 @@ export function ModelViewer({ url }: { url: string }) {
     ro.observe(mount);
 
     const tick = () => {
+      const delta = clock.getDelta();
+      if (mixerRef.current) mixerRef.current.update(delta);
       controls.update();
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
+    const clock = new THREE.Clock();
     tick();
 
     return () => {
@@ -157,6 +186,12 @@ export function ModelViewer({ url }: { url: string }) {
       controls.dispose();
       gridRef.current = null;
       skeletonRef.current = null;
+      if (mixerRef.current) {
+        mixerRef.current.stopAllAction();
+        if (model) mixerRef.current.uncacheRoot(model);
+        mixerRef.current = null;
+      }
+      actionRef.current = null;
       if (model) {
         model.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
@@ -181,6 +216,10 @@ export function ModelViewer({ url }: { url: string }) {
   useEffect(() => {
     if (skeletonRef.current) skeletonRef.current.visible = showSkeleton;
   }, [showSkeleton]);
+
+  useEffect(() => {
+    if (actionRef.current) actionRef.current.paused = !playing;
+  }, [playing, stats]);
 
   const fmt = (n: number) => n.toLocaleString();
 
@@ -213,6 +252,17 @@ export function ModelViewer({ url }: { url: string }) {
         >
           骨骼
         </button>
+        {stats && stats.clipCount > 0 && (
+          <button
+            type="button"
+            className={`mv-toggle ${playing ? 'is-on' : ''}`}
+            aria-pressed={playing}
+            title="播放 / 暂停动画"
+            onClick={() => setPlaying((v) => !v)}
+          >
+            {playing ? '暂停' : '播放'}
+          </button>
+        )}
       </div>
 
       {stats && (

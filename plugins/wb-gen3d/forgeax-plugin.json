@@ -133,6 +133,36 @@
           "zh": "本地图片上传（中转产物，非资产）：解码 base64（≤8MB）上传到 COS，返回 24h 预签名 URL 供图生/多视图/姿态标准化等 URL-fetch provider 使用。未配置 COS 时报错，提示改为手填 URL。",
           "en": "Local image upload (transfer artifact, NOT an asset): decode base64 (≤8MB), upload to COS, return a 24h presigned URL for URL-fetching providers (image/views/pose tools). Errors with cos_not_configured when COS is absent so the UI can ask the user to paste a URL."
         }
+      },
+      {
+        "id": "gen3d:auto-rig",
+        "args": "./schemas/auto-rig.args.json",
+        "returns": "./schemas/auto-rig.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "自动绑骨（Hunyuan REST，M13）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移），并置位 readiness.rigged。仅人形角色；幂等。Gate 1 真机验证通过前默认 mock，不调用真实配额，故 exposedToAI=false。",
+          "en": "Auto-rig (Hunyuan REST, M13): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX (for motion retarget) to the SAME asset and flipping readiness.rigged. Humanoid only; idempotent. Mock-only until Gate 1 real-machine verification passes, so exposedToAI=false."
+        }
+      },
+      {
+        "id": "gen3d:apply-motion",
+        "args": "./schemas/apply-motion.args.json",
+        "returns": "./schemas/apply-motion.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "应用动作（Hunyuan REST motion_retarget v1，M13）：对一个已绑骨资产应用一个固定动作（int 9–16：跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞），向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。需先 auto-rig；多动作并存，按 motionType 幂等。Gate 真机验证前默认 mock，exposedToAI=false。",
+          "en": "Apply motion (Hunyuan REST motion_retarget v1, M13): apply one fixed motion (int 9–16: stride/fall/jump/kick/swing/walk/run/dance) to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Requires prior auto-rig; multiple motions coexist, idempotent per motionType. Mock-only until Gate verification, so exposedToAI=false."
+        }
+      },
+      {
+        "id": "gen3d:retopo-lowpoly",
+        "args": "./schemas/retopo-lowpoly.args.json",
+        "returns": "./schemas/retopo-lowpoly.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "低模重拓扑（Hunyuan REST low_poly，M13，可选侧支）：把高模 GLB 重拓扑为低模，产出一个全新的衍生低模 GLB 资产（cache-first），高模源保留。注意：贴图不保留，因此不是绑骨前的预处理步骤。Gate 0 真机验证（Hunyuan 内网可达公网 COS）通过前默认 mock，exposedToAI=false。",
+          "en": "Retopo low-poly (Hunyuan REST low_poly, M13, optional side-branch): retopologize a high-poly GLB to low-poly, producing a NEW derived low-poly GLB asset (cache-first); the high-poly source is retained. Note: textures are NOT preserved, so this is NOT a pre-rig step. Mock-only until Gate 0 real-machine verification (Hunyuan internal egress can fetch public COS) passes, so exposedToAI=false."
+        }
       }
     ],
     "events": [

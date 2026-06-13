@@ -1,18 +1,20 @@
 import type { JSX } from 'react';
 import { Box, AlertTriangle as AlertIcon } from 'lucide-react';
-import { selectFile } from '@shared/manifest';
-import type { Gen3DAssetManifest, ManifestFile } from '@shared/manifest';
+import { selectFile, selectFiles } from '@shared/manifest';
+import type { Gen3DAssetManifest, ManifestFile, MotionType } from '@shared/manifest';
 import type { GenerateResult } from '@/types';
 import { blobUrl } from '@/lib/blobUrl';
 import { ModelViewer } from '@/components/ModelViewer';
-import { EDITOR_ICON_MAP } from '@/ui-meta';
+import { EDITOR_ICON_MAP, MOTION_TYPES, motionMeta } from '@/ui-meta';
 
 // One semantic glyph per action, drawn from the shared editor icon vocabulary
 // so the same action reads the same across step / CTA / empty / library.
 const GenerateIcon = EDITOR_ICON_MAP.generate;
 const RefreshIcon = EDITOR_ICON_MAP.refresh;
 const RefineIcon = EDITOR_ICON_MAP.refine;
-const HandoffIcon = EDITOR_ICON_MAP.handoff;
+const RigIcon = EDITOR_ICON_MAP.rig;
+const MotionIcon = EDITOR_ICON_MAP.motion;
+const LowpolyIcon = EDITOR_ICON_MAP.lowpoly;
 const ImgIcon = EDITOR_ICON_MAP.image;
 
 // Center pane: header + transient error/loading banners + the result workspace.
@@ -27,6 +29,9 @@ export function Workspace({
   onRetry,
   onDismissError,
   onRefine,
+  onAutoRig,
+  onApplyMotion,
+  onRetopoLowpoly,
 }: {
   latest: GenerateResult | null;
   selected: Gen3DAssetManifest | null;
@@ -36,6 +41,9 @@ export function Workspace({
   onRetry: () => void;
   onDismissError: () => void;
   onRefine: (previewTaskId: string) => void;
+  onAutoRig: (assetPath: string) => void;
+  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onRetopoLowpoly: (assetPath: string) => void;
 }): JSX.Element {
   return (
     <div className="gx-workspace">
@@ -81,6 +89,9 @@ export function Workspace({
           manifest={selected}
           busy={busy}
           onRefine={onRefine}
+          onAutoRig={onAutoRig}
+          onApplyMotion={onApplyMotion}
+          onRetopoLowpoly={onRetopoLowpoly}
           badges={
             <div className="badge-row">
               <span className={`badge ${selected.providerMode === 'real' ? 'badge--real' : 'badge--mock'}`}>
@@ -94,6 +105,9 @@ export function Workspace({
           manifest={latest.manifest}
           busy={busy}
           onRefine={onRefine}
+          onAutoRig={onAutoRig}
+          onApplyMotion={onApplyMotion}
+          onRetopoLowpoly={onRetopoLowpoly}
           badges={
             <div className="badge-row">
               {latest.usedMock ? (
@@ -125,15 +139,26 @@ function ResultCard({
   badges,
   busy,
   onRefine,
+  onAutoRig,
+  onApplyMotion,
+  onRetopoLowpoly,
 }: {
   manifest: Gen3DAssetManifest;
   badges: JSX.Element;
   busy: boolean;
   onRefine: (previewTaskId: string) => void;
+  onAutoRig: (assetPath: string) => void;
+  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onRetopoLowpoly: (assetPath: string) => void;
 }): JSX.Element {
   const meshFile = selectFile(manifest.files, 'source_mesh', 'glb');
   const previewFile = manifest.files.find((f) => f.role === 'preview_image') ?? null;
-  const meshUrl = blobUrl(meshFile);
+  // Prefer the animated GLB (so the viewer can play the clip), then the rigged
+  // GLB, then the plain source mesh. All are self-contained GLBs (ADR-0003).
+  const animatedGlb = selectFile(manifest.files, 'animated_model', 'glb');
+  const riggedGlb = selectFile(manifest.files, 'rigged_model', 'glb');
+  const viewerFile = animatedGlb ?? riggedGlb ?? meshFile;
+  const meshUrl = blobUrl(viewerFile);
   // Refine is Meshy-only second stage texturing a white-mesh text preview. Only
   // real previews carry a usable sourceJobId.
   const refineTaskId = manifest.provider === 'meshy' && manifest.mode === 'text' ? manifest.sourceJobId : null;
@@ -194,16 +219,124 @@ function ResultCard({
             <RefineIcon size={14} /> {busy ? '处理中…' : '加贴图 (refine)'}
           </button>
         )}
+      </div>
+
+      <DownstreamPanel
+        manifest={manifest}
+        busy={busy}
+        onAutoRig={onAutoRig}
+        onApplyMotion={onApplyMotion}
+        onRetopoLowpoly={onRetopoLowpoly}
+      />
+    </article>
+  );
+}
+
+// M13 downstream actions: rig → motion (core pipeline) + low_poly (optional
+// side-branch). Steps gate on readiness: auto-rig is offered for any mesh
+// (humanoid characters only — soft-gated by a hint, not a hard block), motions
+// unlock only once readiness.rigged. Applied motions render as a chip row with
+// their structural motionType so re-applying one is a no-op. low_poly is always
+// available as an explicit, separate derived-asset action.
+function DownstreamPanel({
+  manifest,
+  busy,
+  onAutoRig,
+  onApplyMotion,
+  onRetopoLowpoly,
+}: {
+  manifest: Gen3DAssetManifest;
+  busy: boolean;
+  onAutoRig: (assetPath: string) => void;
+  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onRetopoLowpoly: (assetPath: string) => void;
+}): JSX.Element {
+  const assetPath = manifest.assetPath;
+  const rigged = manifest.readiness.rigged;
+  const isCharacter = manifest.assetSlot === 'characters';
+  const appliedMotions = new Set<MotionType>(
+    selectFiles(manifest.files, 'animated_model')
+      .map((f) => f.motionType)
+      .filter((m): m is MotionType => m !== undefined),
+  );
+
+  return (
+    <section className="downstream">
+      <div className="downstream-head">
+        <RigIcon size={14} />
+        <span>下游：绑骨 → 动作</span>
+      </div>
+
+      {/* Step 1: auto-rig */}
+      <div className="downstream-step">
+        <span className="downstream-step-no">1</span>
+        <div className="downstream-step-body">
+          <div className="downstream-step-title">绑定骨架</div>
+          {rigged ? (
+            <small className="downstream-ok">已绑骨（humanoid）· 可应用动作</small>
+          ) : (
+            <small className="downstream-hint">
+              {isCharacter
+                ? '为带贴图的高模角色绑定人形骨架（保贴图）。'
+                : '绑骨仅对人形角色有意义；此资产在「物件」槽，绑骨结果可能无效。'}
+            </small>
+          )}
+        </div>
         <button
           type="button"
-          className="fx-btn fx-btn--sm handoff-btn"
-          disabled
-          title="绑骨/动作：M13 计划中（gen3d:auto-rig → gen3d:apply-motion）"
+          className="fx-btn fx-btn--sm"
+          disabled={busy || rigged}
+          onClick={() => onAutoRig(assetPath)}
         >
-          <HandoffIcon size={14} /> 下游绑骨/动画
+          <RigIcon size={14} /> {rigged ? '已绑骨' : busy ? '处理中…' : '自动绑骨'}
         </button>
       </div>
-    </article>
+
+      {/* Step 2: apply motion (one of 8 fixed motions) */}
+      <div className={`downstream-step ${rigged ? '' : 'is-disabled'}`}>
+        <span className="downstream-step-no">2</span>
+        <div className="downstream-step-body">
+          <div className="downstream-step-title">
+            <MotionIcon size={13} /> 应用动作
+          </div>
+          {rigged ? (
+            <div className="motion-grid">
+              {MOTION_TYPES.map((m) => {
+                const applied = appliedMotions.has(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`fx-btn fx-btn--sm motion-btn ${applied ? 'is-applied' : ''}`}
+                    disabled={busy || applied}
+                    title={motionMeta[m].hint}
+                    onClick={() => onApplyMotion(assetPath, m)}
+                  >
+                    {motionMeta[m].label}
+                    {applied ? ' ✓' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <small className="downstream-hint">先完成绑骨，再选择动作（int 9–16，8 个固定动作）。</small>
+          )}
+        </div>
+      </div>
+
+      {/* Optional side-branch: low_poly (new derived asset, textures not kept) */}
+      <div className="downstream-aside">
+        <button
+          type="button"
+          className="fx-btn fx-btn--sm"
+          disabled={busy}
+          title="可选：减面重拓扑，产出新的低模资产（高模保留，贴图不保留）"
+          onClick={() => onRetopoLowpoly(assetPath)}
+        >
+          <LowpolyIcon size={14} /> 低模重拓扑（可选旁路）
+        </button>
+      </div>
+    </section>
   );
 }
 

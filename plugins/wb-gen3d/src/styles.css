@@ -801,7 +801,96 @@ body[data-pane='center'] .gx-center { height: 100%; }
   font-size: 11px;
 }
 
-.handoff-btn { margin-top: 4px; }
+/* ── M13 downstream: rig → motion + low_poly ─────────────────────────────── */
+.downstream {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-background-base);
+}
+
+.downstream-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-text-secondary);
+}
+.downstream-head svg { color: var(--color-icon-tertiary); }
+
+.downstream-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.downstream-step.is-disabled { opacity: 0.55; }
+
+.downstream-step-no {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-background-floating);
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.downstream-step-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.downstream-step-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.downstream-hint { font-size: 10px; line-height: 1.5; color: var(--color-text-tertiary); }
+.downstream-ok { font-size: 10px; color: var(--color-accent-green-default); }
+
+.motion-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.motion-btn { justify-content: center; }
+.motion-btn.is-applied {
+  border-color: var(--color-accent-green-default);
+  color: var(--color-accent-green-default);
+}
+
+.downstream-aside {
+  display: flex;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border-subtle);
+}
+
+.lib-card-readiness { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 8px 8px; }
+.lib-readiness-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-background-floating);
+  color: var(--color-text-secondary);
+  font-size: 9px;
+}
+.lib-readiness-tag--anim {
+  border-color: rgba(79, 209, 127, 0.35);
+  background: rgba(79, 209, 127, 0.10);
+  color: var(--color-accent-green-default);
+}
 
 /* =============================================================================
    MOTION — vendored subset of motion.css (.studio-shell scope stripped; the

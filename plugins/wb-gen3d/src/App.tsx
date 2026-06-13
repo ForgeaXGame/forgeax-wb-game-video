@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
 import { hasActiveGame } from '@/lib/gameSlug';
-import type { GenerateResult, ListAssetsResult, Mode, ProviderStatus } from '@/types';
+import type { GenerateResult, ListAssetsResult, Mode, ProviderStatus, RigMotionResult } from '@/types';
 import { modeMeta } from '@/ui-meta';
 import { SetupSidebar } from '@/components/SetupSidebar';
 import { Workspace } from '@/components/Workspace';
@@ -97,12 +97,75 @@ export function App({ pane }: AppProps) {
     [refreshAssets],
   );
 
+  // M13 rig→motion: both append derived files to the SAME asset (identity stays
+  // its main GLB) and return the updated manifest, so we re-select it by
+  // assetPath to surface the new readiness/motions in the workspace immediately.
+  const runRigMotion = useCallback(
+    async (toolId: 'gen3d:auto-rig' | 'gen3d:apply-motion', args: Record<string, unknown>) => {
+      setBusy(true);
+      setError(null);
+      const r = await callTool<RigMotionResult>(toolId, args);
+      setBusy(false);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSelected(r.result.manifest);
+      setLatest(null);
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
+  // M13 optional side-branch: low_poly produces a NEW derived asset (textures not
+  // preserved), so it behaves like a generation — show it as the latest result.
+  const runRetopoLowpoly = useCallback(
+    async (assetPath: string) => {
+      setBusy(true);
+      setError(null);
+      const r = await callTool<GenerateResult>('gen3d:retopo-lowpoly', { assetPath });
+      setBusy(false);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setLatest(r.result);
+      setSelected(null);
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
   const handleGenerate = useCallback(
     (mode: Mode, args: unknown) => {
       lastActionRef.current = () => void runGenerate(mode, args);
       void runGenerate(mode, args);
     },
     [runGenerate],
+  );
+
+  const handleAutoRig = useCallback(
+    (assetPath: string) => {
+      lastActionRef.current = () => void runRigMotion('gen3d:auto-rig', { assetPath });
+      void runRigMotion('gen3d:auto-rig', { assetPath });
+    },
+    [runRigMotion],
+  );
+
+  const handleApplyMotion = useCallback(
+    (assetPath: string, motionType: number) => {
+      lastActionRef.current = () => void runRigMotion('gen3d:apply-motion', { assetPath, motionType });
+      void runRigMotion('gen3d:apply-motion', { assetPath, motionType });
+    },
+    [runRigMotion],
+  );
+
+  const handleRetopoLowpoly = useCallback(
+    (assetPath: string) => {
+      lastActionRef.current = () => void runRetopoLowpoly(assetPath);
+      void runRetopoLowpoly(assetPath);
+    },
+    [runRetopoLowpoly],
   );
 
   const handleRefine = useCallback(
@@ -145,6 +208,9 @@ export function App({ pane }: AppProps) {
                 onRetry={handleRetry}
                 onDismissError={() => setError(null)}
                 onRefine={handleRefine}
+                onAutoRig={handleAutoRig}
+                onApplyMotion={handleApplyMotion}
+                onRetopoLowpoly={handleRetopoLowpoly}
               />
               <div className="gx-rightcol">
                 <AssetLibrary

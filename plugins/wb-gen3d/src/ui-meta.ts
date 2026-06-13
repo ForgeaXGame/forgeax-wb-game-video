@@ -17,8 +17,12 @@ import {
   Upload,
   ShieldAlert,
   ShieldCheck,
+  Bone,
+  Play,
+  Shrink,
 } from 'lucide-react';
 import type { GenProvider, Mode } from './types';
+import type { MotionType } from '@shared/manifest';
 
 export const EDITOR_ICON_MAP = {
   text: Type,
@@ -35,6 +39,9 @@ export const EDITOR_ICON_MAP = {
   upload: Upload,
   real: ShieldAlert,
   quota: ShieldCheck,
+  rig: Bone,
+  motion: Play,
+  lowpoly: Shrink,
 } as const;
 
 export const modeMeta: Record<Mode, { toolId: string; label: string; icon: typeof Type }> = {
@@ -73,3 +80,19 @@ const TIER_FACE_COUNTS: Record<GenProvider, Record<PolycountTier, number>> = {
 export function tierToFaceCount(provider: GenProvider, tier: PolycountTier): number {
   return TIER_FACE_COUNTS[provider][tier];
 }
+
+// Hunyuan motion_retarget v1 fixed motions (int 9–16). Label = the action; hint =
+// the game application example. Source: PLAN-2026-06-12 §③ motion mapping table.
+// Order is the table order; this is the single source for the apply-motion UI.
+export const MOTION_TYPES: readonly MotionType[] = [9, 10, 11, 12, 13, 14, 15, 16];
+
+export const motionMeta: Record<MotionType, { label: string; hint: string }> = {
+  9: { label: '跨步', hint: '战斗位移、闪避动作、战术移动' },
+  10: { label: '摔倒', hint: '死亡动画、受击倒地、失败反馈' },
+  11: { label: '跳跃', hint: '跳跃平台、翻越障碍、技能起跳' },
+  12: { label: '踢腿', hint: '格斗技能、踢击连段、交互动作' },
+  13: { label: '挥击', hint: '近战攻击、武器挥砍、打击动作' },
+  14: { label: '步行', hint: '日常巡逻、NPC 漫游、场景行走' },
+  15: { label: '跑步', hint: '追逐战斗、快速移动、冲刺动作' },
+  16: { label: '跳舞', hint: '胜利庆祝、皮肤展示、互动表演' },
+};
