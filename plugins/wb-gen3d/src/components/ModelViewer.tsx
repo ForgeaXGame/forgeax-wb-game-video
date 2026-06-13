@@ -47,6 +47,16 @@ export function ModelViewer({
   const skeletonRef = useRef<THREE.SkeletonHelper | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionRef = useRef<THREE.AnimationAction | null>(null);
+  // Camera framing cached across motion switches within one asset. Keyed by the
+  // clip-set identity so switching between a rest pose and its motions reuses the
+  // same camera (no jump), while a genuine asset change recomputes the frame.
+  const frameRef = useRef<{
+    key: string;
+    camPos: THREE.Vector3;
+    target: THREE.Vector3;
+    near: number;
+    far: number;
+  } | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState('');
   const [stats, setStats] = useState<ModelStats | null>(null);
@@ -68,6 +78,10 @@ export function ModelViewer({
     if (!clipList.some((c) => c.key === activeKey)) setActiveKey(clipList[0]!.key);
   }, [clipList, activeKey]);
   const activeUrl = (clipList.find((c) => c.key === activeKey) ?? clipList[0]!).url;
+  // Identity of the whole clip set (all selectable poses for one asset). Stays
+  // stable while the user swaps motions, but changes when a different asset is
+  // selected — exactly when the camera framing should be recomputed.
+  const clipsKey = useMemo(() => clipList.map((c) => c.key).join('|'), [clipList]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -149,15 +163,34 @@ export function ModelViewer({
         });
 
         const r = sphere.radius || 1;
-        // After floor-anchoring, the model spans y∈[0, dimensions.y]; look at
-        // its mid-height so it's vertically centered in frame.
-        const midY = dimensions.y / 2;
-        const dist = r / Math.sin((camera.fov * Math.PI) / 180 / 2);
-        camera.position.set(0, midY + r * 0.3, dist * 1.25);
-        camera.near = r / 100;
-        camera.far = dist * 10;
-        camera.updateProjectionMatrix();
-        controls.target.set(0, midY, 0);
+        // Camera framing is established ONCE per asset and reused across motion
+        // switches, so swapping clips (each a separate GLB that fully reloads)
+        // never makes the model jump/rescale in frame. We key the cached frame on
+        // the clip-set identity (clipsKey): a real asset change resets it, but the
+        // rest-pose↔motion swaps within one asset keep the same camera. Without
+        // this, framing tracked each pose's own bbox (rest pose's raised arms make
+        // dimensions.y bigger than a motion's), so target.y/zoom jumped on switch.
+        const cached = frameRef.current;
+        if (cached && cached.key === clipsKey) {
+          camera.position.copy(cached.camPos);
+          camera.near = cached.near;
+          camera.far = cached.far;
+          camera.updateProjectionMatrix();
+          controls.target.copy(cached.target);
+        } else {
+          const midY = dimensions.y / 2;
+          const dist = r / Math.sin((camera.fov * Math.PI) / 180 / 2);
+          const camPos = new THREE.Vector3(0, midY + r * 0.3, dist * 1.25);
+          const target = new THREE.Vector3(0, midY, 0);
+          const near = r / 100;
+          const far = dist * 10;
+          camera.position.copy(camPos);
+          camera.near = near;
+          camera.far = far;
+          camera.updateProjectionMatrix();
+          controls.target.copy(target);
+          frameRef.current = { key: clipsKey, camPos, target, near, far };
+        }
         controls.update();
 
         // Grid floor sized to the model, placed at the ground plane (y=0) where
@@ -255,7 +288,7 @@ export function ModelViewer({
     // Switching `activeUrl` (motion chip) DOES rebuild: each motion is a separate
     // GLB, and a full teardown/reload is the leak-safe way to swap it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeUrl]);
+  }, [activeUrl, clipsKey]);
 
   useEffect(() => {
     if (gridRef.current) gridRef.current.visible = showGrid;
