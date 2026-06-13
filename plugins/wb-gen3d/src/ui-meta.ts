@@ -22,7 +22,7 @@ import {
   Shrink,
 } from 'lucide-react';
 import type { GenProvider, Mode } from './types';
-import type { MotionType } from '@shared/manifest';
+import type { AssetSlot, MotionType } from '@shared/manifest';
 
 export const EDITOR_ICON_MAP = {
   text: Type,
@@ -54,6 +54,16 @@ export const providerMeta: Record<GenProvider, { label: string }> = {
   hunyuan_workflow: { label: '混元 Hunyuan' },
   meshy: { label: 'Meshy' },
   rodin: { label: 'Rodin' },
+};
+
+// Asset slot the generation writes into (assets/3d/<slot>/). characters can be
+// auto-rigged + animated; meshes are static props/environment. The slot is part
+// of the cacheKey, so switching it generates a fresh asset rather than a hit.
+export const ASSET_SLOTS: AssetSlot[] = ['characters', 'meshes'];
+
+export const assetSlotMeta: Record<AssetSlot, { label: string }> = {
+  characters: { label: '角色' },
+  meshes: { label: '物件' },
 };
 
 // Polycount is exposed as three discrete tiers (low/mid/high) instead of a

@@ -3,10 +3,13 @@ import { Plus } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
 import { scratchPreviewUrl } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
+import type { AssetSlot } from '@shared/manifest';
 import {
   EDITOR_ICON_MAP,
   modeMeta,
   providerMeta,
+  ASSET_SLOTS,
+  assetSlotMeta,
   POLYCOUNT_TIERS,
   polycountTierMeta,
   tierToFaceCount,
@@ -36,6 +39,7 @@ export function SetupSidebar({
 }) {
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
   const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
+  const [assetSlot, setAssetSlot] = useState<AssetSlot>('characters');
   const [mode, setMode] = useState<Mode>('text');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
@@ -76,7 +80,7 @@ export function SetupSidebar({
   function submit() {
     if (!canSubmit) return;
     const targetPolycount = tierToFaceCount(provider, polycountTier);
-    const common = { provider, enablePbr, targetPolycount };
+    const common = { provider, assetSlot, enablePbr, targetPolycount };
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
     } else if (mode === 'image') {
@@ -180,6 +184,27 @@ export function SetupSidebar({
                   </button>
                 );
               })}
+            </div>
+
+            <div className="field">
+              <span className="field-label">资产类型</span>
+              <div className="fx-segmented" role="radiogroup" aria-label="资产类型">
+                {ASSET_SLOTS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={assetSlot === s}
+                    className={`fx-segmented-btn ${assetSlot === s ? 'is-selected' : ''}`}
+                    onClick={() => setAssetSlot(s)}
+                  >
+                    <span>{assetSlotMeta[s].label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="step-note">
+                角色可后续绑骨 / 加动作；物件为静态道具 / 场景。决定存放槽位，不可在生成后切换。
+              </p>
             </div>
 
             {mode === 'text' && (

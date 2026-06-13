@@ -48,7 +48,7 @@ export function Workspace({
   return (
     <div className="gx-workspace">
       <div className="ws-header">
-        <span className="ws-eyebrow">Hunyuan3D / Meshy</span>
+        <span className="ws-eyebrow">Hunyuan3D / Meshy / Rodin</span>
         <h1 className="ws-title">生成结果</h1>
       </div>
 
