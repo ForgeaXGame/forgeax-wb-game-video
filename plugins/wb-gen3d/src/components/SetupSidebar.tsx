@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
-import { BLOB_BASE } from '@/lib/blobUrl';
+import { scratchPreviewUrl } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
+import type { AssetSlot } from '@shared/manifest';
 import {
   EDITOR_ICON_MAP,
   modeMeta,
   providerMeta,
+  ASSET_SLOTS,
+  assetSlotMeta,
   POLYCOUNT_TIERS,
   polycountTierMeta,
   tierToFaceCount,
@@ -36,6 +39,7 @@ export function SetupSidebar({
 }) {
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
   const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
+  const [assetSlot, setAssetSlot] = useState<AssetSlot>('characters');
   const [mode, setMode] = useState<Mode>('text');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
@@ -76,7 +80,7 @@ export function SetupSidebar({
   function submit() {
     if (!canSubmit) return;
     const targetPolycount = tierToFaceCount(provider, polycountTier);
-    const common = { provider, enablePbr, targetPolycount };
+    const common = { provider, assetSlot, enablePbr, targetPolycount };
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
     } else if (mode === 'image') {
@@ -180,6 +184,27 @@ export function SetupSidebar({
                   </button>
                 );
               })}
+            </div>
+
+            <div className="field">
+              <span className="field-label">资产类型</span>
+              <div className="fx-segmented" role="radiogroup" aria-label="资产类型">
+                {ASSET_SLOTS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={assetSlot === s}
+                    className={`fx-segmented-btn ${assetSlot === s ? 'is-selected' : ''}`}
+                    onClick={() => setAssetSlot(s)}
+                  >
+                    <span>{assetSlotMeta[s].label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="step-note">
+                角色可后续绑骨 / 加动作；物件为静态道具 / 场景。决定存放槽位，不可在生成后切换。
+              </p>
             </div>
 
             {mode === 'text' && (
@@ -360,6 +385,7 @@ function PosePreprocess({
   const [srcUrl, setSrcUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const ImgIcon = EDITOR_ICON_MAP.image;
   const PoseIcon = EDITOR_ICON_MAP.pose;
 
@@ -378,9 +404,12 @@ function PosePreprocess({
     onResult(r.result);
   }
 
-  const previewUrl = result ? (result.localUrl ?? `${BLOB_BASE}/${result.storageKey}`) : null;
-  const feedUrl = result ? (result.sourceUrl ?? result.localUrl ?? `${BLOB_BASE}/${result.storageKey}`) : '';
+  const previewUrl = result ? scratchPreviewUrl(result) : null;
+  const feedUrl = result ? (result.sourceUrl ?? result.localUrl ?? previewUrl ?? '') : '';
   const targetLabel = mode === 'image' ? '图生输入' : '正视图输入';
+
+  useEffect(() => setPreviewFailed(false), [previewUrl]);
+  const showPreview = previewUrl !== null && !previewFailed;
 
   return (
     <>
@@ -400,8 +429,13 @@ function PosePreprocess({
       {error && <p className="step-note step-note--warn">{error}</p>}
       {result && (
         <div className="pose-result">
-          {previewUrl ? (
-            <img className="preview-thumb" src={previewUrl} alt="standardized pose" />
+          {showPreview ? (
+            <img
+              className="preview-thumb"
+              src={previewUrl}
+              alt=""
+              onError={() => setPreviewFailed(true)}
+            />
           ) : (
             <div className="preview-thumb preview-thumb--empty" aria-hidden="true">
               <ImgIcon size={18} />

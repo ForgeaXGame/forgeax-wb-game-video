@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:apply-motion args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Injected by the workbench host; required."
+    },
+    "assetPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Game-relative path of a RIGGED asset (must already have a rigged_model FBX from gen3d:auto-rig). The animated GLB+FBX for this motion are appended to THIS asset."
+    },
+    "motionType": {
+      "type": "integer",
+      "minimum": 9,
+      "maximum": 16,
+      "description": "Hunyuan motion_retarget v1 fixed motion: 9 跨步 / 10 摔倒 / 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞. Idempotent per motion: re-applying an existing motionType returns the existing manifest."
+    }
+  },
+  "required": ["assetPath", "motionType"],
+  "additionalProperties": false
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import { selectFile } from '@shared/manifest';
+import { selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
@@ -94,7 +94,12 @@ function LibCard({
 }): JSX.Element {
   const previewUrl = blobUrl(selectFile(asset.files, 'preview_image'));
   const caption = (asset.prompt ?? asset.mode).split('\n')[0]!.trim();
-  const slot = slotLabel[asset.assetSlot] ?? asset.assetSlot;
+  // Rig/motion is characters-only, so a rigged or animated asset is definitively
+  // a character even when its slot field is stale (older flows defaulted unnamed
+  // slots to `meshes`). Trust readiness over the persisted slot for the label.
+  const effectiveSlot =
+    asset.readiness.rigged || asset.readiness.animated ? 'characters' : asset.assetSlot;
+  const slot = slotLabel[effectiveSlot] ?? effectiveSlot;
   // A preview <img> can transiently fail (request raced the just-written file,
   // dev-proxy hiccup, or a missing/corrupt sidefile). Without this the tile
   // renders a broken-image glyph with the full prompt spilling out as alt text.
@@ -128,6 +133,16 @@ function LibCard({
         <small className="lib-card-meta">
           {asset.provider} · {slot}
         </small>
+        {(asset.readiness.rigged || asset.readiness.animated) && (
+          <div className="lib-card-readiness">
+            {asset.readiness.rigged && <span className="lib-readiness-tag">绑骨</span>}
+            {asset.readiness.animated && (
+              <span className="lib-readiness-tag lib-readiness-tag--anim">
+                动作 ×{selectFiles(asset.files, 'animated_model', 'glb').length}
+              </span>
+            )}
+          </div>
+        )}
       </button>
 
       {confirming ? (

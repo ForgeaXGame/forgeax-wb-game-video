@@ -25,7 +25,8 @@ function sha256Hex(data: Uint8Array): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-// Map a small set of image mimetypes to a file extension for the COS key.
+// Map a small set of input mimetypes to a file extension for the COS key.
+// Covers images (pose/views inputs) and 3D models (rig/motion transfer URLs).
 // Unknown types fall back to .bin; the presigned URL still works for fetchers.
 function extForMime(mime: string): string {
   switch (mime.toLowerCase()) {
@@ -38,9 +39,20 @@ function extForMime(mime: string): string {
       return 'webp';
     case 'image/gif':
       return 'gif';
+    case 'model/gltf-binary':
+      return 'glb';
+    case 'model/fbx':
+    case 'application/octet-stream':
+      return 'fbx';
     default:
       return 'bin';
   }
+}
+
+// Mimetype to send when COS-hosting a model file of a known format, so the
+// content-addressed key carries the right extension for URL-fetching providers.
+export function mimeForModelFormat(format: 'glb' | 'fbx'): string {
+  return format === 'glb' ? 'model/gltf-binary' : 'model/fbx';
 }
 
 export class CosUploader {

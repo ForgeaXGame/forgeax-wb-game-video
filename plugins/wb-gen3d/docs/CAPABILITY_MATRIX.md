@@ -1,7 +1,24 @@
 # Gen3D Provider Capability Matrix
 
-Status: source-derived planning matrix. Updated 2026-06-11: Rodin provider is
-**live-verified** (M11) — `server/providers/rodin.ts` multipart submit
+Status: source-derived planning matrix. Updated 2026-06-13: M13 **Gate 0/1
+real-machine verification PASSED** (probe `scripts/m13-gate-probe.ts`, Hunyuan
+内网 `hunyuanapi.woa.com` + lightai COS). Gate 0 ✓ Hunyuan internal egress
+fetched our public presigned COS URL; Gate 1 ✓ `auto_rigging` returned
+`data[].glb_url`/`fbx_url` (shape matches parser), rigged GLB embeds
+**images=3/textures=3/materials=1** (texture survival confirmed) with a 22-joint
+humanoid skeleton (Head/Neck/LeftArm/Spine…), and `motion_retarget` (motion 14
+步行) returned an animated GLB with `animations=1` + textures intact. Remaining:
+operator visual T-pose/animation eyeball, then flip `exposedToAI:true`.
+
+Updated 2026-06-12: M13 rig/motion/low_poly
+pipeline **code-complete (mock-first)** — tools `gen3d:auto-rig` / `gen3d:apply-motion`
+/ `gen3d:retopo-lowpoly` implemented end-to-end (handlers + schemas + UI rig→motion
+step flow + ModelViewer AnimationMixer), passing typecheck/build and a mock full-chain
+sanity (generate→rig→motion×2→lowpoly→list, idempotency + not-rigged guards). All three
+ship `exposedToAI:false` and run mock-only until operator Gate 0/1 real-machine
+verification passes (`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`, ADR-0003). motion
+v1 action names (int 9–16) and low_poly high-poly retention decided. Rodin provider
+is **live-verified** (M11) — `server/providers/rodin.ts` multipart submit
 `/api/v2/rodin` → poll `/api/v2/status` → `/api/v2/download`, provider enum + UI
 selector wired, and one real text-to-3D run confirmed end-to-end through the
 Studio server (GLB + webp preview persisted per-game, `providerMode='real'`).
@@ -32,8 +49,9 @@ Do not expose rows marked hidden or blocked in workbench UI or AI-facing schemas
 | Hunyuan workflow | `text2geometry`, `image2geometry`, `views2geometry` | Endpoint reachable, field sanity incomplete | hidden | Keep constants internal only until output shape is verified. |
 | Hunyuan workflow | world scene/panorama/reconstruction modes | Endpoint reachable, field sanity incomplete | hidden | Do not expose from workbench until mode mapping and outputs are proven. |
 | Hunyuan REST | `pose_standardization` | **Implemented + live-verified 2026-06-10** | mock-first | Tool `gen3d:pose-standardization`. Synchronous REST `POST /openapi/v1/3d/images/pose_standardization`. Upstream preprocessing (image→A/T-pose image); persists a blob, no manifest. Real call confirmed ~20s, 501 KB PNG. Mock fallback when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. |
-| Hunyuan REST | `motion_retarget` v1 | Verified end-to-end in lab | planned | Built-in integer motion types 9-16; input requires rigged humanoid FBX. Deferred until a `role=rigged_model` asset path exists (`wb-3d-pipeline`). |
-| Hunyuan REST | `auto_rigging` | Endpoint reachable, not fully verified | experimental | Schema can be drafted later, but default UI/AI exposure should wait. |
+| Hunyuan REST | `low_poly` | Contract PDF-verified 2026-06-12; **client + tool implemented (mock-first) 2026-06-12**; not live-tested | planned | Tool `gen3d:retopo-lowpoly` (`exposedToAI:false`). **optional geometry/LOD side-branch, NOT pre-rig** — geometry-only, does NOT preserve texture (output OBJ has no MTL; quad retopo re-UVs). Produces a NEW derived low-poly GLB asset (cache-first); high-poly source retained. async submit/poll (`hunyuan-3d-low-poly-v1.5`). **Gate 0 (COS internal reachability) now PASSED 2026-06-13** via auto_rigging fetching our COS URL; low_poly's own async field shape still un-run (it goes through the same egress path, so reachability is no longer a blocker). |
+| Hunyuan REST | `auto_rigging` | **Live-verified 2026-06-13 (Gate 1)** | experimental | Tool `gen3d:auto-rig` (`exposedToAI:false` pending operator visual sign-off). **humanoid only, `characters` slot** (soft-gated in UI). Input textured GLB via `glb_url`. **Real run: HTTP 200, `data[].glb_url`+`fbx_url`+`image_url` (shape matches parser); rigged GLB embeds images=3/textures=3/materials=1 (textures survive) + 22-joint humanoid skeleton.** Appends `rigged_model` **GLB(canonical)+FBX(motion transport)** to the SAME asset, flips `readiness.rigged`; idempotent. |
+| Hunyuan REST | `motion_retarget` v1 | **Live-verified 2026-06-13 (Gate 1)** | planned | Tool `gen3d:apply-motion` (`exposedToAI:false` pending operator visual sign-off). sync `POST /openapi/v1/3d/motion_retarget`; int motion types 9–16 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞), one call per motion. Input = rigged humanoid FBX (`role=rigged_model`, via `fbx_url`). **Real run (motion 14 步行): HTTP 200, `data[].glb_url`+`fbx_url`; animated GLB has animations=1 + textures intact.** Appends `animated_model` **GLB(canonical)+FBX** per motion with structured `motionType` (not filename), flips `readiness.animated`; multiple motions coexist, idempotent per motion. `characters` slot only. |
 | Hunyuan REST | `motion_retarget_v2` | Blocked by unknown literal list | blocked | Endpoint may return 200 while falling back to default motion. Hide until proven. |
 | Rodin | `text` | **Implemented + live-verified 2026-06-11** | mock-first | `server/providers/rodin.ts`: multipart `POST /api/v2/rodin` → poll `POST /api/v2/status` (subscription_key, all sub-jobs Done) → `POST /api/v2/download` (task_uuid). Real text-to-3D confirmed end-to-end via `gen3d:text-to-3d` (provider=rodin): GLB + **`preview.webp`** persisted per-game, `providerMode='real'`. Defaults `tier=Regular`, `material=PBR`, `geometry_file_format=glb`; polycount via `quality_override` low/medium/high (UI ~8k/18k/50k). Falls back to mock when `GEN3D_ENABLE_REAL_PROVIDERS≠1`. Requires Business subscription. |
 | Rodin | `image` / `views` | Implemented (same client; not live-tested) | mock-first | Image/multi-view share the verified submit/poll/download path (`images` files, `condition_mode=concat` for views). Mock fallback until a live image run is run. |

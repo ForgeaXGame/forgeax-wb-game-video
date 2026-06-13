@@ -1,13 +1,13 @@
 # Gen3D Generation Workbench Migration Plan
 
-Status: M8 landed; M9-M12 implemented (mock-first / quota-safe) 2026-06-11.
-Workbench UI refactor landed (2026-06-11, `af986ce`): token-aligned staged
-sidebar + center workspace + asset library column; core generation-loop UI
-landed (2026-06-10). M5 `pose_standardization` live-verified; `motion_retarget`
-v1 deferred. M9 supersedes ADR-0001's global asset library with a per-game file
-contract; see `docs/PLAN-2026-06-11-rodin-cos-pergame.md` and
-`docs/adr/0002-per-game-file-asset-storage.md`. Real Hunyuan public-COS
-reachability + Rodin remain pending live verification behind operator keys.
+Status: M8 landed; M9-M12 implemented (mock-first / quota-safe) 2026-06-11;
+M3–M12 merged to main 2026-06-12. **Next work = M13** (rig / motion / low_poly —
+**docs grill 收尾、可执行**；代码未开工): `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`,
+ADR-0003 (Accepted). Workbench UI refactor landed (2026-06-11, `af986ce`). M5
+`pose_standardization` live-verified. M9 supersedes ADR-0001's global asset library
+with a per-game file contract; see `docs/PLAN-2026-06-11-rodin-cos-pergame.md` and
+`docs/adr/0002-per-game-file-asset-storage.md`. Hunyuan public-COS model fetch
+(Gate 0) still pending live verification; Rodin image-to-3D live-verified 2026-06-12.
 
 This plugin migrates conclusions and useful workflows from
 `/Users/laurenceelu/dev/hunyuan3d-lab/` into ForgeaX as the production 3D
@@ -199,7 +199,8 @@ blobs and persisted into a manifest — `source_mesh/glb` (~41.9 MB),
 ### M5 - Hunyuan REST Subtools
 
 Status: partial — `pose_standardization` complete and live-verified
-(2026-06-10); `motion_retarget` v1 deferred until a rigged-FBX asset path exists.
+(2026-06-10). `low_poly` / `auto_rigging` / `motion_retarget` v1 picked up as
+**M13** (planned 2026-06-12, not yet implemented).
 
 Goal: add verified Hunyuan REST sub-capabilities as separate tools.
 
@@ -219,17 +220,18 @@ Done:
   `localUrl`/`sourceUrl`. It does not write a `Gen3DAssetManifest`. Quota-safe
   by default (mock image blob when `GEN3D_ENABLE_REAL_PROVIDERS≠1`).
 
-Deferred to a later milestone:
+Planned as M13 (2026-06-12, SSOT `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`):
 
-- `motion_retarget` v1 (`POST /openapi/v1/3d/motion_retarget`, model
-  `hunyuan-3d-motion-retarget`, integer motion types 9-16). Its input must
-  resolve from `assetId + role=rigged_model + format=fbx` with verified
-  skeleton metadata, which no current generation path produces (only
-  `wb-3d-pipeline` rigging can). Defer until a rigged-FBX asset exists.
+- `low_poly` (M13-1): async submit/poll; new derived low-poly GLB asset; high-poly
+  source retained by default.
+- `auto_rigging` (M13-2): sync; append `rigged_model` FBX to mesh asset; Gate 1
+  verifies output before default exposure.
+- `motion_retarget` v1 (M13-3): sync; int motion types 9–16 (action names decided
+  2026-06-12); append `animated_model` FBX per motion. Input resolves from
+  `assetPath + role=rigged_model + format=fbx` with verified skeleton metadata.
 
-Keep blocked or experimental:
+Keep blocked:
 
-- `auto_rigging`: experimental until end-to-end output is verified.
 - `motion_retarget_v2`: blocked until valid `motion_type` literals are proven.
 
 Verification:
@@ -245,15 +247,16 @@ Verification:
   persisted as a content-addressed blob. Audit recorded `rest_succeeded` with no
   secrets.
 
-For the deferred `motion_retarget` v1 (when picked up later):
+M13 requirements for `motion_retarget` v1 (planned 2026-06-12, ADR-0003):
 
 - v1 motion retarget input clearly requires a rigged humanoid FBX.
-- Motion retarget must resolve its input from `assetId + role=rigged_model +
+- Motion retarget must resolve its input from `assetPath + role=rigged_model +
   format=fbx`; plain mesh FBX files and GLB-to-FBX conversions are not enough
   unless skeleton metadata is verified.
+- Action names for int 9–16 decided 2026-06-12 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞).
 - Any FBX URL sent to Hunyuan REST must come from `AssetStorage` temporary
   share/upload, then the returned animation output must be downloaded back into
-  the durable asset contract.
+  the durable asset contract (append `animated_model` FBX).
 - Unknown modes cannot silently consume quota from UI or AI-exposed schemas.
 
 ### M6 - Meshy Provider
@@ -406,6 +409,33 @@ Documentation closeout done 2026-06-11:
 
 - Added ADR-0002 for the per-game file storage reversal.
 - Updated `CONTEXT.md`, this migration plan, capability matrix, and handoff log.
+
+## M13 — Rig / Motion / Low-Poly Pipeline (Accepted 2026-06-12, not implemented)
+
+SSOT: `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; decisions: ADR-0003 (Accepted).
+
+**Core pipeline (2026-06-12 grill revision)** — textured high-poly GLB → rig → motion;
+`low_poly` is an **optional geometry/LOD side-branch**, NOT a pre-rig step (pure
+geometry, strips textures / re-UVs quads).
+
+1. **M13-0 Gate 0/1**: verify Hunyuan **internal network egress** can fetch public COS
+   model URLs (public GET ≠ Hunyuan fetch); confirm `auto_rigging` / `motion_retarget`
+   output shapes + **texture survival** + T-pose.
+2. **M13-2 `gen3d:auto-rig`** (core): `auto_rigging` sync on textured source GLB →
+   append `rigged_model` **GLB (canonical) + FBX (motion transit)**.
+3. **M13-3 `gen3d:apply-motion`** (core): `motion_retarget` v1 sync → append
+   `animated_model` **GLB + FBX** per motion (int 9–16); `motionType` structured metadata;
+   no auto-batch-all-8 (one call per motion, idempotent skip).
+4. **M13-1 `gen3d:retopo-lowpoly`** (optional side-branch): `low_poly` async → new
+   derived low-poly GLB asset; high-poly source retained by default.
+5. **M13-4 UI**: sidebar rig → motion flow (+ optional retopo); GLB preview +
+   AnimationMixer playback; asset readiness badges; `characters` slot only.
+
+Storage changes (plugin-only): `appendDerivedFiles` / `readAssetFile` on
+`AssetStorage`; `SidecarDependency` skeleton + `motionType` fields; per-asset async
+lock for append/delete; fix `sidecarToManifest` to round-trip rig/anim roles.
+
+Docs grill complete (commits `3f27bac`, `a5b1be8` + grill closeout); code not started.
 
 ## Non-Goals
 

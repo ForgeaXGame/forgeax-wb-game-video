@@ -7,13 +7,21 @@ import {
   type MeshyTextMockArgs,
   type ProviderResult,
 } from '../shared/catalog';
-import type { AssetSlot, Gen3DAssetManifest, GenerationMode, ProviderId } from '../shared/manifest';
-import type { AssetStorage } from './asset-storage';
+import {
+  selectFile,
+  selectFiles,
+  type AssetSlot,
+  type Gen3DAssetManifest,
+  type GenerationMode,
+  type MotionType,
+  type ProviderId,
+} from '../shared/manifest';
+import type { AssetStorage, DerivedFileInput } from './asset-storage';
 import { PerGameAssetStore } from './per-game-store';
 import { generateCacheFirst, persistGeneration, type PersistInput } from './generate';
 import * as cache from './cache';
 import { getCosEnv, getHunyuanEnv, getMeshyEnv, getRodinEnv } from './env';
-import { CosUploader } from './cos-uploader';
+import { CosUploader, mimeForModelFormat } from './cos-uploader';
 import {
   HunyuanWorkflowProvider,
   type HunyuanGenerateInput,
@@ -21,7 +29,7 @@ import {
 } from './providers/hunyuan-workflow';
 import { MeshyProvider, type MeshyGenerateInput } from './providers/meshy';
 import { RodinProvider, type RodinGenerateInput } from './providers/rodin';
-import { HunyuanRestProvider } from './providers/hunyuan-rest';
+import { HunyuanRestProvider, type ModelFileOut } from './providers/hunyuan-rest';
 
 // Per-game storage adapter (ADR-0002). Assets live under the active game's
 // .forgeax/games/<slug>/assets/3d/{characters|meshes}/ tree; identity is the
@@ -530,6 +538,286 @@ async function uploadImage(args: UploadImageArgs): Promise<UploadImageResult> {
   return { ok: true, ...result };
 }
 
+// ─── M13: rig / motion / low_poly (mock-first, Hunyuan REST) ────────────────
+//
+// Core pipeline (ADR-0003): textured high-poly GLB → auto-rig → apply-motion.
+// rig/motion append GLB (canonical, self-contained) + FBX (motion transport) to
+// the SAME mesh asset and flip readiness; low_poly is an optional geometry/LOD
+// side-branch producing a NEW derived GLB asset (textures NOT preserved).
+//
+// Every step is mock-first: real calls require GEN3D_ENABLE_REAL_PROVIDERS=1 +
+// HUNYUAN_API_KEY (getHunyuanEnv()) AND COS config to share the input model URL.
+// Without them, deterministic placeholder model bytes exercise the storage path
+// with zero quota. Gate 0 (Hunyuan internal egress → public COS) + Gate 1 (rig
+// output shape, texture survival, T-pose) are operator-verified real-machine
+// probes (HANDOFF M13-0); these handlers stay mock until that passes.
+
+// Deterministic placeholder model bytes (GLB magic header). Stand-in so the
+// rig/motion/low_poly append + persist paths run end-to-end without quota.
+function mockModelBytes(seed: string): Uint8Array {
+  const header = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 0x02, 0x00, 0x00, 0x00]);
+  const tail = new TextEncoder().encode(`mock-model:${seed}`);
+  const out = new Uint8Array(header.length + tail.length);
+  out.set(header, 0);
+  out.set(tail, header.length);
+  return out;
+}
+
+// Share an asset file (already on disk) as a public COS transfer URL so the
+// URL-fetching Hunyuan REST endpoint can read it. Returns null when COS is not
+// configured (caller then falls back to mock). The file is read from the store,
+// never assumed to be a reachable provider URL (ADR-0001).
+async function shareAssetFileUrl(
+  slug: string,
+  assetPath: string,
+  role: 'source_mesh' | 'rigged_model',
+  format: 'glb' | 'fbx',
+): Promise<string | null> {
+  const cosEnv = getCosEnv();
+  if (!cosEnv) return null;
+  const file = await storage.readAssetFile(slug, assetPath, role, format);
+  if (!file) {
+    throw Object.assign(
+      new Error(`asset has no ${role} ${format} file: ${assetPath}`),
+      { code: 'missing_input_file' },
+    );
+  }
+  const { url } = await new CosUploader(cosEnv).upload(file.data, mimeForModelFormat(format));
+  return url;
+}
+
+interface AutoRigArgs {
+  slug?: string;
+  assetPath: string;
+}
+
+interface RigMotionResult {
+  ok: true;
+  usedMock: boolean;
+  assetPath: string;
+  manifest: Gen3DAssetManifest;
+}
+
+// gen3d:auto-rig — append a rigged_model GLB (canonical) + FBX (motion transport)
+// to a textured mesh asset and set skeleton flags. Humanoid only (characters
+// slot, soft-gated in the UI/schema). Idempotent: if already rigged, returns the
+// existing manifest without burning quota.
+async function autoRig(args: AutoRigArgs): Promise<RigMotionResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) {
+    throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  }
+  const existing = await storage.getAsset(slug, assetPath);
+  if (!existing) {
+    throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+  }
+  // Idempotent: a verified rigged_model already present → return as-is.
+  if (existing.readiness.rigged) {
+    return { ok: true, usedMock: existing.providerMode === 'mock', assetPath, manifest: existing };
+  }
+
+  const env = getHunyuanEnv();
+  let files: ModelFileOut[];
+  let usedMock: boolean;
+  if (env) {
+    const glbUrl = await shareAssetFileUrl(slug, assetPath, 'source_mesh', 'glb');
+    if (!glbUrl) {
+      throw Object.assign(
+        new Error('auto-rig needs COS configured to share the input model URL'),
+        { code: 'cos_not_configured' },
+      );
+    }
+    files = (await new HunyuanRestProvider({ env, slug }).autoRig({ glbUrl })).files;
+    usedMock = false;
+  } else {
+    files = [
+      { format: 'glb', data: mockModelBytes(`rig-glb:${assetPath}`) },
+      { format: 'fbx', data: mockModelBytes(`rig-fbx:${assetPath}`) },
+    ];
+    usedMock = true;
+  }
+
+  const derived: DerivedFileInput[] = files.map((f) => ({
+    data: f.data,
+    format: f.format,
+    role: 'rigged_model',
+  }));
+  const manifest = await storage.appendDerivedFiles({
+    slug,
+    assetPath,
+    files: derived,
+    skeleton: { hasSkeleton: true, skeletonProfile: 'humanoid', animationInputReady: true },
+  });
+  return { ok: true, usedMock, assetPath, manifest };
+}
+
+interface ApplyMotionArgs {
+  slug?: string;
+  assetPath: string;
+  motionType: number;
+}
+
+const VALID_MOTION_TYPES: readonly MotionType[] = [9, 10, 11, 12, 13, 14, 15, 16];
+
+function asMotionType(value: number): MotionType {
+  if (!VALID_MOTION_TYPES.includes(value as MotionType)) {
+    throw Object.assign(
+      new Error(`motionType must be an int 9–16, got ${value}`),
+      { code: 'invalid_motion_type' },
+    );
+  }
+  return value as MotionType;
+}
+
+// gen3d:apply-motion — append an animated_model GLB (canonical) + FBX for one
+// motion (int 9–16) to a RIGGED asset. Requires a rigged_model FBX (else
+// not_rigged). Multiple motions coexist; idempotent per motionType.
+async function applyMotion(args: ApplyMotionArgs): Promise<RigMotionResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) {
+    throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  }
+  const motionType = asMotionType(args.motionType);
+  const existing = await storage.getAsset(slug, assetPath);
+  if (!existing) {
+    throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+  }
+  const riggedFbx = selectFile(existing.files, 'rigged_model', 'fbx');
+  if (!riggedFbx || !riggedFbx.hasSkeleton) {
+    throw Object.assign(
+      new Error('asset is not rigged; run gen3d:auto-rig first'),
+      { code: 'not_rigged' },
+    );
+  }
+  // Idempotent per motion: this motionType already applied → return existing.
+  const already = selectFiles(existing.files, 'animated_model').some(
+    (f) => f.motionType === motionType,
+  );
+  if (already) {
+    return { ok: true, usedMock: existing.providerMode === 'mock', assetPath, manifest: existing };
+  }
+
+  const env = getHunyuanEnv();
+  let files: ModelFileOut[];
+  let usedMock: boolean;
+  if (env) {
+    const fbxUrl = await shareAssetFileUrl(slug, assetPath, 'rigged_model', 'fbx');
+    if (!fbxUrl) {
+      throw Object.assign(
+        new Error('apply-motion needs COS configured to share the rigged FBX URL'),
+        { code: 'cos_not_configured' },
+      );
+    }
+    files = (await new HunyuanRestProvider({ env, slug }).applyMotion({ fbxUrl, motionType })).files;
+    usedMock = false;
+  } else {
+    files = [
+      { format: 'glb', data: mockModelBytes(`motion-${motionType}-glb:${assetPath}`) },
+      { format: 'fbx', data: mockModelBytes(`motion-${motionType}-fbx:${assetPath}`) },
+    ];
+    usedMock = true;
+  }
+
+  const derived: DerivedFileInput[] = files.map((f) => ({
+    data: f.data,
+    format: f.format,
+    role: 'animated_model',
+  }));
+  const manifest = await storage.appendDerivedFiles({ slug, assetPath, files: derived, motionType });
+  return { ok: true, usedMock, assetPath, manifest };
+}
+
+interface RetopoLowpolyArgs {
+  slug?: string;
+  assetPath: string;
+  assetName?: string;
+  assetSlot?: AssetSlot;
+  polygonType?: 'triangle' | 'quadrilateral';
+  detailLevel?: 'high' | 'medium' | 'low';
+}
+
+// gen3d:retopo-lowpoly — OPTIONAL geometry/LOD side-branch (NOT a pre-rig step;
+// textures are NOT preserved). Produces a NEW derived low-poly GLB asset from a
+// high-poly source; the high-poly source is retained. cache-first + mock fallback.
+async function retopoLowpoly(args: RetopoLowpolyArgs): Promise<GenerateResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) {
+    throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  }
+  const source = await storage.getAsset(slug, assetPath);
+  if (!source) {
+    throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+  }
+  const assetSlot = resolveSlot(args.assetSlot ?? source.assetSlot);
+  const polygonType = args.polygonType ?? 'quadrilateral';
+  const detailLevel = args.detailLevel ?? 'high';
+  const sourceHash = source.files.find((f) => f.role === 'source_mesh')?.sha256 ?? assetPath;
+  const cacheKey = makeCacheKey('hunyuan_rest', 'image', {
+    op: 'lowpoly',
+    assetSlot,
+    inputHash: sourceHash,
+    polygonType,
+    detailLevel,
+  });
+  const baseName = source.assetPath
+    .replace(/^assets\/3d\/[^/]+\//, '')
+    .replace(/\.glb$/, '');
+  const ctx: PersistInput = {
+    slug,
+    assetSlot,
+    assetName: defaultName(args.assetName, `${baseName}-lowpoly`),
+    cacheKey,
+    sourceInputAssetPaths: [assetPath],
+  };
+
+  let usedMock = false;
+  const produce = async (): Promise<ProviderResult> => {
+    const env = getHunyuanEnv();
+    if (env) {
+      const glbUrl = await shareAssetFileUrl(slug, assetPath, 'source_mesh', 'glb');
+      if (!glbUrl) {
+        throw Object.assign(
+          new Error('retopo-lowpoly needs COS configured to share the input model URL'),
+          { code: 'cos_not_configured' },
+        );
+      }
+      const out = await new HunyuanRestProvider({ env, slug }).lowPoly({
+        glbUrl,
+        polygonType,
+        detailLevel,
+      });
+      const files: ProviderResult['files'] = [
+        { role: 'source_mesh', format: 'glb', data: out.glb },
+      ];
+      if (out.previewImage) {
+        files.push({ role: 'preview_image', format: 'png', data: out.previewImage });
+      }
+      return {
+        provider: 'hunyuan_rest',
+        mode: 'image',
+        providerMode: 'real',
+        sourceJobId: out.sourceJobId,
+        prompt: source.prompt,
+        files,
+      };
+    }
+    usedMock = true;
+    return {
+      provider: 'hunyuan_rest',
+      mode: 'image',
+      providerMode: 'mock',
+      sourceJobId: null,
+      prompt: source.prompt,
+      files: [{ role: 'source_mesh', format: 'glb', data: mockModelBytes(`lowpoly:${assetPath}`) }],
+    };
+  };
+  const { manifest, cacheHit } = await generateCacheFirst(storage, ctx, produce);
+  return { ok: true, cacheKey, cacheHit, usedMock, manifest };
+}
+
 export const tools = {
   'gen3d:provider-status': async () => getProviderStatus(),
   'gen3d:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
@@ -542,6 +830,9 @@ export const tools = {
   'gen3d:pose-standardization': async (args: PoseStandardizationArgs) =>
     poseStandardization(args),
   'gen3d:upload-image': async (args: UploadImageArgs) => uploadImage(args),
+  'gen3d:auto-rig': async (args: AutoRigArgs) => autoRig(args),
+  'gen3d:apply-motion': async (args: ApplyMotionArgs) => applyMotion(args),
+  'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
 };
 
 export default tools;

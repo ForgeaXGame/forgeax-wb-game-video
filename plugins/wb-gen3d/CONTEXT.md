@@ -15,17 +15,24 @@ Providers：`hunyuan_workflow` / `meshy` / `rodin`（待 key）。
 
 输出：`Gen3DAssetManifest`（含 `source_mesh` + `preview_image`）。
 
+**M13 扩展（2026-06-12，ADR-0003；grill 修订后）**：核心产线 = **带贴图高模 GLB →
+`auto_rigging` → `motion_retarget` v1**（全程混元 REST）。rig/motion 都同时输出 **GLB+FBX**，
+**GLB 作 canonical 主体**（自包含含贴图、引擎原生）以同基名追加到网格资产、翻动 readiness，
+**FBX 仅作 rig→motion 中转输入**。`low_poly` **降级为可选几何/LOD 旁路**（纯几何、不保贴图，
+不置于绑骨前）。不另起独立 workbench。详见 `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`。
+
 ### wb-3d-pipeline
 
-3D 资产**后处理流水线**。职责：把 gen3d 产出的原始 mesh 加工成游戏可用资产。
-覆盖三个阶段：拓扑优化 → 绑骨 → 动画。
+3D 资产**后处理流水线**（未来独立 workbench，M13 不阻塞其存在）。职责：把 gen3d
+产出的原始 mesh 加工成游戏可用资产；可覆盖拓扑优化 → 绑骨 → 动画的更深层编排。
 
 Providers：Hunyuan REST（`auto_rigging` / `motion_retarget` / `low_poly`）/ 未来 Mixamo 等。
 
 输入：`Gen3DAssetManifest`（含 `source_mesh`）。
 输出：更新后的 manifest（追加 `rigged_model` / `animation_clip` / `animated_model`）。
 
-建设时机：等 `wb-gen3d` 的 manifest 契约稳定后。
+建设时机：M13 在 wb-gen3d 内先跑通首版产线；独立 wb-3d-pipeline workbench 待 manifest
+append 契约稳定后再拆（若仍需要）。
 
 ## 术语表
 
@@ -57,6 +64,9 @@ Asset；命中同一请求时复用已有路径，需要新版本时走显式的
 Asset 在 game 里的 3D 资产槽位，值直接对应目录：`characters` 表示角色资产，
 `meshes` 表示通用 3D 模型。_Avoid_: `assetType=prop`。
 
+M13 绑骨/动作（`gen3d:auto-rig` / `gen3d:apply-motion`）**仅对 `characters` 槽暴露**——混元
+rig/motion 仅支持双足人形角色；`meshes`（道具/通用模型）不显示绑骨/动作入口。
+
 ### Transfer URL
 
 临时传输地址，只用于让外部 provider 读取输入图、输入模型或中间文件。
@@ -68,6 +78,25 @@ Transfer URL 不是 Asset 身份，也不是下游模块应该保存的引用；
 不落 `assets/3d/`、不进 `list-assets`、UI 不显示为资产、无删除 UI。它们落 scratch
 区（`.forgeax/games/<slug>/.gen3d/tmp/`）或 COS（拿 Transfer URL 给下一步用），
 生命周期=中转。判定准则：**最终游戏可用的 mesh 才是 Asset；喂给生成的输入图不是。**
+
+### Canonical 落库格式 = GLB（rig/motion 产物，M13）
+
+混元 `auto_rigging` / `motion_retarget` 都同时输出 GLB + FBX，且输出自包含（内嵌贴图）。
+落库主体取 **GLB**（自包含、引擎原生 glTF、可直接预览/进引擎）；**FBX 仅作 `motion_retarget`
+的输入中转**（motion 强制要 `fbx_url`），故 rigged 资产须留一份 FBX 供后续加动作。
+_Avoid_: 把 FBX 当 rig/anim 资产的主体或预览格式。
+
+### 自包含产物（self-contained）
+
+把贴图/材质内嵌进单文件的 3D 产物（GLB 恒内嵌；混元输出的 FBX 也内嵌——其输出 schema 无独立
+贴图 url 即为证）。与之相对的"外链贴图"（OBJ + 独立 mtl/png；FBX 按原文件名引用外部贴图）只出现在
+**OBJ 输入**路径——本产线走 GLB，不触发外链贴图的命名/搬运问题。
+
+### 贴图存活（texture survival）
+
+硬约束（2026-06-12）：最终动画产物必须保留原模型材质/贴图。保证手段 = 走 GLB 内嵌链路（带贴图
+高模直绑），**不在绑骨前减面**（`low_poly` 纯几何、不保贴图、quad 换 UV）。"减面低模 + 带贴图"需
+retopo 后重烘焙贴图（混元不提供，超范围），列为后续。
 
 ## 产品定位
 
@@ -99,6 +128,11 @@ Meshy 专属：`refine`（基于 preview 加贴图的第二阶段，等 Meshy �
 | `gen3d:standardize-pose` | 图片 → 标准化姿态图（views 预处理） |
 | `gen3d:provider-status` | 读取 provider 能力矩阵 |
 | `gen3d:list-assets` | 列出已生成的资产 |
+
+M13 新增（**代码完成 mock-first，2026-06-12；`exposedToAI:false`，Gate 0/1 真机验证前只走 mock**）：
+`gen3d:retopo-lowpoly`（减面，可选旁路，产出新衍生低模资产）、`gen3d:auto-rig`（绑骨，
+追加 rigged_model GLB+FBX，仅 characters）、`gen3d:apply-motion`（动作，motion v1 int 9–16，
+追加 animated_model GLB+FBX，按 motionType 幂等）。
 
 未来加 provider 只需在已有 tool 的 provider enum 加值，不需新建 tool。
 `gen3d:refine-mesh`（Meshy 专属）等 Meshy 实装时再加。

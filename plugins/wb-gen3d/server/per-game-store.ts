@@ -26,11 +26,15 @@ import {
   type AssetSidecar,
   type AssetSlot,
   type FileFormat,
+  type FileRole,
   type Gen3DAssetManifest,
   type ManifestFile,
+  type MotionType,
   type SidecarDependency,
+  type SkeletonProfile,
 } from '../shared/manifest';
 import type {
+  AppendDerivedFilesInput,
   AssetFileInput,
   AssetStorage,
   PutScratchInput,
@@ -85,11 +89,39 @@ function sanitizeBaseName(raw: string): string {
 }
 
 const LOCAL_URL_PREFIX = '/api/game-assets';
+const SCRATCH_URL_PREFIX = '/api/gen3d-scratch';
+
+// Process-local per-asset async lock. appendDerivedFiles / deleteAsset do a
+// read-modify-write on one asset's sidecar; concurrent appends to the same
+// character (e.g. several motions at once) would otherwise drop entries / leave
+// orphan files (ADR-0003). Keyed by `${slug}:${assetPath}`; unrelated assets
+// stay parallel.
+const assetLocks = new Map<string, Promise<unknown>>();
+
+async function withAssetLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = assetLocks.get(key) ?? Promise.resolve();
+  // Serialize: run after the previous holder settles (ignore its outcome).
+  const run = prev.then(fn, fn);
+  // Track this run as the tail so the next caller chains after it. Swallow
+  // rejection on the tracked promise so one failure can't reject the chain.
+  assetLocks.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
 
 function localUrlFor(slug: string, rel: string): string {
   // rel is "assets/3d/<slot>/<file>"; the route mounts at .../assets/3d/.
   const tail = rel.replace(/^assets\/3d\//, '');
   return `${LOCAL_URL_PREFIX}/${encodeURIComponent(slug)}/3d/${tail}`;
+}
+
+function scratchUrlFor(slug: string, sha256: string, format: FileFormat): string {
+  return `${SCRATCH_URL_PREFIX}/${encodeURIComponent(slug)}/${sha256}.${format}`;
 }
 
 // One generation may return several files. Keep exactly one main GLB
@@ -272,28 +304,122 @@ export class PerGameAssetStore implements AssetStorage {
   }
 
   async deleteAsset(slug: string, assetPath: string): Promise<{ cacheKey: string | null }> {
-    const { slot, fileName } = parseAssetPath(assetPath);
-    if (!slot) return { cacheKey: null };
-    const dir = slotDir(slug, slot);
-    const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) return { cacheKey: null };
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
 
-    let cacheKey: string | null = null;
-    let deps: SidecarDependency[] = [];
+      let cacheKey: string | null = null;
+      let deps: SidecarDependency[] = [];
+      try {
+        const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+        cacheKey = sidecar.custom?.cacheKey ?? null;
+        deps = sidecar.dependencies ?? [];
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+
+      // Remove main GLB + sidecar + every same-basename sidefile.
+      await rm(resolve(dir, fileName), { force: true });
+      await rm(sidecarAbs, { force: true });
+      for (const dep of deps) {
+        await rm(resolve(dir, dep.path), { force: true });
+      }
+      return { cacheKey };
+    });
+  }
+
+  // ─── Append derived files (rig / motion) to an existing mesh asset ─────────
+  async appendDerivedFiles(input: AppendDerivedFilesInput): Promise<Gen3DAssetManifest> {
+    const { slug, assetPath } = input;
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+
+      const baseName = fileName.replace(/\.glb$/, '');
+      const variant = input.motionType !== undefined ? `.motion-${input.motionType}` : '';
+      const deps = [...(sidecar.dependencies ?? [])];
+
+      for (const f of input.files) {
+        // <base>.<role>[.motion-<k>].<format> as a same-basename sidefile.
+        const depFileName = `${baseName}.${f.role}${variant}.${f.format}`;
+        const abs = resolve(dir, depFileName);
+        await writeFile(abs, f.data);
+        const sha256 = sha256Hex(f.data);
+        // Replace any existing dep with the same on-disk path (idempotent re-run).
+        const idx = deps.findIndex((d) => d.path === depFileName);
+        const dep: SidecarDependency = {
+          path: depFileName,
+          hash: `sha256:${sha256}`,
+          kind: f.role,
+          ...(f.role === 'rigged_model' && input.skeleton
+            ? {
+                hasSkeleton: input.skeleton.hasSkeleton,
+                skeletonProfile: input.skeleton.skeletonProfile,
+                animationInputReady: input.skeleton.animationInputReady,
+              }
+            : {}),
+          ...(f.role === 'animated_model' && input.motionType !== undefined
+            ? { motionType: input.motionType }
+            : {}),
+        };
+        if (idx >= 0) deps[idx] = dep;
+        else deps.push(dep);
+      }
+
+      const now = new Date().toISOString();
+      const updated: AssetSidecar = { ...sidecar, dependencies: deps };
+      // Recompute readiness from the full file set (main + deps).
+      const manifest = sidecarToManifest(slug, slot, fileName, updated);
+      updated.custom = { ...sidecar.custom, readiness: manifest.readiness };
+      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      return { ...manifest, updatedAt: now };
+    });
+  }
+
+  // Read one file in an asset by role (+ optional format), for COS-sharing it as
+  // a provider transfer URL. The main mesh is (source_mesh, glb); rig/anim files
+  // are same-basename sidefiles recorded in the sidecar dependencies.
+  async readAssetFile(
+    slug: string,
+    assetPath: string,
+    role: FileRole,
+    format?: FileFormat,
+  ): Promise<{ data: Uint8Array; format: FileFormat } | null> {
+    const manifest = await this.getAsset(slug, assetPath);
+    if (!manifest) return null;
+    const file = manifest.files.find(
+      (f) => f.role === role && (format ? f.format === format : true),
+    );
+    if (!file) return null;
+    const { slot } = parseAssetPath(file.storageKey);
+    if (!slot) return null;
+    // storageKey is "assets/3d/<slot>/<fileName>"; read by file name in the dir.
+    const fileName = file.storageKey.replace(/^assets\/3d\/[^/]+\//, '');
+    const abs = resolve(slotDir(slug, slot), fileName);
     try {
-      const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-      cacheKey = sidecar.custom?.cacheKey ?? null;
-      deps = sidecar.dependencies ?? [];
+      const data = await readFile(abs);
+      return { data: new Uint8Array(data), format: file.format };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
     }
-
-    // Remove main GLB + sidecar + every same-basename sidefile.
-    await rm(resolve(dir, fileName), { force: true });
-    await rm(sidecarAbs, { force: true });
-    for (const dep of deps) {
-      await rm(resolve(dir, dep.path), { force: true });
-    }
-    return { cacheKey };
   }
 
   // ─── Scratch (transfer) artifacts — NOT assets ────────────────────────────
@@ -303,10 +429,13 @@ export class PerGameAssetStore implements AssetStorage {
     const abs = resolve(gameRoot(input.slug), rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, input.data);
-    // Scratch artifacts are not served by the read-only assets route (which is
-    // limited to assets/3d/**). localUrl is null: the in-page preview uses a
-    // data/object URL the caller already holds, and the durable bytes live here.
-    return { storageKey: rel, sha256, bytes: input.data.byteLength, localUrl: null };
+    // Scratch lives under .gen3d/tmp/ (not assets/3d/**). Preview via /api/gen3d-scratch.
+    return {
+      storageKey: rel,
+      sha256,
+      bytes: input.data.byteLength,
+      localUrl: scratchUrlFor(input.slug, sha256, input.format),
+    };
   }
 }
 
@@ -344,17 +473,21 @@ function sidecarToManifest(
   for (const dep of sidecar.dependencies ?? []) {
     const rel = relPath(slot, dep.path);
     const format = (dep.path.split('.').pop() ?? 'png') as FileFormat;
+    const role = (dep.kind as ManifestFile['role']) ?? 'preview_image';
     files.push({
       fileId: rel,
-      role: (dep.kind as ManifestFile['role']) ?? 'preview_image',
+      role,
       format,
       storageKey: rel,
       bytes: 0,
       sha256: dep.hash.replace(/^sha256:/, ''),
       localUrl: localUrlFor(slug, rel),
-      hasSkeleton: false,
-      skeletonProfile: 'unknown',
-      animationInputReady: false,
+      // Restore rig metadata from the sidecar dep (set only by a verified rig
+      // step); plain sidefiles (preview/texture) stay hasSkeleton:false.
+      hasSkeleton: dep.hasSkeleton ?? false,
+      skeletonProfile: (dep.skeletonProfile as SkeletonProfile) ?? 'unknown',
+      animationInputReady: dep.animationInputReady ?? false,
+      ...(dep.motionType !== undefined ? { motionType: dep.motionType as MotionType } : {}),
     });
   }
   void baseName;
@@ -370,7 +503,9 @@ function sidecarToManifest(
     sourceInputAssetPaths: c.sourceInputAssetPaths ?? [],
     prompt: c.prompt,
     files,
-    readiness: c.readiness ?? computeReadiness(files),
+    // Always derive from the restored file set so appended rig/anim files are
+    // reflected even when the stored custom.readiness is stale.
+    readiness: computeReadiness(files),
     quality: emptyQuality(),
     createdAt: sidecar.createdAt,
     updatedAt: sidecar.createdAt,

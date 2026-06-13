@@ -39,6 +39,12 @@ export type FileFormat = 'glb' | 'fbx' | 'obj' | 'mtl' | 'usdz' | 'stl' | 'png' 
 
 export type SkeletonProfile = 'humanoid' | 'unknown';
 
+// Motion type for animated_model files. Hunyuan motion_retarget v1 fixed motions
+// are ints 9–16 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞; see ADR-0003 §③). Stored
+// structurally so idempotency / enumeration / downstream selection never parse
+// file names.
+export type MotionType = 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+
 export interface ManifestFile {
   fileId: string;
   role: FileRole;
@@ -56,6 +62,10 @@ export interface ManifestFile {
   hasSkeleton: boolean;
   skeletonProfile: SkeletonProfile;
   animationInputReady: boolean;
+  // For role=animated_model files: which motion_retarget v1 motion this clip is.
+  // Structural (not parsed from the file name) so multiple motions coexist and
+  // apply-motion stays idempotent per motion. Undefined for non-animated roles.
+  motionType?: MotionType;
 }
 
 // Five-dimension quality rubric kept as null placeholders. Scoring is manual/
@@ -107,8 +117,16 @@ export interface SidecarDependency {
   path: string;
   // sha256:<hex>.
   hash: string;
-  // Role of the dependency file (preview_image, texture, …).
+  // Role of the dependency file (preview_image, texture, rigged_model, …).
   kind: string;
+  // Rigging metadata for rigged_model / animated_model attached files, so
+  // sidecarToManifest can restore them instead of writing hasSkeleton:false. Only
+  // set by appendDerivedFiles (a verified rig step); generation never sets these.
+  hasSkeleton?: boolean;
+  skeletonProfile?: SkeletonProfile;
+  animationInputReady?: boolean;
+  // For animated_model deps: structural motion_retarget v1 motion (int 9–16).
+  motionType?: MotionType;
 }
 
 export interface AssetSidecar {
@@ -182,4 +200,14 @@ export function selectFile(
   return (
     files.find((file) => file.role === role && (format ? file.format === format : true)) ?? null
   );
+}
+
+// All files of a role (e.g. every animated_model clip), for enumeration. The UI
+// lists existing motions from animated_model files' structural motionType.
+export function selectFiles(
+  files: readonly ManifestFile[],
+  role: FileRole,
+  format?: FileFormat,
+): ManifestFile[] {
+  return files.filter((file) => file.role === role && (format ? file.format === format : true));
 }
