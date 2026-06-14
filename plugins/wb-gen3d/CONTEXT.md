@@ -129,10 +129,12 @@ Meshy 专属：`refine`（基于 preview 加贴图的第二阶段，等 Meshy �
 | `gen3d:provider-status` | 读取 provider 能力矩阵 |
 | `gen3d:list-assets` | 列出已生成的资产 |
 
-M13 新增（**代码完成 mock-first，2026-06-12；`exposedToAI:false`，Gate 0/1 真机验证前只走 mock**）：
+M13 新增（**代码完成 mock-first，2026-06-13；Gate 0/1 真机验证通过；`exposedToAI:false`，待 operator 目视后翻 true**）：
 `gen3d:retopo-lowpoly`（减面，可选旁路，产出新衍生低模资产）、`gen3d:auto-rig`（绑骨，
 追加 rigged_model GLB+FBX，仅 characters）、`gen3d:apply-motion`（动作，motion v1 int 9–16，
 追加 animated_model GLB+FBX，按 motionType 幂等）。
+
+2026-06-14 新增：`gen3d:score-quality`（五维质量评分，objective/manual/ai 三种 source merge-only 更新）。
 
 未来加 provider 只需在已有 tool 的 provider enum 加值，不需新建 tool。
 `gen3d:refine-mesh`（Meshy 专属）等 Meshy 实装时再加。
@@ -176,6 +178,17 @@ Per-game runtime asset library。生成时必须归属一个 game；资产直接
 
 Provider 适配器的统一输出类型。包含 provider 返回的 URL 列表 + 元数据。
 Provider 不知道 cache 和 asset-store 的存在；ProviderResult 是纯数据，由 tool-handler 层编排持久化。
+
+### ProviderParamSpec（Provider 高级参数声明）
+
+声明式参数规格表（`shared/provider-params.ts`）。每个 provider 暴露的高级参数在这里定义
+`{ key, label, type, default, options?, min?, max?, tooltip }`。**verified 语义**：仅
+官方文档存在且已验证行为的参数才列入 spec——deprecated、待验证、或会破坏持久化的字段不暴露。
+`filterProviderParams(spec, rawInput)` 用 spec 做白名单过滤 + 类型强转 + 范围 clamp，
+返回干净的 `Record<string, any>` 供 provider 层直接注入请求体。
+
+当前暴露：Meshy 4 字段（topology_mode / target_polycount / should_remesh / enable_pbr）、
+Rodin 3 字段（material / quality / tier）、Hunyuan 0 字段。后续加参数只需追加 spec 条目。
 
 ### Cache
 
