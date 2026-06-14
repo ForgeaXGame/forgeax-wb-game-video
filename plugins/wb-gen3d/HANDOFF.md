@@ -1,5 +1,10 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-14 — 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（计划待评审，尚无代码）。**
+> 交给下一个 agent：**先 review 计划再开发**。见下方第一个「下一步工作」section + 三份 SSOT
+> (`docs/PLAN-2026-06-13-viewer-quality-provider-params.md`、`docs/PROVIDER_PARAMS.md`、
+> `docs/adr/0004-on-demand-hybrid-quality-scoring.md`)。以下「Last updated」与 M13 为上一阶段背景。
+
 Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **代码完成 (mock-first)** —
 PLAN/ADR-0003 **Accepted**；store-append + hunyuan-rest 三方法 + 三工具 (`gen3d:auto-rig`
 / `gen3d:apply-motion` / `gen3d:retopo-lowpoly`) + schema + plugin.json + UI (绑骨→动作
@@ -24,7 +29,31 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 `bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
 `bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
 
-## 下一步工作 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12）
+## 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（2026-06-14 · 计划待评审，尚无代码）
+
+> **交给下一个 agent：先 review 这份计划，再开发。** 这是规划交付物，三份 SSOT：
+> - 统一 spec（分期 P1–P5 + 边界 + 验证）：[`docs/PLAN-2026-06-13-viewer-quality-provider-params.md`](./docs/PLAN-2026-06-13-viewer-quality-provider-params.md)
+> - Provider 参数调研（官方文档 + 竞品 LIGHT AI 截图比对）：[`docs/PROVIDER_PARAMS.md`](./docs/PROVIDER_PARAMS.md)
+> - 评分立场决策（演进 ADR-0001）：[`docs/adr/0004-on-demand-hybrid-quality-scoring.md`](./docs/adr/0004-on-demand-hybrid-quality-scoring.md)
+
+**三块需求**（operator 2026-06-13/14 提出）：① 视图器对标 **Blender 4.x**（背景三态 + HDR/IBL + ACES 曝光 + 地面投影 + 线框）；② 五维质量评分从占位变可用（**混合**：客观启发式 + 可选 AI 视觉 + 人工覆盖）；③ 各 provider 暴露**已验证**的高价值参数。
+
+**已锁决策（勿重新 litigate，详见 spec §2 决策摘要 D1–D9）**：
+- **D9 视图器默认观感 = mockup B（影棚 HDRI / Material-Preview）**；A（实色渐变/Solid）、C（HDR 环境作背景/Rendered）作切换态。三张 mockup：`docs/mockups/viewer-mockup-{a-solid,b-studio,c-hdri}.png`。
+- **D4 评分 AI = 本期只交付 mock 桩**（`gen3d:score-quality` 的 `aiPass` 返回 `usedMock` + `prompt_fidelity`/`texture` 两维 null）。真实 AI 接线（授权 server 路由 + 网关多模态 + vision 模型）**推迟**——operator **暂不授权动 `packages/server`**。
+- 调研发现：现 `llm-gateway` 是**纯文本**（`packages/server/.../llm-gateway/types.ts` 的 `ChatMessage.content: string`），真实视觉评分须先扩展多模态，纳入未来授权范围。
+- Meshy `art_style`/`symmetry_mode`/`negative_prompt` 官方文档已 **deprecated**，不暴露（spec C.3 已据此修正）。
+
+**本期可执行范围（全部插件内，零 `packages/server` 改动）**：
+- **P1** 视图器模块化拆分（行为不变）+ `viewer/capture.ts` 取图工具。
+- **P2** 背景三态（B 默认）+ RoomEnvironment IBL + ACES 曝光 + 地面投影 + 线框三态 + `渲染设置` popover + localStorage 持久化。HDR 占位目录已建 **`public/hdr/`**（README + presets.json，纳入 git；operator 回头放 1k `.hdr` 并登记 presets.json，否则只有内置中性环境）。
+- **P3** 评分 Phase A：`shared/quality/heuristics.ts`（纯函数可单测）+ `QualityReport` 数据模型 + `QualityInspector`（取代 `InspectorReserved`）+ `gen3d:score-quality` 持久化 + 人工覆盖；落地 ADR-0004。
+- **Phase B（桩）**：`aiPass` 直接回退 mock，不触网。
+- **P5** Provider 参数：`shared/provider-params.ts` param-spec 框架 + verified 子集进 `SetupSidebar`（Meshy/Rodin/混元；详见 PROVIDER_PARAMS §6，⏳ 项实现时再核内网端点）。
+
+**reviewer 重点看**：spec §2（决策摘要）、§8（边界——本期不动 server）、§10（分期）、§13（开放项）；PROVIDER_PARAMS §6（拟暴露汇总）。**开放项**：operator 待固化真实 `.hdr` 文件到 `public/hdr/`。
+
+## 近期阶段 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12，代码完成 mock-first；待 operator 目视 + 翻 exposedToAI）
 
 > **当前 next work 是 M13**（不是下面的 M9-M12 —— 那批已落地并并入 main）。执行 / 评审 SSOT：
 > [`docs/PLAN-2026-06-12-rig-motion-lowpoly.md`](./docs/PLAN-2026-06-12-rig-motion-lowpoly.md)；
