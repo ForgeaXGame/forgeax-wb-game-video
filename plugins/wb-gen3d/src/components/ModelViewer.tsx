@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js';
+import {
+  createViewerCore,
+  placeAndMeasure,
+  computeFrame,
+  applyFrame,
+  disposeModel,
+  type ViewerCore,
+  type FrameSpec,
+} from '@/components/viewer/scene';
+import {
+  createEnvironment,
+  loadHdrPresetManifest,
+  HDR_PRESETS,
+  type EnvironmentHandle,
+  type BackgroundMode,
+} from '@/components/viewer/environment';
+import { createGroundShadow, type ShadowHandle } from '@/components/viewer/shadows';
+import { createWireframe, type WireframeHandle, type WireMode } from '@/components/viewer/wireframe';
+import { loadPrefs, savePrefs } from '@/lib/viewerPrefs';
 
-// One selectable preview clip. Each applied motion is a self-contained GLB
-// (ADR-0003), so switching motions = switching which GLB the viewer loads.
-// `motionType` is the structural label (provider-private int today; a stable
-// semantic key later) and is kept opaque here so the viewer never needs to
-// know which retarget engine produced the clip.
 export interface ViewerClip {
   url: string;
   label: string;
@@ -17,29 +31,16 @@ export interface ViewerClip {
 interface ModelStats {
   faces: number;
   vertices: number;
-  // World-space bounding box dimensions (x/y/z) after framing.
   size: THREE.Vector3;
   hasSkeleton: boolean;
-  // Number of animation clips embedded in the GLB (animated_model exports).
   clipCount: number;
 }
 
-// ModelViewer — render a GLB at `url` in a self-contained three.js canvas with
-// orbit controls. The mount is the single owner of the renderer/scene/RAF loop;
-// everything is torn down on unmount or url change to avoid WebGL context leaks
-// (browsers cap live contexts, so a leak silently breaks later viewers).
-//
-// A grid floor and a skeleton overlay are toggled from React state; their three
-// objects are created once at load and only have `.visible` flipped, so toggling
-// never touches the renderer lifecycle.
 export function ModelViewer({
   url,
   clips,
 }: {
-  // Fallback single-GLB url (back-compat: callers that don't pass `clips`).
   url: string;
-  // Selectable preview clips (rest pose + each applied motion). When provided,
-  // the first entry is the initial selection and a chip row lets the user swap.
   clips?: ViewerClip[];
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -47,9 +48,12 @@ export function ModelViewer({
   const skeletonRef = useRef<THREE.SkeletonHelper | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionRef = useRef<THREE.AnimationAction | null>(null);
-  // Camera framing cached across motion switches within one asset. Keyed by the
-  // clip-set identity so switching between a rest pose and its motions reuses the
-  // same camera (no jump), while a genuine asset change recomputes the frame.
+  const coreRef = useRef<ViewerCore | null>(null);
+  const envRef = useRef<EnvironmentHandle | null>(null);
+  const shadowRef = useRef<ShadowHandle | null>(null);
+  const wireRef = useRef<WireframeHandle | null>(null);
+  const viewHelperRef = useRef<ViewHelper | null>(null);
+  const lastFrameRef = useRef<FrameSpec | null>(null);
   const frameRef = useRef<{
     key: string;
     camPos: THREE.Vector3;
@@ -57,30 +61,38 @@ export function ModelViewer({
     near: number;
     far: number;
   } | null>(null);
+
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState('');
   const [stats, setStats] = useState<ModelStats | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
-  // Resolve the selectable clip list once per props change. Falls back to a
-  // single synthetic entry around `url` so the rest of the component has one
-  // code path regardless of whether the caller passed `clips`.
+  const [prefs] = useState(loadPrefs);
+  const [exposure, setExposure] = useState(prefs.exposure);
+  const [envIntensity, setEnvIntensity] = useState(prefs.envIntensity);
+  const [presetId, setPresetId] = useState(prefs.presetId);
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>(prefs.backgroundMode);
+  const [showShadow, setShowShadow] = useState(prefs.showShadow);
+  const [wireMode, setWireMode] = useState<WireMode>(prefs.wireMode);
+
+  useEffect(() => {
+    savePrefs({ exposure, envIntensity, presetId, backgroundMode, showShadow, wireMode });
+  }, [exposure, envIntensity, presetId, backgroundMode, showShadow, wireMode]);
+
+  useEffect(() => { void loadHdrPresetManifest(); }, []);
+
   const clipList = useMemo<ViewerClip[]>(
     () => (clips && clips.length > 0 ? clips : [{ url, label: '模型', key: '__single__' }]),
     [clips, url],
   );
   const [activeKey, setActiveKey] = useState<string>(clipList[0]!.key);
-  // Keep the selection valid when the clip set changes (e.g. a new motion was
-  // applied, or a different asset was selected): snap back to the first entry.
   useEffect(() => {
     if (!clipList.some((c) => c.key === activeKey)) setActiveKey(clipList[0]!.key);
   }, [clipList, activeKey]);
   const activeUrl = (clipList.find((c) => c.key === activeKey) ?? clipList[0]!).url;
-  // Identity of the whole clip set (all selectable poses for one asset). Stays
-  // stable while the user swaps motions, but changes when a different asset is
-  // selected — exactly when the camera framing should be recomputed.
   const clipsKey = useMemo(() => clipList.map((c) => c.key).join('|'), [clipList]);
 
   useEffect(() => {
@@ -97,33 +109,19 @@ export function ModelViewer({
     mixerRef.current = null;
     actionRef.current = null;
 
-    const width = mount.clientWidth || 480;
-    const height = mount.clientHeight || 320;
+    const core = createViewerCore(mount);
+    coreRef.current = core;
+    const { scene, camera, renderer, controls, clock } = core;
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x14171c);
+    const env = createEnvironment(scene, renderer);
+    envRef.current = env;
+    void env.applyPreset(presetId);
+    env.setBackgroundMode(backgroundMode);
+    env.setExposure(exposure);
+    env.setEnvIntensity(envIntensity);
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 1000);
-    camera.position.set(0, 1, 3);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    mount.appendChild(renderer.domElement);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(3, 5, 4);
-    scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.6);
-    fill.position.set(-4, 2, -3);
-    scene.add(fill);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.2;
+    const viewHelper = new ViewHelper(camera, renderer.domElement);
+    viewHelperRef.current = viewHelper;
 
     const loader = new GLTFLoader();
     let model: THREE.Object3D | null = null;
@@ -133,22 +131,9 @@ export function ModelViewer({
       (gltf) => {
         if (disposed) return;
         model = gltf.scene;
-        // Frame the model: center it horizontally on the origin but anchor its
-        // FEET (bounding-box floor) to y=0, not its center. Centering on the
-        // bbox center makes a motion GLB float, because its bind/first-frame
-        // pose differs from the rest pose (e.g. a jump clip starts mid-air), so
-        // the bbox center sits higher and the model drifts upward off the floor.
-        // Anchoring the floor keeps the model standing on the ground regardless
-        // of pose, so rest pose and every applied motion share the same ground.
-        const box = new THREE.Box3().setFromObject(model);
-        const sphere = box.getBoundingSphere(new THREE.Sphere());
-        const dimensions = box.getSize(new THREE.Vector3());
-        model.position.x -= sphere.center.x;
-        model.position.z -= sphere.center.z;
-        model.position.y -= box.min.y;
+        const { sphere, size } = placeAndMeasure(model);
         scene.add(model);
 
-        // Accumulate geometry stats and detect a skeleton in one traversal.
         let faces = 0;
         let vertices = 0;
         let hasSkeleton = false;
@@ -162,44 +147,30 @@ export function ModelViewer({
           faces += geom.index ? geom.index.count / 3 : posCount / 3;
         });
 
-        const r = sphere.radius || 1;
-        // Camera framing is established ONCE per asset and reused across motion
-        // switches, so swapping clips (each a separate GLB that fully reloads)
-        // never makes the model jump/rescale in frame. We key the cached frame on
-        // the clip-set identity (clipsKey): a real asset change resets it, but the
-        // rest-pose↔motion swaps within one asset keep the same camera. Without
-        // this, framing tracked each pose's own bbox (rest pose's raised arms make
-        // dimensions.y bigger than a motion's), so target.y/zoom jumped on switch.
         const cached = frameRef.current;
         if (cached && cached.key === clipsKey) {
-          camera.position.copy(cached.camPos);
-          camera.near = cached.near;
-          camera.far = cached.far;
-          camera.updateProjectionMatrix();
-          controls.target.copy(cached.target);
+          applyFrame(camera, controls, cached as unknown as FrameSpec);
         } else {
-          const midY = dimensions.y / 2;
-          const dist = r / Math.sin((camera.fov * Math.PI) / 180 / 2);
-          const camPos = new THREE.Vector3(0, midY + r * 0.3, dist * 1.25);
-          const target = new THREE.Vector3(0, midY, 0);
-          const near = r / 100;
-          const far = dist * 10;
-          camera.position.copy(camPos);
-          camera.near = near;
-          camera.far = far;
-          camera.updateProjectionMatrix();
-          controls.target.copy(target);
-          frameRef.current = { key: clipsKey, camPos, target, near, far };
+          const f = computeFrame(camera, sphere, size);
+          applyFrame(camera, controls, f);
+          frameRef.current = { key: clipsKey, ...f };
+          lastFrameRef.current = f;
         }
-        controls.update();
 
-        // Grid floor sized to the model, placed at the ground plane (y=0) where
-        // the model's feet are anchored.
+        const r = sphere.radius || 1;
         const grid = new THREE.GridHelper(r * 4, 20, 0x3a4250, 0x252b34);
         grid.position.y = 0;
         grid.visible = showGrid;
         scene.add(grid);
         gridRef.current = grid;
+
+        const shadow = createGroundShadow(scene, renderer, core.keyLight, model, r);
+        shadow.setEnabled(showShadow);
+        shadowRef.current = shadow;
+
+        const wf = createWireframe(scene, model);
+        wf.setMode(wireMode);
+        wireRef.current = wf;
 
         if (hasSkeleton) {
           const skeleton = new THREE.SkeletonHelper(model);
@@ -208,26 +179,17 @@ export function ModelViewer({
           skeletonRef.current = skeleton;
         }
 
-        // Animated GLBs (animated_model exports) embed clips; play the first one
-        // via an AnimationMixer driven by the shared clock in the RAF loop. When
-        // a clip plays, stop auto-rotate so the motion (not the orbit) reads.
-        const clips = gltf.animations ?? [];
-        if (clips.length > 0) {
+        const anims = gltf.animations ?? [];
+        if (anims.length > 0) {
           const mixer = new THREE.AnimationMixer(model);
-          const action = mixer.clipAction(clips[0]!);
+          const action = mixer.clipAction(anims[0]!);
           action.play();
           mixerRef.current = mixer;
           actionRef.current = action;
           controls.autoRotate = false;
         }
 
-        setStats({
-          faces: Math.round(faces),
-          vertices,
-          size: dimensions,
-          hasSkeleton,
-          clipCount: clips.length,
-        });
+        setStats({ faces: Math.round(faces), vertices, size, hasSkeleton, clipCount: anims.length });
         setStatus('ready');
       },
       undefined,
@@ -238,14 +200,7 @@ export function ModelViewer({
       },
     );
 
-    const onResize = () => {
-      const w = mount.clientWidth || width;
-      const h = mount.clientHeight || height;
-      renderer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const ro = new ResizeObserver(onResize);
+    const ro = new ResizeObserver(core.resize);
     ro.observe(mount);
 
     const tick = () => {
@@ -253,54 +208,73 @@ export function ModelViewer({
       if (mixerRef.current) mixerRef.current.update(delta);
       controls.update();
       renderer.render(scene, camera);
+      renderer.autoClear = false;
+      if (viewHelperRef.current) viewHelperRef.current.render(renderer);
+      renderer.autoClear = true;
       raf = requestAnimationFrame(tick);
     };
-    const clock = new THREE.Clock();
     tick();
 
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
-      controls.dispose();
       gridRef.current = null;
       skeletonRef.current = null;
+      wireRef.current?.dispose();
+      wireRef.current = null;
+      shadowRef.current?.dispose();
+      shadowRef.current = null;
       if (mixerRef.current) {
         mixerRef.current.stopAllAction();
         if (model) mixerRef.current.uncacheRoot(model);
         mixerRef.current = null;
       }
       actionRef.current = null;
-      if (model) {
-        model.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
-          const mat = mesh.material;
-          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-          else if (mat) (mat as THREE.Material).dispose();
-        });
-      }
-      renderer.dispose();
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      viewHelperRef.current?.dispose();
+      viewHelperRef.current = null;
+      if (model) disposeModel(model);
+      env.dispose();
+      envRef.current = null;
+      coreRef.current = null;
+      core.dispose();
     };
-    // showGrid/showSkeleton are intentionally excluded: toggling them must not
-    // rebuild the scene; the dedicated effects below flip `.visible` instead.
-    // Switching `activeUrl` (motion chip) DOES rebuild: each motion is a separate
-    // GLB, and a full teardown/reload is the leak-safe way to swap it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUrl, clipsKey]);
 
-  useEffect(() => {
-    if (gridRef.current) gridRef.current.visible = showGrid;
-  }, [showGrid]);
+  useEffect(() => { if (gridRef.current) gridRef.current.visible = showGrid; }, [showGrid]);
+  useEffect(() => { if (skeletonRef.current) skeletonRef.current.visible = showSkeleton; }, [showSkeleton]);
+  useEffect(() => { if (actionRef.current) actionRef.current.paused = !playing; }, [playing, stats]);
+  useEffect(() => { shadowRef.current?.setEnabled(showShadow); }, [showShadow]);
+  useEffect(() => { wireRef.current?.setMode(wireMode); }, [wireMode]);
+  useEffect(() => { envRef.current?.setExposure(exposure); }, [exposure]);
+  useEffect(() => { envRef.current?.setEnvIntensity(envIntensity); }, [envIntensity]);
+  useEffect(() => { envRef.current?.setBackgroundMode(backgroundMode); }, [backgroundMode]);
+  useEffect(() => { void envRef.current?.applyPreset(presetId); }, [presetId]);
 
-  useEffect(() => {
-    if (skeletonRef.current) skeletonRef.current.visible = showSkeleton;
-  }, [showSkeleton]);
+  const setView = (dir: 'front' | 'back' | 'left' | 'right' | 'top' | 'persp') => {
+    const core = coreRef.current;
+    const f = lastFrameRef.current;
+    if (!core || !f) return;
+    const dist = f.camPos.distanceTo(f.target);
+    const t = f.target;
+    const p = new THREE.Vector3();
+    if (dir === 'front') p.set(t.x, t.y, t.z + dist);
+    else if (dir === 'back') p.set(t.x, t.y, t.z - dist);
+    else if (dir === 'left') p.set(t.x - dist, t.y, t.z);
+    else if (dir === 'right') p.set(t.x + dist, t.y, t.z);
+    else if (dir === 'top') p.set(t.x, t.y + dist, t.z + 0.0001);
+    else p.copy(f.camPos);
+    core.camera.position.copy(p);
+    core.controls.target.copy(t);
+    core.controls.update();
+  };
 
-  useEffect(() => {
-    if (actionRef.current) actionRef.current.paused = !playing;
-  }, [playing, stats]);
+  const resetView = () => {
+    const f = lastFrameRef.current;
+    const core = coreRef.current;
+    if (f && core) applyFrame(core.camera, core.controls, f);
+  };
 
   const fmt = (n: number) => n.toLocaleString();
 
@@ -360,6 +334,97 @@ export function ModelViewer({
             {playing ? '暂停' : '播放'}
           </button>
         )}
+        <div className="mv-wire-seg" role="group" aria-label="线框模式">
+          {(['solid', 'wireframe', 'shaded-wireframe'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`mv-toggle ${wireMode === m ? 'is-on' : ''}`}
+              aria-pressed={wireMode === m}
+              onClick={() => setWireMode(m)}
+            >
+              {{ solid: '实体', wireframe: '线框', 'shaded-wireframe': '着色线框' }[m]}
+            </button>
+          ))}
+        </div>
+        <div className="mv-settings-wrap">
+          <button
+            type="button"
+            className={`mv-toggle ${showSettings ? 'is-on' : ''}`}
+            onClick={() => setShowSettings((v) => !v)}
+            aria-expanded={showSettings}
+          >
+            ⚙ 渲染设置
+          </button>
+          {showSettings && (
+            <div className="mv-popover">
+              <label>
+                HDR 预设
+                <select value={presetId} onChange={(e) => setPresetId(e.target.value)}>
+                  {HDR_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                曝光 ({exposure.toFixed(2)})
+                <input
+                  type="range"
+                  min={0.2}
+                  max={3.0}
+                  step={0.05}
+                  value={exposure}
+                  onChange={(e) => setExposure(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                环境强度 ({envIntensity.toFixed(2)})
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={envIntensity}
+                  onChange={(e) => setEnvIntensity(Number(e.target.value))}
+                />
+              </label>
+              <label className="fx-check">
+                <input
+                  type="checkbox"
+                  checked={showShadow}
+                  onChange={(e) => setShowShadow(e.target.checked)}
+                />
+                <span>地面投影</span>
+              </label>
+              <label>
+                背景
+                <div className="mv-bg-seg" role="group">
+                  {(['gradient', 'solid', 'hdr'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`mv-toggle ${backgroundMode === m ? 'is-on' : ''}`}
+                      aria-pressed={backgroundMode === m}
+                      onClick={() => setBackgroundMode(m)}
+                      disabled={m === 'hdr' && presetId === 'builtin-neutral'}
+                    >
+                      {{ gradient: '渐变', solid: '纯色', hdr: 'HDR' }[m]}
+                    </button>
+                  ))}
+                </div>
+              </label>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mv-view-row" role="group" aria-label="视角">
+        {(['front', 'back', 'left', 'right', 'top', 'persp'] as const).map((d) => (
+          <button key={d} type="button" className="mv-toggle" onClick={() => setView(d)}>
+            {{ front: '前', back: '后', left: '左', right: '右', top: '顶', persp: '透' }[d]}
+          </button>
+        ))}
+        <button type="button" className="mv-toggle" onClick={resetView}>复位</button>
       </div>
 
       {stats && (

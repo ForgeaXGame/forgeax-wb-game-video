@@ -18,5 +18,6 @@
       "@shared/*": ["./shared/*"]
     }
   },
-  "include": ["src", "server", "shared", "vite.config.ts"]
+  "include": ["src", "server", "shared", "vite.config.ts"],
+  "exclude": ["**/*.test.ts"]
 }
