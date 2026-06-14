@@ -1,9 +1,16 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-14 — 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（计划待评审，尚无代码）。**
-> 交给下一个 agent：**先 review 计划再开发**。见下方第一个「下一步工作」section + 三份 SSOT
-> (`docs/PLAN-2026-06-13-viewer-quality-provider-params.md`、`docs/PROVIDER_PARAMS.md`、
-> `docs/adr/0004-on-demand-hybrid-quality-scoring.md`)。以下「Last updated」与 M13 为上一阶段背景。
+> **2026-06-14 — 三份文件级实现计划已就绪，交执行 agent。** 上轮 grill 已对齐 spec（11 项决策已与
+> operator 敲定，见 PLAN 顶部「2026-06-14 grill 修订」块；范围 = P1+P2+P3+P5，P4 推迟）。本轮把它拆成
+> 三份**可独立成 PR、task-by-task 带验证标准**的实现计划（= 执行 SSOT）：
+> - [`docs/IMPL-2026-06-14-A-viewer.md`](./docs/IMPL-2026-06-14-A-viewer.md) — 视图器 P1 模块化 + P2 影棚lite/IBL/ACES/地面投影/线框/相机chrome/localStorage 持久化
+> - [`docs/IMPL-2026-06-14-B-quality-scoring.md`](./docs/IMPL-2026-06-14-B-quality-scoring.md) — 五维评分 Phase A（纯启发式 TDD + `QualityReport` + `gen3d:score-quality` + `QualityInspector`）
+> - [`docs/IMPL-2026-06-14-C-provider-params.md`](./docs/IMPL-2026-06-14-C-provider-params.md) — Provider 参数（`provider-params.ts` param-spec TDD + Meshy/Rodin 转发 + `SetupSidebar` 高级面板）
+>
+> 三份用 `subagent-driven-development` / `executing-plans` skill 逐任务执行。**对齐后的 spec**（背景与决策
+> 依据，非执行清单）= `docs/PLAN-2026-06-13-viewer-quality-provider-params.md`（顶部「grill 修订」块） +
+> `docs/PROVIDER_PARAMS.md` + `docs/adr/0004-on-demand-hybrid-quality-scoring.md`。详见下方「下一步工作」
+> section（含分批表 / 执行顺序 / 测试基建 / 跨文件冲突点）。以下「Last updated」与 M13 为上一阶段背景。
 
 Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **代码完成 (mock-first)** —
 PLAN/ADR-0003 **Accepted**；store-append + hunyuan-rest 三方法 + 三工具 (`gen3d:auto-rig`
@@ -29,29 +36,32 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 `bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
 `bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
 
-## 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（2026-06-14 · 计划待评审，尚无代码）
+## 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（2026-06-14 · 三份实现计划就绪，交执行）
 
-> **交给下一个 agent：先 review 这份计划，再开发。** 这是规划交付物，三份 SSOT：
-> - 统一 spec（分期 P1–P5 + 边界 + 验证）：[`docs/PLAN-2026-06-13-viewer-quality-provider-params.md`](./docs/PLAN-2026-06-13-viewer-quality-provider-params.md)
-> - Provider 参数调研（官方文档 + 竞品 LIGHT AI 截图比对）：[`docs/PROVIDER_PARAMS.md`](./docs/PROVIDER_PARAMS.md)
-> - 评分立场决策（演进 ADR-0001）：[`docs/adr/0004-on-demand-hybrid-quality-scoring.md`](./docs/adr/0004-on-demand-hybrid-quality-scoring.md)
+> **交给执行 agent：三份 IMPL 是逐任务执行清单（execution SSOT）。** 三块解耦，可任意顺序、各自独立成
+> PR。用 `subagent-driven-development`（推荐）或 `executing-plans` skill 按 `- [ ]` 步骤推进。
+
+| 批 | 计划（execution SSOT） | 建议分支 | 任务/测试 | 解耦性 |
+|---|---|---|---|---|
+| **A** P1→P2 视图器 | `docs/IMPL-2026-06-14-A-viewer.md` | `laurenceelu/feat-20260614-gen3d-viewer-studio` | P1 行为不变抽 `viewer/scene.ts`（带回归基线 checklist）→ P2 七任务叠加；**typecheck+build+视觉回归**（无单测，three.js/DOM） | 独立 |
+| **B** P3 五维评分 | `docs/IMPL-2026-06-14-B-quality-scoring.md` | `laurenceelu/feat-20260614-gen3d-quality-scoring` | 纯启发式 `shared/quality/heuristics.ts`（**TDD 8 断言**）+ `QualityReport` + `updateAssetQuality`（**TDD 3 断言**）+ `gen3d:score-quality` + `QualityInspector` | 独立（不耦合 ModelViewer，自己 load GLB） |
+| **C** P5 Provider 参数 | `docs/IMPL-2026-06-14-C-provider-params.md` | `laurenceelu/feat-20260614-gen3d-provider-params` | `shared/provider-params.ts` param-spec + 纯 `filterProviderParams`（**TDD 7 断言**）+ Meshy/Rodin 转发 + tool 校验/cacheKey + `SetupSidebar` 高级面板 | 独立 |
+
+**执行前必读（3 条基建/冲突点）**：
+1. **测试基建**（A 的 P1.2 Step 2b == B0 == C0，做一次即可）：`package.json` 加 `"test": "bun test"`，`tsconfig.json` 加 `"exclude": ["**/*.test.ts"]`（让 `tsc --noEmit` 不编译测试文件）。B/C 纯逻辑走 TDD `bun test`。
+2. **跨文件冲突点（若并行）**：B 和 C 都改 `server/tool-handlers.ts`（不同区域：B 加 `gen3d:score-quality` handler；C 改 `BaseGenArgs` + 三个生成函数）和 `src/styles.css`（各自 append）——合并是 additive，最多 import 行小冲突。`QualityReport` 共享数据模型**只在 B**，A/C 不依赖。
+3. **dist 铁律**：改 `src/**` 后必须 `bun run build` 重建 `dist/` 再硬刷新嵌入式 Workbench（见本文件上方「改完前端源码必须 rebuild dist」）。standalone `bun run dev`（:15175）走 vite HMR 无此问题。
 
 **三块需求**（operator 2026-06-13/14 提出）：① 视图器对标 **Blender 4.x**（背景三态 + HDR/IBL + ACES 曝光 + 地面投影 + 线框）；② 五维质量评分从占位变可用（**混合**：客观启发式 + 可选 AI 视觉 + 人工覆盖）；③ 各 provider 暴露**已验证**的高价值参数。
 
-**已锁决策（勿重新 litigate，详见 spec §2 决策摘要 D1–D9）**：
+**已锁决策（勿重新 litigate，详见 spec §2 决策摘要 D1–D9 + PLAN 顶部 grill 修订块）**：
 - **D9 视图器默认观感 = mockup B（影棚 HDRI / Material-Preview）**；A（实色渐变/Solid）、C（HDR 环境作背景/Rendered）作切换态。三张 mockup：`docs/mockups/viewer-mockup-{a-solid,b-studio,c-hdri}.png`。
-- **D4 评分 AI = 本期只交付 mock 桩**（`gen3d:score-quality` 的 `aiPass` 返回 `usedMock` + `prompt_fidelity`/`texture` 两维 null）。真实 AI 接线（授权 server 路由 + 网关多模态 + vision 模型）**推迟**——operator **暂不授权动 `packages/server`**。
-- 调研发现：现 `llm-gateway` 是**纯文本**（`packages/server/.../llm-gateway/types.ts` 的 `ChatMessage.content: string`），真实视觉评分须先扩展多模态，纳入未来授权范围。
-- Meshy `art_style`/`symmetry_mode`/`negative_prompt` 官方文档已 **deprecated**，不暴露（spec C.3 已据此修正）。
+- **A 边界（grill A1/A2/A3）**：只做 `ModelViewer` 渲染质量 + `渲染设置` popover + 相机级 chrome；**不做** 模型变换 gizmo / DCC 外壳 / 反射地面 / `viewer/capture.ts`（**capture 推迟到 P4**，供 AI 视觉复用）。HDR `.hdr` 可选，缺省回退内置 `RoomEnvironment`。
+- **B lazy 持久化（grill B5）**：选中即时客户端算 + 显示、**不写盘**；仅手动覆盖 / 未来 AI 评分才经 `gen3d:score-quality` 落库（merge-only，无 server 端 three.js）。mock 资产是占位字节、无法解析 → 诚实显示「无法评分」。
+- **D4 评分 AI = 本期只 mock 桩 / 按钮置灰**（`prompt_fidelity` 维 disabled）。真实 AI（授权 server 路由 + 网关多模态 + vision）**推迟**——operator **暂不授权动 `packages/server`**；现 `llm-gateway` 是纯文本，须先扩多模态。
+- **C verified 语义（grill C2，宽松）**：verified = 「官方文档存在」即可暴露（mock/无 key 时参数惰性、不生效）。Meshy `art_style`/`symmetry_mode`/`negative_prompt` 已 deprecated、`geometry_file_format`（store 只留 GLB，改格式破坏持久化）、所有 `⏳ 待验证` 字段**均不暴露**。
 
-**本期可执行范围（全部插件内，零 `packages/server` 改动）**：
-- **P1** 视图器模块化拆分（行为不变）+ `viewer/capture.ts` 取图工具。
-- **P2** 背景三态（B 默认）+ RoomEnvironment IBL + ACES 曝光 + 地面投影 + 线框三态 + `渲染设置` popover + localStorage 持久化。HDR 占位目录已建 **`public/hdr/`**（README + presets.json，纳入 git；operator 回头放 1k `.hdr` 并登记 presets.json，否则只有内置中性环境）。
-- **P3** 评分 Phase A：`shared/quality/heuristics.ts`（纯函数可单测）+ `QualityReport` 数据模型 + `QualityInspector`（取代 `InspectorReserved`）+ `gen3d:score-quality` 持久化 + 人工覆盖；落地 ADR-0004。
-- **Phase B（桩）**：`aiPass` 直接回退 mock，不触网。
-- **P5** Provider 参数：`shared/provider-params.ts` param-spec 框架 + verified 子集进 `SetupSidebar`（Meshy/Rodin/混元；详见 PROVIDER_PARAMS §6，⏳ 项实现时再核内网端点）。
-
-**reviewer 重点看**：spec §2（决策摘要）、§8（边界——本期不动 server）、§10（分期）、§13（开放项）；PROVIDER_PARAMS §6（拟暴露汇总）。**开放项**：operator 待固化真实 `.hdr` 文件到 `public/hdr/`。
+**本期边界**：全部插件目录内，**零 `packages/server` 改动**。HDR 占位目录已建 `public/hdr/`（README + presets.json，纳入 git）；**开放项** = operator 回头放 1k `.hdr` 并登记 `presets.json`，否则只有内置中性环境。
 
 ## 近期阶段 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12，代码完成 mock-first；待 operator 目视 + 翻 exposedToAI）
 

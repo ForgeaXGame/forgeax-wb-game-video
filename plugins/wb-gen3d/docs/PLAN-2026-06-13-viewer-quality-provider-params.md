@@ -1,12 +1,58 @@
 # PLAN 2026-06-13 — 视图器渲染增强 · 五维质量评分 · Provider 专属参数
 
-状态：🟡 SPEC（设计已与 operator 对齐 4 项关键决策，待 operator 复核后转 writing-plans）
+状态：🟢 ACCEPTED（2026-06-14 grill 评审收尾，11 项执行细节与 operator 敲定，见下「2026-06-14 grill 修订」块；可转 writing-plans / 执行）
 日期：2026-06-13 Asia/Hong_Kong
 范围：`packages/marketplace/plugins/wb-gen3d/`（一处插件外授权例外见 §8）
 关联：ADR-0001（生产工具架构 / 评分立场）、ADR-0002（per-game 存储）、ADR-0003（rig/motion）、**ADR-0004（按需混合质量评分，本轮新增）**
 
 > 一份 spec 覆盖三条**相互解耦**的工作流（operator 选择 one-spec）。三块共享一处
 > manifest 数据模型改动（§7），其余互不依赖，可分期独立实现（§10）。
+
+---
+
+## 2026-06-14 grill 修订（评审收尾）— 本块为 SSOT，优先于下文冲突处
+
+一轮 `grill-with-docs` 评审把 spec 跟现网代码逐条对齐，敲定 11 项执行细节（D1–D9 + P4 推迟未动）。
+下文凡与本块冲突处，以本块为准。
+
+**范围 / 排期**：本轮做 **P1+P2+P3+P5**（P4 AI 视觉评推迟）；按解耦分批提交（P1→P2 视图器 / P3 评分 /
+P5 参数），三条独立便于 review。P2 的 `.hdr` 缺失时以 builtin RoomEnvironment 兜底，不阻塞。
+
+**A 视图器**
+- **A1 范围**：仅做中栏 `ModelViewer` 渲染质量 + `渲染设置` popover + **相机类轻量 chrome**（视角预设
+  前/后/左/右/顶/透视 + 复位聚焦 + 角落 XYZ `ViewHelper`），保留现有 网格/骨骼/播放 开关。**不做**模型
+  变换 gizmo（只读预览、无可持久化的 transform）；**不做** mockup 里的 DCC 外壳（顶部 tab、资源树重设计、
+  场景层级、材质/动画列表）——那是未来另立项。
+- **A2 默认观感 = 影棚 lite**：亮色中性渐变背景 + RoomEnvironment IBL + ACES + `ShadowMaterial` 软阴影；
+  **不做镜面反射地面**（mockup B 的倒影留后续 Reflector）。统一措辞：**默认背景 = 亮色中性渐变**（消解
+  A.1「渐变默认」与 D9「B 默认」的张力；D9 不变、B 仍为默认观感）。
+- **A3 本轮不做 `viewer/capture.ts`**：P4 已推迟、mock 桩不需要截图、客观评分走 mesh 遍历、库缩图已有
+  `preview_image`。capture 随 P4 一起加。
+
+**B 五维评分（Phase A）**
+- **B1 数据流**：客户端新增轻量 extractor（遍历 `gltf.scene` → 纯数据 `ObjectiveMetrics`）→
+  `shared/quality/heuristics.ts`（纯/无 DOM/可单测）**在客户端打分** → `gen3d:score-quality` **只做
+  merge + 持久化、不重算**（服务端无 three.js，拿不到已渲染场景）。
+- **B2 `sidecarToManifest` 透出**：读出 `custom.quality`（→ `manifest.quality` 数值）+ 透出目标
+  `faceCount`（`Gen3DAssetManifest` 加一个可选字段）。`topology` 有目标用 `100*(1-clamp(|actual-target|/target))`，
+  无目标（mock/老资产/lowpoly 派生）回退「密度均匀度为主」或置 null。
+- **B3 落库 + 并发**：`AssetStorage` 加 `updateAssetQuality(slug, assetPath, report)`，用**同一把
+  `withAssetLock`** 串行化 read-modify-write，只改 `custom.quality`、不动 `dependencies`。
+- **B4 派生资产 `prompt_fidelity` 继承推迟到 P4**：本轮显示 null + 「继承自源（待 AI 评分）」提示；客观四维
+  对派生 mesh **重算**（lowpoly 几何/贴图已变，不能继承）。
+- **B5 计算/落库时机 = lazy**（修订 ADR-0004 Phase A）：客观项**每次选中即时在客户端算 + 即显、不单独
+  写盘**；仅人工覆盖或（未来 P4）AI 评分发生时才经 `score-quality` 落库（落库带上重算的客观维）。原「首次算
+  即落库」作废，避免浏览资产库即写 sidecar。
+- **B6 本轮「AI 评分」按钮置灰** + tooltip「AI 视觉评分待 server 授权后开放（P4）」，留位不误导。
+
+**C Provider 参数**
+- **C1 校验分层**：JSON schema 里 `providerParams` 声明为**开放对象**（`type:object`）；逐字段校验放
+  **服务端 `buildPayload`**——按 `shared/provider-params.ts` 的 `verified + appliesToModes + 类型白名单`
+  过滤，未声明/未验证字段直接丢弃。**不建 schema 生成器**，单一真相在 param-spec。
+- **C2 `verified` = 「官方文档确认字段存在」**（文档级，沿用 PROVIDER_PARAMS §0 铁律）：doc-verified +
+  appliesToModes 即渲染/进 buildPayload；参数**仅在该 provider 真机跑时生效**，mock/无 key 时惰性（与
+  mock-first 姿态一致）。provider 是否真机验证过是另一根轴（catalog exposure），不阻断参数暴露。落地需扩
+  `MeshyGenerateInput`/`RodinGenerateInput` + 各自 `buildPayload` 转发新字段。
 
 ---
 

@@ -30,7 +30,9 @@ rater/timestamp/notes，指向一个可记录来源的评分模型。
 
 1. **客观启发式（auto）**：在**选中资产时**按需计算（非生成时），纯函数
    `shared/quality/heuristics.ts`，从前端已加载的 three.js 场景与 glTF 材质得出
-   `geometry/topology/pbr/texture`；首次计算即经 `gen3d:score-quality` 持久化，之后读缓存。
+   `geometry/topology/pbr/texture`。**计算/落库时机（2026-06-14 grill 修订）= lazy**：每次选中即时在
+   客户端算 + 即显、**不单独写盘**；仅当人工覆盖或（未来 P4）AI 评分发生时才经 `gen3d:score-quality`
+   落库（落库时带上重算的客观维）。原「首次算即落库、之后读缓存」作废——避免浏览资产库即写 sidecar。
 2. **AI 视觉评（ai，可选）**：用视图器离屏多角度截图 + prompt，**复用 Studio 已配置模型**
    （经一条授权 server 路由走 `llm-gateway`，见 PLAN §8）评 `prompt_fidelity` 与
    `texture` 质量。**mock-first**：模型未配置则回退（该两维 null + `usedMock`），不报错、不阻塞。

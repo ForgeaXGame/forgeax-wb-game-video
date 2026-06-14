@@ -148,6 +148,14 @@ provider/mode/job 信息、文件角色和状态标志。新 manifest 用 `asset
 Asset 的一个文件角色，例如主 mesh、预览图、贴图、绑骨模型或动画片段。
 文件可被 Studio 用本地预览 URL 展示；外部 provider 需要访问时必须使用临时传输 URL。
 
+### QualityReport（质量评分报告）
+
+某资产的五维质量评分报告：`geometry / topology / texture / pbr / prompt_fidelity`，每维记
+`value` + `source`（`auto` 客观启发式 / `ai` 视觉评 / `manual` 人工覆盖），并带
+`total / method / rater / notes / scoredAt`。评分**按需**产生（选中资产时），**不在生成时触发**。
+它是 `QualityScore`（纯数值、跨插件兼容字段）的富结构来源。详见 ADR-0004。
+_Avoid_: 把 `QualityScore` 当评分主体（它只是 QualityReport 派生出的数值快照）；说「评分」指 QualityReport。
+
 ### 资产存储模型
 
 Per-game runtime asset library。生成时必须归属一个 game；资产直接落在该 game 的
