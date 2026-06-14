@@ -6,7 +6,8 @@ import type { GenerateResult, ListAssetsResult, Mode, ProviderStatus, RigMotionR
 import { modeMeta } from '@/ui-meta';
 import { SetupSidebar } from '@/components/SetupSidebar';
 import { Workspace } from '@/components/Workspace';
-import { AssetLibrary, InspectorReserved } from '@/components/AssetLibrary';
+import { AssetLibrary } from '@/components/AssetLibrary';
+import { QualityInspector } from '@/components/QualityInspector';
 
 interface AppProps {
   pane: 'left' | 'center' | 'standalone';
@@ -55,6 +56,14 @@ export function App({ pane }: AppProps) {
       }
       setSelected((cur) => (cur?.assetPath === assetPath ? null : cur));
       setLatest((cur) => (cur?.manifest.assetPath === assetPath ? null : cur));
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
+  const handleScored = useCallback(
+    (m: Gen3DAssetManifest) => {
+      setSelected((cur) => (cur?.assetPath === m.assetPath ? m : cur));
       void refreshAssets();
     },
     [refreshAssets],
@@ -221,7 +230,7 @@ export function App({ pane }: AppProps) {
                   onSelect={setSelected}
                   onDelete={deleteAsset}
                 />
-                <InspectorReserved selected={selected} />
+                <QualityInspector selected={selected} onScored={handleScored} />
               </div>
             </div>
           </div>

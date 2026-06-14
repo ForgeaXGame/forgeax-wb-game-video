@@ -163,6 +163,16 @@
           "zh": "低模重拓扑（Hunyuan REST low_poly，M13，可选侧支）：把高模 GLB 重拓扑为低模，产出一个全新的衍生低模 GLB 资产（cache-first），高模源保留。注意：贴图不保留，因此不是绑骨前的预处理步骤。Gate 0 真机验证（Hunyuan 内网可达公网 COS）通过前默认 mock，exposedToAI=false。",
           "en": "Retopo low-poly (Hunyuan REST low_poly, M13, optional side-branch): retopologize a high-poly GLB to low-poly, producing a NEW derived low-poly GLB asset (cache-first); the high-poly source is retained. Note: textures are NOT preserved, so this is NOT a pre-rig step. Mock-only until Gate 0 real-machine verification (Hunyuan internal egress can fetch public COS) passes, so exposedToAI=false."
         }
+      },
+      {
+        "id": "gen3d:score-quality",
+        "args": "./schemas/score-quality.args.json",
+        "returns": "./schemas/score-quality.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "质量评分（按需混合，ADR-0004）：合并客户端客观启发式 + 人工覆盖（AI 视觉评本期为 mock 桩）写入资产 sidecar 的 quality 报告，返回更新后的 manifest。lazy 持久化：浏览不写盘，仅评分/覆盖时落库。",
+          "en": "Score quality (on-demand hybrid, ADR-0004): merge client objective heuristics + manual overrides (AI vision is a mock stub this round) into the asset sidecar quality report and return the updated manifest. Lazy persistence: browsing never writes; only scoring/override persists."
+        }
       }
     ],
     "events": [

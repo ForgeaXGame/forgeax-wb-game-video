@@ -8,6 +8,7 @@ import {
   type ProviderResult,
 } from '../shared/catalog';
 import {
+  emptyQualityReport,
   selectFile,
   selectFiles,
   type AssetSlot,
@@ -15,7 +16,11 @@ import {
   type GenerationMode,
   type MotionType,
   type ProviderId,
+  type QualityDim,
+  type QualityReport,
 } from '../shared/manifest';
+import { DEFAULT_WEIGHTS, weightedTotal } from '../shared/quality/heuristics';
+import { filterProviderParams } from '../shared/provider-params';
 import type { AssetStorage, DerivedFileInput } from './asset-storage';
 import { PerGameAssetStore } from './per-game-store';
 import { generateCacheFirst, persistGeneration, type PersistInput } from './generate';
@@ -165,6 +170,7 @@ interface BaseGenArgs {
   enablePbr?: boolean;
   enableFbxUrl?: boolean;
   targetPolycount?: number;
+  providerParams?: Record<string, unknown>;
 }
 
 interface TextTo3DArgs extends BaseGenArgs {
@@ -212,6 +218,20 @@ function resolvePolycount(target: number | undefined, provider: GenProvider): nu
   return clampTargetPolycount(getHunyuanEnv()?.defaultFaceCount ?? 30000);
 }
 
+function buildProviderParams(
+  provider: GenProvider,
+  mode: GenerationMode,
+  raw: Record<string, unknown> | undefined,
+): {
+  filtered: Record<string, string | number | boolean>;
+  cacheBits: Record<string, string | number | boolean>;
+} {
+  const filtered = filterProviderParams(provider, mode, raw);
+  const cacheBits: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(filtered)) cacheBits[`pp:${k}`] = v;
+  return { filtered, cacheBits };
+}
+
 // Provider-aware cache-first generation. Picks the real provider when its env is
 // configured, else falls back to the deterministic mock (quota-safe). The
 // cacheKey is computed by the caller (includes provider + assetSlot, excludes
@@ -252,12 +272,14 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
   const faceCount = resolvePolycount(args.targetPolycount, provider);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
+  const { filtered, cacheBits } = buildProviderParams(provider, 'text', args.providerParams);
   const cacheKey = makeCacheKey(provider, 'text', {
     assetSlot,
     prompt,
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...cacheBits,
   });
   return runGeneration(
     provider,
@@ -265,8 +287,8 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
     { slug, assetSlot, assetName: defaultName(args.assetName, prompt), faceCount, cacheKey },
     {
       hunyuan: { mode: 'text', prompt, faceCount, enablePbr, enableFbxUrl },
-      meshy: { mode: 'text', prompt, targetPolycount: faceCount, enablePbr },
-      rodin: { mode: 'text', prompt, qualityOverride: faceCount },
+      meshy: { mode: 'text', prompt, targetPolycount: faceCount, enablePbr, params: filtered },
+      rodin: { mode: 'text', prompt, qualityOverride: faceCount, params: filtered },
     },
     prompt,
   );
@@ -281,12 +303,14 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
   const faceCount = resolvePolycount(args.targetPolycount, provider);
   const enablePbr = args.enablePbr ?? true;
   const enableFbxUrl = args.enableFbxUrl ?? false;
+  const { filtered, cacheBits } = buildProviderParams(provider, 'image', args.providerParams);
   const cacheKey = makeCacheKey(provider, 'image', {
     assetSlot,
     imageUrl,
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...cacheBits,
   });
   return runGeneration(
     provider,
@@ -294,8 +318,8 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
     { slug, assetSlot, assetName: defaultName(args.assetName, `image-${provider}`), faceCount, cacheKey },
     {
       hunyuan: { mode: 'image', imageUrl, faceCount, enablePbr, enableFbxUrl },
-      meshy: { mode: 'image', imageUrl, targetPolycount: faceCount, enablePbr },
-      rodin: { mode: 'image', imageUrl, qualityOverride: faceCount },
+      meshy: { mode: 'image', imageUrl, targetPolycount: faceCount, enablePbr, params: filtered },
+      rodin: { mode: 'image', imageUrl, qualityOverride: faceCount, params: filtered },
     },
     null,
   );
@@ -330,7 +354,9 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...buildProviderParams(provider, 'views', args.providerParams).cacheBits,
   });
+  const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
   return runGeneration(
     provider,
     'views',
@@ -343,8 +369,8 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
         enablePbr,
         enableFbxUrl,
       },
-      meshy: { mode: 'views', imageUrls: meshyUrls, targetPolycount: faceCount, enablePbr },
-      rodin: { mode: 'views', imageUrls: meshyUrls, qualityOverride: faceCount },
+      meshy: { mode: 'views', imageUrls: meshyUrls, targetPolycount: faceCount, enablePbr, params: filtered },
+      rodin: { mode: 'views', imageUrls: meshyUrls, qualityOverride: faceCount, params: filtered },
     },
     null,
   );
@@ -818,6 +844,84 @@ async function retopoLowpoly(args: RetopoLowpolyArgs): Promise<GenerateResult> {
   return { ok: true, cacheKey, cacheHit, usedMock, manifest };
 }
 
+// ─── Quality scoring (ADR-0004, P3) ─────────────────────────────────────────
+
+type DimKey = 'geometry' | 'topology' | 'texture' | 'pbr' | 'prompt_fidelity';
+
+interface ScoreQualityArgs {
+  slug?: string;
+  assetPath: string;
+  objective?: Partial<Record<'geometry' | 'topology' | 'texture' | 'pbr', number | null>>;
+  aiPass?: boolean;
+  manual?: Partial<Record<DimKey, number | null>> & { notes?: string };
+}
+
+interface ScoreQualityResult {
+  ok: true;
+  usedMock: boolean;
+  manifest: Gen3DAssetManifest;
+}
+
+function clampScore(v: number | null | undefined): number | null {
+  if (v === null || v === undefined || !Number.isFinite(v)) return null;
+  return Math.min(100, Math.max(0, Math.round(v)));
+}
+
+async function scoreQuality(args: ScoreQualityArgs): Promise<ScoreQualityResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) {
+    throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  }
+  const existing = await storage.getAsset(slug, assetPath);
+  if (!existing) {
+    throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+  }
+
+  const report: QualityReport = emptyQualityReport();
+  const setDim = (key: DimKey, value: number | null, source: QualityDim['source']) => {
+    report[key] = { value: clampScore(value), source };
+  };
+
+  let hasObjective = false;
+  if (args.objective) {
+    for (const key of ['geometry', 'topology', 'texture', 'pbr'] as const) {
+      if (key in args.objective) {
+        setDim(key, args.objective[key] ?? null, 'auto');
+        hasObjective = true;
+      }
+    }
+  }
+
+  let usedMock = false;
+  if (args.aiPass) usedMock = true;
+
+  let hasManual = false;
+  if (args.manual) {
+    for (const key of ['geometry', 'topology', 'texture', 'pbr', 'prompt_fidelity'] as const) {
+      if (key in args.manual) {
+        setDim(key, args.manual[key] ?? null, 'manual');
+        hasManual = true;
+      }
+    }
+    if (typeof args.manual.notes === 'string') report.notes = args.manual.notes;
+    if (hasManual) report.rater = 'local';
+  }
+
+  report.method = hasManual && hasObjective ? 'mixed' : hasManual ? 'manual' : 'auto';
+  report.total = weightedTotal([
+    { value: report.geometry.value, weight: DEFAULT_WEIGHTS.geometry },
+    { value: report.topology.value, weight: DEFAULT_WEIGHTS.topology },
+    { value: report.texture.value, weight: DEFAULT_WEIGHTS.texture },
+    { value: report.pbr.value, weight: DEFAULT_WEIGHTS.pbr },
+    { value: report.prompt_fidelity.value, weight: DEFAULT_WEIGHTS.prompt_fidelity },
+  ]);
+  report.scoredAt = new Date().toISOString();
+
+  const manifest = await storage.updateAssetQuality(slug, assetPath, report);
+  return { ok: true, usedMock, manifest };
+}
+
 export const tools = {
   'gen3d:provider-status': async () => getProviderStatus(),
   'gen3d:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
@@ -833,6 +937,7 @@ export const tools = {
   'gen3d:auto-rig': async (args: AutoRigArgs) => autoRig(args),
   'gen3d:apply-motion': async (args: ApplyMotionArgs) => applyMotion(args),
   'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
+  'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
 };
 
 export default tools;

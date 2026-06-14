@@ -79,6 +79,53 @@ export interface QualityScore {
   total: number | null;
 }
 
+export type QualityDimSource = 'auto' | 'ai' | 'manual';
+
+export interface QualityDim {
+  value: number | null;
+  source: QualityDimSource;
+}
+
+export interface QualityReport {
+  geometry: QualityDim;
+  topology: QualityDim;
+  texture: QualityDim;
+  pbr: QualityDim;
+  prompt_fidelity: QualityDim;
+  total: number | null;
+  method: 'auto' | 'auto+ai' | 'manual' | 'mixed';
+  rater: string;
+  notes: string;
+  scoredAt: string;
+}
+
+export function emptyQualityReport(): QualityReport {
+  const dim = (): QualityDim => ({ value: null, source: 'auto' });
+  return {
+    geometry: dim(),
+    topology: dim(),
+    texture: dim(),
+    pbr: dim(),
+    prompt_fidelity: dim(),
+    total: null,
+    method: 'auto',
+    rater: '',
+    notes: '',
+    scoredAt: '',
+  };
+}
+
+export function reportToScore(r: QualityReport): QualityScore {
+  return {
+    geometry: r.geometry.value,
+    topology: r.topology.value,
+    texture: r.texture.value,
+    pbr: r.pbr.value,
+    prompt_fidelity: r.prompt_fidelity.value,
+    total: r.total,
+  };
+}
+
 export interface Gen3DAssetManifest {
   manifestVersion: 1;
   // Canonical identity: the game-relative path of the main GLB (ADR-0002).
@@ -102,6 +149,7 @@ export interface Gen3DAssetManifest {
     animated: boolean;
   };
   quality: QualityScore;
+  targetFaceCount?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -156,6 +204,7 @@ export interface AssetSidecar {
     readiness: Gen3DAssetManifest['readiness'];
     // The cacheKey that produced this asset, for delete→tombstone reverse lookup.
     cacheKey?: string;
+    quality?: QualityReport;
   };
 }
 

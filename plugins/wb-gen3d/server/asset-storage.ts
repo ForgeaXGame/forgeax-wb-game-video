@@ -8,7 +8,7 @@
 // .forgeax/games/<slug>/assets/3d/{characters|meshes}/; a future COS/S3 adapter
 // could swap without changing this interface or the manifest contract.
 
-import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionType, SkeletonProfile } from '../shared/manifest';
+import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionType, QualityReport, SkeletonProfile } from '../shared/manifest';
 
 // One produced file (already downloaded into bytes; never a provider URL).
 export interface AssetFileInput {
@@ -55,6 +55,13 @@ export interface AssetStorage {
   // one character (e.g. multiple motions) never drop entries (ADR-0003). The
   // main GLB identity (assetPath) is unchanged.
   appendDerivedFiles(input: AppendDerivedFilesInput): Promise<Gen3DAssetManifest>;
+  // Persist the five-dimension quality report into the asset sidecar
+  // (custom.quality) and return the refreshed manifest.
+  updateAssetQuality(
+    slug: string,
+    assetPath: string,
+    report: QualityReport,
+  ): Promise<Gen3DAssetManifest>;
   // Read the bytes of one file in an asset, selected by role (+ optional format),
   // for COS-sharing it as a provider transfer URL. Returns null when absent.
   readAssetFile(

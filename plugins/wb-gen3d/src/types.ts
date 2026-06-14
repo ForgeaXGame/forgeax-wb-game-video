@@ -57,3 +57,9 @@ export interface PoseResult {
   localUrl: string | null;
   sourceUrl: string | null;
 }
+
+export interface ScoreQualityResult {
+  ok: true;
+  usedMock: boolean;
+  manifest: Gen3DAssetManifest;
+}

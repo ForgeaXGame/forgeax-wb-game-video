@@ -23,6 +23,7 @@ import {
   ASSET_SLOT_DIRS,
   computeReadiness,
   emptyQuality,
+  reportToScore,
   type AssetSidecar,
   type AssetSlot,
   type FileFormat,
@@ -30,6 +31,7 @@ import {
   type Gen3DAssetManifest,
   type ManifestFile,
   type MotionType,
+  type QualityReport,
   type SidecarDependency,
   type SkeletonProfile,
 } from '../shared/manifest';
@@ -260,6 +262,7 @@ export class PerGameAssetStore implements AssetStorage {
       files: manifestFiles,
       readiness,
       quality: emptyQuality(),
+      targetFaceCount: meta.faceCount ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -393,6 +396,39 @@ export class PerGameAssetStore implements AssetStorage {
     });
   }
 
+  // ─── Lazy quality persistence (ADR-0004) ──────────────────────────────────
+  async updateAssetQuality(
+    slug: string,
+    assetPath: string,
+    report: QualityReport,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+      const updated: AssetSidecar = {
+        ...sidecar,
+        custom: { ...sidecar.custom, quality: report },
+      };
+      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
   // Read one file in an asset by role (+ optional format), for COS-sharing it as
   // a provider transfer URL. The main mesh is (source_mesh, glb); rig/anim files
   // are same-basename sidefiles recorded in the sidecar dependencies.
@@ -506,7 +542,8 @@ function sidecarToManifest(
     // Always derive from the restored file set so appended rig/anim files are
     // reflected even when the stored custom.readiness is stale.
     readiness: computeReadiness(files),
-    quality: emptyQuality(),
+    quality: c.quality ? reportToScore(c.quality) : emptyQuality(),
+    targetFaceCount: c.faceCount ?? null,
     createdAt: sidecar.createdAt,
     updatedAt: sidecar.createdAt,
   };

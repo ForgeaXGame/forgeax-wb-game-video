@@ -6,7 +6,6 @@ import { EDITOR_ICON_MAP } from '@/ui-meta';
 
 const LibraryIcon = EDITOR_ICON_MAP.library;
 const RefreshIcon = EDITOR_ICON_MAP.refresh;
-const GaugeIcon = EDITOR_ICON_MAP.quality;
 const DeleteIcon = EDITOR_ICON_MAP.delete;
 const ImgIcon = EDITOR_ICON_MAP.image;
 
@@ -161,33 +160,5 @@ function LibCard({
         </button>
       )}
     </div>
-  );
-}
-
-// Right column, card 2: reserved placeholder for the future five-dimension
-// quality scorer. QualityScore stays null per ADR-0001 (no generation-time
-// scoring), so this renders disabled and is never wired to a scorer; `selected`
-// is accepted for future use only.
-export function InspectorReserved(props: {
-  selected: Gen3DAssetManifest | null;
-}): JSX.Element {
-  return (
-    <section className="reserved-card">
-      <div className="reserved-head">
-        <GaugeIcon size={15} />
-        <span className="reserved-title">质量评分</span>
-        <span className="reserved-badge">待评分运行时</span>
-      </div>
-      <div className="quality-dims">
-        {['geometry', 'topology', 'texture', 'pbr', 'prompt_fidelity'].map((dim) => (
-          <span className="quality-dim" key={dim}>
-            {dim} · —
-          </span>
-        ))}
-      </div>
-      <p className="reserved-note">
-        五维质量评分（geometry / topology / texture / pbr / prompt_fidelity）尚无运行时评分器，当前仅为占位。
-      </p>
-    </section>
   );
 }
