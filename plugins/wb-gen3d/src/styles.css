@@ -942,6 +942,46 @@ body[data-pane='center'] .gx-center { height: 100%; }
   to { opacity: 1; }
 }
 
+/* ── viewer: view row (bottom-right camera presets) ───────────────────── */
+.mv-view-row {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ── viewer: settings popover ─────────────────────────────────────────── */
+.mv-settings-wrap { position: relative; }
+.mv-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: grid;
+  gap: 10px;
+  width: 240px;
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-background-floating);
+  box-shadow: var(--motion-shadow-hover);
+}
+.mv-popover label { display: grid; gap: 4px; font-size: 11px; color: var(--color-text-secondary); }
+.mv-popover input[type="range"] { width: 100%; accent-color: var(--primary); }
+.mv-popover select {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-background-floating);
+  color: var(--color-text-primary);
+  padding: 5px 8px;
+}
+
+/* ── viewer: wireframe segmented + bg segmented ───────────────────────── */
+.mv-wire-seg,
+.mv-bg-seg { display: flex; gap: 4px; }
+
 @media (max-width: 980px) {
   .gx-center-grid { grid-template-columns: 1fr; }
 }
@@ -960,3 +1000,25 @@ body[data-pane='center'] .gx-center { height: 100%; }
   .fx-btn:active:not(:disabled),
   .fx-segmented-btn:active { transform: none !important; }
 }
+
+/* ── advanced provider params panel ──────────────────────────────────────── */
+.adv-params { margin-top: 8px; border-top: 1px solid var(--color-divider-subtle); padding-top: 8px; }
+.adv-params-summary { cursor: pointer; font-size: 12px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; }
+.adv-params-body { display: grid; gap: 8px; margin-top: 8px; }
+.adv-select {
+  border: 1px solid var(--color-border-default); border-radius: var(--radius-md);
+  background: var(--color-background-floating); color: var(--color-text-primary); padding: 6px 8px; font-size: 12px;
+}
+
+/* ── quality inspector bars ──────────────────────────────────────────── */
+.q-row { display: grid; grid-template-columns: 56px 1fr 30px 34px auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+.q-label { font-size: 11px; color: var(--color-text-secondary); }
+.q-bar { height: 6px; border-radius: 3px; background: var(--color-background-floating); overflow: hidden; }
+.q-bar-fill { height: 100%; background: var(--primary); transition: width var(--motion-duration-base) var(--motion-ease-out); }
+.q-val { font-size: 11px; color: var(--color-text-primary); text-align: right; }
+.q-src { font-size: 10px; padding: 1px 5px; border-radius: 999px; }
+.q-src--auto { color: var(--primary); background: var(--primary-bg); }
+.q-src--manual { color: var(--color-status-amber); }
+.q-src--none { color: var(--color-text-tertiary, var(--color-text-secondary)); }
+.q-edit { width: 52px; padding: 2px 4px; border: 1px solid var(--color-border-default); border-radius: var(--radius-md); background: var(--color-background-floating); color: var(--color-text-primary); }
+.q-actions { display: flex; gap: 6px; margin-top: 8px; }

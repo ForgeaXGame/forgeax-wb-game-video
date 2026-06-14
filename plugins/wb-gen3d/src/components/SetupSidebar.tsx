@@ -4,6 +4,7 @@ import { callTool } from '@/lib/toolClient';
 import { scratchPreviewUrl } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
 import type { AssetSlot } from '@shared/manifest';
+import { providerParamSpec, type ParamField } from '@shared/provider-params';
 import {
   EDITOR_ICON_MAP,
   modeMeta,
@@ -52,8 +53,17 @@ export function SetupSidebar({
   const [polycountTier, setPolycountTier] = useState<PolycountTier>('mid');
   const [poseResult, setPoseResult] = useState<PoseResult | null>(null);
 
+  type ParamValue = string | number | boolean;
+  const [providerParams, setProviderParams] = useState<Record<string, ParamValue>>({});
+  useEffect(() => setProviderParams({}), [provider]);
+
+  const visibleParamFields: ParamField[] = providerParamSpec[provider].filter(
+    (f) => f.verified && f.appliesToModes.includes(mode),
+  );
+
   const usesImageInput = mode === 'image' || mode === 'views';
   const GenerateIcon = EDITOR_ICON_MAP.generate;
+  const ParamsIcon = EDITOR_ICON_MAP.params;
 
   const filledViews = [frontUrl, backUrl, leftUrl, rightUrl].filter((u) => u.trim().length > 0).length;
 
@@ -80,7 +90,8 @@ export function SetupSidebar({
   function submit() {
     if (!canSubmit) return;
     const targetPolycount = tierToFaceCount(provider, polycountTier);
-    const common = { provider, assetSlot, enablePbr, targetPolycount };
+    const common: Record<string, unknown> = { provider, assetSlot, enablePbr, targetPolycount };
+    if (Object.keys(providerParams).length > 0) common.providerParams = providerParams;
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
     } else if (mode === 'image') {
@@ -313,6 +324,31 @@ export function SetupSidebar({
               <input type="checkbox" checked={enablePbr} onChange={(e) => setEnablePbr(e.target.checked)} />
               <span>启用 PBR 材质</span>
             </label>
+            {visibleParamFields.length > 0 && (
+              <details className="adv-params">
+                <summary className="adv-params-summary">
+                  <ParamsIcon size={13} /> 高级参数（{providerMeta[provider].label} 专属）
+                </summary>
+                <div className="adv-params-body">
+                  {visibleParamFields.map((f) => (
+                    <ProviderParamControl
+                      key={f.key}
+                      field={f}
+                      value={providerParams[f.key]}
+                      onChange={(v) =>
+                        setProviderParams((p) => {
+                          const next = { ...p };
+                          if (v === undefined) delete next[f.key];
+                          else next[f.key] = v;
+                          return next;
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+                <p className="step-note">仅在该 provider 真机生成时生效；mock / 未配置时忽略。</p>
+              </details>
+            )}
             {provider === 'meshy' && mode === 'text' && (
               <p className="step-note">
                 Meshy 文生先产出 preview 白模；生成后在结果卡片点「加贴图 (refine)」补纹理。
@@ -331,6 +367,75 @@ export function SetupSidebar({
         </button>
       </div>
     </div>
+  );
+}
+
+function ProviderParamControl({
+  field,
+  value,
+  onChange,
+}: {
+  field: ParamField;
+  value: string | number | boolean | undefined;
+  onChange: (v: string | number | boolean | undefined) => void;
+}) {
+  if (field.type === 'bool') {
+    return (
+      <label className="fx-check">
+        <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />
+        <span>{field.label}</span>
+      </label>
+    );
+  }
+  if (field.type === 'enum') {
+    return (
+      <label className="field">
+        <span className="field-label">{field.label}</span>
+        <select
+          className="adv-select"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+        >
+          <option value="">（默认）</option>
+          {(field.options ?? []).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {field.help && <span className="step-note">{field.help}</span>}
+      </label>
+    );
+  }
+  if (field.type === 'int') {
+    return (
+      <label className="field">
+        <span className="field-label">
+          {field.label}
+          {field.min !== undefined && field.max !== undefined ? ` (${field.min}–${field.max})` : ''}
+        </span>
+        <input
+          className="fx-input"
+          type="number"
+          min={field.min}
+          max={field.max}
+          value={value === undefined ? '' : (value as number)}
+          onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+        />
+        {field.help && <span className="step-note">{field.help}</span>}
+      </label>
+    );
+  }
+  return (
+    <label className="field">
+      <span className="field-label">{field.label}</span>
+      <input
+        className="fx-input"
+        type="text"
+        value={(value as string) ?? ''}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+      />
+    </label>
   );
 }
 

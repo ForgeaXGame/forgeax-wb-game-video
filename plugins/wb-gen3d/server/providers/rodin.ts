@@ -48,6 +48,7 @@ export interface RodinGenerateInput {
   imageUrls?: string[];
   // Customize poly count (Rodin quality_override; ranges ~2000–200000).
   qualityOverride?: number;
+  params?: Record<string, string | number | boolean>;
 }
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -189,6 +190,11 @@ export class RodinProvider {
       throw Object.assign(new Error('rodin image/views mode requires at least one image'), {
         code: 'invalid_image_url',
       });
+    }
+    if (input.params) {
+      for (const [key, value] of Object.entries(input.params)) {
+        form.set(key, String(value));
+      }
     }
     return form;
   }

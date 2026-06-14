@@ -39,6 +39,7 @@ export interface MeshyGenerateInput {
   shouldTexture?: boolean;
   targetPolycount?: number;
   aiModel?: string;
+  params?: Record<string, string | number | boolean>;
 }
 
 // Injectable transports so smokes can run without a real network call.
@@ -137,6 +138,7 @@ export class MeshyProvider {
         payload.should_remesh = true;
         payload.target_polycount = polycount;
       }
+      this.applyProviderParams(payload, input.params);
       return payload;
     }
     if (input.mode === 'refine') {
@@ -148,12 +150,25 @@ export class MeshyProvider {
     if (input.mode === 'image') {
       const payload: Record<string, unknown> = { image_url: input.imageUrl ?? '' };
       this.applyMeshOptions(payload, input, polycount);
+      this.applyProviderParams(payload, input.params);
       return payload;
     }
     // views
     const payload: Record<string, unknown> = { image_urls: (input.imageUrls ?? []).slice(0, 4) };
     this.applyMeshOptions(payload, input, polycount);
+    this.applyProviderParams(payload, input.params);
     return payload;
+  }
+
+  private applyProviderParams(
+    payload: Record<string, unknown>,
+    params: Record<string, string | number | boolean> | undefined,
+  ): void {
+    if (!params) return;
+    Object.assign(payload, params);
+    if (payload.topology !== undefined && payload.should_remesh === undefined) {
+      payload.should_remesh = true;
+    }
   }
 
   private applyMeshOptions(

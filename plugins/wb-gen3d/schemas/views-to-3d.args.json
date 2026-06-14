@@ -46,6 +46,11 @@
       "minimum": 1000,
       "maximum": 300000,
       "default": 30000
+    },
+    "providerParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Provider-specific native params (validated server-side against shared/provider-params.ts; unverified/inapplicable fields are dropped). See docs/PROVIDER_PARAMS.md."
     }
   },
   "required": ["views"],
