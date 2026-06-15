@@ -384,7 +384,9 @@ Expected working directory:
 
 Expected branch:
 
-`laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`
+`laurenceelu/feat-20260615-gen3d-polish`（studio + marketplace 同名）
+
+（历史：`feat-20260609-hunyuan3d-meshy-pipeline-card` 已合入 main 并于 2026-06-15 删除本地分支。）
 
 The top-level Studio repo should remain on the matching feature branch. The
 top-level repo only needs to record the submodule pointer when integration or a
