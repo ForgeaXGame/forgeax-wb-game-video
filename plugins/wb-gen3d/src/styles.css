@@ -957,7 +957,7 @@ body[data-pane='center'] .gx-center { height: 100%; }
 .mv-popover {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
   z-index: 5;
   display: grid;
   gap: 10px;

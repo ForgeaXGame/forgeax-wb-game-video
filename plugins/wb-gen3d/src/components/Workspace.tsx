@@ -1,9 +1,10 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { Box, AlertTriangle as AlertIcon } from 'lucide-react';
 import { selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest, ManifestFile, MotionType } from '@shared/manifest';
 import type { GenerateResult } from '@/types';
 import { blobUrl } from '@/lib/blobUrl';
+import { downloadBundle } from '@/lib/exportBundle';
 import { ModelViewer } from '@/components/ModelViewer';
 import { EDITOR_ICON_MAP, MOTION_TYPES, motionMeta } from '@/ui-meta';
 
@@ -16,6 +17,7 @@ const RigIcon = EDITOR_ICON_MAP.rig;
 const MotionIcon = EDITOR_ICON_MAP.motion;
 const LowpolyIcon = EDITOR_ICON_MAP.lowpoly;
 const ImgIcon = EDITOR_ICON_MAP.image;
+const HandoffIcon = EDITOR_ICON_MAP.handoff;
 
 // Center pane: header + transient error/loading banners + the result workspace.
 // Selection from the asset library takes precedence over the latest generation;
@@ -236,6 +238,7 @@ function ResultCard({
             <RefineIcon size={14} /> {busy ? '处理中…' : '加贴图 (refine)'}
           </button>
         )}
+        <ExportBundleButton manifest={manifest} />
       </div>
 
       <DownstreamPanel
@@ -354,6 +357,45 @@ function DownstreamPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+// Export the whole asset (main GLB + rig/motion GLB+FBX + textures + preview +
+// manifest.json) as one .zip for handoff. Pure front-end (lib/exportBundle):
+// fetches each file from /api/game-assets and zips in-browser — no server route,
+// tool, or dependency. Local busy/error state so it never touches the global
+// generation spinner.
+function ExportBundleButton({ manifest }: { manifest: Gen3DAssetManifest }): JSX.Element {
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const onExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      await downloadBundle(manifest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="fx-btn fx-btn--sm"
+        disabled={exporting}
+        title="把主模型 + 绑骨 + 全部动作(GLB/FBX) + 贴图 + 预览图 + manifest.json 打包成一个 .zip 下载"
+        onClick={onExport}
+      >
+        <HandoffIcon size={14} /> {exporting ? '打包中…' : '导出资产包 (.zip)'}
+      </button>
+      {error && (
+        <small className="downstream-hint" role="alert" style={{ flexBasis: '100%' }}>
+          导出失败：{error}
+        </small>
+      )}
+    </>
   );
 }
 
