@@ -173,6 +173,14 @@
           "zh": "质量评分（按需混合，ADR-0004）：合并客户端客观启发式 + 人工覆盖（AI 视觉评本期为 mock 桩）写入资产 sidecar 的 quality 报告，返回更新后的 manifest。lazy 持久化：浏览不写盘，仅评分/覆盖时落库。",
           "en": "Score quality (on-demand hybrid, ADR-0004): merge client objective heuristics + manual overrides (AI vision is a mock stub this round) into the asset sidecar quality report and return the updated manifest. Lazy persistence: browsing never writes; only scoring/override persists."
         }
+      },
+      {
+        "id": "gen3d:rename-asset",
+        "exposedToAI": false,
+        "description": {
+          "zh": "设置资产的用户自定义显示名（userLabel）。传 null 或空字符串可清除，恢复自动名称（prompt 首行或文件名 stem）。",
+          "en": "Set a user-defined display label (userLabel) on an asset. Pass null or empty string to clear and revert to the auto-name (prompt first line or filename stem)."
+        }
       }
     ],
     "events": [
