@@ -41,6 +41,7 @@ export function SetupSidebar({
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
   const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
   const [assetSlot, setAssetSlot] = useState<AssetSlot>('characters');
+  const [assetName, setAssetName] = useState('');
   const [mode, setMode] = useState<Mode>('text');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
@@ -91,6 +92,8 @@ export function SetupSidebar({
     if (!canSubmit) return;
     const targetPolycount = tierToFaceCount(provider, polycountTier);
     const common: Record<string, unknown> = { provider, assetSlot, enablePbr, targetPolycount };
+    const trimmedName = assetName.trim();
+    if (trimmedName) common.assetName = trimmedName;
     if (Object.keys(providerParams).length > 0) common.providerParams = providerParams;
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
@@ -217,6 +220,21 @@ export function SetupSidebar({
                 角色可后续绑骨 / 加动作；物件为静态道具 / 场景。决定存放槽位，不可在生成后切换。
               </p>
             </div>
+
+            <label className="field">
+              <span className="field-label">资产名称（可选）</span>
+              <input
+                className="fx-input"
+                type="text"
+                value={assetName}
+                placeholder="留空自动命名（如 views-meshy-3）"
+                maxLength={60}
+                onChange={(e) => setAssetName(e.target.value)}
+              />
+              <p className="step-note">
+                用作文件名与导出 .zip 名（仅保留字母/数字，会转小写）。留空则按 prompt / 模式自动命名。
+              </p>
+            </label>
 
             {mode === 'text' && (
               <label className="field">

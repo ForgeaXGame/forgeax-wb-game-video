@@ -396,6 +396,40 @@ export class PerGameAssetStore implements AssetStorage {
     });
   }
 
+  // ─── User label (display name) ────────────────────────────────────────────
+  async updateAssetLabel(
+    slug: string,
+    assetPath: string,
+    label: string | null,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+      const trimmed = label?.trim() || null;
+      const updated: AssetSidecar = {
+        ...sidecar,
+        custom: { ...sidecar.custom, userLabel: trimmed },
+      };
+      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
   // ─── Lazy quality persistence (ADR-0004) ──────────────────────────────────
   async updateAssetQuality(
     slug: string,
@@ -538,6 +572,7 @@ function sidecarToManifest(
     sourceJobId: c.sourceJobId,
     sourceInputAssetPaths: c.sourceInputAssetPaths ?? [],
     prompt: c.prompt,
+    userLabel: c.userLabel ?? null,
     files,
     // Always derive from the restored file set so appended rig/anim files are
     // reflected even when the stored custom.readiness is stale.
