@@ -93,6 +93,7 @@ export interface CharacterProfile {
 export interface CharacterDesignResult {
   profile: CharacterProfile
   characterImage: string | null
+  characterImageUrl: string | null
   timestamp: number
 }
 
@@ -135,7 +136,7 @@ function randomSuffix(): string {
  *  that send images to the generate-image API need base64, not a URL. */
 async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { cache: 'no-cache' })
     if (!res.ok) return null
     const blob = await res.blob()
     return await new Promise<string | null>((resolve) => {
@@ -149,10 +150,25 @@ async function fetchAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
+async function canDecodeImage(src: string): Promise<boolean> {
+  try {
+    const dataUrl = src.startsWith('data:') ? src : await fetchAsDataUrl(src)
+    if (!dataUrl) return false
+    const blob = await fetch(dataUrl).then((r) => r.blob())
+    if (!blob || blob.size < 32) return false
+    const bmp = await createImageBitmap(blob)
+    bmp.close()
+    return true
+  } catch {
+    return false
+  }
+}
+
 class GlobalStateManager {
   private design: CharacterDesignResult = {
     profile: { ...DEFAULT_PROFILE },
     characterImage: null,
+    characterImageUrl: null,
     timestamp: 0,
   }
   private imageModel: ImageModel = DEFAULT_IMAGE_MODEL
@@ -205,7 +221,9 @@ class GlobalStateManager {
 
   get(): CharacterDesignResult { return this.design }
   get profile(): CharacterProfile { return this.design.profile }
-  get hasCharacter(): boolean { return this.design.characterImage !== null }
+  get hasCharacter(): boolean {
+    return this.design.characterImage !== null || this.design.characterImageUrl !== null
+  }
 
   /**
    * 当前全局生图模型偏好。
@@ -239,7 +257,10 @@ class GlobalStateManager {
    *
    * 返回读到的 role(供 main.ts 决定路由到哪条管线),失败返回 null。
    */
-  async loadCharacterFromDisk(charId: string): Promise<{ role: string } | null> {
+  async loadCharacterFromDisk(
+    charId: string,
+    opts?: { force?: boolean },
+  ): Promise<{ role: string } | null> {
     if (!charId || !this._slug) return null
     try {
       const res = await fetch(
@@ -264,10 +285,12 @@ class GlobalStateManager {
         characterRole: (role === 'npc' || role === 'monster') ? role : 'hero',
       })
 
-      // 已有同 charId 的内存图(localStorage 同步)就不重读磁盘。
-      const haveImage = !!this.design.characterImage
+      // 已有同 charId 的可解码内存图就不重读磁盘；force 或损坏图则始终读盘。
       const sameChar = this.design.profile.charId === (manifest.charId ?? charId)
-      if (haveImage && sameChar) return { role }
+      if (!opts?.force && sameChar && this.design.characterImage) {
+        if (await canDecodeImage(this.design.characterImage)) return { role }
+        this.design.characterImage = null
+      }
 
       const portraitUrl =
         j.urls?.['portrait/front'] ??
@@ -280,8 +303,8 @@ class GlobalStateManager {
 
       const dataUrl = await fetchAsDataUrl(portraitUrl)
       if (dataUrl) {
-        // 直接写内存 + 通知,不触发 uploadAsset 回写(图本来就来自磁盘)。
         this.design.characterImage = dataUrl
+        this.design.characterImageUrl = portraitUrl
         this.design.timestamp = Date.now()
         this.save()
         this.notify()
@@ -362,19 +385,63 @@ class GlobalStateManager {
   setCharacterImage(dataUrl: string | null): void {
     this.design.characterImage = dataUrl
     this.design.timestamp = Date.now()
+    if (!dataUrl) this.design.characterImageUrl = null
     this.save()
     this.notify()
     if (dataUrl && this._slug) {
       const key = `${dataUrl.length}:${dataUrl.slice(0, 64)}:${dataUrl.slice(-32)}`
       if (key !== this._lastUploadedImageKey) {
         this._lastUploadedImageKey = key
-        // fire-and-forget; pipelines should treat the IDB copy as the canonical
-        // session state, this just mirrors the latest preview to disk so the
-        // <projectRoot>/.forgeax/games/<slug>/characters/<charId>/ folder
-        // actually fills up while the user is iterating
-        void this.uploadAsset('portrait/current.png', dataUrl)
+        void this.uploadAsset('portrait/current.png', dataUrl).then((r) => {
+          if (r) {
+            this.design.characterImageUrl = r.url
+            this.save()
+          }
+        })
       }
     }
+  }
+
+  /** Fetch a same-origin portrait URL into memory (handoff / hydrate). */
+  async loadPortraitFromUrl(url: string): Promise<boolean> {
+    const dataUrl = await fetchAsDataUrl(url)
+    if (!dataUrl || !await canDecodeImage(dataUrl)) return false
+    this.design.characterImage = dataUrl
+    this.design.characterImageUrl = url
+    this.design.timestamp = Date.now()
+    this.save()
+    this.notify()
+    return true
+  }
+
+  async hydrateCharacterImage(forceFromDisk = false): Promise<boolean> {
+    if (!forceFromDisk && this.design.characterImage) {
+      if (await canDecodeImage(this.design.characterImage)) return true
+      this.design.characterImage = null
+    }
+
+    const urls: string[] = []
+    if (this.design.characterImageUrl) urls.push(this.design.characterImageUrl)
+    const slug = this._slug
+    const charId = this.design.profile.charId
+    if (slug && charId) {
+      urls.push(
+        `/api/wb/character/asset?path=${encodeURIComponent(
+          `.forgeax/games/${slug}/characters/${charId}/portrait/current.png`,
+        )}`,
+      )
+    }
+
+    for (const url of urls) {
+      const dataUrl = await fetchAsDataUrl(url)
+      if (dataUrl && await canDecodeImage(dataUrl)) {
+        this.design.characterImage = dataUrl
+        if (url.startsWith('/api/')) this.design.characterImageUrl = url
+        this.notify()
+        return true
+      }
+    }
+    return false
   }
 
   /**
@@ -401,6 +468,7 @@ class GlobalStateManager {
     this.design = {
       profile: { ...DEFAULT_PROFILE },
       characterImage: null,
+      characterImageUrl: null,
       timestamp: 0,
     }
     this.save()
@@ -417,7 +485,13 @@ class GlobalStateManager {
   }
 
   private save(): void {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.design)) } catch {}
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        profile: this.design.profile,
+        characterImageUrl: this.design.characterImageUrl,
+        timestamp: this.design.timestamp,
+      }))
+    } catch { /* quota */ }
   }
 
   private load(): void {
@@ -440,8 +514,23 @@ class GlobalStateManager {
         if (typeof this.design.profile.npcOccupation !== 'string') this.design.profile.npcOccupation = ''
         // 旧档案没有 charId — 留空，等下次 ensureCharId() 真的要落盘才生成。
         if (typeof this.design.profile.charId !== 'string') this.design.profile.charId = ''
-        if (saved.characterImage) this.design.characterImage = saved.characterImage
+        if (typeof saved.characterImageUrl === 'string') {
+          this.design.characterImageUrl = saved.characterImageUrl
+        }
         if (saved.timestamp) this.design.timestamp = saved.timestamp
+        this.design.characterImage = null
+        if (typeof saved.characterImage === 'string' && saved.characterImage.startsWith('data:')) {
+          void canDecodeImage(saved.characterImage).then((ok) => {
+            if (ok) {
+              this.design.characterImage = saved.characterImage
+              this.notify()
+            } else {
+              void this.hydrateCharacterImage(true)
+            }
+          })
+        } else if (this.design.characterImageUrl) {
+          void this.hydrateCharacterImage()
+        }
       }
     } catch {}
   }
