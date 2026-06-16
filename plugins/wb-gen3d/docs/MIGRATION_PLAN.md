@@ -64,8 +64,8 @@ Deliverables:
 
 Verification:
 
-- Marketplace submodule is on
-  `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`.
+- Marketplace submodule active branch (2026-06-15):
+  `laurenceelu/feat-20260615-gen3d-polish` (historical: `feat-20260609-*`, merged to main).
 - Diff is scoped to `plugins/wb-gen3d/`.
 - No provider code, manifest, env template, generated assets, cache files, or
   API calls are introduced.

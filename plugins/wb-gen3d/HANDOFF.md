@@ -1,26 +1,16 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-14 — 三份文件级实现计划已就绪，交执行 agent。** 上轮 grill 已对齐 spec（11 项决策已与
-> operator 敲定，见 PLAN 顶部「2026-06-14 grill 修订」块；范围 = P1+P2+P3+P5，P4 推迟）。本轮把它拆成
-> 三份**可独立成 PR、task-by-task 带验证标准**的实现计划（= 执行 SSOT）：
-> - [`docs/IMPL-2026-06-14-A-viewer.md`](./docs/IMPL-2026-06-14-A-viewer.md) — 视图器 P1 模块化 + P2 影棚lite/IBL/ACES/地面投影/线框/相机chrome/localStorage 持久化
-> - [`docs/IMPL-2026-06-14-B-quality-scoring.md`](./docs/IMPL-2026-06-14-B-quality-scoring.md) — 五维评分 Phase A（纯启发式 TDD + `QualityReport` + `gen3d:score-quality` + `QualityInspector`）
-> - [`docs/IMPL-2026-06-14-C-provider-params.md`](./docs/IMPL-2026-06-14-C-provider-params.md) — Provider 参数（`provider-params.ts` param-spec TDD + Meshy/Rodin 转发 + `SetupSidebar` 高级面板）
+> **2026-06-15 — P1–P5 已全部合入 main；持续优化在分支 `laurenceelu/feat-20260615-gen3d-polish`**
+> （studio + marketplace 同名，2026-06-15 从 main 开出）。6/14 落地的三批：
+> - 视图器 P1+P2（`f5aa49c`）— 影棚 lite / IBL / ACES / 阴影 / 线框 / 相机 chrome
+> - 五维评分 P3 Phase A（`24143d7`）— heuristics TDD + `gen3d:score-quality` + `QualityInspector`
+> - Provider 参数 P5（`608c365`）— `provider-params.ts` + Meshy/Rodin 转发 + SetupSidebar 高级面板
 >
-> 三份用 `subagent-driven-development` / `executing-plans` skill 逐任务执行。**对齐后的 spec**（背景与决策
-> 依据，非执行清单）= `docs/PLAN-2026-06-13-viewer-quality-provider-params.md`（顶部「grill 修订」块） +
-> `docs/PROVIDER_PARAMS.md` + `docs/adr/0004-on-demand-hybrid-quality-scoring.md`。详见下方「下一步工作」
-> section（含分批表 / 执行顺序 / 测试基建 / 跨文件冲突点）。以下「Last updated」与 M13 为上一阶段背景。
+> IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成的执行 SSOT**，勿重复跑。对齐 spec =
+> `docs/PLAN-2026-06-13-viewer-quality-provider-params.md` + `docs/PROVIDER_PARAMS.md` +
+> `docs/adr/0004-on-demand-hybrid-quality-scoring.md`。
 
-Last updated: 2026-06-12 Asia/Hong_Kong (M13 rig/motion/low_poly **代码完成 (mock-first)** —
-PLAN/ADR-0003 **Accepted**；store-append + hunyuan-rest 三方法 + 三工具 (`gen3d:auto-rig`
-/ `gen3d:apply-motion` / `gen3d:retopo-lowpoly`) + schema + plugin.json + UI (绑骨→动作
-step 流 + ModelViewer AnimationMixer 播放 + AssetLibrary readiness/motion 徽标) 全落地，
-typecheck/build 通过，mock 全链 sanity 通过（generate→rig→motion×2→lowpoly→list +
-幂等/not-rigged 守卫）。三工具均 `exposedToAI:false`、Gate 0/1 真机验证通过前只走 mock。
-M3–M12 已并入 main。Rodin image-to-3D real-verified; Hunyuan internal-net egress→public
-COS **Gate 0 待真机**。SSOT: M13 = `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`; history
-M9–M12 = `docs/PLAN-2026-06-11-rodin-cos-pergame.md`)
+Last updated: 2026-06-15 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
@@ -36,32 +26,32 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 `bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
 `bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
 
-## 下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数（2026-06-14 · 三份实现计划就绪，交执行）
+## 当前开发线 = 持续优化（2026-06-15 · 分支 `laurenceelu/feat-20260615-gen3d-polish`）
 
-> **交给执行 agent：三份 IMPL 是逐任务执行清单（execution SSOT）。** 三块解耦，可任意顺序、各自独立成
-> PR。用 `subagent-driven-development`（推荐）或 `executing-plans` skill 按 `- [ ]` 步骤推进。
+> studio + marketplace **同名分支**，从 main 开出。改代码在 marketplace 子模块内 commit；合入前 studio 父仓 bump marketplace 指针。
 
-| 批 | 计划（execution SSOT） | 建议分支 | 任务/测试 | 解耦性 |
-|---|---|---|---|---|
-| **A** P1→P2 视图器 | `docs/IMPL-2026-06-14-A-viewer.md` | `laurenceelu/feat-20260614-gen3d-viewer-studio` | P1 行为不变抽 `viewer/scene.ts`（带回归基线 checklist）→ P2 七任务叠加；**typecheck+build+视觉回归**（无单测，three.js/DOM） | 独立 |
-| **B** P3 五维评分 | `docs/IMPL-2026-06-14-B-quality-scoring.md` | `laurenceelu/feat-20260614-gen3d-quality-scoring` | 纯启发式 `shared/quality/heuristics.ts`（**TDD 8 断言**）+ `QualityReport` + `updateAssetQuality`（**TDD 3 断言**）+ `gen3d:score-quality` + `QualityInspector` | 独立（不耦合 ModelViewer，自己 load GLB） |
-| **C** P5 Provider 参数 | `docs/IMPL-2026-06-14-C-provider-params.md` | `laurenceelu/feat-20260614-gen3d-provider-params` | `shared/provider-params.ts` param-spec + 纯 `filterProviderParams`（**TDD 7 断言**）+ Meshy/Rodin 转发 + tool 校验/cacheKey + `SetupSidebar` 高级面板 | 独立 |
+| 优先级 | 事项 | 说明 |
+|---|---|---|
+| **P0** | M13 真机验收 + 开放 AI | Gate 0 自动探测已通过；剩 operator 目视 T-pose/动画，然后把 `gen3d:auto-rig` / `apply-motion` / `retopo-lowpoly` 的 `exposedToAI` 翻 `true` |
+| **P1** | 视图器/HDR/评分 UI 打磨 | 基于已合入的 P1–P3 做体验迭代；`public/hdr/` 缺真实 1k `.hdr` + `presets.json` 登记 |
+| **P2** | Provider 参数扩展 | 按 `docs/PROVIDER_PARAMS.md` 补更多 doc-verified 字段 |
+| **P3** | P4 AI 视觉评分 | 需 operator 授权 `packages/server` + llm-gateway 多模态；本期按钮置灰是预期 |
+| **P4** | 视图器进阶 | 反射地面、模型 gizmo、DCC 外壳 — 明确列为后续立项 |
 
-**执行前必读（3 条基建/冲突点）**：
-1. **测试基建**（A 的 P1.2 Step 2b == B0 == C0，做一次即可）：`package.json` 加 `"test": "bun test"`，`tsconfig.json` 加 `"exclude": ["**/*.test.ts"]`（让 `tsc --noEmit` 不编译测试文件）。B/C 纯逻辑走 TDD `bun test`。
-2. **跨文件冲突点（若并行）**：B 和 C 都改 `server/tool-handlers.ts`（不同区域：B 加 `gen3d:score-quality` handler；C 改 `BaseGenArgs` + 三个生成函数）和 `src/styles.css`（各自 append）——合并是 additive，最多 import 行小冲突。`QualityReport` 共享数据模型**只在 B**，A/C 不依赖。
-3. **dist 铁律**：改 `src/**` 后必须 `bun run build` 重建 `dist/` 再硬刷新嵌入式 Workbench（见本文件上方「改完前端源码必须 rebuild dist」）。standalone `bun run dev`（:15175）走 vite HMR 无此问题。
+**已锁决策（P1–P5 落地，勿重新 litigate）**：见 `docs/PLAN-2026-06-13-viewer-quality-provider-params.md` 顶部「grill 修订」块（D1–D9）。**本期边界**：插件目录内，**零 `packages/server` 改动**（P4 未授权前）。
 
-**三块需求**（operator 2026-06-13/14 提出）：① 视图器对标 **Blender 4.x**（背景三态 + HDR/IBL + ACES 曝光 + 地面投影 + 线框）；② 五维质量评分从占位变可用（**混合**：客观启发式 + 可选 AI 视觉 + 人工覆盖）；③ 各 provider 暴露**已验证**的高价值参数。
+## ~~下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数~~（2026-06-14 · ✅ 已完成合入 main）
 
-**已锁决策（勿重新 litigate，详见 spec §2 决策摘要 D1–D9 + PLAN 顶部 grill 修订块）**：
-- **D9 视图器默认观感 = mockup B（影棚 HDRI / Material-Preview）**；A（实色渐变/Solid）、C（HDR 环境作背景/Rendered）作切换态。三张 mockup：`docs/mockups/viewer-mockup-{a-solid,b-studio,c-hdri}.png`。
-- **A 边界（grill A1/A2/A3）**：只做 `ModelViewer` 渲染质量 + `渲染设置` popover + 相机级 chrome；**不做** 模型变换 gizmo / DCC 外壳 / 反射地面 / `viewer/capture.ts`（**capture 推迟到 P4**，供 AI 视觉复用）。HDR `.hdr` 可选，缺省回退内置 `RoomEnvironment`。
-- **B lazy 持久化（grill B5）**：选中即时客户端算 + 显示、**不写盘**；仅手动覆盖 / 未来 AI 评分才经 `gen3d:score-quality` 落库（merge-only，无 server 端 three.js）。mock 资产是占位字节、无法解析 → 诚实显示「无法评分」。
-- **D4 评分 AI = 本期只 mock 桩 / 按钮置灰**（`prompt_fidelity` 维 disabled）。真实 AI（授权 server 路由 + 网关多模态 + vision）**推迟**——operator **暂不授权动 `packages/server`**；现 `llm-gateway` 是纯文本，须先扩多模态。
-- **C verified 语义（grill C2，宽松）**：verified = 「官方文档存在」即可暴露（mock/无 key 时参数惰性、不生效）。Meshy `art_style`/`symmetry_mode`/`negative_prompt` 已 deprecated、`geometry_file_format`（store 只留 GLB，改格式破坏持久化）、所有 `⏳ 待验证` 字段**均不暴露**。
+<details>
+<summary>历史执行记录（IMPL A/B/C，已归档）</summary>
 
-**本期边界**：全部插件目录内，**零 `packages/server` 改动**。HDR 占位目录已建 `public/hdr/`（README + presets.json，纳入 git）；**开放项** = operator 回头放 1k `.hdr` 并登记 `presets.json`，否则只有内置中性环境。
+| 批 | 计划 | 分支（历史） | 状态 |
+|---|---|---|---|
+| **A** P1→P2 视图器 | `docs/IMPL-2026-06-14-A-viewer.md` | `laurenceelu/feat-20260614-gen3d-viewer-studio` | ✅ `f5aa49c` |
+| **B** P3 五维评分 | `docs/IMPL-2026-06-14-B-quality-scoring.md` | `laurenceelu/feat-20260614-gen3d-quality-scoring` | ✅ `24143d7` |
+| **C** P5 Provider 参数 | `docs/IMPL-2026-06-14-C-provider-params.md` | `laurenceelu/feat-20260614-gen3d-provider-params` | ✅ `608c365` |
+
+</details>
 
 ## 近期阶段 = M13：角色绑骨 / 动作 / low_poly 减面（2026-06-12，代码完成 mock-first；待 operator 目视 + 翻 exposedToAI）
 
@@ -394,7 +384,9 @@ Expected working directory:
 
 Expected branch:
 
-`laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`
+`laurenceelu/feat-20260615-gen3d-polish`（studio + marketplace 同名）
+
+（历史：`feat-20260609-hunyuan3d-meshy-pipeline-card` 已合入 main 并于 2026-06-15 删除本地分支。）
 
 The top-level Studio repo should remain on the matching feature branch. The
 top-level repo only needs to record the submodule pointer when integration or a
@@ -637,8 +629,8 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 
 ## Pending Work (do NOT lose — push incrementally)
 
-> **Current next work = M13** — see top-of-file section + `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`.
-> Historical M9-M12 SSOT: `docs/PLAN-2026-06-11-rodin-cos-pergame.md`.
+> **Current next work = 持续优化（见顶部「当前开发线」）** — 分支 `laurenceelu/feat-20260615-gen3d-polish`。
+> M13 历史 SSOT: `docs/PLAN-2026-06-12-rig-motion-lowpoly.md`。
 
 | Item | Status | Blocker / note |
 | --- | --- | --- |
@@ -649,7 +641,7 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 | ~~M13-3 apply-motion~~ | **DONE (mock-first)** | `gen3d:apply-motion`, int 9–16, idempotent per motion, not-rigged guard |
 | ~~M13-1 retopo-lowpoly~~ | **DONE (mock-first)** | `gen3d:retopo-lowpoly`, new derived asset, cache-first, source retained |
 | ~~M13-4 UI~~ | **DONE** | DownstreamPanel rig→motion + ModelViewer AnimationMixer + AssetLibrary readiness/motion badges |
-| **M8 quality scoring UI** | reserved | `InspectorReserved` placeholder; needs runtime scorer |
+| **M8 quality scoring UI** | **DONE (P3 Phase A)** | `QualityInspector` + heuristics；AI 维 P4 推迟 |
 | gen3d → game assets handoff (quality scoring) | not started | M8 remaining polish (non-blocking) |
 | Quality-rubric scoring runtime | not started | static rubric dims from `provider-status` only |
 | **GLB/OBJ dedup** | **DONE** (ADR-0002) | `per-game-store.ts` `planFiles()` keeps GLB, drops OBJ |

@@ -1,7 +1,7 @@
 # 开发计划：混元角色绑骨 + 动作系统（+ low_poly 可选旁路）
 
 > Status: 🟢 ACCEPTED（2026-06-12 grill 收尾；对照混元三份官方 PDF + 代码 review 完成，可执行）
-> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（studio + marketplace 子模块同名；M3–M12 已合入三仓 main）
+> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（历史；已合入 main。当前开发：`laurenceelu/feat-20260615-gen3d-polish`）
 > 里程碑代号：**M13**（承接 `docs/PLAN-2026-06-11-rodin-cos-pergame.md` 的 M9–M12）
 > 来源：2026-06-12 与用户的方案讨论（逐项确认，见下"已确认的关键决策"）。
 > SSOT 决策记录：`docs/adr/0003-rig-motion-lowpoly-pipeline.md`（与本计划同批起草）。

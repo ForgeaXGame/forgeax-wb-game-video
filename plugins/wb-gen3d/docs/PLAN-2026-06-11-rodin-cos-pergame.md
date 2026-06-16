@@ -1,7 +1,7 @@
 # 开发计划：Rodin + 本地上传/COS + per-game 存储重构 + UI 升级
 
 > Status: 🟢 READY FOR EXECUTION（2026-06-11 定稿；同日经第二轮 grill-with-docs review 修订关键决策，待交接给执行 agent）
-> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（studio + marketplace 子模块同名）
+> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（历史；已合入 main。当前开发：`laurenceelu/feat-20260615-gen3d-polish`）
 > 来源: 2026-06-11 grill-with-docs 需求澄清 + 同日第二轮 grill review；所有关键决策已与用户逐条确认。
 > 本文件是这次新增工作的 SSOT 计划。原路线 `docs/MIGRATION_PLAN.md` 的 M0–M8 历史保留不删；本计划新增 M9–M12 并承接旧未完成项。
 >
