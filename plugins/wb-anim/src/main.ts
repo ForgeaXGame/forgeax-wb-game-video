@@ -169,7 +169,7 @@ async function main() {
  *  Mirror of ANIM_HANDOFF_KEY in interface/StandalonePluginIframe.tsx. */
 const ANIM_HANDOFF_KEY = 'forgeax:anim-handoff'
 
-interface AnimHandoff { charId?: string; role?: string; slug?: string; ts?: number }
+interface AnimHandoff { charId?: string; role?: string; slug?: string; portraitUrl?: string; ts?: number }
 
 /** role → wb-anim 管线 id。载具走载具设计;角色(hero/npc/monster)默认走像素
  *  四方向。用户进来后仍可在顶栏切到 spine / video。 */
@@ -195,6 +195,14 @@ async function consumeAnimHandoff(registry: PipelineRegistry): Promise<void> {
   } catch { /* unavailable */ }
   if (sig?.slug) globalState.setSlug(sig.slug)
 
+  // Fast path: portrait URL written by wb-character right before navigate.
+  if (sig?.portraitUrl) {
+    const ok = await globalState.loadPortraitFromUrl(sig.portraitUrl)
+    if (ok && sig.charId) {
+      globalState.updateProfile({ charId: sig.charId })
+    }
+  }
+
   // 2) 以工程目录指针文件为事实源,确定要加载哪个 charId/role。
   const slug = globalState.getSlug()
   let charId = ''
@@ -214,7 +222,7 @@ async function consumeAnimHandoff(registry: PipelineRegistry): Promise<void> {
   // 返回的 role 以磁盘 manifest 为准,失败(返回 null)则保留上面已确定的 role,
   // 不覆盖成兜底值。
   if (charId) {
-    const r = await globalState.loadCharacterFromDisk(charId)
+    const r = await globalState.loadCharacterFromDisk(charId, { force: !sig?.portraitUrl })
     if (r?.role) role = r.role
   }
 

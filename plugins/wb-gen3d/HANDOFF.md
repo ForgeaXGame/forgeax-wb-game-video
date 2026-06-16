@@ -1,16 +1,17 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-15 — P1–P5 已全部合入 main；持续优化在分支 `laurenceelu/feat-20260615-gen3d-polish`**
-> （studio + marketplace 同名，2026-06-15 从 main 开出）。6/14 落地的三批：
-> - 视图器 P1+P2（`f5aa49c`）— 影棚 lite / IBL / ACES / 阴影 / 线框 / 相机 chrome
-> - 五维评分 P3 Phase A（`24143d7`）— heuristics TDD + `gen3d:score-quality` + `QualityInspector`
-> - Provider 参数 P5（`608c365`）— `provider-params.ts` + Meshy/Rodin 转发 + SetupSidebar 高级面板
+> **2026-06-16 — 资产命名（显示改名 + 生成时定名）已合入 `laurenceelu/feat-20260615-gen3d-polish`。**
+> 6/15–6/16 落地：
+> - render-settings popover 向下展开修复（`b8eead9`）
+> - 资产包 `.zip` 一键导出（`3dce7a0`）— 零依赖 store-only zip writer + `ExportBundleButton` UI
+> - Studio plugin iframe sandbox 补 `allow-downloads`（`606940f`，`packages/interface`）— 修复 sandboxed iframe 静默拦截下载的根因
+> - **资产库 inline 改名**（`d37f557`）— `userLabel` sidecar 字段 + `gen3d:rename-asset` + 卡片铅笔图标；仅改显示名，不改磁盘文件名
+> - **生成时命名**（`b6e8c6e`）— SetupSidebar「资产名称」可选框 → `assetName` 参数；文件名 / 导出 .zip 名从生成起确定
 >
-> IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成的执行 SSOT**，勿重复跑。对齐 spec =
-> `docs/PLAN-2026-06-13-viewer-quality-provider-params.md` + `docs/PROVIDER_PARAMS.md` +
-> `docs/adr/0004-on-demand-hybrid-quality-scoring.md`。
+> 早前 6/14 落地的三批（已完成，勿重复）：视图器 P1+P2（`f5aa49c`）/ 五维评分 P3（`24143d7`）/ Provider 参数 P5（`608c365`）。
+> IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成执行 SSOT**。
 
-Last updated: 2026-06-15 Asia/Hong_Kong
+Last updated: 2026-06-16 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
@@ -26,12 +27,15 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 `bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
 `bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
 
-## 当前开发线 = 持续优化（2026-06-15 · 分支 `laurenceelu/feat-20260615-gen3d-polish`）
+## 当前开发线 = `laurenceelu/feat-20260615-gen3d-polish`（2026-06-16）
 
-> studio + marketplace **同名分支**，从 main 开出。改代码在 marketplace 子模块内 commit；合入前 studio 父仓 bump marketplace 指针。
+> studio + marketplace **同名分支**。改代码在 marketplace 子模块内 commit；合入前 studio 父仓 bump marketplace 指针。
 
 | 优先级 | 事项 | 说明 |
 |---|---|---|
+| ✅ **已完成** | 资产包 `.zip` 导出 | `src/lib/zip.ts` + `exportBundle.ts` + `ExportBundleButton`；`StandalonePluginIframe` sandbox 补 `allow-downloads` |
+| ✅ **已完成** | 资产库 inline 改名 | `userLabel` + `gen3d:rename-asset` + 卡片铅笔；显示名 only |
+| ✅ **已完成** | 生成时命名 | SetupSidebar「资产名称」→ `assetName`；文件名 / 导出 .zip 从生成起确定 |
 | **P0** | M13 真机验收 + 开放 AI | Gate 0 自动探测已通过；剩 operator 目视 T-pose/动画，然后把 `gen3d:auto-rig` / `apply-motion` / `retopo-lowpoly` 的 `exposedToAI` 翻 `true` |
 | **P1** | 视图器/HDR/评分 UI 打磨 | 基于已合入的 P1–P3 做体验迭代；`public/hdr/` 缺真实 1k `.hdr` + `presets.json` 登记 |
 | **P2** | Provider 参数扩展 | 按 `docs/PROVIDER_PARAMS.md` 补更多 doc-verified 字段 |
