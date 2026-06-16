@@ -1,4 +1,5 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { Pencil, Check, X } from 'lucide-react';
 import { selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
@@ -24,8 +25,9 @@ export function AssetLibrary(props: {
   onRefresh: () => void;
   onSelect: (asset: Gen3DAssetManifest) => void;
   onDelete: (assetPath: string) => void;
+  onRename: (assetPath: string, label: string | null) => void;
 }): JSX.Element {
-  const { assets, selectedId, gameActive, onRefresh, onSelect, onDelete } = props;
+  const { assets, selectedId, gameActive, onRefresh, onSelect, onDelete, onRename } = props;
   const [confirmPath, setConfirmPath] = useState<string | null>(null);
   return (
     <section className="gx-card">
@@ -63,6 +65,7 @@ export function AssetLibrary(props: {
                 onDelete(asset.assetPath);
                 setConfirmPath(null);
               }}
+              onRename={(label) => onRename(asset.assetPath, label)}
             />
           ))}
         </div>
@@ -73,7 +76,7 @@ export function AssetLibrary(props: {
 
 // A single library tile: preview thumbnail + prompt-led caption, with a hover
 // delete button that swaps to an inline confirm before firing the destructive
-// gen3d:delete-asset call.
+// gen3d:delete-asset call. A pencil icon on hover opens an inline rename input.
 function LibCard({
   asset,
   selected,
@@ -82,6 +85,7 @@ function LibCard({
   onAskDelete,
   onCancelDelete,
   onConfirmDelete,
+  onRename,
 }: {
   asset: Gen3DAssetManifest;
   selected: boolean;
@@ -90,9 +94,37 @@ function LibCard({
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
+  onRename: (label: string | null) => void;
 }): JSX.Element {
   const previewUrl = blobUrl(selectFile(asset.files, 'preview_image'));
-  const caption = (asset.prompt ?? asset.mode).split('\n')[0]!.trim();
+  // userLabel wins; fall back to prompt first line; last resort: file stem from assetPath.
+  const autoCaption =
+    asset.prompt
+      ? asset.prompt.split('\n')[0]!.trim()
+      : asset.assetPath.split('/').pop()?.replace(/\.glb$/, '') ?? asset.mode;
+  const caption = asset.userLabel?.trim() || autoCaption;
+
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startRename(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDraft(asset.userLabel?.trim() ?? autoCaption);
+    setRenaming(true);
+  }
+  function commitRename() {
+    const trimmed = draft.trim();
+    // null clears back to auto; empty string → clear; otherwise use value
+    onRename(trimmed === autoCaption || trimmed === '' ? null : trimmed);
+    setRenaming(false);
+  }
+  function cancelRename() {
+    setRenaming(false);
+  }
+  useEffect(() => {
+    if (renaming) inputRef.current?.select();
+  }, [renaming]);
   // Rig/motion is characters-only, so a rigged or animated asset is definitively
   // a character even when its slot field is stale (older flows defaulted unnamed
   // slots to `meshes`). Trust readiness over the persisted slot for the label.
@@ -128,7 +160,41 @@ function LibCard({
             {asset.providerMode}
           </span>
         </div>
-        <p className="lib-card-caption">{caption}</p>
+        {renaming ? (
+          <div className="lib-card-rename" onClick={(e) => e.stopPropagation()}>
+            <input
+              ref={inputRef}
+              className="lib-card-rename-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') cancelRename();
+              }}
+              maxLength={80}
+              placeholder="资产名称"
+            />
+            <button type="button" className="fx-icon-btn" aria-label="确认" onClick={commitRename}>
+              <Check size={12} />
+            </button>
+            <button type="button" className="fx-icon-btn" aria-label="取消" onClick={cancelRename}>
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <p className="lib-card-caption">
+            {caption}
+            <button
+              type="button"
+              className="fx-icon-btn lib-card-rename-btn"
+              aria-label="重命名"
+              onClick={startRename}
+              title="重命名"
+            >
+              <Pencil size={10} />
+            </button>
+          </p>
+        )}
         <small className="lib-card-meta">
           {asset.provider} · {slot}
         </small>

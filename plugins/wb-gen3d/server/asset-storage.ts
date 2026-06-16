@@ -62,6 +62,13 @@ export interface AssetStorage {
     assetPath: string,
     report: QualityReport,
   ): Promise<Gen3DAssetManifest>;
+  // Persist a user-defined display label into the asset sidecar
+  // (custom.userLabel) and return the refreshed manifest.
+  updateAssetLabel(
+    slug: string,
+    assetPath: string,
+    label: string | null,
+  ): Promise<Gen3DAssetManifest>;
   // Read the bytes of one file in an asset, selected by role (+ optional format),
   // for COS-sharing it as a provider transfer URL. Returns null when absent.
   readAssetFile(
