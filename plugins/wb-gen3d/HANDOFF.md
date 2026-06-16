@@ -98,7 +98,7 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 
 **推荐执行顺序**（PLAN 任务清单 · 状态 2026-06-12）：
 
-1. **M13-0 Gate 0/1** — ✅ **PASSED 2026-06-13**（probe `scripts/m13-gate-probe.ts`，Hunyuan 内网 `hunyuanapi.woa.com` + lightai COS）：Gate 0 内网可达 ✓ / 响应形态 `data[].glb_url`+`fbx_url` ✓ / **贴图存活 ✓**（rigged+animated GLB 都内嵌 images=3/textures=3）/ 22 关节人形骨架 ✓ / motion 14 步行动画 ✓。剩 operator 目视 T-pose+动画，然后把三工具 `exposedToAI` 翻 true。
+1. **M13-0 Gate 0/1** — ✅ **PASSED 2026-06-13**（probe `scripts/m13-gate-probe.ts`，Hunyuan 内网 OpenAPI + COS）：Gate 0 内网可达 ✓ / 响应形态 `data[].glb_url`+`fbx_url` ✓ / **贴图存活 ✓**（rigged+animated GLB 都内嵌 images=3/textures=3）/ 22 关节人形骨架 ✓ / motion 14 步行动画 ✓。剩 operator 目视 T-pose+动画，然后把三工具 `exposedToAI` 翻 true。
 2. **store-append** — ✅ **DONE**：`appendDerivedFiles`/`readAssetFile` + sidecar 骨架/motionType 字段 + per-asset 锁 + `sidecarToManifest` 修复 + cos-uploader glb/fbx。
 3. **M13-2 auto-rig** — ✅ **DONE (mock-first)**：`gen3d:auto-rig` + schema + plugin.json（`exposedToAI:false`，humanoid/characters 软门控，幂等）。
 4. **M13-3 apply-motion** — ✅ **DONE (mock-first)**：`gen3d:apply-motion` + 8 动作 UI + schema（int 9–16，多动作并存，按 motionType 幂等，not-rigged 守卫）。
@@ -174,14 +174,14 @@ fetch/download, no network); those scratch scripts are not committed.
 
 ### 2026-06-12 — Rodin **image-to-3D** real verified + COS public reachability
 
-Operator-provided temp COS creds (lightai bucket) + `RODIN_API_KEY` (64-char,
+Operator-provided temp COS creds (COS bucket) + `RODIN_API_KEY` (64-char,
 Hyper3D). Ran quota-safe probes first, then one real image-to-3D:
 
 - **COS upload → public reachability PASS** (the URL-fetching-provider
   prerequisite): `CosUploader.upload()` puts under `wb-gen3d/inputs/<sha256>.<ext>`;
   the presigned URL is **publicly GET-able with no auth header** (200, bytes
   match). **NOTE (grill 2026-06-12): this only proves reachability from the public
-  internet; it does NOT prove Hunyuan's *internal* network (`hunyuanapi.woa.com`)
+  internet; it does NOT prove Hunyuan's *internal* network (`HUNYUAN_BASE_URL`)
   can egress to fetch it — that is still Gate 0, to be verified by a real
   low_poly/rig submit.** `COS_SIGN_EXPIRES_SEC`
   is the env name (operator's `COS_PRESIGN_EXPIRES` was renamed on write); the
@@ -532,7 +532,7 @@ Real Hunyuan calls require BOTH, set in a plugin-local `.env` (gitignored; copy
 `.env.example`):
 
 - `GEN3D_ENABLE_REAL_PROVIDERS=1`
-- `HUNYUAN_API_KEY=<uuid>` and `HUNYUAN_BASE_URL=http://hunyuanapi.woa.com`
+- `HUNYUAN_API_KEY=<uuid>` and `HUNYUAN_BASE_URL=<your-hunyuan-openapi-host>`
 
 Auth is plain `Authorization: Bearer <key>` (no request signing). Submit + poll
 share two endpoints (`/openapi/v1/workflow/invoke/async`,
@@ -560,8 +560,8 @@ Live verification (2026-06-10, internal network, operator-approved): one real
 `gen3d:text-to-3d` completed in ~292s with `providerMode=real`, `usedMock=false`,
 a real `sourceJobId`, and four downloaded blobs persisted into a manifest
 (`source_mesh/glb` ~41.9 MB, `source_mesh/obj` ~600 KB, `preview_image/png`,
-`texture/png` ~17.5 MB). Network host `http://hunyuanapi.woa.com` is reachable
-from the internal network (bare probe returns 401 without auth).
+`texture/png` ~17.5 MB). The Hunyuan OpenAPI host (set via `HUNYUAN_BASE_URL`) is
+reachable from the internal network (bare probe returns 401 without auth).
 
 M5 `pose_standardization` verification (2026-06-10): an injected-fetch smoke (no
 network) confirmed exactly one synchronous POST with the correct REST path,
@@ -643,7 +643,7 @@ both are stored. Decide later whether to prefer GLB and drop OBJ.
 | Item | Status | Blocker / note |
 | --- | --- | --- |
 | **M13 rig/motion/low_poly** (store-append → auto-rig → apply-motion → lowpoly → UI) | **code-complete (mock-first)** | three tools + schemas + plugin.json + UI landed; typecheck/build + mock full-chain sanity pass; `exposedToAI:false` until Gate 0/1 |
-| **M13-0 Gate 0/1 verification** | ✅ **PASSED 2026-06-13 (auto-verified parts)** | probe `scripts/m13-gate-probe.ts` (out-of-tree) hit Hunyuan 内网 + lightai COS: Gate 0 reachability ✓, response shape ✓, **texture survival ✓** (rigged/animated GLB embed images=3/textures=3), 22-joint humanoid skeleton ✓, motion 14 animation ✓. **Remaining = operator visual T-pose/animation eyeball + flip `exposedToAI:true`** (see `.probe-out/<ts>/SUMMARY.md`). |
+| **M13-0 Gate 0/1 verification** | ✅ **PASSED 2026-06-13 (auto-verified parts)** | probe `scripts/m13-gate-probe.ts` (out-of-tree) hit Hunyuan 内网 + COS: Gate 0 reachability ✓, response shape ✓, **texture survival ✓** (rigged/animated GLB embed images=3/textures=3), 22-joint humanoid skeleton ✓, motion 14 animation ✓. **Remaining = operator visual T-pose/animation eyeball + flip `exposedToAI:true`** (see `.probe-out/<ts>/SUMMARY.md`). |
 | ~~store-append~~ (`appendDerivedFiles`, skeleton+motionType fields, per-asset lock) | **DONE** | `per-game-store.ts` + `asset-storage.ts` + `manifest.ts` |
 | ~~M13-2 auto-rig~~ | **DONE (mock-first)** | `gen3d:auto-rig`, humanoid/characters soft-gate, idempotent |
 | ~~M13-3 apply-motion~~ | **DONE (mock-first)** | `gen3d:apply-motion`, int 9–16, idempotent per motion, not-rigged guard |

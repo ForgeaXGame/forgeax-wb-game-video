@@ -207,7 +207,7 @@ P5 参数），三条独立便于 review。P2 的 `.hdr` 缺失时以 builtin Ro
 
 ### C.1 文档 SSOT — `docs/PROVIDER_PARAMS.md`（新建）
 
-逐家列全参数：字段名 / 类型 / 取值范围 / 默认 / 适用模式 / 是否已验证 / 备注。**已成稿**（2026-06-14，据官方文档 + 竞品 LIGHT AI 截图核对，见 `docs/PROVIDER_PARAMS.md`）。
+逐家列全参数：字段名 / 类型 / 取值范围 / 默认 / 适用模式 / 是否已验证 / 备注。**已成稿**（2026-06-14，据官方文档 + 竞品工具截图核对，见 `docs/PROVIDER_PARAMS.md`）。
 
 ### C.2 框架 — `shared/provider-params.ts`（新建）
 
@@ -228,7 +228,7 @@ const providerParamSpec: Record<GenProvider, ParamField[]>;
 ② 工具 args 透传（`BaseGenArgs` 增 `providerParams?: Record<string,unknown>`）；
 ③ JSON schema 生成/校验；④ `providers/*.ts` 的 `buildPayload` 读取并下发。
 
-### C.3 高价值子集（已据官方文档 + 竞品 LIGHT AI 截图定稿，详见 `docs/PROVIDER_PARAMS.md`）
+### C.3 高价值子集（已据官方文档 + 竞品工具截图定稿，详见 `docs/PROVIDER_PARAMS.md`）
 
 > 仅暴露官方文档已验证的原生参数；竞品有但文档查无对应字段者标 ⏳ 不接（见 PROVIDER_PARAMS §6）。
 
@@ -327,7 +327,7 @@ interface QualityReport {
 
 1. **operator 固化 `.hdr` 预设文件**：占位目录已建 `public/hdr/`（README + `presets.json`，纳入 git、换机不丢）；
    待放真实 1k `.hdr` 并登记 `presets.json.custom[]`。缺则 P2 仅 builtin 中性环境。
-2. ✅ **provider 参数**：`docs/PROVIDER_PARAMS.md` 成稿（官方文档 + 竞品 LIGHT AI 截图），C.3 已定稿。
+2. ✅ **provider 参数**：`docs/PROVIDER_PARAMS.md` 成稿（官方文档 + 竞品工具截图），C.3 已定稿。
    剩余 ⏳（实现时再核）：Meshy 4K 纹理、Rodin 几何指令/纹理模式/HighPack/seed、混元 PolygonType/GenerateType（验内网端点）。
 3. ✅ **视图器观感**：operator 选 **mix** → 默认 = mockup B（影棚 HDRI），A（实色/Solid）+ C（HDR 环境/Rendered）作切换态（见 D9）。三张 mockup 存档于 `docs/mockups/viewer-mockup-{a-solid,b-studio,c-hdri}.png`。
 4. ⏸ **§8 server 授权**：operator 暂不授权 → Phase B 本期仅 mock 桩；真实 AI 接线推迟到后续单独授权。
