@@ -55,6 +55,16 @@ class SpineInlineUI {
       this.state.characterImage = design.characterImage
     }
     this.state.characterDescription = design.profile.extraDesc
+    void globalState.hydrateCharacterImage(true).then((ok) => {
+      if (!ok) return
+      const img = globalState.get().characterImage
+      if (img) {
+        this.state.characterImage = img
+        for (const tab of this.tabs) {
+          if (tab.id === 'explosion') tab.activate(this.state)
+        }
+      }
+    })
   }
 
   private createTabs(): void {

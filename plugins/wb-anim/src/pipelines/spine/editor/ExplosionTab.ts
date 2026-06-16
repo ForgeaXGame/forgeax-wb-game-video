@@ -1,8 +1,9 @@
 // @source wb-character/src/pipelines/spine/editor/ExplosionTab.ts
 import type { StudioState, StudioTab, TabId, PartRegion } from './StudioState';
+import { globalState } from '../../../shared/GlobalState';
 
-const TEMPLATE_MALE_URL = '/assets/spine/template_parts_male.png';
-const TEMPLATE_FEMALE_URL = '/assets/spine/template_parts_female.png';
+const TEMPLATE_MALE_URL = './assets/spine/template_parts_male.png';
+const TEMPLATE_FEMALE_URL = './assets/spine/template_parts_female.png';
 
 // Processing order: torso → upper arms → forearms → thighs → calves → feet → hands → weapon.
 // Hands come AFTER thighs to prevent hand seeds from stealing thigh pixels.
@@ -61,6 +62,131 @@ function imageToBase64(dataUrl: string): string {
   return dataUrl.replace(/^data:[^;]+;base64,/, '');
 }
 
+/** Always re-encode via canvas so Gemini receives valid JPEG bytes (fixes corrupt localStorage blobs). */
+async function prepareImageForApi(
+  input: string,
+  maxW: number,
+  maxH: number,
+  quality = 0.85,
+): Promise<{ base64: string; mimeType: string }> {
+  const dataUrl = input.startsWith('data:') ? input : await loadImageAsDataUrl(input);
+
+  const blob = await fetch(dataUrl).then((r) => r.blob()).catch(() => null);
+  if (!blob || blob.size < 32) {
+    throw new Error('图片数据为空或已损坏，请重新上传角色设定图');
+  }
+
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    return prepareImageForApiViaImage(dataUrl, maxW, maxH, quality);
+  }
+
+  try {
+    const scale = Math.min(maxW / bitmap.width, maxH / bitmap.height, 1);
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('Canvas 不可用');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const out = c.toDataURL('image/jpeg', quality);
+    return { base64: imageToBase64(out), mimeType: 'image/jpeg' };
+  } finally {
+    bitmap.close();
+  }
+}
+
+function prepareImageForApiViaImage(
+  dataUrl: string,
+  maxW: number,
+  maxH: number,
+  quality = 0.85,
+): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const out = c.toDataURL('image/jpeg', quality);
+      resolve({ base64: imageToBase64(out), mimeType: 'image/jpeg' });
+    };
+    img.onerror = () => reject(new Error('图片无法解码，请重新上传 PNG/JPEG 格式的角色设定图'));
+    img.src = dataUrl;
+  });
+}
+
+async function fetchPortraitFromDisk(): Promise<string | null> {
+  const slug = globalState.getSlug();
+  const charId = globalState.get().profile.charId;
+  if (!slug || !charId) return null;
+
+  const relPaths = ['portrait/current.png', 'portrait/front.png'];
+  for (const rel of relPaths) {
+    const path = `.forgeax/games/${slug}/characters/${charId}/${rel}`;
+    try {
+      const dataUrl = await loadImageAsDataUrl(
+        `/api/wb/character/asset?path=${encodeURIComponent(path)}`,
+      );
+      if (dataUrl) return dataUrl;
+    } catch {
+      // try next path
+    }
+  }
+
+  try {
+    const res = await fetch(
+      `/api/wb/character/characters/${encodeURIComponent(charId)}?slug=${encodeURIComponent(slug)}`,
+    );
+    if (!res.ok) return null;
+    const j = await res.json() as {
+      urls?: Record<string, string>
+      manifest?: { portrait?: Record<string, string> }
+    };
+    const portraitUrl =
+      j.urls?.['portrait/front'] ??
+      (j.manifest?.portrait?.front
+        ? `/api/wb/character/asset?path=${encodeURIComponent(
+            `.forgeax/games/${slug}/characters/${charId}/${j.manifest.portrait.front}`,
+          )}`
+        : null);
+    if (!portraitUrl) return null;
+    return await loadImageAsDataUrl(portraitUrl);
+  } catch {
+    return null;
+  }
+}
+
+async function prepareCharacterImageForApi(
+  characterImage: string,
+  maxW: number,
+  maxH: number,
+  quality = 0.85,
+): Promise<{ base64: string; mimeType: string; dataUrl: string }> {
+  const sources = [characterImage];
+  const disk = await fetchPortraitFromDisk();
+  if (disk && disk !== characterImage) sources.push(disk);
+
+  let lastErr: Error | null = null;
+  for (const src of sources) {
+    try {
+      const prepared = await prepareImageForApi(src, maxW, maxH, quality);
+      const dataUrl = `data:${prepared.mimeType};base64,${prepared.base64}`;
+      return { ...prepared, dataUrl };
+    } catch (e: any) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      console.warn('[Spine] character image prepare failed, len=', src.length, lastErr.message);
+    }
+  }
+  throw lastErr ?? new Error('图片无法解码，请重新上传 PNG/JPEG 格式的角色设定图');
+}
+
 async function loadImageAsDataUrl(url: string): Promise<string> {
   // 先走 fetch→blob→FileReader 这条路:同源静态资源无需 CORS,且不依赖 <img>
   // 的格式嗅探。早期模板图(template_parts_female)曾是 JPEG 字节却用 .png 后缀,
@@ -99,20 +225,18 @@ async function loadImageAsDataUrl(url: string): Promise<string> {
   });
 }
 
-function compressImage(dataUrl: string, maxW: number, maxH: number, quality = 0.8): Promise<string> {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      c.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      resolve(c.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
+async function canDecodeImageDataUrl(src: string): Promise<boolean> {
+  try {
+    const dataUrl = src.startsWith('data:') ? src : await loadImageAsDataUrl(src)
+    if (!dataUrl) return false
+    const blob = await fetch(dataUrl).then((r) => r.blob())
+    if (!blob || blob.size < 32) return false
+    const bmp = await createImageBitmap(blob)
+    bmp.close()
+    return true
+  } catch {
+    return false
+  }
 }
 
 const PARTS_TEMPLATE = `You are generating a CHARACTER PARTS BREAKDOWN sheet for 2D skeletal animation (Spine 2D).
@@ -364,6 +488,20 @@ export class ExplosionTab implements StudioTab {
     reader.readAsDataURL(file);
   }
 
+  private async refreshSourcePreview(): Promise<void> {
+    if (!this.state) return
+    let src = this.state.characterImage
+    if (!src || !(await canDecodeImageDataUrl(src))) {
+      await globalState.hydrateCharacterImage(true)
+      src = globalState.get().characterImage
+      if (src) {
+        this.state.characterImage = src
+        this.onStateChange?.()
+      }
+    }
+    if (src) this.showSourcePreview(src)
+  }
+
   private showSourcePreview(dataUrl: string): void {
     const box = this.q('#expl-source') as HTMLElement;
     if (!box) return;
@@ -411,13 +549,18 @@ export class ExplosionTab implements StudioTab {
       const templateUrl = this.getTemplateUrl();
       console.log('[Spine] Step 0: preparing images, template:', templateUrl);
       console.log('[Spine] Step 0a: compressing characterImage…');
-      const charImg = await compressImage(this.state.characterImage, 1024, 1024, 0.9);
-      const charBase64 = imageToBase64(charImg);
+      const charPrepared = await prepareCharacterImageForApi(this.state.characterImage, 1024, 1024, 0.85);
+      if (charPrepared.dataUrl !== this.state.characterImage) {
+        this.state.characterImage = charPrepared.dataUrl;
+        this.onStateChange?.();
+      }
+      const charBase64 = charPrepared.base64;
       console.log('[Spine] charBase64 size:', (charBase64.length / 1024).toFixed(0), 'KB');
 
       console.log('[Spine] Step 0b: loading template via loadImageAsDataUrl…');
       const templateDataUrl = await loadImageAsDataUrl(templateUrl);
-      const templateBase64 = imageToBase64(templateDataUrl);
+      const templatePrepared = await prepareImageForApi(templateDataUrl, 1024, 1536, 0.9);
+      const templateBase64 = templatePrepared.base64;
       console.log('[Spine] templateBase64 size:', (templateBase64.length / 1024).toFixed(0), 'KB');
 
       console.log('[Spine] Step 0c: detecting aspect ratio…');
@@ -453,10 +596,9 @@ ${PARTS_TEMPLATE}`;
       const chatResult = await apiPost('/__ce-api__/gemini-text', {
         prompt: geminiTextPrompt,
         inputImages: [
-          { base64: templateBase64, mimeType: 'image/png' },
-          { base64: charBase64, mimeType: 'image/jpeg' },
+          { base64: templateBase64, mimeType: templatePrepared.mimeType },
+          { base64: charBase64, mimeType: charPrepared.mimeType },
         ],
-        model: 'gemini-3-pro-image-preview',
       });
 
       console.log('[Spine] Gemini 3.0 Pro text response:', chatResult.success, chatResult.error);
@@ -481,8 +623,8 @@ ${PARTS_TEMPLATE}`;
       const imgPayload = {
         prompt: finalPrompt,
         inputImages: [
-          { base64: templateBase64, mimeType: 'image/png' },
-          { base64: charBase64, mimeType: 'image/jpeg' },
+          { base64: templateBase64, mimeType: templatePrepared.mimeType },
+          { base64: charBase64, mimeType: charPrepared.mimeType },
         ],
         aspectRatio: templateAspect,
         model: 'gemini-2.5-flash-image',
@@ -512,7 +654,8 @@ ${PARTS_TEMPLATE}`;
 
     } catch (e: any) {
       console.error('[Spine] ❌ Pipeline error:', e);
-      this.showToast('❌ 请求失败: ' + e.message);
+      const msg = e?.message || '未知错误';
+      this.showToast(msg.includes('无法解码') ? msg : '❌ 请求失败: ' + msg);
     } finally {
       this.generating = false;
       btn.disabled = false;
@@ -534,10 +677,13 @@ ${PARTS_TEMPLATE}`;
     this.showProgress(true, '重新抽卡中...');
 
     try {
-      const charImg = await compressImage(this.state.characterImage, 1024, 1024, 0.9);
-      const charBase64 = imageToBase64(charImg);
+      const charPrepared = await prepareCharacterImageForApi(this.state.characterImage, 1024, 1024, 0.85);
+      if (charPrepared.dataUrl !== this.state.characterImage) {
+        this.state.characterImage = charPrepared.dataUrl;
+        this.onStateChange?.();
+      }
       const templateDataUrl = await loadImageAsDataUrl(this.getTemplateUrl());
-      const templateBase64 = imageToBase64(templateDataUrl);
+      const templatePrepared = await prepareImageForApi(templateDataUrl, 1024, 1536, 0.9);
       const templateAspect = await this.detectAspectRatio(templateDataUrl);
 
       const NUM_CANDIDATES = 4;
@@ -546,8 +692,8 @@ ${PARTS_TEMPLATE}`;
       const payload = {
         prompt: this.lastPrompt,
         inputImages: [
-          { base64: templateBase64, mimeType: 'image/png' },
-          { base64: charBase64, mimeType: 'image/jpeg' },
+          { base64: templatePrepared.base64, mimeType: templatePrepared.mimeType },
+          { base64: charPrepared.base64, mimeType: charPrepared.mimeType },
         ],
         aspectRatio: templateAspect,
         model: 'gemini-2.5-flash-image',
@@ -1507,7 +1653,7 @@ ${PARTS_TEMPLATE}`;
     this.state = state;
     this.syncGenderUI();
     if (this.annotCanvas) { this.updateButtons(); return; }
-    if (state.characterImage) this.showSourcePreview(state.characterImage);
+    void this.refreshSourcePreview();
     const assignedParts = state.partRegions?.filter(r => r.width > 0).length ?? 0;
     if (state.explosionImage) {
       if (assignedParts > 0) {
