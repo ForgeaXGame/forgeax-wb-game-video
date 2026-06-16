@@ -141,6 +141,9 @@ export interface Gen3DAssetManifest {
   // Upstream asset paths consumed to produce this one (e.g. image→mesh).
   sourceInputAssetPaths: string[];
   prompt: string | null;
+  // Optional user-defined display name. Overrides the auto-generated caption
+  // (prompt first-line or mode name) everywhere the asset is shown.
+  userLabel?: string | null;
   files: ManifestFile[];
   // Readiness flags answer "what can downstream do with this asset".
   readiness: {
@@ -199,6 +202,7 @@ export interface AssetSidecar {
     assetSlot: AssetSlot;
     sourceJobId: string | null;
     prompt: string | null;
+    userLabel?: string | null;
     sourceInputAssetPaths: string[];
     faceCount?: number;
     readiness: Gen3DAssetManifest['readiness'];

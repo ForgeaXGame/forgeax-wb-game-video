@@ -61,6 +61,19 @@ export function App({ pane }: AppProps) {
     [refreshAssets],
   );
 
+  const renameAsset = useCallback(
+    async (assetPath: string, label: string | null) => {
+      const r = await callTool<{ ok: true; manifest: Gen3DAssetManifest }>('gen3d:rename-asset', { assetPath, label });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSelected((cur) => (cur?.assetPath === assetPath ? r.result.manifest : cur));
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
   const handleScored = useCallback(
     (m: Gen3DAssetManifest) => {
       setSelected((cur) => (cur?.assetPath === m.assetPath ? m : cur));
@@ -229,6 +242,7 @@ export function App({ pane }: AppProps) {
                   onRefresh={refreshAssets}
                   onSelect={setSelected}
                   onDelete={deleteAsset}
+                  onRename={renameAsset}
                 />
                 <QualityInspector selected={selected} onScored={handleScored} />
               </div>

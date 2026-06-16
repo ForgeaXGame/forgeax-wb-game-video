@@ -922,6 +922,22 @@ async function scoreQuality(args: ScoreQualityArgs): Promise<ScoreQualityResult>
   return { ok: true, usedMock, manifest };
 }
 
+interface RenameAssetArgs {
+  slug?: string;
+  assetPath: string;
+  label: string | null;
+}
+
+async function renameAsset(args: RenameAssetArgs): Promise<{ ok: true; manifest: Gen3DAssetManifest }> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) {
+    throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  }
+  const manifest = await storage.updateAssetLabel(slug, assetPath, args.label ?? null);
+  return { ok: true, manifest };
+}
+
 export const tools = {
   'gen3d:provider-status': async () => getProviderStatus(),
   'gen3d:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
@@ -938,6 +954,7 @@ export const tools = {
   'gen3d:apply-motion': async (args: ApplyMotionArgs) => applyMotion(args),
   'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
   'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
+  'gen3d:rename-asset': async (args: RenameAssetArgs) => renameAsset(args),
 };
 
 export default tools;
