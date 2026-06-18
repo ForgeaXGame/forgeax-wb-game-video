@@ -4,28 +4,48 @@
   "version": "0.1.0",
   "kind": "workbench",
   "displayName": {
-    "zh": "音乐 / BGM",
-    "en": "Music & BGM"
+    "zh": "BGM / 音效",
+    "en": "BGM & SFX"
   },
   "description": {
-    "zh": "音乐 / BGM 工作台 · audio/manifest.json + BGM 时间轴 + SE 命名约定 · 从零搭最小骨架,未来接 oto agent。",
-    "en": "Music & BGM workbench. audio/manifest.json + BGM timeline + SE naming. Minimal skeleton; will plug into oto agent."
+    "zh": "BGM / 音效素材库（Local 环境）· 试听 + 配入游戏 · 下载到 .forgeax/games/<slug>/audio/ 并写入 audio/manifest.json。",
+    "en": "BGM & SFX asset library (Local depot). Preview + attach: downloads into .forgeax/games/<slug>/audio/ and upserts audio/manifest.json."
   },
+  "author": { "name": "forgeax", "email": "dev@forgeax.local" },
+  "icon": "🔊",
+  "keywords": ["audio", "bgm", "music", "sfx", "sound", "asset-library"],
+
   "provides": {
     "workbench": {
       "id": "bgm",
       "lens": "by-category",
       "icon": "🔊",
       "position": 170,
-      "panelSize": "md",
+      "panelSize": "lg",
+      "surface": "single",
       "matchProduces": [
         "**/audio/**",
         "**/audio/manifest.json"
       ]
     }
   },
+
   "entry": {
-    "frontend": "./src/panel.tsx"
+    "frontend": "./dist/index.html",
+    "standalone": {
+      "start": "npm run dev",
+      "port": 5173,
+      "readyProbe": "/",
+      "dev": { "watch": true, "hmr": true },
+      "embeddedAlso": true,
+      "devOnly": false
+    }
   },
-  "experimental": true
+
+  "permissions": [
+    "emit:bgm.*"
+  ],
+
+  "experimental": true,
+  "compatibleWith": { "forgeax-bus": "^1.0.0" }
 }
