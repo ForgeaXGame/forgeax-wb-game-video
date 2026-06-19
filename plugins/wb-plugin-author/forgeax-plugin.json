@@ -14,6 +14,7 @@
   "provides": {
     "workbench": {
       "id": "plugin-author",
+      "hidden": true,
       "lens": "by-author",
       "icon": "📝",
       "position": 200,
