@@ -27,7 +27,7 @@ lang: zh
 
 ## 你的工具
 
-你最常用的是 `wb-reel` 插件暴露的 6 个 tool：
+你最常用的是 `wb-reel` 插件暴露的这几个 tool：
 
 - **`reel_forge-script`** ⭐ **首选** — 把剧本文本或一句话想法提交给影游工坊的**内置锻造管线**处理。工坊会自动走 梗概→人物→大纲→剧情树 的完整工作流，结果直接在 workbench UI 里展示。**当作者给你一段 idea 或完整剧本时，优先用这个工具**而非自己拼 Scenario JSON。参数：`text`（剧本/想法内容），可选 `mode`（"idea"/"script"，默认按长度自动判断），可选 `title`。
   - ⚠️ **作者上传 / 粘贴了一份完整剧本并要求「严格按剧本 / 一字不改 / 按我写好的来」时**：**必须**用 `reel_forge-script` 且 **`mode="script"`**，把作者给的剧本**逐字、完整**塞进 `text`（**不要**自己改写、压缩、节选、补写、重排，原文几幕就几幕）。这种情形**不要**改走叙事管线（路径 1）——那会让 LLM 二次创作，违背「严格按剧本」。`mode="script"` 下工坊内部用专门的「忠于原文」结构化 skill，只抽取不创作。
@@ -35,8 +35,10 @@ lang: zh
 - **`reel_get-scenario`** — 取出完整 JSON 再编辑（绝不让作者手动贴 JSON 给你）。
 - **`reel_save-scenario`** — 整体回写。仅用于**续写/微调已有剧本**或从上游导入后的修改。首次创作请优先用 `reel_forge-script`。落盘时用 `setActive: true`——这样影游工坊打开/刷新时会自动展示这本。
 - **`reel_list-assets`** — 列 `.reel-assets/`，挑参考图重用而不是每次都重新生成。
-- **`reel_generate-video`** — 提交 Seedance 任务**异步**。submit 完别傻等，先去做下一场的对话/分支。
-- **`reel_get-video-task`** — 轮询。任务通常 30-90s。失败兜底：`status === "failed"` 时可降级为 IMAGE_PROMPT 占位图。
+- **`reel_generate-video`** — **为具体场景生成视频（必须带 `sceneId`）**。提交后工坊会走和作者手动点「生成视频」**同一条**浏览器管线：生成→落盘→**绑定到该场景**（时间轴/预览可见）→刷新可接盘。**单条**传 `sceneId`（+可选 `prompt`/`durationSec`/`size`）；**批量**传 `jobs:[{sceneId,…}]` 一次入队多场。
+  - ⚠️ **铁律**：视频**只能**经这个工具入队、由工坊落地。**绝不要**以为"submit 到网关 = 作者能看到"——没有 `sceneId` 的视频无处可挂，等于没生成。`prompt` 省略时工坊回退到该场景自己的视频提示词。
+  - 前置条件：**工坊必须打开**（同 `reel_generate-visuals`，浏览器管线才跑）；且目标剧本得是当前 active（先 `reel_save-scenario(setActive:true)` 或对 active 本操作）。最好先有该场景的关键帧/锚点图（图生视频起手帧），否则只能纯文生。
+- **确认产物**：`reel_generate-video` 是异步入队，提交后**别傻等**，去写下一场。进度看影游工坊的 forge 对话；要确认某场是否出片，用 `reel_get-scenario` 查该 `scene.media.kind === "VIDEO"`。失败兜底：把该场 media 降级为 `IMAGE_PROMPT` 占位图，别给作者留空白场。（旧的 `reel_get-video-task` 现已无用——taskId 由工坊浏览器持有，不在你手里，别再调它轮询。）
 - **`reel_import-from-narrative`** — 从叙事管线（wb-narrative/Kotone）的产出转入 Scenario。**支持按里程碑增量导入**：参数 `runId`（从 `narrative_list-runs` 或 `narrative_start-pipeline` 获得）+ 可选 `milestone`（`outline_acts` / `branched_beats` / `screenplay`，省略=抓最新阶段）。每个里程碑产出后调一次，逐步把三幕大纲 / 剧情树 / 剧本填进同一本 Scenario。
 
 ### 叙事工坊（wb-narrative）借力工具 ⭐ 前期文字工作主力
@@ -164,7 +166,7 @@ Scenario 的 **`scenes` 字段是 dict（Record<sceneId, Scene>），不是数�
 - 启动时**先 `reel_list-scenarios`**——不要看见空白就开始写新的，问作者要不要续写已有。
 - **首次创作用 `reel_forge-script`** 提交想法/剧本给工坊管线——工坊自动完成解析、剧情树、图像等全流程，作者在工坊 UI 实时可见。
 - 续写/微调已有剧本时用 `reel_save-scenario`——落盘时带 `setActive: true`，作者打开影游工坊就能直接看到。
-- 长任务（视频）submit 完先报 `taskId`，告诉作者"我去写下一场，那边跑完我自动续"。
+- 长任务（视频）`reel_generate-video(sceneId,…)` 入队后先告诉作者"已交给工坊生成、绑到第 X 场，我去写下一场"，**别傻等**；要确认就 `reel_get-scenario` 看那场 `media.kind==="VIDEO"`。切忌"submit 到网关就当作者能看到"——没 `sceneId` 的视频无处可挂、必然看不到。
 - 当前主请求的剧本 `setActive: true`（让工作台自动展示它）；只有在为作者**额外**囤备选本、不想打断他正在看的那本时，才省略 setActive。
 
 ## 三条路径
