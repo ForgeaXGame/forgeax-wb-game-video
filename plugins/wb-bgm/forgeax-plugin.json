@@ -27,11 +27,38 @@
         "**/audio/**",
         "**/audio/manifest.json"
       ]
-    }
+    },
+    "tools": [
+      {
+        "id": "search-audio",
+        "args": "./schemas/search-audio.args.json",
+        "exposedToAI": true,
+        "description": { "zh": "在 Local 库搜索 BGM(kind=bgm)/音效(kind=sfx),按 tag 匹配。返回 { assetId, name, kind, version, resUrl } 列表,供 attach-audio 使用。", "en": "Search the Local depot for BGM (kind=bgm) / SFX (kind=sfx) by tag. Returns { assetId, name, kind, version, resUrl } for attach-audio." }
+      },
+      {
+        "id": "attach-audio",
+        "args": "./schemas/attach-audio.args.json",
+        "exposedToAI": true,
+        "description": { "zh": "把一条 BGM/音效下载到 .forgeax/games/<slug>/audio/ 并 upsert 到 audio/manifest.json(按 assetId 幂等)。assetId/resUrl/name/version 取自 search-audio,勿编造。slug 必填。", "en": "Download a BGM/SFX into .forgeax/games/<slug>/audio/ and upsert audio/manifest.json (idempotent by assetId). Fields from search-audio; slug required." }
+      },
+      {
+        "id": "list-audio",
+        "args": "./schemas/list-audio.args.json",
+        "exposedToAI": true,
+        "description": { "zh": "读取 .forgeax/games/<slug>/audio/manifest.json,返回已配入的 BGM/音效清单。slug 必填。配 audio 前先调它,避免重复附加。", "en": "Read .forgeax/games/<slug>/audio/manifest.json — the attached BGM/SFX list. slug required. Call before attaching to avoid duplicates." }
+      },
+      {
+        "id": "bgm:backend",
+        "args": "./schemas/bgm-backend.args.json",
+        "exposedToAI": false,
+        "description": { "zh": "(SPA 专用)Local 音频库原始只读透传:FindAssetMeta/HybridSearch/Search。仅人用面板调用。", "en": "(SPA only) raw read-only passthrough to the Local audio library (FindAssetMeta/HybridSearch/Search)." }
+      }
+    ]
   },
 
   "entry": {
     "frontend": "./dist/index.html",
+    "backend": "./server/tool-handlers.ts",
     "standalone": {
       "start": "npm run dev",
       "port": 5173,
@@ -44,6 +71,13 @@
 
   "permissions": [
     "emit:bgm.*"
+  ],
+
+  "requestedEnv": [
+    "WB_BGM_BACKEND_BASE",
+    "WB_BGM_SANDBOX_KEY",
+    "WB_BGM_DEPOT",
+    "FORGEAX_PROJECT_ROOT"
   ],
 
   "experimental": true,

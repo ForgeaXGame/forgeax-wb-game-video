@@ -3,14 +3,17 @@ import type { AssetMeta } from './state.ts';
 import { ASSET_TYPES } from './config.ts';
 
 export async function apiBackend(endpoint: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const r = await fetch('/api/wb/bgm/backend', {
+  // wb-bgm logic moved into the plugin (server/tool-handlers.ts). The raw
+  // library passthrough is now the `bgm:backend` host tool (exposedToAI:false),
+  // invoked as a user caller through the generic ToolRegistry endpoint.
+  const r = await fetch('/api/tools/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ env: S.env, endpoint, payload }),
+    body: JSON.stringify({ toolId: 'bgm:backend', args: { endpoint, payload }, caller: { kind: 'user' } }),
   });
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
-  return d;
+  if (!d.ok) throw new Error(d.error || 'bgm:backend call failed');
+  return d.result as Record<string, unknown>;
 }
 
 export async function fetchPage(assetType: number, page: number, pageSize: number, searchText = ''): Promise<Record<string, unknown>> {
@@ -48,7 +51,7 @@ interface StreamCallbacks {
 }
 
 export function fetchAllAssetsStream({ forceRefresh = false, onChunk, onDone, onError }: StreamCallbacks): () => void {
-  if (!forceRefresh && assetCache.data && assetCache.env === S.env
+  if (!forceRefresh && assetCache.data
       && Date.now() - assetCache.ts < assetCache.TTL) {
     onChunk?.(assetCache.data, ASSET_TYPES.length, ASSET_TYPES.length);
     onDone?.(assetCache.data);
@@ -70,7 +73,6 @@ export function fetchAllAssetsStream({ forceRefresh = false, onChunk, onDone, on
       onChunk?.(assets, completed, totalTypes);
       if (completed === totalTypes) {
         assetCache.data = collected;
-        assetCache.env = S.env;
         assetCache.ts = Date.now();
         onDone?.(collected);
       }
@@ -81,7 +83,6 @@ export function fetchAllAssetsStream({ forceRefresh = false, onChunk, onDone, on
       if (completed === totalTypes) {
         if (collected.length > 0) {
           assetCache.data = collected;
-          assetCache.env = S.env;
           assetCache.ts = Date.now();
           onDone?.(collected);
         } else if (!hasError) {

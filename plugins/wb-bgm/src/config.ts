@@ -14,10 +14,3 @@ export const ASSET_TYPES: AssetTypeInfo[] = [
 export function audioKindOf(type: number | undefined): 'bgm' | 'sfx' {
   return type === 7 ? 'sfx' : 'bgm';
 }
-
-export const ENV_BADGES: Record<string, string> = {
-  local: 'LOCAL', test: 'TEST', pre: 'PRE', prod: 'PROD',
-};
-
-export const ALL_ENVS = ['local', 'test', 'pre', 'prod'] as const;
-export type EnvName = (typeof ALL_ENVS)[number];

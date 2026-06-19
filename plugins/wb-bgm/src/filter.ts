@@ -23,7 +23,6 @@ export async function loadFilterView(type: number, page = 1): Promise<void> {
     const d    = (await fetchPage(type, page, S.pageSize, S.search)) as FindAssetPageResult;
     const list = d.asset_meta_info_list || [];
     S.total    = d.total || list.length;
-    S.assets   = list;
 
     EL.filterLoading().classList.add('hidden');
     EL.panelCount().textContent = String(S.total);

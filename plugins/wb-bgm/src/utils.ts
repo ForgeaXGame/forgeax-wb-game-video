@@ -62,11 +62,7 @@ export function showToast(msg: string, type = ''): void {
 
 export function setViewerPanel(name: string | null): void {
   EL.placeholder().classList.add('hidden');
-  EL.progressPanel().classList.add('hidden');
-  EL.viewer3d().classList.add('hidden');
-  EL.viewerTexture().classList.add('hidden');
   EL.viewerAudio().classList.add('hidden');
-  EL.viewerVideo().classList.add('hidden');
   EL.searchResults().classList.add('hidden');
   EL.filterView().classList.add('hidden');
 

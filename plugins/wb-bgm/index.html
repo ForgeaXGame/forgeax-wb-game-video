@@ -14,21 +14,6 @@
       <span class="logo-text">BGM / 音效资产</span>
     </div>
 
-    <!-- 环境切换（wb-bgm 锁定 Local，隐藏切换入口） -->
-    <div class="env-selector" id="envSelector" style="display:none">
-      <button class="env-btn" id="envBtn">
-        <span class="env-badge" id="envBadge">LOCAL</span>
-        <span id="envLabel">Local (本地环境)</span>
-        <span class="env-arrow" id="envArrow">▾</span>
-      </button>
-      <div class="env-dropdown hidden" id="envDropdown">
-        <div class="env-option" data-env="local" data-badge="LOCAL">Local <small>本地环境</small></div>
-        <div class="env-option" data-env="test"  data-badge="TEST" >Test  <small>测试环境</small></div>
-        <div class="env-option" data-env="pre"   data-badge="PRE"  >Pre   <small>预发布环境</small></div>
-        <div class="env-option" data-env="prod"  data-badge="PROD" >Prod  <small>正式环境</small></div>
-      </div>
-    </div>
-
     <div class="header-spacer"></div>
 
     <!-- 搜索框 -->
@@ -128,40 +113,6 @@
         </div>
       </div>
 
-      <!-- 下载进度 -->
-      <div class="progress-panel hidden" id="progressPanel">
-        <div class="progress-title" id="progressTitle">下载中...</div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar-fill" id="progressFill"></div>
-        </div>
-        <div class="progress-msg" id="progressMsg"></div>
-      </div>
-
-      <!-- Three.js 渲染容器 -->
-      <div class="viewer-3d hidden" id="viewer3d">
-        <div class="viewer-toolbar">
-          <span class="viewer-name" id="viewerName"></span>
-          <div class="viewer-controls-hint">左键旋转 · 右键平移 · 滚轮缩放</div>
-        </div>
-        <div class="canvas-wrap" id="canvasWrap"></div>
-        <div class="anim-list hidden" id="animList">
-          <div class="anim-list-title">动作列表</div>
-          <div id="animBtns"></div>
-        </div>
-      </div>
-
-      <!-- 贴图查看器 -->
-      <div class="viewer-texture hidden" id="viewerTexture">
-        <div class="viewer-toolbar">
-          <span class="viewer-name" id="textureName"></span>
-        </div>
-        <div class="texture-wrap">
-          <div class="texture-bg-checker">
-            <img id="textureImg" alt="贴图预览" />
-          </div>
-        </div>
-      </div>
-
       <!-- 音频播放器 -->
       <div class="viewer-media hidden" id="viewerAudio">
         <div class="viewer-toolbar">
@@ -171,16 +122,6 @@
         <div class="media-wrap">
           <div class="media-icon">🎵</div>
           <audio id="audioPlayer" controls preload="metadata"></audio>
-        </div>
-      </div>
-
-      <!-- 视频播放器 -->
-      <div class="viewer-media hidden" id="viewerVideo">
-        <div class="viewer-toolbar">
-          <span class="viewer-name" id="videoName"></span>
-        </div>
-        <div class="media-wrap">
-          <video id="videoPlayer" controls preload="metadata"></video>
         </div>
       </div>
 
@@ -252,45 +193,14 @@
           </div>
           <div class="info-row" style="margin-top: 24px;">
             <button id="modalAttachBtn" class="download-btn hidden" style="margin-bottom: 12px;">🎮 配入游戏</button>
-            <button id="modalDeleteBtn" class="delete-btn hidden">🗑 删除资源</button>
           </div>
         </div>
 
         <div class="modal-preview-section" id="modalPreviewSection">
-          <div class="modal-loading hidden" id="modalLoading">
-            <div class="spinner"></div>
-            <span>加载中...</span>
-          </div>
-          <div class="modal-progress hidden" id="modalProgress">
-            <div class="progress-title" id="modalProgressTitle">下载中...</div>
-            <div class="progress-bar-wrap">
-              <div class="progress-bar-fill" id="modalProgressFill"></div>
-            </div>
-            <div class="progress-msg" id="modalProgressMsg"></div>
-          </div>
-          <div class="modal-viewer-3d hidden" id="modalViewer3d">
-            <div class="modal-canvas-wrap" id="modalCanvasWrap"></div>
-            <div class="anim-list hidden" id="modalAnimList">
-              <div class="anim-list-title">动作列表</div>
-              <div id="modalAnimBtns"></div>
-            </div>
-          </div>
-          <div class="modal-viewer-texture hidden" id="modalViewerTexture">
-            <div class="texture-wrap">
-              <div class="texture-bg-checker">
-                <img id="modalTextureImg" alt="贴图预览" />
-              </div>
-            </div>
-          </div>
           <div class="modal-viewer-media hidden" id="modalViewerAudio">
             <div class="media-wrap">
               <div class="media-icon">🎵</div>
               <audio id="modalAudioPlayer" controls preload="metadata"></audio>
-            </div>
-          </div>
-          <div class="modal-viewer-media hidden" id="modalViewerVideo">
-            <div class="media-wrap">
-              <video id="modalVideoPlayer" controls preload="metadata"></video>
             </div>
           </div>
           <div class="modal-preview-placeholder hidden" id="modalPreviewPlaceholder">
@@ -298,26 +208,6 @@
             <p id="modalPlaceholderText">暂不支持预览该类型</p>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 删除确认弹窗 -->
-  <div class="modal-overlay hidden" id="deleteConfirmOverlay" style="z-index: 10000;">
-    <div class="modal-container" style="max-width: 400px; height: auto; min-height: unset; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
-        <h3 class="modal-title" style="color: #ff4d4f; display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px;">⚠️</span> 高风险操作警告
-        </h3>
-      </div>
-      <div style="font-size: 14px; color: var(--text-2); line-height: 1.6; margin-bottom: 24px;">
-        您正在执行删除操作：<br/>
-        <strong id="deleteTargetName" style="color: var(--text-1); word-break: break-all;"></strong><br/><br/>
-        <span style="color: #ff4d4f; font-weight: bold;">此操作不可逆！</span>确认要永久删除该资产及其所有数据吗？
-      </div>
-      <div style="display: flex; justify-content: flex-end; gap: 12px;">
-        <button id="deleteCancelBtn" style="padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text-1); cursor: pointer; transition: all 0.2s;">取消</button>
-        <button id="deleteConfirmBtn" style="padding: 8px 16px; border-radius: 6px; border: none; background: #ff4d4f; color: #fff; font-weight: 600; cursor: pointer; transition: all 0.2s;">确认删除</button>
       </div>
     </div>
   </div>

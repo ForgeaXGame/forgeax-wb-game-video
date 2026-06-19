@@ -4,13 +4,12 @@ import { S, assetCache } from './state.ts';
 import type { AssetMeta } from './state.ts';
 import { EL } from './dom.ts';
 import { on } from './events.ts';
-import { ENV_BADGES } from './config.ts';
 import { showToast, setViewerPanel } from './utils.ts';
 import { loadFileTree } from './tree.ts';
 import { loadFilterView } from './filter.ts';
 import { showSearchResults } from './search.ts';
 import { openAsset, initAudioAttach } from './asset.ts';
-import { openModal, closeModal, initModal } from './modal.ts';
+import { openModal, initModal } from './modal.ts';
 import { PlatformBridge } from './platform/Bridge.ts';
 
 // ==================== Platform Bridge ====================
@@ -21,57 +20,6 @@ const bridge = new PlatformBridge();
 
 on('asset-select', (asset: AssetMeta) => openAsset(asset));
 on('modal-open', (asset: AssetMeta, cosKey: string) => openModal(asset, cosKey));
-on('refresh', () => {
-  if (!EL.searchResults().classList.contains('hidden')) {
-    showSearchResults(S.search, S.page);
-  } else if (!EL.filterView().classList.contains('hidden')) {
-    loadFilterView(S.activeType!, S.page);
-  } else {
-    assetCache.data = null;
-    assetCache.ts = 0;
-    loadFileTree(true);
-  }
-});
-
-// ==================== 环境切换 ====================
-
-function initEnvDropdown(): void {
-  const btn  = EL.envBtn();
-  const drop = EL.envDropdown();
-  const arr  = EL.envArrow();
-
-  btn.addEventListener('click', (e: Event) => {
-    e.stopPropagation();
-    const open = !drop.classList.contains('hidden');
-    drop.classList.toggle('hidden', open);
-    arr.classList.toggle('open', !open);
-  });
-
-  drop.querySelectorAll('.env-option').forEach(opt => {
-    opt.addEventListener('click', () => {
-      const el = opt as HTMLElement;
-      S.env = el.dataset.env as typeof S.env;
-      const badge = ENV_BADGES[S.env] || S.env.toUpperCase();
-      EL.envBadge().textContent = badge;
-      EL.envBadge().className   = `env-badge ${badge}`;
-      EL.envLabel().textContent = el.textContent!.replace(el.querySelector('small')?.textContent || '', '').trim()
-                                  + ' ' + (el.querySelector('small')?.textContent || '');
-      drop.querySelectorAll('.env-option').forEach(o => o.classList.toggle('active', o === el));
-      drop.classList.add('hidden');
-      arr.classList.remove('open');
-      assetCache.data = null;
-      assetCache.ts = 0;
-      bridge.sendStateChange({ env: S.env });
-      if (S.viewMode === 'filemanager') loadFileTree();
-      else loadFilterView(S.activeType!);
-    });
-  });
-
-  document.addEventListener('click', () => {
-    drop.classList.add('hidden');
-    arr.classList.remove('open');
-  });
-}
 
 // ==================== Tab 切换 ====================
 
@@ -167,16 +115,6 @@ function initRefresh(): void {
 
 bridge.onMessage((msg) => {
   switch (msg.type) {
-    case 'setEnv':
-      if (msg.env) {
-        S.env = msg.env as typeof S.env;
-        assetCache.data = null;
-        assetCache.ts = 0;
-        if (S.viewMode === 'filemanager') loadFileTree();
-        else loadFilterView(S.activeType!);
-        bridge.sendStateChange({ env: S.env });
-      }
-      break;
     case 'refresh':
       assetCache.data = null;
       assetCache.ts = 0;
@@ -194,9 +132,6 @@ bridge.onMessage((msg) => {
 // ==================== 初始化 ====================
 
 function init(): void {
-  // wb-bgm 锁定 Local 环境，不暴露环境切换。
-  S.env = 'local';
-  initEnvDropdown();
   initTabs();
   initSearch();
   initRefresh();
@@ -204,7 +139,7 @@ function init(): void {
   initAudioAttach();
   loadFileTree().then(() => {
     bridge.sendReady();
-    bridge.sendStateChange({ status: 'idle', env: S.env });
+    bridge.sendStateChange({ status: 'idle' });
   });
 }
 
