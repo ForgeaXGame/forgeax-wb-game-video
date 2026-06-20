@@ -5,15 +5,11 @@
 
 export interface AppState {
   status: 'ready' | 'loading' | 'idle' | 'error';
-  env?: string;
-  assetCount?: number;
 }
 
 export interface PlatformMessage {
-  type: 'setEnv' | 'refresh' | 'search' | 'navigate' | 'getState';
-  env?: string;
+  type: 'refresh' | 'search';
   query?: string;
-  path?: string;
 }
 
 type MessageHandler = (msg: PlatformMessage) => void;
@@ -30,10 +26,6 @@ export class PlatformBridge {
     }
   }
 
-  get embedded(): boolean {
-    return this.isEmbedded;
-  }
-
   sendReady(): void {
     this.sendToParent({ type: 'ready' });
     // Workbench StudioHost protocol
@@ -44,14 +36,6 @@ export class PlatformBridge {
     this.sendToParent({ type: 'stateChange', state });
   }
 
-  sendError(message: string): void {
-    this.sendToParent({ type: 'error', message });
-  }
-
-  sendLog(level: 'info' | 'warn' | 'error', message: string): void {
-    this.sendToParent({ type: 'log', level, message });
-  }
-
   onMessage(handler: MessageHandler): void {
     this.handlers.push(handler);
   }
@@ -60,21 +44,9 @@ export class PlatformBridge {
     const data = event.data;
     if (!data || typeof data.type !== 'string') return;
 
-    // Handle Workbench StudioHost initialization
-    if (data.type === 'STUDIO_INIT' && data.payload) {
-      const { filePath, context } = data.payload;
-      if (context?.env) {
-        for (const handler of this.handlers) {
-          handler({ type: 'setEnv', env: context.env } as PlatformMessage);
-        }
-      }
-      if (filePath) {
-        for (const handler of this.handlers) {
-          handler({ type: 'navigate', path: filePath } as PlatformMessage);
-        }
-      }
-      return;
-    }
+    // Workbench StudioHost init carries no wb-bgm-actionable payload (env is
+    // Local-only; there is no file navigation), so ignore it explicitly.
+    if (data.type === 'STUDIO_INIT') return;
 
     for (const handler of this.handlers) {
       handler(data as PlatformMessage);

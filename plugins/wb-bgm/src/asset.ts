@@ -1,9 +1,6 @@
 import { EL } from './dom.ts';
 import { getLatestVersion, getCosKeyForVersion, isZip, basename, showToast, setViewerPanel } from './utils.ts';
 import type { AssetMeta, VersionInfo } from './state.ts';
-import { load3DModel } from './viewer3d.ts';
-import { downloadAndExtract } from './zipCache.ts';
-import type { UrlResolver } from './zipCache.ts';
 import { proxyUrl } from './proxyUrl.ts';
 import { audioKindOf } from './config.ts';
 import { attachToGame, type AudioSelection } from './attach.ts';
@@ -12,13 +9,7 @@ import { openGamePicker } from './gameSelect.ts';
 /** 当前正在试听的 BGM/音效选择，供「配入游戏」使用。 */
 let currentAudioSel: AudioSelection | null = null;
 
-function showTexture(_cosKey: string | null, label: string, directUrl: string): void {
-  setViewerPanel('viewerTexture');
-  EL.textureName().textContent = label;
-  (EL.textureImg() as HTMLImageElement).src = directUrl;
-}
-
-function showAudio(_cosKey: string | null, label: string, directUrl: string): void {
+function showAudio(label: string, directUrl: string): void {
   setViewerPanel('viewerAudio');
   EL.audioName().textContent = label;
   const player = EL.audioPlayer() as HTMLAudioElement;
@@ -26,28 +17,12 @@ function showAudio(_cosKey: string | null, label: string, directUrl: string): vo
   player.load();
 }
 
-function showVideo(_cosKey: string | null, label: string, directUrl: string): void {
-  setViewerPanel('viewerVideo');
-  EL.videoName().textContent = label;
-  const player = EL.videoPlayer() as HTMLVideoElement;
-  player.src = directUrl;
-  player.load();
-}
-
-function showViewerFromZip(type: number | undefined, getUrl: UrlResolver, files: string[], label: string): void {
-  if (type === 1 || type === 10) {
-    load3DModel(getUrl, files, label, false);
-  } else if (type === 5) {
-    load3DModel(getUrl, files, label, true);
-  } else if (type === 2) {
-    const img = files.find(f => /\.(png|jpg|jpeg|tga|tiff?)$/i.test(f));
-    if (img) showTexture(null, label, getUrl(img));
-    else showToast('zip 中未找到贴图文件', '');
-  } else {
-    showToast(`该类型暂不支持预览`, '');
-    setViewerPanel(null);
-    EL.placeholder().classList.remove('hidden');
-  }
+function showUnsupported(cosKey: string): void {
+  currentAudioSel = null;
+  setViewerPanel(null);
+  EL.placeholder().classList.remove('hidden');
+  const p = EL.placeholder().querySelector('p');
+  if (p) p.textContent = `暂不支持预览：${basename(cosKey)}`;
 }
 
 export async function openAsset(asset: AssetMeta): Promise<void> {
@@ -81,7 +56,7 @@ export async function openAsset(asset: AssetMeta): Promise<void> {
   openAssetVersion(asset, latestVer);
 }
 
-async function openAssetVersion(asset: AssetMeta, versionObj: VersionInfo | undefined): Promise<void> {
+function openAssetVersion(asset: AssetMeta, versionObj: VersionInfo | undefined): void {
   const cosKey = getCosKeyForVersion(asset, versionObj ?? null);
   if (!cosKey) return;
 
@@ -92,11 +67,8 @@ async function openAssetVersion(asset: AssetMeta, versionObj: VersionInfo | unde
   }
   const downloadUrl = versionObj.res_url || '';
 
-  if (type === 2 && !isZip(cosKey)) {
-    showTexture(null, basename(cosKey), proxyUrl(downloadUrl));
-    return;
-  }
-
+  // wb-bgm only addresses BGM(3) / SFX(7). Audio assets are served as a direct
+  // (non-zip) URL — play them. Anything else falls back to "unsupported".
   if ((type === 3 || type === 7) && !isZip(cosKey)) {
     currentAudioSel = {
       assetId: asset.asset_id || asset.id || '',
@@ -106,46 +78,11 @@ async function openAssetVersion(asset: AssetMeta, versionObj: VersionInfo | unde
       resUrl: downloadUrl,
       filename: basename(cosKey),
     };
-    showAudio(null, basename(cosKey), proxyUrl(downloadUrl));
-    return;
-  }
-  currentAudioSel = null;
-
-  if (type === 4 && !isZip(cosKey)) {
-    showVideo(null, basename(cosKey), proxyUrl(downloadUrl));
+    showAudio(basename(cosKey), proxyUrl(downloadUrl));
     return;
   }
 
-  if (!isZip(cosKey)) {
-    showToast(`暂不支持预览该文件类型：${cosKey}`, '');
-    setViewerPanel(null);
-    EL.placeholder().classList.remove('hidden');
-    const p = EL.placeholder().querySelector('p');
-    if (p) p.textContent = `暂不支持预览：${basename(cosKey)}`;
-    return;
-  }
-
-  if (!downloadUrl) {
-    showToast('缺少下载链接', 'error');
-    return;
-  }
-
-  setViewerPanel('progressPanel');
-  EL.progressTitle().textContent = `准备下载：${basename(cosKey, '.zip')}`;
-  EL.progressFill().style.width  = '0%';
-  EL.progressMsg().textContent   = '';
-
-  try {
-    const { files, getUrl } = await downloadAndExtract(downloadUrl, cosKey, (pct, msg) => {
-      EL.progressFill().style.width = `${pct}%`;
-      EL.progressMsg().textContent = msg;
-    });
-    showViewerFromZip(type, getUrl, files, basename(cosKey, '.zip'));
-  } catch (e) {
-    showToast(`错误: ${e instanceof Error ? e.message : String(e)}`, 'error');
-    setViewerPanel(null);
-    EL.placeholder().classList.remove('hidden');
-  }
+  showUnsupported(cosKey);
 }
 
 export function initAudioAttach(): void {

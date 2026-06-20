@@ -17,11 +17,7 @@ export async function showSearchResults(searchText: string, page = 1): Promise<v
 
   // 显示搜索结果面板 — 手动切换
   EL.placeholder().classList.add('hidden');
-  EL.progressPanel().classList.add('hidden');
-  EL.viewer3d().classList.add('hidden');
-  EL.viewerTexture().classList.add('hidden');
   EL.viewerAudio().classList.add('hidden');
-  EL.viewerVideo().classList.add('hidden');
   EL.filterView().classList.add('hidden');
   EL.searchResults().classList.remove('hidden');
 

@@ -1,5 +1,3 @@
-import type { EnvName } from './config.ts';
-
 export interface TreeNode {
   _type: 'root' | 'folder' | 'asset';
   _asset: AssetMeta | null;
@@ -38,7 +36,6 @@ export interface AssetMeta {
 }
 
 export interface AppState {
-  env: EnvName;
   depotName: string;
   viewMode: 'filemanager' | 'filter';
   activeType: number | null;
@@ -46,12 +43,10 @@ export interface AppState {
   page: number;
   pageSize: number;
   total: number;
-  assets: AssetMeta[];
   fileTree: TreeNode | null;
 }
 
 export const S: AppState = {
-  env:         'local',
   depotName:   'aw',
   viewMode:    'filemanager',
   activeType:  null,
@@ -59,20 +54,17 @@ export const S: AppState = {
   page:        1,
   pageSize:    20,
   total:       0,
-  assets:      [],
   fileTree:    null,
 };
 
 export interface AssetCacheState {
   data: AssetMeta[] | null;
-  env: string | null;
   ts: number;
   TTL: number;
 }
 
 export const assetCache: AssetCacheState = {
   data: null,
-  env: null,
   ts: 0,
   TTL: 120000,
 };

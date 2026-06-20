@@ -35,13 +35,17 @@ export async function attachToGame(sel: AudioSelection | null, btn: HTMLButtonEl
     btn.textContent = '配入中…';
   }
   try {
-    const r = await fetch('/api/wb/bgm/attach', {
+    // attach-audio is now a plugin host tool (server/tool-handlers.ts); the
+    // user caller routes through the generic ToolRegistry endpoint. The handler
+    // sets addedBy='human' for non-AI callers.
+    const r = await fetch('/api/tools/call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...sel, slug: slug.trim(), addedBy: 'human' }),
+      body: JSON.stringify({ toolId: 'attach-audio', args: { ...sel, slug: slug.trim() }, caller: { kind: 'user' } }),
     });
-    const data = await r.json().catch(() => ({} as Record<string, unknown>));
-    if (!r.ok) throw new Error((data.message as string) || (data.error as string) || `HTTP ${r.status}`);
+    const env = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; result?: { slug?: string; path?: string } };
+    if (!env.ok) throw new Error(env.error || `HTTP ${r.status}`);
+    const data = env.result ?? {};
     showToast(`已配入游戏「${data.slug}」：${data.path}`, 'success');
   } catch (e) {
     showToast(`配入失败：${e instanceof Error ? e.message : String(e)}`, 'error');

@@ -23,7 +23,7 @@ let lastChosen: string | null = null;
 
 /** Fetch the game list once (cached). Never throws — returns an empty list on
  *  any failure so the UI keeps working. */
-export async function loadGames(force = false): Promise<GamesResponse> {
+async function loadGames(force = false): Promise<GamesResponse> {
   if (cache && !force) return cache;
   try {
     const r = await fetch('/api/workbench/games');
@@ -37,7 +37,7 @@ export async function loadGames(force = false): Promise<GamesResponse> {
 }
 
 /** Remember the user's pick so the picker can pre-highlight it next time. */
-export function rememberChoice(slug: string): void {
+function rememberChoice(slug: string): void {
   if (slug) lastChosen = slug;
 }
 
