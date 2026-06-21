@@ -17,6 +17,7 @@ import {
   type Gen3DAssetManifest,
 } from '../shared/manifest';
 import { PerGameAssetStore } from './per-game-store';
+import { filterMotions, type MotionOption } from './motion-catalog';
 import { tools } from './tool-handlers';
 
 const SLUG = 'rig-smoke';
@@ -146,4 +147,23 @@ test('hunyuan 9–16 motions still round-trip via motionRef', async () => {
   await expect(tools['gen3d:apply-motion']({ slug: SLUG, assetPath, motionType: 99 })).rejects.toMatchObject({
     code: 'invalid_motion_type',
   });
+});
+
+// filterMotions treats a requested rigType against a null (unknown) rigType
+// as a match — the vendored Meshy catalog has no rig-type column, so strict
+// equality would empty the list whenever a rigType is passed (PLAN §8-Q1).
+test("filterMotions: requested rigType does not empty the catalog when rigType is null", () => {
+  const motions: MotionOption[] = [
+    { system: "meshy", id: 0, label: "Idle", category: "DailyActions", rigType: null, isFree: false, previewGifUrl: null },
+    { system: "meshy", id: 28, label: "Big_Wave_Hello", category: "DailyActions", rigType: null, isFree: false, previewGifUrl: null },
+  ];
+  // No rigType filter → all pass.
+  expect(filterMotions(motions, {}).length).toBe(2);
+  // A requested rigType against all-null rigTypes matches loosely (not empty).
+  expect(filterMotions(motions, { rigType: "style_02" }).length).toBe(2);
+  // A real rigType value still filters strictly.
+  const mixed = [...motions, { system: "meshy" as const, id: 5, label: "Run", category: "WalkAndRun", rigType: "style_02" as string | null, isFree: false, previewGifUrl: null } satisfies MotionOption];
+  expect(filterMotions(mixed, { rigType: "style_02" }).length).toBe(3);
+  // category still narrows strictly.
+  expect(filterMotions(motions, { category: "WalkAndRun" }).length).toBe(0);
 });

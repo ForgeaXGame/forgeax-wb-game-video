@@ -81,7 +81,9 @@ export function MotionBrowser({
     (m) =>
       (!q || m.label.toLowerCase().includes(q) || String(m.id).includes(q)) &&
       (!category || m.category === category) &&
-      (!rigType || m.rigType === rigType),
+      // rigType is degenerate today (vendored catalog has no rig-type column →
+      // all null); match loosely so a requested rigType never empties the list.
+      (!rigType || m.rigType === null || m.rigType === rigType),
   );
 
   if (loading) {

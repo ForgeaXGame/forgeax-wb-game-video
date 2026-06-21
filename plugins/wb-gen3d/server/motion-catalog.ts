@@ -104,6 +104,11 @@ export function filterMotions(options: readonly MotionOption[], f: MotionFilter)
     (o) =>
       (!q || o.label.toLowerCase().includes(q) || String(o.id).includes(q)) &&
       (!f.category || o.category === f.category) &&
-      (!f.rigType || o.rigType === f.rigType),
+      // rigType is degenerate today: the vendored Meshy catalog has no rig-type
+      // column (Meshy exposes no per-rig list endpoint), so every option's
+      // rigType is null. Match loosely — a requested rigType against an unknown
+      // (null) option is treated as a match rather than filtering everything
+      // out. PLAN §8-Q1.
+      (!f.rigType || o.rigType === null || o.rigType === f.rigType),
   );
 }
