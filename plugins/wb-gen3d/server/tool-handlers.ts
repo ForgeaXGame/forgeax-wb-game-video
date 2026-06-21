@@ -33,6 +33,7 @@ import { PerGameAssetStore } from './per-game-store';
 import { generateCacheFirst, persistGeneration, type PersistInput } from './generate';
 import * as cache from './cache';
 import { getCosEnv, getHunyuanEnv, getMeshyEnv, getRodinEnv } from './env';
+import { readCredentials, writeCredentials } from './credentials-store';
 import { CosUploader, mimeForModelFormat } from './cos-uploader';
 import {
   HunyuanWorkflowProvider,
@@ -1157,6 +1158,8 @@ export const tools = {
   'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
   'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
   'gen3d:rename-asset': async (args: RenameAssetArgs) => renameAsset(args),
+  'gen3d:get-credentials': async () => readCredentials(),
+  'gen3d:set-credentials': async (args: Record<string, unknown> = {}) => writeCredentials(args),
 };
 
 export default tools;

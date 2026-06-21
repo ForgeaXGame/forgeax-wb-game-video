@@ -221,6 +221,7 @@ export function App({ pane }: AppProps) {
           busy={busy}
           gameActive={gameActive}
           onGenerate={handleGenerate}
+          onCredentialsSaved={refreshStatus}
         />
       )}
 

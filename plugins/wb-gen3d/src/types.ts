@@ -14,6 +14,35 @@ export interface ProviderStatus {
   generatedAt: string;
 }
 
+// gen3d:get-credentials / gen3d:set-credentials. Secret fields come back MASKED
+// (e.g. "abcd...wxyz") or null when unset; HUNYUAN_BASE_URL is plaintext. The UI
+// must NEVER echo a mask back as a real value (see CredentialsModal): only the
+// fields the user actually edits are placed into the set-credentials patch.
+export interface Gen3DCredentials {
+  HUNYUAN_API_KEY: string | null;
+  HUNYUAN_BASE_URL: string | null;
+  MESHY_API_KEY: string | null;
+  RODIN_API_KEY: string | null;
+}
+
+// Shared return of both get-credentials and set-credentials (the refreshed
+// masked state). Mirrors ProviderStatus's self-describing `ok: true` envelope.
+export interface CredentialsState {
+  ok: true;
+  realProvidersEnabled: boolean;
+  credentials: Gen3DCredentials;
+}
+
+// set-credentials patch: only user-touched fields are present. '' clears a
+// field; GEN3D_ENABLE_REAL_PROVIDERS is sent on every save ('1' real / '0' mock).
+export interface CredentialsPatch {
+  GEN3D_ENABLE_REAL_PROVIDERS?: '0' | '1';
+  HUNYUAN_API_KEY?: string;
+  HUNYUAN_BASE_URL?: string;
+  MESHY_API_KEY?: string;
+  RODIN_API_KEY?: string;
+}
+
 export interface GenerateResult {
   ok: true;
   cacheKey: string;

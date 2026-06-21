@@ -101,6 +101,22 @@ body[data-pane='center'] .gx-center { height: 100%; }
   white-space: nowrap;
 }
 
+/* the pill doubles as the credentials-modal trigger */
+button.workbench-pane-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition:
+    background var(--motion-duration-base) var(--motion-ease-out),
+    border-color var(--motion-duration-base) var(--motion-ease-out);
+}
+
+button.workbench-pane-pill:hover {
+  background: rgba(212, 255, 72, 0.16);
+  border-color: rgba(212, 255, 72, 0.5);
+}
+
 /* ── locked 6px lime scrollbar (WORKBENCH_LEFT_SIDEBAR §7) ────────────────── */
 .workbench-pane-scroll {
   flex: 1 1 0;
@@ -383,6 +399,17 @@ body[data-pane='center'] .gx-center { height: 100%; }
   background: rgba(245, 178, 67, 0.12);
   color: var(--color-status-amber);
 }
+
+/* the mode chip is also a credentials-modal trigger */
+button.status-chip {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  transition: filter var(--motion-duration-base) var(--motion-ease-out);
+}
+
+button.status-chip:hover { filter: brightness(1.12); }
+.status-chip-key { margin-left: auto; opacity: 0.7; }
 
 /* ── center workspace ────────────────────────────────────────────────────── */
 .gx-center-scroll {
@@ -1167,3 +1194,141 @@ body[data-pane='center'] .gx-center { height: 100%; }
 .q-src--none { color: var(--color-text-tertiary, var(--color-text-secondary)); }
 .q-edit { width: 52px; padding: 2px 4px; border: 1px solid var(--color-border-default); border-radius: var(--radius-md); background: var(--color-background-floating); color: var(--color-text-primary); }
 .q-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+/* =============================================================================
+   credentials modal — overlay + centered card (in-UI provider key config).
+   Token-only colors/shadows/motion, consistent with the Workbench surface.
+   ============================================================================= */
+.gx-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--color-background-canvas) 72%, transparent);
+  backdrop-filter: blur(3px);
+  animation: motion-fade-in var(--motion-duration-fast) var(--motion-ease-out) both;
+}
+
+.gx-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-background-elevated);
+  box-shadow: var(--motion-shadow-hover);
+  overflow: hidden;
+}
+
+.gx-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-divider-default);
+  flex: 0 0 auto;
+}
+
+.gx-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-text-primary);
+}
+.gx-modal-title svg { color: var(--primary); }
+.gx-modal-close { margin-left: auto; }
+
+.gx-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 255, 72, 0.24) transparent;
+}
+.gx-modal-body::-webkit-scrollbar { width: 6px; }
+.gx-modal-body::-webkit-scrollbar-track { background: transparent; }
+.gx-modal-body::-webkit-scrollbar-thumb { background: rgba(212, 255, 72, 0.18); border-radius: 999px; }
+.gx-modal-body::-webkit-scrollbar-thumb:hover { background: rgba(212, 255, 72, 0.34); }
+
+.gx-modal-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 18px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+.gx-modal-state svg { color: var(--color-icon-tertiary); }
+.gx-modal-state .gx-state-copy { word-break: break-word; }
+
+.gx-modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-divider-default);
+  flex: 0 0 auto;
+}
+
+.gx-modal-msg { flex: 1 1 auto; min-width: 0; font-size: 11px; line-height: 1.4; word-break: break-word; }
+.gx-modal-msg--ok { color: var(--color-accent-green-default); }
+.gx-modal-msg--err { color: var(--color-status-error); }
+
+/* ── credentials sections (one per provider + the master switch) ─────────── */
+.cred-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-background-base);
+}
+
+.cred-section-head { display: flex; align-items: center; gap: 8px; }
+.cred-section-title { font-size: 12px; font-weight: 650; color: var(--color-text-primary); }
+
+.cred-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-background-floating);
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+}
+
+.cred-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-background-floating);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.cred-badge--on { border-color: rgba(79, 209, 127, 0.35); background: rgba(79, 209, 127, 0.10); color: var(--color-accent-green-default); }
+.cred-badge--off { color: var(--color-text-tertiary); }
+
+.cred-secret-row { display: flex; align-items: stretch; gap: 6px; }
+.cred-secret-row .fx-input { flex: 1 1 auto; min-width: 0; }
+.cred-secret-row .fx-btn { flex: 0 0 auto; white-space: nowrap; }

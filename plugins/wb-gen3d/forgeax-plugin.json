@@ -191,6 +191,27 @@
           "zh": "设置资产的用户自定义显示名（userLabel）。传 null 或空字符串可清除，恢复自动名称（prompt 首行或文件名 stem）。",
           "en": "Set a user-defined display label (userLabel) on an asset. Pass null or empty string to clear and revert to the auto-name (prompt first line or filename stem)."
         }
+      },
+      {
+        "id": "gen3d:get-credentials",
+        "args": "./schemas/get-credentials.args.json",
+        "returns": "./schemas/get-credentials.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "读取三家供应商凭证的掩码配置状态（不返回明文）。",
+          "en": "Read the masked configuration state of the three providers' credentials (never returns plaintext)."
+        }
+      },
+      {
+        "id": "gen3d:set-credentials",
+        "args": "./schemas/set-credentials.args.json",
+        "returns": "./schemas/set-credentials.returns.json",
+        "exposedToAI": false,
+        "confirm": true,
+        "description": {
+          "zh": "写入/更新供应商 key 与总开关到插件本地 .env 并即时生效（无需重启）。",
+          "en": "Write/update provider keys and the master switch to the plugin-local .env and apply them live (no server restart needed)."
+        }
       }
     ],
     "events": [
