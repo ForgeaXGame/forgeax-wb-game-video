@@ -1,5 +1,7 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-21（其二）— 公开镜像「零某云」门禁：临时去品牌词，解耦债务已挂账。** 开源公开镜像有一道**按字面词扫描**的门禁（仓库根 `scripts/mirror/publish.sh` 的 `gate()`）。本插件 `server/cos-uploader.ts` + `.env.example` 注释里点名了某云对象存储厂商，会触发门禁。**本批仅把这两处品牌词改成中性表述（"cloud object storage (COS)"）让门禁通过**；底层对象存储 SDK 依赖（`cos-nodejs-sdk-v5`）**仍在**——门禁按词扫描、抓不到这个依赖，所以 **「门禁绿」≠「无该云依赖」**。公开镜像正式转 public 前**必须二选一**：① 把 wb-gen3d 排除出镜像 + 门禁 denylist 补 `cos-nodejs-sdk-v5`；② 把 `cos-uploader` 抽象成厂商中立存储（默认 S3 兼容、该 SDK 转可选依赖，保留 3D 生成）。**完整决策 + 债务 + 真解见 [`docs/adr/0007-cos-public-mirror-scrub-and-decouple-debt.md`](./docs/adr/0007-cos-public-mirror-scrub-and-decouple-debt.md)**（该 ADR 在 `docs/`，不进镜像，故可点名）。
+
 > **2026-06-21 — 公测版绑骨/动画改用 Meshy 公网 API（§8 已拍板 · P0–P3 已实现 · mock-first / quota-safe / `exposedToAI` 仍 false）。** 上级指示公测接公网，
 > 混元 `auto_rigging`/`motion_retarget` 是**内网**、公测跑不通 → 用 Meshy `/openapi/v1/rigging` +
 > `/openapi/v1/animations` 接管（ADR-0003 早已预留这条退路）。**代码已落地**（见下「已实现」），分支 `laurenceelu/feat-20260617-gen3d-agentify-roadmap`。
