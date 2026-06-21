@@ -1,5 +1,12 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-17 — 当前开发线已切换。** `laurenceelu/feat-20260615-gen3d-polish` 已合入三仓 main（2026-06-16）。
+> 新开发线 = `laurenceelu/feat-20260617-gen3d-agentify-roadmap`，路线总账见
+> [`docs/PLAN-2026-06-17-agentification-and-v2-roadmap.md`](./docs/PLAN-2026-06-17-agentification-and-v2-roadmap.md)
+> + [`docs/adr/0005-agentification-spine-v2-parallel.md`](./docs/adr/0005-agentification-spine-v2-parallel.md)：
+> **A agent 化主轴 / B v2 48 动作库并行异步 / C 打磨附属**。
+> ⚠️ 接手先读 PLAN §0 两个硬约束（agent 化 ≠ 翻 boolean；引擎加载 gen3d 角色未建且跨边界）。
+
 > **2026-06-16 — 资产命名（显示改名 + 生成时定名）已合入 `laurenceelu/feat-20260615-gen3d-polish`。**
 > 6/15–6/16 落地：
 > - render-settings popover 向下展开修复（`b8eead9`）
@@ -11,7 +18,7 @@
 > 早前 6/14 落地的三批（已完成，勿重复）：视图器 P1+P2（`f5aa49c`）/ 五维评分 P3（`24143d7`）/ Provider 参数 P5（`608c365`）。
 > IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成执行 SSOT**。
 
-Last updated: 2026-06-16 Asia/Hong_Kong
+Last updated: 2026-06-17 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
@@ -27,22 +34,23 @@ Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（�
 `bun run build` 重建 `dist/`，再硬刷新（⌘⇧R）Workbench 验证。standalone dev
 `bun run dev`（:15175）走 vite HMR 无此问题，但 Studio 内嵌走 dist。
 
-## 当前开发线 = `laurenceelu/feat-20260615-gen3d-polish`（2026-06-16）
+## 当前开发线 = `laurenceelu/feat-20260617-gen3d-agentify-roadmap`（2026-06-17）
 
 > studio + marketplace **同名分支**。改代码在 marketplace 子模块内 commit；合入前 studio 父仓 bump marketplace 指针。
+> **路线 SSOT** = [`docs/PLAN-2026-06-17-agentification-and-v2-roadmap.md`](./docs/PLAN-2026-06-17-agentification-and-v2-roadmap.md)（可拆 ticket 的执行清单）+ [`docs/adr/0005-agentification-spine-v2-parallel.md`](./docs/adr/0005-agentification-spine-v2-parallel.md)（战略定调）。
 
-| 优先级 | 事项 | 说明 |
+三线（详见 PLAN）：
+
+| 线 | 事项 | 状态 / 闸门 |
 |---|---|---|
-| ✅ **已完成** | 资产包 `.zip` 导出 | `src/lib/zip.ts` + `exportBundle.ts` + `ExportBundleButton`；`StandalonePluginIframe` sandbox 补 `allow-downloads` |
-| ✅ **已完成** | 资产库 inline 改名 | `userLabel` + `gen3d:rename-asset` + 卡片铅笔；显示名 only |
-| ✅ **已完成** | 生成时命名 | SetupSidebar「资产名称」→ `assetName`；文件名 / 导出 .zip 从生成起确定 |
-| **P0** | M13 真机验收 + 开放 AI | Gate 0 自动探测已通过；剩 operator 目视 T-pose/动画，然后把 `gen3d:auto-rig` / `apply-motion` / `retopo-lowpoly` 的 `exposedToAI` 翻 `true` |
-| **P1** | 视图器/HDR/评分 UI 打磨 | 基于已合入的 P1–P3 做体验迭代；`public/hdr/` 缺真实 1k `.hdr` + `presets.json` 登记 |
-| **P2** | Provider 参数扩展 | 按 `docs/PROVIDER_PARAMS.md` 补更多 doc-verified 字段 |
-| **P3** | P4 AI 视觉评分 | 需 operator 授权 `packages/server` + llm-gateway 多模态；本期按钮置灰是预期 |
-| **P4** | 视图器进阶 | 反射地面、模型 gizmo、DCC 外壳 — 明确列为后续立项 |
+| **A 主轴** | agent 化端到端：A0 桥 de-risk → A1 `agent-gen3d` persona（`tools:["gen3d:*"]`）→ A2 翻 score-quality/rename + 补 AI 描述 → A3 score 回填 manifest → A4 翻 M13 三工具 → A5 引擎加载 | A0/A1/A2/A3 可立即编码；A4 卡 operator 目视；A5 跨边界需授权 |
+| **B 并行异步** | v2 48 动作库 M14：B0 上游三问+复现包 → B1 探测矩阵 → B2 验证 Gate（byte-diff）→ B3 增量集成 → B4 agent 暴露 | B0/B1 立刻发起；B2+ 卡上游 @raineejiang 回应 |
+| **C 附属** | C1 HDR presets / C2 视图器·评分 UI 打磨 / C3 Rodin views 真机 | C1 可立即；C3 卡 key |
 
-**已锁决策（P1–P5 落地，勿重新 litigate）**：见 `docs/PLAN-2026-06-13-viewer-quality-provider-params.md` 顶部「grill 修订」块（D1–D9）。**本期边界**：插件目录内，**零 `packages/server` 改动**（P4 未授权前）。
+> ⚠️ **接手先读 PLAN §0 两个硬约束**：① agent 化 ≠ 翻 `exposedToAI` boolean（当前无 agent 声明 `gen3d:*`、host-tools 桥实现存疑，A0 先 de-risk）；② 引擎加载 gen3d 角色未建且跨插件边界（A5，需授权/单独立项）。
+
+**历史（已完成并入 main，勿重复）**：6/15–6/16 交付收尾（.zip 导出 / inline 改名 / 生成时命名）；6/14 三批（视图器 P1+P2 / 五维评分 P3 / Provider 参数 P5，IMPL-2026-06-14-{A,B,C}）。
+**已锁决策（勿重新 litigate）**：见 `docs/PLAN-2026-06-13-viewer-quality-provider-params.md` 顶部「grill 修订」块（D1–D9）+ ADR-0003/0004。**本期边界**：插件目录内（+ 新增 `agent-gen3d`）；**零 `packages/server`/`packages/engine` 改动**（A0 实现桥 / A5 引擎加载 / P4 AI 评分 未授权前）。
 
 ## ~~下一步工作 = 视图器增强 / 五维质量评分 / Provider 参数~~（2026-06-14 · ✅ 已完成合入 main）
 
