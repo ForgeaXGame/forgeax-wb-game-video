@@ -919,9 +919,9 @@ async function applyMotion(args: ApplyMotionArgs): Promise<RigMotionResult> {
 
 // gen3d:list-motions — two-step motion discovery (PLAN §8-Q1b). Returns a
 // filtered slice of the motion catalog for the asset's rig system (Hunyuan →
-// the v1 fixed set; Meshy → its rig-compatible / public catalog). Zero credits
-// (a GET); quota-safe mock sample when Meshy is not configured. The AI schema
-// never enumerates the ~680 actions — callers narrow via query/category/rigType.
+// the v1 fixed set; Meshy → the public catalog). Zero credits (a GET);
+// quota-safe mock sample when Meshy is not configured. The AI schema never
+// enumerates the ~680 actions — callers narrow via query/category/rigType.
 interface ListMotionsArgs {
   slug?: string;
   assetPath?: string;
@@ -941,21 +941,17 @@ interface ListMotionsResult {
 async function listMotions(args: ListMotionsArgs = {}): Promise<ListMotionsResult> {
   const slug = requireSlug(args.slug);
   let system: MotionSystem = 'meshy';
-  let rigTaskId: string | undefined;
   const path = args.assetPath?.trim();
   if (path) {
     const asset = await storage.getAsset(slug, path);
     if (asset?.rig?.rigProvider === 'hunyuan_rest') system = 'hunyuan_v1';
-    else if (asset?.rig?.rigProvider === 'meshy') rigTaskId = asset.rig.rigTaskId ?? undefined;
   }
   const filter = { query: args.query, category: args.category, rigType: args.rigType };
   if (system === 'hunyuan_v1') {
     const motions = filterMotions(hunyuanV1Catalog(), filter);
     return { ok: true, usedMock: false, system, total: motions.length, motions };
   }
-  // A mock rig task id can't list real per-rig actions → fall to public catalog.
-  const taskId = rigTaskId && !rigTaskId.startsWith('mock') ? rigTaskId : undefined;
-  const { usedMock, options } = await getMeshyCatalog(slug, taskId);
+  const { usedMock, options } = await getMeshyCatalog(slug);
   const motions = filterMotions(options, filter);
   return { ok: true, usedMock, system: 'meshy', total: motions.length, motions };
 }

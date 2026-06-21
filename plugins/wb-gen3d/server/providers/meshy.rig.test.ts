@@ -5,6 +5,7 @@
 import { test, expect } from 'bun:test';
 import { MeshyProvider, type MeshyAnimateResult, type MeshyRigResult } from './meshy';
 import type { MeshyEnv } from '../env';
+import { MESHY_ACTION_BASE } from '../../shared/meshy-actions';
 
 const env: MeshyEnv = {
   apiKey: 'msy_test_key',
@@ -78,15 +79,6 @@ function makeProvider(opts: { status?: number } = {}) {
     if (method === 'GET' && path === `/openapi/v1/rigging/${RIG_TASK_ID}`) return json(RIG_POLL);
     if (method === 'POST' && path === '/openapi/v1/animations') return json({ result: ANIM_TASK_ID });
     if (method === 'GET' && path === `/openapi/v1/animations/${ANIM_TASK_ID}`) return json(ANIM_POLL);
-    if (method === 'GET' && path === `/openapi/v1/animations/${RIG_TASK_ID}/actions`) {
-      return json({ data: [{ id: 28, name: 'Big Wave Hello', category: 'gesture', rig_type: 'style_02', is_free: true }] });
-    }
-    if (method === 'GET' && path === '/web/public/animations/resources') {
-      return json([
-        { id: 28, name: 'Big Wave Hello', category: 'gesture', rigType: 'style_02', isFree: true },
-        { id: 101, name: 'Walk', category: 'locomotion', rigType: 'style_02', isFree: true },
-      ]);
-    }
     if (method === 'GET' && path === '/openapi/v1/balance') return json({ balance: 686 });
     return json({ error: { message: `unexpected ${method} ${path}` } }, 500);
   };
@@ -153,15 +145,20 @@ test('full rig→animate chain runs with exactly two submits (one rig + one anim
   expect(submits.map((s) => s.path)).toEqual(['/openapi/v1/rigging', '/openapi/v1/animations']);
 });
 
-test('listActions(): per-rig + public catalog both parse tolerant shapes', async () => {
+test('listActions(): returns the vendored static catalog without a network call', async () => {
   const { provider, hits } = makeProvider();
-  const perRig = await provider.listActions(RIG_TASK_ID);
-  expect(perRig).toEqual([
-    { id: 28, name: 'Big Wave Hello', category: 'gesture', rigType: 'style_02', isFree: true, previewGifUrl: null },
-  ]);
   const pub = await provider.listActions();
-  expect(pub.map((a) => a.id)).toEqual([28, 101]);
-  expect(hits.some((h) => h.path === '/web/public/animations/resources')).toBe(true);
+  // Faithful reflection of the vendored MESHY_ACTIONS table (scraped from the
+  // web animation-library; Meshy exposes no list endpoint). Every positive id
+  // is surfaced verbatim; the discovery layer filters to positive/applyable.
+  expect(pub.length).toBeGreaterThan(600);
+  expect(pub.every((a) => typeof a.id === 'number')).toBe(true);
+  const bigWave = pub.find((a) => a.id === 28);
+  expect(bigWave).toMatchObject({ id: 28, name: 'Big_Wave_Hello', category: 'DailyActions' });
+  expect(bigWave?.previewGifUrl?.startsWith(MESHY_ACTION_BASE)).toBe(true);
+  // No HTTP call is issued for the catalog.
+  expect(hits.some((h) => h.path === '/web/public/animations/resources')).toBe(false);
+  expect(hits.length).toBe(0);
 });
 
 test('getBalance() reads the numeric balance', async () => {

@@ -15,6 +15,7 @@
 
 import { clampTargetPolycount, type ProviderResult, type ProviderResultFile } from '../../shared/catalog';
 import type { FileFormat, FileRole, GenerationMode } from '../../shared/manifest';
+import { MESHY_ACTIONS, MESHY_ACTION_BASE } from '../../shared/meshy-actions';
 import type { MeshyEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
@@ -28,10 +29,6 @@ const PATH_MULTI = '/openapi/v1/multi-image-to-3d';
 const PATH_RIGGING = '/openapi/v1/rigging';
 const PATH_ANIMATION = '/openapi/v1/animations';
 const PATH_BALANCE = '/openapi/v1/balance';
-// Public full motion catalog (~680). A different host path than /openapi/v1/*,
-// same base host. The per-rig variant `${PATH_ANIMATION}/{rigTaskId}/actions`
-// filters to rig-compatible actions.
-const PATH_PUBLIC_ACTIONS = '/web/public/animations/resources';
 
 const SUCCESS = 'SUCCEEDED';
 const FAILURE = new Set(['FAILED', 'CANCELED']);
@@ -261,11 +258,24 @@ export class MeshyProvider {
     };
   }
 
-  // Motion catalog. With a rigTaskId, lists only rig-compatible actions; without
-  // one, the public full catalog (~680). Zero credits. Tolerant parse (PLAN §2.4).
-  async listActions(rigTaskId?: string): Promise<MeshyAction[]> {
-    const path = rigTaskId ? `${PATH_ANIMATION}/${encodeURIComponent(rigTaskId)}/actions` : PATH_PUBLIC_ACTIONS;
-    return parseActions(await this.get(path));
+  // Motion catalog — the full public action set (~680). Meshy exposes NO HTTP
+  // endpoint to list actions (verified 2026-06-21 against the official API
+  // reference: only POST/GET/DELETE /openapi/v1/animations exist). The catalog
+  // is a static table scraped from the web animation-library page and vendored
+  // at shared/meshy-actions.ts. There is no per-rig "compatible actions"
+  // endpoint either, so rigType filtering is done by the caller. Zero credits.
+  async listActions(): Promise<MeshyAction[]> {
+    return MESHY_ACTIONS.map((row) => {
+      const [id, name, category, , previewGifRel] = row;
+      return {
+        id,
+        name,
+        category,
+        rigType: null,
+        isFree: false,
+        previewGifUrl: previewGifRel ? `${MESHY_ACTION_BASE}${previewGifRel}` : null,
+      };
+    });
   }
 
   // Remaining credit balance, for an optional pre-flight before a paid call.
@@ -437,35 +447,6 @@ function str(value: unknown): string | null {
 
 function numOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-// Tolerant parse of the motion catalog. The exact field names are PER-DOCS
-// (PLAN §2.4, "待实现期确认"), so accept data[]/result[]/array and common key
-// spellings. Entries without a numeric id or name are skipped.
-function parseActions(resp: Record<string, unknown>): MeshyAction[] {
-  const list = Array.isArray(resp)
-    ? (resp as unknown[])
-    : Array.isArray(resp.data)
-      ? (resp.data as unknown[])
-      : Array.isArray(resp.result)
-        ? (resp.result as unknown[])
-        : [];
-  const out: MeshyAction[] = [];
-  for (const raw of list) {
-    const o = asRecord(raw);
-    const id = typeof o.id === 'number' ? o.id : Number(o.id);
-    const name = str(o.name) ?? str(o.action_name);
-    if (!Number.isFinite(id) || !name) continue;
-    out.push({
-      id,
-      name,
-      category: str(o.category),
-      rigType: str(o.rig_type) ?? str(o.rigType),
-      isFree: o.is_free === true || o.isFree === true,
-      previewGifUrl: str(o.preview_url) ?? str(o.gif_url) ?? str(o.preview_gif_url),
-    });
-  }
-  return out;
 }
 
 function pathForMode(mode: MeshyMode): string {

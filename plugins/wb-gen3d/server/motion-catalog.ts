@@ -52,37 +52,41 @@ const MOCK_MESHY_MOTIONS: MotionOption[] = [
 ];
 
 const CATALOG_TTL_MS = 10 * 60_000;
+const CATALOG_KEY = '__public__';
 interface CacheEntry {
   at: number;
   options: MotionOption[];
 }
 const meshyCache = new Map<string, CacheEntry>();
 
-// Fetch (and TTL-cache) the Meshy motion catalog. With a rigTaskId, lists only
-// rig-compatible actions; otherwise the public full catalog. Quota-safe: no env
-// → mock sample.
+// Fetch (and TTL-cache) the public Meshy motion catalog (~680 actions; the only
+// catalog endpoint — rigType compatibility is filtered client-side via the
+// returned `rigType` field). Only positive action ids are surfaced: apply-motion
+// drives /animations by a positive action_id, while the bundled free walk/run
+// (negative sentinel ids) are delivered at rig time, not via this catalog.
+// Quota-safe: no env → deterministic mock sample.
 export async function getMeshyCatalog(
   slug: string,
-  rigTaskId?: string,
 ): Promise<{ usedMock: boolean; options: MotionOption[] }> {
   const env = getMeshyEnv();
   if (!env) return { usedMock: true, options: MOCK_MESHY_MOTIONS };
-  const key = rigTaskId ?? '__public__';
-  const hit = meshyCache.get(key);
+  const hit = meshyCache.get(CATALOG_KEY);
   if (hit && Date.now() - hit.at < CATALOG_TTL_MS) {
     return { usedMock: false, options: hit.options };
   }
-  const actions = await new MeshyProvider({ env, slug }).listActions(rigTaskId);
-  const options: MotionOption[] = actions.map((a) => ({
-    system: 'meshy',
-    id: a.id,
-    label: a.name,
-    category: a.category,
-    rigType: a.rigType,
-    isFree: a.isFree,
-    previewGifUrl: a.previewGifUrl,
-  }));
-  meshyCache.set(key, { at: Date.now(), options });
+  const actions = await new MeshyProvider({ env, slug }).listActions();
+  const options: MotionOption[] = actions
+    .filter((a) => typeof a.id === 'number' && a.id > 0)
+    .map((a) => ({
+      system: 'meshy',
+      id: a.id,
+      label: a.name,
+      category: a.category,
+      rigType: a.rigType,
+      isFree: a.isFree,
+      previewGifUrl: a.previewGifUrl,
+    }));
+  meshyCache.set(CATALOG_KEY, { at: Date.now(), options });
   return { usedMock: false, options };
 }
 
