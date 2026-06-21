@@ -11,7 +11,7 @@ import type { CredentialsPatch, CredentialsState, Gen3DCredentials } from '@/typ
 
 type Phase = 'loading' | 'ready' | 'error';
 
-type SecretKey = 'HUNYUAN_API_KEY' | 'MESHY_API_KEY' | 'RODIN_API_KEY';
+type SecretKey = 'HUNYUAN_API_KEY' | 'MESHY_API_KEY' | 'RODIN_API_KEY' | 'COS_SECRET_ID' | 'COS_SECRET_KEY';
 
 // value !== '' → user typed a new secret; cleared → user pressed 清除; neither
 // → untouched (omitted from the patch, so the mask is never written back).
@@ -26,6 +26,8 @@ const emptySecrets = (): Record<SecretKey, SecretEdit> => ({
   HUNYUAN_API_KEY: UNTOUCHED,
   MESHY_API_KEY: UNTOUCHED,
   RODIN_API_KEY: UNTOUCHED,
+  COS_SECRET_ID: UNTOUCHED,
+  COS_SECRET_KEY: UNTOUCHED,
 });
 
 export function CredentialsModal({
@@ -48,10 +50,15 @@ export function CredentialsModal({
   const [enabled, setEnabled] = useState(false);
   const [masked, setMasked] = useState<Gen3DCredentials | null>(null);
   const [secrets, setSecrets] = useState<Record<SecretKey, SecretEdit>>(emptySecrets);
-  // HUNYUAN_BASE_URL is plaintext (not a secret): prefill + edit freely. Compare
-  // against the loaded value to decide whether it belongs in the patch.
+  // HUNYUAN_BASE_URL + COS_BUCKET + COS_REGION are plaintext (not secrets):
+  // prefill + edit freely. Compare against the loaded value to decide whether
+  // each belongs in the patch.
   const [baseUrl, setBaseUrl] = useState('');
   const [initialBaseUrl, setInitialBaseUrl] = useState('');
+  const [cosBucket, setCosBucket] = useState('');
+  const [initialCosBucket, setInitialCosBucket] = useState('');
+  const [cosRegion, setCosRegion] = useState('');
+  const [initialCosRegion, setInitialCosRegion] = useState('');
 
   const applyState = useCallback((s: CredentialsState) => {
     setEnabled(s.realProvidersEnabled);
@@ -59,6 +66,12 @@ export function CredentialsModal({
     const url = s.credentials.HUNYUAN_BASE_URL ?? '';
     setBaseUrl(url);
     setInitialBaseUrl(url);
+    const bucket = s.credentials.COS_BUCKET ?? '';
+    setCosBucket(bucket);
+    setInitialCosBucket(bucket);
+    const region = s.credentials.COS_REGION ?? '';
+    setCosRegion(region);
+    setInitialCosRegion(region);
     // Drop edit buffers: typed secrets were consumed by the save (their fresh
     // masks now arrive via s.credentials), and on initial load they start clean.
     setSecrets(emptySecrets());
@@ -114,6 +127,14 @@ export function CredentialsModal({
     setBaseUrl(v);
     markDirty();
   };
+  const changeCosBucket = (v: string) => {
+    setCosBucket(v);
+    markDirty();
+  };
+  const changeCosRegion = (v: string) => {
+    setCosRegion(v);
+    markDirty();
+  };
 
   // Untouched secrets resolve to undefined → never serialized, so a returned mask
   // can't leak back as a real key.
@@ -132,8 +153,16 @@ export function CredentialsModal({
     if (me !== undefined) patch.MESHY_API_KEY = me;
     const ro = secretToPatch(secrets.RODIN_API_KEY);
     if (ro !== undefined) patch.RODIN_API_KEY = ro;
+    const csi = secretToPatch(secrets.COS_SECRET_ID);
+    if (csi !== undefined) patch.COS_SECRET_ID = csi;
+    const csk = secretToPatch(secrets.COS_SECRET_KEY);
+    if (csk !== undefined) patch.COS_SECRET_KEY = csk;
     const url = baseUrl.trim();
     if (url !== initialBaseUrl.trim()) patch.HUNYUAN_BASE_URL = url;
+    const bucket = cosBucket.trim();
+    if (bucket !== initialCosBucket.trim()) patch.COS_BUCKET = bucket;
+    const region = cosRegion.trim();
+    if (region !== initialCosRegion.trim()) patch.COS_REGION = region;
     return patch;
   };
 
@@ -289,6 +318,54 @@ export function CredentialsModal({
                   onChange={(v) => changeSecret('RODIN_API_KEY', v)}
                   onClear={() => clearSecret('RODIN_API_KEY')}
                 />
+              </section>
+
+              <section className="cred-section">
+                <div className="cred-section-head">
+                  <span className="cred-section-title">对象存储 COS</span>
+                  <span className="cred-tag">传输</span>
+                  <StatusBadge configured={masked?.COS_SECRET_ID != null && masked?.COS_SECRET_KEY != null} />
+                </div>
+                <SecretField
+                  label="COS_SECRET_ID"
+                  mask={masked?.COS_SECRET_ID ?? null}
+                  edit={secrets.COS_SECRET_ID}
+                  onChange={(v) => changeSecret('COS_SECRET_ID', v)}
+                  onClear={() => clearSecret('COS_SECRET_ID')}
+                />
+                <SecretField
+                  label="COS_SECRET_KEY"
+                  mask={masked?.COS_SECRET_KEY ?? null}
+                  edit={secrets.COS_SECRET_KEY}
+                  onChange={(v) => changeSecret('COS_SECRET_KEY', v)}
+                  onClear={() => clearSecret('COS_SECRET_KEY')}
+                />
+                <label className="field">
+                  <span className="field-label">COS_BUCKET</span>
+                  <input
+                    className="fx-input"
+                    type="text"
+                    autoComplete="off"
+                    value={cosBucket}
+                    placeholder="bucket-name-1234567890"
+                    onChange={(e) => changeCosBucket(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">COS_REGION</span>
+                  <input
+                    className="fx-input"
+                    type="text"
+                    autoComplete="off"
+                    value={cosRegion}
+                    placeholder="ap-guangzhou"
+                    onChange={(e) => changeCosRegion(e.target.value)}
+                  />
+                </label>
+                <p className="step-note">
+                  绑非 Meshy 源（混元/Rodin 生成的 mesh → Meshy 绑骨架）或上传本地图时需要
+                  COS 公网 URL，此时必须配置；纯 Meshy 端到端可不配。详见插件 .env。
+                </p>
               </section>
             </>
           )}

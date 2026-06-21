@@ -23,6 +23,10 @@ export interface Gen3DCredentials {
   HUNYUAN_BASE_URL: string | null;
   MESHY_API_KEY: string | null;
   RODIN_API_KEY: string | null;
+  COS_SECRET_ID: string | null;
+  COS_SECRET_KEY: string | null;
+  COS_BUCKET: string | null;
+  COS_REGION: string | null;
 }
 
 // Shared return of both get-credentials and set-credentials (the refreshed
@@ -41,6 +45,10 @@ export interface CredentialsPatch {
   HUNYUAN_BASE_URL?: string;
   MESHY_API_KEY?: string;
   RODIN_API_KEY?: string;
+  COS_SECRET_ID?: string;
+  COS_SECRET_KEY?: string;
+  COS_BUCKET?: string;
+  COS_REGION?: string;
 }
 
 export interface GenerateResult {

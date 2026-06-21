@@ -54,6 +54,10 @@ test('readCredentials: parses quoted values, masks secrets, base url plaintext, 
       "RODIN_API_KEY='rodin-secret-7890'",
       'HUNYUAN_BASE_URL=https://hy.example.com/v1',
       'GEN3D_ENABLE_REAL_PROVIDERS=1',
+      'COS_SECRET_ID=cosid-secret-abcdef',
+      'COS_SECRET_KEY=coskey-secret-ghijkl',
+      'COS_BUCKET=forgeax-1000000123456789',
+      'COS_REGION=ap-guangzhou',
     ].join('\n'),
     'utf8',
   );
@@ -64,6 +68,10 @@ test('readCredentials: parses quoted values, masks secrets, base url plaintext, 
   expect(s.credentials.RODIN_API_KEY).toBe('rodi...7890');
   expect(s.credentials.HUNYUAN_BASE_URL).toBe('https://hy.example.com/v1'); // plaintext
   expect(s.credentials.HUNYUAN_API_KEY).toBeNull(); // unset
+  expect(s.credentials.COS_SECRET_ID).toBe('cosi...cdef'); // masked
+  expect(s.credentials.COS_SECRET_KEY).toBe('cosk...ijkl'); // masked
+  expect(s.credentials.COS_BUCKET).toBe('forgeax-1000000123456789'); // plaintext
+  expect(s.credentials.COS_REGION).toBe('ap-guangzhou'); // plaintext
 });
 
 test('readCredentials: missing file → all null, switch off', () => {
@@ -73,6 +81,35 @@ test('readCredentials: missing file → all null, switch off', () => {
   expect(s.credentials.HUNYUAN_BASE_URL).toBeNull();
   expect(s.credentials.MESHY_API_KEY).toBeNull();
   expect(s.credentials.RODIN_API_KEY).toBeNull();
+  expect(s.credentials.COS_SECRET_ID).toBeNull();
+  expect(s.credentials.COS_SECRET_KEY).toBeNull();
+  expect(s.credentials.COS_BUCKET).toBeNull();
+  expect(s.credentials.COS_REGION).toBeNull();
+});
+
+test('writeCredentials: COS secrets masked + plaintext bucket/region persist + live-apply', () => {
+  const state = writeCredentials(
+    {
+      COS_SECRET_ID: 'cosid-live-1234567',
+      COS_SECRET_KEY: 'coskey-live-8765432',
+      COS_BUCKET: 'forgeax-bucket',
+      COS_REGION: 'ap-shanghai',
+    },
+    envPath,
+  );
+  expect(state.credentials.COS_SECRET_ID).toBe('cosi...4567');
+  expect(state.credentials.COS_SECRET_KEY).toBe('cosk...5432');
+  expect(state.credentials.COS_BUCKET).toBe('forgeax-bucket'); // plaintext
+  expect(state.credentials.COS_REGION).toBe('ap-shanghai'); // plaintext
+  // live-applied so env.ts read() sees them without a restart
+  expect(process.env.COS_SECRET_ID).toBe('cosid-live-1234567');
+  expect(process.env.COS_SECRET_KEY).toBe('coskey-live-8765432');
+  expect(process.env.COS_BUCKET).toBe('forgeax-bucket');
+  expect(process.env.COS_REGION).toBe('ap-shanghai');
+  // persisted to disk, secrets verbatim (masking is read-time only)
+  const text = readFileSync(envPath, 'utf8');
+  expect(text).toContain('COS_SECRET_ID=cosid-live-1234567');
+  expect(text).toContain('COS_BUCKET=forgeax-bucket');
 });
 
 test('writeCredentials → masked state, live process.env, and persisted file', () => {

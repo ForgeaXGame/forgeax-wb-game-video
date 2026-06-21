@@ -24,12 +24,24 @@ export const CRED_KEYS = [
   'HUNYUAN_BASE_URL',
   'MESHY_API_KEY',
   'RODIN_API_KEY',
+  'COS_SECRET_ID',
+  'COS_SECRET_KEY',
+  'COS_BUCKET',
+  'COS_REGION',
 ] as const;
 
-// Keys whose value must be masked on read-back. HUNYUAN_BASE_URL is an address,
-// not a secret (plaintext); GEN3D_ENABLE_REAL_PROVIDERS is a switch surfaced via
-// the realProvidersEnabled boolean.
-export const SECRET_KEYS = ['HUNYUAN_API_KEY', 'MESHY_API_KEY', 'RODIN_API_KEY'] as const;
+// Keys whose value must be masked on read-back. HUNYUAN_BASE_URL / COS_BUCKET /
+// COS_REGION are addresses, not secrets (plaintext); GEN3D_ENABLE_REAL_PROVIDERS
+// is a switch surfaced via the realProvidersEnabled boolean. COS_SECRET_ID is a
+// credential (masked like the provider API keys); COS_SECRET_KEY is the secret
+// half of the COS key pair.
+export const SECRET_KEYS = [
+  'HUNYUAN_API_KEY',
+  'MESHY_API_KEY',
+  'RODIN_API_KEY',
+  'COS_SECRET_ID',
+  'COS_SECRET_KEY',
+] as const;
 
 export interface CredentialsState {
   ok: true;
@@ -39,6 +51,10 @@ export interface CredentialsState {
     HUNYUAN_BASE_URL: string | null; // PLAINTEXT or null
     MESHY_API_KEY: string | null; // masked or null
     RODIN_API_KEY: string | null; // masked or null
+    COS_SECRET_ID: string | null; // masked or null
+    COS_SECRET_KEY: string | null; // masked or null
+    COS_BUCKET: string | null; // PLAINTEXT or null
+    COS_REGION: string | null; // PLAINTEXT or null
   };
 }
 
@@ -129,6 +145,10 @@ export function readCredentials(envPath: string = defaultEnvPath()): Credentials
       HUNYUAN_BASE_URL: effective('HUNYUAN_BASE_URL', fileEnv) ?? null,
       MESHY_API_KEY: maskKey(effective('MESHY_API_KEY', fileEnv)),
       RODIN_API_KEY: maskKey(effective('RODIN_API_KEY', fileEnv)),
+      COS_SECRET_ID: maskKey(effective('COS_SECRET_ID', fileEnv)),
+      COS_SECRET_KEY: maskKey(effective('COS_SECRET_KEY', fileEnv)),
+      COS_BUCKET: effective('COS_BUCKET', fileEnv) ?? null,
+      COS_REGION: effective('COS_REGION', fileEnv) ?? null,
     },
   };
 }
