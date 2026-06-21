@@ -8,7 +8,7 @@
 // .forgeax/games/<slug>/assets/3d/{characters|meshes}/; a future COS/S3 adapter
 // could swap without changing this interface or the manifest contract.
 
-import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionType, QualityReport, SkeletonProfile } from '../shared/manifest';
+import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionRef, QualityReport, RigChain, SkeletonProfile } from '../shared/manifest';
 
 // One produced file (already downloaded into bytes; never a provider URL).
 export interface AssetFileInput {
@@ -88,6 +88,11 @@ export interface DerivedFileInput {
   format: FileFormat;
   // rigged_model | animated_model (the appended downstream roles).
   role: FileRole;
+  // For animated_model files: which motion this clip is (any system). Stored
+  // structurally + used as the on-disk file-name variant for readability. A
+  // single append may carry several files with different motionRefs (e.g. a rig
+  // step that also lands the free walk/run clips, ADR-0006 §8-Q6).
+  motionRef?: MotionRef;
 }
 
 export interface AppendDerivedFilesInput {
@@ -101,9 +106,9 @@ export interface AppendDerivedFilesInput {
     skeletonProfile: SkeletonProfile;
     animationInputReady: boolean;
   };
-  // For animated_model files: which motion this is (int 9–16), stored
-  // structurally + used as the on-disk file-name variant for readability.
-  motionType?: MotionType;
+  // Rig-chain identity (provider + Meshy rig_task_id + rigType + expiry),
+  // persisted on the asset so apply-motion can dispatch by system (ADR-0006).
+  rigChain?: RigChain;
 }
 
 // Scratch (transfer) artifacts — pose-standardized images, uploaded inputs. NOT

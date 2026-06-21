@@ -42,8 +42,55 @@ export type SkeletonProfile = 'humanoid' | 'unknown';
 // Motion type for animated_model files. Hunyuan motion_retarget v1 fixed motions
 // are ints 9–16 (跨步/摔倒/跳跃/踢腿/挥击/步行/跑步/跳舞; see ADR-0003 §③). Stored
 // structurally so idempotency / enumeration / downstream selection never parse
-// file names.
+// file names. Kept as the hunyuan_v1 subset of MotionRef + a legacy on-disk
+// field (older sidecars wrote a bare `motionType`; sidecarToManifest upgrades it).
 export type MotionType = 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+
+// Which animation "system" produced a clip. Public beta uses Meshy; Hunyuan v1
+// (8 fixed motions) stays for internal/dev; hunyuan_v2 is reserved for the
+// 48-motion B-line once it unblocks (ADR-0006 §Decision 3 / PLAN §8-Q2,Q7).
+export type MotionSystem = 'hunyuan_v1' | 'hunyuan_v2' | 'meshy';
+
+// Generalized, structural motion descriptor (ADR-0006, Q2 = option 1). One
+// discriminated union subsumes all three systems and is designed once so adding
+// hunyuan_v2 later does not touch the contract. Stored MINIMALLY as
+// {system,id,label}; rich metadata (category / preview gif / rigType / isFree)
+// is resolved on demand from the P2 motion catalog by (system,id), never
+// persisted (PLAN §3-1). The idempotency key is `${system}:${id}`.
+export type MotionRef =
+  | { system: 'hunyuan_v1'; id: MotionType; label: string }
+  | { system: 'hunyuan_v2'; id: string; label: string }
+  | { system: 'meshy'; id: number; label: string };
+
+// Stable dedup / idempotency key for a motion across systems.
+export function motionRefKey(ref: MotionRef): string {
+  return `${ref.system}:${ref.id}`;
+}
+
+// Canonical labels for the 8 Hunyuan v1 motions (跨步/摔倒/…). Kept here (not in
+// the UI) so the server can build a MotionRef label and upgrade legacy sidecars.
+export const HUNYUAN_V1_MOTION_LABELS: Record<MotionType, string> = {
+  9: '跨步',
+  10: '摔倒',
+  11: '跳跃',
+  12: '踢腿',
+  13: '挥击',
+  14: '步行',
+  15: '跑步',
+  16: '跳舞',
+};
+
+// Upgrade a legacy bare `motionType` (int 9–16) to a full MotionRef.
+export function motionRefFromLegacy(id: MotionType): MotionRef {
+  return { system: 'hunyuan_v1', id, label: HUNYUAN_V1_MOTION_LABELS[id] ?? `动作 ${id}` };
+}
+
+// Reserved Meshy ids for the free walk/run clips bundled in a /rigging result.
+// These are NOT real Meshy action_ids (those are positive), so reserving
+// negatives lets the bundled clips dedupe + render like any other motion
+// without colliding with a real action (PLAN §3-4 / §8-Q6).
+export const MESHY_FREE_WALK_ID = -1;
+export const MESHY_FREE_RUN_ID = -2;
 
 export interface ManifestFile {
   fileId: string;
@@ -62,9 +109,13 @@ export interface ManifestFile {
   hasSkeleton: boolean;
   skeletonProfile: SkeletonProfile;
   animationInputReady: boolean;
-  // For role=animated_model files: which motion_retarget v1 motion this clip is.
-  // Structural (not parsed from the file name) so multiple motions coexist and
-  // apply-motion stays idempotent per motion. Undefined for non-animated roles.
+  // For role=animated_model files: which motion this clip is, structural (not
+  // parsed from the file name) so multiple motions coexist and apply-motion
+  // stays idempotent per motion. `motionRef` is the generalized descriptor
+  // (any system); `motionType` is the legacy hunyuan_v1-only field, still
+  // populated for that system so older readers keep working. Undefined for
+  // non-animated roles.
+  motionRef?: MotionRef;
   motionType?: MotionType;
 }
 
@@ -151,6 +202,9 @@ export interface Gen3DAssetManifest {
     rigged: boolean;
     animated: boolean;
   };
+  // Rig-chain identity once the asset is rigged (ADR-0006). apply-motion reads
+  // rig.rigTaskId (Meshy) and dispatches by rig.rigProvider. Undefined until rigged.
+  rig?: RigChain;
   quality: QualityScore;
   targetFaceCount?: number | null;
   createdAt: string;
@@ -176,8 +230,26 @@ export interface SidecarDependency {
   hasSkeleton?: boolean;
   skeletonProfile?: SkeletonProfile;
   animationInputReady?: boolean;
-  // For animated_model deps: structural motion_retarget v1 motion (int 9–16).
+  // For animated_model deps: the generalized motion descriptor (any system).
+  motionRef?: MotionRef;
+  // Legacy hunyuan_v1-only field, still read for back-compat with sidecars
+  // written before motionRef existed (upgraded in sidecarToManifest).
   motionType?: MotionType;
+}
+
+// Rig-chain identity persisted on a rigged asset (ADR-0006 §Decision 3). Meshy
+// animation MUST be driven by Meshy's own rig_task_id (it does not accept an
+// external FBX), so apply-motion dispatches strictly by the recorded system and
+// reads rigTaskId from here. Hunyuan REST only needs the local rigged FBX, so
+// rigTaskId is null there.
+export interface RigChain {
+  rigProvider: 'meshy' | 'hunyuan_rest';
+  // Meshy rig task id (input to /animations). null for the Hunyuan path.
+  rigTaskId: string | null;
+  // Meshy rig skeleton type (e.g. style_01); used to filter compatible actions.
+  rigType: string | null;
+  // Meshy rig task expiry (epoch ms; ~3 days). Used to detect rig_expired.
+  rigExpiresAt: number | null;
 }
 
 export interface AssetSidecar {
@@ -209,6 +281,9 @@ export interface AssetSidecar {
     // The cacheKey that produced this asset, for delete→tombstone reverse lookup.
     cacheKey?: string;
     quality?: QualityReport;
+    // Rig-chain identity (ADR-0006), set by a verified rig step. apply-motion
+    // dispatches by custom.rig.rigProvider and reads rig.rigTaskId (Meshy).
+    rig?: RigChain;
   };
 }
 

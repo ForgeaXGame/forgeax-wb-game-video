@@ -1,4 +1,4 @@
-// COS uploader — hosts a local input image on Tencent COS and returns a
+// COS uploader — hosts a local input image on cloud object storage (COS) and returns a
 // time-limited presigned URL. Input images are TRANSFER artifacts, not assets:
 // they exist only so a provider (Hunyuan/Meshy) whose API fetches by URL can
 // reach a user's local file. Rodin takes bytes directly and never needs this.

@@ -21,6 +21,7 @@ import {
   Play,
   Shrink,
   SlidersHorizontal,
+  Search,
 } from 'lucide-react';
 import type { GenProvider, Mode } from './types';
 import type { AssetSlot, MotionType } from '@shared/manifest';
@@ -44,6 +45,7 @@ export const EDITOR_ICON_MAP = {
   motion: Play,
   lowpoly: Shrink,
   params: SlidersHorizontal,
+  search: Search,
 } as const;
 
 export const modeMeta: Record<Mode, { toolId: string; label: string; icon: typeof Type }> = {
