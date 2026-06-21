@@ -1,6 +1,6 @@
 # ADR-0006 — 公测版绑骨/动画改用 Meshy 公网 API（替换混元内网）
 
-- **Status**: 🟡 Proposed（2026-06-21 提出，待 review；真机全链已预验证通过——见 PLAN §7）
+- **Status**: ✅ Accepted（2026-06-21 grill review 拍板 §8 全部决策；真机全链已预验证 PLAN §7；实现待 P0）
 - **Date**: 2026-06-21
 - **Deciders**: laurenceelu（+ 待 reviewing agent）
 - **Extends**: ADR-0001（生产工具方向 + provider 解耦）、ADR-0002（per-game 文件资产）。
@@ -27,14 +27,22 @@
    （动作库 ~680 vs 8）的双重选择。
 2. **混元 REST 绑骨/动画降级为内网/dev gated 备选**：仅当 `getHunyuanEnv()` 配置齐全（内网开发机）才走，
    公测环境天然 null → 自动不启用。**不删代码**（零额外风险，保留内网增强可能）。
-3. **动作标识从混元专用 `MotionType`(9–16) 泛化为 provider-tagged 描述符**（保留 9–16 作子集，向后兼容）。
-   绑骨产物额外持久化 `rigProvider` / `rigTaskId` / `rigType`——因为 **Meshy 动画必须用它自己的
+3. **动作标识从混元专用 `MotionType`(9–16) 泛化为按"动作体系 `system`"分的判别联合**
+   （`hunyuan_v1` | `hunyuan_v2` 预留 | `meshy`，一次设计到位、subsume 三体系，保留 9–16 作 `hunyuan_v1` 子集；
+   2026-06-21 review 拍板 = Q2 选项1，见 PLAN §3-1/§8）。绑骨产物额外持久化 `rigProvider` / `rigTaskId` / `rigType`，
+   且 **apply-motion 严格按资产记录的 `system` 分发、不交叉**——因为 **Meshy 动画必须用它自己的
    `rig_task_id` 作入参**（不接受外部 FBX URL，这是与混元的本质差异）。
 4. **沿用 ADR-0001/0003 的资产契约**：provider URL 短命（Meshy 产物 + 签名 URL 均 ~3 天过期）→ 立即下载落库；
    rig/anim 产物 **append 到同一角色资产**（GLB canonical + FBX 中转），readiness 随之翻转；贴图存活
    （Meshy rigged/animated GLB 自包含）。
 5. **mock-first + 真机门控不变**：无 `GEN3D_ENABLE_REAL_PROVIDERS=1` + `MESHY_API_KEY` 时全部回退确定性 mock；
    付费调用前过 `RateGuard` + 可选余额预检；`exposedToAI` 仅在真机全链 + 护栏验证后翻 true。
+
+> **Review resolution（2026-06-21 grill）**：§8 七问 + 强制子决策已全部拍板（决策人 laurenceelu）——
+> Q2=`system` 判别联合、Q1=全 680 + 海量浏览器 + `gen3d:list-motions` 两步发现、Q3=`rig_expired` + 可选 `autoReRig`、
+> Q6=免费 walk/run 全量落库、Q4/Q5=按记录 `system` 分发 + 优先 COS URL、Q7=与 B 线并存。详见 PLAN §8 决议块。
+> 范围增量（新 `list-motions` 工具 / 海量浏览器 UI / `autoReRig` / §6 错误映射是新代码 / P3==agentify A4）同见该块。
+> **P0 闸门 GO，无硬阻塞**；本轮文档-only，编码交后续 agent。
 
 ## Alternatives considered
 

@@ -1,6 +1,6 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-21 — 新方向待 review：公测版绑骨/动画改用 Meshy 公网 API。** 上级指示公测接公网，
+> **2026-06-21 — 公测版绑骨/动画改用 Meshy 公网 API（§8 已 grill 拍板 · P0 GO · 本轮文档-only）。** 上级指示公测接公网，
 > 混元 `auto_rigging`/`motion_retarget` 是**内网**、公测跑不通 → 用 Meshy `/openapi/v1/rigging` +
 > `/openapi/v1/animations` 接管（ADR-0003 早已预留这条退路）。**本期只产出文档/契约/计划，未写代码。**
 > - **审阅入口（reviewing agent 从这两份开始）**：
@@ -9,7 +9,7 @@
 > - **GAP 一句话**：生成链已 Meshy 化；缺口仅绑骨/动画两步硬编码混元内网（`server/tool-handlers.ts:631-756`）。
 > - **真机已预跑通**（2026-06-21，共 8 积分：rig 5 + anim 3）：`/rigging`(input_task_id)→`/animations`(rig_task_id+action_id=28)，
 >   产物在本插件真实 `ModelViewer`（three.js + AnimationMixer）真机播放确认（挥手 + 免费 walk）。证据见 PLAN §7。
-> - **请 reviewing agent 先拍板 PLAN §8 开放决策**，重点：Q1 公测动作范围 / Q2 动作标识泛化 A|B / Q3 `rig_task_id` ~3 天过期处理。
+> - **§8 决策已全部拍板**（2026-06-21 grill review，决策人 laurenceelu）：Q2=`system` 判别联合 / Q1=全 680 + 海量浏览器 + `gen3d:list-motions` 两步发现 / Q3=`rig_expired` + 可选 `autoReRig` / Q6=免费 walk/run 全量落库 / Q4-Q5=按记录 `system` 分发 + 优先 COS URL / Q7=与 B 线并存。决议本 + 范围增量(F2–F5)见 PLAN §8 决议块。**P0 闸门 GO，无硬阻塞**；编码交后续实现 agent。
 > - **关键约束**：Meshy 动画只认它自己的 `rig_task_id`（不接受外部 FBX）+ rig_task_id/产物 URL 均 ~3 天过期 → 需存 `rigTaskId` 且处理过期重绑。
 
 > **2026-06-17 — 当前开发线已切换。** `laurenceelu/feat-20260615-gen3d-polish` 已合入三仓 main（2026-06-16）。

@@ -110,14 +110,16 @@
 ## §3 数据模型变更（`shared/manifest.ts`）
 
 1. **泛化动作标识。** 现 `MotionType = 9|10|...|16`（`manifest.ts:46`，混元 v1 专用）。Meshy 用任意 `action_id` +
-   `rigType` + 文案。提议新增 provider-tagged 描述符（保留混元 9–16 作为子集，**向后兼容**）：
+   `rigType` + 文案。新增按动作体系 `system` 分的描述符（保留混元 9–16 作为子集，**向后兼容**）：
    ```ts
-   // 二选一，留给 review 定（§8-Q2）：
-   // A) 扩成判别联合：
+   // ✅ 已拍板（2026-06-21 review，Q2=选项1）：按动作"体系 system"分的判别联合，
+   // 一次设计到位、subsume 混元 v1 + 混元 v2(预留) + Meshy；保留 9–16 作 hunyuan_v1 子集。
+   // rich 元数据（category/gif/rigType/isFree）不进文件，落 P2 动作目录按 (system,id) 查。
    type MotionRef =
-     | { provider: 'hunyuan_rest'; motionType: 9|10|11|12|13|14|15|16 }
-     | { provider: 'meshy'; actionId: number; label: string; rigType?: string; isFree?: boolean };
-   // B) 统一字符串 key（"hy:14" / "meshy:28"）+ 旁挂 label/rigType。
+     | { system: 'hunyuan_v1'; id: 9|10|11|12|13|14|15|16; label: string }
+     | { system: 'hunyuan_v2'; id: string; label: string }   // 预留，B 线解锁才填
+     | { system: 'meshy';      id: number; label: string };   // id = Meshy action_id
+   // 幂等键 = `${system}:${id}`；分发(F2)/sidecar round-trip/UI 全部跟着 system 走。
    ```
    `ManifestFile.motionType`（`manifest.ts:68`）、`SidecarDependency.motionType`（`:180`）、`apply-motion`
    幂等判定（`tool-handlers.ts:721-723`）、UI 动作格都要跟着改。
@@ -219,17 +221,34 @@ async listActions(rigTaskId): Promise<MeshyAction[]>   // P2
 
 ---
 
-## §8 开放决策（请 reviewing agent 重点拍板）
+## §8 决策（✅ 已拍板 — 2026-06-21 grill review）
 
-| # | 问题 | 选项 | 默认建议 |
-|---|---|---|---|
-| **Q1** | **公测动作范围**：暴露多少动作? | (a) 全 680；(b) 精选 ~20–40（按 category）；(c) 仅免费 walk/run + 极少付费 | **(b)**：公测精选集，控成本 + 控质量；schema 只暴露精选 |
-| **Q2** | **动作标识泛化**：§3-1 的 A（判别联合）还是 B（字符串 key）? | A / B | **A**：类型更稳、利于下游/引擎 |
-| **Q3** | **rig_task_id 过期**：动画时 rig 失效怎么办? | (a) 自动 re-rig 重试（再扣 5 分）；(b) 报错让用户确认 | **(a) 但需用户可见提示**（避免静默扣分） |
-| **Q4** | **混元 rig/anim 去留**：公测里 | (a) 完全下线；(b) 留作内网/dev gated 备选 | **(b)**：env 在才走，零额外风险 |
-| **Q5** | **绑骨入参**：优先 `input_task_id` 还是公网 `model_url`? | 视源是否 Meshy 生成 | 源是 Meshy 且未过期→`input_task_id`，否则 COS 公网 URL |
-| **Q6** | 免费 walk/run 是否默认落库为 `animated_model`? | 是 / 否（按需） | **是**（白嫖，丰富 readiness） |
-| **Q7** | 与 B 线（混元 `motion_retarget_v2` 48 动作，blocked on @raineejiang）关系 | Meshy 是否事实上取代它? | 公测用 Meshy；混元 v2 作内网增强，长期再议 |
+> reviewing agent 已逐条 grill 拍板（决策人 laurenceelu）。下表为最终决议，**实现 agent 不要 re-litigate**。
+
+| # | 问题 | 拍板结果 |
+|---|---|---|
+| **Q2** | 动作标识泛化（决定 P0 怎么动 manifest） | **选项1：按 `system` 分的判别联合**（`hunyuan_v1` \| `hunyuan_v2` 预留 \| `meshy`，见 §3-1 已更新代码）。文件存最小 `{system,id,label}`，rich 元数据进 P2 目录按 `(system,id)` 查；幂等键 `${system}:${id}` |
+| **Q4+Q5** | provider 分发 + 绑骨入参 | auto-rig 默认 Meshy（混元 env 在才 dev 备选）；**apply-motion 严格按资产记录的 `system` 分发、不交叉**（F2 硬约束，dispatch 读 `rigProvider`/`system`）；rig 入参**优先 COS `model_url`**（复用 `shareAssetFileUrl` `tool-handlers.ts:596-613`），`input_task_id` 仅作"源刚生成未过期"快路径 |
+| **Q3** | rig_task_id ~3 天过期 | 默认报结构化 `rig_expired`（仿 `not_rigged` 守卫 `:714-718`）让调用方重绑；apply-motion 加**可选 `autoReRig` 入参**，显式打开才自动重绑 +5 分。默认安全、便利可选（UI 可默认带 `autoReRig:true`） |
+| **Q6** | 免费 walk/run 落库 | **全量落库**（glb+fbx+armature），标 `isFree`、纳入幂等、UI 可删（兼顾 `.zip` 导出对 FBX 需求） |
+| **Q1** | 公测动作范围 | **全 680**；UI 重做成**海量动作浏览器**（搜索+分类+rigType 过滤+预览 GIF） |
+| **Q1b** | （Q1 强制的 agent 子决策） | **两步发现**：新增 `gen3d:list-motions`（category/query/rigType 过滤）+ `apply-motion(actionId)`；UI 与 agent 复用同一目录，**agent schema 不枚举 680** |
+| **Q7** | 与 B 线（混元 v2 48 动作）关系 | **并存不替代**：Meshy=公测主线，混元 v2=长期内网增强，解锁后塞进同一 descriptor 的 `hunyuan_v2` 分支（Q2 已预留） |
+
+### §8 决议对 §3–§5 的影响（实现 agent 必读）
+
+**范围增量（相对本 PLAN 初稿）：**
+1. **新工具 `gen3d:list-motions`**（P2，原 §4.1 只提了 `listActions` 方法 → 提为一等暴露工具，进 `gen3d:*` 白名单）。
+2. **UI 从 8 按钮 grid → 海量动作浏览器**（P2，工作量大于原"精选集"设想）。
+3. **apply-motion 加 `autoReRig` 入参 + `rig_expired` 错误码**（P1）。
+4. **§6 的 402/404/429 错误映射 + 余额预检是新代码**，不是"复用现有 `provider_*`"——当前 `meshy.ts:210-212` 对所有非 200 只抛泛化 `provider_http_error`（P3 ticket 显式认领）。
+5. **本计划 P3 翻 `exposedToAI` == agentify `PLAN-2026-06-17` 的 A4**（同三个工具 auto-rig/apply-motion/retopo）。别双轨；§7 的 ModelViewer 真播很可能已兑现 A4 的 operator 目视闸门。
+
+**P0 新增验收项：** §7 复现产物在 `/tmp/meshy_verify/`（临时）→ P0 smoke 必须把 §2.3 的 result keys 固化成**提交进仓的 fixture**，不依赖 /tmp。
+
+### P0 闸门：✅ GO（无硬阻塞）
+
+两个 P0 ticket 已被决议完全锁定去风险：P0b（descriptor 形状=Q2 + sidecar `system/rigTaskId/rigType`）、P0a（Meshy rig/animate，契约真机验证过 §7）。本轮文档-only；P0 编码交后续实现 agent。
 
 ---
 
