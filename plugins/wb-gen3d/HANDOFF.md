@@ -1,16 +1,18 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-21 — 公测版绑骨/动画改用 Meshy 公网 API（§8 已 grill 拍板 · P0 GO · 本轮文档-only）。** 上级指示公测接公网，
+> **2026-06-21 — 公测版绑骨/动画改用 Meshy 公网 API（§8 已拍板 · P0–P3 已实现 · mock-first / quota-safe / `exposedToAI` 仍 false）。** 上级指示公测接公网，
 > 混元 `auto_rigging`/`motion_retarget` 是**内网**、公测跑不通 → 用 Meshy `/openapi/v1/rigging` +
-> `/openapi/v1/animations` 接管（ADR-0003 早已预留这条退路）。**本期只产出文档/契约/计划，未写代码。**
+> `/openapi/v1/animations` 接管（ADR-0003 早已预留这条退路）。**代码已落地**（见下「已实现」），分支 `laurenceelu/feat-20260617-gen3d-agentify-roadmap`。
 > - **审阅入口（reviewing agent 从这两份开始）**：
 >   [`docs/PLAN-2026-06-21-meshy-public-rig-anim.md`](./docs/PLAN-2026-06-21-meshy-public-rig-anim.md)（契约 + GAP file:line + P0–P3 + 真机证据 + 开放决策）
 >   + [`docs/adr/0006-meshy-public-api-rig-anim-for-beta.md`](./docs/adr/0006-meshy-public-api-rig-anim-for-beta.md)（🟡 Proposed，部分取代 ADR-0003 §Decision 1/2）。
-> - **GAP 一句话**：生成链已 Meshy 化；缺口仅绑骨/动画两步硬编码混元内网（`server/tool-handlers.ts:631-756`）。
+> - **已实现（P0–P3，本批提交）**：`server/providers/meshy.ts` 加 `rig()`/`animate()`/`listActions()`/`getBalance()` + HTTP 错误映射（402/404/429）；`shared/manifest.ts` 加 `MotionRef`（`system` 判别联合）/`motionRefKey`/`RigChain`，保留旧 `motionType` 兼容；存储按 `(system,id)` 命名 motion 变体 + 持久化/还原 `rigChain`（`asset-storage.ts`/`per-game-store.ts`）；`server/tool-handlers.ts` 三档分发（Meshy 公网默认 → Hunyuan REST 内网兜底 → mock）+ `rig_expired`/`autoReRig` + 新工具 `gen3d:list-motions`（新 `server/motion-catalog.ts` 统一目录层）；schema（`apply-motion` v2 + `list-motions` args/returns）+ `forgeax-plugin.json` 注册并更新描述；UI 把固定 8 按钮网格换成消费 `gen3d:list-motions` 的可搜索动作浏览器（新 `src/components/MotionBrowser.tsx`，viewer 片段/已应用集合从 `motionType` 泛化到 `motionRef`）。
+> - **验证**：新增 16 个注入式/mock smoke（`server/providers/meshy.rig.test.ts` 9 + `server/tool-handlers.rig.test.ts` 7，含混元 9–16 非回归 round-trip）；`bun test` 42/42、`tsc --noEmit` 干净、`bun run build` 通过并重建 `dist`。**零网络、零配额。**
 > - **真机已预跑通**（2026-06-21，共 8 积分：rig 5 + anim 3）：`/rigging`(input_task_id)→`/animations`(rig_task_id+action_id=28)，
 >   产物在本插件真实 `ModelViewer`（three.js + AnimationMixer）真机播放确认（挥手 + 免费 walk）。证据见 PLAN §7。
-> - **§8 决策已全部拍板**（2026-06-21 grill review，决策人 laurenceelu）：Q2=`system` 判别联合 / Q1=全 680 + 海量浏览器 + `gen3d:list-motions` 两步发现 / Q3=`rig_expired` + 可选 `autoReRig` / Q6=免费 walk/run 全量落库 / Q4-Q5=按记录 `system` 分发 + 优先 COS URL / Q7=与 B 线并存。决议本 + 范围增量(F2–F5)见 PLAN §8 决议块。**P0 闸门 GO，无硬阻塞**；编码交后续实现 agent。
-> - **关键约束**：Meshy 动画只认它自己的 `rig_task_id`（不接受外部 FBX）+ rig_task_id/产物 URL 均 ~3 天过期 → 需存 `rigTaskId` 且处理过期重绑。
+> - **§8 决策已全部拍板**（2026-06-21 grill review，决策人 laurenceelu）：Q2=`system` 判别联合 / Q1=全 680 + 海量浏览器 + `gen3d:list-motions` 两步发现 / Q3=`rig_expired` + 可选 `autoReRig` / Q6=免费 walk/run 全量落库 / Q4-Q5=按记录 `system` 分发 + 优先 COS URL / Q7=与 B 线并存。决议本 + 范围增量(F2–F5)见 PLAN §8 决议块。
+> - **关键约束**：Meshy 动画只认它自己的 `rig_task_id`（不接受外部 FBX）+ rig_task_id/产物 URL 均 ~3 天过期 → 需存 `rigTaskId` 且处理过期重绑（已实现：`RigChain.rigExpiresAt` + `meshyRigStale()` + `autoReRig`）。
+> - **剩余（卡运营，本批未做）**：配真实 `MESHY_API_KEY` + `GEN3D_ENABLE_REAL_PROVIDERS=1` → 真机跑通 rig→animate（烧少量 credits）+ 目视确认 → 再把 `auto-rig`/`apply-motion`/`list-motions` 三工具 `exposedToAI` 翻 `true`。**本批 `exposedToAI` 全部仍为 false。**
 
 > **2026-06-17 — 当前开发线已切换。** `laurenceelu/feat-20260615-gen3d-polish` 已合入三仓 main（2026-06-16）。
 > 新开发线 = `laurenceelu/feat-20260617-gen3d-agentify-roadmap`，路线总账见
@@ -30,7 +32,7 @@
 > 早前 6/14 落地的三批（已完成，勿重复）：视图器 P1+P2（`f5aa49c`）/ 五维评分 P3（`24143d7`）/ Provider 参数 P5（`608c365`）。
 > IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成执行 SSOT**。
 
-Last updated: 2026-06-17 Asia/Hong_Kong
+Last updated: 2026-06-21 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 

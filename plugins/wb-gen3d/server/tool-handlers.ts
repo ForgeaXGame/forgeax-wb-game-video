@@ -8,19 +8,26 @@ import {
   type ProviderResult,
 } from '../shared/catalog';
 import {
+  MESHY_FREE_RUN_ID,
+  MESHY_FREE_WALK_ID,
   emptyQualityReport,
-  selectFile,
+  motionRefFromLegacy,
+  motionRefKey,
   selectFiles,
   type AssetSlot,
   type Gen3DAssetManifest,
   type GenerationMode,
+  type MotionRef,
+  type MotionSystem,
   type MotionType,
   type ProviderId,
   type QualityDim,
   type QualityReport,
+  type RigChain,
 } from '../shared/manifest';
 import { DEFAULT_WEIGHTS, weightedTotal } from '../shared/quality/heuristics';
 import { filterProviderParams } from '../shared/provider-params';
+import { filterMotions, getMeshyCatalog, hunyuanV1Catalog, type MotionOption } from './motion-catalog';
 import type { AssetStorage, DerivedFileInput } from './asset-storage';
 import { PerGameAssetStore } from './per-game-store';
 import { generateCacheFirst, persistGeneration, type PersistInput } from './generate';
@@ -564,19 +571,24 @@ async function uploadImage(args: UploadImageArgs): Promise<UploadImageResult> {
   return { ok: true, ...result };
 }
 
-// ─── M13: rig / motion / low_poly (mock-first, Hunyuan REST) ────────────────
+// ─── M13: rig / motion / low_poly (mock-first; Meshy public default) ────────
 //
-// Core pipeline (ADR-0003): textured high-poly GLB → auto-rig → apply-motion.
+// Core pipeline (ADR-0003/0006): textured high-poly GLB → auto-rig → apply-motion.
 // rig/motion append GLB (canonical, self-contained) + FBX (motion transport) to
 // the SAME mesh asset and flip readiness; low_poly is an optional geometry/LOD
 // side-branch producing a NEW derived GLB asset (textures NOT preserved).
 //
-// Every step is mock-first: real calls require GEN3D_ENABLE_REAL_PROVIDERS=1 +
-// HUNYUAN_API_KEY (getHunyuanEnv()) AND COS config to share the input model URL.
-// Without them, deterministic placeholder model bytes exercise the storage path
-// with zero quota. Gate 0 (Hunyuan internal egress → public COS) + Gate 1 (rig
-// output shape, texture survival, T-pose) are operator-verified real-machine
-// probes (HANDOFF M13-0); these handlers stay mock until that passes.
+// Provider dispatch (ADR-0006, public beta = public network):
+//   • auto-rig / apply-motion default to MESHY public API (async submit→poll).
+//   • Hunyuan REST stays a dev/internal fallback, used only when Meshy is not
+//     configured but Hunyuan is (getMeshyEnv() === null && getHunyuanEnv()).
+//   • With neither configured, deterministic placeholder bytes exercise the
+//     storage path with zero quota (mock).
+// Meshy animation MUST be driven by Meshy's own rig_task_id (not an external
+// FBX), so apply-motion dispatches strictly by the asset's recorded rig system
+// (manifest.rig.rigProvider) and reads rig.rigTaskId. rig_task_id + signed URLs
+// expire ~3 days → rig_expired is reported unless autoReRig is set (PLAN §8-Q3).
+// exposedToAI stays false until operator real-machine verification (PLAN §5 P3).
 
 // Deterministic placeholder model bytes (GLB magic header). Stand-in so the
 // rig/motion/low_poly append + persist paths run end-to-end without quota.
@@ -624,10 +636,67 @@ interface RigMotionResult {
   manifest: Gen3DAssetManifest;
 }
 
+// A free walk/run clip bundled in a Meshy rig result (reserved ids, isFree).
+function freeMotionRef(category: 'walking' | 'running'): MotionRef {
+  return category === 'walking'
+    ? { system: 'meshy', id: MESHY_FREE_WALK_ID, label: '走路（免费）' }
+    : { system: 'meshy', id: MESHY_FREE_RUN_ID, label: '跑步（免费）' };
+}
+
+const HUMANOID_SKELETON = {
+  hasSkeleton: true,
+  skeletonProfile: 'humanoid' as const,
+  animationInputReady: true,
+};
+
+// Meshy auto-rig (public-beta default): share the source GLB to Meshy — prefer a
+// public COS model_url (PLAN §8-Q5), else the Meshy input_task_id fast path when
+// the source was itself Meshy-generated — rig it, then append the rigged GLB+FBX
+// plus the free walk/run clips, recording the rig-chain (rig_task_id / rigType /
+// expiry) so apply-motion can drive /animations by the asset's own rig task.
+async function meshyRigAppend(
+  slug: string,
+  asset: Gen3DAssetManifest,
+  provider: MeshyProvider,
+): Promise<Gen3DAssetManifest> {
+  const modelUrl = await shareAssetFileUrl(slug, asset.assetPath, 'source_mesh', 'glb');
+  const inputTaskId =
+    asset.provider === 'meshy' && asset.sourceJobId && !asset.sourceJobId.startsWith('mock')
+      ? asset.sourceJobId
+      : undefined;
+  if (!modelUrl && !inputTaskId) {
+    throw Object.assign(
+      new Error('auto-rig needs COS configured (to share the model URL) or a Meshy-generated source'),
+      { code: 'cos_not_configured' },
+    );
+  }
+  const rig = await provider.rig(modelUrl ? { modelUrl } : { inputTaskId });
+  const files: DerivedFileInput[] = [{ data: rig.glb, format: 'glb', role: 'rigged_model' }];
+  if (rig.fbx) files.push({ data: rig.fbx, format: 'fbx', role: 'rigged_model' });
+  for (const ba of rig.basicAnimations) {
+    const ref = freeMotionRef(ba.category);
+    files.push({ data: ba.glb, format: 'glb', role: 'animated_model', motionRef: ref });
+    if (ba.fbx) files.push({ data: ba.fbx, format: 'fbx', role: 'animated_model', motionRef: ref });
+  }
+  return storage.appendDerivedFiles({
+    slug,
+    assetPath: asset.assetPath,
+    files,
+    skeleton: HUMANOID_SKELETON,
+    rigChain: {
+      rigProvider: 'meshy',
+      rigTaskId: rig.sourceJobId,
+      rigType: rig.rigType,
+      rigExpiresAt: rig.expiresAt,
+    },
+  });
+}
+
 // gen3d:auto-rig — append a rigged_model GLB (canonical) + FBX (motion transport)
 // to a textured mesh asset and set skeleton flags. Humanoid only (characters
 // slot, soft-gated in the UI/schema). Idempotent: if already rigged, returns the
-// existing manifest without burning quota.
+// existing manifest without burning quota. Dispatch: Meshy public default →
+// Hunyuan REST dev fallback → mock (ADR-0006 §8-Q4).
 async function autoRig(args: AutoRigArgs): Promise<RigMotionResult> {
   const slug = requireSlug(args.slug);
   const assetPath = args.assetPath?.trim();
@@ -643,116 +712,252 @@ async function autoRig(args: AutoRigArgs): Promise<RigMotionResult> {
     return { ok: true, usedMock: existing.providerMode === 'mock', assetPath, manifest: existing };
   }
 
-  const env = getHunyuanEnv();
-  let files: ModelFileOut[];
-  let usedMock: boolean;
-  if (env) {
-    const glbUrl = await shareAssetFileUrl(slug, assetPath, 'source_mesh', 'glb');
-    if (!glbUrl) {
-      throw Object.assign(
-        new Error('auto-rig needs COS configured to share the input model URL'),
-        { code: 'cos_not_configured' },
-      );
-    }
-    files = (await new HunyuanRestProvider({ env, slug }).autoRig({ glbUrl })).files;
-    usedMock = false;
-  } else {
-    files = [
-      { format: 'glb', data: mockModelBytes(`rig-glb:${assetPath}`) },
-      { format: 'fbx', data: mockModelBytes(`rig-fbx:${assetPath}`) },
-    ];
-    usedMock = true;
+  const meshyEnv = getMeshyEnv();
+  const hunyuanEnv = getHunyuanEnv();
+
+  // Meshy public API is the public-beta default (ADR-0006 §8-Q4).
+  if (meshyEnv) {
+    const manifest = await meshyRigAppend(slug, existing, new MeshyProvider({ env: meshyEnv, slug }));
+    return { ok: true, usedMock: false, assetPath, manifest };
   }
 
-  const derived: DerivedFileInput[] = files.map((f) => ({
-    data: f.data,
-    format: f.format,
-    role: 'rigged_model',
-  }));
+  // Hunyuan REST: internal/dev fallback, only when Meshy is not configured.
+  if (hunyuanEnv) {
+    const glbUrl = await shareAssetFileUrl(slug, assetPath, 'source_mesh', 'glb');
+    if (!glbUrl) {
+      throw Object.assign(new Error('auto-rig needs COS configured to share the input model URL'), {
+        code: 'cos_not_configured',
+      });
+    }
+    const files: ModelFileOut[] = (await new HunyuanRestProvider({ env: hunyuanEnv, slug }).autoRig({ glbUrl })).files;
+    const derived: DerivedFileInput[] = files.map((f) => ({ data: f.data, format: f.format, role: 'rigged_model' }));
+    const manifest = await storage.appendDerivedFiles({
+      slug,
+      assetPath,
+      files: derived,
+      skeleton: HUMANOID_SKELETON,
+      rigChain: { rigProvider: 'hunyuan_rest', rigTaskId: null, rigType: null, rigExpiresAt: null },
+    });
+    return { ok: true, usedMock: false, assetPath, manifest };
+  }
+
+  // Mock: simulate a Meshy rig (rigged GLB+FBX + free walk/run) with zero quota.
+  const files: DerivedFileInput[] = [
+    { data: mockModelBytes(`rig-glb:${assetPath}`), format: 'glb', role: 'rigged_model' },
+    { data: mockModelBytes(`rig-fbx:${assetPath}`), format: 'fbx', role: 'rigged_model' },
+    { data: mockModelBytes(`walk-glb:${assetPath}`), format: 'glb', role: 'animated_model', motionRef: freeMotionRef('walking') },
+    { data: mockModelBytes(`walk-fbx:${assetPath}`), format: 'fbx', role: 'animated_model', motionRef: freeMotionRef('walking') },
+    { data: mockModelBytes(`run-glb:${assetPath}`), format: 'glb', role: 'animated_model', motionRef: freeMotionRef('running') },
+    { data: mockModelBytes(`run-fbx:${assetPath}`), format: 'fbx', role: 'animated_model', motionRef: freeMotionRef('running') },
+  ];
   const manifest = await storage.appendDerivedFiles({
     slug,
     assetPath,
-    files: derived,
-    skeleton: { hasSkeleton: true, skeletonProfile: 'humanoid', animationInputReady: true },
+    files,
+    skeleton: HUMANOID_SKELETON,
+    rigChain: { rigProvider: 'meshy', rigTaskId: `mock-rig:${assetPath}`, rigType: 'mock', rigExpiresAt: null },
   });
-  return { ok: true, usedMock, assetPath, manifest };
+  return { ok: true, usedMock: true, assetPath, manifest };
 }
 
 interface ApplyMotionArgs {
   slug?: string;
   assetPath: string;
-  motionType: number;
+  // Meshy path: the action_id from gen3d:list-motions (positive integer).
+  actionId?: number;
+  // Hunyuan dev path: the v1 fixed motion (int 9–16).
+  motionType?: number;
+  // Optional display label (the UI passes the action name it showed); the
+  // catalog is not re-queried here. Falls back to "动作 <id>".
+  label?: string;
+  // When the Meshy rig task is stale (expired ~3 days, or mock), re-rig
+  // (+credits) instead of erroring with rig_expired. Default false (PLAN §8-Q3).
+  autoReRig?: boolean;
 }
 
 const VALID_MOTION_TYPES: readonly MotionType[] = [9, 10, 11, 12, 13, 14, 15, 16];
 
-function asMotionType(value: number): MotionType {
-  if (!VALID_MOTION_TYPES.includes(value as MotionType)) {
-    throw Object.assign(
-      new Error(`motionType must be an int 9–16, got ${value}`),
-      { code: 'invalid_motion_type' },
-    );
+function asMotionType(value: number | undefined): MotionType {
+  if (value === undefined || !VALID_MOTION_TYPES.includes(value as MotionType)) {
+    throw Object.assign(new Error(`motionType must be an int 9–16, got ${value}`), {
+      code: 'invalid_motion_type',
+    });
   }
   return value as MotionType;
 }
 
+// Real Meshy action ids are positive; reserved negatives are internal (bundled
+// free clips) and must not be requested directly through apply-motion.
+function asActionId(value: number | undefined): number {
+  if (value === undefined || !Number.isInteger(value) || value <= 0) {
+    throw Object.assign(new Error(`actionId must be a positive integer, got ${value}`), {
+      code: 'invalid_action_id',
+    });
+  }
+  return value;
+}
+
+// Has this exact motion already been applied? (idempotency, by structural key.)
+function hasMotion(asset: Gen3DAssetManifest, ref: MotionRef): boolean {
+  const key = motionRefKey(ref);
+  return selectFiles(asset.files, 'animated_model').some(
+    (f) => f.motionRef !== undefined && motionRefKey(f.motionRef) === key,
+  );
+}
+
+// A Meshy rig task is stale when it expired (~3 days) or was only mock-rigged —
+// either way it cannot drive a real /animations call.
+function meshyRigStale(rig: RigChain | undefined): boolean {
+  if (!rig || !rig.rigTaskId) return true;
+  if (rig.rigTaskId.startsWith('mock')) return true;
+  return rig.rigExpiresAt !== null && Date.now() > rig.rigExpiresAt;
+}
+
 // gen3d:apply-motion — append an animated_model GLB (canonical) + FBX for one
-// motion (int 9–16) to a RIGGED asset. Requires a rigged_model FBX (else
-// not_rigged). Multiple motions coexist; idempotent per motionType.
+// motion to a RIGGED asset, flipping readiness.animated. Dispatches strictly by
+// the asset's recorded rig system (ADR-0006 §8-Q4): Meshy uses rig.rigTaskId +
+// actionId; Hunyuan uses the rigged FBX + motionType. Multiple motions coexist;
+// idempotent per motion. Requires a prior auto-rig (else not_rigged).
 async function applyMotion(args: ApplyMotionArgs): Promise<RigMotionResult> {
   const slug = requireSlug(args.slug);
   const assetPath = args.assetPath?.trim();
   if (!assetPath) {
     throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
   }
-  const motionType = asMotionType(args.motionType);
   const existing = await storage.getAsset(slug, assetPath);
   if (!existing) {
     throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
   }
-  const riggedFbx = selectFile(existing.files, 'rigged_model', 'fbx');
-  if (!riggedFbx || !riggedFbx.hasSkeleton) {
-    throw Object.assign(
-      new Error('asset is not rigged; run gen3d:auto-rig first'),
-      { code: 'not_rigged' },
-    );
+  if (!existing.readiness.rigged) {
+    throw Object.assign(new Error('asset is not rigged; run gen3d:auto-rig first'), {
+      code: 'not_rigged',
+    });
   }
-  // Idempotent per motion: this motionType already applied → return existing.
-  const already = selectFiles(existing.files, 'animated_model').some(
-    (f) => f.motionType === motionType,
-  );
-  if (already) {
+
+  const rigProvider = existing.rig?.rigProvider ?? 'meshy';
+
+  // ── Hunyuan dev path (internal): fixed motion int 9–16 via the rigged FBX. ──
+  if (rigProvider === 'hunyuan_rest') {
+    const motionType = asMotionType(args.motionType);
+    const ref = motionRefFromLegacy(motionType);
+    if (hasMotion(existing, ref)) {
+      return { ok: true, usedMock: existing.providerMode === 'mock', assetPath, manifest: existing };
+    }
+    const env = getHunyuanEnv();
+    let files: ModelFileOut[];
+    let usedMock: boolean;
+    if (env) {
+      const fbxUrl = await shareAssetFileUrl(slug, assetPath, 'rigged_model', 'fbx');
+      if (!fbxUrl) {
+        throw Object.assign(new Error('apply-motion needs COS configured to share the rigged FBX URL'), {
+          code: 'cos_not_configured',
+        });
+      }
+      files = (await new HunyuanRestProvider({ env, slug }).applyMotion({ fbxUrl, motionType })).files;
+      usedMock = false;
+    } else {
+      files = [
+        { format: 'glb', data: mockModelBytes(`motion-${motionType}-glb:${assetPath}`) },
+        { format: 'fbx', data: mockModelBytes(`motion-${motionType}-fbx:${assetPath}`) },
+      ];
+      usedMock = true;
+    }
+    const derived: DerivedFileInput[] = files.map((f) => ({
+      data: f.data,
+      format: f.format,
+      role: 'animated_model',
+      motionRef: ref,
+    }));
+    const manifest = await storage.appendDerivedFiles({ slug, assetPath, files: derived });
+    return { ok: true, usedMock, assetPath, manifest };
+  }
+
+  // ── Meshy public path (default): actionId via Meshy's own rig_task_id. ──
+  const actionId = asActionId(args.actionId);
+  const ref: MotionRef = { system: 'meshy', id: actionId, label: args.label?.trim() || `动作 ${actionId}` };
+  if (hasMotion(existing, ref)) {
     return { ok: true, usedMock: existing.providerMode === 'mock', assetPath, manifest: existing };
   }
 
-  const env = getHunyuanEnv();
-  let files: ModelFileOut[];
-  let usedMock: boolean;
-  if (env) {
-    const fbxUrl = await shareAssetFileUrl(slug, assetPath, 'rigged_model', 'fbx');
-    if (!fbxUrl) {
-      throw Object.assign(
-        new Error('apply-motion needs COS configured to share the rigged FBX URL'),
-        { code: 'cos_not_configured' },
-      );
-    }
-    files = (await new HunyuanRestProvider({ env, slug }).applyMotion({ fbxUrl, motionType })).files;
-    usedMock = false;
-  } else {
-    files = [
-      { format: 'glb', data: mockModelBytes(`motion-${motionType}-glb:${assetPath}`) },
-      { format: 'fbx', data: mockModelBytes(`motion-${motionType}-fbx:${assetPath}`) },
+  const env = getMeshyEnv();
+  if (!env) {
+    // Mock: no key → deterministic placeholder clip, zero quota.
+    const files: DerivedFileInput[] = [
+      { data: mockModelBytes(`motion-meshy-${actionId}-glb:${assetPath}`), format: 'glb', role: 'animated_model', motionRef: ref },
+      { data: mockModelBytes(`motion-meshy-${actionId}-fbx:${assetPath}`), format: 'fbx', role: 'animated_model', motionRef: ref },
     ];
-    usedMock = true;
+    const manifest = await storage.appendDerivedFiles({ slug, assetPath, files });
+    return { ok: true, usedMock: true, assetPath, manifest };
   }
 
-  const derived: DerivedFileInput[] = files.map((f) => ({
-    data: f.data,
-    format: f.format,
-    role: 'animated_model',
-  }));
-  const manifest = await storage.appendDerivedFiles({ slug, assetPath, files: derived, motionType });
-  return { ok: true, usedMock, assetPath, manifest };
+  // Real Meshy: the animation input is the rig task id, NOT a local FBX. If that
+  // task is stale, re-rig only when autoReRig is set; else report rig_expired so
+  // the caller decides (PLAN §8-Q3).
+  const provider = new MeshyProvider({ env, slug });
+  let asset = existing;
+  if (meshyRigStale(asset.rig)) {
+    if (!args.autoReRig) {
+      throw Object.assign(
+        new Error('Meshy rig task expired (~3 days); re-run gen3d:auto-rig or pass autoReRig:true'),
+        { code: 'rig_expired' },
+      );
+    }
+    asset = await meshyRigAppend(slug, asset, provider);
+  }
+  const rigTaskId = asset.rig?.rigTaskId;
+  if (!rigTaskId) {
+    throw Object.assign(new Error('asset has no Meshy rig task id; re-run gen3d:auto-rig'), {
+      code: 'rig_expired',
+    });
+  }
+  const out = await provider.animate({ rigTaskId, actionId });
+  const files: DerivedFileInput[] = [{ data: out.glb, format: 'glb', role: 'animated_model', motionRef: ref }];
+  if (out.fbx) files.push({ data: out.fbx, format: 'fbx', role: 'animated_model', motionRef: ref });
+  const manifest = await storage.appendDerivedFiles({ slug, assetPath, files });
+  return { ok: true, usedMock: false, assetPath, manifest };
+}
+
+// gen3d:list-motions — two-step motion discovery (PLAN §8-Q1b). Returns a
+// filtered slice of the motion catalog for the asset's rig system (Hunyuan →
+// the v1 fixed set; Meshy → its rig-compatible / public catalog). Zero credits
+// (a GET); quota-safe mock sample when Meshy is not configured. The AI schema
+// never enumerates the ~680 actions — callers narrow via query/category/rigType.
+interface ListMotionsArgs {
+  slug?: string;
+  assetPath?: string;
+  query?: string;
+  category?: string;
+  rigType?: string;
+}
+
+interface ListMotionsResult {
+  ok: true;
+  usedMock: boolean;
+  system: MotionSystem;
+  total: number;
+  motions: MotionOption[];
+}
+
+async function listMotions(args: ListMotionsArgs = {}): Promise<ListMotionsResult> {
+  const slug = requireSlug(args.slug);
+  let system: MotionSystem = 'meshy';
+  let rigTaskId: string | undefined;
+  const path = args.assetPath?.trim();
+  if (path) {
+    const asset = await storage.getAsset(slug, path);
+    if (asset?.rig?.rigProvider === 'hunyuan_rest') system = 'hunyuan_v1';
+    else if (asset?.rig?.rigProvider === 'meshy') rigTaskId = asset.rig.rigTaskId ?? undefined;
+  }
+  const filter = { query: args.query, category: args.category, rigType: args.rigType };
+  if (system === 'hunyuan_v1') {
+    const motions = filterMotions(hunyuanV1Catalog(), filter);
+    return { ok: true, usedMock: false, system, total: motions.length, motions };
+  }
+  // A mock rig task id can't list real per-rig actions → fall to public catalog.
+  const taskId = rigTaskId && !rigTaskId.startsWith('mock') ? rigTaskId : undefined;
+  const { usedMock, options } = await getMeshyCatalog(slug, taskId);
+  const motions = filterMotions(options, filter);
+  return { ok: true, usedMock, system: 'meshy', total: motions.length, motions };
 }
 
 interface RetopoLowpolyArgs {
@@ -952,6 +1157,7 @@ export const tools = {
   'gen3d:upload-image': async (args: UploadImageArgs) => uploadImage(args),
   'gen3d:auto-rig': async (args: AutoRigArgs) => autoRig(args),
   'gen3d:apply-motion': async (args: ApplyMotionArgs) => applyMotion(args),
+  'gen3d:list-motions': async (args: ListMotionsArgs = {}) => listMotions(args),
   'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
   'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
   'gen3d:rename-asset': async (args: RenameAssetArgs) => renameAsset(args),
