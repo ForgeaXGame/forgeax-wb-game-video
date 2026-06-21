@@ -45,10 +45,10 @@ export function SetupSidebar({
 }) {
   const [keysOpen, setKeysOpen] = useState(false);
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
-  const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
+  const [provider, setProvider] = useState<GenProvider>('meshy');
   const [assetSlot, setAssetSlot] = useState<AssetSlot>('characters');
   const [assetName, setAssetName] = useState('');
-  const [mode, setMode] = useState<Mode>('text');
+  const [mode, setMode] = useState<Mode>('views');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
   const [frontUrl, setFrontUrl] = useState('');
