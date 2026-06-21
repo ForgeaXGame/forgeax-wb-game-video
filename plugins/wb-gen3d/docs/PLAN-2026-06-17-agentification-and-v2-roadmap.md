@@ -26,33 +26,43 @@
 
 ---
 
-## 0 · 必读：两个被代码核实的硬约束（不要假设）
+## 0 · 必读：三条硬约束（不要假设）
 
-> 这两条是 2026-06-17 实际 grep + 读码核实的，不是推测。下个 agent 若跳过这节、
-> 直接"把 `exposedToAI` 翻 true 就以为 agent 化完成"，会得到一个**没有任何 agent
-> 能调用、也没有任何游戏能加载**的工具集。
+> 2026-06-17 起草 + **2026-06-21 复核更正**。§0.1 初稿误判（桥状态），已据读码 + git log
+> 更正为"桥已存在"；§0.2（引擎加载边界）仍成立；§0.3 是复核时新增的迁移风险预警。
+> 下个 agent 别跳过本节——但注意 §0.1 的结论已和初稿相反。
 
-### 0.1 agent 化 ≠ 翻 `exposedToAI` boolean
+### 0.1 agent 化 ≠ 翻 `exposedToAI` boolean —— 但桥已存在（2026-06-21 复核更正）
 
 agent 真正能调用一个 `gen3d:*` 工具，需要三件事**同时成立**：
 
 1. 工具 `exposedToAI: true`（M13 三工具当前 `false`，卡 operator 目视）。
-2. **某个 agent 在 manifest 里声明 `provides.agent.tools: ["gen3d:*"]` 白名单**——
-   host-tools 桥据此把 exposedToAI 的宿主工具注入该 agent 的 LLM 工具清单（opt-in，
-   缺省不注入）。定义见 `packages/types/src/agent.ts:39-43`、`packages/types/src/manifest.ts:119-121`；
-   AgentLoader 解析见 `packages/server/src/agents/loader.ts:368-385`。
-3. **host-tools 桥真的把白名单 × exposedToAI 注入到了对话工具清单**。
+2. **某个 agent 在 manifest 里声明 `provides.agent.tools: ["gen3d:*"]` 白名单**（opt-in，缺省 deny-all 不注入）。
+3. host-tools 桥把"白名单 × exposedToAI"注入该 agent 的对话工具清单。
 
-**核实结论（关键风险）：**
-- 当前**没有任何 agent 声明 `gen3d:*`**（全仓只有 `wb-gen3d/forgeax-plugin.json` 自己提到 `gen3d:`）。
-  已声明 `tools` 白名单的 agent 只有 4 个：`agent-kotone` / `agent-reia` / `agent-mira` / `agent-lowpoly`。
-- `exposedToAI` 在 `packages/server/src` / `packages/cli/src` 里**零消费**；唯一消费者在
-  `packages/interface/src`：`lib/surface.ts`（UI surface 注册）+ `components/Bus/BusAdminPanel.tsx`
-  （只是"哪些工具 AI 可见"的可视化面板）。**找不到** server/cli 里把 `agent.tools` glob 匹配
-  exposedToAI 宿主工具、注入对话清单的实现。
-- ⇒ **桥的实现状态存疑**。所以 §2.A0 是 P0：先用一笔真实 probe 证明"声明白名单 + exposedToAI ⇒ 工具真进了 agent 的 LLM 清单"。
-  - 若桥已通 → A1/A4 是纯配置（写 manifest + 翻 boolean）。
-  - 若桥缺失/半成品 → A0 追加一个"实现 host-tools 注入桥"的子任务（在 `agents/loader.ts` → chat 装配路径），**这属 server 改动，需 operator 授权**。
+> ⚠️ **2026-06-21 复核更正——推翻本节初稿的"桥状态存疑"判断。**
+> 初稿（6-17）grep 只扫了 `packages/server/src` / `packages/cli/src`，**漏扫了 `packages/server/builtin/`**，
+> 误判"找不到注入实现 ⇒ 桥状态存疑、A0 可能要授权改 server 实现桥"。实际复核（读码 + git log）如下。
+
+**核实结论：桥早已存在且在用（2026-05-30 落地，commit `8b86459`）。** 完整链路（均已读码确认）：
+
+```
+forgeax-plugin.json  provides.agent.tools: ["gen3d:*"]
+  └─→ ensureAgentPersonaKitOverrides()   core/session.ts:182 · api/sessions.ts:313 → agents/host-tools-overrides.ts:42
+        写入 agent.json  kits.config['host-tools'].allow
+  └─→ host_tool_bridge.ts   builtin/kits/host-tools/plugins/
+        resolveHostToolsAllowTokens  (agents/host-tools-allow.ts:11)
+        + filter(d.exposedToAI && d.hasHandler && glob(allow))   [:149-151]
+        + ctx.tools.register("hosttool:gen3d:*", …)              [:175]
+  └─→ ConsciousAgent.getTools() = toolRegistry.list()  → 喂给 LLM
+```
+另有 CLI provider 并行路：`GET /api/tools?agent=`（`api/tools.ts:42`）→ 同一 allow 解析 → MCP 暴露给 Claude Code/Codex。
+
+**现成可抄的工作先例**：`agent-reel-storyboard/forgeax-plugin.json:26` 声明 `provides.agent.tools:["reel:*"]`；
+`agent-kotone` / `agent-reia` / narrative / character-forge 同模式在用。
+
+⇒ **A0 不再是"de-risk 桥是否存在 / 可能要授权改 server 实现桥"，而降级为"照抄 reel-storyboard 配一下 + 跑一轮对话确认"
+（纯插件配置，无 server 改动、无 operator 授权门）。** 详见改写后的 §2.A0。
 
 ### 0.2 end-to-end 最后一跳（游戏加载 gen3d 角色）未建、且跨插件边界
 
@@ -68,8 +78,20 @@ agent 真正能调用一个 `gen3d:*` 工具，需要三件事**同时成立**�
   `AnimationPlayer`——这一跳从没跑通过。
 - ⇒ "gen3d 产物 → 游戏可加载"需要一座桥（把 per-game GLB 解析成 SceneAsset/SkeletonAsset/
   AnimationClip 并注册，或产出引用它的 pack 条目）。**这座桥属引擎 / game-template / agent-skill 层，
-  超出 gen3d 插件边界**，列为 §2.A5，需 operator 授权 / 单独立项。gen3d 插件的职责到
-  "per-game GLB 资产 + manifest 落盘"为止。
+   超出 gen3d 插件边界**，列为 §2.A5，需 operator 授权 / 单独立项。gen3d 插件的职责到
+   "per-game GLB 资产 + manifest 落盘"为止。
+
+### 0.3 迁移风险预警：`evolve/extract-orchestration` 会删掉这座桥（2026-06-21）
+
+远端有一条大重构分支 `origin/evolve/extract-orchestration`（studio `+38k/-51k`，作者 ruibinmao，
+**截至 2026-06-21 尚未合入 main**），会把整个 `packages/server/builtin/kits/`（**含 §0.1 的
+`host_tool_bridge.ts`**）删除，换成 `forgeax-core` 原生内核 + 显式 `tools` 注入 API
+（`makeInProcessExecuteTool` / `AssembleAgentOpts.tools`），不再从 manifest 自动 glob 注入。
+
+**影响**：一旦它合入 main，§0.1 描述的"`provides.agent.tools` → 自动注入"链路失效，`agent-gen3d`
+需改走新 API。**对策**：① 现在就基于当前 main 推进（桥已通，不必等）；② 在该分支合入**前**把 A1 跑通
+并留验证记录；③ 与 ruibinmao 对一下合并时间点 + 新 API 下 per-agent 工具装配怎么写。其余远端线
+（im-connectors / perception-history-cc-kernel / agent-avatar-statemachine）不碰这座桥，无关。
 
 ---
 
@@ -78,8 +100,8 @@ agent 真正能调用一个 `gen3d:*` 工具，需要三件事**同时成立**�
 ```
 A 主轴（agent 化）              B 并行异步（v2 M14）         C 附属
 ─────────────────              ────────────────────         ──────
-A0 桥 de-risk probe  ⟵P0       B0 上游三问+复现包 ⟵立刻发    C1 HDR presets（可立即）
-   │  (若桥缺→授权实现)         B1 探测矩阵脚本（并行）       C2 视图器/评分 UI 打磨
+A0 桥确认(已通·照抄reel)⟵P0    B0 上游三问+复现包 ⟵立刻发    C1 HDR presets（可立即）
+   │                            B1 探测矩阵脚本（并行）       C2 视图器/评分 UI 打磨
    ▼                              │                          C3 Rodin views 真机验证
 A1 agent-gen3d persona          B2 验证 Gate（§五 byte-diff）
    (tools:["gen3d:*"])            │  ⟵ 卡 B0/B1 任一出有效值
@@ -95,8 +117,8 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 ```
 
 **硬序**：A0 → A1 → A2/A3（可并行）→ A4 → A5。B 线整体与 A 并行，B2 卡 B0/B1。C 随时插空。
-**立刻可动（无 operator/上游/授权门）**：A1、A2、A3、B0、B1、C1。
-**卡人/上游/授权**：A0 的"实现桥"分支（授权）、A4（operator 目视）、A5（授权）、B2+（上游）、C3（key）。
+**立刻可动（无 operator/上游/授权门）**：**A0**（桥已通，仅配置确认）、A1、A2、A3、B0、B1、C1。
+**卡人/上游/授权**：A4（operator 目视）、A5（授权）、B2+（上游）、C3（key）。~~A0 的"实现桥"分支~~ 已取消——桥已存在（见 §0.1）。
 
 **推迟出本期（明确 out-of-scope）**：见 §5。
 
@@ -104,34 +126,35 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 
 ## 2 · Phase A — agent 化（主轴）
 
-### Task A0：host-tools 桥 de-risk probe（P0，先做，决定 A 线形态）
+### Task A0：确认 host-tools 桥（桥已存在 → 照抄 reel-storyboard + 跑一轮确认）
 
-**目的：** 用一笔真实验证回答"声明 `tools` 白名单 + `exposedToAI:true` ⇒ 工具真进 agent 的 LLM 工具清单吗？"（见 §0.1）。
+> **2026-06-21 复核更正**：§0.1 已确认桥早在 2026-05-30 落地（`host_tool_bridge.ts`）。本任务从
+> "de-risk 桥是否存在 / 可能要授权实现桥"**降级为"配置 + 一轮动态确认"**——纯插件内、无 server 改动、无 operator 授权门。
 
-**Files:**
-- Read: `packages/server/src/agents/loader.ts`（`tools` 解析后流向哪里）
-- Read: `packages/interface/src/components/Bus/BusAdminPanel.tsx:703,2225`（运行时"AI-exposed 工具"判定）
-- Read: 对话/LLM 工具装配路径（先 `rg -n "tools" packages/server/src/chat packages/server/src/sessions 2>/dev/null`，定位 claude-code driver 拿工具清单的地方）
+**目的：** 用一笔零配额对话确认"声明 `provides.agent.tools` 白名单 + `exposedToAI:true` ⇒ 工具真进 agent 的 LLM 清单"。
 
-- [ ] **Step 1：静态定位桥**。从 `agents/loader.ts:385` 的 `tools` 返回值出发，追到它在 chat/session 装配 LLM 工具清单时是否被 glob-匹配到 exposedToAI 宿主工具。记录结论文件:line。
-- [ ] **Step 2：动态验证（用已 exposedToAI:true 的 gen3d 工具，零配额）**。临时给一个测试 agent（或直接给 `agent-lowpoly`）加 `tools:["gen3d:*"]`，`bash start.sh`，在 Studio 里跟该 agent 开一轮对话，让它列出/调用 `gen3d:list-assets`（已 `exposedToAI:true`、纯本地、无配额）。
-- [ ] **Step 3：判定并分叉**
-  - 工具出现在 agent 可调清单 + 能成功调 `gen3d:list-assets` → **桥已通**。A1/A4 走纯配置路径。把 Step 2 的临时改动回滚。
-  - 工具没出现 / 调不到 → **桥缺失**。在本 PLAN §2.A0 下追加子任务"实现 host-tools 注入桥"（`agents/loader.ts` → chat 装配处，按 `agent.tools` glob 过滤 `exposedToAI:true` 的已扫描工具注入），**标记为 server 改动、需 operator 授权**，并把 A1 之后的步骤挂到它后面。
+**Files（只读参考，不改）:**
+- `packages/marketplace/plugins/agent-reel-storyboard/forgeax-plugin.json:26`（`provides.agent.tools` 模板，A1 直接抄）
+- `packages/server/builtin/kits/host-tools/plugins/host_tool_bridge.ts:149-151,175`（桥实现，了解即可）
 
-**Exit criteria:** 一句明确结论写进 HANDOFF —— "桥已通（A1=配置）" 或 "桥缺失（需授权实现，已建子任务）"。**A1 之后所有步骤都依赖这个结论。**
+- [ ] **Step 1（动态确认，零配额）**：给一个测试 agent（或临时给 `agent-lowpoly`）加 `provides.agent.tools:["gen3d:*"]`，`bash start.sh`，在 Studio 里跟它对话让它调 `gen3d:list-assets`（已 `exposedToAI:true`、纯本地、零配额）。
+- [ ] **Step 2**：工具出现在该 agent 可调清单且成功返回 → 桥确认通；回滚临时改动。
+- [ ] **Step 3**：把结论 + §0.3 迁移风险记一句进 HANDOFF。
+  - （兜底）万一 Step 2 没调到——优先排查"白名单写法 / 重启 / 快照就绪"（看 `host_tool_bridge.ts:152-157` 的 0-match 自诊断日志），而**不是**回头假设桥缺失。
+
+**Exit criteria:** 一笔对话里某 agent 成功调到 `gen3d:list-assets`，证明桥通；A1 走纯配置路径。
 
 ---
 
 ### Task A1：新建 `agent-gen3d` persona，声明 `gen3d:*` 工具白名单
 
-**目的：** 给 gen3d 一个"会用这套工具"的 agent 人格（现成模板 = `agent-lowpoly`）。
+**目的：** 给 gen3d 一个"会用这套工具"的 agent 人格（首选模板 = `agent-reel-storyboard`，它的 `provides.agent.tools` 白名单已被 §0.1 的桥验证可用）。
 
 **Files:**
 - Create: `packages/marketplace/plugins/agent-gen3d/forgeax-plugin.json`
 - Create: `packages/marketplace/plugins/agent-gen3d/persona/zh.md`
 - Create: `packages/marketplace/plugins/agent-gen3d/memory/`（空目录占位，放 `.gitkeep`）
-- Reference: `packages/marketplace/plugins/agent-lowpoly/forgeax-plugin.json`（模板）
+- Reference: `packages/marketplace/plugins/agent-reel-storyboard/forgeax-plugin.json`（**首选模板**，`provides.agent.tools` 桥白名单工作先例）；`agent-lowpoly/forgeax-plugin.json`（次选）
 
 - [ ] **Step 1：写 manifest**（命名/avatar/color 可按团队风格调，下面是具体起步值）：
 
@@ -354,12 +377,12 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 ## 6 · 执行顺序建议 + handoff
 
 **给下一个执行 agent 的开工顺序：**
-1. 读 §0 两个硬约束 → 跑 **A0**（决定 A 线是配置还是要授权实现桥）。
+1. 读 §0 三条（§0.1 桥已通 / §0.2 引擎加载边界 / §0.3 迁移风险）→ 跑 **A0**（一轮对话确认桥通，纯配置）。
 2. 并行：**B0** 立刻把上游三问发出去（解锁周期最长，越早越好）；**A1 → A2 → A3** 推 agent 化可编码部分；**C1** 插空。
 3. **A4** 等 operator 目视；**B1/B2** 自救探测；拿到 v2 有效值后 **B3/B4**。
 4. **A5** 与 operator 确认边界 + 授权后做（端到端闭环）。
 
-**Review 钩子（给 reviewer agent）：** 重点审 §0 两条结论是否仍成立（桥状态、引擎加载边界）、A1 manifest 是否过 schema、B3 是否守住"v2 超集旁路不替换 v1"、本轮所有改动是否守住插件边界（A5 之外不碰 server/engine）。
+**Review 钩子（给 reviewer agent）：** 重点审 §0 三条是否仍成立（§0.1 桥已通 / §0.2 引擎加载边界 / §0.3 extract-orchestration 是否已合入 main——合入则桥失效需改新 API）、A1 manifest 是否过 schema、B3 是否守住"v2 超集旁路不替换 v1"、本轮所有改动是否守住插件边界（A5 之外不碰 server/engine）。
 
 **本 PLAN 自检（writing-plans self-review，2026-06-17）：**
 - spec 覆盖：半月报 §6.1/6.2/6.3/6.4 与技术方案 M14.0–M14.4 全部映射到 A/B/C 任务 ✓
