@@ -52,5 +52,6 @@ priority:
 - 本文件由 `scripts/seed-agent-avatars.sh` 在每个 agent plugin 的 `avatar/` 子目录下生成.
 - 状态机规则跨所有 agent 通用, 美术差异由 webm 内容自身承载.
 - 5 个美术细分 agent (mira / animator-2d / character-designer-2d / vfx-artist-3d / lowpoly)
-  + planner agent (forgeax-default) 当前临时引用其他角色的 portrait, 待插画师补齐后用
+  + planner agent (forgeax-default) + 3 个 REIA 子智能体 (reel-storyboard / reel-video /
+  reel-visual) 当前临时引用其他角色的 portrait, 待插画师补齐后用
   `bash scripts/seed-agent-avatars.sh --force` 一键替换.
