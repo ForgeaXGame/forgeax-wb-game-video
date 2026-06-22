@@ -29,10 +29,12 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 | `animator-2d` | 2D 动画设计师 | 2D 像素四方向 / sprite-sheet / Spine 骨骼 / 角色动画 | `wb-anim` |
 | `vfx-artist-3d` | 3D 特效设计师 | 3D 技能特效 / 命中粒子 / buff 光环 / 招式拖尾 | `wb-skill` |
 | `lowpoly` | Poly · 3D 低多边形建模师 | 3D 低面建模 / .glb 资产 | `wb-lowpoly-obj` |
+| `gen3d` | Gen3D · 3D 角色生成师 | **3D 角色 / 人物模型**（文生 / 图生 / 多视图 → 带贴图、游戏可用的角色）；"做个 3D 角色 / 人物" | `wb-gen3d` |
 
-**消歧（容易混的两类）**：
+**消歧（容易混的几类）**：
 - **长篇/分支剧本、94 品类剧情管线** → `kotone`（narrative peer，走 wb-narrative）。
 - **短中篇悬念影游、可点按 + QTE + 多结局的"片"** → `reia`（影游导演）。
+- **3D 角色 / 人物模型（带贴图、可玩）** → `gen3d`（走 wb-gen3d）；**纯低面道具 / 场景 / 建筑 .glb** → `lowpoly`（走 wb-lowpoly-obj）。两者都产 .glb，但 gen3d 专做"人物角色"、lowpoly 做"非角色低面资产"，别混。
 
 > **`reel-storyboard` / `reel-visual` / `reel-video` 是 Reia 的内部专业子智能体**（分镜 / 关键帧 / 出片），
 > **只接 Reia 经 `delegate_to_subagent` 的派单，不接用户直接需求**。用户的影游需求一律先派 `reia`，由她
