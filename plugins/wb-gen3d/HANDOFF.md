@@ -1,16 +1,16 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-25 — 架构对齐：feature 分支 vs origin/main 分叉 · 迁移 SSOT 落档（文档-only）。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-migrate-to-forgeax-core.md`](./docs/PLAN-2026-06-25-migrate-to-forgeax-core.md)。
+> **2026-06-25 — 架构对齐：feature 分支 vs origin/main 分叉 · 迁移 SSOT 落档。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-migrate-to-forgeax-core.md`](./docs/PLAN-2026-06-25-migrate-to-forgeax-core.md)。
 > - **当前状态**：`laurenceelu/feat-20260622-character-gen3d-link` 三仓**均未合 main**（studio 落后 main 183 / mp 28 / server 43）。T0–T3 编码 + 测试在分支上完成；**T4 真机未签字**。
 > - **架构变动（main 已有）**：server 瘦壳 + `forgeax-cli`（`packages/cli` 编排层）+ `forgeax-core` sidecar 子进程(**不是 vendored `packages/core`**，见 PLAN §2 修正后的四层模型)；host-tools 桥**迁进 forgeax-cli**（`packages/cli/builtin/kits/host-tools/...`），**不是被删**——6/23「桥失效」判断过于悲观。
-> - **硬阻塞（迁移前必解）**：`wb-character` 仍 `import server/src/lib/character-forge/`（server main 已删该路径）→ 需 character-forge **内聚进 wb-character 插件**（见迁移 PLAN §4 B1）。
-> - **下一步（代码未开始）**：读迁移 PLAN → 批次 0 开基于 main 的迁移分支 → 批次 1–4 cherry-pick / 重写 / T4 / 合 main。
+> - **硬阻塞 B1（已解 2026-06-25）**：`character-forge` 已内聚进 `wb-character/server/`（commit `cc21af6`）；不再 import 已删的 server 路径。
+> - **下一步**：批次 1 cherry-pick 进行中 → 批次 2 server 重写 → T4 真机 → 合 main。
 
 > **2026-06-23 — 新线：2D 角色 → 3D 角色（turnaround 收尾 · 联动 gen3d · CLI 自主端到端）。方案已过 grill review（ADR-0008）；**T1/T2/T3 已提交 · T0 HTTP 探针 PASS**（`scripts/t0-host-tools-probe.mjs`）**· 剩 T4 真机验证**（UI handoff 目视 + 真 key 2D→3D + opt-in motion）。T1 lazy transfer 已随 `08c029a` 提交。执行 / 审阅 SSOT = [`docs/PLAN-2026-06-23-character-to-gen3d-cli.md`](./docs/PLAN-2026-06-23-character-to-gen3d-cli.md)。
 > - **一句话**：把 wb-character 出的角色四视图喂进 gen3d 出 3D。UI handoff 路径 + Forge CLI 一条链直接编排（ADR-0008 D-A）。
 > - **已确认决策**（勿 re-litigate）：scope = 两步走；**cli_arch = Forge 直接编排**（`character:generate-turnaround` → `gen3d:views-to-3d`，不经两 agent 穿线；见 ADR-0008 D-A）。
 > - **reviewer 先读 PLAN §0/§1/§7**；PLAN §2 是反失真的代码证据（file:line / commit）——**别信本文件下方旧块的"待执行"状态**。
-> - **跨仓改动面**：wb-character（未提交 389 行）+ wb-gen3d（`gen3d:upload-image` flag）+ `agent-gen3d` / `agent-character-designer-2d` persona + marketplace `src/system-prompt/80-workbench-agents.md`（派单表，非插件目录，**需授权**）+ server `character-forge`（已 commit `fa1b555`）。
+> - **跨仓改动面**：wb-character（B1 已内聚 character-forge）+ wb-gen3d + `agent-gen3d` persona + marketplace `src/system-prompt/80-workbench-agents.md`（派单表，非插件目录，**需授权**）。
 
 > **2026-06-22 — agent 化收敛：「3D 角色生成助手」(`agent-gen3d`) 雏形落地 + 「静态优先」决策定案（待其他 agent review）。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-22-gen3d-character-agent.md`](./docs/PLAN-2026-06-22-gen3d-character-agent.md)。
 > - **分支现状**：上一条线 `feat-20260617-gen3d-agentify-roadmap`（Meshy 公网绑骨/动画 P0–P3 + 插件内密钥 + agent 化路线图）**已合并入 main**（studio `7a5f739` / marketplace `8499d04`；main 之后又推进了公开镜像 / website / README 等与 gen3d 无关的提交）。本轮新分支 = **`laurenceelu/feat-20260622-gen3d-agent-persona`**（studio + marketplace 同名）。
