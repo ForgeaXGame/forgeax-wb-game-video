@@ -1,7 +1,7 @@
 # 开发计划：Rodin + 本地上传/COS + per-game 存储重构 + UI 升级
 
 > Status: 🟢 READY FOR EXECUTION（2026-06-11 定稿；同日经第二轮 grill-with-docs review 修订关键决策，待交接给执行 agent）
-> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（studio + marketplace 子模块同名）
+> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（历史；已合入 main。当前开发：`laurenceelu/feat-20260615-gen3d-polish`）
 > 来源: 2026-06-11 grill-with-docs 需求澄清 + 同日第二轮 grill review；所有关键决策已与用户逐条确认。
 > 本文件是这次新增工作的 SSOT 计划。原路线 `docs/MIGRATION_PLAN.md` 的 M0–M8 历史保留不删；本计划新增 M9–M12 并承接旧未完成项。
 >
@@ -88,7 +88,7 @@ flowchart LR
 
 - 新增依赖 `cos-nodejs-sdk-v5`。新 `server/cos-uploader.ts`：`COS_SECRET_ID/KEY/BUCKET/REGION` 来自 `server/env.ts`(扩展)；`upload(bytes, ext) → 24h presigned URL`。
 - 新工具 `gen3d:upload-image`(args: base64 + mimetype)：后端解码→上 COS→回 `{ url, bytes }`。base64 走现有 JSON tools 路由，**不额外加 server route**——已查实 `POST /api/tools/call`(`packages/server/src/api/tools.ts:29` 用 `c.req.json()`)**无 `bodyLimit` 中间件**、main.ts 全局也无，Bun+Hono 默认不卡 body，~11MB base64 能进。但工具须**后端强校验解码后原图 ≤8MB**，超限报错，避免超大图拖垮 server 内存。
-- **⚠️ 混元内网抓公网 COS 风险**：混元是司内网 OpenAPI(`hunyuan-workflow.ts:1` 注释 + `HUNYUAN_BASE_URL` 内网域名)，且 `image_url` 是**混元服务端自己去 fetch**(`hunyuan-workflow.ts:177` + `downloadImpl`)。内网服务抓**公网 COS 预签名 URL** 大概率被防火墙挡 → 混元的本地图上传**默认走 COS URL 但标注"需验证内网可达"**；不通则退路：①混元 API 若支持图片 base64 字节内联则改字节直传；②COS 换内网可达 endpoint；③暂禁混元本地上传、仅接手填 URL。Meshy(公网 `api.meshy.ai`)、Rodin(公网 `hyper3d.com`)正常走 COS/字节。
+- **⚠️ 混元内网抓公网 COS 风险**：混元是内网 OpenAPI(`hunyuan-workflow.ts:1` 注释 + `HUNYUAN_BASE_URL` 内网域名)，且 `image_url` 是**混元服务端自己去 fetch**(`hunyuan-workflow.ts:177` + `downloadImpl`)。内网服务抓**公网 COS 预签名 URL** 大概率被防火墙挡 → 混元的本地图上传**默认走 COS URL 但标注"需验证内网可达"**；不通则退路：①混元 API 若支持图片 base64 字节内联则改字节直传；②COS 换内网可达 endpoint；③暂禁混元本地上传、仅接手填 URL。Meshy(公网 `api.meshy.ai`)、Rodin(公网 `hyper3d.com`)正常走 COS/字节。
 - 前端输入改造(`SetupSidebar.tsx`)：image/views/pose 源图都从"贴 URL"改为"本地选图(file picker)→ 调 `upload-image` → 自动回填 URL"，保留可选手填 URL。Rodin 走字节直传(在 provider 层用 COS URL 下载回字节或直接缓存原字节)。
 - prompt 文本框更显著：加大 textarea/自动增高 + 清晰标签 + 字数；位置不动。
 - 提示文案：image/views 输入区显眼处加"可在『角色编辑器』生成三视图/立绘后导入"。

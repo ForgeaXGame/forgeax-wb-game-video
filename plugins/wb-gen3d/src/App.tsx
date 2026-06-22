@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
 import { hasActiveGame } from '@/lib/gameSlug';
-import type { GenerateResult, ListAssetsResult, Mode, ProviderStatus, RigMotionResult } from '@/types';
+import type { ApplyMotionInput, GenerateResult, ListAssetsResult, Mode, ProviderStatus, RigMotionResult } from '@/types';
 import { modeMeta } from '@/ui-meta';
 import { SetupSidebar } from '@/components/SetupSidebar';
 import { Workspace } from '@/components/Workspace';
@@ -56,6 +56,19 @@ export function App({ pane }: AppProps) {
       }
       setSelected((cur) => (cur?.assetPath === assetPath ? null : cur));
       setLatest((cur) => (cur?.manifest.assetPath === assetPath ? null : cur));
+      void refreshAssets();
+    },
+    [refreshAssets],
+  );
+
+  const renameAsset = useCallback(
+    async (assetPath: string, label: string | null) => {
+      const r = await callTool<{ ok: true; manifest: Gen3DAssetManifest }>('gen3d:rename-asset', { assetPath, label });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setSelected((cur) => (cur?.assetPath === assetPath ? r.result.manifest : cur));
       void refreshAssets();
     },
     [refreshAssets],
@@ -161,10 +174,17 @@ export function App({ pane }: AppProps) {
     [runRigMotion],
   );
 
+  // Apply-motion dispatches by the chosen motion's system: a Hunyuan v1 clip uses
+  // the legacy int motionType (9–16); everything else (Meshy) uses actionId +
+  // label. The asset's recorded rig system gates which one the server accepts.
   const handleApplyMotion = useCallback(
-    (assetPath: string, motionType: number) => {
-      lastActionRef.current = () => void runRigMotion('gen3d:apply-motion', { assetPath, motionType });
-      void runRigMotion('gen3d:apply-motion', { assetPath, motionType });
+    (assetPath: string, motion: ApplyMotionInput) => {
+      const args =
+        motion.system === 'hunyuan_v1'
+          ? { assetPath, motionType: motion.id }
+          : { assetPath, actionId: motion.id, label: motion.label };
+      lastActionRef.current = () => void runRigMotion('gen3d:apply-motion', args);
+      void runRigMotion('gen3d:apply-motion', args);
     },
     [runRigMotion],
   );
@@ -201,6 +221,7 @@ export function App({ pane }: AppProps) {
           busy={busy}
           gameActive={gameActive}
           onGenerate={handleGenerate}
+          onCredentialsSaved={refreshStatus}
         />
       )}
 
@@ -229,6 +250,7 @@ export function App({ pane }: AppProps) {
                   onRefresh={refreshAssets}
                   onSelect={setSelected}
                   onDelete={deleteAsset}
+                  onRename={renameAsset}
                 />
                 <QualityInspector selected={selected} onScored={handleScored} />
               </div>

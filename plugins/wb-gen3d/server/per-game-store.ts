@@ -21,8 +21,11 @@ import { dirname, resolve } from 'node:path';
 
 import {
   ASSET_SLOT_DIRS,
+  MESHY_FREE_RUN_ID,
+  MESHY_FREE_WALK_ID,
   computeReadiness,
   emptyQuality,
+  motionRefFromLegacy,
   reportToScore,
   type AssetSidecar,
   type AssetSlot,
@@ -30,6 +33,7 @@ import {
   type FileRole,
   type Gen3DAssetManifest,
   type ManifestFile,
+  type MotionRef,
   type MotionType,
   type QualityReport,
   type SidecarDependency,
@@ -356,11 +360,13 @@ export class PerGameAssetStore implements AssetStorage {
       }
 
       const baseName = fileName.replace(/\.glb$/, '');
-      const variant = input.motionType !== undefined ? `.motion-${input.motionType}` : '';
       const deps = [...(sidecar.dependencies ?? [])];
 
       for (const f of input.files) {
-        // <base>.<role>[.motion-<k>].<format> as a same-basename sidefile.
+        // <base>.<role>[.motion-<system>-<id>].<format> as a same-basename
+        // sidefile. The motion variant is per-file so one append can land the
+        // rigged model AND its bundled free clips together (ADR-0006 §8-Q6).
+        const variant = f.motionRef ? `.motion-${motionVariantSlug(f.motionRef)}` : '';
         const depFileName = `${baseName}.${f.role}${variant}.${f.format}`;
         const abs = resolve(dir, depFileName);
         await writeFile(abs, f.data);
@@ -378,8 +384,12 @@ export class PerGameAssetStore implements AssetStorage {
                 animationInputReady: input.skeleton.animationInputReady,
               }
             : {}),
-          ...(f.role === 'animated_model' && input.motionType !== undefined
-            ? { motionType: input.motionType }
+          ...(f.role === 'animated_model' && f.motionRef
+            ? {
+                motionRef: f.motionRef,
+                // Legacy mirror so pre-motionRef readers still see hunyuan_v1.
+                ...(f.motionRef.system === 'hunyuan_v1' ? { motionType: f.motionRef.id } : {}),
+              }
             : {}),
         };
         if (idx >= 0) deps[idx] = dep;
@@ -387,12 +397,55 @@ export class PerGameAssetStore implements AssetStorage {
       }
 
       const now = new Date().toISOString();
-      const updated: AssetSidecar = { ...sidecar, dependencies: deps };
+      const updated: AssetSidecar = {
+        ...sidecar,
+        dependencies: deps,
+        custom: {
+          ...sidecar.custom,
+          // Persist rig-chain identity so apply-motion can dispatch by system
+          // and read the Meshy rig_task_id (ADR-0006 §Decision 3).
+          ...(input.rigChain ? { rig: input.rigChain } : {}),
+        },
+      };
       // Recompute readiness from the full file set (main + deps).
       const manifest = sidecarToManifest(slug, slot, fileName, updated);
-      updated.custom = { ...sidecar.custom, readiness: manifest.readiness };
+      updated.custom = { ...updated.custom, readiness: manifest.readiness };
       await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
       return { ...manifest, updatedAt: now };
+    });
+  }
+
+  // ─── User label (display name) ────────────────────────────────────────────
+  async updateAssetLabel(
+    slug: string,
+    assetPath: string,
+    label: string | null,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+      const trimmed = label?.trim() || null;
+      const updated: AssetSidecar = {
+        ...sidecar,
+        custom: { ...sidecar.custom, userLabel: trimmed },
+      };
+      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      return sidecarToManifest(slug, slot, fileName, updated);
     });
   }
 
@@ -475,6 +528,19 @@ export class PerGameAssetStore implements AssetStorage {
   }
 }
 
+// Stable, readable on-disk file-name variant for a motion clip. Free Meshy
+// walk/run get named variants (their ids are reserved negatives); real Meshy
+// actions use their action_id; Hunyuan uses hy1-/hy2- prefixes.
+function motionVariantSlug(ref: MotionRef): string {
+  if (ref.system === 'meshy') {
+    if (ref.id === MESHY_FREE_WALK_ID) return 'meshy-free-walk';
+    if (ref.id === MESHY_FREE_RUN_ID) return 'meshy-free-run';
+    return `meshy-${ref.id}`;
+  }
+  if (ref.system === 'hunyuan_v1') return `hy1-${ref.id}`;
+  return `hy2-${ref.id}`;
+}
+
 // "assets/3d/<slot>/<file>" → { slot, fileName }. Returns slot=null if the path
 // is not a recognized 3D slot path.
 function parseAssetPath(assetPath: string): { slot: AssetSlot | null; fileName: string } {
@@ -510,6 +576,11 @@ function sidecarToManifest(
     const rel = relPath(slot, dep.path);
     const format = (dep.path.split('.').pop() ?? 'png') as FileFormat;
     const role = (dep.kind as ManifestFile['role']) ?? 'preview_image';
+    // Prefer the generalized motionRef; upgrade a legacy bare motionType if
+    // that's all an older sidecar carries (back-compat, ADR-0006 §3).
+    const motionRef: MotionRef | undefined =
+      dep.motionRef ??
+      (dep.motionType !== undefined ? motionRefFromLegacy(dep.motionType as MotionType) : undefined);
     files.push({
       fileId: rel,
       role,
@@ -523,7 +594,9 @@ function sidecarToManifest(
       hasSkeleton: dep.hasSkeleton ?? false,
       skeletonProfile: (dep.skeletonProfile as SkeletonProfile) ?? 'unknown',
       animationInputReady: dep.animationInputReady ?? false,
-      ...(dep.motionType !== undefined ? { motionType: dep.motionType as MotionType } : {}),
+      ...(motionRef ? { motionRef } : {}),
+      // Keep the legacy field populated for hunyuan_v1 so older UI still reads it.
+      ...(motionRef?.system === 'hunyuan_v1' ? { motionType: motionRef.id } : {}),
     });
   }
   void baseName;
@@ -538,10 +611,12 @@ function sidecarToManifest(
     sourceJobId: c.sourceJobId,
     sourceInputAssetPaths: c.sourceInputAssetPaths ?? [],
     prompt: c.prompt,
+    userLabel: c.userLabel ?? null,
     files,
     // Always derive from the restored file set so appended rig/anim files are
     // reflected even when the stored custom.readiness is stale.
     readiness: computeReadiness(files),
+    ...(c.rig ? { rig: c.rig } : {}),
     quality: c.quality ? reportToScore(c.quality) : emptyQuality(),
     targetFaceCount: c.faceCount ?? null,
     createdAt: sidecar.createdAt,

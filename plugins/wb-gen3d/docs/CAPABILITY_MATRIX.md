@@ -2,7 +2,7 @@
 
 Status: source-derived planning matrix. Updated 2026-06-13: M13 **Gate 0/1
 real-machine verification PASSED** (probe `scripts/m13-gate-probe.ts`, Hunyuan
-内网 `hunyuanapi.woa.com` + lightai COS). Gate 0 ✓ Hunyuan internal egress
+内网 Hunyuan OpenAPI + COS). Gate 0 ✓ Hunyuan internal egress
 fetched our public presigned COS URL; Gate 1 ✓ `auto_rigging` returned
 `data[].glb_url`/`fbx_url` (shape matches parser), rigged GLB embeds
 **images=3/textures=3/materials=1** (texture survival confirmed) with a 22-joint
@@ -76,7 +76,7 @@ Do not expose rows marked hidden or blocked in workbench UI or AI-facing schemas
   The URL sent to an external provider is a short-lived share/upload URL created
   from that stored blob, not the canonical asset reference.
 - **Hunyuan image inputs are fetched by the Hunyuan server-side, and Hunyuan is
-  an internal-network OpenAPI** (`http://hunyuanapi.woa.com`). A **public** COS
+  an internal-network OpenAPI** (host set via `HUNYUAN_BASE_URL`). A **public** COS
   presigned URL (from M10 local upload) may be unreachable from that internal
   service. Treat "Hunyuan can fetch a public COS URL" as an explicit
   verification item: if it fails, fall back to image-byte inlining (if Hunyuan

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { KeyRound, Plus } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
 import { scratchPreviewUrl } from '@/lib/blobUrl';
 import type { GenProvider, Mode, PoseResult, ProviderStatus } from '@/types';
@@ -18,6 +18,7 @@ import {
 } from '@/ui-meta';
 import { StepCard } from '@/components/StepCard';
 import { ImageInputField } from '@/components/ImageInputField';
+import { CredentialsModal } from '@/components/CredentialsModal';
 
 type StepId = 'provider' | 'input' | 'pose' | 'params';
 
@@ -31,17 +32,23 @@ export function SetupSidebar({
   busy,
   gameActive,
   onGenerate,
+  onCredentialsSaved,
 }: {
   status: ProviderStatus | null;
   assetCount: number;
   busy: boolean;
   gameActive: boolean;
   onGenerate: (mode: Mode, args: unknown) => void;
+  // Refresh provider-status after keys change so the header pill / mode chip
+  // re-read real/quota-safe. App passes its refreshStatus here.
+  onCredentialsSaved: () => void;
 }) {
+  const [keysOpen, setKeysOpen] = useState(false);
   const [openStep, setOpenStep] = useState<StepId | ''>('input');
-  const [provider, setProvider] = useState<GenProvider>('hunyuan_workflow');
+  const [provider, setProvider] = useState<GenProvider>('meshy');
   const [assetSlot, setAssetSlot] = useState<AssetSlot>('characters');
-  const [mode, setMode] = useState<Mode>('text');
+  const [assetName, setAssetName] = useState('');
+  const [mode, setMode] = useState<Mode>('views');
   const [prompt, setPrompt] = useState('stylized low-poly treasure chest with brass trim');
   const [imageUrl, setImageUrl] = useState('');
   const [frontUrl, setFrontUrl] = useState('');
@@ -91,6 +98,8 @@ export function SetupSidebar({
     if (!canSubmit) return;
     const targetPolycount = tierToFaceCount(provider, polycountTier);
     const common: Record<string, unknown> = { provider, assetSlot, enablePbr, targetPolycount };
+    const trimmedName = assetName.trim();
+    if (trimmedName) common.assetName = trimmedName;
     if (Object.keys(providerParams).length > 0) common.providerParams = providerParams;
     if (mode === 'text') {
       onGenerate('text', { prompt: prompt.trim(), ...common });
@@ -122,11 +131,11 @@ export function SetupSidebar({
 
   return (
     <div className="gx-left">
-      <PaneHeader status={status} assetCount={assetCount} />
+      <PaneHeader status={status} assetCount={assetCount} onConfigureKeys={() => setKeysOpen(true)} />
 
       <div className="workbench-pane-scroll">
         <div className="gx-setup">
-          <ProviderModeChip status={status} />
+          <ProviderModeChip status={status} onConfigureKeys={() => setKeysOpen(true)} />
 
           <StepCard
             index={1}
@@ -217,6 +226,21 @@ export function SetupSidebar({
                 角色可后续绑骨 / 加动作；物件为静态道具 / 场景。决定存放槽位，不可在生成后切换。
               </p>
             </div>
+
+            <label className="field">
+              <span className="field-label">资产名称（可选）</span>
+              <input
+                className="fx-input"
+                type="text"
+                value={assetName}
+                placeholder="留空自动命名（如 views-meshy-3）"
+                maxLength={60}
+                onChange={(e) => setAssetName(e.target.value)}
+              />
+              <p className="step-note">
+                用作文件名与导出 .zip 名（仅保留字母/数字，会转小写）。留空则按 prompt / 模式自动命名。
+              </p>
+            </label>
 
             {mode === 'text' && (
               <label className="field">
@@ -366,6 +390,8 @@ export function SetupSidebar({
           {busy ? '生成中…' : '生成 3D'}
         </button>
       </div>
+
+      <CredentialsModal open={keysOpen} onClose={() => setKeysOpen(false)} onSaved={onCredentialsSaved} />
     </div>
   );
 }
@@ -439,35 +465,62 @@ function ProviderParamControl({
   );
 }
 
-function PaneHeader({ status, assetCount }: { status: ProviderStatus | null; assetCount: number }) {
+// The status pill doubles as the entry point to the credentials modal (clicking
+// it opens the in-UI key config that replaces hand-editing the plugin .env).
+function PaneHeader({
+  status,
+  assetCount,
+  onConfigureKeys,
+}: {
+  status: ProviderStatus | null;
+  assetCount: number;
+  onConfigureKeys: () => void;
+}) {
   const mode = status ? (status.realProvidersEnabled ? 'real' : 'quota-safe') : '…';
   return (
     <header className="workbench-pane-header">
       <span className="workbench-pane-title">3D 角色生成</span>
-      <span className="workbench-pane-pill">
-        {mode} · {assetCount} assets
-      </span>
+      <button
+        type="button"
+        className="workbench-pane-pill"
+        onClick={onConfigureKeys}
+        title="配置 3D 供应商 API 密钥"
+      >
+        <KeyRound size={11} aria-hidden="true" />
+        <span>
+          {mode} · {assetCount} assets
+        </span>
+      </button>
     </header>
   );
 }
 
-function ProviderModeChip({ status }: { status: ProviderStatus | null }) {
+// Secondary entry point: the provider-mode chip is also clickable → opens the
+// same credentials modal, since "configure keys" is the natural next action.
+function ProviderModeChip({ status, onConfigureKeys }: { status: ProviderStatus | null; onConfigureKeys: () => void }) {
   if (!status) {
     const QuotaIcon = EDITOR_ICON_MAP.quota;
     return (
-      <div className="status-chip">
+      <button type="button" className="status-chip" onClick={onConfigureKeys} title="配置供应商密钥">
         <QuotaIcon size={14} aria-hidden="true" />
         <span>检测供应商状态…</span>
-      </div>
+        <KeyRound size={13} aria-hidden="true" className="status-chip-key" />
+      </button>
     );
   }
   const real = status.realProvidersEnabled;
   const Icon = real ? EDITOR_ICON_MAP.real : EDITOR_ICON_MAP.quota;
   return (
-    <div className={`status-chip ${real ? 'status-chip--warn' : 'status-chip--ok'}`}>
+    <button
+      type="button"
+      className={`status-chip ${real ? 'status-chip--warn' : 'status-chip--ok'}`}
+      onClick={onConfigureKeys}
+      title="配置供应商密钥"
+    >
       <Icon size={14} aria-hidden="true" />
       <span>{real ? '真实 provider · 消耗配额' : '无配额安全 · mock 回退'}</span>
-    </div>
+      <KeyRound size={13} aria-hidden="true" className="status-chip-key" />
+    </button>
   );
 }
 

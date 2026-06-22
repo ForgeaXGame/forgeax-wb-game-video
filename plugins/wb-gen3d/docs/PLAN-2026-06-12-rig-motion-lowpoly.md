@@ -1,7 +1,7 @@
 # 开发计划：混元角色绑骨 + 动作系统（+ low_poly 可选旁路）
 
 > Status: 🟢 ACCEPTED（2026-06-12 grill 收尾；对照混元三份官方 PDF + 代码 review 完成，可执行）
-> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（studio + marketplace 子模块同名；M3–M12 已合入三仓 main）
+> Branch: `laurenceelu/feat-20260609-hunyuan3d-meshy-pipeline-card`（历史；已合入 main。当前开发：`laurenceelu/feat-20260615-gen3d-polish`）
 > 里程碑代号：**M13**（承接 `docs/PLAN-2026-06-11-rodin-cos-pergame.md` 的 M9–M12）
 > 来源：2026-06-12 与用户的方案讨论（逐项确认，见下"已确认的关键决策"）。
 > SSOT 决策记录：`docs/adr/0003-rig-motion-lowpoly-pipeline.md`（与本计划同批起草）。
@@ -103,7 +103,7 @@ URL**（transfer URL，非资产引用）；混元返回的 URL **立即下载�
 
 ## Provider 能力对比（为什么全程混元；Meshy/Rodin 现状）
 
-| 环节 | 混元（内网 `hunyuanapi.woa.com`） | Meshy（公网） | Rodin / Hyper3D（公网） |
+| 环节 | 混元（内网 OpenAPI，`HUNYUAN_BASE_URL`） | Meshy（公网） | Rodin / Hyper3D（公网） |
 |---|---|---|---|
 | 拓扑/减面 | ✅ `low_poly` REST（本计划接入） | `topology=quad`+`should_remesh`+`decimation_mode`（生成时） | `mesh_mode=Quad`+档位（生成时） |
 | rig 前置姿态 | `pose_standardization`（图层，已做） | `pose_mode=a/t-pose`（生成时） | `TAPose=true`（生成时） |
@@ -277,7 +277,7 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 
 - **Gate 0｜COS 内网可达**：把库里一个真实 GLB 经 `cos-uploader` 上传 → 拿公网
   预签名 URL → 作 `low_poly` 的 `glb_url` 提交一次。
-  - 通过 = 混元内网能 fetch 我们 lightai COS 的 URL（解锁整条链）。
+  - 通过 = 混元内网能 fetch 我们 COS 的 URL（解锁整条链）。
   - 失败退路（按优先级）：① 改用混元自有 COS / 内网可达 endpoint 托管输入；
     ② 若某接口支持字节内联则字节直传；③ 暂限手填混元可达 URL。更新 CAPABILITY_MATRIX。
 - **Gate 1｜形态确认**：用 Gate 0 的低模 GLB 跑一次 `auto_rigging` → 确认

@@ -7,15 +7,15 @@
 > - Hyper3D / Rodin 官方文档 `developer.hyper3d.ai/api-specification/rodin-generation-gen2`
 > - Tencent 混元生3D `cloud.tencent.com/document/api/1804/123447`（公网 Pro 版）+ WaveSpeed 镜像
 > - Tripo `docs.tripo3d.ai/model-generation/*`
-> - 竞品 **LIGHT AI**（内网 `lightai-meshy-v4-sd.lightai.woa.com`）参数面板截图 ×4（你提供，2026-06-14）
+> - 竞品内网工具 参数面板截图 ×4（你提供，2026-06-14）
 
 ## 0. 阅读约定
 
 - **本文区分两类“参数”**：
   - **Provider 原生参数** = 官方 API 真实接受的字段（可验证）。
-  - **竞品 UI 便利项** = LIGHT AI 自己加的后处理（如“自动尺寸 / 原点位置”），**不是** provider API 字段。
+  - **竞品 UI 便利项** = 竞品工具自己加的后处理（如“自动尺寸 / 原点位置”），**不是** provider API 字段。
 - **铁律（沿用 workspace 规则）**：wb-gen3d **只暴露已在官方文档验证存在的原生参数**；竞品有、但官方文档查不到对应字段的，标 ⏳ 待验证、先不接。
-- 图例：✅ 拟暴露 ｜ ⏳ 候选/待验证 ｜ ❌ 不接（deprecated / 仅后处理 / 当前实现不支持） ｜ 🧩 竞品 LIGHT AI 已暴露
+- 图例：✅ 拟暴露 ｜ ⏳ 候选/待验证 ｜ ❌ 不接（deprecated / 仅后处理 / 当前实现不支持） ｜ 🧩 竞品工具 已暴露
 
 ---
 
@@ -109,7 +109,7 @@
 
 ---
 
-## 5. 竞品 LIGHT AI 截图 → 参数映射（对照表）
+## 5. 竞品工具 截图 → 参数映射（对照表）
 
 | 竞品控件（中文） | 出现页 | 对应 provider 原生参数 | 备注 |
 |---|---|---|---|

@@ -14,6 +14,7 @@
   "provides": {
     "workbench": {
       "id": "look",
+      "hidden": true,
       "lens": "by-category",
       "icon": "🎨",
       "position": 120,

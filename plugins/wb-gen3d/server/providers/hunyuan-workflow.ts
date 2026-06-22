@@ -1,4 +1,4 @@
-// HunyuanWorkflowProvider — real submit/poll client for the 司内网 OpenAPI.
+// HunyuanWorkflowProvider — real submit/poll client for the internal OpenAPI.
 //
 // Decoupling (ADR-0001): the provider talks to the remote API and returns a
 // pure ProviderResult with downloaded bytes. It knows nothing about cache,

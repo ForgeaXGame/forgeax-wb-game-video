@@ -16,6 +16,7 @@
   "provides": {
     "workbench": {
       "id": "wb-template",
+      "hidden": true,
       "lens": "by-category",
       "icon": "🧩",
       "position": 999,

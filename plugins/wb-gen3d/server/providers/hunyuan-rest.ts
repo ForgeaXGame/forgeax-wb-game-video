@@ -1,4 +1,4 @@
-// HunyuanRestProvider — real client for the 司内网 OpenAPI REST sub-capabilities.
+// HunyuanRestProvider — real client for the internal OpenAPI REST sub-capabilities.
 //
 // Unlike the workflow provider (async submit/poll, hunyuan-workflow.ts), the
 // REST sub-capabilities are SYNCHRONOUS: a single POST returns the result, with

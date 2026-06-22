@@ -1,11 +1,13 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { Box, AlertTriangle as AlertIcon } from 'lucide-react';
-import { selectFile, selectFiles } from '@shared/manifest';
-import type { Gen3DAssetManifest, ManifestFile, MotionType } from '@shared/manifest';
-import type { GenerateResult } from '@/types';
+import { motionRefKey, selectFile, selectFiles } from '@shared/manifest';
+import type { Gen3DAssetManifest, ManifestFile } from '@shared/manifest';
+import type { ApplyMotionInput, GenerateResult } from '@/types';
 import { blobUrl } from '@/lib/blobUrl';
+import { downloadBundle } from '@/lib/exportBundle';
 import { ModelViewer } from '@/components/ModelViewer';
-import { EDITOR_ICON_MAP, MOTION_TYPES, motionMeta } from '@/ui-meta';
+import { MotionBrowser } from '@/components/MotionBrowser';
+import { EDITOR_ICON_MAP, motionMeta } from '@/ui-meta';
 
 // One semantic glyph per action, drawn from the shared editor icon vocabulary
 // so the same action reads the same across step / CTA / empty / library.
@@ -16,6 +18,7 @@ const RigIcon = EDITOR_ICON_MAP.rig;
 const MotionIcon = EDITOR_ICON_MAP.motion;
 const LowpolyIcon = EDITOR_ICON_MAP.lowpoly;
 const ImgIcon = EDITOR_ICON_MAP.image;
+const HandoffIcon = EDITOR_ICON_MAP.handoff;
 
 // Center pane: header + transient error/loading banners + the result workspace.
 // Selection from the asset library takes precedence over the latest generation;
@@ -42,7 +45,7 @@ export function Workspace({
   onDismissError: () => void;
   onRefine: (previewTaskId: string) => void;
   onAutoRig: (assetPath: string) => void;
-  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onApplyMotion: (assetPath: string, motion: ApplyMotionInput) => void;
   onRetopoLowpoly: (assetPath: string) => void;
 }): JSX.Element {
   return (
@@ -148,7 +151,7 @@ function ResultCard({
   busy: boolean;
   onRefine: (previewTaskId: string) => void;
   onAutoRig: (assetPath: string) => void;
-  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onApplyMotion: (assetPath: string, motion: ApplyMotionInput) => void;
   onRetopoLowpoly: (assetPath: string) => void;
 }): JSX.Element {
   const meshFile = selectFile(manifest.files, 'source_mesh', 'glb');
@@ -161,13 +164,19 @@ function ResultCard({
   const meshUrl = blobUrl(viewerFile);
   // Build the viewer's selectable clip list: a static base pose (rigged or raw
   // mesh, no animation) followed by every applied motion as its own clip. Each
-  // animated_model GLB carries the clip for exactly one motionType, so the chip
-  // row lets the user switch which motion plays (one GLB reload per switch).
+  // animated_model GLB carries the clip for exactly one motion, so the chip row
+  // lets the user switch which motion plays (one GLB reload per switch). Prefer
+  // the generalized motionRef (any system); fall back to the legacy motionType
+  // label for older sidecars that only stored a bare int.
   const motionClips = selectFiles(manifest.files, 'animated_model', 'glb')
     .map((f) => {
       const url = blobUrl(f);
-      if (!url || f.motionType === undefined) return null;
-      return { url, label: motionMeta[f.motionType]?.label ?? `动作 ${f.motionType}`, key: `m${f.motionType}` };
+      if (!url) return null;
+      if (f.motionRef) return { url, label: f.motionRef.label, key: motionRefKey(f.motionRef) };
+      if (f.motionType !== undefined) {
+        return { url, label: motionMeta[f.motionType]?.label ?? `动作 ${f.motionType}`, key: `m${f.motionType}` };
+      }
+      return null;
     })
     .filter((c): c is { url: string; label: string; key: string } => c !== null);
   const baseFile = riggedGlb ?? meshFile;
@@ -236,6 +245,7 @@ function ResultCard({
             <RefineIcon size={14} /> {busy ? '处理中…' : '加贴图 (refine)'}
           </button>
         )}
+        <ExportBundleButton manifest={manifest} />
       </div>
 
       <DownstreamPanel
@@ -252,9 +262,10 @@ function ResultCard({
 // M13 downstream actions: rig → motion (core pipeline) + low_poly (optional
 // side-branch). Steps gate on readiness: auto-rig is offered for any mesh
 // (humanoid characters only — soft-gated by a hint, not a hard block), motions
-// unlock only once readiness.rigged. Applied motions render as a chip row with
-// their structural motionType so re-applying one is a no-op. low_poly is always
-// available as an explicit, separate derived-asset action.
+// unlock only once readiness.rigged. Step 2 is a searchable MotionBrowser that
+// consumes gen3d:list-motions for the asset's rig system; already-applied
+// motions are marked there. low_poly is always available as an explicit,
+// separate derived-asset action.
 function DownstreamPanel({
   manifest,
   busy,
@@ -265,17 +276,12 @@ function DownstreamPanel({
   manifest: Gen3DAssetManifest;
   busy: boolean;
   onAutoRig: (assetPath: string) => void;
-  onApplyMotion: (assetPath: string, motionType: number) => void;
+  onApplyMotion: (assetPath: string, motion: ApplyMotionInput) => void;
   onRetopoLowpoly: (assetPath: string) => void;
 }): JSX.Element {
   const assetPath = manifest.assetPath;
   const rigged = manifest.readiness.rigged;
   const isCharacter = manifest.assetSlot === 'characters';
-  const appliedMotions = new Set<MotionType>(
-    selectFiles(manifest.files, 'animated_model')
-      .map((f) => f.motionType)
-      .filter((m): m is MotionType => m !== undefined),
-  );
 
   return (
     <section className="downstream">
@@ -309,7 +315,7 @@ function DownstreamPanel({
         </button>
       </div>
 
-      {/* Step 2: apply motion (one of 8 fixed motions) */}
+      {/* Step 2: apply motion — searchable catalog (gen3d:list-motions) */}
       <div className={`downstream-step ${rigged ? '' : 'is-disabled'}`}>
         <span className="downstream-step-no">2</span>
         <div className="downstream-step-body">
@@ -317,26 +323,9 @@ function DownstreamPanel({
             <MotionIcon size={13} /> 应用动作
           </div>
           {rigged ? (
-            <div className="motion-grid">
-              {MOTION_TYPES.map((m) => {
-                const applied = appliedMotions.has(m);
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    className={`fx-btn fx-btn--sm motion-btn ${applied ? 'is-applied' : ''}`}
-                    disabled={busy || applied}
-                    title={motionMeta[m].hint}
-                    onClick={() => onApplyMotion(assetPath, m)}
-                  >
-                    {motionMeta[m].label}
-                    {applied ? ' ✓' : ''}
-                  </button>
-                );
-              })}
-            </div>
+            <MotionBrowser manifest={manifest} busy={busy} onApplyMotion={onApplyMotion} />
           ) : (
-            <small className="downstream-hint">先完成绑骨，再选择动作（int 9–16，8 个固定动作）。</small>
+            <small className="downstream-hint">先完成绑骨，再浏览并选择动作。</small>
           )}
         </div>
       </div>
@@ -354,6 +343,45 @@ function DownstreamPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+// Export the whole asset (main GLB + rig/motion GLB+FBX + textures + preview +
+// manifest.json) as one .zip for handoff. Pure front-end (lib/exportBundle):
+// fetches each file from /api/game-assets and zips in-browser — no server route,
+// tool, or dependency. Local busy/error state so it never touches the global
+// generation spinner.
+function ExportBundleButton({ manifest }: { manifest: Gen3DAssetManifest }): JSX.Element {
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const onExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      await downloadBundle(manifest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="fx-btn fx-btn--sm"
+        disabled={exporting}
+        title="把主模型 + 绑骨 + 全部动作(GLB/FBX) + 贴图 + 预览图 + manifest.json 打包成一个 .zip 下载"
+        onClick={onExport}
+      >
+        <HandoffIcon size={14} /> {exporting ? '打包中…' : '导出资产包 (.zip)'}
+      </button>
+      {error && (
+        <small className="downstream-hint" role="alert" style={{ flexBasis: '100%' }}>
+          导出失败：{error}
+        </small>
+      )}
+    </>
   );
 }
 
