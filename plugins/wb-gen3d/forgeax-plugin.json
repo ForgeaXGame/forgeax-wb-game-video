@@ -138,7 +138,7 @@
         "id": "gen3d:auto-rig",
         "args": "./schemas/auto-rig.args.json",
         "returns": "./schemas/auto-rig.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
           "zh": "自动绑骨（ADR-0006，公测默认 Meshy 公网 API）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移）及随附的免费走/跑片段，并记录 rig-chain（rig_task_id/rigType/过期）、置位 readiness.rigged。Dispatch：Meshy 公网默认 → Hunyuan REST 内网兜底 → mock。仅人形角色；幂等。真实配额需运营 Gate 真机验证 + 签字，故 exposedToAI=false（本期不开放给 AI）。",
           "en": "Auto-rig (ADR-0006; public-beta default is the Meshy public API): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX plus any bundled free walk/run clips to the SAME asset, recording the rig-chain (rig_task_id/rigType/expiry) and flipping readiness.rigged. Dispatch: Meshy public default → Hunyuan REST internal fallback → mock. Humanoid only; idempotent. Real quota needs operator Gate verification + sign-off, so exposedToAI=false (not exposed to the AI this round)."
@@ -148,7 +148,7 @@
         "id": "gen3d:apply-motion",
         "args": "./schemas/apply-motion.args.json",
         "returns": "./schemas/apply-motion.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
           "zh": "应用动作（ADR-0006）：对一个已绑骨资产应用一个动作，向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。按资产记录的绑骨系统分发：Meshy（公测默认）用 list-motions 选出的 actionId + 资产自己的 rig_task_id 驱动 /animations，rig 过期可选 autoReRig 重绑；Hunyuan（内网）用固定动作 motionType 9–16。需先 auto-rig；多动作并存，按动作幂等。真实配额需运营 Gate 签字，故 exposedToAI=false。",
           "en": "Apply motion (ADR-0006): apply one motion to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Dispatched by the asset's recorded rig system: Meshy (public-beta default) uses an actionId picked from gen3d:list-motions + the asset's OWN rig_task_id to drive /animations (optional autoReRig re-rigs an expired task); Hunyuan (internal) uses fixed motionType 9–16. Requires prior auto-rig; multiple motions coexist, idempotent per motion. Real quota needs operator Gate sign-off, so exposedToAI=false."
@@ -158,7 +158,7 @@
         "id": "gen3d:list-motions",
         "args": "./schemas/list-motions.args.json",
         "returns": "./schemas/list-motions.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
           "zh": "列出可用动作（ADR-0006 §两步选择）：返回某资产绑骨系统对应的动作目录的过滤切片——Hunyuan 绑骨→v1 固定 8 个；Meshy 绑骨→其 rig 兼容 / 公共目录（~680）。零配额（GET），未配 Meshy 时返回确定性 mock 样本。schema 不枚举全量，调用方用 query/category/rigType 收窄。供动作浏览器与 apply-motion 选 actionId 使用；与绑骨/动作同处一个未开放特性，故暂 exposedToAI=false。",
           "en": "List motions (ADR-0006 two-step selection): return a filtered slice of the motion catalog for an asset's rig system — Hunyuan-rigged → the v1 fixed 8; Meshy-rigged → its rig-compatible / public catalog (~680). Zero quota (a GET); a deterministic mock sample when Meshy is unconfigured. The schema never enumerates the full set — callers narrow via query/category/rigType. Feeds the motion browser + actionId selection for apply-motion; part of the same un-exposed feature, so exposedToAI=false for now."

@@ -5,7 +5,7 @@
   "properties": {
     "slug": {
       "type": "string",
-      "description": "Active game slug. The standardized image is written to scratch under .forgeax/games/<slug>/.gen3d/tmp/ (a transfer artifact, not an asset). Injected by the workbench host; required."
+      "description": "Active game slug. The standardized image is written to scratch under .forgeax/games/<slug>/.gen3d/tmp/ (a transfer artifact, not an asset). The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
     },
     "imageUrl": {
       "type": "string",
@@ -17,6 +17,6 @@
       "description": "Optional free-text note passed through to the provider request."
     }
   },
-  "required": ["imageUrl"],
+  "required": ["slug", "imageUrl"],
   "additionalProperties": false
 }
