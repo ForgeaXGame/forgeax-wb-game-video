@@ -85,6 +85,26 @@
   .agent-item .name { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-item .role { font-size: 10.5px; color: var(--text-tertiary); }
 
+  /* ── Catalog group fold (ADR-0019 §9, 2026-06-22) ─────────────────────
+   * Mirrors the AgentsMainArea grouping logic from the React side. See
+   * GROUP_REGISTRY below for the registry. This iframe lives in its own
+   * bundle so the registry data is duplicated here intentionally (kept in
+   * sync with packages/interface/src/data/agent-groups.ts by convention).
+   *
+   * Visual treatment is a VERTICAL tree: a lead (iro / reia / mochi)
+   * renders at its natural position, and its subs / sibling skins render
+   * underneath indented with a dashed left-border so the parent ↔ child
+   * relationship reads at a glance. */
+  .agent-item.is-sub {
+    margin-left: 16px;
+    padding-left: 10px;
+    border-left: 1px dashed var(--border-strong, var(--border));
+    border-radius: 0 5px 5px 0;
+  }
+  .agent-item.is-sub .name { font-size: 11.5px; }
+  .agent-item.is-sub .role { font-size: 10px; }
+  .agent-item.is-sub .avatar { width: 22px; height: 22px; font-size: 14px; }
+
   /* ── Center pane ── */
   .pane-center { height: 100%; display: flex; flex-direction: column; padding: 10px 14px; gap: 8px; }
   .header { display: flex; align-items: baseline; gap: 12px; }
@@ -304,13 +324,88 @@ function setStatus(elId, text, kind) {
 
 // ─── left pane ────────────────────────────────────────────────────────
 //
-// TODO (ADR-0019 §9, P5): catalog 视图 — 当前会出现 ≥4 个共享"通用 coder"
-// 头像的 agent 项 (cc-coder / claude-code-default / codex-default /
-// cursor-default / kaede / kumo / mochi / rin / sakura) + ≥5 共享"Iro"头像
-// 的美术 agent。P5 会把同头像 agent 折叠成一个组项 + 点击下拉 popover,
-// 跟主仓 React 的 ChatAgentCapsule / AgentsMainArea 同步处理。这里是原生
-// HTML/JS, 没法共享 React 配置, 改的时候在 renderList() 上方内联一份
-// 同样的 group 配置即可 (跟当前 suzu/kotone/lock transform 的处理一致)。
+// GROUP_REGISTRY — catalog-side fold for the agent list. Mirrors
+// packages/interface/src/data/agent-groups.ts (the canonical TS source).
+// Iframe is a separate bundle so we can't import that file; keep the two
+// in sync by convention.
+//
+// Two relationships are folded (both rendered the same way here — lead +
+// indented sub list):
+//   1. skin family → representative (e.g. mochi) treated as the visual
+//      "lead", other personas (rin / sakura / ...) as indented siblings.
+//      Note: this iframe deliberately treats skin like subagent-family
+//      because here every persona is a separately-editable file — the
+//      "replaceable skin" vs "delegated sub" distinction only matters for
+//      the chat-side surface (AgentsMainArea), NOT for the persona editor.
+//   2. subagent-family → lead (e.g. iro, reia) in place + indented subs.
+//
+// Provider-default coders (cc-coder / claude-code-default / etc.) stay
+// flat — they differ by *driver*, not persona/family.
+//
+// Click semantics here: EVERY agent / sub / skin member is a real persona
+// file the user must be able to open and edit, so all clicks call
+// selectAgent() regardless of role. The "subs aren't directly addressable"
+// rule only applies to chat routing (handled in packages/interface/.../
+// open-agent-detail.ts via switchChat=false from sub-card click).
+const GROUP_REGISTRY = [
+  {
+    id: 'coder-skins',
+    kind: 'skin',
+    representativeShortId: 'mochi',
+    memberShortIds: ['mochi', 'rin', 'sakura', 'kaede', 'kumo'],
+    // Provider-default coders folded into the same tree under mochi. They
+    // get the same `is-sub` indented treatment as skin members in this
+    // iframe — the persona editor doesn't visually distinguish driver vs
+    // tone (both are independently editable persona files). The catalog
+    // surface in AgentsMainArea DOES distinguish them via a separate
+    // mini-card column.
+    providerDefaultShortIds: ['cc-coder', 'claude-code-default', 'codex-default', 'cursor-default'],
+  },
+  {
+    id: 'art-family',
+    kind: 'subagent-family',
+    leadShortId: 'iro',
+    memberShortIds: ['mira', 'animator-2d', 'character-designer-2d', 'vfx-artist-3d', 'lowpoly'],
+  },
+  {
+    id: 'reel-family',
+    kind: 'subagent-family',
+    leadShortId: 'reia',
+    memberShortIds: ['reel-storyboard', 'reel-video', 'reel-visual'],
+  },
+];
+
+function shortAgentId(a) { return a.agent?.id ?? ''; }
+
+// Return the (leadShortId, subShortIds) view of a group regardless of kind.
+// Skin: representative = lead; rest of skin members + provider-default
+// coders all become subs (they're all independently editable persona
+// files). Subagent-family: native leadShortId, native memberShortIds.
+function leadAndSubsOf(g) {
+  if (g.kind === 'subagent-family') {
+    return { leadShortId: g.leadShortId, subShortIds: g.memberShortIds };
+  }
+  // skin
+  return {
+    leadShortId: g.representativeShortId,
+    subShortIds: [
+      ...g.memberShortIds.filter((id) => id !== g.representativeShortId),
+      ...(g.providerDefaultShortIds ?? []),
+    ],
+  };
+}
+
+// Lookup a short agent id's tree role in the registry. Returns the same
+// shape regardless of group kind so the renderer can stay generic.
+function treeForAgent(shortId) {
+  for (const g of GROUP_REGISTRY) {
+    const { leadShortId, subShortIds } = leadAndSubsOf(g);
+    if (leadShortId === shortId) return { group: g, role: 'lead', leadShortId, subShortIds };
+    if (subShortIds.includes(shortId)) return { group: g, role: 'sub', leadShortId, subShortIds };
+  }
+  return null;
+}
+
 async function loadAgents() {
   try {
     // ADR-0019: 第三个 fetch 拿 avatarRules. server `/api/workbench/agents` 已经把
@@ -336,47 +431,102 @@ async function loadAgents() {
   }
 }
 
+// Build one agent row. `extraClass` ('' | 'is-sub') drives indent for
+// subagent-family members.
+function createAgentItem(a, extraClass) {
+  const btn = document.createElement('button');
+  btn.className = 'agent-item' + (a.id === selected ? ' active' : '') + (extraClass ? ' ' + extraClass : '');
+  btn.dataset.id = a.id;
+  // ADR-0019: per-agent CSS hook (e.g. suzu 立绘要再上移). short id 来自 manifest.
+  const sid = shortAgentId(a);
+  if (sid) btn.dataset.agentId = sid;
+
+  const av = document.createElement('div'); av.className = 'avatar';
+  const rules = avatarRulesById[sid];
+  const defaultState = rules ? rules.states[rules.default] : null;
+  if (defaultState?.url) {
+    // ADR-0019: 用 default state (期待) 循环, idle 模式 — 不订阅 chat 事件,
+    // 跟主仓 AgentAvatarVideo mode='idle' 行为对齐.
+    const v = document.createElement('video');
+    v.src = defaultState.url;
+    v.autoplay = true;
+    v.muted = true;
+    v.loop = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    av.appendChild(v);
+  } else {
+    av.textContent = a.agent?.card?.avatar ?? '🤖';
+  }
+
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const name = document.createElement('div'); name.className = 'name';
+  name.textContent = pickLang(a.displayName);
+  const role = document.createElement('div'); role.className = 'role';
+  role.textContent = a.agent?.role ?? '';
+  meta.append(name, role);
+  btn.append(av, meta);
+  btn.addEventListener('click', () => {
+    channel.postMessage({ type: 'select-agent', pluginId: a.id });
+    selectAgent(a.id);
+  });
+  return btn;
+}
+
 function renderList() {
   const root = document.getElementById('agent-list');
   root.innerHTML = '';
-  for (const a of agents) {
-    const btn = document.createElement('button');
-    btn.className = 'agent-item' + (a.id === selected ? ' active' : '');
-    btn.dataset.id = a.id;
-    // ADR-0019: per-agent CSS hook (e.g. suzu 立绘要再上移). short id 来自 manifest.
-    const shortAgentId = a.agent?.id ?? '';
-    if (shortAgentId) btn.dataset.agentId = shortAgentId;
 
-    const av = document.createElement('div'); av.className = 'avatar';
-    const rules = avatarRulesById[shortAgentId];
-    const defaultState = rules ? rules.states[rules.default] : null;
-    if (defaultState?.url) {
-      // ADR-0019: 用 default state (期待) 循环, idle 模式 — 不订阅 chat 事件,
-      // 跟主仓 AgentAvatarVideo mode='idle' 行为对齐.
-      const v = document.createElement('video');
-      v.src = defaultState.url;
-      v.autoplay = true;
-      v.muted = true;
-      v.loop = true;
-      v.playsInline = true;
-      v.preload = 'auto';
-      av.appendChild(v);
-    } else {
-      av.textContent = a.agent?.card?.avatar ?? '🤖';
+  // Pre-index by short agent id so we can render subs on demand without
+  // O(n) lookups inside the loop.
+  const bySid = new Map();
+  for (const a of agents) {
+    const sid = shortAgentId(a);
+    if (sid) bySid.set(sid, a);
+  }
+
+  const consumedIds = new Set();
+
+  for (const a of agents) {
+    if (consumedIds.has(a.id)) continue;
+    const sid = shortAgentId(a);
+    const link = sid ? treeForAgent(sid) : null;
+
+    // Sub: defer until its lead is rendered. Same code path for skin
+    // members (rin/sakura/...) and subagent-family members (mira/...).
+    if (link && link.role === 'sub') {
+      const lead = bySid.get(link.leadShortId);
+      if (lead && !consumedIds.has(lead.id)) continue;
+      // Lead missing (e.g. uninstalled) → render flat at the bottom pass.
+      root.appendChild(createAgentItem(a, ''));
+      consumedIds.add(a.id);
+      continue;
     }
 
-    const meta = document.createElement('div'); meta.className = 'meta';
-    const name = document.createElement('div'); name.className = 'name';
-    name.textContent = pickLang(a.displayName);
-    const role = document.createElement('div'); role.className = 'role';
-    role.textContent = a.agent?.role ?? '';
-    meta.append(name, role);
-    btn.append(av, meta);
-    btn.addEventListener('click', () => {
-      channel.postMessage({ type: 'select-agent', pluginId: a.id });
-      selectAgent(a.id);
-    });
-    root.appendChild(btn);
+    // Lead: render in place, then all subs indented.
+    if (link && link.role === 'lead') {
+      root.appendChild(createAgentItem(a, ''));
+      consumedIds.add(a.id);
+      for (const subSid of link.subShortIds) {
+        const sub = bySid.get(subSid);
+        if (!sub || consumedIds.has(sub.id)) continue;
+        root.appendChild(createAgentItem(sub, 'is-sub'));
+        consumedIds.add(sub.id);
+      }
+      continue;
+    }
+
+    // Flat / ungrouped agent.
+    root.appendChild(createAgentItem(a, ''));
+    consumedIds.add(a.id);
+  }
+
+  // Defensive pass: any agent we deferred but never got to render (lead
+  // was missing entirely). Should be rare.
+  for (const a of agents) {
+    if (consumedIds.has(a.id)) continue;
+    root.appendChild(createAgentItem(a, ''));
+    consumedIds.add(a.id);
   }
 }
 
