@@ -48,8 +48,34 @@
   }
   /* suzu 美术资源头顶留白比其它 agent 多, 单独缩放 + 上移 (跟主仓 React 端 一致). */
   .agent-item[data-agent-id="suzu"] .avatar video {
-    transform: scale(1.18) translate3d(0, -18%, 0);
+    transform: scale(1.10) translate3d(0, -12%, 0);
     transform-origin: center top;
+  }
+  /* arin / kotone / tsumugi 脸部相对偏小, 各自单独缩放 + 微抬 (跟主仓 React 端 一致). */
+  .agent-item[data-agent-id="arin"] .avatar video {
+    transform: scale(1.10) translate3d(0, -4%, 0);
+    transform-origin: center top;
+  }
+  .agent-item[data-agent-id="kotone"] .avatar video {
+    transform: scale(1.18) translate3d(0, -3%, 0);
+    transform-origin: center top;
+  }
+  .agent-item[data-agent-id="tsumugi"] .avatar video {
+    transform: scale(1.06) translate3d(0, -2%, 0);
+    transform-origin: center top;
+  }
+  /* lock / cc-coder 立绘也偏小, 同步放大 (跟主仓 React 端 一致). */
+  .agent-item[data-agent-id="lock"] .avatar video {
+    transform: scale(1.12) translate3d(0, -10%, 0);
+    transform-origin: center top;
+  }
+  .agent-item[data-agent-id="cc-coder"] .avatar video {
+    transform: scale(1.12) translate3d(0, -5%, 0);
+    transform-origin: center top;
+  }
+  /* iori 立绘头部偏高, 微微下移. 纯 translate 用不上 transform-origin (跟主仓 React 端 一致). */
+  .agent-item[data-agent-id="iori"] .avatar video {
+    transform: translate3d(0, 5%, 0);
   }
   .agent-item .meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .agent-item .name { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -273,6 +299,14 @@ function setStatus(elId, text, kind) {
 }
 
 // ─── left pane ────────────────────────────────────────────────────────
+//
+// TODO (ADR-0019 §9, P5): catalog 视图 — 当前会出现 ≥4 个共享"通用 coder"
+// 头像的 agent 项 (cc-coder / claude-code-default / codex-default /
+// cursor-default / kaede / kumo / mochi / rin / sakura) + ≥5 共享"Iro"头像
+// 的美术 agent。P5 会把同头像 agent 折叠成一个组项 + 点击下拉 popover,
+// 跟主仓 React 的 ChatAgentCapsule / AgentsMainArea 同步处理。这里是原生
+// HTML/JS, 没法共享 React 配置, 改的时候在 renderList() 上方内联一份
+// 同样的 group 配置即可 (跟当前 suzu/kotone/lock transform 的处理一致)。
 async function loadAgents() {
   try {
     // ADR-0019: 第三个 fetch 拿 avatarRules. server `/api/workbench/agents` 已经把
