@@ -8,7 +8,11 @@
     color-scheme: dark;
     --bg-0: #0d1117; --bg-1: #161b22; --bg-2: #21262d;
     --text-primary: #e6edf3; --text-secondary: #8b949e; --text-tertiary: #6e7681;
-    --border: #30363d; --accent: #58a6ff; --accent-warn: #d29922; --accent-ok: #3fb950;
+    --border: #30363d;
+    /* Aligned with main visual: brand lime (#D4FF48, matches
+     * --color-brand-primary in packages/interface/src/styles/tokens.css)
+     * as the active/primary accent so this iframe matches the host shell. */
+    --accent: #D4FF48; --accent-warn: #d29922; --accent-ok: #3fb950;
   }
   html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-0);
                color: var(--text-primary);
