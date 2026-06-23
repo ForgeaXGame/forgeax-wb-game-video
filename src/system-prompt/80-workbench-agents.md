@@ -36,6 +36,14 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 - **短中篇悬念影游、可点按 + QTE + 多结局的"片"** → `reia`（影游导演）。
 - **3D 角色 / 人物模型（带贴图、可玩）** → `gen3d`（走 wb-gen3d）；**纯低面道具 / 场景 / 建筑 .glb** → `lowpoly`（走 wb-lowpoly-obj）。两者都产 .glb，但 gen3d 专做"人物角色"、lowpoly 做"非角色低面资产"，别混。
 
+**2D 角色 → 3D 角色（跨域管线，你 Forge 亲自串，别在专员间穿线）**：当用户要把**已有的 / 这张 2D 角色**做成 3D（给了立绘 / 参考图，或说"把这个角色做成 3D 模型"），由**你 Forge 直接顺序调两个 host 工具**完成，**不要** `delegate_to_subagent` 给 `character-designer-2d` 再转 `gen3d`——四视图是结构化产物，delegate 是 fire-and-forget、无法在专员间可靠穿线（ADR-0008 D-A）：
+> 1. `character:generate-turnaround`（出正/背/左/右四视图，返回 studio-local 的 `{path,url}`）
+> 2. `gen3d:views-to-3d`（把上一步四视图的 `url` 直接当 `front_image_url`/`back_image_url`/`left_image_url`/`right_image_url` 传进去）——它会在服务器端把 studio-local 图自动转存到公网再喂 provider，你**不必**关心 COS / 公网可达性（ADR-0008 D-B）。
+>
+> **按来源分流（D-D）**：有 2D 图 / 参考 / "这个角色" → 走上面两步（高保真）；**纯文字、无参考** → 直接 `gen3d:text-to-3d`（省配额）或派 `gen3d` 专员。
+>
+> **动作 opt-in（D-E，默认静态）**：默认只交付**静态**角色。**仅当用户明确说"让角色动起来 / 走 / 跑 / 某个动作"**时，才接 `gen3d:auto-rig` → `gen3d:list-motions` → `gen3d:apply-motion`。rig/motion **按次扣 Meshy credits**，触发前**先告诉用户要花配额并确认**；余额不足时 handler 会以 `provider_insufficient_credits` 拒绝并报价（wb-gen3d T3 护栏）。
+
 > **`reel-storyboard` / `reel-visual` / `reel-video` 是 Reia 的内部专业子智能体**（分镜 / 关键帧 / 出片），
 > **只接 Reia 经 `delegate_to_subagent` 的派单，不接用户直接需求**。用户的影游需求一律先派 `reia`，由她
 > 决定是否再把拆分镜 / 出关键帧 / 出片细分给这三个专家。**绝不**把"做个影游"直接路由到这三个子智能体。
