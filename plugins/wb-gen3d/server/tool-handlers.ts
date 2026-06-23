@@ -333,6 +333,97 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
   );
 }
 
+// ── T1 (ADR-0008 D-B): studio-local view URLs → COS transfer ────────────────
+// character:generate-turnaround returns studio-local image URLs — a relative
+// /api/wb/character/asset?path=… or a loopback host — that a URL-fetching
+// provider (Meshy/Hunyuan/Rodin) cannot reach. When a REAL provider will run we
+// server-side fetch those bytes and re-host them on COS, then feed the public
+// URL. Forge passes the turnaround url straight into views-to-3d (no schema
+// change, no multi-MB base64 over the LLM). Public URLs and the mock path are
+// untouched.
+const STUDIO_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
+
+export function isStudioLocalImageUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return false;
+  // A relative path (no scheme) is always studio-local, e.g. the turnaround url.
+  if (!/^https?:\/\//i.test(u)) return true;
+  try {
+    return STUDIO_LOCAL_HOSTS.has(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Studio hosts plugin handlers in-process; resolve relative URLs against its own
+// loopback origin (FORGEAX_SERVER_PORT, default 18900 — packages/server/main.ts).
+export function studioBaseUrl(): string {
+  return `http://127.0.0.1:${process.env.FORGEAX_SERVER_PORT ?? '18900'}`;
+}
+
+export interface ImageTransferDeps {
+  baseUrl: string;
+  fetchImpl: typeof fetch;
+  upload: (data: Uint8Array, mimetype: string) => Promise<string>;
+}
+
+// Fetch a studio-local image and re-host it on COS, returning the public URL.
+// Deps are injected so the transfer is unit-testable with zero network.
+export async function transferStudioLocalImage(url: string, deps: ImageTransferDeps): Promise<string> {
+  const abs = /^https?:\/\//i.test(url) ? url : `${deps.baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  const res = await deps.fetchImpl(abs);
+  if (!res.ok) {
+    throw Object.assign(new Error(`failed to fetch studio-local image (${res.status}): ${url}`), {
+      code: 'studio_local_fetch_failed',
+    });
+  }
+  const data = new Uint8Array(await res.arrayBuffer());
+  if (data.byteLength === 0) {
+    throw Object.assign(new Error(`studio-local image is empty: ${url}`), {
+      code: 'studio_local_fetch_failed',
+    });
+  }
+  const mimetype = res.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
+  return deps.upload(data, mimetype);
+}
+
+// Re-host any studio-local URLs in a view map on COS so a real provider can
+// fetch them; public URLs pass through unchanged. Throws cos_not_configured when
+// a transfer is needed but COS is not set up (a real provider can't fetch a
+// loopback URL, so fail loud with an actionable message).
+async function transferStudioLocalViews(views: Record<string, string>): Promise<Record<string, string>> {
+  if (!Object.values(views).some(isStudioLocalImageUrl)) return views;
+  const cosEnv = getCosEnv();
+  if (!cosEnv) {
+    throw Object.assign(
+      new Error(
+        'views-to-3d received a studio-local image URL but COS is not configured to host it for the provider; configure COS or pass public image URLs',
+      ),
+      { code: 'cos_not_configured' },
+    );
+  }
+  const uploader = new CosUploader(cosEnv);
+  const deps: ImageTransferDeps = {
+    baseUrl: studioBaseUrl(),
+    fetchImpl: globalThis.fetch,
+    upload: (data, mimetype) => uploader.upload(data, mimetype).then((r) => r.url),
+  };
+  const out: Record<string, string> = {};
+  for (const [slot, url] of Object.entries(views)) {
+    out[slot] = isStudioLocalImageUrl(url) ? await transferStudioLocalImage(url, deps) : url;
+  }
+  return out;
+}
+
+// True when the chosen provider has real credentials configured, so a real
+// network call (not the deterministic mock) will run. Mirrors runGeneration()'s
+// env checks so the studio-local transfer only fires on the real path.
+function realProviderConfigured(provider: GenProvider): boolean {
+  if (provider === 'meshy') return Boolean(getMeshyEnv());
+  if (provider === 'rodin') return Boolean(getRodinEnv());
+  return Boolean(getHunyuanEnv());
+}
+
 async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   const slug = requireSlug(args.slug);
   const front = args.views?.front_image_url?.trim();
@@ -348,14 +439,9 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   for (const [slot, url] of Object.entries(args.views)) {
     if (url && url.trim()) normalizedViews[slot] = url.trim();
   }
-  // Meshy multi-image takes an ordered URL array (front/back/left/right first),
-  // not Hunyuan's named view slots.
-  const meshyUrls = [
-    normalizedViews.front_image_url,
-    normalizedViews.back_image_url,
-    normalizedViews.left_image_url,
-    normalizedViews.right_image_url,
-  ].filter((u): u is string => Boolean(u));
+  // cacheKey keys off the STABLE studio-local URLs, never the ephemeral COS
+  // presigned URL (which carries an expiring signature) — so an identical
+  // request still hits the cache and never re-burns quota.
   const cacheKey = makeCacheKey(provider, 'views', {
     assetSlot,
     ...normalizedViews,
@@ -364,6 +450,19 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
     enableFbxUrl,
     ...buildProviderParams(provider, 'views', args.providerParams).cacheBits,
   });
+  // D-B: when a real provider will run, re-host studio-local view URLs on COS so
+  // it can fetch them; the mock path is left untouched (zero network).
+  const providerViews = realProviderConfigured(provider)
+    ? await transferStudioLocalViews(normalizedViews)
+    : normalizedViews;
+  // Meshy multi-image takes an ordered URL array (front/back/left/right first),
+  // not Hunyuan's named view slots.
+  const meshyUrls = [
+    providerViews.front_image_url,
+    providerViews.back_image_url,
+    providerViews.left_image_url,
+    providerViews.right_image_url,
+  ].filter((u): u is string => Boolean(u));
   const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
   return runGeneration(
     provider,
@@ -372,7 +471,7 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
     {
       hunyuan: {
         mode: 'views',
-        views: normalizedViews as Partial<Record<ViewSlot, string>>,
+        views: providerViews as Partial<Record<ViewSlot, string>>,
         faceCount,
         enablePbr,
         enableFbxUrl,
