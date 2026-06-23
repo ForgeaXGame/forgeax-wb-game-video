@@ -245,24 +245,32 @@ function buildProviderParams(
 // cacheKey is computed by the caller (includes provider + assetSlot, excludes
 // assetName), so caches stay isolated per slot and a rename never re-burns
 // quota.
+// Provider inputs may be passed eagerly, or as a lazy async factory invoked
+// ONLY on a cache MISS and ONLY for the real-provider branch — so views-to-3d
+// can defer its studio-local→COS transfer until it's actually needed (never on a
+// cache hit, never on the mock path). See viewsTo3D.
+type GenInputs = { hunyuan: HunyuanGenerateInput; meshy: MeshyGenerateInput; rodin: RodinGenerateInput };
+
 async function runGeneration(
   provider: GenProvider,
   mode: GenerationMode,
   ctx: PersistInput,
-  inputs: { hunyuan: HunyuanGenerateInput; meshy: MeshyGenerateInput; rodin: RodinGenerateInput },
+  inputs: GenInputs | (() => Promise<GenInputs>),
   mockPrompt: string | null,
 ): Promise<GenerateResult> {
   let usedMock = false;
+  const resolveInputs = (): Promise<GenInputs> =>
+    typeof inputs === 'function' ? inputs() : Promise.resolve(inputs);
   const produce = async (): Promise<ProviderResult> => {
     if (provider === 'meshy') {
       const env = getMeshyEnv();
-      if (env) return new MeshyProvider({ env, slug: ctx.slug }).generate(inputs.meshy);
+      if (env) return new MeshyProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).meshy);
     } else if (provider === 'rodin') {
       const env = getRodinEnv();
-      if (env) return new RodinProvider({ env, slug: ctx.slug }).generate(inputs.rodin);
+      if (env) return new RodinProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).rodin);
     } else {
       const env = getHunyuanEnv();
-      if (env) return new HunyuanWorkflowProvider({ env, slug: ctx.slug }).generate(inputs.hunyuan);
+      if (env) return new HunyuanWorkflowProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).hunyuan);
     }
     usedMock = true;
     return mockFallback(provider, mode, mockPrompt);
@@ -341,12 +349,17 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
 // URL. Forge passes the turnaround url straight into views-to-3d (no schema
 // change, no multi-MB base64 over the LLM). Public URLs and the mock path are
 // untouched.
-const STUDIO_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
+// URL#hostname yields the bracketed form '[::1]' for IPv6 loopback, so the bare
+// '::1' would be dead — only the bracketed form can ever match.
+const STUDIO_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0']);
 
 export function isStudioLocalImageUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
-  // A relative path (no scheme) is always studio-local, e.g. the turnaround url.
+  // data:/blob: are self-contained (no host to fetch by path); protocol-relative
+  // '//host/…' and any other scheme are remote — none are studio-local.
+  if (/^(?:data|blob):/i.test(u) || u.startsWith('//')) return false;
+  // A relative path (no scheme) is the turnaround url's shape → studio-local.
   if (!/^https?:\/\//i.test(u)) return true;
   try {
     return STUDIO_LOCAL_HOSTS.has(new URL(u).hostname);
@@ -415,15 +428,6 @@ async function transferStudioLocalViews(views: Record<string, string>): Promise<
   return out;
 }
 
-// True when the chosen provider has real credentials configured, so a real
-// network call (not the deterministic mock) will run. Mirrors runGeneration()'s
-// env checks so the studio-local transfer only fires on the real path.
-function realProviderConfigured(provider: GenProvider): boolean {
-  if (provider === 'meshy') return Boolean(getMeshyEnv());
-  if (provider === 'rodin') return Boolean(getRodinEnv());
-  return Boolean(getHunyuanEnv());
-}
-
 async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   const slug = requireSlug(args.slug);
   const front = args.views?.front_image_url?.trim();
@@ -450,25 +454,23 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
     enableFbxUrl,
     ...buildProviderParams(provider, 'views', args.providerParams).cacheBits,
   });
-  // D-B: when a real provider will run, re-host studio-local view URLs on COS so
-  // it can fetch them; the mock path is left untouched (zero network).
-  const providerViews = realProviderConfigured(provider)
-    ? await transferStudioLocalViews(normalizedViews)
-    : normalizedViews;
-  // Meshy multi-image takes an ordered URL array (front/back/left/right first),
-  // not Hunyuan's named view slots.
-  const meshyUrls = [
-    providerViews.front_image_url,
-    providerViews.back_image_url,
-    providerViews.left_image_url,
-    providerViews.right_image_url,
-  ].filter((u): u is string => Boolean(u));
-  const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
-  return runGeneration(
-    provider,
-    'views',
-    { slug, assetSlot, assetName: defaultName(args.assetName, `views-${provider}`), faceCount, cacheKey },
-    {
+  // D-B (lazy): inputs are built ONLY on a cache MISS for the real-provider
+  // branch (runGeneration invokes this just before a real generate()), so the
+  // studio-local→COS transfer never runs on a cache hit or the mock path — no
+  // redundant fetch/upload, and a cached success can't be re-broken by a moved
+  // source image or changed COS config.
+  const buildInputs = async (): Promise<GenInputs> => {
+    const providerViews = await transferStudioLocalViews(normalizedViews);
+    // Meshy multi-image takes an ordered URL array (front/back/left/right first),
+    // not Hunyuan's named view slots.
+    const meshyUrls = [
+      providerViews.front_image_url,
+      providerViews.back_image_url,
+      providerViews.left_image_url,
+      providerViews.right_image_url,
+    ].filter((u): u is string => Boolean(u));
+    const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
+    return {
       hunyuan: {
         mode: 'views',
         views: providerViews as Partial<Record<ViewSlot, string>>,
@@ -478,7 +480,13 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
       },
       meshy: { mode: 'views', imageUrls: meshyUrls, targetPolycount: faceCount, enablePbr, params: filtered },
       rodin: { mode: 'views', imageUrls: meshyUrls, qualityOverride: faceCount, params: filtered },
-    },
+    };
+  };
+  return runGeneration(
+    provider,
+    'views',
+    { slug, assetSlot, assetName: defaultName(args.assetName, `views-${provider}`), faceCount, cacheKey },
+    buildInputs,
     null,
   );
 }

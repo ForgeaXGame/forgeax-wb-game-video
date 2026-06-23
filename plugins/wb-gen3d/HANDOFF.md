@@ -4,7 +4,7 @@
 > - **当前状态**：`laurenceelu/feat-20260622-character-gen3d-link` 三仓**均未合 main**（studio 落后 main 183 / mp 28 / server 43）。T0–T3 编码 + 测试在分支上完成；**T4 真机未签字**。
 > - **架构变动（main 已有）**：server 瘦壳 + `forgeax-cli`（`packages/cli` 编排层）+ `forgeax-core` sidecar 子进程(**不是 vendored `packages/core`**，见 PLAN §2 修正后的四层模型)；host-tools 桥**迁进 forgeax-cli**（`packages/cli/builtin/kits/host-tools/...`），**不是被删**——6/23「桥失效」判断过于悲观。
 > - **硬阻塞 B1（已解 2026-06-25）**：`character-forge` 已内聚进 `wb-character/server/`（commit `cc21af6`）；不再 import 已删的 server 路径。
-> - **下一步**：批次 1 cherry-pick 进行中 → 批次 2 server 重写 → T4 真机 → 合 main。
+> - **下一步**：批次 1 cherry-pick 已完成 → 批次 2 server 重写 → T4 真机 → 合 main。
 
 > **2026-06-23 — 新线：2D 角色 → 3D 角色（turnaround 收尾 · 联动 gen3d · CLI 自主端到端）。方案已过 grill review（ADR-0008）；**T1/T2/T3 已提交 · T0 HTTP 探针 PASS**（`scripts/t0-host-tools-probe.mjs`）**· 剩 T4 真机验证**（UI handoff 目视 + 真 key 2D→3D + opt-in motion）。T1 lazy transfer 已随 `08c029a` 提交。执行 / 审阅 SSOT = [`docs/PLAN-2026-06-23-character-to-gen3d-cli.md`](./docs/PLAN-2026-06-23-character-to-gen3d-cli.md)。
 > - **一句话**：把 wb-character 出的角色四视图喂进 gen3d 出 3D。UI handoff 路径 + Forge CLI 一条链直接编排（ADR-0008 D-A）。

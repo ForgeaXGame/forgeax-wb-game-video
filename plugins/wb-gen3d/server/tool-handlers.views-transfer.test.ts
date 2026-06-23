@@ -17,12 +17,20 @@ test('isStudioLocalImageUrl: relative paths and loopback hosts are studio-local'
   expect(isStudioLocalImageUrl('characters/hero/front.png')).toBe(true);
   expect(isStudioLocalImageUrl('http://127.0.0.1:18900/api/game-assets/g/3d/x.png')).toBe(true);
   expect(isStudioLocalImageUrl('http://localhost:18920/x.png')).toBe(true);
+  expect(isStudioLocalImageUrl('http://[::1]:18900/x.png')).toBe(true); // URL#hostname → '[::1]'
+  expect(isStudioLocalImageUrl('http://0.0.0.0:18900/x.png')).toBe(true);
 });
 
 test('isStudioLocalImageUrl: public URLs are NOT studio-local (pass through)', () => {
   expect(isStudioLocalImageUrl('https://api.meshy.ai/x.png')).toBe(false);
   expect(isStudioLocalImageUrl('https://cos.ap-region.example.com/inputs/abc.png')).toBe(false);
   expect(isStudioLocalImageUrl('   ')).toBe(false);
+});
+
+test('isStudioLocalImageUrl: data:/blob:/protocol-relative are NOT studio-local (never transferred)', () => {
+  expect(isStudioLocalImageUrl('data:image/png;base64,iVBORw0KGgo=')).toBe(false);
+  expect(isStudioLocalImageUrl('blob:http://localhost:18920/abc-123')).toBe(false);
+  expect(isStudioLocalImageUrl('//evil.example.com/x.png')).toBe(false); // protocol-relative → remote
 });
 
 test('studioBaseUrl honors FORGEAX_SERVER_PORT, defaulting to 18900', () => {
