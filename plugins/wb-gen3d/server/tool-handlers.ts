@@ -650,6 +650,28 @@ const HUMANOID_SKELETON = {
   animationInputReady: true,
 };
 
+// Meshy credit costs per paid call (ADR-0006): rig ~5, animation ~3.
+export const MESHY_RIG_COST = 5;
+export const MESHY_ANIM_COST = 3;
+
+// Proactive balance pre-check before a paid Meshy rig/animation call (ADR-0006 /
+// ADR-0008 D-E). Meshy also rejects 402 → provider_insufficient_credits
+// reactively, but pre-checking lets the agent get a clear quote (needed vs
+// available) BEFORE any spend instead of discovering it mid-dispatch.
+export async function assertMeshyBalance(
+  provider: { getBalance(): Promise<number> },
+  needed: number,
+  op: string,
+): Promise<void> {
+  const balance = await provider.getBalance();
+  if (balance < needed) {
+    throw Object.assign(
+      new Error(`${op} needs ~${needed} Meshy credits but the balance is ${balance}; top up or skip the motion step`),
+      { code: 'provider_insufficient_credits', needed, balance },
+    );
+  }
+}
+
 // Meshy auto-rig (public-beta default): share the source GLB to Meshy — prefer a
 // public COS model_url (PLAN §8-Q5), else the Meshy input_task_id fast path when
 // the source was itself Meshy-generated — rig it, then append the rigged GLB+FBX
@@ -718,7 +740,9 @@ async function autoRig(args: AutoRigArgs): Promise<RigMotionResult> {
 
   // Meshy public API is the public-beta default (ADR-0006 §8-Q4).
   if (meshyEnv) {
-    const manifest = await meshyRigAppend(slug, existing, new MeshyProvider({ env: meshyEnv, slug }));
+    const provider = new MeshyProvider({ env: meshyEnv, slug });
+    await assertMeshyBalance(provider, MESHY_RIG_COST, 'auto-rig');
+    const manifest = await meshyRigAppend(slug, existing, provider);
     return { ok: true, usedMock: false, assetPath, manifest };
   }
 
@@ -896,13 +920,17 @@ async function applyMotion(args: ApplyMotionArgs): Promise<RigMotionResult> {
   // the caller decides (PLAN §8-Q3).
   const provider = new MeshyProvider({ env, slug });
   let asset = existing;
-  if (meshyRigStale(asset.rig)) {
-    if (!args.autoReRig) {
-      throw Object.assign(
-        new Error('Meshy rig task expired (~3 days); re-run gen3d:auto-rig or pass autoReRig:true'),
-        { code: 'rig_expired' },
-      );
-    }
+  const willReRig = meshyRigStale(asset.rig);
+  if (willReRig && !args.autoReRig) {
+    throw Object.assign(
+      new Error('Meshy rig task expired (~3 days); re-run gen3d:auto-rig or pass autoReRig:true'),
+      { code: 'rig_expired' },
+    );
+  }
+  // Pre-check the total spend before any paid call: a re-rig adds the rig cost on
+  // top of the animation (ADR-0006 / ADR-0008 D-E).
+  await assertMeshyBalance(provider, (willReRig ? MESHY_RIG_COST : 0) + MESHY_ANIM_COST, 'apply-motion');
+  if (willReRig) {
     asset = await meshyRigAppend(slug, asset, provider);
   }
   const rigTaskId = asset.rig?.rigTaskId;
