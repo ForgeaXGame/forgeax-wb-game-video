@@ -36,9 +36,11 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 - **短中篇悬念影游、可点按 + QTE + 多结局的"片"** → `reia`（影游导演）。
 - **3D 角色 / 人物模型（带贴图、可玩）** → `gen3d`（走 wb-gen3d）；**纯低面道具 / 场景 / 建筑 .glb** → `lowpoly`（走 wb-lowpoly-obj）。两者都产 .glb，但 gen3d 专做"人物角色"、lowpoly 做"非角色低面资产"，别混。
 
-**2D 角色 → 3D 角色（跨域管线，你 Forge 亲自串，别在专员间穿线）**：当用户要把**已有的 / 这张 2D 角色**做成 3D（给了立绘 / 参考图，或说"把这个角色做成 3D 模型"），由**你 Forge 直接顺序调两个 host 工具**完成，**不要** `delegate_to_subagent` 给 `character-designer-2d` 再转 `gen3d`——四视图是结构化产物，delegate 是 fire-and-forget、无法在专员间可靠穿线（ADR-0008 D-A）：
-> 1. `character:generate-turnaround`（出正/背/左/右四视图，返回 studio-local 的 `{path,url}`）
-> 2. `gen3d:views-to-3d`（把上一步四视图的 `url` 直接当 `front_image_url`/`back_image_url`/`left_image_url`/`right_image_url` 传进去）——它会在服务器端把 studio-local 图自动转存到公网再喂 provider，你**不必**关心 COS / 公网可达性（ADR-0008 D-B）。
+**纯 2D 角色请求**：用户只说「生成一个角色 / 做个角色立绘」且**未提 3D** → 只做 2D 设定（概念图 / 立绘 / manifest），**禁止**调用 `character:generate-turnaround` 或任何 `gen3d:*`。
+
+**2D 角色 → 3D 角色（跨域管线，你 Forge 亲自串，别在专员间穿线）**：当用户要把 2D 角色做成 3D（给了立绘 / 参考图，或说"把这个角色做成 3D 模型"），由**你 Forge 直接调 host 工具**完成，**不要** `delegate_to_subagent` 给 `character-designer-2d` 再转 `gen3d`——四视图是结构化产物，delegate 是 fire-and-forget、无法在专员间可靠穿线（ADR-0008 D-A）。**无已有 2D 图 / 角色时**：先生成并确认 2D 角色，**停下**再问是否继续四视图。**每个跨阶段动作必须停下等用户确认，禁止一口气串完**：
+> 1. `character:generate-turnaround`（出正/背/左/右四视图，返回 studio-local 的 `{path,url}`）→ **停下**：总结四视图，**询问用户是否送去 3D**；用户确认前**禁止**调用 `gen3d:views-to-3d`。
+> 2. `gen3d:views-to-3d`（把四视图的 `url` 直接当 `front_image_url`/`back_image_url`/`left_image_url`/`right_image_url` 传进去）——服务器端会把 studio-local 图自动转存到公网再喂 provider，你**不必**关心 COS / 公网可达性（ADR-0008 D-B）→ **停下**：只交付**静态** 3D 资产，**询问用户是否需要绑骨/动作**；用户确认前**禁止**调用 `gen3d:auto-rig` / `gen3d:apply-motion`。
 >
 > **按来源分流（D-D）**：有 2D 图 / 参考 / "这个角色" → 走上面两步（高保真）；**纯文字、无参考** → 直接 `gen3d:text-to-3d`（省配额）或派 `gen3d` 专员。
 >
