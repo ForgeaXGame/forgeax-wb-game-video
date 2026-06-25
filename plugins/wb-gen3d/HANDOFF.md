@@ -1,5 +1,11 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-25（其二）— 新审阅入口：2D→3D CLI / UI 分阶段体验修复方案，待其他 agent review。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-staged-character-gen3d-flow.md`](./docs/PLAN-2026-06-25-staged-character-gen3d-flow.md)，review handoff = [`docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md`](./docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md)。
+> - **用户实测问题**：CLI 自然语言会绕过 `wb-character` 的候选/选择流程，直接 `character:generate-turnaround` → `gen3d:views-to-3d` → `auto-rig/apply-motion`，中间不等用户确认；`wb-character` 当前也没有“生成 3D 四视图 / 送去 3D”的按钮。
+> - **新目标**：从“一条链跑完”改成 **2D 设定/选择 → 四视图 → 静态 3D → 可选动作** 四段，每段停下；`wb-character` final phase 补四视图按钮和 handoff；`auto-rig` / `apply-motion` 用真实 `requireConfirm` 硬门控。
+> - **Reviewer 先读**：PLAN §0–§4 + review handoff §1–§5。重点审 `wb-character` UI 入口、`generate-turnaround` 返回 schema、`ConfirmDialog` 的 `confirmId`/`token` 漂移、`gen3d` manifest 的 `requireConfirm`。
+> - **本条是方案/交接，未实现**；不要把下方 6/23 “Forge 直接编排”理解为“允许一口气跑到底”。ADR-0008 D-A 的“Forge 直接编排”仍成立，但必须补阶段停顿和用户确认。
+
 > **2026-06-25 — 架构对齐：feature 分支 vs origin/main 分叉 · 迁移 SSOT 落档。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-migrate-to-forgeax-core.md`](./docs/PLAN-2026-06-25-migrate-to-forgeax-core.md)。
 > - **当前状态**：`laurenceelu/feat-20260622-character-gen3d-link` 三仓**均未合 main**（studio 落后 main 183 / mp 28 / server 43）。T0–T3 编码 + 测试在分支上完成；**T4 真机未签字**。
 > - **架构变动（main 已有）**：server 瘦壳 + `forgeax-cli`（`packages/cli` 编排层）+ `forgeax-core` sidecar 子进程(**不是 vendored `packages/core`**，见 PLAN §2 修正后的四层模型)；host-tools 桥**迁进 forgeax-cli**（`packages/cli/builtin/kits/host-tools/...`），**不是被删**——6/23「桥失效」判断过于悲观。
