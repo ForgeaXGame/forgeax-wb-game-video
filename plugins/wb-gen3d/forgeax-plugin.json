@@ -58,7 +58,7 @@
         "args": "./schemas/delete-asset.args.json",
         "returns": "./schemas/delete-asset.returns.json",
         "exposedToAI": false,
-        "confirm": true,
+        "requireConfirm": "destructive",
         "description": {
           "zh": "删除当前游戏的一个 3D 资产（主 GLB + sidecar + 同名附属文件），并对其 cacheKey 打 tombstone 防止缓存复活。破坏性操作，仅经 UI 确认触发。",
           "en": "Delete a 3D asset from the active game (main GLB + sidecar + same-basename sidefiles) and tombstone its cacheKey so it never resurrects from a cache hit. Destructive; UI-confirm only."
@@ -138,30 +138,40 @@
         "id": "gen3d:auto-rig",
         "args": "./schemas/auto-rig.args.json",
         "returns": "./schemas/auto-rig.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
+        "requireConfirm": "always",
+        "confirmMessage": {
+          "zh": "自动绑骨将消耗约 5 Meshy credits。确认继续？",
+          "en": "Auto-rig will consume about 5 Meshy credits. Continue?"
+        },
         "description": {
-          "zh": "自动绑骨（ADR-0006，公测默认 Meshy 公网 API）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移）及随附的免费走/跑片段，并记录 rig-chain（rig_task_id/rigType/过期）、置位 readiness.rigged。Dispatch：Meshy 公网默认 → Hunyuan REST 内网兜底 → mock。仅人形角色；幂等。真实配额需运营 Gate 真机验证 + 签字，故 exposedToAI=false（本期不开放给 AI）。",
-          "en": "Auto-rig (ADR-0006; public-beta default is the Meshy public API): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX plus any bundled free walk/run clips to the SAME asset, recording the rig-chain (rig_task_id/rigType/expiry) and flipping readiness.rigged. Dispatch: Meshy public default → Hunyuan REST internal fallback → mock. Humanoid only; idempotent. Real quota needs operator Gate verification + sign-off, so exposedToAI=false (not exposed to the AI this round)."
+          "zh": "自动绑骨（ADR-0006，公测默认 Meshy 公网 API）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移）及随附的免费走/跑片段，并记录 rig-chain（rig_task_id/rigType/过期）、置位 readiness.rigged。Dispatch：Meshy 公网默认 → Hunyuan REST 内网兜底 → mock。仅人形角色；幂等。向 AI 开放但 opt-in：仅在用户显式要求「让角色动起来/走/跑」时触发；按次计费（Meshy rig ~5 credits）。付费执行前须过 handler 级余额预检护栏（getBalance，见 ADR-0008 / wb-gen3d T3）。",
+          "en": "Auto-rig (ADR-0006; public-beta default is the Meshy public API): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX plus any bundled free walk/run clips to the SAME asset, recording the rig-chain (rig_task_id/rigType/expiry) and flipping readiness.rigged. Dispatch: Meshy public default → Hunyuan REST internal fallback → mock. Humanoid only; idempotent. Exposed to the AI but opt-in: triggered only on an explicit user request to animate; billed per call (Meshy rig ~5 credits). A handler-level balance pre-check (getBalance) MUST gate paid execution (ADR-0008 / wb-gen3d T3)."
         }
       },
       {
         "id": "gen3d:apply-motion",
         "args": "./schemas/apply-motion.args.json",
         "returns": "./schemas/apply-motion.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
+        "requireConfirm": "always",
+        "confirmMessage": {
+          "zh": "应用动作将消耗约 3 Meshy credits。确认继续？",
+          "en": "Apply motion will consume about 3 Meshy credits. Continue?"
+        },
         "description": {
-          "zh": "应用动作（ADR-0006）：对一个已绑骨资产应用一个动作，向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。按资产记录的绑骨系统分发：Meshy（公测默认）用 list-motions 选出的 actionId + 资产自己的 rig_task_id 驱动 /animations，rig 过期可选 autoReRig 重绑；Hunyuan（内网）用固定动作 motionType 9–16。需先 auto-rig；多动作并存，按动作幂等。真实配额需运营 Gate 签字，故 exposedToAI=false。",
-          "en": "Apply motion (ADR-0006): apply one motion to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Dispatched by the asset's recorded rig system: Meshy (public-beta default) uses an actionId picked from gen3d:list-motions + the asset's OWN rig_task_id to drive /animations (optional autoReRig re-rigs an expired task); Hunyuan (internal) uses fixed motionType 9–16. Requires prior auto-rig; multiple motions coexist, idempotent per motion. Real quota needs operator Gate sign-off, so exposedToAI=false."
+          "zh": "应用动作（ADR-0006）：对一个已绑骨资产应用一个动作，向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。按资产记录的绑骨系统分发：Meshy（公测默认）用 list-motions 选出的 actionId + 资产自己的 rig_task_id 驱动 /animations，rig 过期可选 autoReRig 重绑；Hunyuan（内网）用固定动作 motionType 9–16。需先 auto-rig；多动作并存，按动作幂等。向 AI 开放但 opt-in：仅在用户显式要求动作时触发；按次计费（Meshy anim ~3 credits）。付费执行前须过 handler 级余额预检护栏（getBalance，见 ADR-0008 / wb-gen3d T3）。",
+          "en": "Apply motion (ADR-0006): apply one motion to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Dispatched by the asset's recorded rig system: Meshy (public-beta default) uses an actionId picked from gen3d:list-motions + the asset's OWN rig_task_id to drive /animations (optional autoReRig re-rigs an expired task); Hunyuan (internal) uses fixed motionType 9–16. Requires prior auto-rig; multiple motions coexist, idempotent per motion. Exposed to the AI but opt-in: triggered only on an explicit user motion request; billed per call (Meshy anim ~3 credits). A handler-level balance pre-check (getBalance) MUST gate paid execution (ADR-0008 / wb-gen3d T3)."
         }
       },
       {
         "id": "gen3d:list-motions",
         "args": "./schemas/list-motions.args.json",
         "returns": "./schemas/list-motions.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
-          "zh": "列出可用动作（ADR-0006 §两步选择）：返回某资产绑骨系统对应的动作目录的过滤切片——Hunyuan 绑骨→v1 固定 8 个；Meshy 绑骨→其 rig 兼容 / 公共目录（~680）。零配额（GET），未配 Meshy 时返回确定性 mock 样本。schema 不枚举全量，调用方用 query/category/rigType 收窄。供动作浏览器与 apply-motion 选 actionId 使用；与绑骨/动作同处一个未开放特性，故暂 exposedToAI=false。",
-          "en": "List motions (ADR-0006 two-step selection): return a filtered slice of the motion catalog for an asset's rig system — Hunyuan-rigged → the v1 fixed 8; Meshy-rigged → its rig-compatible / public catalog (~680). Zero quota (a GET); a deterministic mock sample when Meshy is unconfigured. The schema never enumerates the full set — callers narrow via query/category/rigType. Feeds the motion browser + actionId selection for apply-motion; part of the same un-exposed feature, so exposedToAI=false for now."
+          "zh": "列出可用动作（ADR-0006 §两步选择）：返回某资产绑骨系统对应的动作目录的过滤切片——Hunyuan 绑骨→v1 固定 8 个；Meshy 绑骨→其 rig 兼容 / 公共目录（~680）。零配额（GET），未配 Meshy 时返回确定性 mock 样本。schema 不枚举全量，调用方用 query/category/rigType 收窄。供动作浏览器与 apply-motion 选 actionId 使用。零配额（GET），可安全向 AI 开放。",
+          "en": "List motions (ADR-0006 two-step selection): return a filtered slice of the motion catalog for an asset's rig system — Hunyuan-rigged → the v1 fixed 8; Meshy-rigged → its rig-compatible / public catalog (~680). Zero quota (a GET); a deterministic mock sample when Meshy is unconfigured. The schema never enumerates the full set — callers narrow via query/category/rigType. Feeds the motion browser + actionId selection for apply-motion. Zero quota (a GET), safe to expose to the AI."
         }
       },
       {
@@ -178,7 +188,7 @@
         "id": "gen3d:score-quality",
         "args": "./schemas/score-quality.args.json",
         "returns": "./schemas/score-quality.returns.json",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
           "zh": "质量评分（按需混合，ADR-0004）：合并客户端客观启发式 + 人工覆盖（AI 视觉评本期为 mock 桩）写入资产 sidecar 的 quality 报告，返回更新后的 manifest。lazy 持久化：浏览不写盘，仅评分/覆盖时落库。",
           "en": "Score quality (on-demand hybrid, ADR-0004): merge client objective heuristics + manual overrides (AI vision is a mock stub this round) into the asset sidecar quality report and return the updated manifest. Lazy persistence: browsing never writes; only scoring/override persists."
@@ -186,7 +196,7 @@
       },
       {
         "id": "gen3d:rename-asset",
-        "exposedToAI": false,
+        "exposedToAI": true,
         "description": {
           "zh": "设置资产的用户自定义显示名（userLabel）。传 null 或空字符串可清除，恢复自动名称（prompt 首行或文件名 stem）。",
           "en": "Set a user-defined display label (userLabel) on an asset. Pass null or empty string to clear and revert to the auto-name (prompt first line or filename stem)."
@@ -207,7 +217,7 @@
         "args": "./schemas/set-credentials.args.json",
         "returns": "./schemas/set-credentials.returns.json",
         "exposedToAI": false,
-        "confirm": true,
+        "requireConfirm": "destructive",
         "description": {
           "zh": "写入/更新供应商 key 与总开关到插件本地 .env 并即时生效（无需重启）。",
           "en": "Write/update provider keys and the master switch to the plugin-local .env and apply them live (no server restart needed)."
