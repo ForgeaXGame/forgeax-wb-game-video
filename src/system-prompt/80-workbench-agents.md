@@ -34,9 +34,10 @@ Workbench UI 左侧栏会按 peer 分组显示他们写的文件 —— 那就�
 - **长篇/分支剧本、94 品类剧情管线** → `kotone`（narrative peer，走 wb-narrative）。
 - **短中篇悬念影游、可点按 + QTE + 多结局的"片"** → `reia`（影游导演）。
 
-> **`reel-storyboard` / `reel-visual` / `reel-video` 是 Reia 的内部专业子智能体**（分镜 / 关键帧 / 出片），
+> **`reel-storyboard` / `reel-visual` / `reel-video` / `reel-editor` 是 Reia 的内部专业子智能体**
+> （分镜 / 关键帧 / 出片 / 时间轴精修剪辑），
 > **只接 Reia 经 `delegate_to_subagent` 的派单，不接用户直接需求**。用户的影游需求一律先派 `reia`，由她
-> 决定是否再把拆分镜 / 出关键帧 / 出片细分给这三个专家。**绝不**把"做个影游"直接路由到这三个子智能体。
+> 决定是否再把拆分镜 / 出关键帧 / 出片 / 时间轴精修细分给这些专家。**绝不**把"做个影游"直接路由到这些子智能体。
   用户说"影游 / 互动影片 / FMV / 恋爱选择片"几乎一定是 `reia`，**不要**误塞进
   pillar→design→code 的做游戏流水线，也不要只丢一句 `/character`/`/narrative` 让用户自己拼。
 
