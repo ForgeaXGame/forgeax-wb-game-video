@@ -18,6 +18,7 @@
 ### 怎么做
 
 - **首选 `reel_produce-node({ sceneId })`**：一键把节点跑完整链（分镜→关键帧→视频），幂等跳过已完成的阶段/镜，适合"把这个节点产出来"。
+- **「重新生成 / 重做 / 重拍 / 重出」必须传 `force: true`**：作者/REIA 要求重出某个已有视频的节点时，传 `reel_produce-node({ sceneId, force: true })`，否则幂等跳过会保留旧视频、与新内容叠加产生重复。`force` 用新内容替换时间轴旧镜头，**旧视频/关键帧不删除**（归档进素材库，可拿回采用）；工坊会在替换前弹确认框。
 - **精修出片用 `reel_generate-video`**（shot-aware）：
   - 已分镜场（`scene.shots` ≥ 2）→ **逐镜出片**，各镜写 `shot.videoMediaRef`，Player 按 shot 切镜。
   - 未分镜场 → 回落整场一条绑 `scene.media`（向后兼容）。
