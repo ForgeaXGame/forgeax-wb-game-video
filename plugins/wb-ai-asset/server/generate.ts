@@ -9,6 +9,7 @@ import type { AssetSlot, Gen3DAssetManifest } from '../shared/manifest';
 import type { AssetFileInput, AssetStorage } from './asset-storage';
 import * as cache from './cache';
 import { audit } from './audit';
+import { topologyReportForGlb } from './geometry-check';
 
 export interface PersistInput {
   slug: string;
@@ -28,6 +29,7 @@ export async function persistGeneration(
     data: f.data,
     format: f.format,
     role: f.role,
+    ...(f.textureKind ? { textureKind: f.textureKind } : {}),
   }));
   return storage.writeAsset({
     slug: ctx.slug,
@@ -83,5 +85,27 @@ export async function generateCacheFirst(
   const result = await produce();
   const manifest = await persistGeneration(result, storage, ctx);
   await cache.remember(ctx.slug, ctx.cacheKey, manifest.assetPath);
-  return { manifest, cacheHit: false };
+  // Phase 3 topology gate: score the produced GLB and record quality.topology
+  // (mark-only — never fails the generation). Real outputs only; the mock GLB is
+  // a deterministic placeholder, not real geometry to inspect.
+  const scored = result.providerMode === 'real'
+    ? await scoreTopology(storage, ctx.slug, manifest, result)
+    : manifest;
+  return { manifest: scored, cacheHit: false };
+}
+
+// Inspect the produced GLB and persist its auto topology score into the asset
+// sidecar. Returns the refreshed manifest; if the result has no GLB, the original
+// manifest is returned unchanged. Self-contained — topologyReportForGlb never
+// throws (an unparseable GLB is itself recorded as degraded).
+async function scoreTopology(
+  storage: AssetStorage,
+  slug: string,
+  manifest: Gen3DAssetManifest,
+  result: ProviderResult,
+): Promise<Gen3DAssetManifest> {
+  const glb = result.files.find((f) => f.role === 'source_mesh' && f.format === 'glb');
+  if (!glb) return manifest;
+  const report = await topologyReportForGlb(glb.data);
+  return storage.updateAssetQuality(slug, manifest.assetPath, report);
 }

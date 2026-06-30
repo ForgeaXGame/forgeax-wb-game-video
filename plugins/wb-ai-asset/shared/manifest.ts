@@ -45,6 +45,12 @@ export type FileRole =
   | 'animation_clip'
   | 'animated_model';
 
+// PBR map kind for role='texture' files. Meshy returns a per-material texture
+// set (base_color/metallic/roughness/normal, + emission on meshy-6); the kind
+// lets each map live as its own sidefile instead of collapsing into one
+// texture. Undefined on legacy single-texture assets (read back as base_color).
+export type TextureKind = 'base_color' | 'metallic' | 'roughness' | 'normal' | 'emission';
+
 export type FileFormat = 'glb' | 'fbx' | 'obj' | 'mtl' | 'usdz' | 'stl' | 'png' | 'jpg' | 'webp' | 'mp4';
 
 export type SkeletonProfile = 'humanoid' | 'unknown';
@@ -106,6 +112,9 @@ export interface ManifestFile {
   fileId: string;
   role: FileRole;
   format: FileFormat;
+  // For role='texture': which PBR map this file is, so several maps coexist as
+  // distinct files. Undefined for non-texture roles.
+  textureKind?: TextureKind;
   // Game-relative path of the on-disk file (e.g. assets/3d/props/characters/hero.glb).
   // The main source_mesh GLB path equals the manifest's assetPath identity.
   storageKey: string;
@@ -228,12 +237,15 @@ export interface Gen3DAssetManifest {
 // live under `custom`. Same-basename sidefiles go in `dependencies[]`.
 
 export interface SidecarDependency {
-  // Path relative to the sidecar's directory (e.g. hero.png, hero.texture.png).
+  // Path relative to the sidecar's directory (e.g. hero.png, hero.base_color.png).
   path: string;
   // sha256:<hex>.
   hash: string;
   // Role of the dependency file (preview_image, texture, rigged_model, …).
   kind: string;
+  // For kind='texture' deps: which PBR map, so sidecarToManifest restores the
+  // ManifestFile.textureKind instead of collapsing every map into one texture.
+  textureKind?: TextureKind;
   // Rigging metadata for rigged_model / animated_model attached files, so
   // sidecarToManifest can restore them instead of writing hasSkeleton:false. Only
   // set by appendDerivedFiles (a verified rig step); generation never sets these.

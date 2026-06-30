@@ -7,7 +7,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tools } from './tool-handlers';
+import { splitForPrecise, tools } from './tool-handlers';
 
 const SLUG = 'mock-game';
 let root: string;
@@ -96,4 +96,16 @@ test('upload-image without COS configured → cos_not_configured', async () => {
   await expect(
     tools['aiasset:upload-image']({ slug: SLUG, base64: onePixelPng, mimetype: 'image/png' }),
   ).rejects.toMatchObject({ code: 'cos_not_configured' });
+});
+
+test('splitForPrecise: pins ai_model=meshy-6 when the user left it default (item7)', () => {
+  expect(splitForPrecise({})).toEqual({ aiModel: 'meshy-6', stageOneParams: {} });
+  expect(splitForPrecise({ symmetry_mode: 'auto' })).toEqual({
+    aiModel: 'meshy-6',
+    stageOneParams: { symmetry_mode: 'auto' },
+  });
+});
+
+test('splitForPrecise: an explicit ai_model overrides the pinned default', () => {
+  expect(splitForPrecise({ ai_model: 'meshy-5' }).aiModel).toBe('meshy-5');
 });

@@ -40,6 +40,7 @@ import {
   type QualityReport,
   type SidecarDependency,
   type SkeletonProfile,
+  type TextureKind,
 } from '../shared/manifest';
 import type {
   AppendDerivedFilesInput,
@@ -137,7 +138,8 @@ function scratchUrlFor(slug: string, sha256: string, format: FileFormat): string
 // One generation may return several files. Keep exactly one main GLB
 // (source_mesh) as identity; OBJ source_mesh is dropped. The remaining files
 // become same-basename sidefiles: preview_image → <name>.<fmt> (png/jpg/webp),
-// texture → <name>.texture.png, any other → <name>.<role>.<ext>.
+// texture → <name>.<textureKind>.png (one file per PBR map; legacy untagged
+// textures fall back to <name>.texture.png), any other → <name>.<role>.<ext>.
 interface PlannedFile {
   input: AssetFileInput;
   fileName: string;
@@ -158,7 +160,7 @@ function planFiles(baseName: string, files: readonly AssetFileInput[]): PlannedF
     if (f.role === 'source_mesh') continue;
     let fileName: string;
     if (f.role === 'preview_image') fileName = `${baseName}.${f.format}`;
-    else if (f.role === 'texture') fileName = `${baseName}.texture.${f.format}`;
+    else if (f.role === 'texture') fileName = `${baseName}.${f.textureKind ?? 'texture'}.${f.format}`;
     else fileName = `${baseName}.${f.role}.${f.format}`;
     planned.push({ input: f, fileName, isMain: false });
   }
@@ -212,6 +214,7 @@ export class PerGameAssetStore implements AssetStorage {
         fileId: rel,
         role: p.input.role,
         format: p.input.format,
+        ...(p.input.textureKind ? { textureKind: p.input.textureKind } : {}),
         storageKey: rel,
         bytes,
         sha256,
@@ -227,7 +230,12 @@ export class PerGameAssetStore implements AssetStorage {
         mainSha = sha256;
         mainBytes = bytes;
       } else {
-        dependencies.push({ path: p.fileName, hash: `sha256:${sha256}`, kind: p.input.role });
+        dependencies.push({
+          path: p.fileName,
+          hash: `sha256:${sha256}`,
+          kind: p.input.role,
+          ...(p.input.textureKind ? { textureKind: p.input.textureKind } : {}),
+        });
       }
     }
 
@@ -589,6 +597,7 @@ function sidecarToManifest(
       fileId: rel,
       role,
       format,
+      ...(role === 'texture' && dep.textureKind ? { textureKind: dep.textureKind as TextureKind } : {}),
       storageKey: rel,
       bytes: 0,
       sha256: dep.hash.replace(/^sha256:/, ''),

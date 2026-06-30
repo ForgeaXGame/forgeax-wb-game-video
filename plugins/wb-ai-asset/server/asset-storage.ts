@@ -8,13 +8,16 @@
 // .forgeax/games/<slug>/assets/3d/{characters|meshes}/; a future COS/S3 adapter
 // could swap without changing this interface or the manifest contract.
 
-import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionRef, QualityReport, RigChain, SkeletonProfile } from '../shared/manifest';
+import type { AssetSlot, FileFormat, FileRole, Gen3DAssetManifest, MotionRef, QualityReport, RigChain, SkeletonProfile, TextureKind } from '../shared/manifest';
 
 // One produced file (already downloaded into bytes; never a provider URL).
 export interface AssetFileInput {
   data: Uint8Array;
   format: FileFormat;
   role: FileRole;
+  // For role='texture': which PBR map, so the store names it distinctly
+  // (<base>.<textureKind>.<fmt>) instead of overwriting a single texture file.
+  textureKind?: TextureKind;
 }
 
 export interface WriteAssetInput {

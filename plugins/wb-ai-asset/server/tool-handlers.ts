@@ -25,9 +25,10 @@ import type {
   GenerationMode,
   ProviderId,
 } from '../shared/manifest';
-import { filterProviderParams } from '../shared/provider-params';
+import { defaultParam, filterProviderParams } from '../shared/provider-params';
 import type { AssetStorage } from './asset-storage';
 import { PerGameAssetStore } from './per-game-store';
+import { producePreciseLowpoly, resolvePipeline, type Pipeline } from './pipeline';
 import { generateCacheFirst, type PersistInput } from './generate';
 import { getCosEnv, getMeshyEnv, realProvidersEnabled } from './env';
 import { readCredentials, writeCredentials } from './credentials-store';
@@ -158,6 +159,30 @@ function resolveModelType(v: string | undefined): ModelType {
   return v === 'standard' ? 'standard' : 'lowpoly';
 }
 
+// Precise-lowpoly aims small by default (1500, headroom under the 2000 hard cap,
+// 决策③); raw keeps the env/standard baseline (6000).
+function defaultPolycountFor(pipeline: Pipeline): number {
+  return pipeline === 'precise-lowpoly' ? 1500 : getMeshyEnv()?.defaultPolycount ?? 6000;
+}
+
+// For the precise-lowpoly pipeline: pull the model version + symmetry out of the
+// allowlisted params for the stage-[1] standard generate. model_type is forced
+// standard and topology is owned by the stage-[2] remesh, so neither is forwarded.
+export function splitForPrecise(filtered: Record<string, string | number | boolean>): {
+  aiModel: string | undefined;
+  stageOneParams: Record<string, string | number | boolean>;
+} {
+  // Pin the watertight default (meshy-6) when the user didn't pick a model, so
+  // stage-[1]'s standard generate never silently inherits Meshy's account
+  // default (research §2.2 / Phase 4 item7).
+  const aiModel =
+    (typeof filtered.ai_model === 'string' ? filtered.ai_model : undefined) ??
+    defaultParam('meshy', 'ai_model');
+  const stageOneParams: Record<string, string | number | boolean> = {};
+  if (typeof filtered.symmetry_mode === 'string') stageOneParams.symmetry_mode = filtered.symmetry_mode;
+  return { aiModel, stageOneParams };
+}
+
 // ─── text-to-3d ──────────────────────────────────────────────────────────────
 
 interface TextTo3DArgs {
@@ -168,6 +193,7 @@ interface TextTo3DArgs {
   modelType?: ModelType;
   targetPolycount?: number;
   enablePbr?: boolean;
+  pipeline?: Pipeline;
   providerParams?: Record<string, unknown>;
 }
 
@@ -176,13 +202,16 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
   const prompt = args.prompt?.trim();
   if (!prompt) throw Object.assign(new Error('prompt is required'), { code: 'invalid_prompt' });
   const assetSlot = resolveSlot(args.assetSlot);
+  const pipeline = resolvePipeline(args.pipeline);
   const modelType = resolveModelType(args.modelType);
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? getMeshyEnv()?.defaultPolycount ?? 6000);
+  const faceCount = clampTargetPolycount(args.targetPolycount ?? defaultPolycountFor(pipeline));
   const enablePbr = args.enablePbr ?? true;
   const { filtered, cacheBits } = buildMeshyParams('text', args.providerParams);
+  const { aiModel, stageOneParams } = splitForPrecise(filtered);
   const cacheKey = makeCacheKey('meshy', 'text', {
     assetSlot,
     prompt,
+    pipeline,
     modelType,
     faceCount,
     enablePbr,
@@ -192,7 +221,9 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
     'text',
     { slug, assetSlot, assetName: defaultName(args.assetName, prompt), faceCount, cacheKey },
     (provider) =>
-      provider.generate({ mode: 'text', prompt, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
+      pipeline === 'precise-lowpoly'
+        ? producePreciseLowpoly(provider, { mode: 'text', prompt, enablePbr, targetPolycount: faceCount, aiModel, stageOneParams })
+        : provider.generate({ mode: 'text', prompt, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
     prompt,
   );
 }
@@ -207,6 +238,7 @@ interface ImageTo3DArgs {
   modelType?: ModelType;
   targetPolycount?: number;
   enablePbr?: boolean;
+  pipeline?: Pipeline;
   providerParams?: Record<string, unknown>;
 }
 
@@ -215,13 +247,16 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
   const imageUrl = args.imageUrl?.trim();
   if (!imageUrl) throw Object.assign(new Error('imageUrl is required'), { code: 'invalid_image_url' });
   const assetSlot = resolveSlot(args.assetSlot);
+  const pipeline = resolvePipeline(args.pipeline);
   const modelType = resolveModelType(args.modelType);
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? getMeshyEnv()?.defaultPolycount ?? 6000);
+  const faceCount = clampTargetPolycount(args.targetPolycount ?? defaultPolycountFor(pipeline));
   const enablePbr = args.enablePbr ?? true;
   const { filtered, cacheBits } = buildMeshyParams('image', args.providerParams);
+  const { aiModel, stageOneParams } = splitForPrecise(filtered);
   const cacheKey = makeCacheKey('meshy', 'image', {
     assetSlot,
     imageUrl,
+    pipeline,
     modelType,
     faceCount,
     enablePbr,
@@ -231,7 +266,9 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
     'image',
     { slug, assetSlot, assetName: defaultName(args.assetName, 'image-prop'), faceCount, cacheKey },
     (provider) =>
-      provider.generate({ mode: 'image', imageUrl, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
+      pipeline === 'precise-lowpoly'
+        ? producePreciseLowpoly(provider, { mode: 'image', imageUrl, enablePbr, targetPolycount: faceCount, aiModel, stageOneParams })
+        : provider.generate({ mode: 'image', imageUrl, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
     null,
   );
 }
@@ -246,6 +283,7 @@ interface MultiImageTo3DArgs {
   modelType?: ModelType;
   targetPolycount?: number;
   enablePbr?: boolean;
+  pipeline?: Pipeline;
   providerParams?: Record<string, unknown>;
 }
 
@@ -256,13 +294,16 @@ async function multiImageTo3D(args: MultiImageTo3DArgs): Promise<GenerateResult>
     throw Object.assign(new Error('at least one imageUrl is required'), { code: 'invalid_image_urls' });
   }
   const assetSlot = resolveSlot(args.assetSlot);
+  const pipeline = resolvePipeline(args.pipeline);
   const modelType = resolveModelType(args.modelType);
-  const faceCount = clampTargetPolycount(args.targetPolycount ?? getMeshyEnv()?.defaultPolycount ?? 6000);
+  const faceCount = clampTargetPolycount(args.targetPolycount ?? defaultPolycountFor(pipeline));
   const enablePbr = args.enablePbr ?? true;
   const { filtered, cacheBits } = buildMeshyParams('views', args.providerParams);
+  const { aiModel, stageOneParams } = splitForPrecise(filtered);
   const cacheKey = makeCacheKey('meshy', 'views', {
     assetSlot,
     imageUrls: imageUrls.join(','),
+    pipeline,
     modelType,
     faceCount,
     enablePbr,
@@ -272,7 +313,9 @@ async function multiImageTo3D(args: MultiImageTo3DArgs): Promise<GenerateResult>
     'views',
     { slug, assetSlot, assetName: defaultName(args.assetName, 'multiview-prop'), faceCount, cacheKey },
     (provider) =>
-      provider.generate({ mode: 'views', imageUrls, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
+      pipeline === 'precise-lowpoly'
+        ? producePreciseLowpoly(provider, { mode: 'views', imageUrls, enablePbr, targetPolycount: faceCount, aiModel, stageOneParams })
+        : provider.generate({ mode: 'views', imageUrls, modelType, targetPolycount: faceCount, enablePbr, params: filtered }),
     null,
   );
 }

@@ -12,6 +12,7 @@ import type {
   FileRole,
   GenerationMode,
   ProviderId,
+  TextureKind,
 } from './manifest';
 
 export interface ProviderCapability {
@@ -33,6 +34,9 @@ export interface ProviderResultFile {
   role: FileRole;
   format: FileFormat;
   data: Uint8Array;
+  // For role='texture': which PBR map this is (base_color/metallic/…), so the
+  // store can persist each map as a distinct sidefile. Undefined otherwise.
+  textureKind?: TextureKind;
 }
 
 export interface ProviderResult {

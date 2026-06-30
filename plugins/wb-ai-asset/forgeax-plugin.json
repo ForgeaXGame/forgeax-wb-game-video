@@ -50,8 +50,8 @@
         "returns": "./schemas/text-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "文生低模（Meshy text-to-3d, model_type:lowpoly, mode:preview）→ 落盘持久 manifest。未配置 Meshy 时回退确定性 mock。",
-          "en": "Text-to-lowpoly (Meshy text-to-3d, model_type:lowpoly, mode:preview) → durable manifest. Mock fallback when Meshy unconfigured."
+          "zh": "文生低模（默认 precise-lowpoly：standard 生成 → 减面到目标面数 → 可选 PBR 重贴图）→ 落盘持久 manifest。未配置 Meshy 时回退确定性 mock。",
+          "en": "Text-to-lowpoly (default precise-lowpoly: standard generate → remesh to target → optional PBR retexture) → durable manifest. Mock fallback when Meshy unconfigured."
         }
       },
       {
@@ -60,8 +60,8 @@
         "returns": "./schemas/image-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "图生低模（单图, model_type:lowpoly, 需 COS 中转）→ 落盘持久 manifest。",
-          "en": "Image-to-lowpoly (single image, model_type:lowpoly, COS relay) → durable manifest."
+          "zh": "图生低模（默认 precise-lowpoly 管线, 单图, 需 COS 中转）→ 落盘持久 manifest。",
+          "en": "Image-to-lowpoly (default precise-lowpoly pipeline, single image, COS relay) → durable manifest."
         }
       },
       {
@@ -70,8 +70,8 @@
         "returns": "./schemas/multi-image-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "多视角生低模（多图, model_type:lowpoly, 需 COS 中转）→ 落盘持久 manifest。",
-          "en": "Multi-image-to-lowpoly (multi-view, model_type:lowpoly, COS relay) → durable manifest."
+          "zh": "多视角生低模（默认 precise-lowpoly 管线, 多图, 需 COS 中转）→ 落盘持久 manifest。",
+          "en": "Multi-image-to-lowpoly (default precise-lowpoly pipeline, multi-view, COS relay) → durable manifest."
         }
       },
       {

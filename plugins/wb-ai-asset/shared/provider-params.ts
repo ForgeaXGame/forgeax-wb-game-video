@@ -114,3 +114,12 @@ export function filterProviderParams(
   }
   return out;
 }
+
+// The declared default for an allowlisted param — single source of truth for
+// "what we send when the user didn't pick one". The precise-lowpoly pipeline
+// uses this to pin ai_model=meshy-6 (research §2.2: meshy-6 ships watertight
+// meshes; older defaults can emit non-manifold geometry).
+export function defaultParam(provider: ProviderKey, key: string): string | undefined {
+  const field = providerParamSpec[provider]?.find((f) => f.key === key);
+  return typeof field?.default === 'string' ? field.default : undefined;
+}

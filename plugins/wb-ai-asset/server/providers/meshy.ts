@@ -17,7 +17,7 @@
 // and are flattened by extractUrls() then downloaded to bytes.
 
 import { clampTargetPolycount, type ProviderResult, type ProviderResultFile } from '../../shared/catalog';
-import type { FileFormat, FileRole, GenerationMode } from '../../shared/manifest';
+import type { FileFormat, FileRole, GenerationMode, TextureKind } from '../../shared/manifest';
 import type { MeshyEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
@@ -87,6 +87,11 @@ export interface MeshyProviderDeps {
   rateGuard?: RateGuard;
   sleep?: (ms: number) => Promise<void>;
 }
+
+// PBR maps Meshy returns inside texture_urls[0] (a per-material set). meshy-6
+// adds emission; absent keys are simply skipped. Captured in this order so the
+// full set lands on disk, not just base_color.
+const TEXTURE_KINDS: readonly TextureKind[] = ['base_color', 'metallic', 'roughness', 'normal', 'emission'];
 
 // Map a Meshy model_urls key to a durable manifest file role+format.
 const MODEL_URL_TO_FILE: Record<string, { role: FileRole; format: FileFormat }> = {
@@ -222,7 +227,8 @@ export class MeshyProvider {
   }
 
   // Flatten the success url map into downloaded ProviderResultFiles. One file per
-  // (role,format); thumbnail → preview_image; texture base_color → texture.
+  // (role,format); thumbnail → preview_image; each captured PBR map → a texture
+  // file tagged with its textureKind (base_color/metallic/roughness/normal/emission).
   private async downloadFiles(urls: Record<string, string>): Promise<ProviderResultFile[]> {
     const files: ProviderResultFile[] = [];
     const seenRoles = new Set<string>();
@@ -237,8 +243,10 @@ export class MeshyProvider {
     if (urls.__thumbnail) {
       files.push({ role: 'preview_image', format: 'png', data: await this.downloadImpl(urls.__thumbnail) });
     }
-    if (urls.__texture_base_color) {
-      files.push({ role: 'texture', format: 'png', data: await this.downloadImpl(urls.__texture_base_color) });
+    for (const kind of TEXTURE_KINDS) {
+      const url = urls[`__texture_${kind}`];
+      if (!url) continue;
+      files.push({ role: 'texture', format: 'png', textureKind: kind, data: await this.downloadImpl(url) });
     }
     return files;
   }
@@ -387,8 +395,9 @@ function taskErrorMessage(resp: Record<string, unknown>): string | undefined {
 }
 
 // Flatten the Meshy success response into a single url map. model_urls keys map
-// to mesh files; thumbnail_url + texture_urls[0].base_color are namespaced with
-// a `__` prefix so they never collide with model format keys.
+// to mesh files; thumbnail_url + every PBR map in texture_urls[0] are namespaced
+// with a `__` prefix so they never collide with model format keys. Only the
+// first material set is captured (small props are single-material).
 function extractUrls(resp: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
   const mu = resp.model_urls;
@@ -402,8 +411,11 @@ function extractUrls(resp: Record<string, unknown>): Record<string, string> {
   }
   const tu = resp.texture_urls;
   if (Array.isArray(tu) && tu[0] && typeof tu[0] === 'object') {
-    const bc = (tu[0] as Record<string, unknown>).base_color;
-    if (typeof bc === 'string' && bc) out.__texture_base_color = bc;
+    const set = tu[0] as Record<string, unknown>;
+    for (const kind of TEXTURE_KINDS) {
+      const url = set[kind];
+      if (typeof url === 'string' && url) out[`__texture_${kind}`] = url;
+    }
   }
   return out;
 }

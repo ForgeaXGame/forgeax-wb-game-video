@@ -35,9 +35,9 @@ export function SetupSidebar({
   const [imageUrl, setImageUrl] = useState('');
   const [viewUrls, setViewUrls] = useState<string[]>(['', '', '', '']);
   const [assetName, setAssetName] = useState('');
-  const [modelType, setModelType] = useState<'lowpoly' | 'standard'>('lowpoly');
-  const [targetPolycount, setTargetPolycount] = useState(6000);
+  const [targetPolycount, setTargetPolycount] = useState(1500);
   const [enablePbr, setEnablePbr] = useState(true);
+  const [rawMode, setRawMode] = useState(false);
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -53,8 +53,6 @@ export function SetupSidebar({
       ),
     [mode],
   );
-
-  const isStandard = modelType === 'standard';
 
   const providerLine = (() => {
     if (!status) return '检测中…';
@@ -90,8 +88,9 @@ export function SetupSidebar({
     }
     const shared = {
       assetName: assetName.trim() || undefined,
-      modelType,
-      targetPolycount: isStandard ? targetPolycount : undefined,
+      pipeline: rawMode ? 'raw' : 'precise-lowpoly',
+      modelType: rawMode ? 'standard' : undefined,
+      targetPolycount,
       enablePbr,
       providerParams,
     };
@@ -165,6 +164,9 @@ export function SetupSidebar({
           })}
         </div>
         <p className="aa-card-hint">{primaryModeMeta[mode].hint}</p>
+        <p className="aa-hint-small">
+          Meshy 对硬表面/机械道具效果最佳；有机/角色类成功率较低，建议多上传几张视角参考图。
+        </p>
 
         {mode === 'text' && (
           <label className="aa-field">
@@ -251,26 +253,16 @@ export function SetupSidebar({
         </label>
 
         <label className="aa-field">
-          <span className="aa-field-label">网格类型</span>
-          <select value={modelType} onChange={(e) => setModelType(e.target.value as 'lowpoly' | 'standard')}>
-            <option value="lowpoly">低面数（小物件直出）</option>
-            <option value="standard">标准</option>
-          </select>
+          <span className="aa-field-label">目标面数：{targetPolycount.toLocaleString()}（低面预算，&lt;2000 游戏就绪）</span>
+          <input
+            type="range"
+            min={500}
+            max={2000}
+            step={100}
+            value={targetPolycount}
+            onChange={(e) => setTargetPolycount(Number(e.target.value))}
+          />
         </label>
-
-        {isStandard && (
-          <label className="aa-field">
-            <span className="aa-field-label">目标面数：{targetPolycount.toLocaleString()}</span>
-            <input
-              type="range"
-              min={300}
-              max={50000}
-              step={100}
-              value={targetPolycount}
-              onChange={(e) => setTargetPolycount(Number(e.target.value))}
-            />
-          </label>
-        )}
 
         <label className="aa-check">
           <input type="checkbox" checked={enablePbr} onChange={(e) => setEnablePbr(e.target.checked)} />
@@ -284,7 +276,13 @@ export function SetupSidebar({
             </button>
             {showAdvanced && (
               <div className="aa-advanced-body">
-                {isStandard ? null : <p className="aa-hint-small">低面数模式下，模型版本/拓扑会被 Meshy 忽略。</p>}
+                <p className="aa-hint-small">
+                  精控低面：standard 生成 → 减面到目标面数（三角面）→ 可选 PBR 重贴图，模型版本默认 meshy-6。
+                </p>
+                <label className="aa-check">
+                  <input type="checkbox" checked={rawMode} onChange={(e) => setRawMode(e.target.checked)} />
+                  <span>原始单发（raw）：跳过自动减面/重贴图，直接用 Meshy 标准网格输出</span>
+                </label>
                 {advancedFields.map((f) => (
                   <label className="aa-field" key={f.key}>
                     <span className="aa-field-label">{f.label}</span>

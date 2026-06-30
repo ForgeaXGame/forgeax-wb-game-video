@@ -26,16 +26,21 @@
       "type": "string",
       "enum": ["lowpoly", "standard"],
       "default": "lowpoly",
-      "description": "Meshy mesh type. lowpoly (default) emits clean low-poly geometry and ignores ai_model/topology/targetPolycount; standard is high-detail."
+      "description": "Meshy mesh type, used ONLY when pipeline=raw. lowpoly emits clean low-poly geometry and ignores ai_model/topology/targetPolycount; standard is high-detail. Ignored under pipeline=precise-lowpoly (which forces a standard generate then remeshes)."
     },
     "targetPolycount": {
       "type": "integer",
       "minimum": 100,
       "maximum": 300000,
-      "default": 6000,
-      "description": "Target polygon count. Only honored under modelType=standard (lowpoly ignores it; use aiasset:remesh to hit a specific budget)."
+      "description": "Target polygon count. Under pipeline=precise-lowpoly this is the low-poly remesh budget (default 1500). Under pipeline=raw it is only honored for modelType=standard (default 6000)."
     },
     "enablePbr": { "type": "boolean", "default": true },
+    "pipeline": {
+      "type": "string",
+      "enum": ["precise-lowpoly", "raw"],
+      "default": "precise-lowpoly",
+      "description": "Generation strategy. precise-lowpoly (default): standard generate → remesh to targetPolycount (triangle) → optional PBR retexture, for a clean sub-2000-face game-ready mesh. raw: single-shot Meshy generate using modelType, no auto remesh."
+    },
     "providerParams": {
       "type": "object",
       "additionalProperties": true,

@@ -12,6 +12,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.4.0",
     "cos-nodejs-sdk-v5": "^2.15.4",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",

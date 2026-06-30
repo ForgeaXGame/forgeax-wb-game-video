@@ -28,7 +28,19 @@ interface Hit {
 // A scripted Meshy backend keyed by (method, pathname). Submit returns the task
 // id (v2 text/refine + remesh/retexture use `result`; v1 image/multi use `id`);
 // the poll GET returns a SUCCEEDED result with a glb + thumbnail.
-function makeProvider(opts: { status?: number; pollStatus?: string } = {}) {
+// Full PBR set Meshy-6 returns inside texture_urls[0], each map a distinct URL
+// so a test can assert which maps were captured + downloaded.
+const FULL_TEXTURE_SET: Record<string, string> = {
+  base_color: 'https://cdn.meshy.ai/tex-base.png',
+  metallic: 'https://cdn.meshy.ai/tex-metal.png',
+  roughness: 'https://cdn.meshy.ai/tex-rough.png',
+  normal: 'https://cdn.meshy.ai/tex-normal.png',
+  emission: 'https://cdn.meshy.ai/tex-emit.png',
+};
+
+function makeProvider(
+  opts: { status?: number; pollStatus?: string; textureSet?: Record<string, string> } = {},
+) {
   const hits: Hit[] = [];
   const downloads: string[] = [];
   const json = (body: unknown, status = 200) =>
@@ -38,7 +50,7 @@ function makeProvider(opts: { status?: number; pollStatus?: string } = {}) {
     status: opts.pollStatus ?? 'SUCCEEDED',
     model_urls: { glb: 'https://cdn.meshy.ai/m.glb' },
     thumbnail_url: 'https://cdn.meshy.ai/m.png',
-    texture_urls: [{ base_color: 'https://cdn.meshy.ai/tex.png' }],
+    texture_urls: [opts.textureSet ?? FULL_TEXTURE_SET],
     task_error: opts.pollStatus === 'FAILED' ? { message: 'boom' } : null,
   };
 
@@ -110,6 +122,32 @@ test('image: posts v1 image-to-3d with image_url + enable_pbr; reads task id fro
   expect(submit.path).toBe('/openapi/v1/image-to-3d');
   expect(submit.body).toMatchObject({ image_url: 'https://x/y.png', model_type: 'lowpoly', enable_pbr: true });
   expect(res.sourceJobId).toBe(TASK);
+});
+
+test('captures the full PBR texture set (base_color + metallic + roughness + normal + emission)', async () => {
+  const { provider, downloads } = makeProvider();
+  const res = await provider.generate({ mode: 'image', imageUrl: 'https://x/y.png', enablePbr: true });
+  const textures = res.files.filter((f) => f.role === 'texture');
+  expect(textures.map((f) => f.textureKind).sort()).toEqual([
+    'base_color',
+    'emission',
+    'metallic',
+    'normal',
+    'roughness',
+  ]);
+  // Each map's bytes are the download of its own URL, not a shared base_color.
+  expect(downloads).toContain('https://cdn.meshy.ai/tex-metal.png');
+  expect(downloads).toContain('https://cdn.meshy.ai/tex-normal.png');
+  expect(downloads).toContain('https://cdn.meshy.ai/tex-emit.png');
+});
+
+test('captures only the PBR maps Meshy actually returns (skips absent)', async () => {
+  const { provider } = makeProvider({
+    textureSet: { base_color: 'https://cdn.meshy.ai/only-bc.png', metallic: 'https://cdn.meshy.ai/only-me.png' },
+  });
+  const res = await provider.generate({ mode: 'image', imageUrl: 'https://x/y.png', enablePbr: true });
+  const textures = res.files.filter((f) => f.role === 'texture');
+  expect(textures.map((f) => f.textureKind).sort()).toEqual(['base_color', 'metallic']);
 });
 
 test('views: posts v1 multi-image-to-3d with capped image_urls', async () => {
