@@ -40,20 +40,16 @@
       "version": "0.1.0",
       "date": "2026-06-10",
       "notes": {
-        "zh": {
-          "zh": "首版:3D 角色生成入口",
-          "en": "First release: 3D character generation entry"
-        }
+        "zh": "首版:3D 角色生成入口",
+        "en": "First release: 3D character generation entry"
       }
     },
     {
       "version": null,
       "date": "2026-06-24",
       "notes": {
-        "zh": {
-          "zh": "3D turnaround 与流程完善",
-          "en": "3D turnaround + pipeline improvements"
-        }
+        "zh": "3D turnaround 与流程完善",
+        "en": "3D turnaround + pipeline improvements"
       }
     }
   ]
