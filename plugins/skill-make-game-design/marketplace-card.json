@@ -30,10 +30,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:做游戏设计技能",
-          "en": "First release: make-game-design skill"
-        }
+        "zh": "首版:做游戏设计技能",
+        "en": "First release: make-game-design skill"
       }
     }
   ]
