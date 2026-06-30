@@ -40,10 +40,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:BGM / 音效素材库",
-          "en": "First release: BGM & SFX library"
-        }
+        "zh": "首版:BGM / 音效素材库",
+        "en": "First release: BGM & SFX library"
       }
     }
   ]
