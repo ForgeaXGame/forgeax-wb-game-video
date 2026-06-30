@@ -40,10 +40,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:claude-code 后端适配",
-          "en": "First release: claude-code backend adapter"
-        }
+        "zh": "首版:claude-code 后端适配",
+        "en": "First release: claude-code backend adapter"
       }
     }
   ]
