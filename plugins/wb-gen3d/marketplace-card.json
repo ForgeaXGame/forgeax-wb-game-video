@@ -1,0 +1,60 @@
+{
+  "summary": {
+    "zh": "3D 角色生成工作台,接 Hunyuan3D、Meshy 等 provider 的一站式 3D 资产生成入口。支持文本生成 3D、图片生成 3D、多视图生成 3D,再做网格精修与 retopo 低模、自动绑骨与套用动作、质量评分,最后产出可持久化、游戏可直接用的 3D 资产 manifest。选 provider、给输入,剩下的从生成到绑骨一条龙。",
+    "en": "The 3D character generation workbench — a one-stop entry to providers like Hunyuan3D and Meshy. It supports text-to-3D, image-to-3D and multi-view-to-3D, then mesh refine + lowpoly retopo, auto-rig + motion application, and quality scoring, finally producing durable, game-ready 3D asset manifests. Pick a provider, give input, and it carries through from generation to rigging."
+  },
+  "sections": [
+    {
+      "title": {
+        "zh": "生成管线",
+        "en": "Generation pipeline"
+      },
+      "body": {
+        "zh": "文本 / 图片 / 多视图 → 3D\n网格精修 + retopo 低模\n自动绑骨 + 套用动作 + 质量评分",
+        "en": "text / image / multi-view → 3D\nmesh refine + lowpoly retopo\nauto-rig + motion + quality scoring"
+      }
+    },
+    {
+      "title": {
+        "zh": "产出",
+        "en": "Outputs"
+      },
+      "body": {
+        "zh": "可持久化、游戏可用的 3D 资产 manifest",
+        "en": "Durable, game-ready 3D asset manifests"
+      }
+    },
+    {
+      "title": {
+        "zh": "怎么用",
+        "en": "How to use"
+      },
+      "body": {
+        "zh": "面板管理启用 → 选 provider + 输入开始生成",
+        "en": "Enable in Admin → pick a provider + input to generate"
+      }
+    }
+  ],
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-06-10",
+      "notes": {
+        "zh": {
+          "zh": "首版:3D 角色生成入口",
+          "en": "First release: 3D character generation entry"
+        }
+      }
+    },
+    {
+      "version": null,
+      "date": "2026-06-24",
+      "notes": {
+        "zh": {
+          "zh": "3D turnaround 与流程完善",
+          "en": "3D turnaround + pipeline improvements"
+        }
+      }
+    }
+  ]
+}
