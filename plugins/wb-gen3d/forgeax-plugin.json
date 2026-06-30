@@ -8,13 +8,22 @@
     "en": "3D Character Generation"
   },
   "description": {
-    "zh": "Hunyuan3D / Meshy 等 provider 的 3D 资产生成入口：选 provider + 输入，产出持久化的游戏可用 3D 资产 manifest。",
-    "en": "3D asset generation entrypoint for providers like Hunyuan3D and Meshy: pick a provider and input, produce durable game-ready 3D asset manifests."
+    "zh": "3D 角色生成工作台 · 接 Hunyuan3D / Meshy 等 provider:文本 / 图片 / 多视图生成 3D,网格精修与 retopo 低模,自动绑骨 + 套用动作,质量评分,产出可持久化的游戏可用 3D 资产 manifest。",
+    "en": "3D character generation workbench — drives providers like Hunyuan3D / Meshy: text/image/multi-view to 3D, mesh refine + lowpoly retopo, auto-rig + motion, and quality scoring, producing durable game-ready 3D asset manifests."
   },
-  "author": { "name": "forgeax", "email": "dev@forgeax.local" },
+  "author": {
+    "name": "forgeax",
+    "email": "dev@forgeax.local"
+  },
   "icon": "🧪",
-  "keywords": ["3d", "generation", "meshy", "hunyuan3d", "asset", "glb"],
-
+  "keywords": [
+    "3d",
+    "generation",
+    "meshy",
+    "hunyuan3d",
+    "asset",
+    "glb"
+  ],
   "provides": {
     "workbench": {
       "id": "wb-gen3d",
@@ -24,10 +33,18 @@
       "panelSize": "lg",
       "surface": "split",
       "panes": {
-        "left": { "width": 320, "scrollable": true },
-        "center": { "minHeight": 600, "scrollable": true }
+        "left": {
+          "width": 320,
+          "scrollable": true
+        },
+        "center": {
+          "minHeight": 600,
+          "scrollable": true
+        }
       },
-      "bus": { "surfaceId": "gen3d" },
+      "bus": {
+        "surfaceId": "gen3d"
+      },
       "matchProduces": [
         "**/.forgeax/games/*/assets/3d/**"
       ]
@@ -225,12 +242,17 @@
       }
     ],
     "events": [
-      { "name": "gen3d.provider.status-read" },
-      { "name": "gen3d.assets.listed" },
-      { "name": "gen3d.asset.generated" }
+      {
+        "name": "gen3d.provider.status-read"
+      },
+      {
+        "name": "gen3d.assets.listed"
+      },
+      {
+        "name": "gen3d.asset.generated"
+      }
     ]
   },
-
   "entry": {
     "backend": "./server/tool-handlers.ts",
     "frontend": "./dist/index.html",
@@ -238,14 +260,18 @@
       "start": "npm run dev",
       "port": 15176,
       "readyProbe": "/",
-      "dev": { "watch": true, "hmr": true },
+      "dev": {
+        "watch": true,
+        "hmr": true
+      },
       "embeddedAlso": true,
       "devOnly": false
     }
   },
-
   "permissions": [],
   "hot": false,
   "experimental": true,
-  "compatibleWith": { "forgeax-bus": "^1.0.0" }
+  "compatibleWith": {
+    "forgeax-bus": "^1.0.0"
+  }
 }
