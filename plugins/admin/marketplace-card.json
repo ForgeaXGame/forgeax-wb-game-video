@@ -30,10 +30,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:面板管理四区",
-          "en": "First release: four admin sections"
-        }
+        "zh": "首版:面板管理四区",
+        "en": "First release: four admin sections"
       }
     }
   ]
