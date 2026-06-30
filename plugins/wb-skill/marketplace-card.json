@@ -40,10 +40,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:技能 / VFX 工作台",
-          "en": "First release: skill & VFX workbench"
-        }
+        "zh": "首版:技能 / VFX 工作台",
+        "en": "First release: skill & VFX workbench"
       }
     }
   ]
