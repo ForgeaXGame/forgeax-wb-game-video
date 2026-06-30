@@ -1,9 +1,10 @@
 // Gen3DAssetManifest — the durable handoff contract for generated 3D assets.
-// wb-ai-asset reuses the SAME on-disk sidecar shape as wb-gen3d so both plugins
-// interoperate on the shared assets/3d/{characters|meshes}/ slot (a reader of
-// one plugin's asset must tolerate the other's sidecar). An Asset is a per-game
+// wb-ai-asset reuses the SAME on-disk sidecar shape as wb-gen3d (formats stay
+// compatible), but lands its assets in its OWN assets/3d/props/{characters|meshes}/
+// namespace — separate from wb-gen3d's assets/3d/{characters|meshes}/ — so the two
+// plugins' panels never cross-read (T2 path isolation). An Asset is a per-game
 // file, keyed by its game-relative path (`assetPath`, e.g.
-// assets/3d/meshes/barrel.glb), NOT a random UUID. The main GLB is the identity;
+// assets/3d/props/meshes/barrel.glb), NOT a random UUID. The main GLB is the identity;
 // same-basename sidefiles (preview PNG, external texture) are dependencies.
 // Downstream modules reference assets by assetPath, never by provider URL. The
 // rig/motion fields are part of the shared contract; wb-ai-asset does not set
@@ -24,12 +25,14 @@ export type ProviderMode = 'mock' | 'real';
 export type AssetKind = 'mesh' | 'animation';
 
 // Where the asset lands in the game's 3D asset tree. The value maps 1:1 to a
-// directory under assets/3d/ (see ADR-0002 / 03-WORKSPACE-LAYOUT.md).
+// directory under assets/3d/props/ — wb-ai-asset's isolated namespace, kept
+// distinct from wb-gen3d's assets/3d/{characters|meshes}/ (T2 path isolation;
+// see ADR-0002 / 03-WORKSPACE-LAYOUT.md).
 export type AssetSlot = 'characters' | 'meshes';
 
 export const ASSET_SLOT_DIRS: Record<AssetSlot, string> = {
-  characters: 'characters',
-  meshes: 'meshes',
+  characters: 'props/characters',
+  meshes: 'props/meshes',
 };
 
 // Durable file roles. source_mesh/preview_image/texture come from generation;
@@ -103,7 +106,7 @@ export interface ManifestFile {
   fileId: string;
   role: FileRole;
   format: FileFormat;
-  // Game-relative path of the on-disk file (e.g. assets/3d/characters/hero.glb).
+  // Game-relative path of the on-disk file (e.g. assets/3d/props/characters/hero.glb).
   // The main source_mesh GLB path equals the manifest's assetPath identity.
   storageKey: string;
   bytes: number;

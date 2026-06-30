@@ -20,7 +20,8 @@
       "personaFile": "./persona/zh.md",
       "memoryDir": "./memory/",
       "produces": [
-        "**/.forgeax/games/*/assets/3d/**"
+        "**/.forgeax/games/*/assets/3d/characters/**",
+        "**/.forgeax/games/*/assets/3d/meshes/**"
       ],
       "agentTags": ["gen3d", "3d", "角色", "character", "绑骨", "rig", "动作", "animation", "建模", "modeling"],
       "tools": ["gen3d:*"],

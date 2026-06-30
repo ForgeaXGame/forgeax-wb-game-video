@@ -45,7 +45,7 @@ test('text-to-3d (mock): lands a durable meshes/ asset tagged meshy/mock', async
   expect(r.manifest.providerMode).toBe('mock');
   expect(r.manifest.mode).toBe('text');
   expect(r.manifest.assetSlot).toBe('meshes');
-  expect(r.manifest.assetPath).toContain('assets/3d/meshes/');
+  expect(r.manifest.assetPath).toContain('assets/3d/props/meshes/');
   expect(r.manifest.readiness.hasSourceMesh).toBe(true);
 });
 

@@ -29,7 +29,7 @@
       },
       "bus": { "surfaceId": "aiasset" },
       "matchProduces": [
-        "**/.forgeax/games/*/assets/3d/meshes/**/*.glb"
+        "**/.forgeax/games/*/assets/3d/props/**/*.glb"
       ]
     },
     "tools": [

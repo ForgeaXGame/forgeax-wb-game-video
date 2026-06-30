@@ -1,11 +1,13 @@
 // PerGameAssetStore — dev-time AssetStorage backed by the local filesystem,
 // per-game (ADR-0002 / 03-WORKSPACE-LAYOUT.md).
 //
-// Layout (active game's runtime asset library):
-//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb
-//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb.meta.json
-//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.png          (preview)
-//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.texture.png  (external texture)
+// Layout (active game's runtime asset library). wb-ai-asset lives under its own
+// assets/3d/props/ namespace, isolated from wb-gen3d's assets/3d/{characters|meshes}/
+// (T2 path isolation):
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.glb
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.glb.meta.json
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.png          (preview)
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.texture.png  (external texture)
 //
 // Identity is the game-relative path of the main GLB. The on-disk sidecar uses
 // the v2 workspace contract (schemaVersion/producer/dependencies[]/custom{}).
@@ -121,7 +123,9 @@ async function withAssetLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 function localUrlFor(slug: string, rel: string): string {
-  // rel is "assets/3d/<slot>/<file>"; the route mounts at .../assets/3d/.
+  // rel is "assets/3d/props/<slot>/<file>"; the route mounts at .../assets/3d/, so
+  // strip only that prefix and let the props/ tail ride through (the game-assets
+  // route serves arbitrary depth under assets/3d/).
   const tail = rel.replace(/^assets\/3d\//, '');
   return `${LOCAL_URL_PREFIX}/${encodeURIComponent(slug)}/3d/${tail}`;
 }
@@ -497,10 +501,10 @@ export class PerGameAssetStore implements AssetStorage {
       (f) => f.role === role && (format ? f.format === format : true),
     );
     if (!file) return null;
-    const { slot } = parseAssetPath(file.storageKey);
+    // storageKey is "assets/3d/props/<slot>/<fileName>"; parseAssetPath yields the
+    // bare fileName (the dir is slotDir), so reuse it instead of a prefix regex.
+    const { slot, fileName } = parseAssetPath(file.storageKey);
     if (!slot) return null;
-    // storageKey is "assets/3d/<slot>/<fileName>"; read by file name in the dir.
-    const fileName = file.storageKey.replace(/^assets\/3d\/[^/]+\//, '');
     const abs = resolve(slotDir(slug, slot), fileName);
     try {
       const data = await readFile(abs);
@@ -541,10 +545,10 @@ function motionVariantSlug(ref: MotionRef): string {
   return `hy2-${ref.id}`;
 }
 
-// "assets/3d/<slot>/<file>" → { slot, fileName }. Returns slot=null if the path
-// is not a recognized 3D slot path.
+// "assets/3d/props/<slot>/<file>" → { slot, fileName }. Returns slot=null if the
+// path is not a recognized wb-ai-asset props slot path (T2 path isolation).
 function parseAssetPath(assetPath: string): { slot: AssetSlot | null; fileName: string } {
-  const m = /^assets\/3d\/(characters|meshes)\/([^/]+)$/.exec(assetPath);
+  const m = /^assets\/3d\/props\/(characters|meshes)\/([^/]+)$/.exec(assetPath);
   if (!m) return { slot: null, fileName: '' };
   return { slot: m[1] as AssetSlot, fileName: m[2] };
 }
