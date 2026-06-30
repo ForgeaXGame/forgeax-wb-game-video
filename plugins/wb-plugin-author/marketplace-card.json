@@ -30,20 +30,16 @@
       "version": "0.1.0",
       "date": "2026-05-23",
       "notes": {
-        "zh": {
-          "zh": "首版:占位入口",
-          "en": "First release: placeholder entry"
-        }
+        "zh": "首版:占位入口",
+        "en": "First release: placeholder entry"
       }
     },
     {
       "version": null,
       "date": "2026-06-26",
       "notes": {
-        "zh": {
-          "zh": "落地真实文件树 + 编辑器面板",
-          "en": "Real file-tree + editor panel landed"
-        }
+        "zh": "落地真实文件树 + 编辑器面板",
+        "en": "Real file-tree + editor panel landed"
       }
     }
   ]
