@@ -40,20 +40,16 @@
       "version": "0.1.0",
       "date": "2026-05-24",
       "notes": {
-        "zh": {
-          "zh": "首版:玩法柱 + 拆玩法柱技能",
-          "en": "First release: gameplay pillars + design-pillars skill"
-        }
+        "zh": "首版:玩法柱 + 拆玩法柱技能",
+        "en": "First release: gameplay pillars + design-pillars skill"
       }
     },
     {
       "version": null,
       "date": "2026-06-25",
       "notes": {
-        "zh": {
-          "zh": "补全人设与长期记忆",
-          "en": "Persona + long-term memory added"
-        }
+        "zh": "补全人设与长期记忆",
+        "en": "Persona + long-term memory added"
       }
     }
   ]
