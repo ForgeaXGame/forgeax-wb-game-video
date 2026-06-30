@@ -30,10 +30,8 @@
       "version": "0.1.0",
       "date": "2026-05-24",
       "notes": {
-        "zh": {
-          "zh": "首版:persona 编辑 + 热重载",
-          "en": "First release: persona editing + hot-reload"
-        }
+        "zh": "首版:persona 编辑 + 热重载",
+        "en": "First release: persona editing + hot-reload"
       }
     }
   ]
