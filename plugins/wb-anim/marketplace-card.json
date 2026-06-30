@@ -40,20 +40,16 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:多管线动画生成",
-          "en": "First release: multi-pipeline animation"
-        }
+        "zh": "首版:多管线动画生成",
+        "en": "First release: multi-pipeline animation"
       }
     },
     {
       "version": "0.1.31",
       "date": "2026-06-16",
       "notes": {
-        "zh": {
-          "zh": "管线打磨与视频生成完善",
-          "en": "Pipeline polish + video generation"
-        }
+        "zh": "管线打磨与视频生成完善",
+        "en": "Pipeline polish + video generation"
       }
     }
   ]
