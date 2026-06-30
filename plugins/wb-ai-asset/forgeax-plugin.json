@@ -30,7 +30,8 @@
       "bus": { "surfaceId": "aiasset" },
       "matchProduces": [
         "**/.forgeax/games/*/assets/3d/props/**/*.glb"
-      ]
+      ],
+      "preferredAgent": "@forgeax-plugin/agent-ai-asset"
     },
     "tools": [
       {

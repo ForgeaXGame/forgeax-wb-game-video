@@ -48,7 +48,8 @@
       "matchProduces": [
         "**/.forgeax/games/*/assets/3d/characters/**",
         "**/.forgeax/games/*/assets/3d/meshes/**"
-      ]
+      ],
+      "preferredAgent": "@forgeax-plugin/agent-gen3d"
     },
     "tools": [
       {
