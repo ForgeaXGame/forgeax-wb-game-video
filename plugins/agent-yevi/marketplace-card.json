@@ -40,20 +40,16 @@
       "version": "0.1.0",
       "date": "2026-05-24",
       "notes": {
-        "zh": {
-          "zh": "首版:审查人设 + 冷静审查技能",
-          "en": "First release: reviewer persona + quiet-review skill"
-        }
+        "zh": "首版:审查人设 + 冷静审查技能",
+        "en": "First release: reviewer persona + quiet-review skill"
       }
     },
     {
       "version": null,
       "date": "2026-06-25",
       "notes": {
-        "zh": {
-          "zh": "补全人设与长期记忆",
-          "en": "Persona + long-term memory added"
-        }
+        "zh": "补全人设与长期记忆",
+        "en": "Persona + long-term memory added"
       }
     }
   ]
