@@ -40,20 +40,16 @@
       "version": "0.1.0",
       "date": "2026-05-24",
       "notes": {
-        "zh": {
-          "zh": "首版:制作人人设 + 陪伴式 debug 技能",
-          "en": "First release: producer persona + gentle-debug skill"
-        }
+        "zh": "首版:制作人人设 + 陪伴式 debug 技能",
+        "en": "First release: producer persona + gentle-debug skill"
       }
     },
     {
       "version": null,
       "date": "2026-06-25",
       "notes": {
-        "zh": {
-          "zh": "补全人设 + 长期记忆日记视图",
-          "en": "Persona fleshed out + long-term memory diary view"
-        }
+        "zh": "补全人设 + 长期记忆日记视图",
+        "en": "Persona fleshed out + long-term memory diary view"
       }
     }
   ]
