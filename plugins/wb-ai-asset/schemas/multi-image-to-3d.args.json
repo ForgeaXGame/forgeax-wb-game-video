@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:multi-image-to-3d args",
+  "type": "object",
+  "properties": {
+    "slug": { "type": "string", "description": "Active game slug. Required." },
+    "imageUrls": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "1–4 publicly fetchable view image URLs (different angles of the same object). Local files must be hosted first via aiasset:upload-image."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes"
+    },
+    "assetName": { "type": "string" },
+    "modelType": {
+      "type": "string",
+      "enum": ["lowpoly", "standard"],
+      "default": "lowpoly"
+    },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 300000,
+      "default": 6000
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "providerParams": { "type": "object", "additionalProperties": true }
+  },
+  "required": ["slug", "imageUrls"],
+  "additionalProperties": false
+}

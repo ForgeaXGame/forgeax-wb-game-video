@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:retexture args",
+  "type": "object",
+  "properties": {
+    "slug": { "type": "string", "description": "Active game slug. Required." },
+    "inputTaskId": {
+      "type": "string",
+      "description": "A prior Meshy task id to retexture (fast path). One of inputTaskId / modelUrl / sourceAssetPath is required."
+    },
+    "modelUrl": {
+      "type": "string",
+      "description": "A publicly fetchable model URL (.glb/.gltf/.obj/.fbx/.stl) to retexture."
+    },
+    "sourceAssetPath": {
+      "type": "string",
+      "description": "A stored asset (game-relative assetPath) to retexture. Requires COS so the model can be shared as a public URL."
+    },
+    "textStylePrompt": {
+      "type": "string",
+      "description": "Text describing the desired texture style. One of textStylePrompt / imageStyleUrl is required."
+    },
+    "imageStyleUrl": {
+      "type": "string",
+      "description": "A 2D style image URL guiding the texture (takes priority over textStylePrompt)."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "aiModel": {
+      "type": "string",
+      "enum": ["meshy-5", "meshy-6", "latest"],
+      "description": "Meshy retexture model. Defaults server-side to latest."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes"
+    },
+    "assetName": { "type": "string" }
+  },
+  "required": ["slug"],
+  "additionalProperties": false
+}

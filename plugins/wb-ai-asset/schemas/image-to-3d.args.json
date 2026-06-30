@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:image-to-3d args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Required."
+    },
+    "imageUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Publicly fetchable reference image URL. Local files must be hosted first via aiasset:upload-image (returns a presigned COS URL)."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes"
+    },
+    "assetName": { "type": "string" },
+    "modelType": {
+      "type": "string",
+      "enum": ["lowpoly", "standard"],
+      "default": "lowpoly"
+    },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 300000,
+      "default": 6000
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "providerParams": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": ["slug", "imageUrl"],
+  "additionalProperties": false
+}
