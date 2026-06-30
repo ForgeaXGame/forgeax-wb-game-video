@@ -30,10 +30,8 @@
       "version": "0.1.0",
       "date": "2026-05-15",
       "notes": {
-        "zh": {
-          "zh": "首版:Anthropic 文本绑定",
-          "en": "First release: Anthropic text binding"
-        }
+        "zh": "首版:Anthropic 文本绑定",
+        "en": "First release: Anthropic text binding"
       }
     }
   ]
