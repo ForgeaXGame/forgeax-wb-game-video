@@ -64,6 +64,60 @@ export function SetupSidebar({
   const [providerParams, setProviderParams] = useState<Record<string, ParamValue>>({});
   useEffect(() => setProviderParams({}), [provider]);
 
+  // Cross-workbench handoff from wb-character「送去生成 3D 模型」: the Studio host
+  // writes the view URLs to a shared same-origin localStorage key (see
+  // StandalonePluginIframe.doNavigate) then flips to this workbench. Prefill the
+  // views-mode inputs from it. We read on mount (fresh iframe — value already
+  // written) AND on the 'storage' event (keep-alive iframe already mounted; the
+  // parent's write fires storage in this same-origin child document). Only
+  // consume payloads addressed to us so a wb-anim handoff isn't swallowed.
+  useEffect(() => {
+    const HANDOFF_KEY = 'forgeax:anim-handoff';
+    const SELF_PLUGIN_ID = '@forgeax-plugin/wb-gen3d';
+    function applyHandoff() {
+      let raw: string | null = null;
+      try {
+        raw = window.localStorage.getItem(HANDOFF_KEY);
+      } catch {
+        return;
+      }
+      if (!raw) return;
+      let data: {
+        targetPluginId?: string;
+        views?: { front?: string; back?: string; left?: string; right?: string };
+        name?: string;
+      } | null = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (!data || data.targetPluginId !== SELF_PLUGIN_ID) return;
+      const views = data.views;
+      if (!views || !views.front) return;
+      setMode('views');
+      setAssetSlot('characters');
+      setFrontUrl(views.front);
+      setBackUrl(views.back ?? '');
+      setLeftUrl(views.left ?? '');
+      setRightUrl(views.right ?? '');
+      if (views.left || views.right) setShowMoreViews(true);
+      if (data.name) setAssetName(data.name.slice(0, 60));
+      setOpenStep('input');
+      try {
+        window.localStorage.removeItem(HANDOFF_KEY);
+      } catch {
+        /* best-effort: stale key just means a no-op re-apply on next mount */
+      }
+    }
+    applyHandoff();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === HANDOFF_KEY && e.newValue) applyHandoff();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const visibleParamFields: ParamField[] = providerParamSpec[provider].filter(
     (f) => f.verified && f.appliesToModes.includes(mode),
   );

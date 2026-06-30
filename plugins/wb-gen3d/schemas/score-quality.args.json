@@ -3,7 +3,7 @@
   "title": "gen3d:score-quality args",
   "type": "object",
   "properties": {
-    "slug": { "type": "string", "description": "Active game slug. Injected by the host; required." },
+    "slug": { "type": "string", "description": "Active game slug. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required." },
     "assetPath": { "type": "string", "description": "Game-relative asset path (assets/3d/<slot>/<name>.glb)." },
     "objective": {
       "type": "object",
@@ -31,6 +31,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["assetPath"],
+  "required": ["slug", "assetPath"],
   "additionalProperties": false
 }

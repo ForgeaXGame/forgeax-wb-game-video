@@ -5,7 +5,7 @@
   "properties": {
     "slug": {
       "type": "string",
-      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. Injected by the workbench host; required."
+      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
     },
     "assetSlot": {
       "type": "string",
@@ -46,6 +46,6 @@
       "description": "Provider-specific native params (validated server-side against shared/provider-params.ts; unverified/inapplicable fields are dropped). See docs/PROVIDER_PARAMS.md."
     }
   },
-  "required": ["prompt"],
+  "required": ["slug", "prompt"],
   "additionalProperties": false
 }
