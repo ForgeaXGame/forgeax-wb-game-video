@@ -30,10 +30,8 @@
       "version": "0.1.0",
       "date": "2026-05-23",
       "notes": {
-        "zh": {
-          "zh": "首版:四条 authoring path 之一",
-          "en": "First release: one of the four authoring paths"
-        }
+        "zh": "首版:四条 authoring path 之一",
+        "en": "First release: one of the four authoring paths"
       }
     }
   ]
