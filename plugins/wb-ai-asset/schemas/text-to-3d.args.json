@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:text-to-3d args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. The workbench UI fills this automatically; an AI/agent caller MUST pass the active game's slug. Required."
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Text prompt describing the small prop to generate (e.g. 'a wooden barrel', 'a low-poly health potion')."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes",
+      "description": "3D asset slot (subdir under assets/3d/). Small props default to meshes."
+    },
+    "assetName": {
+      "type": "string",
+      "description": "Desired base file name (without extension). Sanitized + de-duplicated by the store. Defaults to a name derived from the prompt."
+    },
+    "modelType": {
+      "type": "string",
+      "enum": ["lowpoly", "standard"],
+      "default": "lowpoly",
+      "description": "Meshy mesh type. lowpoly (default) emits clean low-poly geometry and ignores ai_model/topology/targetPolycount; standard is high-detail."
+    },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 300000,
+      "default": 6000,
+      "description": "Target polygon count. Only honored under modelType=standard (lowpoly ignores it; use aiasset:remesh to hit a specific budget)."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "providerParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Provider-specific native Meshy params (validated server-side against shared/provider-params.ts; unverified/inapplicable fields are dropped)."
+    }
+  },
+  "required": ["slug", "prompt"],
+  "additionalProperties": false
+}
