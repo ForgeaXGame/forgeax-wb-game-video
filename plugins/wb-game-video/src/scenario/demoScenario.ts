@@ -154,12 +154,29 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     durationMs: 8000,
     kind: 'choice',
     decision: { optType: 'static', prompt: '选择技能' },
+    ext: { choiceUi: 'battleSkillBar' },
     background: '我方回合待机循环（idle）：弹出战斗界面，呈现 4 个技能（轻攻击 / 重攻击 / 冥想 / 灭世），按当前气力 / 冷却可用性灰显不可选项，等待空藏选择（防反不在此选择，改由敌方进攻时的「防反」反应触发）。',
     branches: [
-      choice('my-s1', 'pjudge', '轻攻击'),
-      choice('my-s2', 'zjudge', '重攻击'),
-      choice('my-s3', 'fuzhu', '冥想'),
-      choice('my-ult', 'ult', '灭世'),
+      {
+        ...choice('my-s1', 'pjudge', '轻攻击'),
+        effects: [{ varId: 'qi', op: 'add', value: 2 }],
+      },
+      {
+        ...choice('my-s2', 'zjudge', '重攻击'),
+        condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 2 }] },
+        gateMode: 'lock',
+        effects: [{ varId: 'qi', op: 'add', value: -2 }],
+      },
+      {
+        ...choice('my-s3', 'fuzhu', '冥想'),
+        effects: [{ varId: 'qi', op: 'add', value: 2 }],
+      },
+      {
+        ...choice('my-ult', 'ult', '灭世'),
+        condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }] },
+        gateMode: 'lock',
+        effects: [{ varId: 'qi', op: 'set', value: 0 }],
+      },
     ],
   }))
   add(bpScene('pjudge', '变招判定', 'vd-wcc-idle', { x: 380, y: 130 }, {
@@ -252,8 +269,22 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     },
     branches: [
       { id: 'ai-qte-great', kind: 'qte_pass', qteOutcome: 'pass', targetSceneId: 'block', label: '受击防反' },
-      { id: 'ai-qte-good', kind: 'qte_pass', qteOutcome: 'good', targetSceneId: 'dodgeP', label: '受击闪避' },
-      { id: 'ai-qte-fail', kind: 'qte_fail', qteOutcome: 'fail', targetSceneId: 'hurt', label: '受击' },
+      {
+        id: 'ai-qte-good',
+        kind: 'qte_pass',
+        qteOutcome: 'good',
+        targetSceneId: 'dodgeP',
+        label: '受击闪避',
+        effects: [{ varId: 'qi', op: 'add', value: -1 }],
+      },
+      {
+        id: 'ai-qte-fail',
+        kind: 'qte_fail',
+        qteOutcome: 'fail',
+        targetSceneId: 'hurt',
+        label: '受击',
+        effects: [{ varId: 'qi', op: 'add', value: 1 }],
+      },
     ],
   }))
   add(bpScene('block', '受击防反', 'vd-wcc-fangfan', { x: 560, y: 1280 }, {
@@ -289,7 +320,9 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     defaultCharMs: 32,
     schemaVersion: 9,
     modules: { gameplay: true, rules: true },
-    variables: {},
+    variables: {
+      qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },
+    },
     entities: {
       'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 1000, initialHp: 1000 },
       'ent-boss': { id: 'ent-boss', name: '小怪 · 无常豺', kind: 'boss', maxHp: 1200, initialHp: 1200 },

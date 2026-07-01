@@ -84,6 +84,13 @@ describe('real demo blueprint', () => {
     expect(my?.nodes.find((n) => n.id === 'wait')?.extensionElements.clipId).toBe('vd-wcc-idle')
     expect(my?.nodes.find((n) => n.id === 'pu')?.extensionElements.clipId).toBe('vd-wcc-pugong')
     expect(my?.nodes.find((n) => n.id === 'z2')?.extensionElements.clipId).toBe('vd-wcc-zhong2')
+    const waitEdges = my?.edges.filter((e) => e.sourceRef === 'wait') ?? []
+    expect(waitEdges.find((e) => e.name === '灭世')?.extension?.condition).toEqual({
+      all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }],
+    })
+    expect(waitEdges.find((e) => e.name === '灭世')?.extension?.effects).toEqual([
+      { varId: 'qi', op: 'set', value: 0 },
+    ])
 
     const ai = graph.subflows?.['g-cb-ai']
     expect(ai?.nodes.map((n) => n.id)).toEqual(['bt', 'tele', 'block', 'dodgeP', 'hurt', 'ai-done'])

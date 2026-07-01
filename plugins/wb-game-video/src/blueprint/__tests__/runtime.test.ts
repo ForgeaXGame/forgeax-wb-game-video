@@ -77,6 +77,24 @@ describe('BlueprintRuntime — 状态机走法', () => {
     expect(rt.state.phase).toBe('awaitBoss')
   })
 
+  test('choice refuses unavailable edge even if called directly', () => {
+    const scenario = makeDemoScenario()
+    const rush = scenario.scenes.choose?.branches.find((b) => b.id === 'opt-rush')
+    if (!rush) throw new Error('missing opt-rush fixture branch')
+    rush.condition = { all: [{ type: 'var', varId: 'brave', op: 'gte', value: 99 }] }
+    rush.gateMode = 'lock'
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+
+    rt.start()
+    rt.onClipEnded()
+    const out = rt.chooseOption('opt-rush')
+
+    expect(out).toEqual([])
+    expect(rt.state.phase).toBe('awaitChoice')
+    expect(rt.state.currentNodeId).toBe('choose')
+    expect(rt.state.visited.has('boss')).toBe(false)
+  })
+
   test('boss defeat (player HP 0) routes to lose target', () => {
     const scenario = makeDemoScenario()
     // 把玩家血量调到一回合即死，验证失败分支。

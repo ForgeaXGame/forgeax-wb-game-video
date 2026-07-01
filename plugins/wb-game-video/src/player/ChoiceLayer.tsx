@@ -297,7 +297,7 @@ function ChoiceCard({ branch, index, picked, locked, lockHint, onPick }: CardPro
 
       <span className="ks-cl-meta">
         <span className="ks-cl-num ks-mono">
-          {String(index + 1).padStart(2, '0')} · CHOICE
+          {String.fromCharCode(65 + index)} · CHOICE
         </span>
         <span className="ks-cl-label ks-cn">{branch.label ?? '——'}</span>
         <span className="ks-cl-target ks-mono">

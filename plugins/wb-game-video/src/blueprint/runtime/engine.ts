@@ -134,13 +134,14 @@ export class BlueprintRuntime {
     if (this.state.phase !== 'awaitChoice') return this.drain()
     const node = this.currentNode()
     if (!node) return this.drain()
-    const edge = (this.outgoing.get(node.id) ?? []).find(
+    const matchingEdges = (this.outgoing.get(node.id) ?? []).filter(
       (e) => e.extension?.branchId === optionKey,
     )
+    const edge = matchingEdges.find((e) => this.edgeConditionPasses(e))
     if (edge) {
       this.applyEdge(edge)
       this.enterNode(edge.targetRef)
-    } else {
+    } else if (matchingEdges.length === 0) {
       const opt = (node.extensionElements.options ?? []).find((o) => o.key === optionKey)
       if (opt) this.enterNode(opt.target)
     }

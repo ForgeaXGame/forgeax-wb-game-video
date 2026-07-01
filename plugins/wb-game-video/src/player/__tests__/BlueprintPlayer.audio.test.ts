@@ -15,8 +15,8 @@ describe('BlueprintPlayer audio autoplay policy', () => {
 
   it('falls back to muted autoplay only when unmuted play is blocked', () => {
     expect(SOURCE).toContain('setNeedsUnmute(true)')
-    expect(SOURCE).toContain('v.muted = false')
-    expect(SOURCE).toContain('v.muted = true')
+    expect(SOURCE).toContain('video.muted = false')
+    expect(SOURCE).toContain('video.muted = true')
   })
 
   it('renders an explicit unmute control for browser autoplay fallback', () => {

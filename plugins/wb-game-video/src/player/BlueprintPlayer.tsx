@@ -12,7 +12,7 @@
  * 自动演示、重开。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { useScenarioStore } from '../scenario/scenarioStore'
 import { useShellStore } from '../shell/shellStore'
 import { useMediaStore } from '../media/mediaStore'
@@ -39,6 +39,7 @@ import { HudLayer } from './hud/HudLayer'
 import { DialogueBox } from './DialogueBox'
 import { TextOverlayLayer } from './TextOverlayLayer'
 import { ChoiceLayer } from './ChoiceLayer'
+import { BattleSkillLayer, isBattleSkillChoice } from './BattleSkillLayer'
 import { HotspotLayer } from './hotspots/HotspotLayer'
 import { initEntities, type EntitiesState } from './entities'
 import { evaluateCondition } from './conditionEval'
@@ -87,7 +88,148 @@ interface FloatItem {
   kind: 'dmg' | 'hurt' | 'note'
 }
 
+interface ContentRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface StableBlueprintVideoProps {
+  nodeId?: string
+  runKey: number
+  src: string
+  loop: boolean
+  videoRef: MutableRefObject<HTMLVideoElement | null>
+  onEnded: () => void
+  onNeedsUnmuteChange: (needsUnmute: boolean) => void
+  onActiveVideoChange: () => void
+}
+
 const EMPTY: Snapshot = { interaction: { type: 'none' } }
+
+type VideoSlot = 'a' | 'b'
+
+interface VideoSlotData {
+  token: string
+  nodeId?: string
+  runKey: number
+  src: string
+  loop: boolean
+}
+
+function videoToken(args: { nodeId?: string; runKey: number; src: string }): string {
+  return `${args.runKey}:${args.nodeId ?? ''}:${args.src}`
+}
+
+const StableBlueprintVideo = memo(function StableBlueprintVideo({
+  nodeId,
+  runKey,
+  src,
+  loop,
+  videoRef,
+  onEnded,
+  onNeedsUnmuteChange,
+  onActiveVideoChange,
+}: StableBlueprintVideoProps) {
+  const slotARef = useRef<HTMLVideoElement | null>(null)
+  const slotBRef = useRef<HTMLVideoElement | null>(null)
+  const [frontSlot, setFrontSlot] = useState<VideoSlot>('a')
+  const frontSlotRef = useRef<VideoSlot>('a')
+  const initialToken = videoToken({ nodeId, runKey, src })
+  const currentTokenRef = useRef(initialToken)
+  const [slots, setSlots] = useState<Record<VideoSlot, VideoSlotData | null>>({
+    a: { token: initialToken, nodeId, runKey, src, loop },
+    b: null,
+  })
+
+  useEffect(() => {
+    frontSlotRef.current = frontSlot
+    const active = frontSlot === 'a' ? slotARef.current : slotBRef.current
+    if (active) {
+      videoRef.current = active
+      onActiveVideoChange()
+    }
+  }, [frontSlot, onActiveVideoChange, videoRef])
+
+  useEffect(() => {
+    const nextToken = videoToken({ nodeId, runKey, src })
+    if (currentTokenRef.current === nextToken) {
+      const active = frontSlotRef.current
+      setSlots((prev) => ({
+        ...prev,
+        [active]: prev[active] ? { ...prev[active], loop } : prev[active],
+      }))
+      return
+    }
+    currentTokenRef.current = nextToken
+    const backSlot: VideoSlot = frontSlotRef.current === 'a' ? 'b' : 'a'
+    setSlots((prev) => ({
+      ...prev,
+      [backSlot]: { token: nextToken, nodeId, runKey, src, loop },
+    }))
+  }, [nodeId, runKey, src, loop])
+
+  async function activateSlot(slot: VideoSlot): Promise<void> {
+    const data = slots[slot]
+    if (!data || data.token !== currentTokenRef.current) return
+    const video = slot === 'a' ? slotARef.current : slotBRef.current
+    if (!video) return
+
+    videoRef.current = video
+    onNeedsUnmuteChange(false)
+    video.muted = false
+    video.volume = 1
+
+    try {
+      await video.play()
+    } catch {
+      try {
+        video.muted = true
+        await video.play()
+        onNeedsUnmuteChange(true)
+      } catch {
+        // Keep the latest frame visible even if the browser refuses autoplay entirely.
+      }
+    } finally {
+      frontSlotRef.current = slot
+      setFrontSlot(slot)
+      onActiveVideoChange()
+    }
+  }
+
+  function renderSlot(slot: VideoSlot, data: VideoSlotData | null) {
+    if (!data) return null
+    const isFront = frontSlot === slot
+    return (
+      <video
+        key={slot}
+        ref={slot === 'a' ? slotARef : slotBRef}
+        className={`bpx-video bpx-video-buffer ${isFront ? 'is-front' : 'is-back'}`}
+        src={data.src}
+        playsInline
+        preload="auto"
+        loop={data.loop}
+        onCanPlay={() => activateSlot(slot)}
+        onEnded={() => {
+          if (frontSlotRef.current === slot && !data.loop) onEnded()
+        }}
+      />
+    )
+  }
+
+  return (
+    <>
+      {renderSlot('a', slots.a)}
+      {renderSlot('b', slots.b)}
+    </>
+  )
+}, (prev, next) => (
+  prev.nodeId === next.nodeId &&
+  prev.runKey === next.runKey &&
+  prev.src === next.src &&
+  prev.loop === next.loop
+))
 
 export function BlueprintPlayer(): JSX.Element {
   const scenario = useScenarioStore((s) => s.scenario)
@@ -113,6 +255,8 @@ export function BlueprintPlayer(): JSX.Element {
   const [showLogs, setShowLogs] = useState(false)
   const [demoRunning, setDemoRunning] = useState(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
+  const [contentRect, setContentRect] = useState<ContentRect | null>(null)
+  const [videoBufferVersion, setVideoBufferVersion] = useState(0)
   const tapsRef = useRef(0)
   const [taps, setTaps] = useState(0)
   const advancedRef = useRef<string | null>(null)
@@ -130,36 +274,29 @@ export function BlueprintPlayer(): JSX.Element {
 
   useEffect(() => {
     const v = videoRef.current
-    if (!v || !clip) return
-    setNeedsUnmute(false)
-    v.muted = false
-    v.volume = 1
-    let cancelled = false
-
-    async function tryPlay(): Promise<void> {
-      try {
-        await v.play()
-      } catch {
-        if (cancelled) return
-        try {
-          v.muted = true
-          await v.play()
-          if (!cancelled) setNeedsUnmute(true)
-        } catch {
-          // Keep the player UI usable even if the browser refuses autoplay entirely.
-        }
-      }
+    if (!v) return
+    let frame = 0
+    const update = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const rect = computeVideoContentRect(v)
+        if (rect) setContentRect(rect)
+      })
     }
-
-    void tryPlay()
+    update()
+    v.addEventListener('loadedmetadata', update)
+    window.addEventListener('resize', update)
     return () => {
-      cancelled = true
+      if (frame) cancelAnimationFrame(frame)
+      v.removeEventListener('loadedmetadata', update)
+      window.removeEventListener('resize', update)
     }
-  }, [clip, videoSrc])
+  }, [clip?.nodeId, videoSrc, videoBufferVersion])
 
   const dispatch = (dirs: RuntimeDirective[]): void => {
+    const resetElapsed = dirs.some((d) => d.type === 'playClip')
     setSnapshot((prev) => applyDirectives(prev, dirs))
-    setElapsed(0)
+    if (resetElapsed) setElapsed(0)
     setLogs((prev) => [...prev, ...dirs.map(logLine).filter((l): l is string => !!l)].slice(-MAX_LOGS))
     force((n) => n + 1)
   }
@@ -303,18 +440,26 @@ export function BlueprintPlayer(): JSX.Element {
   const visitedList = Array.from(runtime.state.visited)
   const hudVisible = clip?.hud && clip.hud !== 'hidden'
   const currentBpNode = findBlueprintNode(graph, runtime.state.currentNodeId)
+  const contentStyle = contentRect
+    ? {
+        left: `${contentRect.left}px`,
+        top: `${contentRect.top}px`,
+        width: `${contentRect.width}px`,
+        height: `${contentRect.height}px`,
+      }
+    : undefined
 
   return (
     <div className="bpx-root" tabIndex={0}>
       <div className="bpx-stage" data-transition={clip?.transition ?? 'cut'}>
-        <video
-          key={clip?.nodeId ?? 'boot'}
-          ref={videoRef}
-          className="bpx-video"
+        <StableBlueprintVideo
+          nodeId={clip?.nodeId}
+          runKey={runKey}
           src={videoSrc}
-          playsInline
-          preload="auto"
           loop={clip?.loop ?? false}
+          videoRef={videoRef}
+          onNeedsUnmuteChange={setNeedsUnmute}
+          onActiveVideoChange={() => setVideoBufferVersion((n) => n + 1)}
           onEnded={() => {
             if (!clip?.loop) advanceClip()
           }}
@@ -343,10 +488,24 @@ export function BlueprintPlayer(): JSX.Element {
         {scene && <DialogueBox scene={scene} elapsed={elapsed} />}
         {scene && <TextOverlayLayer scene={scene} elapsed={elapsed} />}
         {scene && hudVisible && (
-          <HudLayer scenario={scenario} scene={scene} entities={hudEntities} score={score} />
+          <div className="bpx-content-ui" style={contentStyle}>
+            <HudLayer scenario={scenario} scene={scene} entities={hudEntities} vars={vars} score={score} />
+          </div>
         )}
 
-        {scene && interaction.type === 'choice' && (
+        {scene && interaction.type === 'choice' && isBattleSkillChoice(scene) && (
+          <BattleSkillLayer
+            scene={scene}
+            onPick={(b) => dispatch(runtime.chooseOption(b.id))}
+            vars={vars}
+            visitedSceneIds={visitedList}
+            ownedItems={ownedItems}
+            entities={hudEntities}
+            score={score}
+          />
+        )}
+
+        {scene && interaction.type === 'choice' && !isBattleSkillChoice(scene) && (
           <ChoiceLayer
             scene={scene}
             onPick={(b) => dispatch(runtime.chooseOption(b.id))}
@@ -517,6 +676,25 @@ function hasTieredQteOutcomes(qte: BlueprintQte): boolean {
   return !!qte.outcomeLabels?.good
 }
 
+function computeVideoContentRect(video: HTMLVideoElement): ContentRect | null {
+  const parent = video.parentElement
+  if (!parent) return null
+  const boxW = parent.clientWidth
+  const boxH = parent.clientHeight
+  if (boxW <= 0 || boxH <= 0) return null
+  const mediaW = video.videoWidth || 16
+  const mediaH = video.videoHeight || 9
+  const scale = Math.min(boxW / mediaW, boxH / mediaH)
+  const width = mediaW * scale
+  const height = mediaH * scale
+  return {
+    left: (boxW - width) / 2,
+    top: (boxH - height) / 2,
+    width,
+    height,
+  }
+}
+
 function applyDirectives(prev: Snapshot, dirs: RuntimeDirective[]): Snapshot {
   let next: Snapshot = { ...prev }
   for (const d of dirs) {
@@ -585,6 +763,10 @@ function injectStyles(): void {
     .bpx-empty{display:grid;place-items:center;height:100%;color:#9aa}
     .bpx-stage{position:absolute;inset:0}
     .bpx-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#05060a}
+    .bpx-video-buffer{opacity:0;z-index:0;transition:opacity 120ms linear}
+    .bpx-video-buffer.is-front{opacity:1;z-index:1}
+    .bpx-video-buffer.is-back{opacity:0;z-index:0;pointer-events:none}
+    .bpx-content-ui{position:absolute;inset:0;z-index:24;pointer-events:none}
     .bpx-unmute{position:absolute;left:20px;top:20px;z-index:65;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,224,160,.42);background:rgba(24,20,14,.82);color:#ffe6b5;font-weight:900;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.35)}
     .bpx-vignette{position:absolute;inset:0;box-shadow:inset 0 0 160px rgba(0,0,0,.82);pointer-events:none}
     .bpx-clip-tag{position:absolute;left:20px;bottom:18px;z-index:20;padding:8px 12px;border-radius:10px;background:rgba(6,8,12,.6);border:1px solid rgba(255,230,180,.16);backdrop-filter:blur(4px)}

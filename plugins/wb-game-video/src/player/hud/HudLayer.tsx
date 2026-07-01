@@ -9,6 +9,7 @@ import { inferHudPreset } from '../gameplayState'
 import { HealthBar } from './HealthBar'
 import { BossBar } from './BossBar'
 import { StatusIcons } from './StatusIcons'
+import type { VarState } from '../conditionEval'
 
 /**
  * HudLayer —— 玩法 HUD 叠层总装。Player 在 `isGameplay` 为真时挂一行渲染本组件。
@@ -24,12 +25,15 @@ export function HudLayer({
   scenario,
   scene,
   entities,
+  vars,
   score,
   timerMs,
 }: {
   scenario: Scenario
   scene: Scene
   entities: EntitiesState
+  /** 运行时数值状态；用于显示气力点等资源。 */
+  vars?: VarState
   /** 当前累计 QTE 分数（score 元素显示用）。 */
   score?: number
   /** 倒计时剩余毫秒（timer 元素显示用）；null/缺省 = 无倒计时。 */
@@ -43,6 +47,10 @@ export function HudLayer({
   const player = findPlayer(entities)
   const boss = findBoss(entities)
   const accent = scenario.ui?.accentColor
+  const qiDef = scenario.variables?.qi
+  const qiMax = typeof qiDef?.max === 'number' ? qiDef.max : 5
+  const qiCurrent = Math.max(0, Math.min(qiMax, Math.round(vars?.qi ?? qiDef?.initial ?? 0)))
+  const qiEnergy = qiDef ? { current: qiCurrent, max: qiMax } : undefined
 
   const activeStatuses = player
     ? player.statusIds
@@ -82,7 +90,7 @@ export function HudLayer({
 
       <div className="ks-hud-bottom">
         {show('status') && <StatusIcons statuses={activeStatuses} />}
-        {show('playerHp') && player && <HealthBar entity={player} accent={accent} />}
+        {show('playerHp') && player && <HealthBar entity={player} accent={accent} energy={qiEnergy} />}
       </div>
     </div>
   )
@@ -159,9 +167,10 @@ const HUD_CSS = `
 }
 .ks-hud-bottom {
   position: absolute;
-  left: 4%; bottom: 6%;
+  right: 4%; bottom: 4%;
   display: flex; flex-direction: column; gap: 8px;
-  max-width: 42%;
+  align-items: flex-end;
+  max-width: 36%;
 }
 /* 分数 / 倒计时(右上) */
 .ks-hud-topright {
@@ -189,11 +198,11 @@ const HUD_CSS = `
 /* 玩家血条 */
 .ks-hud-hp {
   display: flex; flex-direction: column; gap: 4px;
-  padding: 8px 12px;
-  background: rgba(0,0,0,0.42);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 4px;
+  padding: 8px 10px 9px;
+  background: rgba(8,6,4,0.38);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
 }
 .ks-hud-hp-row {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
@@ -207,19 +216,40 @@ const HUD_CSS = `
   color: rgba(255,255,255,0.6);
 }
 .ks-hud-hp-track {
-  width: 220px; height: 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.14);
+  width: min(250px, 24vw); height: 10px;
+  border-radius: 7px 8px 6px 7px / 5px 7px 5px 6px;
+  background: linear-gradient(180deg,#2b2620,#0c0a08);
+  box-shadow: 0 2px 6px rgba(0,0,0,.5) inset;
   overflow: hidden;
+  transform: scaleX(-1);
 }
 .ks-hud-hp-fill {
   height: 100%;
-  background: linear-gradient(90deg, #34d399, #10b981);
+  background: linear-gradient(90deg, #7398cf, #a6c6ee);
   transition: width 220ms ease;
 }
 .ks-hud-hp.is-low .ks-hud-hp-fill {
   background: linear-gradient(90deg, #f87171, #ef4444);
   animation: ks-hud-lowpulse 1s ease-in-out infinite;
+}
+.ks-hud-rage {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 6px;
+}
+.ks-hud-pip {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #5a5346, #262219);
+  border: 1px solid rgba(0,0,0,.5);
+  box-shadow: 0 1px 2px rgba(0,0,0,.5);
+  transition: all .2s;
+}
+.ks-hud-pip.on {
+  background: radial-gradient(circle at 35% 30%, #ffe49c, #c8902f);
+  border-color: rgba(255,220,150,.7);
+  box-shadow: 0 0 7px rgba(255,190,90,.7), 0 1px 2px rgba(0,0,0,.4);
 }
 @keyframes ks-hud-lowpulse {
   0%, 100% { opacity: 1; }
@@ -228,9 +258,9 @@ const HUD_CSS = `
 /* Boss 血条(顶部) */
 .ks-hud-boss {
   position: absolute;
-  top: 4%; left: 50%;
+  top: 3.5%; left: 50%;
   transform: translateX(-50%);
-  width: 56%;
+  width: min(30%, 320px);
   display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
 .ks-hud-boss-name {
