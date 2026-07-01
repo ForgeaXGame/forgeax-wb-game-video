@@ -112,17 +112,50 @@ export function BlueprintPlayer(): JSX.Element {
   const [showBlueprint, setShowBlueprint] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [demoRunning, setDemoRunning] = useState(false)
+  const [needsUnmute, setNeedsUnmute] = useState(false)
   const tapsRef = useRef(0)
   const [taps, setTaps] = useState(0)
   const advancedRef = useRef<string | null>(null)
   const floatSeq = useRef(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const clip = snapshot.clip
+  const videoSrc =
+    clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url) || DEFAULT_PLAYBACK_VIDEO_URL
 
   injectStyles()
 
   useEffect(() => {
     primeColdCliffDemoMedia()
   }, [])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !clip) return
+    setNeedsUnmute(false)
+    v.muted = false
+    v.volume = 1
+    let cancelled = false
+
+    async function tryPlay(): Promise<void> {
+      try {
+        await v.play()
+      } catch {
+        if (cancelled) return
+        try {
+          v.muted = true
+          await v.play()
+          if (!cancelled) setNeedsUnmute(true)
+        } catch {
+          // Keep the player UI usable even if the browser refuses autoplay entirely.
+        }
+      }
+    }
+
+    void tryPlay()
+    return () => {
+      cancelled = true
+    }
+  }, [clip, videoSrc])
 
   const dispatch = (dirs: RuntimeDirective[]): void => {
     setSnapshot((prev) => applyDirectives(prev, dirs))
@@ -247,7 +280,17 @@ export function BlueprintPlayer(): JSX.Element {
     setTaps(tapsRef.current)
   }
 
-  const clip = snapshot.clip
+  function onUnmuteClick(): void {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = false
+    v.volume = 1
+    setNeedsUnmute(false)
+    if (v.paused) {
+      void v.play().catch(() => setNeedsUnmute(true))
+    }
+  }
+
   const interaction = snapshot.interaction
   const scene: Scene | undefined = runtime.state.currentNodeId
     ? scenario.scenes[runtime.state.currentNodeId]
@@ -259,8 +302,6 @@ export function BlueprintPlayer(): JSX.Element {
   const ownedItems = runtime.state.items
   const visitedList = Array.from(runtime.state.visited)
   const hudVisible = clip?.hud && clip.hud !== 'hidden'
-  const videoSrc =
-    clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url) || DEFAULT_PLAYBACK_VIDEO_URL
   const currentBpNode = findBlueprintNode(graph, runtime.state.currentNodeId)
 
   return (
@@ -271,14 +312,18 @@ export function BlueprintPlayer(): JSX.Element {
           ref={videoRef}
           className="bpx-video"
           src={videoSrc}
-          autoPlay
-          muted
           playsInline
+          preload="auto"
           loop={clip?.loop ?? false}
           onEnded={() => {
             if (!clip?.loop) advanceClip()
           }}
         />
+        {needsUnmute && (
+          <button type="button" className="bpx-unmute" onClick={onUnmuteClick}>
+            🔇 点击恢复声音
+          </button>
+        )}
         <div className="bpx-vignette" aria-hidden />
         <div className="bpx-clip-tag">
           <span>{clip?.type ?? '演出'}{clip?.loop ? ' · Loop' : ''}</span>
@@ -540,6 +585,7 @@ function injectStyles(): void {
     .bpx-empty{display:grid;place-items:center;height:100%;color:#9aa}
     .bpx-stage{position:absolute;inset:0}
     .bpx-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#05060a}
+    .bpx-unmute{position:absolute;left:20px;top:20px;z-index:65;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,224,160,.42);background:rgba(24,20,14,.82);color:#ffe6b5;font-weight:900;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.35)}
     .bpx-vignette{position:absolute;inset:0;box-shadow:inset 0 0 160px rgba(0,0,0,.82);pointer-events:none}
     .bpx-clip-tag{position:absolute;left:20px;bottom:18px;z-index:20;padding:8px 12px;border-radius:10px;background:rgba(6,8,12,.6);border:1px solid rgba(255,230,180,.16);backdrop-filter:blur(4px)}
     .bpx-clip-tag span{display:block;font-size:11px;letter-spacing:.06em;color:#ffe6b5}
