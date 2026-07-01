@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { scenarioToBlueprint } from '../scenarioToBlueprint'
 import { BlueprintRuntime, type RuntimeState } from '../runtime/engine'
 import type { RuntimeDirective } from '../runtime/directives'
-import { makeDemoScenario } from './fixtures'
+import { makeDemoScenario, makeSubflowScenario } from './fixtures'
 
 function makeRuntime(): BlueprintRuntime {
   return new BlueprintRuntime(scenarioToBlueprint(makeDemoScenario()), makeDemoScenario())
@@ -90,5 +90,26 @@ describe('BlueprintRuntime — 状态机走法', () => {
     expect(state.entities.hero?.hp).toBe(0)
     expect(state.visited.has('badEnd')).toBe(true)
     expect(state.phase).toBe('ended')
+  })
+
+  test('auto-enters a subflow and resumes the parent outgoing edge when the child graph ends', () => {
+    const scenario = makeSubflowScenario()
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+
+    let out = rt.start()
+    expect(find(out, 'playClip')?.nodeId).toBe('start')
+
+    out = rt.onClipEnded()
+    expect(find(out, 'playClip')?.nodeId).toBe('innerStart')
+    expect(rt.state.currentNodeId).toBe('innerStart')
+
+    out = rt.onClipEnded()
+    expect(find(out, 'playClip')?.nodeId).toBe('innerEnd')
+
+    out = rt.onClipEnded()
+    expect(find(out, 'playClip')?.nodeId).toBe('after')
+    expect(rt.state.currentNodeId).toBe('after')
+    expect(find(out, 'banner')?.nodeId).toBe('after')
+    expect(rt.state.phase).toBe('ended')
   })
 })

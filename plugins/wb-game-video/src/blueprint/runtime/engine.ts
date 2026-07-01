@@ -62,6 +62,8 @@ export interface RuntimeState {
   entities: Record<string, EntityRuntime>
   /** call/return 子流程返回栈（节点 id）。 */
   callStack: string[]
+  /** 层级子蓝图返回栈：子图结束后继续父节点出边。 */
+  subflowStack: Array<{ parentNodeId: string; subflowId: string }>
   bossRoundIndex: number
   log: string[]
 }
@@ -69,6 +71,7 @@ export interface RuntimeState {
 export class BlueprintRuntime {
   private readonly nodes = new Map<string, GameVideoBlueprintNode>()
   private readonly outgoing = new Map<string, GameVideoBlueprintEdge[]>()
+  private readonly subflows: NonNullable<GameVideoBlueprintGraph['subflows']>
   readonly state: RuntimeState
   private queue: RuntimeDirective[] = []
 
@@ -76,8 +79,16 @@ export class BlueprintRuntime {
     private readonly graph: GameVideoBlueprintGraph,
     private readonly scenario: Scenario,
   ) {
+    this.subflows = graph.subflows ?? {}
     for (const node of graph.nodes) this.nodes.set(node.id, node)
-    for (const edge of graph.edges) {
+    for (const subflow of Object.values(this.subflows)) {
+      for (const node of subflow.nodes) this.nodes.set(node.id, node)
+    }
+    const allEdges = [
+      ...graph.edges,
+      ...Object.values(this.subflows).flatMap((subflow) => subflow.edges),
+    ]
+    for (const edge of allEdges) {
       const list = this.outgoing.get(edge.sourceRef)
       if (list) list.push(edge)
       else this.outgoing.set(edge.sourceRef, [edge])
@@ -91,6 +102,7 @@ export class BlueprintRuntime {
       score: 0,
       entities: initEntities(scenario),
       callStack: [],
+      subflowStack: [],
       bossRoundIndex: 0,
       log: [],
     }
@@ -228,6 +240,15 @@ export class BlueprintRuntime {
     this.applyOnEnter(node)
 
     const ext = node.extensionElements
+    if (ext.subFlowRef) {
+      const subflow = this.subflows[ext.subFlowRef]
+      if (subflow && this.nodes.has(subflow.rootNodeId)) {
+        this.state.subflowStack.push({ parentNodeId: id, subflowId: ext.subFlowRef })
+        this.enterNode(subflow.rootNodeId)
+        return
+      }
+    }
+
     this.emit({
       type: 'playClip',
       nodeId: id,
@@ -264,6 +285,10 @@ export class BlueprintRuntime {
       return
     }
     if (node.elementType === 'end' || (this.outgoing.get(id) ?? []).length === 0) {
+      if (this.state.subflowStack.length > 0) {
+        this.state.phase = 'playing'
+        return
+      }
       this.finishEnd(node)
       return
     }
@@ -290,12 +315,38 @@ export class BlueprintRuntime {
       this.enterNode(edge.targetRef)
       return
     }
+    if (this.finishSubflow()) return
     if (this.state.callStack.length > 0) {
       const back = this.state.callStack.pop()!
       this.enterNode(back)
       return
     }
     this.finishEnd(node)
+  }
+
+  private finishSubflow(): boolean {
+    const frame = this.state.subflowStack.pop()
+    if (!frame) return false
+    this.advanceFromParentNode(frame.parentNodeId)
+    return true
+  }
+
+  private advanceFromParentNode(parentNodeId: string): void {
+    const parent = this.nodes.get(parentNodeId)
+    if (!parent) {
+      this.state.phase = 'ended'
+      return
+    }
+    const edges = (this.outgoing.get(parent.id) ?? []).filter(
+      (e) => e.extension?.kind !== 'choice' && e.extension?.kind !== 'qte_pass' && e.extension?.kind !== 'qte_fail',
+    )
+    const edge = edges.find((e) => this.edgeConditionPasses(e)) ?? edges[0]
+    if (edge) {
+      this.applyEdge(edge)
+      this.enterNode(edge.targetRef)
+      return
+    }
+    this.finishEnd(parent)
   }
 
   // ── 内部：Boss ────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
 } from '../blueprint-schema'
 import { scenarioToBlueprint } from '../scenarioToBlueprint'
 import { toFXGraph } from '../blueprint-reactflow'
-import { makeDemoScenario } from './fixtures'
+import { makeDemoScenario, makeSubflowScenario } from './fixtures'
 
 describe('scenarioToBlueprint', () => {
   test('compiles a renderer-agnostic BPMN graph (no position/data on nodes)', () => {
@@ -67,6 +67,19 @@ describe('scenarioToBlueprint', () => {
     const pass = graph.edges.find((e) => e.sourceRef === 'qte' && e.targetRef === 'boss')
     expect(pass?.conditionExpression).toBe('qte.passed')
     expect(pass?.extension?.kind).toBe('qte_pass')
+  })
+
+  test('compiles nested subflow graphs without flattening child nodes into the parent view', () => {
+    const graph = scenarioToBlueprint(makeSubflowScenario())
+
+    expect(graph.nodes.map((n) => n.id)).toEqual(['start', 'container', 'after'])
+    expect(graph.nodes.some((n) => n.id === 'innerStart')).toBe(false)
+    expect(graph.subflows?.['g-inner']?.rootNodeId).toBe('innerStart')
+    expect(graph.subflows?.['g-inner']?.nodes.map((n) => n.id)).toEqual(['innerStart', 'innerEnd'])
+
+    const container = graph.nodes.find((n) => n.id === 'container')
+    expect(container?.elementType).toBe('subflow')
+    expect(container?.extensionElements.subFlowRef).toBe('g-inner')
   })
 })
 

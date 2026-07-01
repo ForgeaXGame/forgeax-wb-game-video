@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 
 import { useScenarioStore } from '../scenario/scenarioStore'
+import { getBlueprintCombatDemoScenario } from '../scenario/demoScenario'
 import { useShellStore } from '../shell/shellStore'
 import { BlueprintGameplayPanel } from './BlueprintGameplayPanel'
 import { resolveBranchEdgeStyle } from '../editor/storygraph/BranchEdge'
@@ -66,6 +67,7 @@ function BlueprintInner() {
   const selectedSceneId = useScenarioStore((s) => s.selectedSceneId)
   const selectScene = useScenarioStore((s) => s.selectScene)
   const setScenePos = useScenarioStore((s) => s.setScenePos)
+  const loadScenario = useScenarioStore((s) => s.loadScenario)
   const stageSceneId = useShellStore((s) => s.stageSceneId)
   const forgeView = useShellStore((s) => s.forgeView)
   const { fitView } = useReactFlow()
@@ -74,10 +76,16 @@ function BlueprintInner() {
   // 选中态以 selectedSceneId 为准（点击即更新），不被外部 stageSceneId 抢占。
   const activeId = selectedSceneId ?? stageSceneId
   const [panelOpen, setPanelOpen] = useState(false)
+  const [graphStack, setGraphStack] = useState<string[]>([])
+  const currentGraphId = graphStack[graphStack.length - 1]
 
   useEffect(() => {
     if (activeId) setPanelOpen(true)
   }, [activeId])
+
+  useEffect(() => {
+    setGraphStack([])
+  }, [scenario.id])
 
   const layout = useMemo(
     () =>
@@ -95,7 +103,17 @@ function BlueprintInner() {
 
   // 蓝图图（新 schema）是节点/连线的 SSOT —— 编辑器与试玩运行时走同一张图，
   // 不再各自从 Scenario.branches 派生（消除「所见 ≠ 所跑」）。
-  const graph = useMemo(() => scenarioToBlueprint(scenario), [scenario])
+  const graph = useMemo(() => scenarioToBlueprint(scenario, currentGraphId), [scenario, currentGraphId])
+  const crumbs = useMemo(
+    () => [
+      { id: undefined as string | undefined, label: scenario.title || '顶层蓝图' },
+      ...graphStack.map((id) => ({
+        id,
+        label: graph.subflows?.[id]?.title ?? id,
+      })),
+    ],
+    [graph.subflows, graphStack, scenario.title],
+  )
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -159,6 +177,31 @@ function BlueprintInner() {
 
   return (
     <div className="ks-bp">
+      <div className="ks-bp-crumbs" aria-label="蓝图面包屑">
+        {crumbs.map((c, i) => {
+          const active = i === crumbs.length - 1
+          return (
+            <button
+              key={c.id ?? '__top'}
+              type="button"
+              className={active ? 'is-active' : ''}
+              onClick={() => {
+                if (!active) setGraphStack((prev) => prev.slice(0, i))
+              }}
+            >
+              {c.label}
+            </button>
+          )
+        })}
+        {currentGraphId && <span className="ks-bp-crumb-hint">双击子蓝图节点继续下钻</span>}
+        <button
+          type="button"
+          className="ks-bp-demo-btn"
+          onClick={() => loadScenario(getBlueprintCombatDemoScenario())}
+        >
+          载入战斗蓝图 Demo
+        </button>
+      </div>
       <div className="ks-bp-legend" aria-label="蓝图图例">
         {BPG_LEGEND.map((l) => (
           <span key={l.typeClass} className="ks-bp-legend-item">
@@ -192,6 +235,13 @@ function BlueprintInner() {
               selectScene(node.id)
               setPanelOpen(true)
             }}
+            onNodeDoubleClick={(_e, node) => {
+              const subFlowRef = (node.data as BPNodeData).subFlowRef
+              if (!subFlowRef || !graph.subflows?.[subFlowRef]) return
+              selectScene(node.id)
+              setPanelOpen(true)
+              setGraphStack((prev) => [...prev, subFlowRef])
+            }}
             onNodeDragStop={(_e, node) => {
               handleSceneNodeDragStop(node.id, node.position, {
                 selectScene,
@@ -224,7 +274,7 @@ function BlueprintInner() {
 interface BadgeSpec {
   glyph: string
   text: string
-  tone: 'boss' | 'qte' | 'timed' | 'gate' | 'hotspot'
+  tone: 'boss' | 'qte' | 'timed' | 'gate' | 'hotspot' | 'subflow'
 }
 
 interface BranchPin {
@@ -244,6 +294,7 @@ interface BPNodeData extends Record<string, unknown> {
   badges: BadgeSpec[]
   branches: BranchPin[]
   hasInput: boolean
+  subFlowRef?: string
 }
 
 function branchPinLabel(label: string | undefined, kind: BranchKind, index: number): string {
@@ -261,6 +312,9 @@ function bpgTypeOfNode(
   const ext = node.extensionElements
   if (node.elementType === 'start') {
     return { typeClass: 'root', accent: BPG_TYPE_ACCENTS.root, kindLabel: '起点' }
+  }
+  if (node.elementType === 'subflow') {
+    return { typeClass: 'open', accent: BPG_TYPE_ACCENTS.open, kindLabel: '子蓝图' }
   }
   if (node.elementType === 'end' || ext.hud === 'ending') {
     return { typeClass: 'end', accent: BPG_TYPE_ACCENTS.end, kindLabel: '结局' }
@@ -313,6 +367,10 @@ function deriveNodeData(
   if (ext.hotspots && ext.hotspots.length > 0) {
     badges.push({ glyph: '⊕', text: `热点×${ext.hotspots.length}`, tone: 'hotspot' })
   }
+  if (ext.subFlowRef) {
+    const title = scenario.blueprintGraphs?.[ext.subFlowRef]?.title ?? '子蓝图'
+    badges.push({ glyph: '▣', text: title, tone: 'subflow' })
+  }
 
   const branches: BranchPin[] = outgoing.map((e, i) => ({
     id: e.id,
@@ -331,6 +389,7 @@ function deriveNodeData(
     badges,
     branches,
     hasInput: node.incoming.length > 0,
+    subFlowRef: ext.subFlowRef,
   }
 }
 
@@ -510,6 +569,27 @@ function BP_CSS(): string {
   background: var(--color-background-elevated, #242424);
   color: var(--color-text-primary, #fff);
 }
+.ks-bp-crumbs {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px 0;
+  background: var(--color-background-base, #191919);
+}
+.ks-bp-crumbs button {
+  border: 0; background: transparent; color: var(--color-text-secondary, rgba(255,255,255,0.62));
+  font-size: 12px; font-weight: 700; cursor: pointer; padding: 3px 0;
+}
+.ks-bp-crumbs button:not(:last-of-type)::after {
+  content: '›'; margin-left: 6px; color: var(--color-text-tertiary, rgba(255,255,255,0.35));
+}
+.ks-bp-crumbs button.is-active { color: var(--color-text-primary, #fff); cursor: default; }
+.ks-bp-crumb-hint { margin-left: auto; font-size: 11px; color: var(--color-text-tertiary, rgba(255,255,255,0.42)); }
+.ks-bp-demo-btn {
+  margin-left: 10px; padding: 4px 10px !important; border-radius: 8px !important;
+  border: 1px solid rgba(255,224,160,.24) !important; background: rgba(255,224,160,.08) !important;
+  color: #ffe6b5 !important;
+}
+.ks-bp-demo-btn::after { content: '' !important; margin: 0 !important; }
 .ks-bp-legend {
   flex-shrink: 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;

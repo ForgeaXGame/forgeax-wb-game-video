@@ -1626,6 +1626,12 @@ export interface Scene {
    */
   returnsToCaller?: boolean
   /**
+   * 层级子蓝图引用 —— true container / call activity 语义。
+   * 运行时进入该 scene 时自动下钻到 Scenario.blueprintGraphs[subFlowRef].rootSceneId；
+   * 子图结束后回到本 scene，并继续走本 scene 的出边。
+   */
+  subFlowRef?: string
+  /**
    * 演出编号 —— 引用「视频」固定资产库（gameAssetCatalog.VIDEO_CLIPS）里的一条
    * 演出片段 id。蓝图节点配置面板的「演出编号」下拉写它；运行时（试玩）按它取
    * 演出元数据并播放对应视频。缺省 = 该节点未指定演出（走自带 media / 黑场）。
@@ -1817,6 +1823,19 @@ export type ModuleId =
   /** 全局规则模块：HUD 元素显隐(ui.hud) + 状态效果(statuses)。 */
   | 'rules'
 
+/**
+ * 层级蓝图定义。节点仍复用 Scenario.scenes 的 Scene 结构，graph 只保存成员关系与入口，
+ * 避免出现第二套节点 schema。
+ */
+export interface ScenarioBlueprintGraph {
+  id: string
+  title: string
+  rootSceneId: string
+  sceneIds: string[]
+  /** 指向拥有 subFlowRef 的父 scene，供编辑器返回时恢复选中态。 */
+  parentSceneId?: string
+}
+
 export interface Scenario {
   id: string
   title: string
@@ -1824,6 +1843,8 @@ export interface Scenario {
   synopsis?: string
   rootSceneId: string
   scenes: Record<string, Scene>
+  /** 层级子蓝图注册表；顶层图 = scenes 中不属于任何子图的节点。 */
+  blueprintGraphs?: Record<string, ScenarioBlueprintGraph>
   /** 全局打字机默认速度（ms / 字符） */
   defaultCharMs: number
   /**

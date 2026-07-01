@@ -240,6 +240,8 @@ export interface GameVideoExtensionElements {
   entryGate?: BlueprintEntryGate
   /** call/return 子流程出口：运行时到此节点弹回调用它的 hotspot 所在节点。 */
   returnsToCaller?: boolean
+  /** 层级子蓝图引用：进入本节点时自动下钻到对应 graph 的 rootNodeId。 */
+  subFlowRef?: string
 }
 
 export type GameVideoBlueprintNode = BaseBlueprintNode<BlueprintElementType, GameVideoExtensionElements>
@@ -263,6 +265,15 @@ export interface GameVideoEdgeExtension {
 
 export type GameVideoBlueprintEdge = BaseBlueprintEdge<GameVideoEdgeExtension>
 
+export interface GameVideoBlueprintSubflowGraph {
+  id: string
+  title: string
+  rootNodeId: string
+  parentNodeId?: string
+  nodes: GameVideoBlueprintNode[]
+  edges: GameVideoBlueprintEdge[]
+}
+
 export const GAME_VIDEO_BLUEPRINT_SCHEMA_VERSION = 'wb-game-video.blueprint.v1' as const
 
 export type GameVideoBlueprintGraph = BaseBlueprintGraph<
@@ -270,4 +281,5 @@ export type GameVideoBlueprintGraph = BaseBlueprintGraph<
   GameVideoBlueprintEdge
 > & {
   schemaVersion: typeof GAME_VIDEO_BLUEPRINT_SCHEMA_VERSION
+  subflows?: Record<string, GameVideoBlueprintSubflowGraph>
 }

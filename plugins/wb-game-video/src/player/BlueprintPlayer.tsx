@@ -28,6 +28,8 @@ import type { RuntimeDirective } from '../blueprint/runtime/directives'
 import type {
   BlueprintBossRound,
   BlueprintDamagePoint,
+  GameVideoBlueprintGraph,
+  GameVideoBlueprintNode,
   BlueprintHotspot,
   BlueprintOption,
   BlueprintQte,
@@ -250,7 +252,7 @@ export function BlueprintPlayer(): JSX.Element {
   const hudVisible = clip?.hud && clip.hud !== 'hidden'
   const videoSrc =
     clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url) || DEFAULT_PLAYBACK_VIDEO_URL
-  const currentBpNode = graph?.nodes.find((n) => n.id === runtime.state.currentNodeId)
+  const currentBpNode = findBlueprintNode(graph, runtime.state.currentNodeId)
 
   return (
     <div className="bpx-root" tabIndex={0}>
@@ -484,6 +486,19 @@ function applyDirectives(prev: Snapshot, dirs: RuntimeDirective[]): Snapshot {
     }
   }
   return next
+}
+
+function findBlueprintNode(
+  graph: GameVideoBlueprintGraph | null,
+  nodeId: string | null,
+): GameVideoBlueprintNode | undefined {
+  if (!graph || !nodeId) return undefined
+  return (
+    graph.nodes.find((n) => n.id === nodeId) ??
+    Object.values(graph.subflows ?? {})
+      .flatMap((subflow) => subflow.nodes)
+      .find((n) => n.id === nodeId)
+  )
 }
 
 function injectStyles(): void {

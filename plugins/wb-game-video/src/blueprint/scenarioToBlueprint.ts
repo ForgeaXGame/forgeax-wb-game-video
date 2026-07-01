@@ -48,15 +48,38 @@ import {
 
 // ── 顶层入口 ───────────────────────────────────────────────────────────────
 
-export function scenarioToBlueprint(scenario: Scenario): GameVideoBlueprintGraph {
-  const scenes = orderedScenes(scenario)
+export function scenarioToBlueprint(scenario: Scenario, graphId?: string): GameVideoBlueprintGraph {
+  const subflows = compileSubflows(scenario)
+  const childSceneIds = subflowSceneIds(scenario)
+  const graphSpec = graphId ? scenario.blueprintGraphs?.[graphId] : undefined
+  const scenes = graphSpec
+    ? graphSpec.sceneIds
+        .map((id) => scenario.scenes[id])
+        .filter((scene): scene is Scene => !!scene)
+    : orderedScenes(scenario).filter((scene) => !childSceneIds.has(scene.id))
+  return buildGraph({
+    id: graphSpec?.id ?? scenario.id,
+    title: graphSpec?.title ?? scenario.title,
+    rootId: graphSpec?.rootSceneId ?? scenario.rootSceneId ?? scenes[0]?.id ?? '',
+    scenes,
+    subflows,
+  })
+}
+
+function buildGraph(args: {
+  id: string
+  title: string
+  rootId: string
+  scenes: Scene[]
+  subflows?: GameVideoBlueprintGraph['subflows']
+}): GameVideoBlueprintGraph {
+  const { id, title, rootId, scenes, subflows } = args
   const sceneIds = new Set(scenes.map((s) => s.id))
 
   const edges = buildEdges(scenes, sceneIds)
   const incomingByNode = collectFlow(edges, 'targetRef')
   const outgoingByNode = collectFlow(edges, 'sourceRef')
 
-  const rootId = scenario.rootSceneId || scenes[0]?.id || ''
   const nodes = scenes.map((scene) =>
     buildNode(scene, {
       isRoot: scene.id === rootId,
@@ -66,12 +89,48 @@ export function scenarioToBlueprint(scenario: Scenario): GameVideoBlueprintGraph
   )
 
   return {
-    id: scenario.id,
-    title: scenario.title,
+    id,
+    title,
     schemaVersion: GAME_VIDEO_BLUEPRINT_SCHEMA_VERSION,
     nodes,
     edges,
+    subflows,
   }
+}
+
+function compileSubflows(scenario: Scenario): GameVideoBlueprintGraph['subflows'] | undefined {
+  const specs = scenario.blueprintGraphs
+  if (!specs || Object.keys(specs).length === 0) return undefined
+
+  const out: NonNullable<GameVideoBlueprintGraph['subflows']> = {}
+  for (const spec of Object.values(specs)) {
+    const scenes = spec.sceneIds
+      .map((id) => scenario.scenes[id])
+      .filter((scene): scene is Scene => !!scene)
+    const graph = buildGraph({
+      id: spec.id,
+      title: spec.title,
+      rootId: spec.rootSceneId || scenes[0]?.id || '',
+      scenes,
+    })
+    out[spec.id] = {
+      id: spec.id,
+      title: spec.title,
+      rootNodeId: spec.rootSceneId,
+      parentNodeId: spec.parentSceneId,
+      nodes: graph.nodes,
+      edges: graph.edges,
+    }
+  }
+  return out
+}
+
+function subflowSceneIds(scenario: Scenario): Set<string> {
+  const out = new Set<string>()
+  for (const graph of Object.values(scenario.blueprintGraphs ?? {})) {
+    for (const id of graph.sceneIds) out.add(id)
+  }
+  return out
 }
 
 // ── edges ─────────────────────────────────────────────────────────────────
@@ -175,6 +234,7 @@ function buildNode(scene: Scene, ctx: NodeContext): GameVideoBlueprintNode {
 
 function elementTypeFor(scene: Scene, ctx: NodeContext): BlueprintElementType {
   if (ctx.isRoot) return 'start'
+  if (scene.subFlowRef) return 'subflow'
   if (ctx.outgoing.length === 0 && !scene.boss) return 'end'
   if (scene.kind === 'battle') return 'serviceTask'
   if (scene.kind === 'qte') return 'serviceTask'
@@ -211,6 +271,7 @@ function extensionFor(scene: Scene): GameVideoExtensionElements {
         }
       : undefined,
     returnsToCaller: scene.returnsToCaller || undefined,
+    subFlowRef: scene.subFlowRef || undefined,
   }
 }
 

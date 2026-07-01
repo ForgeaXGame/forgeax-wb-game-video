@@ -114,3 +114,54 @@ export function makeDemoScenario(): Scenario {
     },
   }
 }
+
+/** start → container(subflow) → after；container 自动进入 innerStart → innerEnd 后再走 after。 */
+export function makeSubflowScenario(): Scenario {
+  const scenes: Record<string, Scene> = {}
+  const add = (s: Scene): void => {
+    scenes[s.id] = s
+  }
+
+  add(
+    scene({
+      id: 'start',
+      title: '入口',
+      branches: [branch({ id: 'b-start', kind: 'auto', targetSceneId: 'container' })],
+    }),
+  )
+  add(
+    scene({
+      id: 'container',
+      title: '封装节点',
+      branches: [branch({ id: 'b-container', kind: 'auto', targetSceneId: 'after' })],
+      subFlowRef: 'g-inner',
+    } as unknown as Partial<Scene> & { id: string }),
+  )
+  add(scene({ id: 'after', title: '父图后续', branches: [] }))
+  add(
+    scene({
+      id: 'innerStart',
+      title: '子图入口',
+      branches: [branch({ id: 'b-inner', kind: 'auto', targetSceneId: 'innerEnd' })],
+    }),
+  )
+  add(scene({ id: 'innerEnd', title: '子图出口', branches: [] }))
+
+  return {
+    id: 'demo-subflow',
+    title: '子蓝图运行时 demo',
+    rootSceneId: 'start',
+    scenes,
+    defaultCharMs: 40,
+    schemaVersion: 9,
+    blueprintGraphs: {
+      'g-inner': {
+        id: 'g-inner',
+        title: '子图',
+        rootSceneId: 'innerStart',
+        sceneIds: ['innerStart', 'innerEnd'],
+        parentSceneId: 'container',
+      },
+    },
+  } as unknown as Scenario
+}
