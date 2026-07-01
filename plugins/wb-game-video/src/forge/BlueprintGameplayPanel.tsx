@@ -63,6 +63,13 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
     updateScene(selectedSceneId, { ext: Object.keys(nextExt).length > 0 ? nextExt : undefined })
   }
 
+  function setQteUi(qteUi: 'default' | 'battleParry'): void {
+    const nextExt: Record<string, unknown> = { ...(scene!.ext ?? {}) }
+    if (qteUi === 'default') delete nextExt.qteUi
+    else nextExt.qteUi = qteUi
+    updateScene(selectedSceneId, { ext: Object.keys(nextExt).length > 0 ? nextExt : undefined })
+  }
+
   return (
     <div className={`ks-bgp ks-kind-${kind}`} data-testid="bp-gameplay-panel">
       <div className="ks-bgp-head">
@@ -221,17 +228,27 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         </select>
 
         {scene.decision?.optType === 'timed_qte' ? (
-          <select
-            className="ks-bgp-input"
-            value={scene.decision.qteKind ?? 'timing'}
-            onChange={(e) => setDecision({ qteKind: e.target.value as QteKind })}
-          >
-            <option value="parry">防反 QTE</option>
-            <option value="timing">精准时点</option>
-            <option value="mash">快速连打</option>
-            <option value="sequence">方向序列</option>
-            <option value="sweep">摇杆划动</option>
-          </select>
+          <>
+            <select
+              className="ks-bgp-input"
+              value={scene.decision.qteKind ?? 'timing'}
+              onChange={(e) => setDecision({ qteKind: e.target.value as QteKind })}
+            >
+              <option value="parry">防反 QTE</option>
+              <option value="timing">精准时点</option>
+              <option value="mash">快速连打</option>
+              <option value="sequence">方向序列</option>
+              <option value="sweep">摇杆划动</option>
+            </select>
+            <select
+              className="ks-bgp-input"
+              value={scene.ext?.qteUi === 'battleParry' ? 'battleParry' : 'default'}
+              onChange={(e) => setQteUi(e.target.value as 'default' | 'battleParry')}
+            >
+              <option value="default">默认 QTE 按钮</option>
+              <option value="battleParry">战斗防反按键</option>
+            </select>
+          </>
         ) : scene.decision ? (
           <>
             <select
@@ -848,7 +865,7 @@ function HotspotsSection({
  * ext 里被一等区块占用的保留键 —— 扩展属性区会隐藏它们，避免和专门的编辑区
  * （如「视频生成」用 ext.video）重复编辑同一份数据。
  */
-const RESERVED_EXT_KEYS = ['video', 'choiceUi']
+const RESERVED_EXT_KEYS = ['video', 'choiceUi', 'qteUi']
 
 /** 节点级视频生成配置（落在 Scene.ext.video，借 seedance 字段精简而来）。 */
 interface VideoGenConfig {

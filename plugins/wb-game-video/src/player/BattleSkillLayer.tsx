@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Branch, Scene } from '../scenario/types'
 import { injectStyleOnce } from '../styles/injectStyle'
 import {
@@ -64,6 +64,23 @@ export function BattleSkillLayer({
     setPicked(branch.id)
     window.setTimeout(() => onPick(branch), 140)
   }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (picked) return
+      const key = e.key.toUpperCase()
+      const index = SKILL_KEYS.findIndex((k) => k === key)
+      if (index < 0) return
+      const skill = skills[index]
+      if (!skill) return
+      e.preventDefault()
+      pick(skill.branch, skill.locked)
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, skills])
 
   return (
     <div className="pvb-skills enter" aria-label="技能选择">

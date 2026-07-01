@@ -16,6 +16,13 @@ describe('BlueprintGameplayPanel presentation controls', () => {
   })
 
   it('hides choiceUi from the generic extension editor to avoid duplicate editing paths', () => {
-    expect(SOURCE).toContain("RESERVED_EXT_KEYS = ['video', 'choiceUi']")
+    expect(SOURCE).toContain("RESERVED_EXT_KEYS = ['video', 'choiceUi', 'qteUi']")
+  })
+
+  it('exposes battle parry as a first-class QTE UI control backed by ext.qteUi', () => {
+    expect(SOURCE).toContain('setQteUi')
+    expect(SOURCE).toContain('qteUi')
+    expect(SOURCE).toContain('battleParry')
+    expect(SOURCE).toContain('战斗防反按键')
   })
 })

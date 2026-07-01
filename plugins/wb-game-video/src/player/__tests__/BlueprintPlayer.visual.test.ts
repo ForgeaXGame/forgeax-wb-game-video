@@ -64,4 +64,25 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(skill).toContain('pvb-skills')
     expect(skill).toContain('pvb-skill')
   })
+
+  it('supports keyboard shortcuts for battle skill keys', () => {
+    const skill = source('BattleSkillLayer.tsx')
+    expect(skill).toContain('window.addEventListener')
+    expect(skill).toContain('SKILL_KEYS.findIndex')
+  })
+
+  it('routes parry QTE to the prototype A/B ink key presentation', () => {
+    const player = source('BlueprintPlayer.tsx')
+    const demo = readFileSync(
+      resolve(import.meta.dirname, '../../scenario/demoScenario.ts'),
+      'utf8',
+    )
+    const parry = source('BattleParryLayer.tsx')
+
+    expect(demo).toContain("qteUi: 'battleParry'")
+    expect(player).toContain('isBattleParryQte(scene)')
+    expect(player).toContain('<BattleParryLayer')
+    expect(parry).toContain('pvb-parry')
+    expect(parry).toContain('pvb-key-label')
+  })
 })

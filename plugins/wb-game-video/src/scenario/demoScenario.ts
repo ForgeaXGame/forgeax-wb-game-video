@@ -259,6 +259,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     kind: 'qte',
     durationMs: 4000,
     decision: { optType: 'timed_qte', qteKind: 'parry', timeoutMs: 2600, prompt: '防反 QTE' },
+    ext: { qteUi: 'battleParry' },
     background: '小怪压低重心、利爪后扬、双目锁定的起手蓄力，给予空藏可读的预警窗口；窗口内空藏做「防反」QTE 输入，按时机隐藏计算三档判定结果。',
     qte: {
       window: { perfect: 120, great: 260, good: 480 },

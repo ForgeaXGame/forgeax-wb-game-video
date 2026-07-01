@@ -40,6 +40,7 @@ import { DialogueBox } from './DialogueBox'
 import { TextOverlayLayer } from './TextOverlayLayer'
 import { ChoiceLayer } from './ChoiceLayer'
 import { BattleSkillLayer, isBattleSkillChoice } from './BattleSkillLayer'
+import { BattleParryLayer, isBattleParryQte } from './BattleParryLayer'
 import { HotspotLayer } from './hotspots/HotspotLayer'
 import { initEntities, type EntitiesState } from './entities'
 import { evaluateCondition } from './conditionEval'
@@ -531,7 +532,14 @@ export function BlueprintPlayer(): JSX.Element {
         )}
 
         {/* ── QTE / Boss / 结局：紧凑交互覆盖层 ── */}
-        {interaction.type === 'qte' && (
+        {scene && interaction.type === 'qte' && isBattleParryQte(scene) && (
+          <BattleParryLayer
+            qte={interaction.qte}
+            onResolve={(outcome) => dispatch(runtime.submitQteOutcome(outcome))}
+          />
+        )}
+
+        {(!scene || !isBattleParryQte(scene)) && interaction.type === 'qte' && (
           <div className="bpx-qte">
             {hasTieredQteOutcomes(interaction.qte) ? (
               <>
