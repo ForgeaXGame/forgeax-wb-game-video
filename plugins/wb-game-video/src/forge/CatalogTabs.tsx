@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
 import { injectStyleOnce } from '../styles/injectStyle'
+import { useScenarioStore } from '../scenario/scenarioStore'
+import { applyCombatRules, readCombatRules, type CombatRulesPatch } from '../scenario/combatRules'
 import {
   VIDEO_CLIPS,
   UI_SCHEMES,
@@ -192,6 +194,14 @@ export function UiCatalogTab() {
 
 export function RuleCatalogTab() {
   const [selectedId, setSelectedId] = useState<string>(GAME_RULES[0]?.id ?? '')
+  const scenario = useScenarioStore((s) => s.scenario)
+  const applyExternalScenario = useScenarioStore((s) => s.applyExternalScenario)
+  const rules = readCombatRules(scenario)
+
+  function patchRules(patch: CombatRulesPatch): void {
+    applyExternalScenario(applyCombatRules(scenario, patch))
+  }
+
   return (
     <CatalogShell<GameRule>
       icon="📜"
@@ -203,14 +213,8 @@ export function RuleCatalogTab() {
         rule ? (
           <div className="gc-stage">
             <div className="gc-rule-card">
-              <div className="gc-rule-head">{rule.label}</div>
-              <ul className="gc-rule-list">
-                {rule.lines.map((line, i) => (
-                  <li key={i} className="gc-rule-item">
-                    {line}
-                  </li>
-                ))}
-              </ul>
+              <div className="gc-rule-head">{rule.label} 属性</div>
+              <RuleEditor ruleId={rule.id} rules={rules} onPatch={patchRules} />
             </div>
           </div>
         ) : (
@@ -218,6 +222,117 @@ export function RuleCatalogTab() {
         )
       }
     />
+  )
+}
+
+function RuleEditor({
+  ruleId,
+  rules,
+  onPatch,
+}: {
+  ruleId: string
+  rules: ReturnType<typeof readCombatRules>
+  onPatch: (patch: CombatRulesPatch) => void
+}) {
+  switch (ruleId) {
+    case 'r-player':
+      return (
+        <div className="gc-rule-form">
+          <div className="gc-rule-section">基础属性</div>
+          <RuleSliderField label="生命值" value={rules.playerMaxHp} max={15000} onChange={(playerMaxHp) => onPatch({ playerMaxHp })} />
+          <RuleSliderField label="攻击力" value={rules.playerAttack} max={150} onChange={(playerAttack) => onPatch({ playerAttack })} />
+          <RuleSliderField label="防御力" value={rules.playerDefense} max={100} onChange={(playerDefense) => onPatch({ playerDefense })} />
+          <RuleSliderField label="暴击率" value={rules.playerCritRate} max={50} unit="%" onChange={(playerCritRate) => onPatch({ playerCritRate })} />
+          <RuleSliderField label="气力上限" value={rules.qiMax} max={5} onChange={(qiMax) => onPatch({ qiMax })} />
+          <div className="gc-rule-section">出手 / 先手</div>
+          <RuleSliderField label="出手速度" value={rules.playerSpeed} max={50} onChange={(playerSpeed) => onPatch({ playerSpeed })} />
+          <RuleSelectField label="先手判定" value="speed" options={['出手速度大者先手']} />
+          <RuleSelectField label="速度相等时" value="player" options={['空藏先手']} />
+        </div>
+      )
+    case 'r-enemy':
+      return (
+        <div className="gc-rule-form">
+          <div className="gc-rule-section">基础属性</div>
+          <RuleSliderField label="生命值" value={rules.bossMaxHp} max={15000} onChange={(bossMaxHp) => onPatch({ bossMaxHp })} />
+          <RuleSliderField label="攻击力" value={rules.bossAttack} max={150} onChange={(bossAttack) => onPatch({ bossAttack })} />
+          <RuleSliderField label="防御力" value={rules.bossDefense} max={100} onChange={(bossDefense) => onPatch({ bossDefense })} />
+          <RuleSliderField label="暴击率" value={rules.bossCritRate} max={50} unit="%" onChange={(bossCritRate) => onPatch({ bossCritRate })} />
+          <RuleSliderField label="进攻欲望" value={rules.bossAggression} max={1} step={0.1} onChange={(bossAggression) => onPatch({ bossAggression })} />
+          <div className="gc-rule-section">出手 / 先手</div>
+          <RuleSliderField label="出手速度" value={rules.bossSpeed} max={50} onChange={(bossSpeed) => onPatch({ bossSpeed })} />
+          <RuleSelectField label="先手判定" value="speed" options={['出手速度大者先手']} />
+        </div>
+      )
+    default:
+      return null
+  }
+}
+
+function RuleSliderField({
+  label,
+  value,
+  max,
+  step = 1,
+  unit,
+  onChange,
+}: {
+  label: string
+  value: number
+  max: number
+  step?: number
+  unit?: string
+  onChange: (value: number) => void
+}) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
+  return (
+    <label className="gc-paramrow gc-paramrow--slider">
+      <span className="gc-param-label">{label}</span>
+      <span className="gc-rule-slider">
+        <span className="gc-rule-slider-fill" style={{ width: `${pct}%` }} />
+        <span className="gc-rule-slider-knob" style={{ left: `${pct}%` }} />
+        <input
+          className="gc-rule-range"
+          type="range"
+          min={0}
+          max={max}
+          step={step}
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+        />
+      </span>
+      <input
+        className="gc-rule-value"
+        type="number"
+        step={step}
+        value={Number.isFinite(value) ? value : 0}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+      />
+      {unit && <span className="gc-rule-unit">{unit}</span>}
+    </label>
+  )
+}
+
+function RuleSelectField({
+  label,
+  value,
+  options,
+}: {
+  label: string
+  value: string
+  options: string[]
+}) {
+  return (
+    <label className="gc-paramrow gc-paramrow--select">
+      <span className="gc-param-label">{label}</span>
+      <select className="gc-rule-select" value={value} disabled>
+        {options.map((opt) => (
+          <option key={opt} value={value}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -371,6 +486,88 @@ const CATALOG_CSS = `
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .gc-rule-item:last-child { border-bottom: none; }
+.gc-rule-form {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0 8px;
+}
+.gc-rule-section {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.78);
+  padding: 12px 18px 6px;
+  letter-spacing: 0.03em;
+}
+.gc-paramrow {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  min-height: 24px;
+}
+.gc-paramrow:hover { background: rgba(255,255,255,0.03); }
+.gc-paramrow--select { grid-template-columns: 108px minmax(120px, 220px); }
+.gc-param-label {
+  font-size: 13px;
+  color: rgba(255,255,255,0.56);
+}
+.gc-rule-slider {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.1);
+}
+.gc-rule-slider-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #e86f20, #f08840);
+}
+.gc-rule-slider-knob {
+  position: absolute;
+  top: 50%;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(240,136,64,.95), 0 1px 4px rgba(0,0,0,.4);
+  pointer-events: none;
+}
+.gc-rule-range {
+  position: absolute;
+  inset: -8px 0;
+  width: 100%;
+  opacity: 0;
+  cursor: grab;
+}
+.gc-rule-value {
+  min-width: 54px;
+  width: 128px;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font: inherit;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.gc-rule-unit {
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+}
+.gc-rule-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #ddd;
+}
 
 .gc-empty {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;

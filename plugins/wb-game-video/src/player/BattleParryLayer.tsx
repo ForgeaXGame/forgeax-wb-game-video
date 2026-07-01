@@ -10,6 +10,12 @@ interface Props {
 
 type KeyState = 'idle' | 'armed' | 'hit' | 'miss'
 
+const PARRY_OPTIONS: Array<{ key: 'A' | 'B' | 'C'; outcome: QteOutcome }> = [
+  { key: 'A', outcome: 'pass' },
+  { key: 'B', outcome: 'good' },
+  { key: 'C', outcome: 'fail' },
+]
+
 export function isBattleParryQte(scene: Scene | undefined): boolean {
   return scene?.ext?.qteUi === 'battleParry'
 }
@@ -17,8 +23,7 @@ export function isBattleParryQte(scene: Scene | undefined): boolean {
 export function BattleParryLayer({ qte, onResolve }: Props) {
   injectStyleOnce('battle-parry-layer', PARRY_CSS)
   const resolvedRef = useRef(false)
-  const hitsRef = useRef(0)
-  const [keys, setKeys] = useState<[KeyState, KeyState]>(['armed', 'armed'])
+  const [keys, setKeys] = useState<KeyState[]>(PARRY_OPTIONS.map(() => 'armed'))
 
   function finish(outcome: QteOutcome): void {
     if (resolvedRef.current) return
@@ -26,39 +31,28 @@ export function BattleParryLayer({ qte, onResolve }: Props) {
     onResolve(outcome)
   }
 
-  function hit(index: 0 | 1): void {
+  function hit(index: number): void {
     if (resolvedRef.current) return
     setKeys((prev) => {
       if (prev[index] === 'hit') return prev
-      const next: [KeyState, KeyState] = [...prev] as [KeyState, KeyState]
+      const next = [...prev]
       next[index] = 'hit'
       return next
     })
-    hitsRef.current += 1
-    if (hitsRef.current >= 2) {
-      window.setTimeout(() => finish('pass'), 180)
-    }
+    window.setTimeout(() => finish(PARRY_OPTIONS[index]?.outcome ?? 'fail'), 180)
   }
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      if (hitsRef.current >= 2) finish('pass')
-      else if (hitsRef.current === 1) finish('good')
-      else {
-        setKeys(['miss', 'miss'])
-        window.setTimeout(() => finish('fail'), 180)
-      }
+      setKeys(PARRY_OPTIONS.map((option) => (option.outcome === 'fail' ? 'hit' : 'miss')))
+      window.setTimeout(() => finish('fail'), 180)
     }, qte.timeoutMs ?? 2600)
 
     function onKeyDown(e: KeyboardEvent): void {
-      const key = e.key.toLowerCase()
-      if (key === 'a') {
-        e.preventDefault()
-        hit(0)
-      } else if (key === 'b') {
-        e.preventDefault()
-        hit(1)
-      }
+      const index = PARRY_OPTIONS.findIndex((option) => option.key.toLowerCase() === e.key.toLowerCase())
+      if (index < 0) return
+      e.preventDefault()
+      hit(index)
     }
 
     window.addEventListener('keydown', onKeyDown, true)
@@ -73,8 +67,15 @@ export function BattleParryLayer({ qte, onResolve }: Props) {
     <div className="pvb-parry show" aria-label="防反 QTE">
       <div className="pvb-parry-tip">防反 QTE</div>
       <div className="pvb-parry-keys">
-        <ParryKey label="A" state={keys[0]} onPress={() => hit(0)} />
-        <ParryKey label="B" state={keys[1]} onPress={() => hit(1)} />
+        {PARRY_OPTIONS.map((option, index) => (
+          <ParryKey
+            key={option.key}
+            label={option.key}
+            text={qte.outcomeLabels?.[option.outcome]}
+            state={keys[index] ?? 'armed'}
+            onPress={() => hit(index)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -82,10 +83,12 @@ export function BattleParryLayer({ qte, onResolve }: Props) {
 
 function ParryKey({
   label,
+  text,
   state,
   onPress,
 }: {
-  label: 'A' | 'B'
+  label: 'A' | 'B' | 'C'
+  text?: string
   state: KeyState
   onPress: () => void
 }) {
@@ -98,6 +101,7 @@ function ParryKey({
     >
       <span className="pvb-key-ring" />
       <span className="pvb-key-label">{label}</span>
+      {text && <span className="pvb-key-text">{text}</span>}
       {state === 'hit' && <span className="pvb-key-spark" />}
     </button>
   )
@@ -106,7 +110,7 @@ function ParryKey({
 const PARRY_CSS = `
 .pvb-parry {
   position: absolute;
-  right: 20%;
+  right: 24%;
   top: 48%;
   transform: translateY(-50%);
   z-index: 46;
@@ -120,9 +124,10 @@ const PARRY_CSS = `
 }
 .pvb-parry.show { display: flex; }
 .pvb-parry-tip { display: none !important; }
-.pvb-parry-keys { position: relative; width: 158px; height: 158px; }
-.pvb-parry-keys .pvb-key:first-child { position: absolute; left: 0; bottom: 0; }
-.pvb-parry-keys .pvb-key:last-child { position: absolute; right: 0; top: 0; }
+.pvb-parry-keys { position: relative; width: 190px; height: 158px; }
+.pvb-parry-keys .pvb-key:nth-child(1) { position: absolute; left: 0; bottom: 0; }
+.pvb-parry-keys .pvb-key:nth-child(2) { position: absolute; left: 64px; top: 48px; }
+.pvb-parry-keys .pvb-key:nth-child(3) { position: absolute; right: 0; top: 0; }
 .pvb-key {
   position: relative;
   width: 62px; height: 62px;
@@ -148,8 +153,13 @@ const PARRY_CSS = `
   box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 2px 7px rgba(0,0,0,.6);
   transition: border-color .14s, background-color .14s;
 }
-.pvb-key.armed { opacity: 1; transform: scale(1.08); }
+.pvb-key.armed { opacity: 1; transform: scale(1); }
 .pvb-key.armed::before {
+  border-color: #ffd9a8;
+  box-shadow: 0 0 16px rgba(255,200,120,.5), 0 2px 6px rgba(0,0,0,.5) inset;
+}
+.pvb-key.sweet { transform: scale(1.08); }
+.pvb-key.sweet::before {
   border-color: #5fe08a;
   box-shadow: 0 0 20px rgba(95,224,138,.8), 0 2px 6px rgba(0,0,0,.5) inset;
 }
@@ -191,6 +201,18 @@ const PARRY_CSS = `
   color: #efe7d6;
   z-index: 2;
   text-shadow: 0 2px 6px rgba(0,0,0,.85);
+  pointer-events: none;
+}
+.pvb-key-text {
+  position: absolute;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(239,231,214,.9);
+  text-shadow: 0 2px 5px rgba(0,0,0,.9);
   pointer-events: none;
 }
 .pvb-key-ring {

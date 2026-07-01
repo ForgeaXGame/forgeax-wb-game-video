@@ -71,7 +71,7 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(skill).toContain('SKILL_KEYS.findIndex')
   })
 
-  it('routes parry QTE to the prototype A/B ink key presentation', () => {
+  it('routes parry QTE to the prototype A/B/C ink key presentation', () => {
     const player = source('BlueprintPlayer.tsx')
     const demo = readFileSync(
       resolve(import.meta.dirname, '../../scenario/demoScenario.ts'),
@@ -84,5 +84,10 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(player).toContain('<BattleParryLayer')
     expect(parry).toContain('pvb-parry')
     expect(parry).toContain('pvb-key-label')
+    expect(parry).toContain("PARRY_OPTIONS: Array<{ key: 'A' | 'B' | 'C'; outcome: QteOutcome }>")
+    expect(parry).toContain("outcome: 'fail'")
+    expect(parry).toContain('right: 24%;')
+    expect(parry).toContain('width: 190px')
+    expect(parry).toContain('width: 62px; height: 62px;')
   })
 })

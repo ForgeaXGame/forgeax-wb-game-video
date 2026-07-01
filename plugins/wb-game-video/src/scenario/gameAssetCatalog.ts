@@ -110,7 +110,7 @@ export interface GameRule {
 export const GAME_RULES: readonly GameRule[] = [
   {
     id: 'r-player',
-    label: '玩家',
+    label: '空藏',
     lines: [
       '生命值：1000（受击归零则进入失败演出）',
       '攻击力 80 · 防御力 40 · 暴击率 10%',
@@ -120,7 +120,7 @@ export const GAME_RULES: readonly GameRule[] = [
   },
   {
     id: 'r-enemy',
-    label: '敌人',
+    label: '小怪',
     lines: [
       '生命值：1200',
       '攻击力 75 · 防御力 50 · 暴击率 8%',

@@ -258,7 +258,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
   add(bpScene('tele', '攻击前摇', 'vd-wcc-qianyao', { x: 320, y: 1380 }, {
     kind: 'qte',
     durationMs: 4000,
-    decision: { optType: 'timed_qte', qteKind: 'parry', timeoutMs: 2600, prompt: '防反 QTE' },
+    decision: { optType: 'timed_qte', qteKind: 'parry', timeoutMs: 2600, prompt: '防反 QTE · 按 A/B/C 选择判定' },
     ext: { qteUi: 'battleParry' },
     background: '小怪压低重心、利爪后扬、双目锁定的起手蓄力，给予空藏可读的预警窗口；窗口内空藏做「防反」QTE 输入，按时机隐藏计算三档判定结果。',
     qte: {
@@ -325,8 +325,8 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },
     },
     entities: {
-      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 1000, initialHp: 1000 },
-      'ent-boss': { id: 'ent-boss', name: '小怪 · 无常豺', kind: 'boss', maxHp: 1200, initialHp: 1200 },
+      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 10000, initialHp: 10000 },
+      'ent-boss': { id: 'ent-boss', name: '小怪 · 无常豺', kind: 'boss', maxHp: 12000, initialHp: 12000 },
     },
     ui: {
       hud: [
@@ -337,6 +337,19 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     },
     characters: {},
     locations: {},
+    ext: {
+      combatRules: {
+        playerAttack: 80,
+        playerDefense: 40,
+        playerCritRate: 10,
+        playerSpeed: 30,
+        bossAttack: 75,
+        bossDefense: 50,
+        bossCritRate: 8,
+        bossAggression: 0.5,
+        bossSpeed: 25,
+      },
+    },
     scenes,
     blueprintGraphs: {
       'g-cb-my': {
