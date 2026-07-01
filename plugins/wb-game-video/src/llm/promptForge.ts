@@ -1,5 +1,17 @@
 import type { OrphanInfo } from '../scenario/reconnectOrphans'
-import type { Scene, Scenario } from '../scenario/types'
+import type { QTESpec, Scene, Scenario } from '../scenario/types'
+import type {
+  BossRound,
+  BossSpec,
+  DecisionSpec,
+  EntityKind,
+  EntitySpec,
+  Hotspot,
+  HotspotDetour,
+  PerformanceCue,
+  PerformanceSpec,
+  QteKind,
+} from '../scenario/gameplayTypes'
 import {
   buildReconnectPrompt,
   parseReconnectSuggestions,
@@ -1076,8 +1088,47 @@ function buildScenarioSchemaBlock(opts: SchemaBlockOptions): string {
   ]
 }
 
+【玩法字段（v9）· 仅"玩法优先视频游戏"才填；纯叙事/影片剧本一律省略以下全部】
+触发信号（作者想法里出现任一即视为玩法优先）：Boss / 血条 / HP / QTE 闯关 / 连段 /
+限时选择 / 暂停选择 / 可点画面热点 / 多回合战斗 / 打怪 / 闯关。命中信号时**必须**按下列
+形状补字段——否则蓝图编译不出玩法、试玩里只有"分支视频"没有真正可玩的战斗/QTE/选择。
+
+顶层追加（玩法优先必给）：
+"entities": [
+  { "id": "player", "name": "主角名", "kind": "player", "maxHp": 100 },
+  { "id": "boss_1", "name": "首领名", "kind": "boss",   "maxHp": 120 }
+]
+
+场景按需追加（不要每场都加；按该场玩法只挑相关的）：
+"kind": "story|battle|qte|choice",          // 场景类别；battle 必配 boss，choice 必配 branches[choice]
+"mediaPlayMode": "once|loop",               // loop=循环底片，边播边等 QTE/选择/结算
+"boss": {                                    // 仅 kind='battle'
+  "entityId": "boss_1", "playerEntityId": "player",
+  "rounds": [
+    { "id": "r1", "label": "格挡反击", "damageToBoss": 40, "damageToPlayer": 25,
+      "qte": { "window": {"perfect":80,"great":160,"good":280},
+               "score": {"perfect":100,"great":60,"good":25,"miss":-30},
+               "cues": [ { "id":"c1","shape":"tap","x":0.5,"y":0.55,"appearAt":1500,"targetAt":2300,"label":"斩" } ] } }
+  ],
+  "winSceneId": "<Boss 血尽跳转的真实 sceneId>", "loseSceneId": "<玩家血尽跳转的真实 sceneId>"
+},
+"decision": {                                // 限时/暂停选择（配合本场 branches[kind='choice']）
+  "optType": "timed", "timeoutMs": 3000, "prompt": "快做决定！", "defaultBranchId": "<超时默认走的 branch id>"
+},
+"hotspots": [                                // 可点画面热点（进支线 / 原地对话）
+  { "id": "hs1", "x": 0.5, "y": 0.4, "label": "查看", "targetSceneId": "<支线真实 sceneId>", "mode": "return" }
+],
+"performance": {                             // 结算轴：到点扣血 + 飘字
+  "cues": [ { "id": "pc1", "atMs": 1200, "damageToBoss": 30, "label": "命中！" } ]
+},
+"qte": { ...上面的 QTE 形态, "sequence": true, "timeoutMs": 4000 }  // 连段=按序命中；timeoutMs=整段限时
+
 【硬约束】
 - scenes 数 = ${opts.sceneCount}（±1）；characters 数 = ${opts.characterCount}（±1）
+- **玩法字段门控**：仅当作者想法命中上面的"玩法优先"信号时才填 entities/kind/boss/decision/hotspots/performance；
+  纯叙事/影片剧本**不要**加这些字段（保持纯影游、零回归）
+- **玩法优先剧本必须能玩**：至少 1 个 entities.player + 至少 1 场 kind='battle' 带 boss（含 ≥1 round）
+  或 kind='qte' 带 qte；boss.winSceneId/loseSceneId、hotspots.targetSceneId 必须指向**真实存在**的 sceneId
 - locations：覆盖所有**主要场所**（通常 2-5 个，上限 8）。每个 scene 尽量引用一个 locationId；同一地点不同时间算同一场所
 - props：**仅**列出"跨镜头反复出现 + 有身份识别度"的关键道具（信物/武器/徽章/关键文件）；0-6 件上限。普通桌椅门窗不要进
 - 必须有 1-2 个 QTE 关键场景 + 至少一次 choice 二选一 + 至少 2 种结局
@@ -1168,6 +1219,15 @@ function buildScriptSchemaBlock(): string {
       "appearAt": 1800, "targetAt": 2600, "label": "<原文动作动词>" }
   ]
 }
+
+【玩法字段（v9）· 仅原文显式描述了玩法才抽，不得脑补】
+若原文明确写了 Boss 战 / 血条·HP / QTE 闯关 / 限时·暂停选择 / 可点画面热点 等玩法，
+按下列形状抽出（与 idea 模式同形），让蓝图能编译出可玩玩法；原文没写就**全部省略**：
+- 顶层 "entities": [{ "id","name","kind":"player|boss|enemy|ally","maxHp" }]（原文点明的角色/Boss + 血量）
+- 场景 "kind":"story|battle|qte|choice"、"boss"{entityId,rounds[],winSceneId,loseSceneId}、
+  "decision"{optType,timeoutMs,defaultBranchId}、"hotspots"[{x,y,targetSceneId,mode}]、
+  "mediaPlayMode":"once|loop"、"performance"{cues:[{atMs,damageToBoss,label}]}
+- 跳转类字段（winSceneId/loseSceneId/targetSceneId）必须指向原文真实存在的场景
 
 【软约束 · 跟原文走】
 - scenes 数 = 原文章节数 / 自然分幕数（不强求 4-7 场，原文 12 场就给 12 场）
@@ -1260,6 +1320,14 @@ interface ParsedScene {
     targetSceneId?: string
     showAt?: number
   }[]
+  // ── 视频游戏「玩法优先」字段(v9) —— 松散类型，交给 normalizer 结构化 ──
+  kind?: string
+  mediaPlayMode?: string
+  returnsToCaller?: boolean
+  boss?: unknown
+  decision?: unknown
+  hotspots?: unknown
+  performance?: unknown
 }
 
 interface ParsedCharacterAppearanceVariant {
@@ -1301,6 +1369,9 @@ interface ParsedScenario {
   }[]
   rootSceneId?: string
   scenes?: ParsedScene[]
+  // ── 视频游戏「玩法优先」场景外注册表(v9) ──
+  entities?: unknown
+  modules?: Partial<Record<import('../scenario/types').ModuleId, boolean>>
 }
 
 function normalizeScenario(
@@ -1432,36 +1503,7 @@ function normalizeScenario(
             ? undefined
             : Math.max(0, Number(d.endMs) || 0),
       })),
-      qte: s.qte
-        ? {
-            window: {
-              perfect: s.qte.window?.perfect ?? 80,
-              great: s.qte.window?.great ?? 160,
-              good: s.qte.window?.good ?? 280,
-            },
-            score: {
-              perfect: s.qte.score?.perfect ?? 100,
-              great: s.qte.score?.great ?? 60,
-              good: s.qte.score?.good ?? 25,
-              miss: s.qte.score?.miss ?? -30,
-            },
-            passingScore: s.qte.passingScore,
-            cues: (s.qte.cues ?? []).map((c, i) => ({
-              id: c.id ?? `${sceneId}-q${i + 1}`,
-              shape:
-                c.shape === 'hold' || c.shape === 'sweep' ? c.shape : 'tap',
-              x: clamp01(c.x ?? 0.5),
-              y: clamp01(c.y ?? 0.5),
-              appearAt: Math.max(0, Number(c.appearAt) || 1500 + i * 1200),
-              targetAt: Math.max(
-                Math.max(0, Number(c.appearAt) || 1500 + i * 1200) + 500,
-                Number(c.targetAt) || 2300 + i * 1200,
-              ),
-              durationMs: c.durationMs,
-              label: c.label,
-            })),
-          }
-        : undefined,
+      qte: normalizeQte(s.qte, sceneId),
       branches: (s.branches ?? []).map((b, i) => ({
         id: b.id ?? `${sceneId}-b${i + 1}`,
         kind: normalizeBranchKind(b.kind),
@@ -1469,6 +1511,8 @@ function normalizeScenario(
         targetSceneId: b.targetSceneId ?? sceneId,
         showAt: b.showAt,
       })) as Scenario['scenes'][string]['branches'],
+      // 视频游戏「玩法优先」字段(v9)：仅在 LLM 明确给出时才挂，纯叙事零回归
+      ...normalizeSceneGameplay(s, sceneId),
     }
   }
 
@@ -1506,7 +1550,29 @@ function normalizeScenario(
       }
       return b
     })
+    // 玩法跳转目标悬空清理：Boss 胜负 / 热点子流程指到不存在的场景 → 丢弃该指针，
+    // 避免运行时跳到 undefined。热点若只剩 detour 仍保留。
+    if (s.boss) {
+      if (s.boss.winSceneId && !scenes[s.boss.winSceneId]) s.boss.winSceneId = undefined
+      if (s.boss.loseSceneId && !scenes[s.boss.loseSceneId]) s.boss.loseSceneId = undefined
+    }
+    if (s.hotspots) {
+      for (const h of s.hotspots) {
+        if (h.targetSceneId && !scenes[h.targetSceneId]) h.targetSceneId = undefined
+      }
+      s.hotspots = s.hotspots.filter((h) => h.targetSceneId || h.detour)
+      if (s.hotspots.length === 0) s.hotspots = undefined
+    }
   }
+
+  // 玩法实体注册表(v9)：有实体即认定为"玩法优先"剧本，顺手开 gameplay 模块。
+  const entities = normalizeEntities(data.entities)
+  const hasEntities = Object.keys(entities).length > 0
+  const hasGameplay =
+    hasEntities ||
+    Object.values(scenes).some(
+      (s) => (s.kind && s.kind !== 'story') || s.boss || s.hotspots || s.decision,
+    )
 
   return {
     id,
@@ -1521,12 +1587,229 @@ function normalizeScenario(
     props: Object.keys(props).length > 0 ? props : undefined,
     uiStyle: data.uiStyle?.prompt ? { prompt: data.uiStyle.prompt } : undefined,
     originIdea,
+    ...(hasEntities ? { entities } : {}),
+    ...(hasGameplay ? { modules: { ...(data.modules ?? {}), gameplay: true } } : {}),
   }
 }
 
 function normalizeBranchKind(k?: string): 'choice' | 'qte_pass' | 'qte_fail' | 'auto' {
   if (k === 'qte_pass' || k === 'qte_fail' || k === 'auto') return k
   return 'choice'
+}
+
+// ============================================================================
+// 视频游戏「玩法优先」字段归一化(v9) —— 让自动生成管线的产物带上可编译进蓝图的
+// typed 玩法字段。全部"仅在 LLM 明确给出时才产出"，纯叙事剧本零回归。
+//
+// 设计要点：normalizeScenario 逐字段重建 Scene / Scenario（不 spread 原对象），
+// 所以玩法字段必须在这里显式透传，否则编译进蓝图前就被丢掉——这正是"自动生成
+// 出不来玩法"的根因。这些 normalizer 是那道透传闸门。
+// ============================================================================
+
+/** QTE 归一化（scene.qte 与 boss round.qte 共用）；无 cue 视为无 QTE。 */
+function normalizeQte(raw: unknown, idPrefix: string): QTESpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const q = raw as Record<string, unknown>
+  const win = (q.window ?? {}) as Record<string, unknown>
+  const sc = (q.score ?? {}) as Record<string, unknown>
+  const cuesRaw = Array.isArray(q.cues) ? q.cues : []
+  const cues: QTESpec['cues'] = []
+  cuesRaw.forEach((raw2, i) => {
+    const c = (raw2 ?? {}) as Record<string, unknown>
+    const appearAt = Math.max(0, Number(c.appearAt) || 1500 + i * 1200)
+    cues.push({
+      id: typeof c.id === 'string' && c.id ? c.id : `${idPrefix}-q${i + 1}`,
+      shape: c.shape === 'hold' || c.shape === 'sweep' ? c.shape : 'tap',
+      x: clamp01(Number(c.x ?? 0.5)),
+      y: clamp01(Number(c.y ?? 0.5)),
+      appearAt,
+      targetAt: Math.max(appearAt + 500, Number(c.targetAt) || appearAt + 800),
+      durationMs: typeof c.durationMs === 'number' ? c.durationMs : undefined,
+      label: typeof c.label === 'string' ? c.label : undefined,
+    })
+  })
+  if (cues.length === 0) return undefined
+  return {
+    cues,
+    window: {
+      perfect: Number(win.perfect) || 80,
+      great: Number(win.great) || 160,
+      good: Number(win.good) || 280,
+    },
+    score: {
+      perfect: Number(sc.perfect) || 100,
+      great: Number(sc.great) || 60,
+      good: Number(sc.good) || 25,
+      miss: Number(sc.miss ?? -30),
+    },
+    passingScore: typeof q.passingScore === 'number' ? q.passingScore : undefined,
+    sequence: q.sequence === true ? true : undefined,
+    timeoutMs: typeof q.timeoutMs === 'number' ? q.timeoutMs : undefined,
+  }
+}
+
+function normalizeEntityKind(v: unknown): EntityKind {
+  return v === 'player' || v === 'boss' || v === 'enemy' || v === 'ally' ? v : 'enemy'
+}
+
+function normalizeEntities(raw: unknown): Record<string, EntitySpec> {
+  const out: Record<string, EntitySpec> = {}
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object'
+      ? Object.values(raw as Record<string, unknown>)
+      : []
+  for (const e of list) {
+    if (!e || typeof e !== 'object') continue
+    const r = e as Record<string, unknown>
+    const id = typeof r.id === 'string' ? r.id.trim() : ''
+    const name = typeof r.name === 'string' ? r.name.trim() : ''
+    if (!id || !name) continue
+    out[id] = {
+      id,
+      name,
+      kind: normalizeEntityKind(r.kind),
+      maxHp: Math.max(1, Math.round(Number(r.maxHp) || 100)),
+      ...(typeof r.initialHp === 'number' ? { initialHp: Math.max(0, Math.round(r.initialHp)) } : {}),
+      ...(typeof r.portraitMediaId === 'string' && r.portraitMediaId.trim()
+        ? { portraitMediaId: r.portraitMediaId.trim() }
+        : {}),
+      ...(typeof r.desc === 'string' && r.desc.trim() ? { desc: r.desc.trim() } : {}),
+    }
+  }
+  return out
+}
+
+function isQteKind(v: unknown): v is QteKind {
+  return (
+    v === 'parry' || v === 'timing' || v === 'mash' || v === 'sequence' || v === 'sweep'
+  )
+}
+
+function normalizeBoss(raw: unknown, sceneId: string): BossSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const entityId = typeof r.entityId === 'string' ? r.entityId.trim() : ''
+  if (!entityId) return undefined
+  const roundsRaw = Array.isArray(r.rounds) ? r.rounds : []
+  const rounds: BossRound[] = roundsRaw.map((raw2, i) => {
+    const rd = (raw2 ?? {}) as Record<string, unknown>
+    const rid = typeof rd.id === 'string' && rd.id ? rd.id : `${sceneId}-r${i + 1}`
+    const qte = normalizeQte(rd.qte, rid)
+    return {
+      id: rid,
+      ...(typeof rd.label === 'string' && rd.label.trim() ? { label: rd.label.trim() } : {}),
+      ...(typeof rd.damageToBoss === 'number' ? { damageToBoss: rd.damageToBoss } : {}),
+      ...(typeof rd.damageToPlayer === 'number' ? { damageToPlayer: rd.damageToPlayer } : {}),
+      ...(qte ? { qte } : {}),
+    }
+  })
+  return {
+    entityId,
+    ...(typeof r.playerEntityId === 'string' && r.playerEntityId.trim()
+      ? { playerEntityId: r.playerEntityId.trim() }
+      : {}),
+    rounds,
+    ...(typeof r.winSceneId === 'string' && r.winSceneId.trim() ? { winSceneId: r.winSceneId.trim() } : {}),
+    ...(typeof r.loseSceneId === 'string' && r.loseSceneId.trim() ? { loseSceneId: r.loseSceneId.trim() } : {}),
+    ...(typeof r.perfectFlagVarId === 'string' && r.perfectFlagVarId.trim()
+      ? { perfectFlagVarId: r.perfectFlagVarId.trim() }
+      : {}),
+  }
+}
+
+function normalizeDecision(raw: unknown): DecisionSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const out: DecisionSpec = {}
+  if (r.optType === 'static' || r.optType === 'timed' || r.optType === 'timed_qte') out.optType = r.optType
+  if (r.mode === 'pause' || r.mode === 'timed' || r.mode === 'wait') out.mode = r.mode
+  if (typeof r.atMs === 'number') out.atMs = Math.max(0, r.atMs)
+  if (typeof r.timeoutMs === 'number') out.timeoutMs = Math.max(0, r.timeoutMs)
+  if (typeof r.defaultBranchId === 'string' && r.defaultBranchId.trim()) out.defaultBranchId = r.defaultBranchId.trim()
+  if (typeof r.prompt === 'string' && r.prompt.trim()) out.prompt = r.prompt.trim()
+  if (r.fireAt === 'on_pick' || r.fireAt === 'video_end') out.fireAt = r.fireAt
+  if (r.presentation === 'list' || r.presentation === 'hotspot') out.presentation = r.presentation
+  if (isQteKind(r.qteKind)) out.qteKind = r.qteKind
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function normalizeDetour(raw: unknown): HotspotDetour | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const dialogue = Array.isArray(r.dialogue)
+    ? r.dialogue.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
+  if (dialogue.length === 0) return undefined
+  return {
+    ...(typeof r.speaker === 'string' && r.speaker.trim() ? { speaker: r.speaker.trim() } : {}),
+    dialogue,
+  }
+}
+
+function normalizeHotspots(raw: unknown, sceneId: string): Hotspot[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: Hotspot[] = []
+  raw.forEach((raw2, i) => {
+    if (!raw2 || typeof raw2 !== 'object') return
+    const h = raw2 as Record<string, unknown>
+    const targetSceneId =
+      typeof h.targetSceneId === 'string' && h.targetSceneId.trim() ? h.targetSceneId.trim() : undefined
+    const detour = normalizeDetour(h.detour)
+    if (!targetSceneId && !detour) return
+    out.push({
+      id: typeof h.id === 'string' && h.id ? h.id : `${sceneId}-hs${i + 1}`,
+      x: clamp01(Number(h.x ?? 0.5)),
+      y: clamp01(Number(h.y ?? 0.5)),
+      ...(typeof h.r === 'number' ? { r: clamp01(h.r) } : {}),
+      ...(typeof h.appearAt === 'number' ? { appearAt: Math.max(0, h.appearAt) } : {}),
+      ...(typeof h.endMs === 'number' ? { endMs: Math.max(0, h.endMs) } : {}),
+      ...(targetSceneId ? { targetSceneId } : {}),
+      ...(detour ? { detour } : {}),
+      ...(h.once === true ? { once: true } : {}),
+      ...(h.mode === 'goto' || h.mode === 'return' ? { mode: h.mode } : {}),
+      ...(typeof h.label === 'string' && h.label.trim() ? { label: h.label.trim() } : {}),
+    })
+  })
+  return out.length > 0 ? out : undefined
+}
+
+function normalizePerformance(raw: unknown, sceneId: string): PerformanceSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const cuesRaw = Array.isArray(r.cues) ? r.cues : []
+  const cues: PerformanceCue[] = []
+  cuesRaw.forEach((raw2, i) => {
+    if (!raw2 || typeof raw2 !== 'object') return
+    const c = raw2 as Record<string, unknown>
+    cues.push({
+      id: typeof c.id === 'string' && c.id ? c.id : `${sceneId}-pc${i + 1}`,
+      atMs: Math.max(0, Number(c.atMs) || i * 800),
+      ...(typeof c.damageToBoss === 'number' ? { damageToBoss: c.damageToBoss } : {}),
+      ...(typeof c.damageToPlayer === 'number' ? { damageToPlayer: c.damageToPlayer } : {}),
+      ...(typeof c.label === 'string' && c.label.trim() ? { label: c.label.trim() } : {}),
+    })
+  })
+  return cues.length > 0 ? { cues } : undefined
+}
+
+/** 收拢一个 scene 上所有 v9 玩法字段（仅产出已给出的），供 normalizeScenario 展开。 */
+function normalizeSceneGameplay(s: ParsedScene, sceneId: string): Partial<Scene> {
+  const out: Partial<Scene> = {}
+  if (s.kind === 'story' || s.kind === 'battle' || s.kind === 'qte' || s.kind === 'choice') {
+    out.kind = s.kind
+  }
+  if (s.mediaPlayMode === 'once' || s.mediaPlayMode === 'loop') out.mediaPlayMode = s.mediaPlayMode
+  const boss = normalizeBoss(s.boss, sceneId)
+  if (boss) out.boss = boss
+  const decision = normalizeDecision(s.decision)
+  if (decision) out.decision = decision
+  const hotspots = normalizeHotspots(s.hotspots, sceneId)
+  if (hotspots) out.hotspots = hotspots
+  const performance = normalizePerformance(s.performance, sceneId)
+  if (performance) out.performance = performance
+  if (s.returnsToCaller === true) out.returnsToCaller = true
+  return out
 }
 
 /**

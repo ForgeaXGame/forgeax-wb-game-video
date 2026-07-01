@@ -271,22 +271,45 @@ M4 剧本到手后，`gvid_import-from-narrative(milestone="screenplay")` 把剧
 
 视频游戏 = **玩法优先**。和路径 1「叙事优先（先文字后视频游戏化）」相反：这里**先把玩法结构骨架(蓝图)搭出来**，媒体先占位，再逐步填。蓝图与剧情树**共用同一份 Scenario**(SSOT)——只是侧重不同；游戏运行时、生图/生视频/资产链路全部复用，不另起一套。
 
-#### 玩法词汇表（v9 schema，落在同一个 Scenario）
+#### ⚠️ 蓝图 schema 契约（强制 · 生成时的硬约束）
 
-把作者的玩法点子映射到这些**可选字段**（缺省即纯影游，不破坏旧本）：
+> [!IMPORTANT]
+> 你产出的是 **`Scenario` JSON**，但它会被 `scenarioToBlueprint` **编译**成
+> `GameVideoBlueprintGraph`——那张蓝图是**蓝图编辑器渲染**与**试玩运行时执行**的
+> **唯一 SSOT**。因此：**一切可运行玩法必须用下表这组「能被编译进蓝图」的 typed 字段表达。**
+>
+> - **禁止**把可运行玩法塞进 `scene.ext` / `scenario.ext` / 自造字段：编译器不读它们 →
+>   蓝图里不出现 → 试玩跑不出来。`ext` 只承载**装饰性 / 尚未一等化**的作者维度（运行时不消费）。
+> - 需要新玩法维度时，**先在代码里一等化**（`blueprint-schema.ts` 的 `GameVideoExtensionElements`
+>   + `scenarioToBlueprint.ts` 的 `extensionFor` 补映射），再在 Scenario 里用——不要指望往 `ext` 里塞就能跑。
+> - 交付前必 `gvid_lint-scenario`：结构 error 往往就是「字段没进蓝图 / 引用悬空」。
 
-| 玩法概念 | Scenario / Scene 字段 |
+**字段集权威定义在代码**：`plugins/wb-game-video/src/blueprint/blueprint-schema.ts`（形态）
++ `.../blueprint/scenarioToBlueprint.ts`（哪些 Scenario 字段被编译进去）。下表是它的可读投影：
+
+| 玩法概念 | 编译进蓝图的 Scenario / Scene 字段 |
 |---|---|
-| 场景类别(状态机内层) | `scene.kind` = `story` / `battle` / `qte` / `choice` |
-| 玩家 / Boss / 敌方 | `scenario.entities`(EntitySpec: id/name/kind/maxHp/portraitMediaId) |
-| Boss 战 | `scene.kind='battle'` + `scene.boss`(BossSpec: entityId/rounds[]/win|loseSceneId/perfectFlagVarId) |
-| QTE 节拍 / 连段 / 限时 | `scene.qte`(已有) + 新增 `qte.sequence`(连段)、`qte.timeoutMs`(整段超时) |
-| 限时 / 暂停选择 | `scene.decision`(DecisionSpec: mode=`pause`/`timed`、timeoutMs、defaultBranchId) |
-| 可点热点(call/return) | `scene.hotspots`(Hotspot: x/y/r/targetSceneId/mode) + `scene.returnsToCaller` |
+| 场景类别(状态机内层) | `scene.kind` = `story` / `battle` / `qte` / `choice`（决定节点 elementType + HUD 兜底） |
+| 玩家 / Boss / 敌方 | `scenario.entities`(EntitySpec: id/name/kind/maxHp/portraitMediaId)——被 boss/条件引用 |
+| Boss 战 | `scene.kind='battle'` + `scene.boss`(BossSpec: entityId/playerEntityId/rounds[]/win\|loseSceneId/perfectFlagVarId) |
+| QTE 节拍 / 连段 / 限时 | `scene.qte`(cues/window/`sequence`连段/`timeoutMs`整段超时)；可由 `decision.qteKind` 指定类型 |
+| 限时 / 暂停选择 | `scene.decision`(DecisionSpec: mode=`pause`/`timed`、optType、atMs、timeoutMs、defaultBranchId、prompt) |
+| 可点热点(call/return/goto) | `scene.hotspots`(Hotspot: x/y/r/appearAt/target/mode/detour/condition) + `scene.returnsToCaller` |
+| Loop / 播放模式 | `scene.mediaPlayMode` = `once` / `loop`（loop = 循环底片，等 QTE/选择/结算推进） |
+| 演出编号(片段) | `scene.clipId`（选自「视频」库）；`scene.media.kind==='VIDEO'` 时 `media.ref` 作 mediaId |
+| HUD 方案 | `scene.hudPreset`（选自「界面」库 UI_SCHEMES；缺省按 kind 推 battle/qte/main/ending） |
+| 转场 | `scene.transition`({presetId,durationMs} → cut/fade/dip/crossfade) |
+| 结算飘字 / 伤害点 | `scene.performance.cues[]`(atMs/damageToBoss/damageToPlayer/label → 定时飘字+扣血) |
+| 进入即生效副作用 | `scene.onEnterEffects` / `scene.onEnterItemEffects` / `scene.setFlags`（onEnter） |
+| 进入门槛 | `scene.entryGate`(condition/onFail=`redirect`\|`block`/redirectSceneId/hint) |
+| 分支 / 结局 | `scene.branches[]`(kind=`choice`/`qte_pass`/`qte_fail`/`auto`、targetSceneId、condition、effects、showAt、gateMode) |
+| 数值/条件分支 | `branch.condition` 子句：`var`/`flag`/`visited`/`hasItem`/`hpRatio`/`score`/`status` |
 | 状态效果(HUD/条件) | `scenario.statuses`(StatusSpec) |
-| HUD/UI 配置 | `scenario.ui`(hud 规则 + accentColor) |
+| HUD/UI 全局配置 | `scenario.ui`(hud 规则 + accentColor) |
 | 玩法模块开关 | `scenario.modules.gameplay`(有 entities 即默认开) |
-| 数值/条件分支 | `branch.condition` 新增 `hpRatio` / `score` / `status` 子句 |
+
+> 不确定某维度是否「进得了蓝图」时：以 `scenarioToBlueprint.ts` 的 `extensionFor` 为准——
+> 它读到的字段才会跑，其余（含 `ext`）都不会。
 
 #### 标准节拍
 

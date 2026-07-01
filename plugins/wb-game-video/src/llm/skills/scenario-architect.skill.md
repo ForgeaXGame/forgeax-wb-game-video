@@ -118,6 +118,37 @@ NEVER:
 
 ---
 
+## Gameplay-first mode (视频游戏 · 玩法优先)
+
+有时作者要的不是"互动影片"，而是一部**玩法优先的视频游戏**——视频画面上叠 Boss 战 /
+血条 / QTE 闯关 / 限时·暂停选择 / 可点画面热点。**触发信号**（作者想法里出现任一）：
+Boss、血条 / HP、QTE 闯关、连段、限时选择、暂停选择、可点热点、多回合战斗、打怪、闯关。
+
+命中信号时，你**除了**上面的叙事骨架，还要按 caller schema 里【玩法字段(v9)】那一段补出
+**可编译进蓝图**的 typed 玩法字段——否则试玩里只有"分支视频"，没有真正可玩的战斗/QTE/选择：
+
+- 顶层 `entities`：至少 1 个 `kind:"player"` + 各 Boss（`maxHp` 决定血条长度）。
+- 战斗场 `kind:"battle"` + `boss`：给 2–4 个 `rounds`，每回合配一次 `qte` 和命中/失手的
+  `damageToBoss`/`damageToPlayer`；`winSceneId`/`loseSceneId` 指向真实结局场。血量要能在
+  回合数内打完（rounds×damageToBoss ≳ boss.maxHp），别让人永远打不死或一拍秒杀。
+- QTE 场 `kind:"qte"`：紧张桥段用 `qte.sequence`（连段）或 `qte.timeoutMs`（整段限时）。
+- 限时/暂停选择 `kind:"choice"` + `decision`（`optType:"timed"` + `timeoutMs` + `defaultBranchId`），
+  配合本场 `branches[kind:"choice"]`。
+- 可点热点 `hotspots`：进支线（`targetSceneId` + `mode:"return"`）或原地 `detour` 对话。
+- 结算飘字 `performance.cues`：到点扣血 + `label` 飘字，给战斗以打击感。
+
+**门控**：纯叙事/影片剧本**不要**加这些字段（保持纯影游、零回归）。玩法字段是"玩法优先"专用。
+
+<example name="rooftop-boss">
+Author idea: "雨夜屋顶，女剑客单挑持刀 Boss，三回合 QTE，血条见底进不同结局。"
+
+玩法骨架（填 schema 前的内部草稿）：
+- entities: player(HP100) + boss_blade(HP120)
+- s1 story loop 待机 → auto s2
+- s2 kind=battle + boss{rounds:[r1,r2,r3] 各带 tap QTE, damageToBoss 45}, win→s3a, lose→s3b
+- s3a 完美/惨胜结局；s3b 失败结局（两条都可看）
+</example>
+
 ## Output contract
 
 The caller will append a full JSON schema template to the user prompt. Follow it **strictly**:
@@ -142,5 +173,6 @@ Before you emit your answer, silently verify (do not write the checklist out):
 - [ ] 角色 prompt 至少包含: 年龄段 + 服饰 + 一处具体特征 (疤 / 配饰 / 残缺).
 - [ ] 至少有 2 个**不同**的 ending 场景.
 - [ ] 从 `rootSceneId` 出发, 每个场景都被某条 `branches` 指到.
+- [ ] （仅玩法优先剧本）有 entities.player + 至少一场 battle(带 boss 且 rounds≥1) 或 qte 场；boss/hotspot 的跳转 sceneId 真实存在.
 
 If any check fails, fix it silently and re-emit. **Never** explain the check to the user.

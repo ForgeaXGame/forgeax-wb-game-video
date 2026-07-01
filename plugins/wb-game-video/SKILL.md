@@ -29,6 +29,15 @@ Scenario
      └── ext?         通用扩展属性位 Record<string, unknown>（见下）
 ```
 
+> [!IMPORTANT]
+> **蓝图 schema 契约（强制）**：你写的是 `Scenario`，但它会被 `scenarioToBlueprint`
+> 编译成 `GameVideoBlueprintGraph`——那张蓝图是**蓝图编辑器渲染 + 试玩运行时执行的唯一 SSOT**。
+> 所以**可运行玩法必须用「能编译进蓝图」的 typed 字段**（`kind`/`boss`/`qte`/`decision`/
+> `hotspots`/`branches`/`clipId`/`mediaPlayMode`/`hudPreset`/`transition`/`performance`/
+> `onEnter*`/`entryGate`/`returnsToCaller` …）。塞进 `ext`/自造字段的玩法**编译器不读、运行时不跑**。
+> 完整字段映射见 Nodia persona（`plugins/agent-nodia/persona/zh.md` §蓝图 schema 契约）；
+> 代码级权威在 `src/blueprint/blueprint-schema.ts` + `src/blueprint/scenarioToBlueprint.ts`。
+
 - **编辑期** `mode='editor'`：作者拼装 100% 可序列化的 Scenario JSON。
 - **运行期** `mode='player'`：纯函数 `QTEEngine` 负责评分，UI 按 `elapsedMs` 推进，状态机驱动 Boss/血条/热点。
 - **媒体三态**：上传视频 · GPT-Image-2 占位图 · 静态图 · 渐变兜底。

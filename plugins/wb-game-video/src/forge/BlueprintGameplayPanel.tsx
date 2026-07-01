@@ -101,7 +101,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         </div>
         <div className="ks-bgp-field">
           <span className="ks-bgp-fk">视频类型</span>
-          <span className="ks-bgp-fv">{clip ? clip.type : '—'}</span>
+          <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
         </div>
         {clip && (
           <div className="ks-bgp-field">
@@ -126,7 +126,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         <div className="ks-bgp-field">
           <span className="ks-bgp-fk">演出时长</span>
           <span className="ks-bgp-fv">
-            {clip ? `${Math.round(clip.durMs / 1000)}s` : '—'}
+            {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
           </span>
         </div>
       </section>

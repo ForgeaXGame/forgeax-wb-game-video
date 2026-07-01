@@ -4,6 +4,14 @@ import { useShellStore, isPlayingSession, coerceTabbedForgeView } from './shell/
 import { TopBar } from './ui/TopBar'
 import { ReelSidebar } from './shell/ReelSidebar'
 import { Player } from './player/Player'
+import { BlueprintPlayer } from './player/BlueprintPlayer'
+
+/**
+ * 试玩运行时开关 —— true = cinegame 式蓝图状态机运行时（BlueprintPlayer）；
+ * false = 旧 Player（保留回退）。一行翻转即可切回。
+ */
+const USE_BLUEPRINT_RUNTIME = true
+const PlaySurface = USE_BLUEPRINT_RUNTIME ? BlueprintPlayer : Player
 import { ForgeTab } from './forge/ForgeTab'
 import { InspectorDrawer } from './shell/InspectorDrawer'
 import { ToastHost } from './ui/ToastHost'
@@ -674,7 +682,7 @@ export function App({ hostOptions }: { hostOptions?: AppHostOptions } = {}) {
     return (
       <div className="ks-app-root is-playing" data-surface="player">
         <main className="ks-app-body">
-          <Player />
+          <PlaySurface />
         </main>
         <ToastHost />
       </div>
@@ -706,7 +714,7 @@ export function App({ hostOptions }: { hostOptions?: AppHostOptions } = {}) {
         <>
           {pane !== 'center' && <TopBar />}
           <main className="ks-app-body">
-            {isPlaying ? <Player /> : <ForgeTab />}
+            {isPlaying ? <PlaySurface /> : <ForgeTab />}
           </main>
           <InspectorDrawer />
           <ToastHost />

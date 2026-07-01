@@ -1,0 +1,470 @@
+/**
+ * BlueprintRuntime —— 纯逻辑的「视频状态机」运行时引擎，对齐 cinegame runtime 的走法
+ * （进入节点 → 播放演出 → 按节点类型解算交互 → 求边/条件 → 进入下一节点），但产出
+ * 渲染无关的 RuntimeDirective[]，由 Player 驱动层消费。
+ *
+ * 必备要素（用户要求保留）：
+ *  - Loop：节点 mediaPlayMode='loop' → playClip.loop=true（边播边选 / 探索）。
+ *  - 转场：节点 transition → playClip.transition。
+ *  - QTE：节点 qte → openQte；submitQte 按命中数判 qte_pass/qte_fail 边。
+ *  - 状态机：节点 elementType + sceneKind 决定交互；出边 conditionExpression/结构化
+ *    condition 决定走向（数值/flag/hpRatio/score/status/visited/hasItem）。
+ *  - Boss：节点 boss → 回合制 openBossRound；命中扣 Boss 血、失手扣玩家血，胜负跳转。
+ *
+ * 流程是纯函数式状态推进：所有输入方法返回「本次新产生的指令」，便于单测与 React 消费。
+ */
+
+import {
+  applyEffects,
+  applyItemEffects,
+  evaluateCondition,
+  initVarState,
+  type EntityHpView,
+  type EvalContext,
+  type ItemState,
+  type VarState,
+} from '../../player/conditionEval'
+import type { Scenario } from '../../scenario/types'
+import type {
+  BlueprintBoss,
+  BlueprintDamagePoint,
+  GameVideoBlueprintEdge,
+  GameVideoBlueprintGraph,
+  GameVideoBlueprintNode,
+} from '../blueprint-schema'
+import type { RuntimeDirective } from './directives'
+
+export type RuntimePhase =
+  | 'idle'
+  | 'playing'
+  | 'awaitChoice'
+  | 'awaitQte'
+  | 'awaitBoss'
+  | 'awaitHotspot'
+  | 'victory'
+  | 'defeat'
+  | 'ended'
+
+export interface EntityRuntime {
+  hp: number
+  maxHp: number
+  kind: string
+  statusIds: string[]
+}
+
+export interface RuntimeState {
+  currentNodeId: string | null
+  phase: RuntimePhase
+  vars: VarState
+  items: ItemState
+  visited: Set<string>
+  score: number
+  entities: Record<string, EntityRuntime>
+  /** call/return 子流程返回栈（节点 id）。 */
+  callStack: string[]
+  bossRoundIndex: number
+  log: string[]
+}
+
+export class BlueprintRuntime {
+  private readonly nodes = new Map<string, GameVideoBlueprintNode>()
+  private readonly outgoing = new Map<string, GameVideoBlueprintEdge[]>()
+  readonly state: RuntimeState
+  private queue: RuntimeDirective[] = []
+
+  constructor(
+    private readonly graph: GameVideoBlueprintGraph,
+    private readonly scenario: Scenario,
+  ) {
+    for (const node of graph.nodes) this.nodes.set(node.id, node)
+    for (const edge of graph.edges) {
+      const list = this.outgoing.get(edge.sourceRef)
+      if (list) list.push(edge)
+      else this.outgoing.set(edge.sourceRef, [edge])
+    }
+    this.state = {
+      currentNodeId: null,
+      phase: 'idle',
+      vars: initVarState(scenario),
+      items: {},
+      visited: new Set<string>(),
+      score: 0,
+      entities: initEntities(scenario),
+      callStack: [],
+      bossRoundIndex: 0,
+      log: [],
+    }
+  }
+
+  // ── 公共驱动入口 ──────────────────────────────────────────────────────────
+
+  start(): RuntimeDirective[] {
+    const startNode =
+      this.graph.nodes.find((n) => n.elementType === 'start') ?? this.graph.nodes[0]
+    if (!startNode) {
+      this.state.phase = 'ended'
+      return this.drain()
+    }
+    this.enterNode(startNode.id)
+    return this.drain()
+  }
+
+  /** 当前节点演出片段播放结束（非 loop）。 */
+  onClipEnded(): RuntimeDirective[] {
+    if (this.state.phase === 'playing' || this.state.phase === 'awaitHotspot') {
+      this.advanceAuto()
+    }
+    return this.drain()
+  }
+
+  /** 玩家在选项里选了一项（key = BlueprintOption.key / Branch.id）。 */
+  chooseOption(optionKey: string): RuntimeDirective[] {
+    if (this.state.phase !== 'awaitChoice') return this.drain()
+    const node = this.currentNode()
+    if (!node) return this.drain()
+    const edge = (this.outgoing.get(node.id) ?? []).find(
+      (e) => e.extension?.branchId === optionKey,
+    )
+    if (edge) {
+      this.applyEdge(edge)
+      this.enterNode(edge.targetRef)
+    } else {
+      const opt = (node.extensionElements.options ?? []).find((o) => o.key === optionKey)
+      if (opt) this.enterNode(opt.target)
+    }
+    return this.drain()
+  }
+
+  /** 提交 QTE 命中数。 */
+  submitQte(hits: number): RuntimeDirective[] {
+    if (this.state.phase !== 'awaitQte') return this.drain()
+    const node = this.currentNode()
+    const qte = node?.extensionElements.qte
+    if (!node || !qte) return this.drain()
+    const need = qte.passingHits ?? qte.cueMs.length
+    const passed = hits >= Math.max(1, need)
+    this.state.score += hits * 100
+    this.log(passed ? `QTE 通过（命中 ${hits}）` : `QTE 失败（命中 ${hits}）`)
+    const wanted = passed ? 'qte_pass' : 'qte_fail'
+    const edge =
+      this.pickEdge(node, (e) => e.extension?.kind === wanted) ??
+      this.pickEdge(node, (e) => e.extension?.kind === 'auto' || !e.extension)
+    if (edge) {
+      this.applyEdge(edge)
+      this.enterNode(edge.targetRef)
+    } else {
+      this.advanceAuto()
+    }
+    return this.drain()
+  }
+
+  /** 提交 Boss 战一回合结果（hit = 命中：扣 Boss 血；否则扣玩家血）。 */
+  submitBossRound(hit: boolean): RuntimeDirective[] {
+    if (this.state.phase !== 'awaitBoss') return this.drain()
+    const node = this.currentNode()
+    const boss = node?.extensionElements.boss
+    if (!node || !boss) return this.drain()
+    const round = boss.rounds[this.state.bossRoundIndex]
+    if (!round) {
+      return this.finishBoss(node, boss, true)
+    }
+    if (hit) {
+      this.damage(boss.entityId, round.damageToBoss ?? 0)
+      this.log(`${round.label ?? '回合'} 命中，Boss -${round.damageToBoss ?? 0}`)
+    } else {
+      this.damage(boss.playerEntityId ?? this.firstOfKind('player'), round.damageToPlayer ?? 0)
+      this.log(`${round.label ?? '回合'} 失手，玩家 -${round.damageToPlayer ?? 0}`)
+    }
+    this.emit({ type: 'stateChanged' })
+
+    if (this.entityHp(boss.entityId) <= 0) return this.finishBoss(node, boss, true)
+    if (this.entityHp(boss.playerEntityId ?? this.firstOfKind('player')) <= 0) {
+      return this.finishBoss(node, boss, false)
+    }
+    this.state.bossRoundIndex += 1
+    if (this.state.bossRoundIndex < boss.rounds.length) {
+      this.openBossRound(node, boss)
+      return this.drain()
+    }
+    // 回合用尽且双方存活 —— 视为玩家挺过本场（胜）。
+    return this.finishBoss(node, boss, true)
+  }
+
+  /** 点击画面热点（call/return 子流程 / detour 原地对话）。 */
+  clickHotspot(hotspotId: string): RuntimeDirective[] {
+    if (this.state.phase !== 'awaitHotspot') return this.drain()
+    const node = this.currentNode()
+    const hs = node?.extensionElements.hotspots?.find((h) => h.id === hotspotId)
+    if (!node || !hs) return this.drain()
+    if (hs.detour) {
+      this.emit({ type: 'dialogue', speaker: hs.detour.speaker, lines: hs.detour.dialogue })
+      return this.drain()
+    }
+    if (hs.target && this.nodes.has(hs.target)) {
+      if (hs.mode !== 'goto') this.state.callStack.push(node.id)
+      this.enterNode(hs.target)
+    }
+    return this.drain()
+  }
+
+  /** 视频时间轴上的结算点到点（由驱动层按 clip 时间调度回调）。 */
+  applyDamagePoint(point: BlueprintDamagePoint): RuntimeDirective[] {
+    if (point.damageToBoss) this.damage(this.firstOfKind('boss'), point.damageToBoss)
+    if (point.damageToPlayer) this.damage(this.firstOfKind('player'), point.damageToPlayer)
+    if (point.damageToBoss || point.damageToPlayer) this.emit({ type: 'stateChanged' })
+    return this.drain()
+  }
+
+  // ── 内部：节点进入 / 自动推进 ──────────────────────────────────────────────
+
+  private enterNode(id: string): void {
+    const node = this.nodes.get(id)
+    if (!node) {
+      this.state.phase = 'ended'
+      return
+    }
+    this.state.currentNodeId = id
+    this.state.visited.add(id)
+    this.applyOnEnter(node)
+
+    const ext = node.extensionElements
+    this.emit({
+      type: 'playClip',
+      nodeId: id,
+      name: node.name,
+      clipId: ext.clipId,
+      mediaId: ext.mediaId,
+      loop: ext.mediaPlayMode === 'loop',
+      durationMs: ext.durationMs,
+      hud: ext.hud,
+      transition: ext.transition,
+      dmgPoints: ext.dmgPoints,
+    })
+
+    if (ext.boss) {
+      this.state.phase = 'awaitBoss'
+      this.state.bossRoundIndex = 0
+      this.openBossRound(node, ext.boss)
+      return
+    }
+    if (ext.qte) {
+      this.state.phase = 'awaitQte'
+      this.emit({ type: 'openQte', nodeId: id, qte: ext.qte })
+      return
+    }
+    const options = ext.options ?? []
+    if (options.length > 0) {
+      this.state.phase = 'awaitChoice'
+      this.emit({ type: 'openChoice', nodeId: id, options, decision: ext.decision })
+      return
+    }
+    if (ext.hotspots && ext.hotspots.length > 0) {
+      this.state.phase = 'awaitHotspot'
+      this.emit({ type: 'openHotspots', nodeId: id, hotspots: ext.hotspots })
+      return
+    }
+    if (node.elementType === 'end' || (this.outgoing.get(id) ?? []).length === 0) {
+      this.finishEnd(node)
+      return
+    }
+    this.state.phase = 'playing'
+  }
+
+  private advanceAuto(): void {
+    const node = this.currentNode()
+    if (!node) {
+      this.state.phase = 'ended'
+      return
+    }
+    if (node.extensionElements.returnsToCaller && this.state.callStack.length > 0) {
+      const back = this.state.callStack.pop()!
+      this.enterNode(back)
+      return
+    }
+    const edges = (this.outgoing.get(node.id) ?? []).filter(
+      (e) => e.extension?.kind !== 'choice' && e.extension?.kind !== 'qte_pass' && e.extension?.kind !== 'qte_fail',
+    )
+    const edge = edges.find((e) => this.edgeConditionPasses(e)) ?? edges[0]
+    if (edge) {
+      this.applyEdge(edge)
+      this.enterNode(edge.targetRef)
+      return
+    }
+    if (this.state.callStack.length > 0) {
+      const back = this.state.callStack.pop()!
+      this.enterNode(back)
+      return
+    }
+    this.finishEnd(node)
+  }
+
+  // ── 内部：Boss ────────────────────────────────────────────────────────────
+
+  private openBossRound(node: GameVideoBlueprintNode, boss: BlueprintBoss): void {
+    const round = boss.rounds[this.state.bossRoundIndex]
+    if (!round) {
+      this.finishBoss(node, boss, true)
+      return
+    }
+    this.emit({
+      type: 'openBossRound',
+      nodeId: node.id,
+      round,
+      roundIndex: this.state.bossRoundIndex,
+      totalRounds: boss.rounds.length,
+    })
+  }
+
+  private finishBoss(
+    node: GameVideoBlueprintNode,
+    boss: BlueprintBoss,
+    win: boolean,
+  ): RuntimeDirective[] {
+    this.log(win ? 'Boss 战胜利' : 'Boss 战失败')
+    if (win && boss.perfectFlagVarId) {
+      // 完美判定留给驱动层细化；此处仅在胜利时不写（避免误标）。
+    }
+    const target = win ? boss.winTarget : boss.loseTarget
+    if (target && this.nodes.has(target)) {
+      this.enterNode(target)
+    } else {
+      this.state.phase = win ? 'victory' : 'defeat'
+      this.emit({
+        type: 'banner',
+        kind: win ? 'victory' : 'defeat',
+        nodeId: node.id,
+        title: win ? '战斗胜利' : '战斗失败',
+      })
+    }
+    return this.drain()
+  }
+
+  // ── 内部：结局 / 副作用 / 条件 ─────────────────────────────────────────────
+
+  private finishEnd(node: GameVideoBlueprintNode): void {
+    this.state.phase = 'ended'
+    const ending = node.extensionElements.hud === 'ending'
+    this.emit({
+      type: 'banner',
+      kind: 'ending',
+      nodeId: node.id,
+      title: ending ? node.name || '结局' : node.name || '完',
+    })
+  }
+
+  private applyOnEnter(node: GameVideoBlueprintNode): void {
+    const onEnter = node.extensionElements.onEnter
+    if (!onEnter) return
+    let changed = false
+    if (onEnter.effects && onEnter.effects.length > 0) {
+      this.state.vars = applyEffects(onEnter.effects, this.state.vars, this.scenario)
+      changed = true
+    }
+    if (onEnter.itemEffects && onEnter.itemEffects.length > 0) {
+      this.state.items = applyItemEffects(onEnter.itemEffects, this.state.items)
+      changed = true
+    }
+    if (onEnter.setFlagVarIds && onEnter.setFlagVarIds.length > 0) {
+      for (const id of onEnter.setFlagVarIds) this.state.vars[id] = 1
+      changed = true
+    }
+    if (changed) this.emit({ type: 'stateChanged' })
+  }
+
+  private applyEdge(edge: GameVideoBlueprintEdge): void {
+    const ext = edge.extension
+    if (!ext) return
+    let changed = false
+    if (ext.effects && ext.effects.length > 0) {
+      this.state.vars = applyEffects(ext.effects, this.state.vars, this.scenario)
+      changed = true
+    }
+    if (ext.itemEffects && ext.itemEffects.length > 0) {
+      this.state.items = applyItemEffects(ext.itemEffects, this.state.items)
+      changed = true
+    }
+    if (changed) this.emit({ type: 'stateChanged' })
+  }
+
+  private edgeConditionPasses(edge: GameVideoBlueprintEdge): boolean {
+    return evaluateCondition(edge.extension?.condition, this.evalCtx())
+  }
+
+  private pickEdge(
+    node: GameVideoBlueprintNode,
+    predicate: (e: GameVideoBlueprintEdge) => boolean,
+  ): GameVideoBlueprintEdge | undefined {
+    return (this.outgoing.get(node.id) ?? []).find(
+      (e) => predicate(e) && this.edgeConditionPasses(e),
+    )
+  }
+
+  private evalCtx(): EvalContext {
+    const entities: Record<string, EntityHpView> = {}
+    for (const [id, e] of Object.entries(this.state.entities)) {
+      entities[id] = { hp: e.hp, maxHp: e.maxHp, statusIds: e.statusIds }
+    }
+    return {
+      vars: this.state.vars,
+      visitedSceneIds: this.state.visited,
+      ownedItems: this.state.items,
+      entities,
+      score: this.state.score,
+    }
+  }
+
+  // ── 内部：实体血量 ────────────────────────────────────────────────────────
+
+  private damage(entityId: string | undefined, amount: number): void {
+    if (!entityId || amount <= 0) return
+    const e = this.state.entities[entityId]
+    if (!e) return
+    e.hp = Math.max(0, e.hp - amount)
+  }
+
+  private entityHp(entityId: string | undefined): number {
+    if (!entityId) return 1
+    return this.state.entities[entityId]?.hp ?? 1
+  }
+
+  private firstOfKind(kind: string): string | undefined {
+    for (const [id, e] of Object.entries(this.state.entities)) {
+      if (e.kind === kind) return id
+    }
+    return undefined
+  }
+
+  // ── 内部：工具 ────────────────────────────────────────────────────────────
+
+  private currentNode(): GameVideoBlueprintNode | undefined {
+    return this.state.currentNodeId ? this.nodes.get(this.state.currentNodeId) : undefined
+  }
+
+  private log(message: string): void {
+    this.state.log = [...this.state.log.slice(-19), message]
+    this.emit({ type: 'log', message })
+  }
+
+  private emit(directive: RuntimeDirective): void {
+    this.queue.push(directive)
+  }
+
+  private drain(): RuntimeDirective[] {
+    const out = this.queue
+    this.queue = []
+    return out
+  }
+}
+
+function initEntities(scenario: Scenario): Record<string, EntityRuntime> {
+  const out: Record<string, EntityRuntime> = {}
+  for (const e of Object.values(scenario.entities ?? {})) {
+    out[e.id] = {
+      hp: e.initialHp ?? e.maxHp,
+      maxHp: e.maxHp,
+      kind: e.kind,
+      statusIds: [],
+    }
+  }
+  return out
+}

@@ -28,13 +28,17 @@ import {
   BPG_LEGEND,
   BPG_NODE_W,
   BPG_TYPE_ACCENTS,
-  resolveBpgType,
   type BpgTypeClass,
 } from '../editor/storygraph/blueprintGraphStyle'
 import { handleSceneNodeDragStop } from '../editor/storygraph/sceneNodeHandlers'
 import { computeStoryGraphLayout } from '../scenario/layout'
 import { injectStyleOnce } from '../styles/injectStyle'
-import type { BranchKind, Scene, Scenario } from '../scenario/types'
+import type { BranchKind, Scenario } from '../scenario/types'
+import { scenarioToBlueprint } from '../blueprint/scenarioToBlueprint'
+import type {
+  GameVideoBlueprintEdge,
+  GameVideoBlueprintNode,
+} from '../blueprint/blueprint-schema'
 
 /**
  * BlueprintTab —— 「蓝图」视图(玩法结构总览)。
@@ -89,48 +93,56 @@ function BlueprintInner() {
     [scenario],
   )
 
+  // 蓝图图（新 schema）是节点/连线的 SSOT —— 编辑器与试玩运行时走同一张图，
+  // 不再各自从 Scenario.branches 派生（消除「所见 ≠ 所跑」）。
+  const graph = useMemo(() => scenarioToBlueprint(scenario), [scenario])
+
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   useEffect(() => {
+    const outgoingByNode = new Map<string, GameVideoBlueprintEdge[]>()
+    for (const e of graph.edges) {
+      const list = outgoingByNode.get(e.sourceRef) ?? []
+      list.push(e)
+      outgoingByNode.set(e.sourceRef, list)
+    }
+
     const nextNodes: Node[] = []
-    for (const [id, scene] of Object.entries(scenario.scenes)) {
-      const rect = layout[id]
-      if (!scene || !rect) continue
+    for (const node of graph.nodes) {
+      const rect = layout[node.id]
+      if (!rect) continue
       nextNodes.push({
-        id,
+        id: node.id,
         type: 'bp',
         position: { x: rect.x, y: rect.y },
-        data: deriveNodeData(scene, scenario, id === activeId),
+        data: deriveNodeData(node, outgoingByNode.get(node.id) ?? [], scenario, node.id === activeId),
         draggable: true,
         selectable: true,
       })
     }
+
     const nextEdges: Edge[] = []
-    for (const [id, scene] of Object.entries(scenario.scenes)) {
-      if (!scene) continue
-      for (const b of scene.branches) {
-        if (!scenario.scenes[b.targetSceneId]) continue
-        if (!layout[id] || !layout[b.targetSceneId]) continue
-        nextEdges.push({
-          id: b.id,
-          source: id,
-          target: b.targetSceneId,
-          sourceHandle: b.id,
-          type: 'bpBranch',
-          animated: false,
-          data: {
-            kind: b.kind,
-            label: b.label,
-            hasCondition: !!b.condition,
-            effectCount: b.effects?.length ?? 0,
-          },
-        })
-      }
+    for (const e of graph.edges) {
+      if (!layout[e.sourceRef] || !layout[e.targetRef]) continue
+      nextEdges.push({
+        id: e.id,
+        source: e.sourceRef,
+        target: e.targetRef,
+        sourceHandle: e.id,
+        type: 'bpBranch',
+        animated: false,
+        data: {
+          kind: e.extension?.kind ?? 'auto',
+          label: e.name,
+          hasCondition: !!e.extension?.condition,
+          effectCount: e.extension?.effects?.length ?? 0,
+        },
+      })
     }
     setNodes(nextNodes)
     setEdges(nextEdges)
-  }, [scenario, layout, activeId, setNodes, setEdges])
+  }, [graph, layout, activeId, scenario, setNodes, setEdges])
 
   // 首批节点就绪 / 换剧本 / 切到蓝图视图 → 适配全景。
   //
@@ -242,56 +254,83 @@ function branchPinLabel(label: string | undefined, kind: BranchKind, index: numb
   return '输出'
 }
 
-function deriveNodeData(scene: Scene, scenario: Scenario, isSelected: boolean): BPNodeData {
-  const badges: BadgeSpec[] = []
-  const { typeClass, accent, kindLabel } = resolveBpgType(scene, scenario)
+/** 从蓝图节点派生画布视觉类别（对齐 resolveBpgType，但只读新 schema 字段）。 */
+function bpgTypeOfNode(
+  node: GameVideoBlueprintNode,
+): { typeClass: BpgTypeClass; accent: string; kindLabel: string } {
+  const ext = node.extensionElements
+  if (node.elementType === 'start') {
+    return { typeClass: 'root', accent: BPG_TYPE_ACCENTS.root, kindLabel: '起点' }
+  }
+  if (node.elementType === 'end' || ext.hud === 'ending') {
+    return { typeClass: 'end', accent: BPG_TYPE_ACCENTS.end, kindLabel: '结局' }
+  }
+  switch (ext.sceneKind) {
+    case 'choice':
+      return { typeClass: 'open', accent: BPG_TYPE_ACCENTS.open, kindLabel: '选择' }
+    case 'battle':
+      return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: 'Boss战' }
+    case 'qte':
+      return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: 'QTE' }
+    default:
+      return { typeClass: 'loop', accent: BPG_TYPE_ACCENTS.loop, kindLabel: '剧情' }
+  }
+}
 
-  if (scene.boss) {
-    const bossName = scenario.entities?.[scene.boss.entityId]?.name ?? 'Boss'
-    const rounds = scene.boss.rounds?.length ?? 0
+function deriveNodeData(
+  node: GameVideoBlueprintNode,
+  outgoing: GameVideoBlueprintEdge[],
+  scenario: Scenario,
+  isSelected: boolean,
+): BPNodeData {
+  const ext = node.extensionElements
+  const badges: BadgeSpec[] = []
+  const { typeClass, accent, kindLabel } = bpgTypeOfNode(node)
+
+  if (ext.boss) {
+    const bossName = scenario.entities?.[ext.boss.entityId]?.name ?? 'Boss'
+    const rounds = ext.boss.rounds?.length ?? 0
     badges.push({
       glyph: '☠',
       text: rounds > 0 ? `${bossName}·${rounds}回合` : bossName,
       tone: 'boss',
     })
   }
-  if (scene.qte) {
-    const n = scene.qte.cues?.length ?? 0
-    const extra = [scene.qte.sequence ? '连段' : '', scene.qte.timeoutMs ? '限时' : '']
+  if (ext.qte) {
+    const n = ext.qte.cueMs?.length ?? 0
+    const extra = [ext.qte.sequence ? '连段' : '', ext.qte.timeoutMs ? '限时' : '']
       .filter(Boolean)
       .join('·')
     badges.push({ glyph: '⏱', text: `QTE×${n}${extra ? `·${extra}` : ''}`, tone: 'qte' })
   }
-  if (scene.decision?.mode === 'timed') {
-    const sec = scene.decision.timeoutMs ? Math.round(scene.decision.timeoutMs / 1000) : null
+  if (ext.decision && (ext.decision.optType === 'timed' || ext.decision.optType === 'timed_qte')) {
+    const sec = ext.decision.timeoutMs ? Math.round(ext.decision.timeoutMs / 1000) : null
     badges.push({ glyph: '⏳', text: sec ? `限时${sec}s` : '限时选择', tone: 'timed' })
   }
-  if (scene.entryGate) {
+  if (ext.entryGate) {
     badges.push({ glyph: '🔒', text: '门槛', tone: 'gate' })
   }
-  if (scene.hotspots && scene.hotspots.length > 0) {
-    badges.push({ glyph: '⊕', text: `热点×${scene.hotspots.length}`, tone: 'hotspot' })
+  if (ext.hotspots && ext.hotspots.length > 0) {
+    badges.push({ glyph: '⊕', text: `热点×${ext.hotspots.length}`, tone: 'hotspot' })
   }
 
-  const branches: BranchPin[] = scene.branches
-    .filter((b) => scenario.scenes[b.targetSceneId])
-    .map((b, i) => ({
-      id: b.id,
-      label: branchPinLabel(b.label, b.kind, i),
-      hasCondition: !!b.condition,
-    }))
+  const branches: BranchPin[] = outgoing.map((e, i) => ({
+    id: e.id,
+    label: branchPinLabel(e.name, e.extension?.kind ?? 'auto', i),
+    hasCondition: !!e.extension?.condition,
+  }))
 
   return {
-    title: scene.title,
+    title: node.name,
     kindLabel,
     typeClass,
     accent,
-    isRoot: scene.id === scenario.rootSceneId,
-    isEnding: !!scene.isEnding,
+    isRoot: node.elementType === 'start',
+    isEnding: node.elementType === 'end' || ext.hud === 'ending',
     isSelected,
     badges,
     branches,
-    hasInput: scene.id !== scenario.rootSceneId,
+    hasInput: node.incoming.length > 0,
   }
 }
 

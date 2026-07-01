@@ -20,37 +20,42 @@ import type { HudPreset } from './gameplayTypes'
 /** 演出片段类型 —— 对齐原型 VIDEO_ASSETS.kind（loop / 演出 / 转场）。 */
 export type VideoClipType = 'loop' | '演出' | '转场'
 
-/** 一条内置演出视频（= 原型 VIDEO_ASSETS 的精简投影）。 */
+/** 一条内置演出视频。 */
 export interface VideoClip {
   /** 稳定 id（节点 clipId 引用它）。 */
   id: string
   /** 显示名（如「主角 · 轻攻击」）。 */
   label: string
-  /** 片段性质（loop / 演出 / 转场）—— 蓝图面板「视频类型」只读展示。 */
-  type: VideoClipType
-  /** 时长（ms）—— 蓝图面板「演出时长」只读展示。 */
-  durMs: number
+  /** 可播放的视频直链 —— 「视频」tab 预览与试玩运行时都直接播它。 */
+  url: string
+  /** 片段性质（loop / 演出 / 转场）—— 蓝图面板「视频类型」只读展示。可选。 */
+  type?: VideoClipType
+  /** 时长（ms）—— 蓝图面板「演出时长」只读展示。可选（未标注时由视频元数据自得）。 */
+  durMs?: number
 }
 
+const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resource/zhandou'
+
 /**
- * 内置演出视频库（t-video）—— 14 段，移植自原型 `VIDEO_ASSETS`（无常豺战斗片段）。
- * 顺序即原型左栏展示顺序；type / durMs 取自 VIDEO_ASSETS.kind / dur。
+ * 内置演出视频库（t-video）—— 战斗片段固定数据源。
+ * 顺序即「视频」tab 左栏展示顺序；每条自带可播放直链 url（节点 clipId 引用其 id）。
+ * type / durMs 暂不标注（先固定用这批直链，运行时由视频元数据自得时长）。
  */
 export const VIDEO_CLIPS: readonly VideoClip[] = [
-  { id: 'vd-wcc-idle', label: '双方 · 待机', type: 'loop', durMs: 8000 },
-  { id: 'vd-wcc-qianyao', label: '小怪 · 攻击前摇', type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-pugong', label: '主角 · 轻攻击', type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-pugong2', label: '主角 · 轻攻击·变招', type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-zhong', label: '主角 · 重攻击', type: '演出', durMs: 6000 },
-  { id: 'vd-wcc-zhong2', label: '主角 · 重攻击·变招', type: '演出', durMs: 6000 },
-  { id: 'vd-wcc-qinggong', label: '主角 · 轻攻致死', type: '演出', durMs: 7000 },
-  { id: 'vd-wcc-dazhao', label: '主角 · 灭世', type: '演出', durMs: 12000 },
-  { id: 'vd-wcc-fangfan', label: '主角 · 受击防反', type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-shanbi', label: '主角 · 受击闪避', type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-huiqi', label: '主角 · 冥想', type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-shouji', label: '主角 · 受击', type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-shengli', label: '主角 · 胜利', type: '演出', durMs: 10000 },
-  { id: 'vd-wcc-shibai', label: '主角 · 失败', type: '演出', durMs: 6000 },
+  { id: 'idle01', label: '双方 · 待机', url: `${CLIP_BASE}/idle01.mp4` },
+  { id: 'difanggongjiqianyao', label: '小怪 · 攻击前摇', url: `${CLIP_BASE}/difanggongjiqianyao.mp4` },
+  { id: 'pugong', label: '主角 · 轻攻击', url: `${CLIP_BASE}/pugong.mp4` },
+  { id: 'pugong2', label: '主角 · 轻攻击·变招', url: `${CLIP_BASE}/pugong2.mp4` },
+  { id: 'zhonggongji', label: '主角 · 重攻击', url: `${CLIP_BASE}/zhonggongji.mp4` },
+  { id: 'zhonggongji2', label: '主角 · 重攻击·变招', url: `${CLIP_BASE}/zhonggongji2.mp4` },
+  { id: 'qinggongjizhisi', label: '主角 · 轻攻致死', url: `${CLIP_BASE}/qinggongjizhisi.mp4` },
+  { id: 'dazhao', label: '主角 · 灭世', url: `${CLIP_BASE}/dazhao.mp4` },
+  { id: 'fangfan', label: '主角 · 受击防反', url: `${CLIP_BASE}/fangfan.mp4` },
+  { id: 'shanbi', label: '主角 · 受击闪避', url: `${CLIP_BASE}/shanbi.mp4` },
+  { id: 'huiqi', label: '主角 · 冥想', url: `${CLIP_BASE}/huiqi.mp4` },
+  { id: 'shouji', label: '主角 · 受击', url: `${CLIP_BASE}/shouji.mp4` },
+  { id: 'shengli', label: '主角 · 胜利', url: `${CLIP_BASE}/shengli.mp4` },
+  { id: 'shibai', label: '主角 · 失败', url: `${CLIP_BASE}/shibai.mp4` },
 ]
 
 /** 一套 HUD 界面方案。id 与 HudPreset 对齐，运行时直接当 hudPreset 用。 */

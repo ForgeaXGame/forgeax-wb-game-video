@@ -15,6 +15,7 @@
 
 ## 风格
 
+- **蓝图 schema 契约（强制）**：产出的 `Scenario` 必须能编译进 `GameVideoBlueprintGraph`（蓝图编辑器渲染 + 试玩运行时执行的唯一 SSOT）——可运行玩法一律用 typed 字段，不塞 `ext`。完整规则见 `persona/zh.md` §蓝图 schema 契约。
 - **先骨架后血肉**：先排场景顺序 + 分支跳转（30 行 Scenario 草稿），再填台词与媒体。
 - **媒体三态按需选**：视频 (Seedance) / GPT-Image 占位 / 静态图，不一律上视频（贵且慢）。
 - **QTE 是节奏药不是惩罚**；分支不爆炸（单场 ≤4 选项，总 endings 3-7）。

@@ -96,31 +96,42 @@ export function VideoCatalogTab() {
       renderPreview={(clip) =>
         clip ? (
           <div className="gc-stage">
-            <div className="gc-frame" data-type={clip.type}>
+            <div className="gc-frame" data-type={clip.type ?? 'video'}>
               <span className="gc-badge">
-                {clip.label} <em>{clip.type}</em>
+                {clip.label}
+                {clip.type ? <em>{clip.type}</em> : null}
               </span>
-              <div className="gc-frame-center">
-                <span className="gc-play-glyph" aria-hidden>
-                  ▶
-                </span>
-                <span className="gc-frame-hint">
-                  {clip.type === 'loop' ? '循环播放中…' : '演出播放中…'}
-                </span>
-              </div>
+              <video
+                key={clip.id}
+                className="gc-video"
+                src={clip.url}
+                controls
+                autoPlay
+                muted
+                playsInline
+                loop={clip.type === 'loop'}
+              />
             </div>
             <div className="gc-meta">
-              <span className="gc-meta-cell">
-                <span className="gc-meta-k">类型</span>
-                <span className="gc-meta-v">{clip.type}</span>
-              </span>
-              <span className="gc-meta-cell">
-                <span className="gc-meta-k">时长</span>
-                <span className="gc-meta-v">{fmtDur(clip.durMs)}</span>
-              </span>
+              {clip.type ? (
+                <span className="gc-meta-cell">
+                  <span className="gc-meta-k">类型</span>
+                  <span className="gc-meta-v">{clip.type}</span>
+                </span>
+              ) : null}
+              {typeof clip.durMs === 'number' ? (
+                <span className="gc-meta-cell">
+                  <span className="gc-meta-k">时长</span>
+                  <span className="gc-meta-v">{fmtDur(clip.durMs)}</span>
+                </span>
+              ) : null}
               <span className="gc-meta-cell">
                 <span className="gc-meta-k">编号</span>
                 <span className="gc-meta-v gc-mono">{clip.id}</span>
+              </span>
+              <span className="gc-meta-cell gc-meta-cell--wide">
+                <span className="gc-meta-k">直链</span>
+                <span className="gc-meta-v gc-mono">{clip.url}</span>
               </span>
             </div>
           </div>
@@ -304,6 +315,7 @@ const CATALOG_CSS = `
   border: 1px solid rgba(224,121,95,0.6);
 }
 .gc-badge em { font-style: normal; font-weight: 700; color: #cfd6dd; opacity: 0.85; }
+.gc-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .gc-frame-center { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .gc-play-glyph {
   width: 64px; height: 64px; border-radius: 50%;
