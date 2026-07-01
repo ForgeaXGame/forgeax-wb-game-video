@@ -69,6 +69,18 @@ describe('scenarioToBlueprint', () => {
     expect(pass?.extension?.kind).toBe('qte_pass')
   })
 
+  test('drops unfinished hotspots without target or detour from runtime blueprint', () => {
+    const scenario = makeDemoScenario()
+    scenario.scenes.start!.hotspots = [
+      { id: 'hs-empty', x: 0.5, y: 0.5, mode: 'return' },
+      { id: 'hs-detour', x: 0.4, y: 0.4, detour: { dialogue: ['看一眼'] } },
+    ]
+
+    const graph = scenarioToBlueprint(scenario)
+    const start = graph.nodes.find((n) => n.id === 'start')
+    expect(start?.extensionElements.hotspots?.map((h) => h.id)).toEqual(['hs-detour'])
+  })
+
   test('compiles nested subflow graphs without flattening child nodes into the parent view', () => {
     const graph = scenarioToBlueprint(makeSubflowScenario())
 

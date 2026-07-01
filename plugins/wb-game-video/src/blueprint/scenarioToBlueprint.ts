@@ -245,6 +245,7 @@ function elementTypeFor(scene: Scene, ctx: NodeContext): BlueprintElementType {
 }
 
 function extensionFor(scene: Scene): GameVideoExtensionElements {
+  const hotspots = scene.hotspots ? compileHotspots(scene.hotspots) : undefined
   return {
     clipId: scene.clipId,
     mediaId: mediaIdOf(scene),
@@ -259,7 +260,7 @@ function extensionFor(scene: Scene): GameVideoExtensionElements {
     qte: scene.qte ? compileQte(scene.qte, scene.decision) : undefined,
     boss: scene.boss ? compileBoss(scene.boss) : undefined,
     decision: scene.decision ? compileDecision(scene.decision) : undefined,
-    hotspots: scene.hotspots && scene.hotspots.length > 0 ? compileHotspots(scene.hotspots) : undefined,
+    hotspots: hotspots && hotspots.length > 0 ? hotspots : undefined,
     transition: scene.transition ? compileTransition(scene.transition) : undefined,
     onEnter: onEnterOf(scene),
     entryGate: scene.entryGate
@@ -395,20 +396,26 @@ function compileDecision(decision: DecisionSpec): BlueprintDecision {
 }
 
 function compileHotspots(hotspots: Hotspot[]): BlueprintHotspot[] {
-  return hotspots.map((hs) => ({
-    id: hs.id,
-    x: hs.x,
-    y: hs.y,
-    r: hs.r,
-    appearAtMs: hs.appearAt,
-    endMs: hs.endMs,
-    target: hs.targetSceneId,
-    detour: hs.detour ? { speaker: hs.detour.speaker, dialogue: hs.detour.dialogue } : undefined,
-    once: hs.once,
-    mode: hs.mode,
-    label: hs.label,
-    conditionExpression: hs.condition ? conditionExpression(hs.condition) : undefined,
-  }))
+  return hotspots
+    .filter((hs) => {
+      const hasTarget = !!hs.targetSceneId
+      const hasDetour = (hs.detour?.dialogue.length ?? 0) > 0
+      return hasTarget || hasDetour
+    })
+    .map((hs) => ({
+      id: hs.id,
+      x: hs.x,
+      y: hs.y,
+      r: hs.r,
+      appearAtMs: hs.appearAt,
+      endMs: hs.endMs,
+      target: hs.targetSceneId,
+      detour: hs.detour ? { speaker: hs.detour.speaker, dialogue: hs.detour.dialogue } : undefined,
+      once: hs.once,
+      mode: hs.mode,
+      label: hs.label,
+      conditionExpression: hs.condition ? conditionExpression(hs.condition) : undefined,
+    }))
 }
 
 function compileTransition(t: { presetId: string; durationMs: number }): BlueprintTransition {
