@@ -90,72 +90,73 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         )}
       </div>
 
-      {/* 演出 —— 对齐原型「演出」组：演出编号取自「视频」固定库 */}
-      <section className="ks-bgp-sec">
-        <label className="ks-bgp-lbl">演出</label>
-        <div className="ks-bgp-field">
-          <span className="ks-bgp-fk">演出编号</span>
-          <select
-            className="ks-bgp-input"
-            value={scene.clipId ?? ''}
-            onChange={(e) =>
-              updateScene(selectedSceneId, { clipId: e.target.value || undefined })
-            }
-          >
-            <option value="">无</option>
-            {VIDEO_CLIPS.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-            {scene.clipId && !getVideoClip(scene.clipId) && (
-              <option value={scene.clipId}>{scene.clipId}（自定义）</option>
-            )}
-          </select>
-        </div>
-        <div className="ks-bgp-field">
-          <span className="ks-bgp-fk">视频类型</span>
-          <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
-        </div>
-        {clip && (
+      <div className="ks-bgp-content">
+        {/* 演出 —— 对齐原型「演出」组：演出编号取自「视频」固定库 */}
+        <section className="ks-bgp-sec">
+          <label className="ks-bgp-lbl">演出</label>
           <div className="ks-bgp-field">
-            <span className="ks-bgp-fk">演出方式</span>
+            <span className="ks-bgp-fk">演出编号</span>
             <select
               className="ks-bgp-input"
-              value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
+              value={scene.clipId ?? ''}
               onChange={(e) =>
-                updateScene(selectedSceneId, {
-                  mediaPlayMode:
-                    (e.target.value as MediaPlayMode) === 'once'
-                      ? undefined
-                      : (e.target.value as MediaPlayMode),
-                })
+                updateScene(selectedSceneId, { clipId: e.target.value || undefined })
               }
             >
-              <option value="once">单次</option>
-              <option value="loop">循环</option>
+              <option value="">无</option>
+              {VIDEO_CLIPS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+              {scene.clipId && !getVideoClip(scene.clipId) && (
+                <option value={scene.clipId}>{scene.clipId}（自定义）</option>
+              )}
             </select>
           </div>
-        )}
-        <div className="ks-bgp-field">
-          <span className="ks-bgp-fk">演出时长</span>
-          <span className="ks-bgp-fv">
-            {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
-          </span>
-        </div>
-      </section>
+          <div className="ks-bgp-field">
+            <span className="ks-bgp-fk">视频类型</span>
+            <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
+          </div>
+          {clip && (
+            <div className="ks-bgp-field">
+              <span className="ks-bgp-fk">演出方式</span>
+              <select
+                className="ks-bgp-input"
+                value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
+                onChange={(e) =>
+                  updateScene(selectedSceneId, {
+                    mediaPlayMode:
+                      (e.target.value as MediaPlayMode) === 'once'
+                        ? undefined
+                        : (e.target.value as MediaPlayMode),
+                  })
+                }
+              >
+                <option value="once">单次</option>
+                <option value="loop">循环</option>
+              </select>
+            </div>
+          )}
+          <div className="ks-bgp-field">
+            <span className="ks-bgp-fk">演出时长</span>
+            <span className="ks-bgp-fv">
+              {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
+            </span>
+          </div>
+        </section>
 
-      <PerformanceSection
-        cues={scene.performance?.cues ?? []}
-        onChange={(cues) =>
-          updateScene(selectedSceneId, {
-            performance: cues.length ? { cues } : undefined,
-          })
-        }
-      />
+        <PerformanceSection
+          cues={scene.performance?.cues ?? []}
+          onChange={(cues) =>
+            updateScene(selectedSceneId, {
+              performance: cues.length ? { cues } : undefined,
+            })
+          }
+        />
 
-      {/* 界面 —— HUD 方案取自左栏「界面」固定库（UI_SCHEMES），二者同源 */}
-      <section className="ks-bgp-sec">
+        {/* 界面 —— HUD 方案取自左栏「界面」固定库（UI_SCHEMES），二者同源 */}
+        <section className="ks-bgp-sec">
         <label className="ks-bgp-lbl">界面</label>
         <div className="ks-bgp-field">
           <span className="ks-bgp-fk">HUD 方案</span>
@@ -584,10 +585,11 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
       />
 
       {/* 扩展属性（按规则自定义，不写死 schema） */}
-      <ExtAttrsSection
-        ext={scene.ext}
-        onChange={(next) => updateScene(selectedSceneId, { ext: next })}
-      />
+        <ExtAttrsSection
+          ext={scene.ext}
+          onChange={(next) => updateScene(selectedSceneId, { ext: next })}
+        />
+      </div>
     </div>
   )
 }
@@ -1196,9 +1198,9 @@ const PANEL_CSS = `
   top: 12px; right: 12px; bottom: 12px;
   width: 300px;
   z-index: 12;
-  display: flex; flex-direction: column; gap: 14px;
-  padding: 16px;
-  overflow-y: auto;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   background: rgba(12, 14, 22, 0.92);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.1);
@@ -1219,6 +1221,17 @@ const PANEL_CSS = `
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
+  padding: 16px 16px 12px;
+}
+.ks-bgp-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 16px 16px;
+  overflow-y: auto;
 }
 .ks-bgp-head-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .ks-bgp-collapse {

@@ -143,6 +143,7 @@ function BlueprintInner() {
     const nextEdges: Edge[] = []
     for (const e of graph.edges) {
       if (!layout[e.sourceRef] || !layout[e.targetRef]) continue
+      const loopback = isLoopbackEdge(e, layout)
       nextEdges.push({
         id: e.id,
         source: e.sourceRef,
@@ -150,11 +151,13 @@ function BlueprintInner() {
         sourceHandle: e.id,
         type: 'bpBranch',
         animated: false,
+        zIndex: loopback ? 20 : 1,
         data: {
           kind: e.extension?.kind ?? 'auto',
           label: e.name,
           hasCondition: !!e.extension?.condition,
           effectCount: e.extension?.effects?.length ?? 0,
+          loopback,
         },
       })
     }
@@ -481,6 +484,7 @@ interface BPEdgeData extends Record<string, unknown> {
   label?: string
   hasCondition: boolean
   effectCount: number
+  loopback?: boolean
 }
 
 const BlueprintEdge = memo(function BlueprintEdge({
@@ -496,14 +500,16 @@ const BlueprintEdge = memo(function BlueprintEdge({
 }: EdgeProps) {
   const d = (data ?? {}) as BPEdgeData
   const style = resolveBranchEdgeStyle(d.kind)
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  })
+  const [path, labelX, labelY] = d.loopback
+    ? getLoopbackPath(sourceX, sourceY, targetX, targetY)
+    : getBezierPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      })
   const marks: string[] = []
   if (d.hasCondition) marks.push('🔒')
   if (d.effectCount > 0) marks.push(`±${d.effectCount}`)
@@ -513,15 +519,19 @@ const BlueprintEdge = memo(function BlueprintEdge({
     <>
       <BaseEdge
         id={id}
+        className={d.loopback ? 'ks-bp-edge-loopback' : undefined}
         path={path}
         style={{
-          stroke: selected ? '#e0795f' : style.stroke,
-          strokeWidth: selected ? 3.6 : style.strokeWidth,
+          stroke: selected ? '#e0795f' : d.loopback ? '#d8e4f0' : style.stroke,
+          strokeWidth: selected ? 3.6 : d.loopback ? 3.2 : style.strokeWidth,
           fill: 'none',
-          opacity: selected ? 1 : 0.92,
+          opacity: selected ? 1 : d.loopback ? 0.98 : 0.92,
+          strokeDasharray: d.loopback ? '8 6' : style.strokeDasharray,
           filter: selected
             ? 'drop-shadow(0 0 5px rgba(224,121,95,.75))'
-            : 'drop-shadow(0 1px 2px rgba(0,0,0,.55))',
+            : d.loopback
+              ? 'drop-shadow(0 0 6px rgba(216,228,240,.45)) drop-shadow(0 2px 2px rgba(0,0,0,.75))'
+              : 'drop-shadow(0 1px 2px rgba(0,0,0,.55))',
         }}
       />
       {showLabel && (
@@ -541,6 +551,32 @@ const BlueprintEdge = memo(function BlueprintEdge({
     </>
   )
 })
+
+function isLoopbackEdge(
+  edge: GameVideoBlueprintEdge,
+  layout: Record<string, { x: number; y: number; width: number; height: number }>,
+): boolean {
+  const source = layout[edge.sourceRef]
+  const target = layout[edge.targetRef]
+  if (!source || !target) return false
+  return target.x + target.width < source.x
+}
+
+function getLoopbackPath(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+): [string, number, number] {
+  const topY = Math.min(sourceY, targetY) - 150
+  const sourceBendX = sourceX + 110
+  const targetBendX = targetX - 110
+  const path = [
+    `M ${sourceX},${sourceY}`,
+    `C ${sourceBendX},${topY} ${targetBendX},${topY} ${targetX},${targetY}`,
+  ].join(' ')
+  return [path, (sourceX + targetX) / 2, topY]
+}
 
 const BP_NODE_TYPES: NodeTypes = { bp: BlueprintNode }
 const BP_EDGE_TYPES: EdgeTypes = { bpBranch: BlueprintEdge }
@@ -715,5 +751,11 @@ function BP_CSS(): string {
   text-overflow: ellipsis;
 }
 .ks-bp-edge-marks { font-weight: 800; }
+.ks-bp-canvas .react-flow__edge-path.ks-bp-edge-loopback {
+  animation: ks-bp-loopback-flow 1.4s linear infinite;
+}
+@keyframes ks-bp-loopback-flow {
+  to { stroke-dashoffset: -28; }
+}
 `
 }
