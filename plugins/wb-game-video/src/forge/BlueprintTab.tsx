@@ -302,6 +302,8 @@ function branchPinLabel(label: string | undefined, kind: BranchKind, index: numb
   if (t) return t
   if (kind === 'auto') return '自动'
   if (kind === 'choice') return `选项 ${index + 1}`
+  if (kind === 'qte_pass') return 'QTE 成功'
+  if (kind === 'qte_fail') return 'QTE 失败'
   return '输出'
 }
 
@@ -407,10 +409,7 @@ function BlueprintNode({ data }: NodeProps<Node<BPNodeData, 'bp'>>) {
   ]
     .filter(Boolean)
     .join(' ')
-  const outs =
-    d.branches.length > 0
-      ? d.branches
-      : [{ id: '__default', label: '输出', hasCondition: false }]
+  const outs = d.branches
   return (
     <div className={cls} style={{ ['--bpc' as string]: d.accent }}>
       {d.hasInput && (
@@ -421,26 +420,16 @@ function BlueprintNode({ data }: NodeProps<Node<BPNodeData, 'bp'>>) {
           style={{ top: '50%' }}
         />
       )}
-      {outs.map((b, i) =>
-        b.id === '__default' ? (
-          <Handle
-            key={b.id}
-            type="source"
-            position={Position.Right}
-            className="ks-bpg-handle ks-bpg-handle-out"
-            style={{ top: '50%' }}
-          />
-        ) : (
-          <Handle
-            key={b.id}
-            type="source"
-            position={Position.Right}
-            id={b.id}
-            className="ks-bpg-handle ks-bpg-handle-out"
-            style={{ top: pinTop(i, outs.length) }}
-          />
-        ),
-      )}
+      {outs.map((b, i) => (
+        <Handle
+          key={b.id}
+          type="source"
+          position={Position.Right}
+          id={b.id}
+          className="ks-bpg-handle ks-bpg-handle-out"
+          style={{ top: pinTop(i, outs.length) }}
+        />
+      ))}
       <div className="ks-bpg-title" title={d.title}>
         {d.title}
       </div>
@@ -704,7 +693,8 @@ function BP_CSS(): string {
   border: none !important;
   border-radius: 0 !important;
   clip-path: polygon(0 0, 100% 50%, 0 100%);
-  opacity: 1 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
   transform: none;
 }
 .ks-bpg-handle-in { transform: translate(-50%, -50%) rotate(180deg) !important; }
