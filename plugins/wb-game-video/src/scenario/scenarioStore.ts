@@ -670,8 +670,8 @@ export const useScenarioStore = create<ScenarioStore>()(
     (set, get) => ({
   scenario: migrateScenarioToLatest(getDemoScenario()),
   mode: 'editor',
-  selectedSceneId: 's1',
-  selection: { kind: 'scene', sceneId: 's1' },
+  selectedSceneId: 'enter',
+  selection: { kind: 'scene', sceneId: 'enter' },
   streaming: null,
 
   setMode: (mode) => {

@@ -175,6 +175,7 @@ function branchEdge(scene: Scene, br: Branch, used: Set<string>): GameVideoBluep
     extension: {
       kind: br.kind,
       branchId: br.id,
+      qteOutcome: br.qteOutcome,
       condition: br.condition,
       effects: br.effects,
       itemEffects: br.itemEffects,
@@ -351,6 +352,7 @@ function compileQte(qte: QTESpec, decision?: DecisionSpec): BlueprintQte {
     sequence,
     timeoutMs: qte.timeoutMs,
     passingHits: sequence ? cues.length : Math.max(1, Math.ceil(cues.length / 2)),
+    outcomeLabels: qte.outcomeLabels,
   }
 }
 
@@ -428,6 +430,7 @@ function branchExpression(br: Branch): string | undefined {
   const parts: string[] = []
   if (br.kind === 'qte_pass') parts.push('qte.passed')
   if (br.kind === 'qte_fail') parts.push('qte.failed')
+  if (br.qteOutcome === 'good') parts.push('qte.good')
   if (br.condition?.all && br.condition.all.length > 0) parts.push(conditionExpression(br.condition))
   return parts.length > 0 ? parts.join(' && ') : undefined
 }

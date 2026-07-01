@@ -183,7 +183,10 @@ export function BlueprintPlayer(): JSX.Element {
     tapsRef.current = 0
     setTaps(0)
     const ms = snapshot.interaction.qte.timeoutMs ?? QTE_DEFAULT_MS
-    const timer = window.setTimeout(() => dispatch(runtime.submitQte(tapsRef.current)), ms)
+    const timer = window.setTimeout(() => {
+      const qte = snapshot.interaction.type === 'qte' ? snapshot.interaction.qte : null
+      dispatch(qte && hasTieredQteOutcomes(qte) ? runtime.submitQteOutcome('fail') : runtime.submitQte(tapsRef.current))
+    }, ms)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot.interaction.type, snapshot.clip?.nodeId, runtime])
@@ -198,7 +201,13 @@ export function BlueprintPlayer(): JSX.Element {
     }
     const timer = window.setTimeout(() => {
       if (it.type === 'choice' && it.options[0]) dispatch(runtime.chooseOption(it.options[0].key))
-      else if (it.type === 'qte') dispatch(runtime.submitQte(it.qte.passingHits ?? it.qte.cueMs.length))
+      else if (it.type === 'qte') {
+        dispatch(
+          hasTieredQteOutcomes(it.qte)
+            ? runtime.submitQteOutcome('pass')
+            : runtime.submitQte(it.qte.passingHits ?? it.qte.cueMs.length),
+        )
+      }
       else if (it.type === 'boss') dispatch(runtime.submitBossRound(true))
       else if (it.type === 'hotspots' && it.hotspots[0]) dispatch(runtime.clickHotspot(it.hotspots[0].id))
       else advanceClip()
@@ -320,10 +329,27 @@ export function BlueprintPlayer(): JSX.Element {
         {/* ── QTE / Boss / 结局：紧凑交互覆盖层 ── */}
         {interaction.type === 'qte' && (
           <div className="bpx-qte">
-            <button className="bpx-qte-btn" onClick={onTap}>
-              命中 ×{taps}
-            </button>
-            <p>在限时内连点命中（需 {interaction.qte.passingHits ?? interaction.qte.cueMs.length} 次）</p>
+            {hasTieredQteOutcomes(interaction.qte) ? (
+              <>
+                <button className="bpx-qte-btn" onClick={() => dispatch(runtime.submitQteOutcome('pass'))}>
+                  {interaction.qte.outcomeLabels?.pass ?? '完美'}
+                </button>
+                <button className="bpx-qte-btn bpx-qte-btn--good" onClick={() => dispatch(runtime.submitQteOutcome('good'))}>
+                  {interaction.qte.outcomeLabels?.good ?? '成功'}
+                </button>
+                <button className="bpx-qte-btn bpx-qte-btn--fail" onClick={() => dispatch(runtime.submitQteOutcome('fail'))}>
+                  {interaction.qte.outcomeLabels?.fail ?? '失败'}
+                </button>
+                <p>防反 QTE：选择本次判定档位</p>
+              </>
+            ) : (
+              <>
+                <button className="bpx-qte-btn" onClick={onTap}>
+                  命中 ×{taps}
+                </button>
+                <p>在限时内连点命中（需 {interaction.qte.passingHits ?? interaction.qte.cueMs.length} 次）</p>
+              </>
+            )}
           </div>
         )}
 
@@ -442,6 +468,10 @@ function logLine(d: RuntimeDirective): string | undefined {
   }
 }
 
+function hasTieredQteOutcomes(qte: BlueprintQte): boolean {
+  return !!qte.outcomeLabels?.good
+}
+
 function applyDirectives(prev: Snapshot, dirs: RuntimeDirective[]): Snapshot {
   let next: Snapshot = { ...prev }
   for (const d of dirs) {
@@ -518,7 +548,9 @@ function injectStyles(): void {
     .bpx-float{position:absolute;transform:translate(-50%,-50%);font-size:34px;font-weight:900;text-shadow:0 3px 8px #000;animation:bpx-float 1s ease-out forwards}
     .bpx-float--dmg{color:#fff3db}.bpx-float--hurt{color:#ff5656}.bpx-float--note{color:#ffe35b;font-size:22px}
     .bpx-qte{position:absolute;right:9vw;top:34%;text-align:center;z-index:40}
-    .bpx-qte-btn{width:120px;height:120px;border-radius:50%;border:2px solid rgba(158,255,202,.9);background:radial-gradient(circle,rgba(84,255,170,.24),rgba(5,15,10,.84));color:#ddffed;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 0 28px rgba(85,255,180,.32)}
+    .bpx-qte-btn{width:120px;height:120px;border-radius:50%;border:2px solid rgba(158,255,202,.9);background:radial-gradient(circle,rgba(84,255,170,.24),rgba(5,15,10,.84));color:#ddffed;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 0 28px rgba(85,255,180,.32);margin:0 6px}
+    .bpx-qte-btn--good{border-color:rgba(130,190,255,.9);background:radial-gradient(circle,rgba(75,145,255,.22),rgba(5,10,22,.84));color:#dcecff;box-shadow:0 0 24px rgba(85,150,255,.28)}
+    .bpx-qte-btn--fail{border-color:rgba(255,120,120,.85);background:radial-gradient(circle,rgba(255,90,90,.18),rgba(25,5,5,.86));color:#ffd9d9;box-shadow:0 0 24px rgba(255,90,90,.24)}
     .bpx-qte p{margin-top:10px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,.55);font-weight:700;font-size:13px}
     .bpx-boss{position:absolute;left:50%;bottom:130px;transform:translateX(-50%);text-align:center;z-index:40}
     .bpx-boss p{margin:0 0 10px;font-weight:800}

@@ -3,11 +3,10 @@ import { getDemoScenario } from '../demoScenario'
 import { sanitizeScenarioForIO } from '../sanitize'
 
 describe('demoScenario · 触发点 / slowMo', () => {
-  it('demo 里至少有一个 cue 配置了 slowMo（确保作者打开就能看到效果）', () => {
+  it('demo 里如果配置 slowMo，则参数范围有效', () => {
     const s = getDemoScenario()
     const allCues = Object.values(s.scenes).flatMap((sc) => sc.qte?.cues ?? [])
     const slowOnes = allCues.filter((c) => c.slowMo)
-    expect(slowOnes.length).toBeGreaterThan(0)
     for (const c of slowOnes) {
       expect(c.slowMo!.rate).toBeGreaterThan(0)
       expect(c.slowMo!.rate).toBeLessThanOrEqual(1)

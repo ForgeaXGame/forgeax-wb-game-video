@@ -24,7 +24,7 @@ import {
   type ItemState,
   type VarState,
 } from '../../player/conditionEval'
-import type { Scenario } from '../../scenario/types'
+import type { QteOutcome, Scenario } from '../../scenario/types'
 import type {
   BlueprintBoss,
   BlueprintDamagePoint,
@@ -157,17 +157,16 @@ export class BlueprintRuntime {
     const passed = hits >= Math.max(1, need)
     this.state.score += hits * 100
     this.log(passed ? `QTE 通过（命中 ${hits}）` : `QTE 失败（命中 ${hits}）`)
-    const wanted = passed ? 'qte_pass' : 'qte_fail'
-    const edge =
-      this.pickEdge(node, (e) => e.extension?.kind === wanted) ??
-      this.pickEdge(node, (e) => e.extension?.kind === 'auto' || !e.extension)
-    if (edge) {
-      this.applyEdge(edge)
-      this.enterNode(edge.targetRef)
-    } else {
-      this.advanceAuto()
-    }
-    return this.drain()
+    return this.resolveQteOutcome(node, passed ? 'pass' : 'fail')
+  }
+
+  /** 提交显式 QTE 结果档位（用于原型三档防反：pass / good / fail）。 */
+  submitQteOutcome(outcome: QteOutcome): RuntimeDirective[] {
+    if (this.state.phase !== 'awaitQte') return this.drain()
+    const node = this.currentNode()
+    if (!node?.extensionElements.qte) return this.drain()
+    this.log(`QTE ${outcome}`)
+    return this.resolveQteOutcome(node, outcome)
   }
 
   /** 提交 Boss 战一回合结果（hit = 命中：扣 Boss 血；否则扣玩家血）。 */
@@ -448,6 +447,24 @@ export class BlueprintRuntime {
     return (this.outgoing.get(node.id) ?? []).find(
       (e) => predicate(e) && this.edgeConditionPasses(e),
     )
+  }
+
+  private resolveQteOutcome(
+    node: GameVideoBlueprintNode,
+    outcome: QteOutcome,
+  ): RuntimeDirective[] {
+    const fallbackKind = outcome === 'fail' ? 'qte_fail' : 'qte_pass'
+    const edge =
+      this.pickEdge(node, (e) => e.extension?.qteOutcome === outcome) ??
+      this.pickEdge(node, (e) => e.extension?.kind === fallbackKind && !e.extension?.qteOutcome) ??
+      this.pickEdge(node, (e) => e.extension?.kind === 'auto' || !e.extension)
+    if (edge) {
+      this.applyEdge(edge)
+      this.enterNode(edge.targetRef)
+    } else {
+      this.advanceAuto()
+    }
+    return this.drain()
   }
 
   private evalCtx(): EvalContext {

@@ -24,7 +24,7 @@ export type VideoClipType = 'loop' | '演出' | '转场'
 export interface VideoClip {
   /** 稳定 id（节点 clipId 引用它）。 */
   id: string
-  /** 显示名（如「主角 · 轻攻击」）。 */
+  /** 显示名（如「空藏 · 轻攻击」）。 */
   label: string
   /** 可播放的视频直链 —— 「视频」tab 预览与试玩运行时都直接播它。 */
   url: string
@@ -42,21 +42,38 @@ const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resour
  * type / durMs 暂不标注（先固定用这批直链，运行时由视频元数据自得时长）。
  */
 export const VIDEO_CLIPS: readonly VideoClip[] = [
-  { id: 'idle01', label: '双方 · 待机', url: `${CLIP_BASE}/idle01.mp4` },
-  { id: 'difanggongjiqianyao', label: '小怪 · 攻击前摇', url: `${CLIP_BASE}/difanggongjiqianyao.mp4` },
-  { id: 'pugong', label: '主角 · 轻攻击', url: `${CLIP_BASE}/pugong.mp4` },
-  { id: 'pugong2', label: '主角 · 轻攻击·变招', url: `${CLIP_BASE}/pugong2.mp4` },
-  { id: 'zhonggongji', label: '主角 · 重攻击', url: `${CLIP_BASE}/zhonggongji.mp4` },
-  { id: 'zhonggongji2', label: '主角 · 重攻击·变招', url: `${CLIP_BASE}/zhonggongji2.mp4` },
-  { id: 'qinggongjizhisi', label: '主角 · 轻攻致死', url: `${CLIP_BASE}/qinggongjizhisi.mp4` },
-  { id: 'dazhao', label: '主角 · 灭世', url: `${CLIP_BASE}/dazhao.mp4` },
-  { id: 'fangfan', label: '主角 · 受击防反', url: `${CLIP_BASE}/fangfan.mp4` },
-  { id: 'shanbi', label: '主角 · 受击闪避', url: `${CLIP_BASE}/shanbi.mp4` },
-  { id: 'huiqi', label: '主角 · 冥想', url: `${CLIP_BASE}/huiqi.mp4` },
-  { id: 'shouji', label: '主角 · 受击', url: `${CLIP_BASE}/shouji.mp4` },
-  { id: 'shengli', label: '主角 · 胜利', url: `${CLIP_BASE}/shengli.mp4` },
-  { id: 'shibai', label: '主角 · 失败', url: `${CLIP_BASE}/shibai.mp4` },
+  { id: 'vd-wcc-idle', label: '双方 · 待机', url: `${CLIP_BASE}/idle01.mp4`, type: 'loop', durMs: 8000 },
+  { id: 'vd-wcc-qianyao', label: '小怪 · 攻击前摇', url: `${CLIP_BASE}/difanggongjiqianyao.mp4`, type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-pugong', label: '空藏 · 轻攻击', url: `${CLIP_BASE}/pugong.mp4`, type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-pugong2', label: '空藏 · 轻攻击·变招', url: `${CLIP_BASE}/pugong2.mp4`, type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-zhong', label: '空藏 · 重攻击', url: `${CLIP_BASE}/zhonggongji.mp4`, type: '演出', durMs: 6000 },
+  { id: 'vd-wcc-zhong2', label: '空藏 · 重攻击·变招', url: `${CLIP_BASE}/zhonggongji2.mp4`, type: '演出', durMs: 6000 },
+  { id: 'vd-wcc-qinggong', label: '空藏 · 轻攻致死', url: `${CLIP_BASE}/qinggongjizhisi.mp4`, type: '演出', durMs: 7000 },
+  { id: 'vd-wcc-dazhao', label: '空藏 · 灭世', url: `${CLIP_BASE}/dazhao.mp4`, type: '演出', durMs: 12000 },
+  { id: 'vd-wcc-fangfan', label: '空藏 · 受击防反', url: `${CLIP_BASE}/fangfan.mp4`, type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-shanbi', label: '空藏 · 受击闪避', url: `${CLIP_BASE}/shanbi.mp4`, type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-huiqi', label: '空藏 · 冥想', url: `${CLIP_BASE}/huiqi.mp4`, type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-shouji', label: '空藏 · 受击', url: `${CLIP_BASE}/shouji.mp4`, type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-shengli', label: '空藏 · 胜利', url: `${CLIP_BASE}/shengli.mp4`, type: '演出', durMs: 10000 },
+  { id: 'vd-wcc-shibai', label: '空藏 · 失败', url: `${CLIP_BASE}/shibai.mp4`, type: '演出', durMs: 6000 },
 ]
+
+const LEGACY_CLIP_ALIASES: Record<string, string> = {
+  idle01: 'vd-wcc-idle',
+  difanggongjiqianyao: 'vd-wcc-qianyao',
+  pugong: 'vd-wcc-pugong',
+  pugong2: 'vd-wcc-pugong2',
+  zhonggongji: 'vd-wcc-zhong',
+  zhonggongji2: 'vd-wcc-zhong2',
+  qinggongjizhisi: 'vd-wcc-qinggong',
+  dazhao: 'vd-wcc-dazhao',
+  fangfan: 'vd-wcc-fangfan',
+  shanbi: 'vd-wcc-shanbi',
+  huiqi: 'vd-wcc-huiqi',
+  shouji: 'vd-wcc-shouji',
+  shengli: 'vd-wcc-shengli',
+  shibai: 'vd-wcc-shibai',
+}
 
 /** 一套 HUD 界面方案。id 与 HudPreset 对齐，运行时直接当 hudPreset 用。 */
 export interface UiScheme {
@@ -116,7 +133,8 @@ export const GAME_RULES: readonly GameRule[] = [
 /** 按 id 取演出视频元数据（找不到返回 undefined）。 */
 export function getVideoClip(id: string | undefined): VideoClip | undefined {
   if (!id) return undefined
-  return VIDEO_CLIPS.find((v) => v.id === id)
+  const canonical = LEGACY_CLIP_ALIASES[id] ?? id
+  return VIDEO_CLIPS.find((v) => v.id === canonical)
 }
 
 /** 按 id 取 HUD 方案。 */

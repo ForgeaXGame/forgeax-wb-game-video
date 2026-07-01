@@ -380,6 +380,11 @@ export interface QTESpec {
    * (走 qte_fail / slowMo.failSceneId)。缺省 = 不额外限时(仍受各 cue 窗口约束)。
    */
   timeoutMs?: number
+  /**
+   * 多档 QTE 展示标签。缺省保持传统 pass/fail；填写 good 时运行时/试玩可呈现
+   * 原型里的三档防反（pass=完美、good=成功、fail=失败）。
+   */
+  outcomeLabels?: Partial<Record<QteOutcome, string>>
 }
 
 // ============================================================================
@@ -453,6 +458,7 @@ export interface SearchSegmentClip {
 // ============================================================================
 
 export type BranchKind = 'choice' | 'qte_pass' | 'qte_fail' | 'auto'
+export type QteOutcome = 'pass' | 'good' | 'fail'
 
 export interface Branch {
   id: string
@@ -462,6 +468,11 @@ export interface Branch {
   kind: BranchKind
   /** 跳转目标 sceneId */
   targetSceneId: string
+  /**
+   * 三档 QTE 的精确结果键。仅 timed_qte / qte 场景使用；不填时保持旧语义：
+   * qte_pass = pass，qte_fail = fail。
+   */
+  qteOutcome?: QteOutcome
   /**
    * 选项出现的时刻（ms，仅 kind='choice' 有意义）；
    * 不填 → 场景结束后才显示。

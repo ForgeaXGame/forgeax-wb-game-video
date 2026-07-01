@@ -17,7 +17,7 @@
  * qte / boss / decision / hotspots（保留既有玩法）。
  */
 
-import type { BranchCondition, BranchKind, ItemEffect, VarEffect } from '../scenario/types'
+import type { BranchCondition, BranchKind, ItemEffect, QteOutcome, VarEffect } from '../scenario/types'
 
 // ── cinegame Base 形态（逐字移植，勿改；扩展走泛型）────────────────────────
 
@@ -125,6 +125,8 @@ export interface BlueprintQte {
   timeoutMs?: number
   /** 通过所需最低命中数（缺省 = 全部命中）。 */
   passingHits?: number
+  /** 可展示 / 可手动提交的 QTE 结果档位标签。 */
+  outcomeLabels?: Partial<Record<QteOutcome, string>>
 }
 
 /** 限时 / 暂停选择（对齐 gameplayTypes.DecisionSpec 的运行时子集）。 */
@@ -255,6 +257,8 @@ export interface GameVideoEdgeExtension {
   kind: BranchKind
   /** 来源 Branch.id（回溯/调试）。 */
   branchId: string
+  /** 三档 QTE 精确结果键；缺省按 kind 推断 pass/fail。 */
+  qteOutcome?: QteOutcome
   condition?: BranchCondition
   effects?: VarEffect[]
   itemEffects?: ItemEffect[]

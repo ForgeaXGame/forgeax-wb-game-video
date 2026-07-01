@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useScenarioStore } from '../scenarioStore'
 import { getDemoScenario } from '../demoScenario'
+import { DEMO_BRANCH_LEAF, DEMO_ROOT } from './demoTestIds'
 
 /**
  * scenarioStore · StoryGraph 相关 action 契约
@@ -14,8 +15,8 @@ import { getDemoScenario } from '../demoScenario'
 function reset(): void {
   useScenarioStore.setState({
     scenario: getDemoScenario(),
-    selectedSceneId: 's1',
-    selection: { kind: 'scene', sceneId: 's1' },
+    selectedSceneId: DEMO_ROOT,
+    selection: { kind: 'scene', sceneId: DEMO_ROOT },
     mode: 'editor',
   })
   useScenarioStore.temporal.getState().clear()
@@ -27,8 +28,8 @@ describe('scenarioStore · StoryGraph actions', () => {
 
   describe('setScenePos', () => {
     it('写入 scene.pos', () => {
-      useScenarioStore.getState().setScenePos('s1', { x: 100, y: 50 })
-      expect(useScenarioStore.getState().scenario.scenes['s1']?.pos).toEqual(
+      useScenarioStore.getState().setScenePos(DEMO_ROOT, { x: 100, y: 50 })
+      expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.pos).toEqual(
         { x: 100, y: 50 },
       )
     })
@@ -40,9 +41,9 @@ describe('scenarioStore · StoryGraph actions', () => {
     })
 
     it('多次调用各自覆盖（最后一次胜出）', () => {
-      useScenarioStore.getState().setScenePos('s1', { x: 1, y: 1 })
-      useScenarioStore.getState().setScenePos('s1', { x: 9, y: 9 })
-      expect(useScenarioStore.getState().scenario.scenes['s1']?.pos).toEqual(
+      useScenarioStore.getState().setScenePos(DEMO_ROOT, { x: 1, y: 1 })
+      useScenarioStore.getState().setScenePos(DEMO_ROOT, { x: 9, y: 9 })
+      expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.pos).toEqual(
         { x: 9, y: 9 },
       )
     })
@@ -86,16 +87,16 @@ describe('scenarioStore · StoryGraph actions', () => {
 
     it('已有 pos 的 scene 保留不动（尊重作者历史落点，不被重新 pin 刷回）', () => {
       seedUnpinnedScenes()
-      // intro 已有 pos=(80,200)；尝试把它刷成 (0,0) 应当失败
+      // enter 已有 pos=(80,220)；尝试把它刷成 (0,0) 应当失败
       useScenarioStore
         .getState()
         .pinAllScenePositions({
-          intro: { x: 0, y: 0 },
+          [DEMO_ROOT]: { x: 0, y: 0 },
           free_a: { x: 99, y: 99 },
         })
       expect(
-        useScenarioStore.getState().scenario.scenes['s1']?.pos,
-      ).toEqual({ x: 80, y: 200 })
+        useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.pos,
+      ).toEqual({ x: 80, y: 220 })
       expect(
         useScenarioStore.getState().scenario.scenes['free_a']?.pos,
       ).toEqual({ x: 99, y: 99 })
@@ -106,7 +107,7 @@ describe('scenarioStore · StoryGraph actions', () => {
       const before = useScenarioStore.getState().scenario
       useScenarioStore
         .getState()
-        .pinAllScenePositions({ intro: { x: 9, y: 9 } })
+        .pinAllScenePositions({ [DEMO_ROOT]: { x: 9, y: 9 } })
       expect(useScenarioStore.getState().scenario).toBe(before)
     })
 
@@ -146,18 +147,18 @@ describe('scenarioStore · StoryGraph actions', () => {
         branches: [],
       }
       useScenarioStore.getState().addScene(newScene, {
-        linkFrom: { sceneId: 's1', kind: 'auto', label: '过场' },
+        linkFrom: { sceneId: DEMO_ROOT, kind: 'auto', label: '过场' },
       })
-      const intro = useScenarioStore.getState().scenario.scenes['s1']
+      const intro = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]
       expect(
         intro?.branches.find((b) => b.targetSceneId === 'after_intro'),
       ).toBeDefined()
     })
 
     it('id 冲突：保持原场景，不覆盖', () => {
-      const original = useScenarioStore.getState().scenario.scenes['s1']
+      const original = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]
       const dupe = {
-        id: 's1',
+        id: DEMO_ROOT,
         title: 'EVIL DUPE',
         media: { kind: 'PLACEHOLDER' as const },
         durationMs: 1,
@@ -165,7 +166,7 @@ describe('scenarioStore · StoryGraph actions', () => {
         branches: [],
       }
       useScenarioStore.getState().addScene(dupe)
-      expect(useScenarioStore.getState().scenario.scenes['s1']).toBe(
+      expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]).toBe(
         original,
       )
     })
@@ -173,19 +174,19 @@ describe('scenarioStore · StoryGraph actions', () => {
 
   describe('removeScene', () => {
     it('从 scenes 表中删掉场景', () => {
-      useScenarioStore.getState().removeScene('s2b')
-      expect(useScenarioStore.getState().scenario.scenes['s2b']).toBeUndefined()
+      useScenarioStore.getState().removeScene(DEMO_BRANCH_LEAF)
+      expect(useScenarioStore.getState().scenario.scenes[DEMO_BRANCH_LEAF]).toBeUndefined()
     })
 
     it('其他场景对它的 branch 也会被清掉', () => {
-      // demo 中应该至少存在一条指向 's2b' 的 branch（来自 intro 或别处）
+      // demo 中应该至少存在一条指向 DEMO_BRANCH_LEAF 的 branch
       const stateBefore = useScenarioStore.getState().scenario
-      const refsBefore = countBranchRefs(stateBefore.scenes, 's2b')
+      const refsBefore = countBranchRefs(stateBefore.scenes, DEMO_BRANCH_LEAF)
       // 只测有 ref 的情况；demo 应该满足
       if (refsBefore === 0) return
-      useScenarioStore.getState().removeScene('s2b')
+      useScenarioStore.getState().removeScene(DEMO_BRANCH_LEAF)
       const stateAfter = useScenarioStore.getState().scenario
-      expect(countBranchRefs(stateAfter.scenes, 's2b')).toBe(0)
+      expect(countBranchRefs(stateAfter.scenes, DEMO_BRANCH_LEAF)).toBe(0)
     })
 
     it('禁止删 rootSceneId（保护剧本完整性）', () => {
@@ -203,42 +204,42 @@ describe('scenarioStore · StoryGraph actions', () => {
     })
 
     it('删除中间节点时，前驱 branch 自动穿连到被删节点的主后继', () => {
-      // demo: intro --b-pry--> pry --b-pry-end--> ending_neutral
+      // demo: bt --ai-atk--> tele --ai-qte-great--> block
       const before = useScenarioStore.getState().scenario
-      const introBefore = before.scenes['s1']!
-      const pryBranch = introBefore.branches.find((b) => b.targetSceneId === 's2b')
+      const introBefore = before.scenes['bt']!
+      const pryBranch = introBefore.branches.find((b) => b.targetSceneId === DEMO_BRANCH_LEAF)
       expect(pryBranch).toBeDefined()
 
-      useScenarioStore.getState().removeScene('s2b')
+      useScenarioStore.getState().removeScene(DEMO_BRANCH_LEAF)
 
       const after = useScenarioStore.getState().scenario
       // pry 已删
-      expect(after.scenes['s2b']).toBeUndefined()
+      expect(after.scenes[DEMO_BRANCH_LEAF]).toBeUndefined()
       // intro 保留原 branch 数（不是"删光入边"，是"重定向"）
-      const introAfter = after.scenes['s1']!
+      const introAfter = after.scenes['bt']!
       expect(introAfter.branches.length).toBe(introBefore.branches.length)
       // 原本指向 pry 的那条 branch 现在指向 pry 的第一条后继（ending_neutral）
       const rewritten = introAfter.branches.find((b) => b.id === pryBranch!.id)
-      expect(rewritten?.targetSceneId).toBe('ending_neutral')
+      expect(rewritten?.targetSceneId).toBe('block')
     })
 
     it('末端节点（无后继）删除时，入边直接被移除', () => {
-      // ending_neutral 是末端（无 branches）
+      // ai-done 是末端（无 branches）
       const before = useScenarioStore.getState().scenario
-      const pryBefore = before.scenes['s2b']!
+      const pryBefore = before.scenes['block']!
       const hadEdgeToEnding = pryBefore.branches.some(
-        (b) => b.targetSceneId === 'ending_neutral',
+        (b) => b.targetSceneId === 'ai-done',
       )
       expect(hadEdgeToEnding).toBe(true)
 
-      useScenarioStore.getState().removeScene('ending_neutral')
+      useScenarioStore.getState().removeScene('ai-done')
 
       const after = useScenarioStore.getState().scenario
-      expect(after.scenes['ending_neutral']).toBeUndefined()
+      expect(after.scenes['ai-done']).toBeUndefined()
       // pry 中指向 ending_neutral 的 branch 被移除
-      const pryAfter = after.scenes['s2b']!
+      const pryAfter = after.scenes['block']!
       expect(
-        pryAfter.branches.some((b) => b.targetSceneId === 'ending_neutral'),
+        pryAfter.branches.some((b) => b.targetSceneId === 'ai-done'),
       ).toBe(false)
     })
 
@@ -281,29 +282,29 @@ describe('scenarioStore · StoryGraph actions', () => {
 
   describe('relinkBranch', () => {
     it('改 branch.targetSceneId', () => {
-      const intro = useScenarioStore.getState().scenario.scenes['s1']!
+      const intro = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]!
       const firstBranch = intro.branches[0]
       if (!firstBranch) return
       // 必须 link 到一个真实存在的场景
       const someTarget = Object.keys(
         useScenarioStore.getState().scenario.scenes,
-      ).find((id) => id !== 's1' && id !== firstBranch.targetSceneId)
+      ).find((id) => id !== DEMO_ROOT && id !== firstBranch.targetSceneId)
       if (!someTarget) return
 
-      useScenarioStore.getState().relinkBranch('s1', firstBranch.id, someTarget)
-      const after = useScenarioStore.getState().scenario.scenes['s1']
+      useScenarioStore.getState().relinkBranch(DEMO_ROOT, firstBranch.id, someTarget)
+      const after = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]
       expect(
         after?.branches.find((b) => b.id === firstBranch.id)?.targetSceneId,
       ).toBe(someTarget)
     })
 
     it('newTarget 不存在时被拒绝（原 branch 不变）', () => {
-      const intro = useScenarioStore.getState().scenario.scenes['s1']!
+      const intro = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]!
       const b = intro.branches[0]
       if (!b) return
       const before = b.targetSceneId
-      useScenarioStore.getState().relinkBranch('s1', b.id, 'ghost-target')
-      const after = useScenarioStore.getState().scenario.scenes['s1']
+      useScenarioStore.getState().relinkBranch(DEMO_ROOT, b.id, 'ghost-target')
+      const after = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]
       expect(
         after?.branches.find((x) => x.id === b.id)?.targetSceneId,
       ).toBe(before)
@@ -325,7 +326,7 @@ describe('scenarioStore · StoryGraph actions', () => {
     })
 
     it('入历史栈 —— 一次重置 = 一笔可撤销操作', () => {
-      useScenarioStore.getState().setScenePos('s1', { x: 1, y: 1 })
+      useScenarioStore.getState().setScenePos(DEMO_ROOT, { x: 1, y: 1 })
       useScenarioStore.temporal.getState().clear()
       useScenarioStore.getState().resetLayout()
       expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
@@ -342,12 +343,12 @@ describe('scenarioStore · StoryGraph actions', () => {
 
   describe('与 zundo 的配合', () => {
     it('setScenePos 入历史栈（拖拽完成后是一笔可撤销操作）', () => {
-      useScenarioStore.getState().setScenePos('s1', { x: 1, y: 1 })
+      useScenarioStore.getState().setScenePos(DEMO_ROOT, { x: 1, y: 1 })
       expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
     })
 
     it('removeScene 入历史栈', () => {
-      useScenarioStore.getState().removeScene('s2b')
+      useScenarioStore.getState().removeScene(DEMO_BRANCH_LEAF)
       expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
     })
 
@@ -364,14 +365,14 @@ describe('scenarioStore · StoryGraph actions', () => {
     })
 
     it('relinkBranch 入历史栈', () => {
-      const intro = useScenarioStore.getState().scenario.scenes['s1']!
+      const intro = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]!
       const b = intro.branches[0]
       if (!b) return
       const someTarget = Object.keys(
         useScenarioStore.getState().scenario.scenes,
-      ).find((id) => id !== 's1' && id !== b.targetSceneId)
+      ).find((id) => id !== DEMO_ROOT && id !== b.targetSceneId)
       if (!someTarget) return
-      useScenarioStore.getState().relinkBranch('s1', b.id, someTarget)
+      useScenarioStore.getState().relinkBranch(DEMO_ROOT, b.id, someTarget)
       expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
     })
   })
