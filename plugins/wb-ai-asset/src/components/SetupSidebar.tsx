@@ -57,11 +57,11 @@ export function SetupSidebar({
   const providerLine = (() => {
     if (!status) return '检测中…';
     if (!status.realProvidersEnabled) return 'Mock 模式（未启用真实调用，不消耗额度）';
-    if (!status.meshyConfigured) return 'Mock 模式（缺少 MESHY_API_KEY）';
+    if (!status.litellmConfigured) return 'Mock 模式（请在 Studio 设置 → API Keys 配置网关密钥）';
     const bal = status.balance == null ? '' : ` · 余额 ${status.balance}`;
-    return `真实 Meshy 调用已启用${bal}`;
+    return `真实供应商调用已启用${bal}`;
   })();
-  const providerReal = !!status?.realProvidersEnabled && !!status?.meshyConfigured;
+  const providerReal = !!status?.realProvidersEnabled && !!status?.litellmConfigured;
 
   const uploadLocalImage = async (file: File, apply: (url: string) => void) => {
     setUploading(true);

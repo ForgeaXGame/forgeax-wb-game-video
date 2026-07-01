@@ -2,26 +2,17 @@ import { useEffect, useState } from 'react';
 import { callTool } from '@/lib/toolClient';
 import type { CredentialsState } from '@/types';
 
-type FieldKey =
-  | 'MESHY_API_KEY'
-  | 'MESHY_BASE_URL'
-  | 'COS_SECRET_ID'
-  | 'COS_SECRET_KEY'
-  | 'COS_BUCKET'
-  | 'COS_REGION';
+type FieldKey = 'COS_SECRET_ID' | 'COS_SECRET_KEY' | 'COS_BUCKET' | 'COS_REGION';
 
 const FIELDS: { key: FieldKey; label: string; secret: boolean; placeholder: string }[] = [
-  { key: 'MESHY_API_KEY', label: 'Meshy API Key', secret: true, placeholder: 'msy_...' },
-  { key: 'MESHY_BASE_URL', label: 'Meshy Base URL（可选）', secret: false, placeholder: 'https://api.meshy.ai' },
   { key: 'COS_SECRET_ID', label: 'COS SecretId（可选，本地图中转用）', secret: true, placeholder: 'AKID...' },
   { key: 'COS_SECRET_KEY', label: 'COS SecretKey（可选）', secret: true, placeholder: '...' },
   { key: 'COS_BUCKET', label: 'COS Bucket（可选）', secret: false, placeholder: 'my-bucket-1250000000' },
   { key: 'COS_REGION', label: 'COS Region（可选）', secret: false, placeholder: 'ap-guangzhou' },
 ];
 
-// Read + write the plugin-local .env (Meshy key + COS + master switch). Masked
-// values render as placeholders; an empty field is left unchanged, while typing
-// a new value (or the literal "-" to clear) patches it live, no restart.
+// Plugin-local .env: COS keys + master switch. LiteLLM gateway key is read-only
+// from Studio Settings → API Keys.
 export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [state, setState] = useState<CredentialsState | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -48,8 +39,6 @@ export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; on
     for (const f of FIELDS) {
       const v = drafts[f.key];
       if (v === undefined) continue;
-      // A lone "-" clears the field; any other non-empty value sets it. An empty
-      // draft is skipped (keeps the existing value).
       if (v === '-') patch[f.key] = '';
       else if (v.trim()) patch[f.key] = v.trim();
     }
@@ -69,14 +58,24 @@ export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; on
     <div className="aa-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="aa-modal" onClick={(e) => e.stopPropagation()}>
         <header className="aa-modal-head">
-          <h3>Meshy / COS 凭证</h3>
+          <h3>COS 凭证 / 供应商开关</h3>
           <button type="button" className="aa-btn aa-btn--ghost" onClick={onClose}>✕</button>
         </header>
 
         <label className="aa-switch">
           <input type="checkbox" checked={enableReal} onChange={(e) => setEnableReal(e.target.checked)} />
-          <span>启用真实 Meshy 调用（关闭则走确定性 mock，不消耗额度）</span>
+          <span>启用真实供应商调用（关闭则走确定性 mock，不消耗额度）</span>
         </label>
+
+        <section className="aa-litellm-readonly">
+          <span className={`aa-litellm-badge ${state?.litellmConfigured ? 'is-on' : 'is-off'}`}>
+            LiteLLM 网关：{state?.litellmConfigured ? '已配置' : '未配置'}
+          </span>
+          <p className="aa-hint-small">
+            网关密钥由 Studio「设置 → API Keys」统一管理（ANTHROPIC_API_KEY 或 LITELLM_PROXY_KEY），此处不可编辑。
+            {state?.litellmProxyKey ? ` 当前：${state.litellmProxyKey}` : ''}
+          </p>
+        </section>
 
         <div className="aa-fields">
           {FIELDS.map((f) => {

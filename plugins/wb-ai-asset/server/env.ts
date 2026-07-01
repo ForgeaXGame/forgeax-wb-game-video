@@ -1,8 +1,9 @@
-// Env + feature-gate resolution for wb-ai-asset (Meshy-only).
+// Env + feature-gate resolution for wb-ai-asset (Meshy-only via LiteLLM gateway).
 //
 // Real Meshy calls are OFF by default. They turn on ONLY when both:
 //   1. AIASSET_ENABLE_REAL_PROVIDERS === "1", and
-//   2. MESHY_API_KEY is present.
+//   2. a LiteLLM gateway key is present in Studio global .env (LITELLM_PROXY_KEY
+//      or ANTHROPIC_API_KEY — see pickLitellmFromEnv).
 // Otherwise generation falls back to the deterministic no-quota mock. Secrets
 // are read from process.env (server loads $FORGEAX_PROJECT_ROOT/.env) or, for
 // standalone smokes, from the plugin-local .env. Nothing here is logged.
@@ -55,6 +56,50 @@ function toInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+export interface LitellmEnv {
+  apiKey: string;
+  baseUrl: string;
+}
+
+const DEFAULT_LITELLM_BASE = 'https://llm-proxy.forgeax.com';
+
+function normalizeProxyBase(raw: string): string {
+  return raw.replace(/\/+$/, '').replace(/\/v1$/, '');
+}
+
+/**
+ * Resolve LiteLLM gateway credentials from Studio global .env (process.env).
+ * Priority matches forgeax-studio settings policy:
+ *   1. LITELLM_PROXY_KEY (+ optional LITELLM_PROXY_BASE_URL)
+ *   2. ANTHROPIC_API_KEY (+ optional ANTHROPIC_BASE_URL)
+ * Plugin-local .env must NOT hold a separate gateway key — configure in
+ * Studio Settings → API Keys.
+ */
+export function pickLitellmFromEnv(env: Record<string, string | undefined>): LitellmEnv | null {
+  const proxyKey = env.LITELLM_PROXY_KEY?.trim();
+  if (proxyKey) {
+    return {
+      apiKey: proxyKey,
+      baseUrl: normalizeProxyBase(env.LITELLM_PROXY_BASE_URL?.trim() || DEFAULT_LITELLM_BASE),
+    };
+  }
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    return {
+      apiKey: anthropicKey,
+      baseUrl: normalizeProxyBase(env.ANTHROPIC_BASE_URL?.trim() || DEFAULT_LITELLM_BASE),
+    };
+  }
+  return null;
+}
+
+// Returns the LiteLLM gateway credentials, or null if not configured.
+// All 3D providers now route through this single gateway key.
+export function getLitellmEnv(): LitellmEnv | null {
+  loadPluginEnvOnce();
+  return pickLitellmFromEnv(process.env);
+}
+
 export interface MeshyEnv {
   apiKey: string;
   baseUrl: string;
@@ -65,18 +110,16 @@ export interface MeshyEnv {
   rateLimitPerMin: number;
 }
 
-// Returns null when the real Meshy path is not fully configured. Meshy has a
-// stable public base URL default (api.meshy.ai), so only the key is required.
-// Callers MUST fall back to mock when this is null — never turn on a quotaed
-// path by accident.
+// Returns null when the real Meshy path is not fully configured. Now reads the
+// LiteLLM gateway key instead of the direct MESHY_API_KEY. Callers MUST fall
+// back to mock when this is null — never turn on a quotaed path by accident.
 export function getMeshyEnv(): MeshyEnv | null {
   if (!realProvidersEnabled()) return null;
-  const apiKey = read('MESHY_API_KEY');
-  if (!apiKey) return null;
-  const baseUrl = read('MESHY_BASE_URL') ?? 'https://api.meshy.ai';
+  const litellm = getLitellmEnv();
+  if (!litellm) return null;
   return {
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ''),
+    apiKey: litellm.apiKey,
+    baseUrl: litellm.baseUrl,
     defaultPolycount: toInt(read('MESHY_DEFAULT_POLYCOUNT'), 6000),
     pollIntervalMs: toInt(read('MESHY_POLL_INTERVAL_MS'), 5000),
     pollTimeoutMs: toInt(read('MESHY_POLL_TIMEOUT_MS'), 600000),

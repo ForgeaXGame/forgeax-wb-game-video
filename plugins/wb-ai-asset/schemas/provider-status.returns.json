@@ -5,7 +5,7 @@
   "properties": {
     "ok": { "const": true },
     "realProvidersEnabled": { "type": "boolean" },
-    "meshyConfigured": { "type": "boolean" },
+    "litellmConfigured": { "type": "boolean", "description": "True when Studio global .env has a LiteLLM gateway key (LITELLM_PROXY_KEY or ANTHROPIC_API_KEY)." },
     "cosConfigured": { "type": "boolean" },
     "quotaSafe": { "type": "boolean" },
     "balance": { "type": ["number", "null"] },
@@ -13,6 +13,6 @@
     "rubric": { "type": "array", "items": { "type": "string" } },
     "capabilities": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
   },
-  "required": ["ok", "realProvidersEnabled", "meshyConfigured", "cosConfigured", "quotaSafe"],
+  "required": ["ok", "realProvidersEnabled", "litellmConfigured", "cosConfigured", "quotaSafe"],
   "additionalProperties": true
 }

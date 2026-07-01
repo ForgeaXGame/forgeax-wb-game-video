@@ -213,7 +213,7 @@ export function SetupSidebar({
               ))}
             </div>
             <p className="step-note">
-              混元走 workflow 命名视图槽；Meshy 文生为白模，需在结果卡片二次加贴图。
+              混元走 workflow 命名视图槽；Meshy 文生默认自动加贴图（关闭 PBR 时仅白模）。
             </p>
           </StepCard>
 
@@ -429,7 +429,7 @@ export function SetupSidebar({
             )}
             {provider === 'meshy' && mode === 'text' && (
               <p className="step-note">
-                Meshy 文生先产出 preview 白模；生成后在结果卡片点「加贴图 (refine)」补纹理。
+                Meshy 文生默认自动 preview→refine 加贴图；结果卡片仍可手动二次 refine 换风格。
               </p>
             )}
             <p className="step-note">未配置真实 provider 时自动回退确定性 mock，不消耗配额。</p>

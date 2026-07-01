@@ -3,18 +3,13 @@ import { Eraser, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, X } from 'lucide
 import { callTool } from '@/lib/toolClient';
 import type { CredentialsPatch, CredentialsState, Gen3DCredentials } from '@/types';
 
-// In-UI replacement for hand-editing the plugin .env: configure the three real
-// 3D providers' keys + the master real/mock switch. Secrets are write-only —
-// the server only ever returns a MASK (or null), and a mask must never be sent
-// back as a real value. We track each secret as an explicit edit buffer so the
-// save patch contains ONLY fields the user actually changed (see buildPatch).
+// Plugin-local credentials: COS upload keys + master real/mock switch.
+// LiteLLM gateway key is read-only from Studio Settings → API Keys.
 
 type Phase = 'loading' | 'ready' | 'error';
 
-type SecretKey = 'HUNYUAN_API_KEY' | 'MESHY_API_KEY' | 'RODIN_API_KEY' | 'COS_SECRET_ID' | 'COS_SECRET_KEY';
+type SecretKey = 'COS_SECRET_ID' | 'COS_SECRET_KEY';
 
-// value !== '' → user typed a new secret; cleared → user pressed 清除; neither
-// → untouched (omitted from the patch, so the mask is never written back).
 interface SecretEdit {
   value: string;
   cleared: boolean;
@@ -23,9 +18,6 @@ interface SecretEdit {
 const UNTOUCHED: SecretEdit = { value: '', cleared: false };
 
 const emptySecrets = (): Record<SecretKey, SecretEdit> => ({
-  HUNYUAN_API_KEY: UNTOUCHED,
-  MESHY_API_KEY: UNTOUCHED,
-  RODIN_API_KEY: UNTOUCHED,
   COS_SECRET_ID: UNTOUCHED,
   COS_SECRET_KEY: UNTOUCHED,
 });
@@ -37,8 +29,6 @@ export function CredentialsModal({
 }: {
   open: boolean;
   onClose: () => void;
-  // Called after a successful save; the parent uses it to re-pull provider-status
-  // so the pane-header pill / mode chip reflect the new real/mock state.
   onSaved: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>('loading');
@@ -48,13 +38,10 @@ export function CredentialsModal({
   const [justSaved, setJustSaved] = useState(false);
 
   const [enabled, setEnabled] = useState(false);
+  const [litellmConfigured, setLitellmConfigured] = useState(false);
+  const [litellmProxyKey, setLitellmProxyKey] = useState<string | null>(null);
   const [masked, setMasked] = useState<Gen3DCredentials | null>(null);
   const [secrets, setSecrets] = useState<Record<SecretKey, SecretEdit>>(emptySecrets);
-  // HUNYUAN_BASE_URL + COS_BUCKET + COS_REGION are plaintext (not secrets):
-  // prefill + edit freely. Compare against the loaded value to decide whether
-  // each belongs in the patch.
-  const [baseUrl, setBaseUrl] = useState('');
-  const [initialBaseUrl, setInitialBaseUrl] = useState('');
   const [cosBucket, setCosBucket] = useState('');
   const [initialCosBucket, setInitialCosBucket] = useState('');
   const [cosRegion, setCosRegion] = useState('');
@@ -62,18 +49,15 @@ export function CredentialsModal({
 
   const applyState = useCallback((s: CredentialsState) => {
     setEnabled(s.realProvidersEnabled);
+    setLitellmConfigured(s.litellmConfigured);
+    setLitellmProxyKey(s.litellmProxyKey);
     setMasked(s.credentials);
-    const url = s.credentials.HUNYUAN_BASE_URL ?? '';
-    setBaseUrl(url);
-    setInitialBaseUrl(url);
     const bucket = s.credentials.COS_BUCKET ?? '';
     setCosBucket(bucket);
     setInitialCosBucket(bucket);
     const region = s.credentials.COS_REGION ?? '';
     setCosRegion(region);
     setInitialCosRegion(region);
-    // Drop edit buffers: typed secrets were consumed by the save (their fresh
-    // masks now arrive via s.credentials), and on initial load they start clean.
     setSecrets(emptySecrets());
   }, []);
 
@@ -123,10 +107,6 @@ export function CredentialsModal({
     setSecrets((s) => ({ ...s, [k]: { value: '', cleared: true } }));
     markDirty();
   };
-  const changeBaseUrl = (v: string) => {
-    setBaseUrl(v);
-    markDirty();
-  };
   const changeCosBucket = (v: string) => {
     setCosBucket(v);
     markDirty();
@@ -136,8 +116,6 @@ export function CredentialsModal({
     markDirty();
   };
 
-  // Untouched secrets resolve to undefined → never serialized, so a returned mask
-  // can't leak back as a real key.
   const secretToPatch = (edit: SecretEdit): string | undefined => {
     const v = edit.value.trim();
     if (v !== '') return v;
@@ -147,18 +125,10 @@ export function CredentialsModal({
 
   const buildPatch = (): CredentialsPatch => {
     const patch: CredentialsPatch = { GEN3D_ENABLE_REAL_PROVIDERS: enabled ? '1' : '0' };
-    const hy = secretToPatch(secrets.HUNYUAN_API_KEY);
-    if (hy !== undefined) patch.HUNYUAN_API_KEY = hy;
-    const me = secretToPatch(secrets.MESHY_API_KEY);
-    if (me !== undefined) patch.MESHY_API_KEY = me;
-    const ro = secretToPatch(secrets.RODIN_API_KEY);
-    if (ro !== undefined) patch.RODIN_API_KEY = ro;
     const csi = secretToPatch(secrets.COS_SECRET_ID);
     if (csi !== undefined) patch.COS_SECRET_ID = csi;
     const csk = secretToPatch(secrets.COS_SECRET_KEY);
     if (csk !== undefined) patch.COS_SECRET_KEY = csk;
-    const url = baseUrl.trim();
-    if (url !== initialBaseUrl.trim()) patch.HUNYUAN_BASE_URL = url;
     const bucket = cosBucket.trim();
     if (bucket !== initialCosBucket.trim()) patch.COS_BUCKET = bucket;
     const region = cosRegion.trim();
@@ -176,8 +146,6 @@ export function CredentialsModal({
       setSaveError(r.error);
       return;
     }
-    // Refresh masks (typed inputs clear, placeholders update) as the success cue,
-    // then let the parent re-pull provider status. Keep the modal open.
     applyState(r.result);
     setJustSaved(true);
     onSaved();
@@ -265,59 +233,14 @@ export function CredentialsModal({
 
               <section className="cred-section">
                 <div className="cred-section-head">
-                  <span className="cred-section-title">混元 Hunyuan</span>
-                  <span className="cred-tag">公网</span>
-                  <StatusBadge configured={masked?.HUNYUAN_API_KEY != null} />
+                  <span className="cred-section-title">LiteLLM 网关</span>
+                  <span className="cred-tag">Studio 设置</span>
+                  <StatusBadge configured={litellmConfigured} />
                 </div>
-                <SecretField
-                  label="HUNYUAN_API_KEY"
-                  mask={masked?.HUNYUAN_API_KEY ?? null}
-                  edit={secrets.HUNYUAN_API_KEY}
-                  onChange={(v) => changeSecret('HUNYUAN_API_KEY', v)}
-                  onClear={() => clearSecret('HUNYUAN_API_KEY')}
-                />
-                <label className="field">
-                  <span className="field-label">HUNYUAN_BASE_URL</span>
-                  <input
-                    className="fx-input"
-                    type="text"
-                    autoComplete="off"
-                    value={baseUrl}
-                    placeholder="https://…/v1（可留空用默认端点）"
-                    onChange={(e) => changeBaseUrl(e.target.value)}
-                  />
-                  <p className="step-note">非密钥，明文可见；留空使用默认端点。</p>
-                </label>
-              </section>
-
-              <section className="cred-section">
-                <div className="cred-section-head">
-                  <span className="cred-section-title">Meshy</span>
-                  <span className="cred-tag">公网</span>
-                  <StatusBadge configured={masked?.MESHY_API_KEY != null} />
-                </div>
-                <SecretField
-                  label="MESHY_API_KEY"
-                  mask={masked?.MESHY_API_KEY ?? null}
-                  edit={secrets.MESHY_API_KEY}
-                  onChange={(v) => changeSecret('MESHY_API_KEY', v)}
-                  onClear={() => clearSecret('MESHY_API_KEY')}
-                />
-              </section>
-
-              <section className="cred-section">
-                <div className="cred-section-head">
-                  <span className="cred-section-title">Rodin</span>
-                  <span className="cred-tag">公网</span>
-                  <StatusBadge configured={masked?.RODIN_API_KEY != null} />
-                </div>
-                <SecretField
-                  label="RODIN_API_KEY"
-                  mask={masked?.RODIN_API_KEY ?? null}
-                  edit={secrets.RODIN_API_KEY}
-                  onChange={(v) => changeSecret('RODIN_API_KEY', v)}
-                  onClear={() => clearSecret('RODIN_API_KEY')}
-                />
+                <p className="step-note">
+                  网关密钥由 Studio「设置 → API Keys」统一管理（ANTHROPIC_API_KEY 或 LITELLM_PROXY_KEY），此处不可编辑。
+                  {litellmProxyKey ? ` 当前：${litellmProxyKey}` : ' 当前未配置。'}
+                </p>
               </section>
 
               <section className="cred-section">
@@ -363,8 +286,7 @@ export function CredentialsModal({
                   />
                 </label>
                 <p className="step-note">
-                  绑非 Meshy 源（混元/Rodin 生成的 mesh → Meshy 绑骨架）或上传本地图时需要
-                  COS 公网 URL，此时必须配置；纯 Meshy 端到端可不配。详见插件 .env。
+                  上传本地图到 COS 需要公网 URL 中转时配置；纯文本/图像生成可不配。
                 </p>
               </section>
             </>

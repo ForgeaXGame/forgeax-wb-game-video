@@ -29,7 +29,7 @@ afterAll(() => {
 test('provider-status: mock mode, quota-safe, 6 Meshy capabilities', async () => {
   const s = await tools['aiasset:provider-status']({});
   expect(s.realProvidersEnabled).toBe(false);
-  expect(s.meshyConfigured).toBe(false);
+  expect(s.litellmConfigured).toBe(false);
   expect(s.cosConfigured).toBe(false);
   expect(s.quotaSafe).toBe(true);
   expect(s.balance).toBeNull();

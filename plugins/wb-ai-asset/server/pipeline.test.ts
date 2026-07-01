@@ -15,8 +15,8 @@ import { clampTargetPolycount } from '../shared/catalog';
 import type { MeshyEnv } from './env';
 
 const env: MeshyEnv = {
-  apiKey: 'msy_test_key',
-  baseUrl: 'https://api.meshy.ai',
+  apiKey: 'litellm_test_key',
+  baseUrl: 'https://llm-proxy.forgeax.com',
   defaultPolycount: 6000,
   pollIntervalMs: 0,
   pollTimeoutMs: 5000,
@@ -44,12 +44,19 @@ function makeProvider() {
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
   const success = {
-    status: 'SUCCEEDED',
-    model_urls: { glb: 'https://cdn.meshy.ai/m.glb' },
-    thumbnail_url: 'https://cdn.meshy.ai/m.png',
-    texture_urls: [FULL_TEXTURE_SET],
-    task_error: null,
+    id: 'gen-task',
+    object: '3d.generation',
+    status: 'succeeded',
+    progress: 100,
+    data: [
+      { url: 'https://cdn.meshy.ai/m.glb', type: 'mesh', format: 'glb' },
+      { url: 'https://cdn.meshy.ai/m.png', type: 'preview', format: 'png' },
+      ...Object.entries(FULL_TEXTURE_SET).map(([kind, url]) => ({ url, type: 'texture', format: 'png', texture_kind: kind })),
+    ],
+    error: null,
   };
+
+  let submitCount = 0;
 
   const fetchImpl = async (url: string, init: RequestInit): Promise<Response> => {
     const method = init.method ?? 'GET';
@@ -57,12 +64,11 @@ function makeProvider() {
     const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
     hits.push({ method, path, body });
     if (method === 'POST') {
-      if (path.includes('/remesh')) return json({ result: 'remesh-task' });
-      if (path.includes('/retexture')) return json({ result: 'retex-task' });
-      const isV1 = path.includes('/v1/');
-      return json(isV1 ? { id: 'gen-task' } : { result: 'gen-task' });
+      submitCount++;
+      return json({ id: `task-${submitCount}`, object: '3d.generation', status: 'processing' });
     }
-    return json(success); // GET poll
+    // GET poll — always succeed on first poll (ignored at pollIntervalMs=0)
+    return json({ ...success, id: `task-${submitCount}` });
   };
 
   const downloadImpl = async (url: string): Promise<Uint8Array> => new TextEncoder().encode(url);
@@ -84,23 +90,25 @@ test('image precise-lowpoly: standard generate → remesh(1500, triangle) → PB
 
   const posts = submits(hits);
   expect(posts.map((h) => h.path)).toEqual([
-    '/openapi/v1/image-to-3d',
-    '/openapi/v1/remesh',
-    '/openapi/v1/retexture',
+    '/v1/3d/generations',
+    '/v1/3d/generations',
+    '/v1/3d/generations',
   ]);
 
-  // [1] standard geometry, no PBR yet.
-  expect(posts[0].body).toMatchObject({ image_url: 'https://x/y.png', model_type: 'standard', ai_model: 'meshy-6', enable_pbr: false });
+  // [1] standard geometry, no PBR yet. model field identifies the gateway route.
+  expect(posts[0].body).toMatchObject({ model: 'meshy-3d-image', image_url: 'https://x/y.png', model_type: 'standard', ai_model: 'meshy-6', enable_pbr: false });
   // [2] remesh the generate task to the low-poly triangle budget.
-  expect(posts[1].body).toEqual({
+  expect(posts[1].body).toMatchObject({
+    model: 'meshy-3d-remesh',
     target_formats: ['glb'],
-    input_task_id: 'gen-task',
+    input_task_id: 'task-1',
     topology: 'triangle',
     target_polycount: clampTargetPolycount(1500),
   });
   // [3] retexture the remesh task for PBR, style = the reference image.
   expect(posts[2].body).toMatchObject({
-    input_task_id: 'remesh-task',
+    model: 'meshy-3d-retexture',
+    input_task_id: 'task-2',
     image_style_url: 'https://x/y.png',
     enable_pbr: true,
     ai_model: 'meshy-6',
@@ -127,13 +135,13 @@ test('text precise-lowpoly: preview(standard) → remesh → retexture(text styl
 
   const posts = submits(hits);
   expect(posts.map((h) => h.path)).toEqual([
-    '/openapi/v2/text-to-3d',
-    '/openapi/v1/remesh',
-    '/openapi/v1/retexture',
+    '/v1/3d/generations',
+    '/v1/3d/generations',
+    '/v1/3d/generations',
   ]);
   // Text stage [1] is the preview (geometry only); no target_polycount/remesh here.
-  expect(posts[0].body).toEqual({ mode: 'preview', prompt: 'a wooden barrel', model_type: 'standard' });
-  expect(posts[2].body).toMatchObject({ input_task_id: 'remesh-task', text_style_prompt: 'a wooden barrel', enable_pbr: true });
+  expect(posts[0].body).toMatchObject({ model: 'meshy-3d-text', mode: 'preview', prompt: 'a wooden barrel', model_type: 'standard' });
+  expect(posts[2].body).toMatchObject({ model: 'meshy-3d-retexture', input_task_id: 'task-2', text_style_prompt: 'a wooden barrel', enable_pbr: true });
   expect(res.mode).toBe('text');
   expect(res.prompt).toBe('a wooden barrel');
 });
@@ -148,7 +156,7 @@ test('precise-lowpoly with PBR off: stops after remesh (no retexture stage)', as
   });
 
   const posts = submits(hits);
-  expect(posts.map((h) => h.path)).toEqual(['/openapi/v1/image-to-3d', '/openapi/v1/remesh']);
-  expect(posts[1].body).toMatchObject({ target_polycount: clampTargetPolycount(1000), topology: 'triangle' });
+  expect(posts.map((h) => h.path)).toEqual(['/v1/3d/generations', '/v1/3d/generations']);
+  expect(posts[1].body).toMatchObject({ model: 'meshy-3d-remesh', target_polycount: clampTargetPolycount(1000), topology: 'triangle' });
   expect(res.mode).toBe('image');
 });
