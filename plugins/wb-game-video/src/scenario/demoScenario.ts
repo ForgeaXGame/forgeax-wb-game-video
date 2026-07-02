@@ -16,24 +16,32 @@ function placeholderMedia(): MediaRef {
   return { kind: 'PLACEHOLDER', meta: {} }
 }
 
+/**
+ * @param clipId 真实片段 id；`null` = 无演出（纯逻辑，不写 clipId）；省略 = 默认 idle。
+ */
 function bpScene(
   id: string,
   title: string,
-  clipId: string | undefined,
+  clipId: string | null | undefined,
   pos: { x: number; y: number },
   extra?: Partial<Scene>,
 ): Scene {
+  const { clipId: _ignoredClip, ...restExtra } = extra ?? {}
+  const resolvedClipId =
+    clipId === null || clipId === ''
+      ? undefined
+      : clipId ?? 'vd-wcc-idle'
   return {
     id,
     title,
     media: placeholderMedia(),
-    clipId: clipId ?? 'vd-wcc-idle',
-    durationMs: extra?.durationMs ?? 3200,
+    durationMs: restExtra.durationMs ?? 3200,
     pos,
-    dialogue: extra?.dialogue ?? [],
-    branches: extra?.branches ?? [],
-    hudPreset: extra?.hudPreset ?? 'battle',
-    ...extra,
+    dialogue: restExtra.dialogue ?? [],
+    branches: restExtra.branches ?? [],
+    hudPreset: restExtra.hudPreset ?? 'battle',
+    ...restExtra,
+    ...(resolvedClipId ? { clipId: resolvedClipId } : {}),
   }
 }
 
@@ -74,7 +82,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     background: '承接 L3 决战单挑调用（输入小怪·无常豺）：镜头切入战场，主将与小怪列阵对峙、亮明双方血量 / 技能，进入回合制战斗的待机 loop。',
     branches: [auto('enter-init', 'init', 'Out')],
   }))
-  add(bpScene('init', '出手判断', 'vd-wcc-idle', { x: 300, y: 220 }, {
+  add(bpScene('init', '出手判断', null, { x: 300, y: 220 }, {
     durationMs: 600,
     background: '每回合开始，比较双方「出手速度」做隐藏计算判定本回合先攻方（速度大者先手，相等则空藏先手；无界面选项）。',
     branches: [
@@ -82,17 +90,17 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       auto('init-foe', 'b_ai', '敌方先手'),
     ],
   }))
-  add(bpScene('a_my', '我方回合', 'vd-wcc-idle', { x: 520, y: 120 }, {
+  add(bpScene('a_my', '我方回合', null, { x: 520, y: 120 }, {
     subFlowRef: 'g-cb-my',
     background: '我方先手出手：进入战斗待机 loop，弹出战斗界面；空藏选技能后做技能表演与数值计算，更新双方血量 / 状态。',
     branches: [auto('a-my-check', 'a_chk', '行动完毕')],
   }))
-  add(bpScene('b_ai', '敌方回合', 'vd-wcc-qianyao', { x: 520, y: 340 }, {
+  add(bpScene('b_ai', '敌方回合', null, { x: 520, y: 340 }, {
     subFlowRef: 'g-cb-ai',
     background: '敌方先手出手：敌将按自身行为树评估局势、决策行动（进攻 / 技能 / 防御蓄力），执行演出并做数值结算。',
     branches: [auto('b-ai-check', 'b_chk', '行动完毕')],
   }))
-  add(bpScene('a_chk', '血量判定', 'vd-wcc-idle', { x: 760, y: 120 }, {
+  add(bpScene('a_chk', '血量判定', null, { x: 760, y: 120 }, {
     durationMs: 600,
     background: '我方（先手）行动后隐藏计算双方血量：敌方血量清空则本回合直接分出胜负；否则进入敌方出手（本回合后手）。',
     branches: [
@@ -103,7 +111,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       auto('a-check-over', 'settle', '分出胜负'),
     ],
   }))
-  add(bpScene('b_chk', '血量判定', 'vd-wcc-idle', { x: 760, y: 340 }, {
+  add(bpScene('b_chk', '血量判定', null, { x: 760, y: 340 }, {
     durationMs: 600,
     background: '敌方（先手）行动后隐藏计算双方血量：我方血量清空则本回合直接分出胜负；否则进入我方出手（本回合后手）。',
     branches: [
@@ -114,17 +122,17 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       auto('b-check-over', 'settle', '分出胜负'),
     ],
   }))
-  add(bpScene('a_ai', '敌方回合', 'vd-wcc-qianyao', { x: 980, y: 120 }, {
+  add(bpScene('a_ai', '敌方回合', null, { x: 980, y: 120 }, {
     subFlowRef: 'g-cb-ai',
     background: '本回合后手：敌将按行为树决策并执行行动、做数值结算，更新双方血量 / 状态——至此本回合双方均已出手。',
     branches: [auto('a-ai-round', 'round', '行动完毕')],
   }))
-  add(bpScene('b_my', '我方回合', 'vd-wcc-idle', { x: 980, y: 340 }, {
+  add(bpScene('b_my', '我方回合', null, { x: 980, y: 340 }, {
     subFlowRef: 'g-cb-my',
     background: '本回合后手：我方进入战斗待机 loop、选技能并做技能表演与数值结算，更新双方血量 / 状态——至此本回合双方均已出手。',
     branches: [auto('b-my-round', 'round', '行动完毕')],
   }))
-  add(bpScene('round', '回合结束判定', 'vd-wcc-idle', { x: 1220, y: 220 }, {
+  add(bpScene('round', '回合结束判定', null, { x: 1220, y: 220 }, {
     durationMs: 600,
     background: '本回合双方均已出手，隐藏计算双方血量：任一方血量清空则战斗结束、进入胜负判定；否则进入下一回合、重新做出手判断。',
     branches: [
@@ -140,7 +148,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       auto('round-over', 'settle', '分出胜负'),
     ],
   }))
-  add(bpScene('settle', '胜负判定', 'vd-wcc-idle', { x: 1440, y: 220 }, {
+  add(bpScene('settle', '胜负判定', null, { x: 1440, y: 220 }, {
     durationMs: 600,
     background: '一方血量清空，战斗结束：隐藏计算比较双方存活——敌将（无常豺）倒下则我方胜利、主将倒下则我方失败。',
     branches: [
@@ -195,7 +203,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       },
     ],
   }))
-  add(bpScene('pjudge', '变招判定', 'vd-wcc-idle', { x: 380, y: 130 }, {
+  add(bpScene('pjudge', '变招判定', null, { x: 380, y: 130 }, {
     durationMs: 500,
     background: '选定轻攻击后、出手前先做隐藏计算（50% 概率，无界面选项）：本次轻击究竟以「轻攻击」还是「轻攻击·变招」打出。',
     branches: [
@@ -222,7 +230,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     },
     branches: [auto('pu2-done', 'my-done', 'Out')],
   }))
-  add(bpScene('zjudge', '变招判定', 'vd-wcc-idle', { x: 380, y: 490 }, {
+  add(bpScene('zjudge', '变招判定', null, { x: 380, y: 490 }, {
     durationMs: 500,
     background: '选定重攻击（已扣气力2）后、出手前先做隐藏计算（50% 概率，无界面选项）：本次重击究竟以「重攻击」还是「重攻击·变招」打出。',
     branches: [
@@ -259,14 +267,14 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     performance: { cues: [bossDamageCue('ult-hit', 7000, 240, '命中结算 威力3.0')] },
     branches: [auto('ult-done', 'my-done', 'Out')],
   }))
-  add(bpScene('my-done', '行动完毕', 'vd-wcc-idle', { x: 1020, y: 490 }, {
+  add(bpScene('my-done', '行动完毕', null, { x: 1020, y: 490 }, {
     durationMs: 500,
     background: '我方行动结算完成，交还战斗主循环（进入血量判定）。',
     branches: [],
   }))
 
   // 子蓝图：敌方回合。严格对齐 `g-cb-ai`。
-  add(bpScene('bt', '行为树决策', 'vd-wcc-idle', { x: 80, y: 1380 }, {
+  add(bpScene('bt', '行为树决策', null, { x: 80, y: 1380 }, {
     durationMs: 500,
     background: '敌将行为树读取双方血量 / 状态做隐藏计算评估，本回合发起进攻（无界面选项）：进入攻击前摇预警，随后由空藏在前摇窗口做「防反」QTE 决定结果。',
     branches: [auto('ai-atk', 'tele', '进攻')],
@@ -322,7 +330,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     performance: { cues: [playerDamageCue('hurt-hit', 10, 120, '受击结算')] },
     branches: [auto('hurt-done', 'ai-done', 'Out')],
   }))
-  add(bpScene('ai-done', '行动完毕', 'vd-wcc-idle', { x: 820, y: 1440 }, {
+  add(bpScene('ai-done', '行动完毕', null, { x: 820, y: 1440 }, {
     durationMs: 500,
     background: '敌方行动结算完成，交还战斗主循环（进入血量判定）。',
     branches: [],

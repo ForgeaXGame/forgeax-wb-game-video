@@ -32,6 +32,7 @@ import type {
   GameVideoBlueprintEdge,
   GameVideoBlueprintGraph,
   GameVideoBlueprintNode,
+  GameVideoExtensionElements,
 } from '../blueprint-schema'
 import type { RuntimeDirective } from './directives'
 
@@ -75,6 +76,11 @@ export class BlueprintRuntime {
   private readonly subflows: NonNullable<GameVideoBlueprintGraph['subflows']>
   readonly state: RuntimeState
   private queue: RuntimeDirective[] = []
+  /**
+   * 单次驱动调用内、沿「无演出逻辑节点」同步穿链时已进入过的节点 id。仅用于防御
+   * 脏蓝图里「全无演出且边恒真」的环导致的爆栈；每次 drain（= 每个公共入口结束）清空。
+   */
+  private chainSeen = new Set<string>()
 
   constructor(
     private readonly graph: GameVideoBlueprintGraph,
@@ -247,18 +253,22 @@ export class BlueprintRuntime {
       }
     }
 
-    this.emit({
-      type: 'playClip',
-      nodeId: id,
-      name: node.name,
-      clipId: ext.clipId,
-      mediaId: ext.mediaId,
-      loop: ext.mediaPlayMode === 'loop',
-      durationMs: ext.durationMs,
-      hud: ext.hud,
-      transition: ext.transition,
-      dmgPoints: ext.dmgPoints,
-    })
+    // 只有「有演出」的节点才换片；纯逻辑/判定节点（无 clip / media）不发 playClip，
+    // 保留上一段正在播放的视频（含 loop），逻辑就地叠加执行——对齐原型的隐藏计算节点。
+    if (nodeHasPerformance(ext)) {
+      this.emit({
+        type: 'playClip',
+        nodeId: id,
+        name: node.name,
+        clipId: ext.clipId,
+        mediaId: ext.mediaId,
+        loop: ext.mediaPlayMode === 'loop',
+        durationMs: ext.durationMs,
+        hud: ext.hud,
+        transition: ext.transition,
+        dmgPoints: ext.dmgPoints,
+      })
+    }
 
     if (ext.boss) {
       this.state.phase = 'awaitBoss'
@@ -282,15 +292,34 @@ export class BlueprintRuntime {
       this.emit({ type: 'openHotspots', nodeId: id, hotspots: ext.hotspots })
       return
     }
+    const hasPerf = nodeHasPerformance(ext)
+
     if (node.elementType === 'end' || (this.outgoing.get(id) ?? []).length === 0) {
       if (this.state.subflowStack.length > 0) {
-        this.state.phase = 'playing'
+        // 子图出口：有演出则等视频播完再弹回父节点；无演出（纯逻辑出口）就地弹回。
+        if (hasPerf) this.state.phase = 'playing'
+        else this.advanceThroughLogic(id)
         return
       }
       this.finishEnd(node)
       return
     }
-    this.state.phase = 'playing'
+
+    // 有演出：进入 'playing'，由驱动层按视频结束 / durationMs 推进。
+    // 无演出的纯逻辑直通节点：不等待，就地沿 auto 边同步穿到下一节点。
+    if (hasPerf) this.state.phase = 'playing'
+    else this.advanceThroughLogic(id)
+  }
+
+  /** 无演出逻辑节点：带环防护地就地推进（避免脏蓝图的无演出恒真环爆栈）。 */
+  private advanceThroughLogic(id: string): void {
+    if (this.chainSeen.has(id)) {
+      this.log(`无演出节点链检测到环（${id}），停在此节点等待驱动`)
+      this.state.phase = 'playing'
+      return
+    }
+    this.chainSeen.add(id)
+    this.advanceAuto()
   }
 
   private advanceAuto(): void {
@@ -514,8 +543,17 @@ export class BlueprintRuntime {
   private drain(): RuntimeDirective[] {
     const out = this.queue
     this.queue = []
+    this.chainSeen.clear()
     return out
   }
+}
+
+/**
+ * 节点是否带「演出」——有可播放片段（clip 或已解析的 media）为真。为假即纯逻辑/判定
+ * 节点：运行时就地穿过、不换片，逻辑叠加在上一段正在播放的视频之上。
+ */
+function nodeHasPerformance(ext: GameVideoExtensionElements): boolean {
+  return !!(ext.clipId || ext.mediaId)
 }
 
 function initEntities(scenario: Scenario): Record<string, EntityRuntime> {

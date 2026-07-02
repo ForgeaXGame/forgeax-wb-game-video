@@ -79,6 +79,15 @@ describe('signScenarioRuntimeSurface', () => {
       signScenarioRuntimeSurface(b),
     )
   })
+
+  it('scene clipId 变化（含改为无演出）→ 签名变化', () => {
+    const a = makeScenario()
+    a.scenes.s1!.clipId = 'vd-wcc-idle'
+    const b = makeScenario() // 无 clipId = 无演出
+    expect(signScenarioRuntimeSurface(a)).not.toBe(
+      signScenarioRuntimeSurface(b),
+    )
+  })
 })
 
 describe('refreshBuiltinDemoInDb', () => {
@@ -124,6 +133,21 @@ describe('refreshBuiltinDemoInDb', () => {
       good: 400,
     })
     expect(refreshed?.updatedAt).toBeGreaterThan(1)
+  })
+
+  it('bundled 去掉 clipId（节点改为无演出）→ 抹掉旧持久化残留的 clipId', () => {
+    const older = makeScenario()
+    older.scenes.s1!.clipId = 'vd-wcc-idle' // 旧持久化里还挂着演出
+    const bundled = makeScenario() // 新 bundled：该节点无演出（无 clipId）
+    const db: PersistedDb = {
+      version: 1,
+      activeId: 'demo-001',
+      items: [wrap(older, 1)],
+    }
+    const next = refreshBuiltinDemoInDb(db, bundled)
+    expect(next).not.toBe(db)
+    const refreshed = next.items.find((it) => it.id === 'demo-001')
+    expect(refreshed?.scenario.scenes.s1?.clipId).toBeUndefined()
   })
 
   it('不会动其它 item', () => {

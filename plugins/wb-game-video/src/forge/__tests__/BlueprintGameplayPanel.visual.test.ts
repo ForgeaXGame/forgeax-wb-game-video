@@ -25,4 +25,10 @@ describe('BlueprintGameplayPanel presentation controls', () => {
     expect(SOURCE).toContain('battleParry')
     expect(SOURCE).toContain('战斗防反按键')
   })
+
+  it('collapses performance detail fields when the scene has no clip (logic-only nodes)', () => {
+    expect(SOURCE).toContain('function sceneHasPerformance')
+    expect(SOURCE).toContain('纯逻辑 / 隐藏计算节点')
+    expect(SOURCE).toContain('{hasPerformance && (')
+  })
 })

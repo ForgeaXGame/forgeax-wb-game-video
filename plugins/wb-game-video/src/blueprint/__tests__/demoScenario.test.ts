@@ -107,16 +107,30 @@ describe('real demo blueprint', () => {
     ])
   })
 
-  test('every combat demo blueprint node resolves to a fixed video clip instead of default playback', () => {
+  test('performance nodes resolve to a fixed clip; pure-logic nodes carry no clip', () => {
     const graph = scenarioToBlueprint(getBlueprintCombatDemoScenario())
     const nodes = [
       ...graph.nodes,
       ...Object.values(graph.subflows ?? {}).flatMap((subflow) => subflow.nodes),
     ]
 
+    // 对齐原型 clip:'' / 隐藏计算节点（原型里 a_chk/b_chk/round 用 CB_CHECK/CB_ROUND
+    // 占位符，我们 clipId 留空以免引擎误换片；子流程入口 a_my/b_my/a_ai/b_ai 在原型为
+    // LOOP_CB_* 符号、无直接演出，同样留空）。
+    const logicNodeIds = new Set([
+      'init', 'a_my', 'b_ai', 'a_chk', 'b_chk', 'a_ai', 'b_my', 'round', 'settle',
+      'pjudge', 'zjudge', 'my-done', 'bt', 'ai-done',
+    ])
+
     expect(nodes.length).toBeGreaterThan(0)
     for (const node of nodes) {
       const clipId = node.extensionElements.clipId
+      if (logicNodeIds.has(node.id)) {
+        expect(clipId, `${node.id} is a pure-logic node and should carry no clip`).toBeFalsy()
+        continue
+      }
+      // subflow 下钻节点本身不直接演出（进入即下钻），不强求 clip。
+      if (node.extensionElements.subFlowRef) continue
       expect(clipId, `${node.id} should specify a fixed video clip`).toBeTruthy()
       expect(getVideoClip(clipId), `${node.id} clip ${clipId} should resolve`).toBeTruthy()
     }

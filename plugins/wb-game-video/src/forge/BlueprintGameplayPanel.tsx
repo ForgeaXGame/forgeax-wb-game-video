@@ -4,7 +4,7 @@ import { useScenarioStore } from '../scenario/scenarioStore'
 import { VIDEO_CLIPS, UI_SCHEMES, getVideoClip } from '../scenario/gameAssetCatalog'
 import { injectStyleOnce } from '../styles/injectStyle'
 import { BranchGateEditor } from '../editor/numeric/NumericEditors'
-import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Hotspot, PerformanceCue, Scenario, VarEffect } from '../scenario/types'
+import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Hotspot, PerformanceCue, Scenario, Scene, VarEffect } from '../scenario/types'
 import type { DecisionOptType, DecisionFireAt, ChoicePresentation, HudPreset, MediaPlayMode, QteKind } from '../scenario/gameplayTypes'
 
 /**
@@ -33,6 +33,13 @@ function findChoiceHotspot(hotspots: Hotspot[], branch: Branch): Hotspot | undef
 
 function isEmptyHotspot(h: Hotspot): boolean {
   return !h.targetSceneId && !h.detour?.dialogue?.length
+}
+
+/** 与 BlueprintRuntime.nodeHasPerformance 对齐：有 clip 或 VIDEO media 才算有独立演出。 */
+function sceneHasPerformance(scene: Scene): boolean {
+  if (scene.clipId) return true
+  if (scene.media?.kind === 'VIDEO' && scene.media.ref) return true
+  return false
 }
 
 function upsertChoiceHotspot(
@@ -110,7 +117,8 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   if (!scene) return null
 
   const panelKind = scene.boss ? 'battle' : scene.qte?.cues.length ? 'qte' : scene.decision ? 'choice' : 'story'
-  const clip = getVideoClip(scene.clipId)
+  const hasPerformance = sceneHasPerformance(scene)
+  const clip = hasPerformance ? getVideoClip(scene.clipId) : undefined
   const sceneIds = Object.keys(scenario.scenes)
   const entityEntries = Object.entries(scenario.entities ?? {})
   const bossEntities = entityEntries.filter(([, e]) => e.kind === 'boss')
@@ -126,7 +134,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
     if (patch === null) {
       updateScene(selectedSceneId, {
         decision: undefined,
-        branches: scene.branches.map((branch) =>
+        branches: scene!.branches.map((branch) =>
           branch.kind === 'choice' ? { ...branch, kind: 'auto' } : branch,
         ),
       })
@@ -162,10 +170,10 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   function addChoiceBranch(): void {
     const id = `choice-${Date.now().toString(36)}`
     updateScene(selectedSceneId, {
-      decision: scene.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
-      kind: scene.kind === 'choice' ? scene.kind : 'choice',
+      decision: scene!.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
+      kind: scene!.kind === 'choice' ? scene!.kind : 'choice',
       branches: [
-        ...scene.branches,
+        ...scene!.branches,
         {
           id,
           kind: 'choice',
@@ -177,12 +185,12 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   }
 
   function removeChoiceBranch(branchId: string): void {
-    const branches = scene.branches.filter((b) => b.id !== branchId)
+    const branches = scene!.branches.filter((b) => b.id !== branchId)
     const hasChoice = branches.some((b) => b.kind === 'choice')
     updateScene(selectedSceneId, {
       branches,
-      decision: hasChoice ? scene.decision : undefined,
-      kind: hasChoice && scene.kind !== 'choice' ? 'choice' : scene.kind,
+      decision: hasChoice ? scene!.decision : undefined,
+      kind: hasChoice && scene!.kind !== 'choice' ? 'choice' : scene!.kind,
     })
   }
 
@@ -207,11 +215,16 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
       </div>
 
       <div className="ks-bgp-content">
-      {/* 演出 —— 对齐原型「演出」组：演出编号取自「视频」固定库 */}
+      {/* 演出 —— 对齐原型「演出」组：有 clip 才展示完整演出字段；纯逻辑节点仅保留「无」 */}
       <section className="ks-bgp-sec">
         <label className="ks-bgp-lbl" title="当前节点引用的视频片段与播放方式。">演出</label>
+        {!hasPerformance && (
+          <p className="ks-bgp-hint">
+            纯逻辑 / 隐藏计算节点：无独立演出；运行时逻辑叠加在上一段视频上执行，不会换片。
+          </p>
+        )}
         <div className="ks-bgp-field">
-          <span className="ks-bgp-fk" title="绑定到该节点的视频片段；无则表示纯逻辑或占位节点。">演出编号</span>
+          <span className="ks-bgp-fk" title="绑定到该节点的视频片段；选「无」表示纯逻辑或占位节点。">演出编号</span>
           <select
             className="ks-bgp-input"
             value={scene.clipId ?? ''}
@@ -230,36 +243,40 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
             )}
           </select>
         </div>
-        <div className="ks-bgp-field">
-          <span className="ks-bgp-fk" title="视频片段库里的类型信息，只读展示。">视频类型</span>
-          <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
-        </div>
-        {clip && (
-          <div className="ks-bgp-field">
-            <span className="ks-bgp-fk" title="单次播放或循环播放；loop 常用于待机/探索场合。">演出方式</span>
-            <select
-              className="ks-bgp-input"
-              value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
-              onChange={(e) =>
-                updateScene(selectedSceneId, {
-                  mediaPlayMode:
-                    (e.target.value as MediaPlayMode) === 'once'
-                      ? undefined
-                      : (e.target.value as MediaPlayMode),
-                })
-              }
-            >
-              <option value="once">单次</option>
-              <option value="loop">循环</option>
-            </select>
-          </div>
+        {hasPerformance && (
+          <>
+            <div className="ks-bgp-field">
+              <span className="ks-bgp-fk" title="视频片段库里的类型信息，只读展示。">视频类型</span>
+              <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
+            </div>
+            {clip && (
+              <div className="ks-bgp-field">
+                <span className="ks-bgp-fk" title="单次播放或循环播放；loop 常用于待机/探索场合。">演出方式</span>
+                <select
+                  className="ks-bgp-input"
+                  value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
+                  onChange={(e) =>
+                    updateScene(selectedSceneId, {
+                      mediaPlayMode:
+                        (e.target.value as MediaPlayMode) === 'once'
+                          ? undefined
+                          : (e.target.value as MediaPlayMode),
+                    })
+                  }
+                >
+                  <option value="once">单次</option>
+                  <option value="loop">循环</option>
+                </select>
+              </div>
+            )}
+            <div className="ks-bgp-field">
+              <span className="ks-bgp-fk" title="来自视频片段库的时长信息，只读展示。">演出时长</span>
+              <span className="ks-bgp-fv">
+                {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
+              </span>
+            </div>
+          </>
         )}
-        <div className="ks-bgp-field">
-          <span className="ks-bgp-fk" title="来自视频片段库的时长信息，只读展示。">演出时长</span>
-          <span className="ks-bgp-fv">
-            {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
-          </span>
-        </div>
       </section>
 
       {/* 界面 —— HUD 方案取自左栏「界面」固定库（UI_SCHEMES），二者同源 */}
@@ -288,14 +305,16 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         </div>
       </section>
 
-      <PerformanceCuesSection
-        scenario={scenario}
-        cues={scene.performance?.cues ?? []}
-        durationMs={scene.durationMs}
-        onChange={(next) =>
-          updateScene(selectedSceneId, { performance: next.length ? { cues: next } : undefined })
-        }
-      />
+      {hasPerformance && (
+        <PerformanceCuesSection
+          scenario={scenario}
+          cues={scene.performance?.cues ?? []}
+          durationMs={scene.durationMs}
+          onChange={(next) =>
+            updateScene(selectedSceneId, { performance: next.length ? { cues: next } : undefined })
+          }
+        />
+      )}
 
       {/* 选项 —— 对齐原型「选项 / 限时 QTE」组 */}
       <section className="ks-bgp-sec">
