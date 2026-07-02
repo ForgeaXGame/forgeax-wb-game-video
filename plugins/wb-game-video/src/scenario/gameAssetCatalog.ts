@@ -34,7 +34,43 @@ export interface VideoClip {
   durMs?: number
 }
 
+/**
+ * 演出视频取源开关：
+ *   true  = 本地 bundle（Vite 把 `assets/zhandou/*.mp4` 打进插件，与游戏同源，离线可播）
+ *   false = 远程直链（CLIP_BASE 指向的内网静态服务器）
+ *
+ * 默认走本地 glob；想切回远程对比时改这一处即可（本地缺文件时也会自动回落到远程）。
+ */
+const USE_LOCAL_CLIPS = true
+
+/** 远程直链根路径 —— USE_LOCAL_CLIPS=false 或本地缺文件时的回落来源。 */
 const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resource/zhandou'
+
+// Vite 构建期把 zhandou/*.mp4 静态导入成带 hash 的最终 URL（dev 直接给源路径），运行时零成本。
+const localClipModules = import.meta.glob<string>('../assets/zhandou/*.mp4', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
+/** 文件名（含扩展名）→ 本地 bundle URL。例如 'idle01.mp4' → '/assets/idle01.<hash>.mp4'。 */
+const localClipUrlByFile: Record<string, string> = {}
+for (const [path, url] of Object.entries(localClipModules)) {
+  const file = path.split('/').pop() ?? ''
+  localClipUrlByFile[file] = url as unknown as string
+}
+
+/**
+ * 按文件名解析一条演出视频的可播放 url。
+ * 默认取本地 bundle；开关关闭或本地缺该文件时回落到 CLIP_BASE 远程直链。
+ */
+function clipUrl(file: string): string {
+  if (USE_LOCAL_CLIPS) {
+    const local = localClipUrlByFile[file]
+    if (local) return local
+  }
+  return `${CLIP_BASE}/${file}`
+}
 
 /**
  * 内置演出视频库（t-video）—— 战斗片段固定数据源。
@@ -42,20 +78,20 @@ const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resour
  * type / durMs 暂不标注（先固定用这批直链，运行时由视频元数据自得时长）。
  */
 export const VIDEO_CLIPS: readonly VideoClip[] = [
-  { id: 'vd-wcc-idle', label: '双方 · 待机', url: `${CLIP_BASE}/idle01.mp4`, type: 'loop', durMs: 8000 },
-  { id: 'vd-wcc-qianyao', label: '小怪 · 攻击前摇', url: `${CLIP_BASE}/difanggongjiqianyao.mp4`, type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-pugong', label: '空藏 · 轻攻击', url: `${CLIP_BASE}/pugong.mp4`, type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-pugong2', label: '空藏 · 轻攻击·变招', url: `${CLIP_BASE}/pugong2.mp4`, type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-zhong', label: '空藏 · 重攻击', url: `${CLIP_BASE}/zhonggongji.mp4`, type: '演出', durMs: 6000 },
-  { id: 'vd-wcc-zhong2', label: '空藏 · 重攻击·变招', url: `${CLIP_BASE}/zhonggongji2.mp4`, type: '演出', durMs: 6000 },
-  { id: 'vd-wcc-qinggong', label: '空藏 · 轻攻致死', url: `${CLIP_BASE}/qinggongjizhisi.mp4`, type: '演出', durMs: 7000 },
-  { id: 'vd-wcc-dazhao', label: '空藏 · 灭世', url: `${CLIP_BASE}/dazhao.mp4`, type: '演出', durMs: 12000 },
-  { id: 'vd-wcc-fangfan', label: '空藏 · 受击防反', url: `${CLIP_BASE}/fangfan.mp4`, type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-shanbi', label: '空藏 · 受击闪避', url: `${CLIP_BASE}/shanbi.mp4`, type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-huiqi', label: '空藏 · 冥想', url: `${CLIP_BASE}/huiqi.mp4`, type: '演出', durMs: 5000 },
-  { id: 'vd-wcc-shouji', label: '空藏 · 受击', url: `${CLIP_BASE}/shouji.mp4`, type: '演出', durMs: 4000 },
-  { id: 'vd-wcc-shengli', label: '空藏 · 胜利', url: `${CLIP_BASE}/shengli.mp4`, type: '演出', durMs: 10000 },
-  { id: 'vd-wcc-shibai', label: '空藏 · 失败', url: `${CLIP_BASE}/shibai.mp4`, type: '演出', durMs: 6000 },
+  { id: 'vd-wcc-idle', label: '双方 · 待机', url: clipUrl('idle01.mp4'), type: 'loop', durMs: 8000 },
+  { id: 'vd-wcc-qianyao', label: '小怪 · 攻击前摇', url: clipUrl('difanggongjiqianyao.mp4'), type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-pugong', label: '空藏 · 轻攻击', url: clipUrl('pugong.mp4'), type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-pugong2', label: '空藏 · 轻攻击·变招', url: clipUrl('pugong2.mp4'), type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-zhong', label: '空藏 · 重攻击', url: clipUrl('zhonggongji.mp4'), type: '演出', durMs: 6000 },
+  { id: 'vd-wcc-zhong2', label: '空藏 · 重攻击·变招', url: clipUrl('zhonggongji2.mp4'), type: '演出', durMs: 6000 },
+  { id: 'vd-wcc-qinggong', label: '空藏 · 轻攻致死', url: clipUrl('qinggongjizhisi.mp4'), type: '演出', durMs: 7000 },
+  { id: 'vd-wcc-dazhao', label: '空藏 · 灭世', url: clipUrl('dazhao.mp4'), type: '演出', durMs: 12000 },
+  { id: 'vd-wcc-fangfan', label: '空藏 · 受击防反', url: clipUrl('fangfan.mp4'), type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-shanbi', label: '空藏 · 受击闪避', url: clipUrl('shanbi.mp4'), type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-huiqi', label: '空藏 · 冥想', url: clipUrl('huiqi.mp4'), type: '演出', durMs: 5000 },
+  { id: 'vd-wcc-shouji', label: '空藏 · 受击', url: clipUrl('shouji.mp4'), type: '演出', durMs: 4000 },
+  { id: 'vd-wcc-shengli', label: '空藏 · 胜利', url: clipUrl('shengli.mp4'), type: '演出', durMs: 10000 },
+  { id: 'vd-wcc-shibai', label: '空藏 · 失败', url: clipUrl('shibai.mp4'), type: '演出', durMs: 6000 },
 ]
 
 const LEGACY_CLIP_ALIASES: Record<string, string> = {

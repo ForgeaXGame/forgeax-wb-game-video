@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Branch, Scene } from '../scenario/types'
-import { injectStyleOnce } from '../styles/injectStyle'
+import { injectInkFilterOnce, injectStyleOnce } from '../styles/injectStyle'
+import { injectBrushFontOnce } from '../styles/brushFont'
 import {
   describeCondition,
   isBranchAvailable,
@@ -36,6 +37,8 @@ export function BattleSkillLayer({
   score,
 }: Props) {
   injectStyleOnce('battle-skill-layer', SKILL_CSS)
+  injectInkFilterOnce()
+  injectBrushFontOnce()
   const scenario = useScenarioStore((s) => s.scenario)
   const [picked, setPicked] = useState<string | null>(null)
   const ctx = useMemo(
@@ -141,13 +144,14 @@ const SKILL_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'STKaiti', 'KaiTi', serif;
+  font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif;
   font-weight: 800;
   font-size: 1.18rem;
   color: #efe7d6;
   z-index: 1;
   text-shadow: 0 2px 6px rgba(0,0,0,.85);
 }
+/* 按键水墨圆章（X / A / Y / B）—— 深墨底 + inkRough 毛边，与血条统一 */
 .pvb-sk-key::before {
   content: '';
   position: absolute;
@@ -157,10 +161,11 @@ const SKILL_CSS = `
   background: linear-gradient(180deg, #2b2620, #0c0a08);
   border: 1.5px solid rgba(239,231,214,.5);
   box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 2px 7px rgba(0,0,0,.6);
+  filter: url(#inkRough);
 }
 .pvb-sk-nm {
   position: relative;
-  font-family: 'STKaiti', 'KaiTi', serif;
+  font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif;
   font-weight: 800;
   font-size: 1.32rem;
   letter-spacing: 2px;
@@ -168,6 +173,12 @@ const SKILL_CSS = `
   text-shadow: 0 0 2px rgba(0,0,0,.9), 0 2px 4px rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.8);
   transition: color .12s;
 }
+/*
+ * 技能名下的水墨红「横线」：hover / 选中时从左向右刷开（scaleX .55→1 + 透明度 0→1）。
+ * 注意：这里不套 #inkRough 毛边——该滤镜的纵向高频位移(scale≈3)会把这条仅 7px 高、
+ * 两端透明的细线打散到几乎不可见（血条是实心厚条所以没事）；横线的毛笔形态改由
+ * border-radius 的不规则圆角提供，保证刷开动画清晰可见。
+ */
 .pvb-sk-nm::after {
   content: '';
   position: absolute;
@@ -180,6 +191,10 @@ const SKILL_CSS = `
   background: linear-gradient(90deg, transparent, #b5301f 12%, #e0452e 50%, #b5301f 88%, transparent);
   transition: opacity .15s ease, transform .15s ease;
 }
+/* 覆盖全局 button:hover:not(:disabled) 的背景/文字色（技能键是透明水墨图标，不要方块底色） */
+.pvb-skill:not(.dis):hover,
+.pvb-skill:not(.dis):focus,
+.pvb-skill:not(.dis):focus-visible { background: none; color: #fbf6ec; }
 .pvb-skill:not(.dis):hover { transform: translateY(-2px); }
 .pvb-skill:not(.dis):hover .pvb-sk-nm,
 .pvb-skill.sel:not(.dis) .pvb-sk-nm { color: #e0452e; }

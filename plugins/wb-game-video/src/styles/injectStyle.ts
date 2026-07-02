@@ -53,6 +53,38 @@ export function injectStyleOnce(id: string, css: string): void {
 }
 
 /**
+ * injectInkFilterOnce —— 向文档注入一次「水墨毛边」SVG 滤镜（#inkRough）。
+ *
+ * 战斗 HUD 血条 / 技能墨章 / 防反按键都用 `filter:url(#inkRough)` 做仿黑神话的
+ * 撕裂毛边。滤镜 def 必须真实存在于 DOM 中，url(#inkRough) 才能引用到。这里用
+ * 与 injectStyleOnce 相同的「全局一次」思路：无论多少组件挂载，只注入一个
+ * 隐藏容器，避免重复 id。
+ *
+ * 复刻自「新影游平台交互原型」的 .pvb-ink-defs：
+ *   feTurbulence(fractalNoise) + feDisplacementMap，做细密的墨迹抖动边缘。
+ */
+const INK_FILTER_HOST_ID = 'reel-ink-filter-defs'
+
+export function injectInkFilterOnce(): void {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(INK_FILTER_HOST_ID)) return
+  const host = document.createElement('div')
+  host.id = INK_FILTER_HOST_ID
+  host.setAttribute('aria-hidden', 'true')
+  host.style.position = 'absolute'
+  host.style.width = '0'
+  host.style.height = '0'
+  host.style.overflow = 'hidden'
+  host.innerHTML =
+    '<svg width="0" height="0" focusable="false" aria-hidden="true">' +
+    '<filter id="inkRough" x="-20%" y="-60%" width="140%" height="220%">' +
+    '<feTurbulence type="fractalNoise" baseFrequency="0.018 0.5" numOctaves="2" seed="7" result="n"/>' +
+    '<feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>' +
+    '</filter></svg>'
+  document.body.appendChild(host)
+}
+
+/**
  * 仅供测试 / HMR 使用，重置内部状态。
  * 业务代码请勿调用。
  */
@@ -63,5 +95,6 @@ export function __resetInjectedForTest(): void {
   injectedNodes.clear()
   if (typeof document !== 'undefined') {
     document.querySelectorAll('style[data-reel-style]').forEach((el) => el.remove())
+    document.getElementById(INK_FILTER_HOST_ID)?.remove()
   }
 }

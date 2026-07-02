@@ -1,4 +1,5 @@
-import { injectStyleOnce } from '../../styles/injectStyle'
+import { injectInkFilterOnce, injectStyleOnce } from '../../styles/injectStyle'
+import { injectBrushFontOnce } from '../../styles/brushFont'
 import type { Scenario, Scene, HudElement } from '../../scenario/types'
 import { coerceHudRules } from '../../scenario/gameplayTypes'
 import type { HudPreset } from '../../scenario/gameplayTypes'
@@ -40,6 +41,8 @@ export function HudLayer({
   timerMs?: number | null
 }) {
   injectStyleOnce('player-hud-layer', HUD_CSS)
+  injectInkFilterOnce()
+  injectBrushFontOnce()
 
   const battle = isBattleScene(scene)
   const qte = isQteScene(scene)
@@ -159,6 +162,13 @@ function resolveVisible(scenario: Scenario, el: HudElement, ctx: HudCtx): boolea
   }
 }
 
+/*
+ * 战斗 HUD 复刻自「新影游平台交互原型」的水墨笔触风（仿黑神话）：
+ *   - 敌方（小怪）：顶部居中、红色水墨血条、微倾。
+ *   - 我方（空藏）：右下角、蓝色水墨血条（镜像：从左侧消减）+ 气力珠（金/灰圆点）。
+ *   血条 = 深墨底(::before) + 残影层(ghost，慢过渡自动产生格斗式掉血残影) + 彩色 fill；
+ *   毛边由全局 #inkRough SVG 滤镜 + 两端 mask 渐隐提供。
+ */
 const HUD_CSS = `
 .ks-hud {
   position: absolute; inset: 0;
@@ -167,10 +177,10 @@ const HUD_CSS = `
 }
 .ks-hud-bottom {
   position: absolute;
-  right: 4%; bottom: 4%;
-  display: flex; flex-direction: column; gap: 8px;
+  right: 32px; bottom: 18px;
+  display: flex; flex-direction: column; gap: 9px;
   align-items: flex-end;
-  max-width: 36%;
+  max-width: 40%;
 }
 /* 分数 / 倒计时(右上) */
 .ks-hud-topright {
@@ -195,48 +205,61 @@ const HUD_CSS = `
   font-size: 15px;
   color: rgba(255,255,255,0.9);
 }
-/* 玩家血条 */
+
+/* ===== 我方血条（空藏）· 水墨风 ===== */
 .ks-hud-hp {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 8px 10px 9px;
-  background: rgba(8,6,4,0.38);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
-}
-.ks-hud-hp-row {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  display: flex; flex-direction: column;
+  align-items: flex-end;
+  width: min(23vw, 250px);
+  text-align: right;
 }
 .ks-hud-hp-name {
-  font-size: 12px; letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.92);
+  font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif;
+  font-size: 1.3rem; font-weight: 800;
+  color: #efe7d6; letter-spacing: 3px;
+  margin-bottom: 3px;
+  text-shadow: 0 2px 7px rgba(0,0,0,.8);
 }
-.ks-hud-hp-num {
-  font-size: 11px;
-  color: rgba(255,255,255,0.6);
+.ks-hud-hp-bar {
+  position: relative; width: 100%; height: 11px;
+  filter: url(#inkRough);
+  transform: rotate(.5deg) scaleX(-1); /* 己方镜像：扣血从左侧消减 */
 }
-.ks-hud-hp-track {
-  width: min(250px, 24vw); height: 10px;
+.ks-hud-hp-bar::before {
+  content: ''; position: absolute; inset: 0;
   border-radius: 7px 8px 6px 7px / 5px 7px 5px 6px;
   background: linear-gradient(180deg,#2b2620,#0c0a08);
   box-shadow: 0 2px 6px rgba(0,0,0,.5) inset;
-  overflow: hidden;
-  transform: scaleX(-1);
+  -webkit-mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+  mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+}
+.ks-hud-hp-ghost, .ks-hud-hp-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+  border-radius: 7px 8px 6px 7px / 5px 7px 5px 6px;
+  -webkit-mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+  mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+}
+/* 残影层：慢过渡 + 延迟，扣血时落后于 fill → 格斗游戏式掉血残影 */
+.ks-hud-hp-ghost {
+  z-index: 1;
+  background: rgba(255,255,255,.5);
+  transition: width .6s cubic-bezier(.2,.7,.3,1) .22s;
 }
 .ks-hud-hp-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #7398cf, #a6c6ee);
-  transition: width 220ms ease;
+  z-index: 2;
+  transition: width .16s linear;
 }
-.ks-hud-hp.is-low .ks-hud-hp-fill {
-  background: linear-gradient(90deg, #f87171, #ef4444);
+.ks-hud-hp-fill.me { background: linear-gradient(90deg,#7398cf,#a6c6ee); }
+.ks-hud-hp.is-low .ks-hud-hp-fill.me {
+  background: linear-gradient(90deg,#f87171,#ef4444);
   animation: ks-hud-lowpulse 1s ease-in-out infinite;
 }
+/* 气力珠（金/灰） */
 .ks-hud-rage {
   display: flex;
   justify-content: flex-end;
   gap: 7px;
-  margin-top: 6px;
+  margin-top: 9px;
 }
 .ks-hud-pip {
   width: 13px; height: 13px;
@@ -255,35 +278,56 @@ const HUD_CSS = `
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
-/* Boss 血条(顶部) */
+
+/* ===== 敌方血条（小怪）· 水墨风，顶部居中 ===== */
 .ks-hud-boss {
   position: absolute;
-  top: 3.5%; left: 50%;
+  top: 18px; left: 50%;
   transform: translateX(-50%);
   width: min(30%, 320px);
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  text-align: center;
 }
 .ks-hud-boss-name {
-  font-size: 13px; letter-spacing: 0.18em;
-  color: rgba(255,255,255,0.94);
-  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+  font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif;
+  font-size: 1.3rem; font-weight: 800;
+  color: #efe7d6; letter-spacing: 3px;
+  text-shadow: 0 2px 7px rgba(0,0,0,.8);
 }
-.ks-hud-boss-track {
-  width: 100%; height: 10px;
-  border-radius: 5px;
-  background: rgba(0,0,0,0.5);
-  border: 1px solid rgba(239,68,68,0.5);
-  overflow: hidden;
+.ks-hud-boss-bar {
+  position: relative; width: 100%; height: 11px;
+  filter: url(#inkRough);
+  transform: rotate(-.7deg);
+}
+.ks-hud-boss-bar::before {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 7px 8px 6px 7px / 5px 7px 5px 6px;
+  background: linear-gradient(180deg,#2b2620,#0c0a08);
+  box-shadow: 0 2px 6px rgba(0,0,0,.5) inset;
+  -webkit-mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+  mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+}
+.ks-hud-boss-ghost, .ks-hud-boss-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 100%;
+  border-radius: 7px 8px 6px 7px / 5px 7px 5px 6px;
+  -webkit-mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+  mask: linear-gradient(90deg,transparent 0,#000 3%,#000 97%,transparent 100%);
+}
+.ks-hud-boss-ghost {
+  z-index: 1;
+  background: rgba(255,255,255,.5);
+  transition: width .6s cubic-bezier(.2,.7,.3,1) .22s;
 }
 .ks-hud-boss-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ef4444, #b91c1c);
-  box-shadow: 0 0 12px rgba(239,68,68,0.5);
-  transition: width 220ms ease;
+  z-index: 2;
+  transition: width .16s linear;
 }
+.ks-hud-boss-fill.foe { background: linear-gradient(90deg,#d06d5b,#e89a8d); }
+
 /* 状态图标行 */
 .ks-hud-status {
   display: flex; gap: 6px; flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .ks-hud-status-chip {
   font-size: 11px; padding: 2px 8px; border-radius: 10px;

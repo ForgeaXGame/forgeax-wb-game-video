@@ -519,9 +519,11 @@ export function BlueprintPlayer(): JSX.Element {
           </button>
         )}
         <div className="bpx-vignette" aria-hidden />
-        <div className="bpx-clip-tag">
-          <span>{clip?.type ?? '演出'}{clip?.loop ? ' · Loop' : ''}</span>
-          <strong>{clip?.label ?? '—'}</strong>
+        <div className="bpx-content-anchor" style={contentStyle}>
+          <div className="bpx-clip-tag">
+            <span>{clip?.type ?? '演出'}{clip?.loop ? ' · Loop' : ''}</span>
+            <strong>{clip?.label ?? '—'}</strong>
+          </div>
         </div>
 
         {/* dmgPoints 飘字层 */}
@@ -579,7 +581,8 @@ export function BlueprintPlayer(): JSX.Element {
           />
         )}
 
-        {/* ── QTE / Boss / 结局：紧凑交互覆盖层 ── */}
+        {/* ── QTE / Boss：锚定到视频内容矩形（与血条同坐标系），letterbox 时不漂到黑边 ── */}
+        <div className="bpx-content-anchor" style={contentStyle}>
         {scene && interaction.type === 'qte' && isBattleParryQte(scene) && (
           <BattleParryLayer
             qte={interaction.qte}
@@ -626,6 +629,7 @@ export function BlueprintPlayer(): JSX.Element {
             </div>
           </div>
         )}
+        </div>
 
         {interaction.type === 'banner' && (
           <div className={`bpx-banner bpx-banner--${interaction.kind}`}>
@@ -637,14 +641,16 @@ export function BlueprintPlayer(): JSX.Element {
           </div>
         )}
 
-        <div className="bpx-tools">
-          <button className={demoRunning ? 'is-on' : ''} onClick={() => setDemoRunning((v) => !v)}>
-            {demoRunning ? '停止演示' : '自动演示'}
-          </button>
-          <button onClick={() => setRunKey((k) => k + 1)}>重开</button>
-          <button className={showLogs ? 'is-on' : ''} onClick={() => setShowLogs((v) => !v)}>日志</button>
-          <button className={showBlueprint ? 'is-on' : ''} onClick={() => setShowBlueprint((v) => !v)}>蓝图</button>
-          <button onClick={exit}>退出</button>
+        <div className="bpx-content-anchor" style={contentStyle}>
+          <div className="bpx-tools">
+            <button className={demoRunning ? 'is-on' : ''} onClick={() => setDemoRunning((v) => !v)}>
+              {demoRunning ? '停止演示' : '自动演示'}
+            </button>
+            <button onClick={() => setRunKey((k) => k + 1)}>重开</button>
+            <button className={showLogs ? 'is-on' : ''} onClick={() => setShowLogs((v) => !v)}>日志</button>
+            <button className={showBlueprint ? 'is-on' : ''} onClick={() => setShowBlueprint((v) => !v)}>蓝图</button>
+            <button onClick={exit}>退出</button>
+          </div>
         </div>
 
         {showBlueprint && fxGraph && (
@@ -823,6 +829,8 @@ function injectStyles(): void {
     .bpx-video-buffer.is-front{opacity:1;z-index:1}
     .bpx-video-buffer.is-back{opacity:0;z-index:0;pointer-events:none}
     .bpx-content-ui{position:absolute;inset:0;z-index:24;pointer-events:none}
+    /* 视频内容矩形锚点层：定位基准=当前 contain 视频的内容矩形（同血条），z-index:auto 不建栈、子元素分层不变；容器不吃指针，交互子元素各自 pointer-events:auto */
+    .bpx-content-anchor{position:absolute;inset:0;pointer-events:none}
     .bpx-unmute{position:absolute;left:20px;top:20px;z-index:65;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,224,160,.42);background:rgba(24,20,14,.82);color:#ffe6b5;font-weight:900;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.35)}
     .bpx-vignette{position:absolute;inset:0;box-shadow:inset 0 0 160px rgba(0,0,0,.82);pointer-events:none}
     .bpx-clip-tag{position:absolute;left:20px;bottom:18px;z-index:20;padding:8px 12px;border-radius:10px;background:rgba(6,8,12,.6);border:1px solid rgba(255,230,180,.16);backdrop-filter:blur(4px)}
@@ -831,12 +839,12 @@ function injectStyles(): void {
     .bpx-floats{position:absolute;inset:0;pointer-events:none;z-index:30}
     .bpx-float{position:absolute;transform:translate(-50%,-50%);font-size:34px;font-weight:900;text-shadow:0 3px 8px #000;animation:bpx-float 1s ease-out forwards}
     .bpx-float--dmg{color:#fff3db}.bpx-float--hurt{color:#ff5656}.bpx-float--note{color:#ffe35b;font-size:22px}
-    .bpx-qte{position:absolute;right:9vw;top:34%;text-align:center;z-index:40}
+    .bpx-qte{position:absolute;right:9%;top:34%;text-align:center;z-index:40;pointer-events:auto}
     .bpx-qte-btn{width:120px;height:120px;border-radius:50%;border:2px solid rgba(158,255,202,.9);background:radial-gradient(circle,rgba(84,255,170,.24),rgba(5,15,10,.84));color:#ddffed;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 0 28px rgba(85,255,180,.32);margin:0 6px}
     .bpx-qte-btn--good{border-color:rgba(130,190,255,.9);background:radial-gradient(circle,rgba(75,145,255,.22),rgba(5,10,22,.84));color:#dcecff;box-shadow:0 0 24px rgba(85,150,255,.28)}
     .bpx-qte-btn--fail{border-color:rgba(255,120,120,.85);background:radial-gradient(circle,rgba(255,90,90,.18),rgba(25,5,5,.86));color:#ffd9d9;box-shadow:0 0 24px rgba(255,90,90,.24)}
     .bpx-qte p{margin-top:10px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,.55);font-weight:700;font-size:13px}
-    .bpx-boss{position:absolute;left:50%;bottom:130px;transform:translateX(-50%);text-align:center;z-index:40}
+    .bpx-boss{position:absolute;left:50%;bottom:130px;transform:translateX(-50%);text-align:center;z-index:40;pointer-events:auto}
     .bpx-boss p{margin:0 0 10px;font-weight:800}
     .bpx-boss-actions{display:flex;gap:14px;justify-content:center}
     .bpx-boss-actions button{padding:12px 26px;border-radius:12px;border:1px solid rgba(158,255,202,.7);background:rgba(20,40,30,.8);color:#ddffed;font-weight:900;cursor:pointer}
@@ -847,7 +855,7 @@ function injectStyles(): void {
     .bpx-banner-actions{margin-top:20px;display:flex;gap:12px;justify-content:center}
     .bpx-banner button{padding:10px 22px;border-radius:10px;border:1px solid rgba(255,224,160,.4);background:rgba(24,20,14,.8);color:#ffe6b5;font-weight:800;cursor:pointer}
     .bpx-banner-exit{background:rgba(14,14,18,.8)!important;color:#cfd6dd!important}
-    .bpx-tools{position:absolute;right:20px;top:20px;display:flex;gap:8px;z-index:60}
+    .bpx-tools{position:absolute;right:20px;top:20px;display:flex;gap:8px;z-index:60;pointer-events:auto}
     .bpx-tools button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,224,160,.32);background:rgba(24,20,14,.72);color:#ffe6b5;font-weight:800;cursor:pointer}
     .bpx-tools button.is-on{background:rgba(92,255,178,.18);border-color:rgba(92,255,178,.6);color:#ddffed}
     .bpx-blueprint,.bpx-logs{position:absolute;bottom:22px;max-height:56vh;overflow:auto;padding:14px;border-radius:14px;border:1px solid rgba(255,230,180,.18);background:rgba(5,7,10,.92);z-index:60}
