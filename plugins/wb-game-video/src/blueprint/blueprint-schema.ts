@@ -69,7 +69,7 @@ export interface BaseBlueprintGraph<
 
 // ── wb-game-video 玩法扩展（沿用 cinegame 的扩展元素风格）────────────────────
 
-/** HUD 方案 —— cinegame(hidden/battle/qte/ending) ∪ 本插件 HudPreset(hidden/main/battle/explore)。 */
+/** HUD 方案 —— cinegame(hidden/battle/qte/ending) ∪ 本插件 HudPreset(hidden/main/battle/explore/narrative)。 */
 export const BLUEPRINT_HUD_MODES = [
   'hidden',
   'main',
@@ -77,6 +77,7 @@ export const BLUEPRINT_HUD_MODES = [
   'explore',
   'qte',
   'ending',
+  'narrative',
 ] as const
 
 export type BlueprintHudMode = typeof BLUEPRINT_HUD_MODES[number]

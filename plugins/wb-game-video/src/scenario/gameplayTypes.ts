@@ -32,8 +32,8 @@ export type SceneKind = 'story' | 'battle' | 'qte' | 'choice'
 /** 视频播放方式 —— 对齐原型「演出方式：循环 / 单次」。 */
 export type MediaPlayMode = 'once' | 'loop'
 
-/** HUD 方案 —— 对齐原型四档。 */
-export type HudPreset = 'hidden' | 'main' | 'battle' | 'explore'
+/** HUD 方案 —— 对齐原型四档 + 叙事模式。 */
+export type HudPreset = 'hidden' | 'main' | 'battle' | 'explore' | 'narrative'
 
 /** 选项类型 —— 对齐原型 optType。 */
 export type DecisionOptType = 'static' | 'timed' | 'timed_qte'
@@ -46,6 +46,11 @@ export type ChoicePresentation = 'list' | 'hotspot'
 
 /** QTE 交互形式 —— 对齐原型 qteKind。 */
 export type QteKind = 'parry' | 'timing' | 'mash' | 'sequence' | 'sweep'
+
+/** QTE UI 变体 —— ext.qteUi 取值。 */
+export type QteUi = 'default' | 'battleParry' | 'inkKou'
+/** 选项 UI 变体 —— ext.choiceUi 取值。 */
+export type ChoiceUi = 'default' | 'battleSkillBar' | 'inkYingMo'
 
 // ============================================================================
 // 实体 —— HUD 血条 / Boss 战的状态载体
