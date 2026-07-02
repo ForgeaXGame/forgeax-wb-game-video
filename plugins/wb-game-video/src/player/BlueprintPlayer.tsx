@@ -349,13 +349,16 @@ export function BlueprintPlayer(): JSX.Element {
     if (!runtime) return
     if (snapshot.interaction.type !== 'none') return
     if (runtime.state.phase !== 'playing' && runtime.state.phase !== 'awaitHotspot') return
-    // loop 只控制 <video> 视觉循环；状态推进由 phase/interaction 决定：无交互的
-    // 'playing' 节点（含 Loop 空节点）按时长自动走下一节点，避免死循环。
-    const ms = Math.min((snapshot.clip?.durationMs ?? 2600) + 300, AUTO_ADVANCE_CAP_MS)
+    // Loop 演出 = 背景视频持续播放，状态机不在此卡 durationMs（对齐原型：进战 idle
+    // loop 播着，出手判断等逻辑节点立即叠加执行）。非 loop 的 once 演出仍按时长 /
+    // onEnded 推进。
+    const ms = snapshot.clip?.loop
+      ? 0
+      : Math.min((snapshot.clip?.durationMs ?? 2600) + 300, AUTO_ADVANCE_CAP_MS)
     const timer = window.setTimeout(() => advanceClip(), ms)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.clip?.nodeId, snapshot.interaction.type, runtime])
+  }, [snapshot.clip?.nodeId, snapshot.interaction.type, runtime, snapshot.clip?.loop])
 
   // QTE 计时：超时按当前命中数结算。
   useEffect(() => {

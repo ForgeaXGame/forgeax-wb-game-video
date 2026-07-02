@@ -14,10 +14,35 @@ describe('real demo blueprint', () => {
   test('default demo is the standalone prototype combat scenario', () => {
     const scenario = getDemoScenario()
     expect(scenario.id).toBe('demo-001')
-    expect(scenario.rootSceneId).toBe('a_my')
+    // 起点是「进战待机」(enter)，不是子蓝图入口「我方回合」(a_my)。
+    expect(scenario.rootSceneId).toBe('enter')
     expect(scenario.title).toBe('战斗蓝图')
     expect(scenario.scenes.enter?.title).toBe('进战待机')
     expect(scenario.scenes.a_my?.subFlowRef).toBe('g-cb-my')
+  })
+
+  test('root is the standby entry; subflow entries stay subflow-typed', () => {
+    const graph = scenarioToBlueprint(getBlueprintCombatDemoScenario())
+    const typeOf = (id: string) => graph.nodes.find((n) => n.id === id)?.elementType
+    // enter 是唯一起点；a_my/b_ai 都是子蓝图节点（同色），不该被 start 抢占。
+    expect(typeOf('enter')).toBe('start')
+    expect(typeOf('a_my')).toBe('subflow')
+    expect(typeOf('b_ai')).toBe('subflow')
+    expect(graph.nodes.filter((n) => n.elementType === 'start').map((n) => n.id)).toEqual(['enter'])
+  })
+
+  test('enter loop advances immediately through init logic without waiting durationMs', () => {
+    const scenario = getBlueprintCombatDemoScenario()
+    const graph = scenarioToBlueprint(scenario)
+    const rt = new BlueprintRuntime(graph, scenario)
+    rt.start()
+    expect(rt.state.currentNodeId).toBe('enter')
+    expect(rt.state.phase).toBe('playing')
+    rt.onClipEnded()
+    // init 无演出，同步穿过；应已访问出手判断并到达子蓝图/交互态。
+    expect(rt.state.visited.has('init')).toBe(true)
+    expect(['awaitChoice', 'playing', 'awaitQte', 'awaitBoss']).toContain(rt.state.phase)
+    expect(rt.state.currentNodeId).not.toBe('enter')
   })
 
   test('compiles to a self-consistent graph', () => {
@@ -38,9 +63,9 @@ describe('real demo blueprint', () => {
     const scenario = getBlueprintCombatDemoScenario()
     const graph = scenarioToBlueprint(scenario)
     expect(graph.nodes.map((n) => n.id)).toEqual([
-      'a_my',
       'enter',
       'init',
+      'a_my',
       'b_ai',
       'a_chk',
       'b_chk',
@@ -52,10 +77,10 @@ describe('real demo blueprint', () => {
       'lose',
     ])
     expect(graph.edges.map((e) => `${e.sourceRef}->${e.targetRef}:${e.name ?? ''}`)).toEqual([
-      'a_my->a_chk:行动完毕',
       'enter->init:Out',
       'init->a_my:我方先手',
       'init->b_ai:敌方先手',
+      'a_my->a_chk:行动完毕',
       'b_ai->b_chk:行动完毕',
       'a_chk->a_ai:敌方出手',
       'a_chk->settle:分出胜负',

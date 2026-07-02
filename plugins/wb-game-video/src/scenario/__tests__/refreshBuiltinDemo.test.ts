@@ -88,6 +88,14 @@ describe('signScenarioRuntimeSurface', () => {
       signScenarioRuntimeSurface(b),
     )
   })
+
+  it('rootSceneId 变化（起点修正）→ 签名变化', () => {
+    const a = makeScenario({ rootSceneId: 's1' })
+    const b = makeScenario({ rootSceneId: 'enter' })
+    expect(signScenarioRuntimeSurface(a)).not.toBe(
+      signScenarioRuntimeSurface(b),
+    )
+  })
 })
 
 describe('refreshBuiltinDemoInDb', () => {

@@ -40,10 +40,9 @@ describe('BlueprintPlayer (render smoke)', () => {
     act(() => {
       root.render(<BlueprintPlayer />)
     })
-    // 起点 loop 节点 durationMs=5000（真实视频以 onEnded 为主，happy-dom 无播放 →
-    // 走时长兜底）；推进过 5.3s 兜底后应到达 choice 节点并由 ChoiceLayer 渲染选项。
+    // 起点 loop 节点作背景视频，流程立即推进到 choice（不等 durationMs）。
     act(() => {
-      vi.advanceTimersByTime(6000)
+      vi.advanceTimersByTime(0)
     })
     expect(container.textContent).toContain('迎击（QTE）')
     expect(container.textContent).toContain('直冲 Boss')

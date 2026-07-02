@@ -934,6 +934,9 @@ export function __awaitDiskHydrate(): Promise<void> {
 
 export function signScenarioRuntimeSurface(s: Scenario): string {
   const parts: string[] = []
+  // rootSceneId 决定起点节点（→ 节点类型/画布配色 + 运行时入口）：改了它必须触发
+  // 内置 demo 刷新，否则旧持久化会保留旧起点（例：起点从 a_my 修正到 enter）。
+  parts.push(`root:${s.rootSceneId ?? ''}`)
   const scenes = s.scenes ?? {}
   const sceneIds = Object.keys(scenes).sort()
   for (const id of sceneIds) {

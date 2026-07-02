@@ -341,7 +341,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     title: '战斗蓝图',
     synopsis: '回合制循环（待机 / 演出 / 结算）：进战待机 → 出手判断 → 先手出手 → 后手出手 → 回合结束 → 胜负。',
     originIdea: '从新影游平台交互原型迁移的层级战斗蓝图 demo。',
-    rootSceneId: 'a_my',
+    rootSceneId: 'enter',
     defaultCharMs: 32,
     schemaVersion: 10,
     modules: { gameplay: true, rules: true },
