@@ -45,6 +45,8 @@ import { DetourOverlay } from './detour/DetourOverlay'
 import {
   isLoopScene,
   resolveFireAt,
+  resolveOptType,
+  resolvePlaybackCapMs,
   shouldActivateTimedQte,
   shouldOpenChoiceDuringPlayback,
   shouldPauseVideoForChoice,
@@ -300,6 +302,9 @@ export function Player() {
   const sceneStartedAtRef = useRef<number>(performance.now())
   const lastTickWallRef = useRef<number>(performance.now())
   const elapsedRef = useRef<number>(0)
+  /** timed_qte 超出视频物理时长时：片尾定格，逻辑时钟用墙钟续走。 */
+  const videoHoldAnchorRef = useRef<number | null>(null)
+  const videoHoldBaseMsRef = useRef<number>(0)
   const rafRef = useRef<number | null>(null)
   const verdictsRef = useRef<HitVerdict[]>([])
   verdictsRef.current = verdicts
@@ -346,8 +351,8 @@ export function Player() {
   function handleSeekBy(deltaMs: number): void {
     if (!scene) return
     const duration = scene.durationMs
-    const effectiveEnd = computeEffectiveEndMs(scene)
-    const cap = Math.min(duration, effectiveEnd)
+    const effectiveEnd = resolvePlaybackCapMs(scene, computeEffectiveEndMs(scene))
+    const cap = Math.max(duration, effectiveEnd)
     const cur = elapsedRef.current
     const next = Math.max(0, Math.min(cap, cur + deltaMs))
     if (Math.abs(next - cur) < 1) return
@@ -402,6 +407,8 @@ export function Player() {
     sceneStartedAtRef.current = performance.now()
     lastTickWallRef.current = performance.now()
     elapsedRef.current = 0
+    videoHoldAnchorRef.current = null
+    videoHoldBaseMsRef.current = 0
     failTriggeredRef.current = false
     battleResolvedRef.current = false
     choiceWindowOpenedRef.current = false
@@ -542,7 +549,8 @@ export function Player() {
     if (activeMinigame) return
     if (activeSearch) return
     const duration = scene.durationMs
-    const effectiveEnd = computeEffectiveEndMs(scene)
+    const effectiveEnd = resolvePlaybackCapMs(scene, computeEffectiveEndMs(scene))
+    const logicCap = Math.max(duration, effectiveEnd)
     const isVideo = scene.media.kind === 'VIDEO'
 
     /**
@@ -586,14 +594,32 @@ export function Player() {
         } catch {
           // ignore
         }
-        const ct = videoRef.current.currentTime
-        if (Number.isFinite(ct) && ct >= 0) {
-          elapsedRef.current = Math.min(duration, ct * 1000)
+        const v = videoRef.current
+        const ct = v.currentTime
+        const videoDurMs =
+          Number.isFinite(v.duration) && v.duration > 0.1 ? v.duration * 1000 : logicCap
+        const atVideoEnd = v.ended || (Number.isFinite(ct) && ct * 1000 >= videoDurMs - 50)
+        if (atVideoEnd && logicCap > videoDurMs + 50) {
+          if (videoHoldAnchorRef.current == null) {
+            videoHoldAnchorRef.current = performance.now()
+            videoHoldBaseMsRef.current = Math.min(logicCap, videoDurMs)
+          }
+          elapsedRef.current = Math.min(
+            logicCap,
+            videoHoldBaseMsRef.current + (performance.now() - videoHoldAnchorRef.current),
+          )
         } else {
-          elapsedRef.current = Math.min(duration, elapsedRef.current + dt * rate)
+          videoHoldAnchorRef.current = null
+          if (Number.isFinite(ct) && ct >= 0) {
+            elapsedRef.current = Math.min(logicCap, ct * 1000)
+            videoHoldBaseMsRef.current = elapsedRef.current
+          } else {
+            elapsedRef.current = Math.min(logicCap, elapsedRef.current + dt * rate)
+          }
         }
       } else {
-        elapsedRef.current = Math.min(duration, elapsedRef.current + dt * rate)
+        videoHoldAnchorRef.current = null
+        elapsedRef.current = Math.min(logicCap, elapsedRef.current + dt * rate)
       }
       const e = elapsedRef.current
       const loopScene = isLoopScene(scene!)
@@ -1361,6 +1387,15 @@ export function Player() {
         onVideoEnded={() => {
           if (choiceOpen || activeMinigame || settlement || endingScreen || activeDetour) return
           if (scene && isLoopScene(scene)) return
+          // timed_qte 交互窗可能超出视频物理时长 —— 由 RAF 逻辑时钟续走，不在此提前结束
+          if (
+            scene &&
+            resolveOptType(scene.decision) === 'timed_qte' &&
+            (scene.qte?.cues?.length ?? 0) > 0 &&
+            elapsedRef.current < resolvePlaybackCapMs(scene, computeEffectiveEndMs(scene))
+          ) {
+            return
+          }
           handleSceneEnd()
         }}
       />

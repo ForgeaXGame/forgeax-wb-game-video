@@ -31,7 +31,7 @@ import type {
   BlueprintOption,
   BlueprintQte,
 } from '../blueprint/blueprint-schema'
-import type { Hotspot, Scene } from '../scenario/types'
+import type { Hotspot, QTECue, QTESpec, Scene } from '../scenario/types'
 import { HudLayer } from './hud/HudLayer'
 import { DialogueBox } from './DialogueBox'
 import { TextOverlayLayer } from './TextOverlayLayer'
@@ -39,16 +39,31 @@ import { ChoiceLayer } from './ChoiceLayer'
 import { BattleSkillLayer, isBattleSkillChoice } from './BattleSkillLayer'
 import { BattleParryLayer, isBattleParryQte } from './BattleParryLayer'
 import { HotspotLayer } from './hotspots/HotspotLayer'
+import { StickerLayer } from './SceneFxLayers'
 import { initEntities, type EntitiesState } from './entities'
 import { evaluateCondition } from './conditionEval'
-import { choiceWindowStart } from './choiceTiming'
+import { listPerformanceSettlements } from '../scenario/performanceSettlement'
+import { choiceWindowEnd, choiceWindowStart, resolveOptType, resolvePlaybackCapMs, shouldActivateTimedQte, shouldOpenChoiceDuringPlayback } from './choiceTiming'
+import { duePerformanceCues } from './performanceRuntime'
+import { resolveScenePlaybackDurationMs } from './scenePlaybackDuration'
+import { QTEOverlay } from './QTEOverlay'
+import { qteOverlayAmbientClass } from './qteAmbient'
+import { resolveSceneQte } from '../qte/qteKindPresets'
+import { computeVideoContentRect, type VideoContentRect as ContentRect } from './videoContentRect'
+import {
+  judgeHold,
+  judgeTap,
+  qteAllResolved,
+  qtePassed,
+  qteTimeoutDeadlineMs,
+  type HitVerdict,
+} from '../qte/QTEEngine'
 
 const STYLE_ID = 'bpx-style'
 // 真实视频以 <video> 的 onEnded 为主推进；此超时只是「视频不结束（loop/加载失败）」
 // 时的安全兜底，故取节点时长 + 缓冲，并设一个较大的封顶避免无限等待。
 const AUTO_ADVANCE_CAP_MS = 15000
-const QTE_DEFAULT_MS = 2600
-const CLOCK_TICK_MS = 100
+const ELAPSED_COMMIT_MS = 33
 const DEMO_STEP_MS = 900
 const MAX_LOGS = 24
 
@@ -233,18 +248,30 @@ const StableBlueprintVideo = memo(function StableBlueprintVideo({
   prev.loop === next.loop
 ))
 
+function autoAdvanceDelayMs(nodeId: string | null, clip: ClipView | undefined): number {
+  const live = useScenarioStore.getState().scenario
+  const sc = nodeId && live ? live.scenes[nodeId] : undefined
+  return Math.min(
+    resolveScenePlaybackDurationMs(sc, {
+      fallbackMs: clip?.durationMs,
+      loop: clip?.loop ?? sc?.mediaPlayMode === 'loop',
+    }) + 300,
+    AUTO_ADVANCE_CAP_MS,
+  )
+}
+
 export function BlueprintPlayer(): JSX.Element {
   const scenario = useScenarioStore((s) => s.scenario)
   const setMode = useScenarioStore((s) => s.setMode)
   const mediaEntries = useMediaStore((s) => s.entries)
 
   const [runKey, setRunKey] = useState(0)
-  const runtime = useMemo(
-    () => (scenario ? new BlueprintRuntime(scenarioToBlueprint(scenario), scenario) : null),
-    // runKey 参与依赖 → 重开时重建引擎。
+  const runtime = useMemo(() => {
+    if (!scenario) return null
+    return new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+    // 仅 runKey / scenario.id 重建引擎——时间栏等编辑会换 scenario 引用，但不能把试玩打回起点。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scenario, runKey],
-  )
+  }, [runKey, scenario?.id])
   const graph = useMemo(() => (scenario ? scenarioToBlueprint(scenario) : null), [scenario])
   const fxGraph = useMemo(() => (graph ? toFXGraph(graph) : null), [graph])
 
@@ -260,10 +287,14 @@ export function BlueprintPlayer(): JSX.Element {
   const [contentRect, setContentRect] = useState<ContentRect | null>(null)
   const [readyVideoToken, setReadyVideoToken] = useState<string | null>(null)
   const [videoBufferVersion, setVideoBufferVersion] = useState(0)
-  const tapsRef = useRef(0)
-  const [taps, setTaps] = useState(0)
+  const [qteVerdicts, setQteVerdicts] = useState<HitVerdict[]>([])
+  const qteFailTriggeredRef = useRef(false)
   const advancedRef = useRef<string | null>(null)
+  /** loop 待机：选项窗一旦打开就保持，避免 video.currentTime 回卷把技能栏闪灭（对齐 Player.tsx）。 */
+  const [choiceLatched, setChoiceLatched] = useState(false)
   const floatSeq = useRef(0)
+  const perfFiredRef = useRef(new Set<string>())
+  const clipNodeIdRef = useRef<string | undefined>(undefined)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const clip = snapshot.clip
   const videoSrc = clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url)
@@ -304,7 +335,18 @@ export function BlueprintPlayer(): JSX.Element {
   }, [clip?.nodeId, videoSrc, videoBufferVersion])
 
   const dispatch = (dirs: RuntimeDirective[]): void => {
-    const resetElapsed = dirs.some((d) => d.type === 'playClip')
+    const playClipDir = dirs.find((d) => d.type === 'playClip')
+    const resetElapsed = !!playClipDir
+    if (playClipDir) {
+      advancedRef.current = null
+      if (playClipDir.nodeId !== clipNodeIdRef.current) {
+        clipNodeIdRef.current = playClipDir.nodeId
+        setChoiceLatched(false)
+        perfFiredRef.current = new Set()
+        qteFailTriggeredRef.current = false
+        setQteVerdicts([])
+      }
+    }
     setSnapshot((prev) => applyDirectives(prev, dirs))
     if (resetElapsed) setElapsed(0)
     setLogs((prev) => [...prev, ...dirs.map(logLine).filter((l): l is string => !!l)].slice(-MAX_LOGS))
@@ -315,6 +357,11 @@ export function BlueprintPlayer(): JSX.Element {
   useEffect(() => {
     if (!runtime) return
     advancedRef.current = null
+    clipNodeIdRef.current = undefined
+    setChoiceLatched(false)
+    perfFiredRef.current = new Set()
+    qteFailTriggeredRef.current = false
+    setQteVerdicts([])
     setSnapshot(EMPTY)
     setFloats([])
     setLogs([])
@@ -322,57 +369,123 @@ export function BlueprintPlayer(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime])
 
-  // 场景内时钟 —— 驱动字幕 / 叠字 / 热点出现窗口（elapsed ms）。
+  // 场景内时钟 —— 与 <video>.currentTime 对齐，驱动字幕 / 贴纸 / 热点窗口（同 Player.tsx）。
   useEffect(() => {
     if (!runtime || !videoReady) return
-    const timer = window.setInterval(() => setElapsed((e) => e + CLOCK_TICK_MS), CLOCK_TICK_MS)
-    return () => window.clearInterval(timer)
-  }, [runtime, snapshot.clip?.nodeId, videoReady])
+    let raf = 0
+    let lastCommit = -ELAPSED_COMMIT_MS
+    let wallAnchor = performance.now()
+    let wallBaseMs = 0
 
-  // dmgPoints 到点飘字 + 扣血（对齐 cinegame playClip 的 onPoint 定时）。
+    function sceneDurationMs(): number {
+      const nodeId = runtime!.state.currentNodeId
+      const sc = nodeId ? scenario?.scenes[nodeId] : undefined
+      const base = resolveScenePlaybackDurationMs(sc, {
+        fallbackMs: snapshot.clip?.durationMs,
+        videoEl: videoRef.current,
+        loop: snapshot.clip?.loop ?? sc?.mediaPlayMode === 'loop',
+      })
+      return sc ? resolvePlaybackCapMs(sc, base) : base
+    }
+
+    function tick(): void {
+      const durationMs = sceneDurationMs()
+      const video = videoRef.current
+      let ms: number
+      if (videoSrc && video && Number.isFinite(video.currentTime) && video.currentTime >= 0) {
+        const videoMs = video.currentTime * 1000
+        const videoDurMs =
+          Number.isFinite(video.duration) && video.duration > 0.1 ? video.duration * 1000 : durationMs
+        const atVideoEnd = video.ended || videoMs >= videoDurMs - 50
+        if (atVideoEnd && durationMs > videoDurMs + 50) {
+          // 多 cue QTE 窗可能超出视频物理时长：片尾定格，逻辑时钟继续走
+          ms = Math.min(durationMs, videoDurMs + (performance.now() - wallAnchor))
+        } else {
+          ms = Math.min(durationMs, videoMs)
+          wallAnchor = performance.now()
+          wallBaseMs = ms
+        }
+      } else {
+        ms = Math.min(durationMs, wallBaseMs + (performance.now() - wallAnchor))
+      }
+      const now = performance.now()
+      if (now - lastCommit >= ELAPSED_COMMIT_MS) {
+        lastCommit = now
+        setElapsed(ms)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    wallAnchor = performance.now()
+    wallBaseMs = 0
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [runtime, snapshot.clip?.nodeId, videoReady, videoSrc, scenario, snapshot.clip?.durationMs])
+
+  // 演出结算：读 live scenario.performance（对齐 Player.tsx），时间栏改动即时生效。
   useEffect(() => {
-    if (!runtime || !snapshot.clip) return
-    const points = snapshot.clip.dmgPoints
-    if (points.length === 0) return
-    const timers = points.map((p) =>
-      window.setTimeout(() => {
-        spawnFloats(p)
-        dispatch(runtime.applyDamagePoint(p))
-      }, Math.max(0, p.t * 1000)),
-    )
-    return () => timers.forEach((t) => window.clearTimeout(t))
+    if (!runtime || !scenario || !snapshot.clip) return
+    const nodeId = runtime.state.currentNodeId
+    const sc = nodeId ? scenario.scenes[nodeId] : undefined
+    if (!sc?.performance?.cues?.length) return
+    const due = duePerformanceCues(sc.performance, elapsed, perfFiredRef.current)
+    if (due.length === 0) return
+    const settlements = listPerformanceSettlements(sc)
+    for (const cue of due) {
+      perfFiredRef.current.add(cue.id)
+      const view = settlements.find((v) => v.id === cue.id)
+      const point: BlueprintDamagePoint = {
+        t: cue.atMs / 1000,
+        x: view?.xPct ?? 50,
+        y: view?.yPct ?? 42,
+        note: view?.displayText ?? view?.label ?? cue.label ?? '结算',
+        effects: cue.effects,
+      }
+      spawnFloats(point)
+      dispatch(runtime.applyDamagePoint(point))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.clip?.nodeId, runtime])
+  }, [elapsed, snapshot.clip?.nodeId, runtime])
 
   // 自动推进：纯演出节点（无交互）按时长/视频结束走到下一节点。
   useEffect(() => {
     if (!runtime) return
     if (snapshot.interaction.type !== 'none') return
     if (runtime.state.phase !== 'playing' && runtime.state.phase !== 'awaitHotspot') return
-    // Loop 演出 = 背景视频持续播放，状态机不在此卡 durationMs（对齐原型：进战 idle
-    // loop 播着，出手判断等逻辑节点立即叠加执行）。非 loop 的 once 演出仍按时长 /
-    // onEnded 推进。
+    // Loop 演出 = 背景视频持续播放，逻辑节点立即叠加执行；非 loop 仍按时长/onEnded 推进。
     const ms = snapshot.clip?.loop
       ? 0
-      : Math.min((snapshot.clip?.durationMs ?? 2600) + 300, AUTO_ADVANCE_CAP_MS)
+      : autoAdvanceDelayMs(runtime.state.currentNodeId, snapshot.clip)
     const timer = window.setTimeout(() => advanceClip(), ms)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.clip?.nodeId, snapshot.interaction.type, runtime, snapshot.clip?.loop])
+  }, [snapshot.clip?.nodeId, snapshot.interaction.type, runtime, snapshot.clip?.loop, snapshot.clip?.durationMs])
 
-  // QTE 计时：超时按当前命中数结算。
+  // QTE 整段超时：按 live scenario.qte 的 appearAt + timeoutMs 判定（对齐 Player.tsx）。
   useEffect(() => {
-    if (!runtime || snapshot.interaction.type !== 'qte') return
-    tapsRef.current = 0
-    setTaps(0)
-    const ms = snapshot.interaction.qte.timeoutMs ?? QTE_DEFAULT_MS
-    const timer = window.setTimeout(() => {
-      const qte = snapshot.interaction.type === 'qte' ? snapshot.interaction.qte : null
-      dispatch(qte && hasTieredQteOutcomes(qte) ? runtime.submitQteOutcome('fail') : runtime.submitQte(tapsRef.current))
-    }, ms)
-    return () => window.clearTimeout(timer)
+    if (!runtime || !scenario) return
+    const nodeId = runtime.state.currentNodeId
+    const sc = nodeId ? scenario.scenes[nodeId] : undefined
+    if (!sc || snapshot.interaction.type !== 'qte') return
+    const liveQte = resolveSceneQte(sc)
+    if (!liveQte || !shouldActivateTimedQte(sc, elapsed)) return
+    if (shouldUseBattleParryUi(sc, liveQte)) return
+
+    const deadline = qteTimeoutDeadlineMs(liveQte)
+    if (deadline == null || elapsed < deadline) return
+    if (qteAllResolved(liveQte, qteVerdicts)) return
+    if (qteFailTriggeredRef.current) return
+    qteFailTriggeredRef.current = true
+
+    const bpQte = blueprintQteFromScene(sc, liveQte)
+    if (bpQte && hasTieredQteOutcomes(bpQte)) {
+      dispatch(runtime.submitQteOutcome('fail'))
+    } else {
+      const hits = qteVerdicts.filter((v) => v.rank !== 'miss').length
+      dispatch(runtime.submitQte(hits))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.interaction.type, snapshot.clip?.nodeId, runtime])
+  }, [elapsed, snapshot.interaction.type, snapshot.clip?.nodeId, qteVerdicts, runtime, scenario])
 
   // 自动演示：每步挑第一个可行输入推进，直到结局。
   useEffect(() => {
@@ -385,11 +498,13 @@ export function BlueprintPlayer(): JSX.Element {
     const timer = window.setTimeout(() => {
       if (it.type === 'choice' && it.options[0]) dispatch(runtime.chooseOption(it.options[0].key))
       else if (it.type === 'qte') {
-        dispatch(
-          hasTieredQteOutcomes(it.qte)
-            ? runtime.submitQteOutcome('pass')
-            : runtime.submitQte(it.qte.passingHits ?? it.qte.cueMs.length),
-        )
+        const sc = runtime.state.currentNodeId ? scenario?.scenes[runtime.state.currentNodeId] : undefined
+        const liveQte = sc ? resolveSceneQte(sc) : undefined
+        if (sc && liveQte && shouldUseBattleParryUi(sc, liveQte)) {
+          dispatch(runtime.submitQteOutcome('pass'))
+        } else {
+          dispatch(runtime.submitQte(liveQte?.cues?.length ?? it.qte.cueMs.length))
+        }
       }
       else if (it.type === 'boss') dispatch(runtime.submitBossRound(true))
       else if (it.type === 'hotspots' && it.hotspots[0]) dispatch(runtime.clickHotspot(it.hotspots[0].id))
@@ -398,6 +513,16 @@ export function BlueprintPlayer(): JSX.Element {
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoRunning, snapshot, runtime])
+
+  useEffect(() => {
+    if (!runtime || !scenario) return
+    const nodeId = runtime.state.currentNodeId
+    const sc = nodeId ? scenario.scenes[nodeId] : undefined
+    if (!sc || snapshot.interaction.type !== 'choice' || choiceLatched) return
+    if (shouldOpenChoiceDuringPlayback(sc, elapsed)) {
+      setChoiceLatched(true)
+    }
+  }, [runtime, scenario, snapshot.interaction.type, elapsed, choiceLatched])
 
   if (!scenario || !runtime) {
     return <div className="bpx-empty">无可播放剧本</div>
@@ -435,31 +560,47 @@ export function BlueprintPlayer(): JSX.Element {
     setMode('editor')
   }
 
-  const onTap = (): void => {
-    tapsRef.current += 1
-    setTaps(tapsRef.current)
+  function handleCueResolve(cue: QTECue, verdict: HitVerdict): void {
+    if (!runtime || !scene || !activeQte) return
+    setQteVerdicts((prev) => {
+      const next = prev.some((v) => v.cueId === cue.id) ? prev : [...prev, verdict]
+      if (!qteAllResolved(activeQte, next)) return next
+      window.setTimeout(() => {
+        const hasQteBranches = scene.branches.some((b) => b.kind === 'qte_pass' || b.kind === 'qte_fail')
+        if (hasQteBranches) {
+          const passed = qtePassed(activeQte, next)
+          dispatch(runtime.submitQteOutcome(passed ? 'pass' : 'fail'))
+        } else {
+          const hits = next.filter((v) => v.rank !== 'miss').length
+          dispatch(runtime.submitQte(hits))
+        }
+      }, 400)
+      return next
+    })
   }
 
-  function qteKeyMatches(expected: string | undefined, e: KeyboardEvent): boolean {
-    if (!expected) return e.code === 'Space' || e.key === ' ' || e.key === 'Enter'
-    return e.code === expected || e.key === expected
-  }
-
-  useEffect(() => {
-    if (snapshot.interaction.type !== 'qte') return
-    if (hasTieredQteOutcomes(snapshot.interaction.qte)) return
-    const qte = snapshot.interaction.qte
-    function onKeyDown(e: KeyboardEvent): void {
-      const cue = qte.cueMs[tapsRef.current] != null ? qte.cues?.[tapsRef.current] : undefined
-      const expected = cue?.triggerKey
-      if (!qteKeyMatches(expected, e)) return
-      e.preventDefault()
-      onTap()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.interaction.type, snapshot.clip?.nodeId])
+  const interaction = snapshot.interaction
+  const scene: Scene | undefined = runtime.state.currentNodeId
+    ? scenario.scenes[runtime.state.currentNodeId]
+    : undefined
+  const activeQte = useMemo(() => (scene ? resolveSceneQte(scene) : undefined), [scene])
+  const liveParryQte =
+    scene && activeQte ? blueprintQteFromScene(scene, activeQte) : undefined
+  const qteLayerActive =
+    !!(
+      scene &&
+      interaction.type === 'qte' &&
+      activeQte &&
+      shouldActivateTimedQte(scene, elapsed)
+    )
+  const firstQteAppearMs =
+    activeQte?.cues?.length ? Math.min(...activeQte.cues.map((c) => c.appearAt)) : 0
+  const showBattleParry =
+    qteLayerActive &&
+    !!scene &&
+    !!activeQte &&
+    shouldUseBattleParryUi(scene, activeQte) &&
+    elapsed >= firstQteAppearMs
 
   function onUnmuteClick(): void {
     const v = videoRef.current
@@ -472,12 +613,11 @@ export function BlueprintPlayer(): JSX.Element {
     }
   }
 
-  const interaction = snapshot.interaction
-  const scene: Scene | undefined = runtime.state.currentNodeId
-    ? scenario.scenes[runtime.state.currentNodeId]
-    : undefined
   const choiceVisible =
-    scene && interaction.type === 'choice' && elapsed >= choiceWindowStart(scene)
+    scene &&
+    interaction.type === 'choice' &&
+    (choiceLatched ||
+      (elapsed >= choiceWindowStart(scene) && elapsed < choiceWindowEnd(scene)))
 
   const hudEntities = deriveEntities(scenario, runtime)
   const score = runtime.state.score
@@ -538,6 +678,7 @@ export function BlueprintPlayer(): JSX.Element {
         {/* ── 复用旧 Player 的成熟渲染设施 ── */}
         {scene && <DialogueBox scene={scene} elapsed={elapsed} />}
         {scene && <TextOverlayLayer scene={scene} elapsed={elapsed} />}
+        {scene && <StickerLayer scene={scene} ms={elapsed} />}
         {scene && hudVisible && (
           <div className="bpx-content-ui" style={contentStyle}>
             <HudLayer scenario={scenario} scene={scene} entities={hudEntities} vars={vars} score={score} />
@@ -546,6 +687,7 @@ export function BlueprintPlayer(): JSX.Element {
 
         {choiceVisible && isBattleSkillChoice(scene) && (
           <BattleSkillLayer
+            key={scene.id}
             scene={scene}
             onPick={(b) => dispatch(runtime.chooseOption(b.id))}
             vars={vars}
@@ -583,37 +725,27 @@ export function BlueprintPlayer(): JSX.Element {
 
         {/* ── QTE / Boss：锚定到视频内容矩形（与血条同坐标系），letterbox 时不漂到黑边 ── */}
         <div className="bpx-content-anchor" style={contentStyle}>
-        {scene && interaction.type === 'qte' && isBattleParryQte(scene) && (
+        {showBattleParry && liveParryQte && runtime && (
           <BattleParryLayer
-            qte={interaction.qte}
+            qte={liveParryQte}
             onResolve={(outcome) => dispatch(runtime.submitQteOutcome(outcome))}
           />
         )}
 
-        {(!scene || !isBattleParryQte(scene)) && interaction.type === 'qte' && (
-          <div className="bpx-qte">
-            {hasTieredQteOutcomes(interaction.qte) ? (
-              <>
-                <button className="bpx-qte-btn" onClick={() => dispatch(runtime.submitQteOutcome('pass'))}>
-                  {interaction.qte.outcomeLabels?.pass ?? '完美'}
-                </button>
-                <button className="bpx-qte-btn bpx-qte-btn--good" onClick={() => dispatch(runtime.submitQteOutcome('good'))}>
-                  {interaction.qte.outcomeLabels?.good ?? '成功'}
-                </button>
-                <button className="bpx-qte-btn bpx-qte-btn--fail" onClick={() => dispatch(runtime.submitQteOutcome('fail'))}>
-                  {interaction.qte.outcomeLabels?.fail ?? '失败'}
-                </button>
-                <p>防反 QTE：选择本次判定档位</p>
-              </>
-            ) : (
-              <>
-                <button className="bpx-qte-btn" onClick={onTap}>
-                  命中 ×{taps}
-                </button>
-                <p>在限时内连点命中（需 {interaction.qte.passingHits ?? interaction.qte.cueMs.length} 次）</p>
-              </>
-            )}
-          </div>
+        {qteLayerActive && !showBattleParry && activeQte && (activeQte.cues?.length ?? 0) > 0 && (
+          <QTEOverlay
+            spec={activeQte}
+            elapsed={elapsed}
+            verdicts={qteVerdicts}
+            ambientClass={scene ? qteOverlayAmbientClass(scene) : ''}
+            onResolve={(cue, deltaMs, holdMs) => {
+              const v =
+                cue.shape === 'hold'
+                  ? judgeHold(cue, activeQte.window, activeQte.score, deltaMs, holdMs ?? 0)
+                  : judgeTap(cue, activeQte.window, activeQte.score, deltaMs)
+              handleCueResolve(cue, v)
+            }}
+          />
         )}
 
         {interaction.type === 'boss' && (
@@ -738,22 +870,32 @@ function hasTieredQteOutcomes(qte: BlueprintQte): boolean {
   return !!qte.outcomeLabels?.good
 }
 
-function computeVideoContentRect(video: HTMLVideoElement): ContentRect | null {
-  const parent = video.parentElement
-  if (!parent) return null
-  const boxW = parent.clientWidth
-  const boxH = parent.clientHeight
-  if (boxW <= 0 || boxH <= 0) return null
-  const mediaW = video.videoWidth || 16
-  const mediaH = video.videoHeight || 9
-  const scale = Math.min(boxW / mediaW, boxH / mediaH)
-  const width = mediaW * scale
-  const height = mediaH * scale
+function shouldUseBattleParryUi(scene: Scene, spec: QTESpec): boolean {
+  if (!isBattleParryQte(scene)) return false
+  if ((spec.cues?.length ?? 0) > 1) return false
+  return !!spec.outcomeLabels?.good
+}
+
+function blueprintQteFromScene(scene: Scene, spec: QTESpec): BlueprintQte {
+  const cues = spec.cues ?? []
+  const sequence = spec.sequence === true
+  const kind = scene.decision?.qteKind ?? 'timing'
   return {
-    left: (boxW - width) / 2,
-    top: (boxH - height) / 2,
-    width,
-    height,
+    kind: kind === 'parry' ? 'parry' : kind === 'mash' ? 'mash' : sequence ? 'sequence' : 'timing',
+    windowMs: spec.window?.good ?? 200,
+    cueMs: cues.map((c) => c.appearAt),
+    cues: cues.map((c) => ({
+      id: c.id,
+      triggerKey: c.triggerKey,
+      shape: c.shape,
+      durationMs: c.durationMs,
+      sweepDir: c.sweepDir,
+      label: c.label,
+    })),
+    sequence,
+    timeoutMs: spec.timeoutMs ?? scene.decision?.timeoutMs,
+    passingHits: sequence ? cues.length : Math.max(1, Math.ceil(cues.length / 2)),
+    outcomeLabels: spec.outcomeLabels,
   }
 }
 

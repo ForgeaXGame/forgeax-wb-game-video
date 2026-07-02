@@ -1,4 +1,5 @@
-import type { DecisionSpec, Scene } from '../scenario/types'
+import { qteTimeoutDeadlineMs } from '../qte/QTEEngine'
+import type { DecisionSpec, QTESpec, Scene } from '../scenario/types'
 
 /** 解析选项类型 —— optType 优先，兼容旧 mode 字段。 */
 export function resolveOptType(d?: DecisionSpec): 'static' | 'timed' | 'timed_qte' {
@@ -23,6 +24,28 @@ export function choiceWindowEnd(scene: Scene): number {
   const d = scene.decision
   if (d?.windowEndMs != null) return d.windowEndMs
   return scene.durationMs
+}
+
+/**
+ * timed_qte 交互窗结束时刻 —— 必须盖住最后一个 cue 的判定尾窗 + 整段超时，
+ * 不能只用 scene.durationMs（否则第二个按键点尚未出现 QTE 层就被关掉）。
+ */
+export function qteInteractionWindowEnd(scene: Scene, spec: QTESpec = scene.qte ?? { cues: [] }): number {
+  const base = choiceWindowEnd(scene)
+  const cues = spec.cues ?? []
+  if (cues.length === 0) return base
+  const good = spec.window?.good ?? 480
+  const lastLiveEnd = Math.max(...cues.map((c) => c.targetAt + good))
+  const deadline = qteTimeoutDeadlineMs({ ...spec, timeoutMs: spec.timeoutMs ?? scene.decision?.timeoutMs })
+  return Math.max(base, lastLiveEnd, deadline ?? 0)
+}
+
+/** 逻辑播放上限 —— 画面轨 effectiveEnd 之上，timed_qte 还需盖住整段交互窗。 */
+export function resolvePlaybackCapMs(scene: Scene, baseEndMs: number): number {
+  if (resolveOptType(scene.decision) === 'timed_qte' && (scene.qte?.cues?.length ?? 0) > 0) {
+    return Math.max(baseEndMs, qteInteractionWindowEnd(scene))
+  }
+  return baseEndMs
 }
 
 /** 播放中是否应弹出选项层（非 scene-end 路径）。 */
@@ -60,7 +83,7 @@ export function shouldActivateTimedQte(scene: Scene, elapsedMs: number): boolean
   if (!scene.qte?.cues?.length) return false
   if (resolveOptType(scene.decision) === 'timed_qte') {
     const start = choiceWindowStart(scene)
-    const end = choiceWindowEnd(scene)
+    const end = qteInteractionWindowEnd(scene)
     return elapsedMs >= start && elapsedMs < end
   }
   // kind=qte 且无 decision 窗口 → 全场景有效

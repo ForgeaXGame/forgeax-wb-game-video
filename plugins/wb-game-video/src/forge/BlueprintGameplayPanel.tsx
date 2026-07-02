@@ -1,11 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { useScenarioStore } from '../scenario/scenarioStore'
 import { VIDEO_CLIPS, UI_SCHEMES, getVideoClip } from '../scenario/gameAssetCatalog'
+import { CALC_TYPE_CATALOG, calcTypeMethod, type CalcTypeId } from '../scenario/calcTypes'
+import {
+  branchOutcomeLabels,
+  formatSettlementTime,
+  listPerformanceSettlements,
+} from '../scenario/performanceSettlement'
+import { useShellStore } from '../shell/shellStore'
 import { injectStyleOnce } from '../styles/injectStyle'
 import { BranchGateEditor } from '../editor/numeric/NumericEditors'
-import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Hotspot, PerformanceCue, QTESpec, QteOutcome, Scenario, Scene, VarEffect } from '../scenario/types'
-import type { DecisionOptType, DecisionFireAt, ChoicePresentation, HudPreset, MediaPlayMode, QteKind } from '../scenario/gameplayTypes'
+import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Scenario, Scene, VarEffect } from '../scenario/types'
+import type { DecisionOptType, DecisionFireAt, HudPreset, MediaPlayMode, QteKind } from '../scenario/gameplayTypes'
 
 /**
  * BlueprintGameplayPanel —— 蓝图视图右侧「玩法字段」可视化编辑面板(v9 M8)。
@@ -14,80 +21,25 @@ import type { DecisionOptType, DecisionFireAt, ChoicePresentation, HudPreset, Me
  *   - 场景类别(kind)：story/battle/qte/choice，切换即给节点重新上色;
  *   - 限时选择(decision)：模式 + 倒计时 + 提示文案;
  *   - Boss 战(kind=battle)：Boss/玩家实体、胜负跳转、完美 flag、回合列表(增删/伤害);
- *   - 子流程返回点(returnsToCaller)：热点 call/return 的出口标记。
+ *
+ * 不含：子流程返回点 / AI 视频生成 / ext 扩展属性 —— 前者属叙事热点子图，
+ * 后两者走资产板与对话侧 Nodia，不在蓝图玩法右栏编辑。
+ *
+ * 与时间轴的分工（同一 Scenario SSOT，双视图）：
+ *   - 蓝图右栏：节点骨架 —— clip 绑定、calcType、optType、分支条件/跳转/effects、
+ *     进入属性、剧情标记、Boss 骨架；结算列表只读预览 +「视频编辑」跳转。
+ *   - 视频 Tab 时间轴 · 组件详情：窗口时刻、飘字/QTE/字幕/选项的表现与坐标 —
+ *     选中时间轴 clip 后在 MaterialInspector 编辑（CatalogTabs）。
  *
  * 全部经 scenarioStore.updateScene 落同一 Scenario(SSOT)——蓝图、剧情树、运行时
  * 立刻同步。缺省字段不写，保持旧剧本零回归。
  */
-function choiceHotspotId(branchId: string): string {
-  return `choice-${branchId}`
-}
-
-function findChoiceHotspot(hotspots: Hotspot[], branch: Branch): Hotspot | undefined {
-  return (
-    hotspots.find((h) => h.id === choiceHotspotId(branch.id)) ??
-    hotspots.find((h) => h.id === branch.id) ??
-    hotspots.find((h) => h.targetSceneId === branch.targetSceneId && !h.detour)
-  )
-}
-
-function isEmptyHotspot(h: Hotspot): boolean {
-  return !h.targetSceneId && !h.detour?.dialogue?.length
-}
-
-/** 与 BlueprintRuntime.nodeHasPerformance 对齐：有 clip 或 VIDEO media 才算有独立演出。 */
-function sceneHasPerformance(scene: Scene): boolean {
-  if (scene.clipId) return true
-  if (scene.media?.kind === 'VIDEO' && scene.media.ref) return true
-  return false
-}
-
-function upsertChoiceHotspot(
-  hotspots: Hotspot[],
-  branch: Branch,
-  patch: Partial<Hotspot>,
-): Hotspot[] {
-  const existing = findChoiceHotspot(hotspots, branch)
-  const id = existing?.id ?? choiceHotspotId(branch.id)
-  const next: Hotspot = {
-    ...(existing ?? {
-      id,
-      x: 0.5,
-      y: 0.55,
-      mode: 'goto',
-    }),
-    ...patch,
-    id,
-    label: patch.label ?? existing?.label ?? branch.label ?? branch.targetSceneId,
-    targetSceneId: branch.targetSceneId,
-  }
-  delete next.detour
-  return [...hotspots.filter((h) => h.id !== id), next]
-}
-
-function removeChoiceHotspot(hotspots: Hotspot[], branch: Branch): Hotspot[] {
-  const existing = findChoiceHotspot(hotspots, branch)
-  if (!existing) return hotspots
-  return hotspots.filter((h) => h.id !== existing.id)
-}
-
 function isTimedDecision(decision: DecisionSpec | undefined): boolean {
   return decision?.optType === 'timed' || decision?.mode === 'timed' || decision?.mode === 'wait'
 }
 
 function firstEntityId(scenario: Scenario, kind: 'boss' | 'player'): string {
   return Object.values(scenario.entities ?? {}).find((e) => e.kind === kind)?.id ?? `ent-${kind}`
-}
-
-function hpEffectValue(effects: Effect[] | undefined): number {
-  const eff = effects?.find((e): e is EntityStatEffect => e.kind === 'entityStat' && e.stat === 'hp')
-  return Math.abs(Number(eff?.value ?? 0))
-}
-
-function hpEffectTarget(effects: Effect[] | undefined, scenario: Scenario): 'boss' | 'player' {
-  const eff = effects?.find((e): e is EntityStatEffect => e.kind === 'entityStat' && e.stat === 'hp')
-  const entity = eff ? scenario.entities?.[eff.entityId] : undefined
-  return entity?.kind === 'player' ? 'player' : 'boss'
 }
 
 function withHpEffect(effects: Effect[] | undefined, scenario: Scenario, target: 'boss' | 'player', value: number, idPrefix: string): Effect[] {
@@ -117,8 +69,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   if (!scene) return null
 
   const panelKind = scene.boss ? 'battle' : scene.qte?.cues.length ? 'qte' : scene.decision ? 'choice' : 'story'
-  const hasPerformance = sceneHasPerformance(scene)
-  const clip = hasPerformance ? getVideoClip(scene.clipId) : undefined
+  const clip = getVideoClip(scene.clipId)
   const sceneIds = Object.keys(scenario.scenes)
   const entityEntries = Object.entries(scenario.entities ?? {})
   const bossEntities = entityEntries.filter(([, e]) => e.kind === 'boss')
@@ -127,6 +78,18 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   const numberVars = Object.values(scenario.variables ?? {}).filter((v) => v.kind === 'number')
   const items = Object.values(scenario.items ?? {})
   const choiceBranches = scene.branches.filter((b) => b.kind === 'choice')
+  const qteBranches = scene.branches.filter((b) => b.kind === 'qte_pass' || b.kind === 'qte_fail')
+  const isCalcNode = Boolean(scene.calcType)
+  const gateBranches = isCalcNode
+    ? scene.branches.filter((b) => b.kind !== 'auto')
+    : scene.decision?.optType === 'timed_qte'
+      ? qteBranches
+      : choiceBranches
+  const qteCues = scene.qte?.cues ?? []
+  const battleParryMultiCue =
+    scene.decision?.optType === 'timed_qte' &&
+    scene.ext?.qteUi === 'battleParry' &&
+    qteCues.length > 1
   const timedDecision = isTimedDecision(scene.decision)
   const sceneTitles = scenario.scenes
 
@@ -134,7 +97,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
     if (patch === null) {
       updateScene(selectedSceneId, {
         decision: undefined,
-        branches: scene!.branches.map((branch) =>
+        branches: scene.branches.map((branch) =>
           branch.kind === 'choice' ? { ...branch, kind: 'auto' } : branch,
         ),
       })
@@ -170,10 +133,10 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   function addChoiceBranch(): void {
     const id = `choice-${Date.now().toString(36)}`
     updateScene(selectedSceneId, {
-      decision: scene!.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
-      kind: scene!.kind === 'choice' ? scene!.kind : 'choice',
+      decision: scene.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
+      kind: scene.kind === 'choice' ? scene.kind : 'choice',
       branches: [
-        ...scene!.branches,
+        ...scene.branches,
         {
           id,
           kind: 'choice',
@@ -185,12 +148,12 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   }
 
   function removeChoiceBranch(branchId: string): void {
-    const branches = scene!.branches.filter((b) => b.id !== branchId)
+    const branches = scene.branches.filter((b) => b.id !== branchId)
     const hasChoice = branches.some((b) => b.kind === 'choice')
     updateScene(selectedSceneId, {
       branches,
-      decision: hasChoice ? scene!.decision : undefined,
-      kind: hasChoice && scene!.kind !== 'choice' ? 'choice' : scene!.kind,
+      decision: hasChoice ? scene.decision : undefined,
+      kind: hasChoice && scene.kind !== 'choice' ? 'choice' : scene.kind,
     })
   }
 
@@ -215,22 +178,22 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
       </div>
 
       <div className="ks-bgp-content">
-      {/* 演出 —— 对齐原型「演出」组：有 clip 才展示完整演出字段；纯逻辑节点仅保留「无」 */}
+      {/* 演出 —— 对齐原型「演出」组：演出编号取自「视频」固定库 */}
       <section className="ks-bgp-sec">
         <label className="ks-bgp-lbl" title="当前节点引用的视频片段与播放方式。">演出</label>
-        {!hasPerformance && (
-          <p className="ks-bgp-hint">
-            纯逻辑 / 隐藏计算节点：无独立演出；运行时逻辑叠加在上一段视频上执行，不会换片。
-          </p>
-        )}
         <div className="ks-bgp-field">
-          <span className="ks-bgp-fk" title="绑定到该节点的视频片段；选「无」表示纯逻辑或占位节点。">演出编号</span>
+          <span className="ks-bgp-fk" title="绑定到该节点的视频片段；无则表示纯逻辑或占位节点。">演出编号</span>
           <select
             className="ks-bgp-input"
             value={scene.clipId ?? ''}
-            onChange={(e) =>
-              updateScene(selectedSceneId, { clipId: e.target.value || undefined })
-            }
+            onChange={(e) => {
+              const clipId = e.target.value || undefined
+              const picked = clipId ? getVideoClip(clipId) : undefined
+              updateScene(selectedSceneId, {
+                clipId,
+                durationMs: picked?.durMs ?? scene.durationMs,
+              })
+            }}
           >
             <option value="">无</option>
             {VIDEO_CLIPS.map((c) => (
@@ -243,40 +206,36 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
             )}
           </select>
         </div>
-        {hasPerformance && (
-          <>
-            <div className="ks-bgp-field">
-              <span className="ks-bgp-fk" title="视频片段库里的类型信息，只读展示。">视频类型</span>
-              <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
-            </div>
-            {clip && (
-              <div className="ks-bgp-field">
-                <span className="ks-bgp-fk" title="单次播放或循环播放；loop 常用于待机/探索场合。">演出方式</span>
-                <select
-                  className="ks-bgp-input"
-                  value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
-                  onChange={(e) =>
-                    updateScene(selectedSceneId, {
-                      mediaPlayMode:
-                        (e.target.value as MediaPlayMode) === 'once'
-                          ? undefined
-                          : (e.target.value as MediaPlayMode),
-                    })
-                  }
-                >
-                  <option value="once">单次</option>
-                  <option value="loop">循环</option>
-                </select>
-              </div>
-            )}
-            <div className="ks-bgp-field">
-              <span className="ks-bgp-fk" title="来自视频片段库的时长信息，只读展示。">演出时长</span>
-              <span className="ks-bgp-fv">
-                {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
-              </span>
-            </div>
-          </>
+        <div className="ks-bgp-field">
+          <span className="ks-bgp-fk" title="视频片段库里的类型信息，只读展示。">视频类型</span>
+          <span className="ks-bgp-fv">{clip?.type ?? '—'}</span>
+        </div>
+        {clip && (
+          <div className="ks-bgp-field">
+            <span className="ks-bgp-fk" title="单次播放或循环播放；loop 常用于待机/探索场合。">演出方式</span>
+            <select
+              className="ks-bgp-input"
+              value={scene.mediaPlayMode ?? (clip.type === 'loop' ? 'loop' : 'once')}
+              onChange={(e) =>
+                updateScene(selectedSceneId, {
+                  mediaPlayMode:
+                    (e.target.value as MediaPlayMode) === 'once'
+                      ? undefined
+                      : (e.target.value as MediaPlayMode),
+                })
+              }
+            >
+              <option value="once">单次</option>
+              <option value="loop">循环</option>
+            </select>
+          </div>
         )}
+        <div className="ks-bgp-field">
+          <span className="ks-bgp-fk" title="来自视频片段库的时长信息，只读展示。">演出时长</span>
+          <span className="ks-bgp-fv">
+            {clip?.durMs != null ? `${Math.round(clip.durMs / 1000)}s` : '—'}
+          </span>
+        </div>
       </section>
 
       {/* 界面 —— HUD 方案取自左栏「界面」固定库（UI_SCHEMES），二者同源 */}
@@ -305,20 +264,27 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         </div>
       </section>
 
-      {hasPerformance && (
-        <PerformanceCuesSection
-          scenario={scenario}
-          cues={scene.performance?.cues ?? []}
-          durationMs={scene.durationMs}
-          onChange={(next) =>
-            updateScene(selectedSceneId, { performance: next.length ? { cues: next } : undefined })
-          }
-        />
-      )}
+      <CalcSection
+        scene={scene}
+        clip={clip}
+        durationMs={scene.durationMs}
+        onCalcType={(calcType) =>
+          updateScene(selectedSceneId, { calcType: calcType || undefined })
+        }
+        onOpenVideo={() => useShellStore.getState().setForgeView('video')}
+      />
 
-      {/* 选项 —— 对齐原型「选项 / 限时 QTE」组 */}
+      {/* 选项 —— 与「计算类型=无」互斥；选中计算类型后本组自动隐藏 */}
+      {!isCalcNode && (
       <section className="ks-bgp-sec">
-        <label className="ks-bgp-lbl" title="配置该节点是否弹出选项、倒计时或限时 QTE；实际去向由 choice / qte 分支连线决定。">选项</label>
+        <label className="ks-bgp-lbl" title="配置该节点是否弹出选项、倒计时或限时 QTE；实际去向由 choice / qte 分支连线决定。">
+          {scene.decision?.optType === 'timed_qte' ? 'QTE 交互' : '选项'}
+        </label>
+        {scene.decision && scene.decision.optType !== 'none' && scene.decision.optType !== 'timed_qte' && (
+          <p className="ks-bgp-hint">
+            窗口时间、提示文案、清单/热区呈现、热区坐标 → 在视频 Tab 时间轴选中「选项」控件编辑。
+          </p>
+        )}
         <div className="ks-bgp-field">
           <span className="ks-bgp-fk">类型</span>
           <select
@@ -346,6 +312,18 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
 
         {scene.decision?.optType === 'timed_qte' ? (
           <>
+            <p className="ks-bgp-hint">
+              视频 Tab：「QTE 按键点」轨编辑各次按键的时刻/坐标；「QTE 窗口」轨编辑整段生效时段与超时（不是选项清单）。
+            </p>
+            {battleParryMultiCue ? (
+              <p className="ks-bgp-hint ks-bgp-hint-warn">
+                已配置 {qteCues.length} 个按键点：「战斗防反按键」仅支持单 cue，试玩将自动改用默认 QTE 圆点（与时间轴坐标一致）。
+              </p>
+            ) : scene.ext?.qteUi === 'battleParry' && qteCues.length === 1 ? (
+              <p className="ks-bgp-hint">
+                试玩为 A/B 墨章防反 UI，圆点位置与时间轴 cue 坐标无关；要按坐标试玩请改「默认 QTE 按钮」。
+              </p>
+            ) : null}
             <div className="ks-bgp-field">
               <span className="ks-bgp-fk">QTE 类型</span>
               <select
@@ -371,6 +349,50 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                 <option value="battleParry">战斗防反按键</option>
               </select>
             </div>
+            <div className="ks-bgp-field">
+              <span className="ks-bgp-fk">整段限时</span>
+              <input
+                className="ks-bgp-input"
+                type="number"
+                min={500}
+                step={500}
+                placeholder="超时 ms"
+                value={scene.decision.timeoutMs ?? scene.qte?.timeoutMs ?? ''}
+                onChange={(e) => {
+                  const timeoutMs = e.target.value ? Number(e.target.value) : undefined
+                  setDecision({ timeoutMs })
+                  if (scene.qte) {
+                    updateScene(selectedSceneId, {
+                      qte: { ...scene.qte, timeoutMs },
+                    })
+                  }
+                }}
+              />
+            </div>
+            {qteCues.length > 0 ? (
+              <div className="ks-bgp-qte-cues">
+                <span className="ks-bgp-fk">按键点（只读）</span>
+                <ul className="ks-bgp-qte-cue-list">
+                  {[...qteCues]
+                    .sort((a, b) => a.appearAt - b.appearAt)
+                    .map((c) => (
+                      <li key={c.id}>
+                        <code>{c.id}</code>
+                        <span>
+                          {c.appearAt}–{c.targetAt} ms
+                          {c.label ? ` · ${c.label}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+                <p className="ks-bgp-hint">
+                  判定针对<strong>整段 QTE</strong>：全部按键点完成后汇总 pass/good/fail，由下方「QTE 通过 / 失败」分支的
+                  qteOutcome 决定跳转（不是逐个 cue 单独分支）。
+                </p>
+              </div>
+            ) : (
+              <p className="ks-bgp-hint">尚未配置按键点 —— 绑定视频后在时间轴添加 QTE 控件。</p>
+            )}
           </>
         ) : scene.decision ? (
           <>
@@ -385,21 +407,6 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                 <option value="battleSkillBar">战斗技能栏</option>
               </select>
             </div>
-            {!timedDecision && (
-              <div className="ks-bgp-field">
-                <span className="ks-bgp-fk">呈现方式</span>
-                <select
-                  className="ks-bgp-input"
-                  value={scene.decision.presentation ?? 'list'}
-                  onChange={(e) =>
-                    setDecision({ presentation: e.target.value as ChoicePresentation })
-                  }
-                >
-                  <option value="list">清单呈现</option>
-                  <option value="hotspot">画面热区</option>
-                </select>
-              </div>
-            )}
             {timedDecision && (
               <>
                 <div className="ks-bgp-field">
@@ -442,30 +449,6 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
               </>
             )}
             <div className="ks-bgp-field">
-              <span className="ks-bgp-fk">窗口起点</span>
-              <input
-                className="ks-bgp-input"
-                type="number"
-                placeholder="窗口起点 ms"
-                value={scene.decision.windowStartMs ?? ''}
-                onChange={(e) =>
-                  setDecision({ windowStartMs: e.target.value ? Number(e.target.value) : undefined })
-                }
-              />
-            </div>
-            <div className="ks-bgp-field">
-              <span className="ks-bgp-fk">窗口终点</span>
-              <input
-                className="ks-bgp-input"
-                type="number"
-                placeholder="窗口终点 ms"
-                value={scene.decision.windowEndMs ?? ''}
-                onChange={(e) =>
-                  setDecision({ windowEndMs: e.target.value ? Number(e.target.value) : undefined })
-                }
-              />
-            </div>
-            <div className="ks-bgp-field">
               <span className="ks-bgp-fk">跳转时点</span>
               <select
                 className="ks-bgp-input"
@@ -476,34 +459,31 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                 <option value="video_end">等视频结束再跳转</option>
               </select>
             </div>
-            <div className="ks-bgp-field">
-              <span className="ks-bgp-fk">提示文案</span>
-              <input
-                className="ks-bgp-input"
-                type="text"
-                placeholder="提示文案"
-                value={scene.decision.prompt ?? ''}
-                onChange={(e) => setDecision({ prompt: e.target.value || undefined })}
-              />
-            </div>
           </>
         ) : null}
       </section>
+      )}
 
       <section className="ks-bgp-sec">
         <div className="ks-bgp-vidhead">
-          <label className="ks-bgp-lbl" title="每条出边（选项 / 自动续播 / QTE 判定）的类型、条件、跳转与状态变化。auto/qte 出边同时是剧情树连线。">分支 / 出边</label>
-          {scene.decision?.optType !== 'timed_qte' && (
+          <label className="ks-bgp-lbl" title="每个选项/出边的条件、跳转与状态变化。">分支</label>
+          {!isCalcNode && scene.decision?.optType !== 'timed_qte' && (
             <button type="button" className="ks-bgp-linkbtn" onClick={addChoiceBranch}>
               + 添加选项
             </button>
           )}
         </div>
-        {scene.branches.length === 0 ? (
-          <p className="ks-bgp-hint">当前节点没有出边。</p>
+        {gateBranches.length === 0 ? (
+          <p className="ks-bgp-hint">
+            {isCalcNode
+              ? '当前计算节点没有可编辑的出向分支。'
+              : scene.decision?.optType === 'timed_qte'
+                ? '当前节点没有 QTE 通过/失败分支（demo 攻击前摇应有 qte_pass ×2 + qte_fail）。'
+                : '当前节点没有 choice 分支。'}
+          </p>
         ) : (
           <div className="ks-bgp-branches">
-            {scene.branches.map((branch) => (
+            {gateBranches.map((branch) => (
               <BranchGateEditor
                 key={branch.id}
                 branch={branch}
@@ -515,30 +495,16 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                     branches: scene.branches.map((b) => (b.id === branch.id ? { ...b, ...patch } : b)),
                   })
                 }
-                onRemove={branch.kind === 'choice' ? () => removeChoiceBranch(branch.id) : undefined}
+                onRemove={
+                  !isCalcNode && branch.kind === 'choice'
+                    ? () => removeChoiceBranch(branch.id)
+                    : undefined
+                }
               />
             ))}
           </div>
         )}
       </section>
-
-      {scene.qte && (
-        <QteSpecSection
-          qte={scene.qte}
-          onChange={(next) => updateScene(selectedSceneId, { qte: next })}
-        />
-      )}
-
-      {scene.decision?.presentation === 'hotspot' && !timedDecision && (
-        <ChoiceHotspotsSection
-          branches={choiceBranches}
-          sceneTitles={sceneTitles}
-          hotspots={scene.hotspots ?? []}
-          onChange={(hotspots) =>
-            updateScene(selectedSceneId, { hotspots: hotspots.length ? hotspots : undefined })
-          }
-        />
-      )}
 
       <NumericAttrsSection
         scenario={scenario}
@@ -729,29 +695,6 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
         flagVars={flagVars}
         onChange={(next) => updateScene(selectedSceneId, { setFlags: next.length ? next : undefined })}
       />
-
-      <section className="ks-bgp-sec">
-        <label className="ks-bgp-check">
-          <input
-            type="checkbox"
-            checked={!!scene.returnsToCaller}
-            onChange={(e) => updateScene(selectedSceneId, { returnsToCaller: e.target.checked || undefined })}
-          />
-          子流程返回点（热点 call/return 出口）
-        </label>
-      </section>
-
-      <VideoGenSection
-        sceneId={selectedSceneId}
-        title={scene.title}
-        ext={scene.ext}
-        onChange={(next) => updateScene(selectedSceneId, { ext: next })}
-      />
-
-      <ExtAttrsSection
-        ext={scene.ext}
-        onChange={(next) => updateScene(selectedSceneId, { ext: next })}
-      />
       </div>
     </div>
   )
@@ -812,206 +755,114 @@ function SceneFlagsSection({
   )
 }
 
-function PerformanceCuesSection({
-  scenario,
-  cues,
+function CalcSection({
+  scene,
+  clip,
   durationMs,
-  onChange,
+  onCalcType,
+  onOpenVideo,
 }: {
-  scenario: Scenario
-  cues: PerformanceCue[]
+  scene: Scene
+  clip: ReturnType<typeof getVideoClip>
   durationMs: number
-  onChange: (next: PerformanceCue[]) => void
+  onCalcType: (calcType: CalcTypeId | '') => void
+  onOpenVideo: () => void
 }) {
-  function patch(id: string, next: PerformanceCue): void {
-    onChange(cues.map((cue) => (cue.id === id ? next : cue)))
-  }
-
-  function addCue(): void {
-    onChange([
-      ...cues,
-      {
-        id: `judge-${Date.now().toString(36)}`,
-        atMs: Math.min(Math.max(0, durationMs), 1000),
-        effects: withHpEffect([], scenario, 'boss', 100, `judge-${Date.now().toString(36)}`),
-        label: '命中',
-      },
-    ])
-  }
-
-  const total = cues.reduce((sum, cue) => sum + hpEffectValue(cue.effects), 0)
+  const outcomes = branchOutcomeLabels(scene)
+  const settlements = listPerformanceSettlements(scene)
+  const method = calcTypeMethod(scene.calcType)
+  const totalMs = clip?.durMs ?? durationMs
+  const timelinePct = (atMs: number) =>
+    totalMs > 0 ? Math.max(0, Math.min(100, (atMs / totalMs) * 100)) : 0
+  const settlementLabel = scene.calcType ? '结算飘字' : '演出飘字'
 
   return (
     <section className="ks-bgp-sec">
-      <div className="ks-bgp-vidhead">
-        <label className="ks-bgp-lbl" title="真实判定事件；蓝图和视频时间轴共用这一组数据。">判定</label>
-        {cues.length > 0 && <span className="ks-bgp-calc-total">总计 {total}</span>}
-      </div>
-      {cues.length === 0 ? (
-        <p className="ks-bgp-hint">暂无判定项。</p>
-      ) : (
-        <div className="ks-bgp-calcs">
-          {cues.map((cue, i) => (
-            <PerformanceCueRow
-              key={cue.id}
-              cue={cue}
-              index={i}
-              scenario={scenario}
-              durationMs={durationMs}
-              onChange={(next) => patch(cue.id, next)}
-              onRemove={() => onChange(cues.filter((c) => c.id !== cue.id))}
-            />
-          ))}
-        </div>
-      )}
-      <button type="button" className="ks-bgp-add" onClick={addCue}>
-        + 添加判定
-      </button>
-    </section>
-  )
-}
-
-/**
- * QTE 判定档编辑 —— 编辑 scene.qte 的命中窗口 / 评分 / 整段超时 / 多档标签。
- * 与 CatalogTabs 的「每只 cue」编辑互补：这里管**整场 QTE 的判定规则**，
- * 让试玩运行时能按 perfect/great/good/miss 与 pass/good/fail 三档正确结算。
- */
-function QteSpecSection({
-  qte,
-  onChange,
-}: {
-  qte: QTESpec
-  onChange: (next: QTESpec) => void
-}) {
-  const set = (patch: Partial<QTESpec>): void => onChange({ ...qte, ...patch })
-  const setWindow = (k: 'perfect' | 'great' | 'good', v: number): void =>
-    set({ window: { ...qte.window, [k]: Math.max(0, Number.isFinite(v) ? v : 0) } })
-  const setScore = (k: 'perfect' | 'great' | 'good' | 'miss', v: number): void =>
-    set({ score: { ...qte.score, [k]: Number.isFinite(v) ? v : 0 } })
-  const labels = qte.outcomeLabels ?? {}
-  const setLabel = (k: QteOutcome, v: string): void => {
-    const next: Partial<Record<QteOutcome, string>> = { ...labels, [k]: v || undefined }
-    const cleaned = Object.fromEntries(
-      Object.entries(next).filter(([, val]) => val),
-    ) as Partial<Record<QteOutcome, string>>
-    set({ outcomeLabels: Object.keys(cleaned).length ? cleaned : undefined })
-  }
-
-  return (
-    <section className="ks-bgp-sec ks-bgp-qte">
-      <label
-        className="ks-bgp-lbl"
-        title="整场 QTE 的命中窗口 / 评分 / 整段超时 / 多档判定标签；试玩运行时按它结算 perfect/great/good/miss 与 pass/good/fail。"
-      >
-        QTE 判定
+      <label className="ks-bgp-lbl" title="隐藏计算规则；结算时刻与飘字在视频时间轴编辑。">
+        计算
       </label>
       <div className="ks-bgp-field">
-        <span className="ks-bgp-fk" title="命中窗口 ms 容差（对 |delta| 比较）">命中窗口</span>
-        <div className="ks-bgp-qte-scores">
-          <input className="ks-bgp-input" type="number" min={0} placeholder="完美" title="完美窗口(ms)" value={qte.window.perfect} onChange={(e) => setWindow('perfect', Number(e.target.value))} />
-          <input className="ks-bgp-input" type="number" min={0} placeholder="良好" title="良好窗口(ms)" value={qte.window.great} onChange={(e) => setWindow('great', Number(e.target.value))} />
-          <input className="ks-bgp-input" type="number" min={0} placeholder="命中" title="命中窗口(ms)" value={qte.window.good} onChange={(e) => setWindow('good', Number(e.target.value))} />
-        </div>
-      </div>
-      <div className="ks-bgp-field">
-        <span className="ks-bgp-fk" title="单点命中评分；失误一般为负">单点评分</span>
-        <div className="ks-bgp-qte-scores">
-          <input className="ks-bgp-input" type="number" placeholder="完美" title="完美分" value={qte.score.perfect} onChange={(e) => setScore('perfect', Number(e.target.value))} />
-          <input className="ks-bgp-input" type="number" placeholder="良好" title="良好分" value={qte.score.great} onChange={(e) => setScore('great', Number(e.target.value))} />
-          <input className="ks-bgp-input" type="number" placeholder="命中" title="命中分" value={qte.score.good} onChange={(e) => setScore('good', Number(e.target.value))} />
-          <input className="ks-bgp-input" type="number" placeholder="失误" title="失误分（一般为负）" value={qte.score.miss} onChange={(e) => setScore('miss', Number(e.target.value))} />
-        </div>
-      </div>
-      <div className="ks-bgp-field">
-        <span className="ks-bgp-fk">整段超时</span>
-        <input
+        <span className="ks-bgp-fk">计算类型</span>
+        <select
           className="ks-bgp-input"
-          type="number"
-          min={0}
-          placeholder="不限时(ms)"
-          value={qte.timeoutMs ?? ''}
-          onChange={(e) =>
-            set({ timeoutMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })
-          }
-        />
+          value={scene.calcType ?? ''}
+          title={method}
+          onChange={(e) => onCalcType((e.target.value || '') as CalcTypeId | '')}
+        >
+          <option value="">无</option>
+          {CALC_TYPE_CATALOG.map((entry) => (
+            <option key={entry.id} value={entry.id} title={entry.method}>
+              {entry.id}
+            </option>
+          ))}
+          {scene.calcType && !CALC_TYPE_CATALOG.some((c) => c.id === scene.calcType) && (
+            <option value={scene.calcType}>{scene.calcType}</option>
+          )}
+        </select>
       </div>
-      <div className="ks-bgp-field">
-        <span className="ks-bgp-fk">档位标签</span>
-        <div className="ks-bgp-qte-scores">
-          <input className="ks-bgp-input" placeholder="完美 pass" title="完美档标签" value={labels.pass ?? ''} onChange={(e) => setLabel('pass', e.target.value)} />
-          <input className="ks-bgp-input" placeholder="成功 good" title="成功档标签" value={labels.good ?? ''} onChange={(e) => setLabel('good', e.target.value)} />
-          <input className="ks-bgp-input" placeholder="失败 fail" title="失败档标签" value={labels.fail ?? ''} onChange={(e) => setLabel('fail', e.target.value)} />
+      {scene.calcType && (
+        <div className="ks-bgp-field">
+          <span className="ks-bgp-fk">判定结果</span>
+          <span className={`ks-bgp-fv${outcomes.length >= 2 ? '' : ' ks-bgp-fv-muted'}`}>
+            {outcomes.length >= 2 ? outcomes.join(' / ') : '无'}
+          </span>
         </div>
-      </div>
+      )}
+      {(scene.calcType || settlements.length > 0) && (
+        <>
+          {!scene.calcType && settlements.length > 0 ? (
+            <p className="ks-bgp-hint">纯表现飘字，不参与计算分支；时刻与文案在视频 Tab 时间轴编辑。</p>
+          ) : null}
+          <div className="ks-bgp-field ks-bgp-field--stack">
+            <span className="ks-bgp-fk">{settlementLabel}</span>
+            {settlements.length === 0 ? (
+              <span className="ks-bgp-fv ks-bgp-fv-muted">无</span>
+            ) : (
+              <div className="ks-bgp-settle-timeline">
+                <div className="ks-bgp-settle-track">
+                  {settlements.map((row, i) => (
+                    <span
+                      key={row.id}
+                      className="ks-bgp-settle-mark"
+                      style={{ left: `${timelinePct(row.atMs).toFixed(1)}%` }}
+                      title={`${formatSettlementTime(row.atMs)} · ${row.displayText}`}
+                    >
+                      {i + 1}
+                    </span>
+                  ))}
+                </div>
+                <div className="ks-bgp-settle-scale">
+                  <span>0s</span>
+                  <span>{settlements.length}</span>
+                  <span>{formatSettlementTime(totalMs)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          {settlements.length > 0 && (
+            <div className="ks-bgp-settle-list">
+              {settlements.map((row, i) => (
+                <div key={row.id} className="ks-bgp-settle-row">
+                  <span className="ks-bgp-settle-idx">{i + 1}</span>
+                  <span className="ks-bgp-settle-cell">{formatSettlementTime(row.atMs)}</span>
+                  <span className="ks-bgp-settle-cell">
+                    {row.damage != null ? row.damage : row.displayText || '—'}
+                  </span>
+                  <span className="ks-bgp-settle-cell">
+                    {row.xPct}%, {row.yPct}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {clip && (
+            <button type="button" className="ks-bgp-linkbtn" onClick={onOpenVideo}>
+              视频编辑 →
+            </button>
+          )}
+        </>
+      )}
     </section>
-  )
-}
-
-function PerformanceCueRow({
-  cue,
-  index,
-  scenario,
-  durationMs,
-  onChange,
-  onRemove,
-}: {
-  cue: PerformanceCue
-  index: number
-  scenario: Scenario
-  durationMs: number
-  onChange: (next: PerformanceCue) => void
-  onRemove: () => void
-}) {
-  const target = hpEffectTarget(cue.effects, scenario)
-  const value = hpEffectValue(cue.effects)
-
-  function setTarget(nextTarget: 'boss' | 'player'): void {
-    onChange({ ...cue, effects: withHpEffect(cue.effects, scenario, nextTarget, value, cue.id) })
-  }
-
-  function setValue(nextValue: number): void {
-    const n = Number.isFinite(nextValue) ? Math.max(0, nextValue) : 0
-    onChange({ ...cue, effects: withHpEffect(cue.effects, scenario, target, n, cue.id) })
-  }
-
-  return (
-    <div className="ks-bgp-calc-row">
-      <span className="ks-bgp-calc-no">{index + 1}</span>
-      <input
-        className="ks-bgp-input"
-        type="text"
-        placeholder="标签"
-        value={cue.label ?? ''}
-        onChange={(e) => onChange({ ...cue, label: e.target.value || undefined })}
-      />
-      <select
-        className="ks-bgp-input"
-        value={target}
-        onChange={(e) => setTarget(e.target.value as 'boss' | 'player')}
-      >
-        <option value="boss">Boss</option>
-        <option value="player">玩家</option>
-      </select>
-      <input
-        className="ks-bgp-input"
-        type="number"
-        min={0}
-        value={value}
-        onChange={(e) => setValue(Number(e.target.value))}
-      />
-      <input
-        className="ks-bgp-input"
-        type="number"
-        min={0}
-        max={durationMs}
-        title="结算时刻(ms)"
-        value={cue.atMs}
-        onChange={(e) => onChange({ ...cue, atMs: Math.max(0, Number(e.target.value) || 0) })}
-      />
-      <button type="button" className="ks-bgp-round-del" title="删除判定项" onClick={onRemove}>
-        ✕
-      </button>
-    </div>
   )
 }
 
@@ -1160,12 +1011,13 @@ function NumericAttrRow({
   const op = numericAttrOp(effect)
   const amount = numericAttrAmount(effect)
   const selected = attributeKey(effect)
+  const once = effect.kind === 'var' ? !!effect.once : false
   return (
     <div className="ks-bgp-stat-row">
       <select
         className="ks-bgp-input"
         value={selected}
-        onChange={(e) => onChange(effectFromAttribute(effect.id, e.target.value, op, amount, options))}
+        onChange={(e) => onChange(effectFromAttribute(effect.id, e.target.value, op, amount, options, effect.kind === 'var' ? once : undefined))}
       >
         {options.map((option) => (
           <option key={option.key} value={option.key}>
@@ -1176,7 +1028,7 @@ function NumericAttrRow({
       <select
         className="ks-bgp-input"
         value={op}
-        onChange={(e) => onChange(effectFromAttribute(effect.id, selected, e.target.value as NumericAttrOp, amount, options))}
+        onChange={(e) => onChange(effectFromAttribute(effect.id, selected, e.target.value as NumericAttrOp, amount, options, effect.kind === 'var' ? once : undefined))}
       >
         <option value="add">加</option>
         <option value="sub">减</option>
@@ -1186,8 +1038,20 @@ function NumericAttrRow({
         className="ks-bgp-input"
         type="number"
         value={amount}
-        onChange={(e) => onChange(effectFromAttribute(effect.id, selected, op, Number(e.target.value), options))}
+        onChange={(e) => onChange(effectFromAttribute(effect.id, selected, op, Number(e.target.value), options, effect.kind === 'var' ? once : undefined))}
       />
+      {effect.kind === 'var' ? (
+        <label className="ks-bgp-once" title="仅首次进入该节点时生效">
+          <input
+            type="checkbox"
+            checked={once}
+            onChange={(e) => onChange(effectFromAttribute(effect.id, selected, op, amount, options, e.target.checked))}
+          />
+          首次
+        </label>
+      ) : (
+        <span className="ks-bgp-once-spacer" aria-hidden />
+      )}
       <button type="button" className="ks-bgp-round-del" title="删除属性" onClick={onRemove}>
         ✕
       </button>
@@ -1210,6 +1074,7 @@ function effectFromAttribute(
   op: NumericAttrOp,
   rawValue: number,
   options: AttributeOption[],
+  once?: boolean,
 ): VarEffect | EntityStatEffect {
   const option = options.find((o) => o.key === optionKey) ?? options[0]
   const value = Number.isFinite(rawValue) ? rawValue : 0
@@ -1221,6 +1086,7 @@ function effectFromAttribute(
       varId: option?.kind === 'var' ? option.varId : '',
       op: op === 'set' ? 'set' : 'add',
       value: nextValue,
+      once: once || undefined,
     }
   }
   return {
@@ -1243,443 +1109,6 @@ function uniqueVariableId(existing: Record<string, GameVariable>, name: string):
     i += 1
   }
   return id
-}
-
-/**
- * 画面选项热区 —— 不新增 schema，只把现有 scene.hotspots 作为 choice 分支的画面坐标配置。
- */
-function ChoiceHotspotsSection({
-  branches,
-  sceneTitles,
-  hotspots,
-  onChange,
-}: {
-  branches: Branch[]
-  sceneTitles: Record<string, { title?: string }>
-  hotspots: Hotspot[]
-  onChange: (next: Hotspot[]) => void
-}) {
-  const emptyHotspots = hotspots.filter(isEmptyHotspot)
-
-  function patch(branch: Branch, p: Partial<Hotspot>): void {
-    onChange(upsertChoiceHotspot(hotspots, branch, p))
-  }
-
-  function enableAll(): void {
-    let next = hotspots
-    branches.forEach((branch, i) => {
-      const x = (i + 1) / (branches.length + 1)
-      next = upsertChoiceHotspot(next, branch, { x, y: 0.55 })
-    })
-    onChange(next)
-  }
-
-  return (
-    <section className="ks-bgp-sec">
-      <div className="ks-bgp-vidhead">
-        <label className="ks-bgp-lbl" title="把 choice 分支显示为视频画面上的可点击区域；跳转目标仍由分支连线决定。">画面选项热区</label>
-        {branches.length > 0 && (
-          <button type="button" className="ks-bgp-linkbtn" onClick={enableAll}>
-            补齐
-          </button>
-        )}
-      </div>
-      {branches.length === 0 ? (
-        <p className="ks-bgp-hint">当前节点没有 choice 分支，先在蓝图里连出选项。</p>
-      ) : (
-        branches.map((branch, i) => {
-          const hotspot = findChoiceHotspot(hotspots, branch)
-          const target = branch.targetSceneId
-          const targetTitle = sceneTitles[target]?.title ?? target
-          const xPct = Math.round(((hotspot?.x ?? (i + 1) / (branches.length + 1)) * 100) * 10) / 10
-          const yPct = Math.round(((hotspot?.y ?? 0.55) * 100) * 10) / 10
-          const rPct = Math.round(((hotspot?.r ?? 0.08) * 100) * 10) / 10
-          return (
-            <div key={branch.id} className="ks-bgp-hotspot-card">
-              <div className="ks-bgp-hotspot-head">
-                <span className="ks-bgp-hotspot-title">{branch.label ?? branch.id}</span>
-                <span className="ks-bgp-hotspot-target">→ {targetTitle}</span>
-              </div>
-              {!hotspot ? (
-                <button
-                  type="button"
-                  className="ks-bgp-add"
-                  onClick={() => patch(branch, { x: xPct / 100, y: yPct / 100 })}
-                >
-                  启用这个选项的画面热区
-                </button>
-              ) : (
-                <>
-                  <input
-                    className="ks-bgp-input"
-                    type="text"
-                    placeholder="画面提示名"
-                    value={hotspot.label ?? branch.label ?? ''}
-                    onChange={(e) => patch(branch, { label: e.target.value || undefined })}
-                  />
-                  <div className="ks-bgp-row">
-                    <label className="ks-bgp-mini">
-                      <span>X%</span>
-                      <input
-                        className="ks-bgp-input"
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={xPct}
-                        onChange={(e) => patch(branch, { x: Math.max(0, Math.min(100, Number(e.target.value))) / 100 })}
-                      />
-                    </label>
-                    <label className="ks-bgp-mini">
-                      <span>Y%</span>
-                      <input
-                        className="ks-bgp-input"
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={yPct}
-                        onChange={(e) => patch(branch, { y: Math.max(0, Math.min(100, Number(e.target.value))) / 100 })}
-                      />
-                    </label>
-                    <label className="ks-bgp-mini">
-                      <span>范围%</span>
-                      <input
-                        className="ks-bgp-input"
-                        type="number"
-                        min={2}
-                        max={40}
-                        step={1}
-                        value={rPct}
-                        onChange={(e) => patch(branch, { r: Math.max(2, Math.min(40, Number(e.target.value))) / 100 })}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="button"
-                    className="ks-bgp-round-del ks-bgp-hotspot-remove"
-                    onClick={() => onChange(removeChoiceHotspot(hotspots, branch))}
-                  >
-                    关闭这个热区
-                  </button>
-                </>
-              )}
-            </div>
-          )
-        })
-      )}
-      {emptyHotspots.length > 0 && (
-        <button
-          type="button"
-          className="ks-bgp-add"
-          onClick={() => onChange(hotspots.filter((h) => !isEmptyHotspot(h)))}
-        >
-          清理 {emptyHotspots.length} 个未绑定热区
-        </button>
-      )}
-    </section>
-  )
-}
-
-/**
- * ext 里被一等区块占用的保留键 —— 扩展属性区会隐藏它们，避免和专门的编辑区
- * （如「视频生成」用 ext.video）重复编辑同一份数据。
- */
-const RESERVED_EXT_KEYS = ['video', 'choiceUi', 'qteUi']
-
-/** 节点级视频生成配置（落在 Scene.ext.video，借 seedance 字段精简而来）。 */
-interface VideoGenConfig {
-  prompt?: string
-  durationSec?: number
-  size?: string
-  firstFrame?: string
-  lastFrame?: string
-  stitchPrev?: boolean
-}
-
-function readVideoConfig(ext: Record<string, unknown> | undefined): VideoGenConfig {
-  const v = ext?.video
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as VideoGenConfig) : {}
-}
-
-/**
- * VideoGenSection —— 蓝图节点的「生成视频」入口。
- *
- * 配置（提示词 / 时长 / 尺寸 / 首尾帧 / 衔接）落在 Scene.ext.video（用 stage② 的
- * 扩展位，不新造 typed 字段）；「添加到对话」把配置打包成结构化中文指令，经
- * postMessage(FORGEAX_COMPOSER_INSERT) 预填到宿主 studio 主对话框，由作者发送、
- * Nodia 据此调 gvid:generate-video。生成本身永远走 chat（不在工坊内联直连）。
- */
-function VideoGenSection({
-  sceneId,
-  title,
-  ext,
-  onChange,
-}: {
-  sceneId: string
-  title: string
-  ext: Record<string, unknown> | undefined
-  onChange: (next: Record<string, unknown> | undefined) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const cfg = readVideoConfig(ext)
-
-  function setCfg(patch: Partial<VideoGenConfig>): void {
-    const merged: VideoGenConfig = { ...cfg, ...patch }
-    const cleaned: VideoGenConfig = {}
-    if (merged.prompt) cleaned.prompt = merged.prompt
-    if (merged.durationSec) cleaned.durationSec = merged.durationSec
-    if (merged.size) cleaned.size = merged.size
-    if (merged.firstFrame) cleaned.firstFrame = merged.firstFrame
-    if (merged.lastFrame) cleaned.lastFrame = merged.lastFrame
-    if (merged.stitchPrev) cleaned.stitchPrev = true
-
-    const nextExt: Record<string, unknown> = { ...(ext ?? {}) }
-    if (Object.keys(cleaned).length > 0) nextExt.video = cleaned
-    else delete nextExt.video
-    onChange(Object.keys(nextExt).length > 0 ? nextExt : undefined)
-  }
-
-  function addToChat(): void {
-    const text = [
-      `请为蓝图节点「${title || sceneId}」生成视频（sceneId: ${sceneId}，调用 gvid:generate-video）：`,
-      `- 画面提示词：${cfg.prompt?.trim() || '（沿用该节点已有视频提示词）'}`,
-      `- 时长：${cfg.durationSec ? `${cfg.durationSec} 秒` : '默认'}`,
-      `- 尺寸：${cfg.size || '默认'}`,
-      `- 首帧：${cfg.firstFrame?.trim() || '无'}`,
-      `- 尾帧：${cfg.lastFrame?.trim() || '无'}`,
-      `- 衔接上一镜尾帧：${cfg.stitchPrev ? '是' : '否'}`,
-    ].join('\n')
-    try {
-      window.parent?.postMessage({ type: 'FORGEAX_COMPOSER_INSERT', text }, '*')
-    } catch {
-      /* 不在 iframe 内 / 跨域受限：静默降级（standalone 调试态） */
-    }
-  }
-
-  return (
-    <section className="ks-bgp-sec">
-      <div className="ks-bgp-vidhead">
-        <label className="ks-bgp-lbl">视频生成</label>
-        <button type="button" className="ks-bgp-vidtoggle" onClick={() => setOpen((o) => !o)}>
-          {open ? '收起' : '配置 ▾'}
-        </button>
-      </div>
-      {open && (
-        <div className="ks-bgp-vidform">
-          <textarea
-            className="ks-bgp-input ks-bgp-vidprompt"
-            rows={3}
-            placeholder="画面提示词（留空 = 沿用该节点已有视频提示词）"
-            value={cfg.prompt ?? ''}
-            onChange={(e) => setCfg({ prompt: e.target.value || undefined })}
-          />
-          <div className="ks-bgp-row">
-            <input
-              className="ks-bgp-input"
-              type="number"
-              min={3}
-              max={12}
-              placeholder="时长(s)"
-              value={cfg.durationSec ?? ''}
-              onChange={(e) => setCfg({ durationSec: e.target.value ? Number(e.target.value) : undefined })}
-            />
-            <select
-              className="ks-bgp-input"
-              value={cfg.size ?? ''}
-              onChange={(e) => setCfg({ size: e.target.value || undefined })}
-            >
-              <option value="">尺寸（默认）</option>
-              <option value="720p">720p</option>
-              <option value="1080p">1080p</option>
-            </select>
-          </div>
-          <input
-            className="ks-bgp-input"
-            type="text"
-            placeholder="首帧 URL（可选）"
-            value={cfg.firstFrame ?? ''}
-            onChange={(e) => setCfg({ firstFrame: e.target.value || undefined })}
-          />
-          <input
-            className="ks-bgp-input"
-            type="text"
-            placeholder="尾帧 URL（可选）"
-            value={cfg.lastFrame ?? ''}
-            onChange={(e) => setCfg({ lastFrame: e.target.value || undefined })}
-          />
-          <label className="ks-bgp-check">
-            <input
-              type="checkbox"
-              checked={!!cfg.stitchPrev}
-              onChange={(e) => setCfg({ stitchPrev: e.target.checked })}
-            />
-            衔接上一镜尾帧（画面连贯）
-          </label>
-          <button type="button" className="ks-bgp-add ks-bgp-addchat" onClick={addToChat}>
-            添加到对话（交给 Nodia 生成）
-          </button>
-        </div>
-      )}
-    </section>
-  )
-}
-
-/**
- * 常用扩展属性键的「快捷添加」建议 —— 反映「常规情况下也有这些属性」，但不写死成
- * typed 字段：点一下即在 ext 里加一个空值，作者再填。已存在的键会从建议里隐藏。
- */
-const EXT_SUGGESTIONS = ['界面方案', '阶段', '敌将', '限时(s)', '备注']
-
-/**
- * ExtAttrsSection —— 节点级通用扩展属性编辑区（backed by Scene.ext）。
- *
- * typed 一等字段（场景类别/选择呈现/Boss…）之外的任意自定义玩法维度都落这里。
- * 键 = 属性名，值 = 文本或 JSON（标量/数组/对象皆可）。Nodia 也按规则写同一个 ext。
- */
-function ExtAttrsSection({
-  ext,
-  onChange,
-}: {
-  ext: Record<string, unknown> | undefined
-  onChange: (next: Record<string, unknown> | undefined) => void
-}) {
-  const entries = Object.entries(ext ?? {}).filter(([k]) => !RESERVED_EXT_KEYS.includes(k))
-  const [newKey, setNewKey] = useState('')
-
-  function setKey(key: string, value: unknown): void {
-    onChange({ ...(ext ?? {}), [key]: value })
-  }
-  function removeKey(key: string): void {
-    const next = { ...(ext ?? {}) }
-    delete next[key]
-    onChange(Object.keys(next).length > 0 ? next : undefined)
-  }
-  function addKey(key: string): void {
-    const k = key.trim()
-    if (!k || RESERVED_EXT_KEYS.includes(k) || (ext && k in ext)) return
-    setKey(k, '')
-    setNewKey('')
-  }
-
-  const suggestions = EXT_SUGGESTIONS.filter((s) => !ext || !(s in ext))
-
-  return (
-    <section className="ks-bgp-sec">
-      <label className="ks-bgp-lbl">扩展属性</label>
-      <p className="ks-bgp-hint">按规则自定义维度（Nodia 可写）；值支持文本或 JSON。</p>
-
-      {entries.length > 0 && (
-        <div className="ks-bgp-ext">
-          {entries.map(([k, v]) => (
-            <ExtRow
-              key={k}
-              attrKey={k}
-              value={v}
-              onChangeValue={(nv) => setKey(k, nv)}
-              onRemove={() => removeKey(k)}
-            />
-          ))}
-        </div>
-      )}
-
-      {suggestions.length > 0 && (
-        <div className="ks-bgp-chips">
-          {suggestions.map((s) => (
-            <button key={s} type="button" className="ks-bgp-chip" onClick={() => addKey(s)}>
-              + {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="ks-bgp-row">
-        <input
-          className="ks-bgp-input"
-          type="text"
-          placeholder="新增属性名…"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              addKey(newKey)
-            }
-          }}
-        />
-        <button type="button" className="ks-bgp-add ks-bgp-add--inline" onClick={() => addKey(newKey)}>
-          添加
-        </button>
-      </div>
-    </section>
-  )
-}
-
-/**
- * 单条扩展属性行。值用本地 raw 文本驱动输入，提交时尝试解析为 JSON（对象/数组/
- * 布尔/数字/null），失败则按纯文本存——这样标量与结构化值都能往返不丢。
- */
-function ExtRow({
-  attrKey,
-  value,
-  onChangeValue,
-  onRemove,
-}: {
-  attrKey: string
-  value: unknown
-  onChangeValue: (next: unknown) => void
-  onRemove: () => void
-}) {
-  const display = typeof value === 'string' ? value : JSON.stringify(value)
-  const [raw, setRaw] = useState(display)
-
-  // 外部（如 Nodia）改写同一个 ext 键时，同步回本地输入。
-  useEffect(() => {
-    setRaw(typeof value === 'string' ? value : JSON.stringify(value))
-  }, [value])
-
-  function commit(text: string): void {
-    setRaw(text)
-    onChangeValue(coerceExtValue(text))
-  }
-
-  return (
-    <div className="ks-bgp-ext-row">
-      <span className="ks-bgp-ext-key" title={attrKey}>
-        {attrKey}
-      </span>
-      <input
-        className="ks-bgp-input ks-bgp-ext-val"
-        type="text"
-        value={raw}
-        onChange={(e) => commit(e.target.value)}
-      />
-      <button type="button" className="ks-bgp-round-del" title="删除属性" onClick={onRemove}>
-        ✕
-      </button>
-    </div>
-  )
-}
-
-/** 文本→值：能解析成 JSON 标量/结构就解析，否则原样当字符串。 */
-function coerceExtValue(text: string): unknown {
-  const t = text.trim()
-  if (t === '') return ''
-  const looksStructured =
-    t.startsWith('{') ||
-    t.startsWith('[') ||
-    t === 'true' ||
-    t === 'false' ||
-    t === 'null' ||
-    /^-?\d+(\.\d+)?$/.test(t)
-  if (looksStructured) {
-    try {
-      return JSON.parse(t)
-    } catch {
-      return text
-    }
-  }
-  return text
 }
 
 function SceneSelect({
@@ -1773,9 +1202,6 @@ const PANEL_CSS = `
 /* 标签 + 控件成行（演出编号 / 视频类型 / 演出方式 / 演出时长 / HUD 方案） */
 .ks-bgp-field { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px; }
 .ks-bgp-field .ks-bgp-input { width: 100%; }
-/* QTE 判定：把成组的数值/标签输入并排铺开 */
-.ks-bgp-qte-scores { display: flex; gap: 6px; min-width: 0; }
-.ks-bgp-qte-scores .ks-bgp-input { flex: 1 1 0; min-width: 0; }
 .ks-bgp-fk { font-size: 12px; color: rgba(255,255,255,0.55); }
 .ks-bgp-fv { font-size: 12px; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
 .ks-bgp-rounds { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
@@ -1824,63 +1250,103 @@ const PANEL_CSS = `
 .ks-bgp-mini span { font-size: 10px; color: rgba(255,255,255,0.45); }
 .ks-bgp-hotspot-remove { align-self: flex-start; font-size: 12px; }
 
-/* ── 判定项 ─────────────────────────────────────────── */
-.ks-bgp-calc-total { font-size: 11px; color: rgba(255,255,255,0.62); font-variant-numeric: tabular-nums; }
-.ks-bgp-calcs { display: flex; flex-direction: column; gap: 6px; }
-.ks-bgp-calc-row {
+/* ── 计算 / 结算只读预览 ─────────────────────────────── */
+.ks-bgp-fv-muted { color: rgba(255,255,255,0.42); }
+.ks-bgp-field--stack { align-items: start; }
+.ks-bgp-field--stack .ks-bgp-fv-muted { text-align: left; }
+.ks-bgp-settle-timeline { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.ks-bgp-settle-track {
+  position: relative;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.ks-bgp-settle-mark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: color-mix(in srgb, var(--ks-kind, #22d3ee) 70%, #000);
+  border: 1px solid rgba(255,255,255,0.35);
+}
+.ks-bgp-settle-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+}
+.ks-bgp-settle-list { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.ks-bgp-settle-row {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 58px 56px 64px 24px;
+  grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 4px;
   align-items: center;
-}
-.ks-bgp-calc-no {
-  color: var(--ks-kind, rgba(255,255,255,0.65));
   font-size: 11px;
+}
+.ks-bgp-settle-idx {
+  color: var(--ks-kind, rgba(255,255,255,0.65));
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+.ks-bgp-settle-cell { color: rgba(255,255,255,0.78); font-variant-numeric: tabular-nums; }
 
 /* ── 数值属性 ─────────────────────────────────────────── */
 .ks-bgp-stats { display: flex; flex-direction: column; gap: 6px; }
 .ks-bgp-stat-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px 58px 24px;
+  grid-template-columns: minmax(0, 1fr) 52px 58px 44px 24px;
   gap: 4px;
   align-items: center;
 }
-
-/* ── 扩展属性 ─────────────────────────────────────────── */
-.ks-bgp-ext { display: flex; flex-direction: column; gap: 6px; }
-.ks-bgp-ext-row { display: grid; grid-template-columns: 88px 1fr 24px; gap: 6px; align-items: center; }
-.ks-bgp-ext-key {
-  font-size: 11px; color: rgba(255,255,255,0.7);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.ks-bgp-once {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.62);
+  white-space: nowrap;
+  cursor: pointer;
 }
-.ks-bgp-ext-val { font-family: var(--font-mono, ui-monospace, monospace); }
-.ks-bgp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.ks-bgp-chip {
-  padding: 3px 8px; border-radius: 999px; cursor: pointer; font-size: 11px;
-  background: rgba(255,255,255,0.06);
-  border: 1px dashed rgba(255,255,255,0.22);
-  color: rgba(255,255,255,0.7);
-}
-.ks-bgp-chip:hover { color: #fff; border-color: rgba(255,255,255,0.4); }
+.ks-bgp-once input { margin: 0; }
+.ks-bgp-once-spacer { width: 44px; }
 .ks-bgp-add--inline { flex: none; padding: 6px 12px; }
-
-/* ── 视频生成 ─────────────────────────────────────────── */
 .ks-bgp-vidhead { display: flex; align-items: center; justify-content: space-between; }
-.ks-bgp-vidtoggle {
-  background: none; border: none; cursor: pointer; font-size: 11px;
-  color: var(--ks-kind, rgba(255,255,255,0.7));
+.ks-bgp-hint-warn { color: #fbbf24; }
+.ks-bgp-qte-cues { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.ks-bgp-qte-cue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.78);
 }
-.ks-bgp-vidtoggle:hover { color: #fff; }
-.ks-bgp-vidform { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-.ks-bgp-vidprompt { resize: vertical; min-height: 48px; line-height: 1.4; }
-.ks-bgp-addchat {
-  margin-top: 2px;
-  background: color-mix(in srgb, var(--ks-kind, #22d3ee) 22%, transparent);
-  border: 1px solid var(--ks-kind, rgba(255,255,255,0.3));
-  color: #fff; font-weight: 600;
+.ks-bgp-qte-cue-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
 }
-.ks-bgp-addchat:hover { background: color-mix(in srgb, var(--ks-kind, #22d3ee) 34%, transparent); }
+.ks-bgp-qte-cue-list code {
+  font-size: 10px;
+  color: var(--ks-kind, #22d3ee);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 `

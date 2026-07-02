@@ -371,9 +371,21 @@ describe('qteTimeoutDeadlineMs / qteAllResolved —— 整段超时', () => {
     expect(qteTimeoutDeadlineMs(seqSpec(false))).toBeNull()
   })
 
-  it('截止线 = 首 cue.appearAt + timeoutMs', () => {
-    const spec: QTESpec = { ...seqSpec(false), timeoutMs: 2000 }
+  it('截止线 = 首 cue.appearAt + timeoutMs（单 cue）', () => {
+    const spec: QTESpec = {
+      cues: [tap({ id: 'solo', appearAt: 0, targetAt: 1000 })],
+      window,
+      score,
+      timeoutMs: 2000,
+    }
     expect(qteTimeoutDeadlineMs(spec)).toBe(2000)
+  })
+
+  it('多 cue 时截止线 = 最后判定窗结束 + timeoutMs', () => {
+    const spec: QTESpec = { ...seqSpec(false), timeoutMs: 2000 }
+    const good = window.good ?? 480
+    const lastEnd = Math.max(...spec.cues!.map((c) => c.targetAt + good))
+    expect(qteTimeoutDeadlineMs(spec)).toBe(lastEnd + 2000)
   })
 
   it('全部 cue 已判定 → qteAllResolved=true（不再触发超时失败）', () => {

@@ -138,9 +138,11 @@ export class BlueprintRuntime {
 
   /** 玩家在选项里选了一项（key = BlueprintOption.key / Branch.id）。 */
   chooseOption(optionKey: string): RuntimeDirective[] {
-    if (this.state.phase !== 'awaitChoice') return this.drain()
     const node = this.currentNode()
     if (!node) return this.drain()
+    const options = node.extensionElements.options ?? []
+    if (this.state.phase !== 'awaitChoice' && options.length === 0) return this.drain()
+
     const matchingEdges = (this.outgoing.get(node.id) ?? []).filter(
       (e) => e.extension?.branchId === optionKey,
     )
@@ -148,11 +150,30 @@ export class BlueprintRuntime {
     if (edge) {
       this.applyEdge(edge)
       this.enterNode(edge.targetRef)
-    } else if (matchingEdges.length === 0) {
-      const opt = (node.extensionElements.options ?? []).find((o) => o.key === optionKey)
-      if (opt) this.enterNode(opt.target)
+    } else if (!this.navigateChoiceTarget(node.id, optionKey, options)) {
+      this.log(`选项 ${optionKey} 未匹配到出边`)
     }
     return this.drain()
+  }
+
+  /** 选项 fallback：编译边缺失 / 条件未过时，回读 Scenario 分支或 BlueprintOption.target。 */
+  private navigateChoiceTarget(
+    nodeId: string,
+    optionKey: string,
+    options: NonNullable<GameVideoBlueprintNode['extensionElements']['options']>,
+  ): boolean {
+    const opt = options.find((o) => o.key === optionKey)
+    if (opt && this.nodes.has(opt.target)) {
+      this.enterNode(opt.target)
+      return true
+    }
+    const branch = (this.scenario.scenes[nodeId]?.branches ?? []).find(
+      (b) => b.id === optionKey && b.kind === 'choice' && b.targetSceneId,
+    )
+    if (!branch?.targetSceneId || !this.nodes.has(branch.targetSceneId)) return false
+    if (branch.effects?.length) this.applyRuntimeEffects(branch.effects)
+    this.enterNode(branch.targetSceneId)
+    return true
   }
 
   /** 提交 QTE 命中数。 */

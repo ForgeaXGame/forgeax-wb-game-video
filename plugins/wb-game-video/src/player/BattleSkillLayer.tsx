@@ -62,10 +62,14 @@ export function BattleSkillLayer({
       .filter((s) => s.available || s.locked)
   }, [scene.branches, ctx])
 
+  useEffect(() => {
+    setPicked(null)
+  }, [scene.id])
+
   function pick(branch: Branch, locked: boolean): void {
     if (picked || locked) return
     setPicked(branch.id)
-    window.setTimeout(() => onPick(branch), 140)
+    onPick(branch)
   }
 
   useEffect(() => {
