@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAssetStore, type AssetRecord } from '../assetStore'
 import { useSceneImageCache } from '../sceneImageCache'
+import { useScenarioStore } from '../../scenario/scenarioStore'
 import type { ImageClient, ImageRequest, ImageResult } from '../../llm/types'
+
+/** 磁盘资产按 scenarioId 隔离（pickLatestDiskAsset 读当前 scenarioStore.id）。 */
+const TEST_SCN_ID = 'unit-scn'
 
 /**
  * sceneImageCache 行为契约：
@@ -54,6 +58,7 @@ function makeImageClient(): ImageClient & {
 describe('sceneImageCache', () => {
   beforeEach(() => {
     useSceneImageCache.getState().clear()
+    useScenarioStore.setState((s) => ({ scenario: { ...s.scenario, id: TEST_SCN_ID } }))
     useAssetStore.setState({
       records: [],
       loaded: true,
@@ -92,7 +97,7 @@ describe('sceneImageCache', () => {
           makeAsset({
             id: 'img-1',
             createdAt: 100,
-            meta: { sceneId: 'scene-a', promptKind: 'scene', prompt: 'old' },
+            meta: { sceneId: 'scene-a', scenarioId: TEST_SCN_ID, promptKind: 'scene', prompt: 'old' },
           }),
         ],
         loaded: true,
@@ -130,7 +135,7 @@ describe('sceneImageCache', () => {
         records: [
           makeAsset({
             id: 'img-1',
-            meta: { sceneId: 'scene-a', promptKind: 'scene' },
+            meta: { sceneId: 'scene-a', scenarioId: TEST_SCN_ID, promptKind: 'scene' },
           }),
         ],
         loaded: true,

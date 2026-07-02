@@ -28,22 +28,22 @@ describe('scenarioStore.applyPatches · RFC 6902 通道', () => {
   afterEach(reset)
 
   it('happy path: replace scene 标题', () => {
-    const intro = useScenarioStore.getState().scenario.scenes['s1']
+    const intro = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]
     expect(intro).toBeTruthy()
 
     const result = useScenarioStore
       .getState()
-      .applyPatches([{ op: 'replace', path: '/scenes/s1/title', value: 'NEW' }])
+      .applyPatches([{ op: 'replace', path: `/scenes/${DEMO_ROOT}/title`, value: 'NEW' }])
 
     expect(result.applied).toBe(true)
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe('NEW')
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe('NEW')
   })
 
   it('整批失败时, scenario 引用不变 (回滚, 不污染状态)', () => {
     const before = useScenarioStore.getState().scenario
 
     const ops: JsonPatchOp[] = [
-      { op: 'replace', path: '/scenes/s1/title', value: 'NEW' },
+      { op: 'replace', path: `/scenes/${DEMO_ROOT}/title`, value: 'NEW' },
       // 第 2 步: 故意错路径
       { op: 'replace', path: '/scenes/non-existent/title', value: 'NOPE' },
     ]
@@ -53,8 +53,8 @@ describe('scenarioStore.applyPatches · RFC 6902 通道', () => {
     expect(result.error?.opIndex).toBe(1)
     // 引用相等 = 完全没动 store
     expect(useScenarioStore.getState().scenario).toBe(before)
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
-      before.scenes['s1']!.title,
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
+      before.scenes[DEMO_ROOT]!.title,
     )
   })
 
@@ -69,25 +69,25 @@ describe('scenarioStore.applyPatches · RFC 6902 通道', () => {
     useScenarioStore.temporal.getState().clear()
 
     const ops: JsonPatchOp[] = [
-      { op: 'replace', path: '/scenes/s1/title', value: 'TITLE-A' },
+      { op: 'replace', path: `/scenes/${DEMO_ROOT}/title`, value: 'TITLE-A' },
       { op: 'replace', path: '/title', value: 'STORY-A' },
     ]
 
     const beforeTitle = useScenarioStore.getState().scenario.title
     const beforeIntroTitle =
-      useScenarioStore.getState().scenario.scenes['s1']!.title
+      useScenarioStore.getState().scenario.scenes[DEMO_ROOT]!.title
 
     const result = useScenarioStore.getState().applyPatches(ops)
     expect(result.applied).toBe(true)
     expect(useScenarioStore.getState().scenario.title).toBe('STORY-A')
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
       'TITLE-A',
     )
 
     // undo 一次 → 两个改动一起回滚 (而不是回滚一个)
     useScenarioStore.temporal.getState().undo()
     expect(useScenarioStore.getState().scenario.title).toBe(beforeTitle)
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
       beforeIntroTitle,
     )
   })

@@ -55,11 +55,16 @@ describe('sessionRoute', () => {
       expect(readSessionRoute().scenarioId).toBe('scn-abc-123')
     })
 
-    it('解析 ?tab=forge / player', () => {
+    it('解析 ?tab=forge', () => {
       setLocation('?tab=forge')
       expect(readSessionRoute().tab).toBe('forge')
+    })
+
+    it('老链接 ?tab=player 迁移为 forge + play 视图（试玩并入 forge）', () => {
       setLocation('?tab=player')
-      expect(readSessionRoute().tab).toBe('player')
+      const route = readSessionRoute()
+      expect(route.tab).toBe('forge')
+      expect(route.forgeView).toBe('play')
     })
 
     it('老链接 ?tab=storytree 自动迁移为 ?tab=forge&view=tree（语义层）', () => {

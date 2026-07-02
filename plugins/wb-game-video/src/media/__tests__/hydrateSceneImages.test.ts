@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAssetStore, type AssetRecord } from '../assetStore'
 import { useSceneImageCache } from '../sceneImageCache'
 import { hydrateSceneImagesFromDisk } from '../hydrateSceneImages'
+import { useScenarioStore } from '../../scenario/scenarioStore'
 import type { Scenario } from '../../scenario/types'
+
+/** 磁盘资产按 scenarioId 隔离（pickLatestDiskAsset 读当前 scenarioStore.id）；
+ *  测试统一用这个 id，既写进 scenarioStore 也打到 asset.meta 上。 */
+const TEST_SCN_ID = 'test'
 
 /**
  * hydrateSceneImagesFromDisk —— 剧情树/播放器挂载时的"批量恢复"入口。
@@ -23,7 +28,7 @@ function makeAsset(sceneId: string, over: Partial<AssetRecord> = {}): AssetRecor
     mimeType: 'image/png',
     bytes: 1,
     createdAt: 1000,
-    meta: { sceneId, prompt: 'test prompt' },
+    meta: { sceneId, scenarioId: TEST_SCN_ID, prompt: 'test prompt' },
     ...over,
   }
 }
@@ -53,6 +58,8 @@ function makeScenario(scenes: Record<string, { kind: 'IMAGE_PROMPT' | 'VIDEO' | 
 describe('hydrateSceneImagesFromDisk', () => {
   beforeEach(() => {
     useSceneImageCache.getState().clear()
+    // pickLatestDiskAsset 按当前 scenarioStore.id 隔离磁盘资产 —— 对齐到 TEST_SCN_ID
+    useScenarioStore.setState((s) => ({ scenario: { ...s.scenario, id: TEST_SCN_ID } }))
     useAssetStore.setState({
       records: [],
       loaded: true,

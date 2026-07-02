@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useScenarioStore } from '../scenarioStore'
-import { getDemoScenario } from '../demoScenario'
+import type { Scenario } from '../types'
 
 /**
  * clearSceneTimeline —— 一键清空时间轴上的 clip。
@@ -22,11 +22,45 @@ import { getDemoScenario } from '../demoScenario'
  *   非常强烈）。
  */
 
+/**
+ * 本地固定 fixture —— 不依赖会漂移的内置 demo 内容。
+ * `intro` 场景刻意带：IMAGE_PROMPT 底图 + 一条台词 + 一条出边（剧情树），
+ * 以覆盖「清时间轴但保留底图/branches」的契约；`s2` 用于「不影响其他 scene」。
+ */
+function makeFixture(): Scenario {
+  return {
+    id: 'clear-timeline-fixture',
+    title: '清空时间轴测试',
+    rootSceneId: 'intro',
+    defaultCharMs: 60,
+    schemaVersion: 10,
+    characters: {},
+    scenes: {
+      intro: {
+        id: 'intro',
+        title: '序章',
+        media: { kind: 'IMAGE_PROMPT', prompt: '雨夜门外·灯笼' },
+        durationMs: 4000,
+        dialogue: [{ id: 'd0', role: 'narration', text: '开场旁白', startMs: 0, endMs: 2000 }],
+        branches: [{ id: 'b0', kind: 'auto', targetSceneId: 's2' }],
+      },
+      s2: {
+        id: 's2',
+        title: '第二场',
+        media: { kind: 'PLACEHOLDER' },
+        durationMs: 3000,
+        dialogue: [],
+        branches: [],
+      },
+    },
+  }
+}
+
 function reset(): void {
   useScenarioStore.setState({
-    scenario: getDemoScenario(),
-    selectedSceneId: 's1',
-    selection: { kind: 'scene', sceneId: 's1' },
+    scenario: makeFixture(),
+    selectedSceneId: 'intro',
+    selection: { kind: 'scene', sceneId: 'intro' },
     mode: 'editor',
   })
   useScenarioStore.temporal.getState().clear()
@@ -39,7 +73,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
   it('清空 dialogue / shots / audio / qte / keyShotId（branches 保留不动）', () => {
     // demoScenario 的 intro 场景自带台词与分支；先把各类都补齐
     const api = useScenarioStore.getState()
-    api.addShot('s1', { framing: 'medium', prompt: '镜头1' })
+    api.addShot('intro', { framing: 'medium', prompt: '镜头1' })
     useScenarioStore.setState((s) => ({
       scenario: {
         ...s.scenario,
@@ -65,7 +99,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
     }))
 
     const branchesBefore = useScenarioStore.getState().scenario.scenes.intro!.branches
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
 
     const scene = useScenarioStore.getState().scenario.scenes.intro!
     expect(scene.dialogue).toEqual([])
@@ -85,7 +119,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
       .getState()
       .scenario.scenes.intro!.branches.map((b) => ({ id: b.id, target: b.targetSceneId }))
     expect(before.length).toBeGreaterThan(0) // demoScenario 前置条件校验
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore
       .getState()
       .scenario.scenes.intro!.branches.map((b) => ({ id: b.id, target: b.targetSceneId }))
@@ -115,7 +149,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
     const beforeMedia = before.media
     const beforeDur = before.durationMs
 
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
 
     const after = useScenarioStore.getState().scenario.scenes.intro!
     expect(after.title).toBe(beforeTitle)
@@ -143,7 +177,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
       },
     }))
 
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
 
     const after = useScenarioStore.getState().scenario.scenes.intro!
     // 素材库原样保留
@@ -155,7 +189,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
     // v3.9.4：素材库不再被 clearSceneTimeline 涉及，因此"只有素材库非空"
     //         等价于"时间轴已空"，应该 early-return，scenario 引用保持不变。
     const api = useScenarioStore.getState()
-    api.clearSceneTimeline('s1') // 先清一轮，拿到干净起点
+    api.clearSceneTimeline('intro') // 先清一轮，拿到干净起点
     useScenarioStore.setState((s) => ({
       scenario: {
         ...s.scenario,
@@ -170,7 +204,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
       },
     }))
     const before = useScenarioStore.getState().scenario
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore.getState().scenario
     expect(after).toBe(before) // 引用不变 = early-return
     expect(after.scenes.intro!.sceneImages).toEqual(['img-only']) // 素材原样
@@ -195,7 +229,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
     }))
 
     const api = useScenarioStore.getState()
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
 
     const after = useScenarioStore.getState().scenario.scenes.intro!
     expect(after.media).toEqual({ kind: 'PLACEHOLDER' })
@@ -221,7 +255,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
       },
     }))
     const api = useScenarioStore.getState()
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore.getState().scenario.scenes.intro!
     expect(after.media).toBe(imgMedia) // 引用相等 —— 未动
   })
@@ -229,10 +263,10 @@ describe('scenarioStore · clearSceneTimeline', () => {
   it('不影响其他 scene', () => {
     const api = useScenarioStore.getState()
     const before = useScenarioStore.getState().scenario.scenes
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore.getState().scenario.scenes
     for (const id of Object.keys(after)) {
-      if (id === 's1') continue
+      if (id === 'intro') continue
       // 引用相等：别的 scene 原对象没被重建
       expect(after[id]).toBe(before[id])
     }
@@ -240,9 +274,9 @@ describe('scenarioStore · clearSceneTimeline', () => {
 
   it('对已经全空的场景调用 —— scenario 引用保持不变', () => {
     const api = useScenarioStore.getState()
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const snapshot1 = useScenarioStore.getState().scenario
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const snapshot2 = useScenarioStore.getState().scenario
     expect(snapshot2).toBe(snapshot1)
   })
@@ -282,7 +316,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
         },
       },
     }))
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore.getState().scenario.scenes.intro!
     expect(after.media).toEqual({ kind: 'PLACEHOLDER' })
     expect(after.videoOffsetMs).toBeUndefined()
@@ -292,7 +326,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
 
   it('只有 VIDEO、别字段全空时，clearSceneTimeline 真的清（isEmpty 不能 early-return）', () => {
     const api = useScenarioStore.getState()
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     useScenarioStore.setState((s) => ({
       scenario: {
         ...s.scenario,
@@ -306,7 +340,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
       },
     }))
     const before = useScenarioStore.getState().scenario
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const after = useScenarioStore.getState().scenario
     expect(after).not.toBe(before)
     expect(after.scenes.intro!.media.kind).toBe('PLACEHOLDER')
@@ -316,7 +350,7 @@ describe('scenarioStore · clearSceneTimeline', () => {
     // demoScenario.intro.media.kind === 'IMAGE_PROMPT'
     const api = useScenarioStore.getState()
     const mediaBefore = useScenarioStore.getState().scenario.scenes.intro!.media
-    api.clearSceneTimeline('s1')
+    api.clearSceneTimeline('intro')
     const mediaAfter = useScenarioStore.getState().scenario.scenes.intro!.media
     // 引用不变 —— 未被重建
     expect(mediaAfter).toBe(mediaBefore)

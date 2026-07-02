@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useScenarioStore } from '../scenarioStore'
 import { getDemoScenario } from '../demoScenario'
+import { DEMO_ROOT, DEMO_CHOICE } from './demoTestIds'
 
 /**
  * scenarioStore + zundo · history 行为契约
@@ -20,8 +21,8 @@ import { getDemoScenario } from '../demoScenario'
 function reset(): void {
   useScenarioStore.setState({
     scenario: getDemoScenario(),
-    selectedSceneId: 's1',
-    selection: { kind: 'scene', sceneId: 's1' },
+    selectedSceneId: DEMO_ROOT,
+    selection: { kind: 'scene', sceneId: DEMO_ROOT },
     mode: 'editor',
   })
   useScenarioStore.temporal.getState().clear()
@@ -38,67 +39,67 @@ describe('scenarioStore · zundo undo/redo', () => {
   })
 
   it('selectScene（仅 UI state）不进 history', () => {
-    useScenarioStore.getState().selectScene('s1')
+    useScenarioStore.getState().selectScene(DEMO_ROOT)
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(0)
   })
 
   it('updateScene 进 history（past += 1）', () => {
     useScenarioStore
       .getState()
-      .updateScene('s1', { title: '改名后的序章' })
+      .updateScene(DEMO_ROOT, { title: '改名后的序章' })
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
   })
 
   it('undo() 回滚 scenario', () => {
-    const original = useScenarioStore.getState().scenario.scenes['s1']?.title
-    useScenarioStore.getState().updateScene('s1', { title: 'NEW' })
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
+    const original = useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'NEW' })
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
       'NEW',
     )
 
     useScenarioStore.temporal.getState().undo()
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
       original,
     )
   })
 
   it('redo() 重新应用回滚掉的状态', () => {
-    useScenarioStore.getState().updateScene('s1', { title: 'NEW' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'NEW' })
     useScenarioStore.temporal.getState().undo()
     useScenarioStore.temporal.getState().redo()
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe(
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe(
       'NEW',
     )
   })
 
   it('undo 不复原 UI state（selectedSceneId 保持当前值）', () => {
-    useScenarioStore.getState().updateScene('s1', { title: 'NEW' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'NEW' })
     // 编辑后切到另一个场景；这步不该被 undo 撤销
-    useScenarioStore.getState().selectScene('s2b')
+    useScenarioStore.getState().selectScene(DEMO_CHOICE)
     useScenarioStore.temporal.getState().undo()
-    // 选中仍然是 pry（partialize 把 selectedSceneId 排除了）
-    expect(useScenarioStore.getState().selectedSceneId).toBe('s2b')
+    // 选中仍然是切过去的场景（partialize 把 selectedSceneId 排除了）
+    expect(useScenarioStore.getState().selectedSceneId).toBe(DEMO_CHOICE)
     // 但 scenario 已回滚
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).not.toBe(
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).not.toBe(
       'NEW',
     )
   })
 
   it('多次编辑后能逐步 undo', () => {
-    useScenarioStore.getState().updateScene('s1', { title: 'A' })
-    useScenarioStore.getState().updateScene('s1', { title: 'B' })
-    useScenarioStore.getState().updateScene('s1', { title: 'C' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'A' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'B' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'C' })
 
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe('C')
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe('C')
     useScenarioStore.temporal.getState().undo()
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe('B')
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe('B')
     useScenarioStore.temporal.getState().undo()
-    expect(useScenarioStore.getState().scenario.scenes['s1']?.title).toBe('A')
+    expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]?.title).toBe('A')
   })
 
   it('栈深度受 limit 约束（≤ 50）', () => {
     for (let i = 0; i < 80; i++) {
-      useScenarioStore.getState().updateScene('s1', { title: `T${i}` })
+      useScenarioStore.getState().updateScene(DEMO_ROOT, { title: `T${i}` })
     }
     expect(
       useScenarioStore.temporal.getState().pastStates.length,
@@ -108,18 +109,18 @@ describe('scenarioStore · zundo undo/redo', () => {
   it('pause / resume 期间的编辑不入栈（拖拽用）', () => {
     const t = useScenarioStore.temporal.getState()
     t.pause()
-    useScenarioStore.getState().updateScene('s1', { title: 'midDrag1' })
-    useScenarioStore.getState().updateScene('s1', { title: 'midDrag2' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'midDrag1' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'midDrag2' })
     t.resume()
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(0)
 
     // resume 后再编辑应正常入栈
-    useScenarioStore.getState().updateScene('s1', { title: 'committed' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'committed' })
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
   })
 
   it('clear() 清空所有历史', () => {
-    useScenarioStore.getState().updateScene('s1', { title: 'X' })
+    useScenarioStore.getState().updateScene(DEMO_ROOT, { title: 'X' })
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(1)
     useScenarioStore.temporal.getState().clear()
     expect(useScenarioStore.temporal.getState().pastStates.length).toBe(0)

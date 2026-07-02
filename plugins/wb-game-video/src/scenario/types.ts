@@ -1905,7 +1905,7 @@ export interface Scenario {
    *      QTESpec.sequence/timeoutMs、ConditionClause hpRatio/score/status、modules.gameplay)。
    * 读入时按版本链式升级（migrateScenarioToLatest 负责）。
    */
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
   /**
    * 模块开关 —— v7 新增。
