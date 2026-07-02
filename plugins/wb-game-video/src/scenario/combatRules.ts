@@ -1,4 +1,4 @@
-import type { Branch, PerformanceCue, Scenario, Scene, VarEffect } from './types'
+import type { Branch, Effect, EntityStatEffect, PerformanceCue, Scenario, Scene, VarEffect } from './types'
 
 export interface CombatRulesDraft {
   playerMaxHp: number
@@ -141,12 +141,12 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
     effects: qiEffects('set', 0),
   })
 
-  scenes.pu = updateFirstCue(scenes.pu, { damageToBoss: next.lightDamage })
-  scenes.zhong = updateFirstCue(scenes.zhong, { damageToBoss: next.heavyDamage })
-  scenes.ult = updateFirstCue(scenes.ult, { damageToBoss: next.ultDamage })
-  scenes.block = updateFirstCue(scenes.block, { damageToBoss: next.parryPerfectDamage })
-  scenes.dodgeP = updateFirstCue(scenes.dodgeP, { damageToBoss: next.parryGoodDamage })
-  scenes.hurt = updateFirstCue(scenes.hurt, { damageToPlayer: next.parryFailDamageToPlayer })
+  scenes.pu = updateFirstCueDamage(scenes.pu, BOSS_ID, next.lightDamage)
+  scenes.zhong = updateFirstCueDamage(scenes.zhong, BOSS_ID, next.heavyDamage)
+  scenes.ult = updateFirstCueDamage(scenes.ult, BOSS_ID, next.ultDamage)
+  scenes.block = updateFirstCueDamage(scenes.block, BOSS_ID, next.parryPerfectDamage)
+  scenes.dodgeP = updateFirstCueDamage(scenes.dodgeP, BOSS_ID, next.parryGoodDamage)
+  scenes.hurt = updateFirstCueDamage(scenes.hurt, PLAYER_ID, next.parryFailDamageToPlayer)
   scenes.tele = updateSceneBranch(scenes.tele, 'ai-qte-good', {
     effects: qiEffects('add', -next.parryGoodQiCost),
   })
@@ -186,19 +186,26 @@ function branchById(scene: Scene | undefined, id: string): Branch | undefined {
 }
 
 function varEffectValue(branch: Branch | undefined, op: VarEffect['op'], fallback: number): number {
-  return branch?.effects?.find((e) => e.varId === QI_ID && e.op === op)?.value ?? fallback
+  return branch?.effects?.find((e): e is VarEffect => e.kind === 'var' && e.varId === QI_ID && e.op === op)?.value ?? fallback
 }
 
 function firstDamageToBoss(scene: Scene | undefined, fallback: number): number {
-  return scene?.performance?.cues.find((c) => c.damageToBoss != null)?.damageToBoss ?? fallback
+  return firstHpDamage(scene, BOSS_ID, fallback)
 }
 
 function firstDamageToPlayer(scene: Scene | undefined, fallback: number): number {
-  return scene?.performance?.cues.find((c) => c.damageToPlayer != null)?.damageToPlayer ?? fallback
+  return firstHpDamage(scene, PLAYER_ID, fallback)
 }
 
 function qiEffects(op: VarEffect['op'], value: number): VarEffect[] {
-  return [{ varId: QI_ID, op, value }]
+  return [{ id: `qi-${op}-${Math.abs(value)}`, kind: 'var', varId: QI_ID, op, value }]
+}
+
+function firstHpDamage(scene: Scene | undefined, entityId: string, fallback: number): number {
+  const effect = scene?.performance?.cues
+    .flatMap((cue) => cue.effects)
+    .find((e): e is EntityStatEffect => e.kind === 'entityStat' && e.stat === 'hp' && e.entityId === entityId && e.value < 0)
+  return effect ? Math.abs(effect.value) : fallback
 }
 
 function updateSceneBranch(scene: Scene | undefined, branchId: string, patch: Partial<Branch>): Scene {
@@ -221,14 +228,25 @@ function orderInitiativeBranches(scene: Scene | undefined, playerSpeed: number, 
   return { ...scene, branches }
 }
 
-function updateFirstCue(scene: Scene | undefined, patch: Partial<PerformanceCue>): Scene {
+function updateFirstCueDamage(scene: Scene | undefined, entityId: string, damage: number): Scene {
   if (!scene) throw new Error('missing scene for cue update')
   const cues = scene.performance?.cues ?? []
-  const [first, ...rest] = cues.length > 0 ? cues : [{ id: `${scene.id}-rule`, atMs: 1000 }]
+  const [first, ...rest] = cues.length > 0 ? cues : [{ id: `${scene.id}-rule`, atMs: 1000, effects: [] }]
+  const nextEffect: EntityStatEffect = {
+    id: `${first.id}-${entityId}-hp`,
+    kind: 'entityStat',
+    entityId,
+    stat: 'hp',
+    op: 'add',
+    value: -Math.abs(damage),
+  }
+  const effects: Effect[] = first.effects.some((e) => e.kind === 'entityStat' && e.stat === 'hp' && e.entityId === entityId)
+    ? first.effects.map((e) => (e.kind === 'entityStat' && e.stat === 'hp' && e.entityId === entityId ? nextEffect : e))
+    : [nextEffect, ...first.effects]
   return {
     ...scene,
     performance: {
-      cues: [{ ...first, ...patch }, ...rest],
+      cues: [{ ...first, effects }, ...rest],
     },
   }
 }

@@ -61,8 +61,13 @@ describe('combatRules', () => {
     expect(scenario.variables?.qi?.max).toBe(7)
     expect(scenario.variables?.qi?.initial).toBe(1)
     expect(heavy.condition?.all).toEqual([{ type: 'var', varId: 'qi', op: 'gte', value: 3 }])
-    expect(heavy.effects).toEqual([{ varId: 'qi', op: 'add', value: -3 }])
+    expect(heavy.effects).toEqual([{ id: 'qi-add-3', kind: 'var', varId: 'qi', op: 'add', value: -3 }])
     expect(ult.condition?.all).toEqual([{ type: 'var', varId: 'qi', op: 'gte', value: 7 }])
-    expect(scenario.scenes.ult?.performance?.cues[0]?.damageToBoss).toBe(999)
+    expect(scenario.scenes.ult?.performance?.cues[0]?.effects[0]).toMatchObject({
+      kind: 'entityStat',
+      entityId: 'ent-boss',
+      stat: 'hp',
+      value: -999,
+    })
   })
 })
