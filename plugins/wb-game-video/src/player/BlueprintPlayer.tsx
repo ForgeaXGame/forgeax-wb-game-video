@@ -12,7 +12,7 @@
  * 自动演示、重开。
  */
 
-import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { useScenarioStore } from '../scenario/scenarioStore'
 import { useShellStore } from '../shell/shellStore'
 import { useMediaStore } from '../media/mediaStore'
@@ -20,6 +20,8 @@ import { getVideoClip } from '../scenario/gameAssetCatalog'
 import { primeColdCliffDemoMedia } from '../scenario/coldCliffDemoMedia'
 import { scenarioToBlueprint } from '../blueprint/scenarioToBlueprint'
 import { toFXGraph } from '../blueprint/blueprint-reactflow'
+import type { FXNode } from '../blueprint/react-flow-schema'
+import { BPG_TYPE_ACCENTS } from '../editor/storygraph/blueprintGraphStyle'
 import { BlueprintRuntime } from '../blueprint/runtime/engine'
 import type { RuntimeDirective } from '../blueprint/runtime/directives'
 import type {
@@ -42,6 +44,7 @@ import { HotspotLayer } from './hotspots/HotspotLayer'
 import { initEntities, type EntitiesState } from './entities'
 import { evaluateCondition } from './conditionEval'
 import { choiceWindowStart } from './choiceTiming'
+import { injectStyleOnce } from '../styles/injectStyle'
 
 const STYLE_ID = 'bpx-style'
 // 真实视频以 <video> 的 onEnded 为主推进；此超时只是「视频不结束（loop/加载失败）」
@@ -246,7 +249,17 @@ export function BlueprintPlayer(): JSX.Element {
     [scenario, runKey],
   )
   const graph = useMemo(() => (scenario ? scenarioToBlueprint(scenario) : null), [scenario])
-  const fxGraph = useMemo(() => (graph ? toFXGraph(graph) : null), [graph])
+
+  // 作者/AI 工作台里的「试玩」才挂调试工具（clip 标签 + 工具条）。
+  // `?surface=player`（主工作室嵌入预览）/ `?src=pack`（已发布试玩）是给终端玩家看的
+  // 纯播放表面，不该露出这些开发向控件。
+  const playerOnly = useMemo<boolean>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('surface') === 'player'
+    } catch {
+      return false
+    }
+  }, [])
 
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY)
   const [, force] = useState(0)
@@ -519,12 +532,14 @@ export function BlueprintPlayer(): JSX.Element {
           </button>
         )}
         <div className="bpx-vignette" aria-hidden />
-        <div className="bpx-content-anchor" style={contentStyle}>
-          <div className="bpx-clip-tag">
-            <span>{clip?.type ?? '演出'}{clip?.loop ? ' · Loop' : ''}</span>
-            <strong>{clip?.label ?? '—'}</strong>
+        {!playerOnly && (
+          <div className="bpx-content-anchor" style={contentStyle}>
+            <div className="bpx-clip-tag">
+              <span>{clip?.type ?? '演出'}{clip?.loop ? ' · Loop' : ''}</span>
+              <strong>{clip?.label ?? '—'}</strong>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* dmgPoints 飘字层 */}
         <div className="bpx-floats" aria-hidden>
@@ -641,31 +656,30 @@ export function BlueprintPlayer(): JSX.Element {
           </div>
         )}
 
-        <div className="bpx-content-anchor" style={contentStyle}>
-          <div className="bpx-tools">
-            <button className={demoRunning ? 'is-on' : ''} onClick={() => setDemoRunning((v) => !v)}>
-              {demoRunning ? '停止演示' : '自动演示'}
-            </button>
-            <button onClick={() => setRunKey((k) => k + 1)}>重开</button>
-            <button className={showLogs ? 'is-on' : ''} onClick={() => setShowLogs((v) => !v)}>日志</button>
-            <button className={showBlueprint ? 'is-on' : ''} onClick={() => setShowBlueprint((v) => !v)}>蓝图</button>
-            <button onClick={exit}>退出</button>
+        {!playerOnly && (
+          <div className="bpx-content-anchor" style={contentStyle}>
+            <div className="bpx-tools">
+              <button className={demoRunning ? 'is-on' : ''} onClick={() => setDemoRunning((v) => !v)}>
+                {demoRunning ? '停止演示' : '自动演示'}
+              </button>
+              <button onClick={() => setRunKey((k) => k + 1)}>重开</button>
+              <button className={showLogs ? 'is-on' : ''} onClick={() => setShowLogs((v) => !v)}>日志</button>
+              <button className={showBlueprint ? 'is-on' : ''} onClick={() => setShowBlueprint((v) => !v)}>蓝图</button>
+              <button onClick={exit}>退出</button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {showBlueprint && fxGraph && (
-          <div className="bpx-blueprint">
-            <h3>蓝图状态机</h3>
-            <ul>
-              {fxGraph.nodes.map((n) => (
-                <li key={n.id} className={n.id === runtime.state.currentNodeId ? 'active' : ''}>
-                  <b>{n.data.label}</b>
-                  <span>{n.data.elementType}</span>
-                  <em>{n.data.badge}</em>
-                </li>
-              ))}
-            </ul>
-          </div>
+        {showBlueprint && graph && (
+          <DraggablePanel title="蓝图状态机">
+            <BlueprintStateGraph
+              graph={graph}
+              currentNodeId={runtime.state.currentNodeId}
+              visited={runtime.state.visited}
+              traversedEdges={runtime.state.traversedEdgeIds}
+              onJump={(id) => dispatch(runtime.jumpTo(id))}
+            />
+          </DraggablePanel>
         )}
 
         {showLogs && (
@@ -683,6 +697,413 @@ export function BlueprintPlayer(): JSX.Element {
     </div>
   )
 }
+
+/* ── 蓝图状态机图（试玩内的图形化状态总览 + 单步执行 + 子流程下钻） ──────────
+ * 把整张蓝图（顶层 + 全部子流程）摊平到**同一张画布**：顶层流程在上，每个子流程
+ * （如「我方回合」）打包成一个带标题的虚线分组框堆在下方，并从引用它的父节点拉虚线
+ * 连过去——整体过程一屏可见，无需来回下钻。节点/连线按类型上色（对齐编辑器
+ * BlueprintTab 的 BPG_TYPE_ACCENTS）。
+ *
+ * 运行轨迹：跑过的节点(visited)/连线(traversedEdgeIds)标绿，当前节点额外加高光脉冲并
+ * 滚动居中——在全局图上就能看到「一步步走过的路线」。点任意节点 = 直接跳到该节点
+ * 执行（onJump → runtime.jumpTo）。图形化取代原纯文案列表。 */
+
+type PanelGesture =
+  | { type: 'move'; ox: number; oy: number }
+  | { type: 'resize-ne'; sx: number; sy: number; sw: number; sh: number; sb: number }
+  | { type: 'resize-se'; sx: number; sy: number; sw: number; sh: number }
+
+/**
+ * 可拖拽 + 可缩放的浮层容器：标题栏按住可拖到页面任意处；右上角的把手按住可任意拉伸
+ * 大小（右上角缩放 = 锚定左下角：向右加宽、向上增高）。宽高完全受控，位置/尺寸都用
+ * delta 计算，故不受容器在视口里的偏移影响。
+ */
+function DraggablePanel({ title, children }: { title: string; children: ReactNode }) {
+  const [box, setBox] = useState({ x: 22, y: 96, w: 480, h: 460 })
+  const gesture = useRef<PanelGesture | null>(null)
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const g = gesture.current
+      if (!g) return
+      if (g.type === 'move') {
+        setBox((b) => ({ ...b, x: Math.max(0, e.clientX - g.ox), y: Math.max(0, e.clientY - g.oy) }))
+        return
+      }
+      const maxW = window.innerWidth * 0.96
+      const maxH = window.innerHeight * 0.92
+      if (g.type === 'resize-se') {
+        // 右下角：锚定左上角，向右/下拉伸。
+        const w = Math.max(300, Math.min(g.sw + (e.clientX - g.sx), maxW))
+        const h = Math.max(220, Math.min(g.sh + (e.clientY - g.sy), maxH))
+        setBox((b) => ({ ...b, w, h }))
+        return
+      }
+      // resize-ne 右上角：锚定左下角，向右加宽、向上增高。
+      const w = Math.max(300, Math.min(g.sw + (e.clientX - g.sx), maxW))
+      const h = Math.max(220, Math.min(g.sh - (e.clientY - g.sy), maxH))
+      setBox((b) => ({ ...b, w, h, y: Math.max(0, g.sb - h) }))
+    }
+    const onUp = () => {
+      gesture.current = null
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [])
+
+  return (
+    <div
+      className="bpx-blueprint"
+      style={{ left: box.x, top: box.y, width: box.w, height: box.h, bottom: 'auto', maxHeight: 'none' }}
+    >
+      <div
+        className="bpx-panel-head"
+        onPointerDown={(e) => {
+          gesture.current = { type: 'move', ox: e.clientX - box.x, oy: e.clientY - box.y }
+        }}
+      >
+        <span>{title}</span>
+      </div>
+      <div
+        className="bpx-panel-resize bpx-panel-resize--ne"
+        title="按住拖拽缩放"
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          gesture.current = { type: 'resize-ne', sx: e.clientX, sy: e.clientY, sw: box.w, sh: box.h, sb: box.y + box.h }
+        }}
+      />
+      <div
+        className="bpx-panel-resize bpx-panel-resize--se"
+        title="按住拖拽缩放"
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          gesture.current = { type: 'resize-se', sx: e.clientX, sy: e.clientY, sw: box.w, sh: box.h }
+        }}
+      />
+      {children}
+    </div>
+  )
+}
+
+const SG_NODE_W = 150
+const SG_NODE_H = 46
+const SG_PAD = 28
+/** 子流程分组容器内边距 / 标题栏高度 / 分组之间的纵向间距。 */
+const SG_GROUP_PAD = 18
+const SG_GROUP_HEADER = 26
+const SG_GROUP_GAP = 52
+
+/** fxGraph 节点 → 视觉 accent（对齐编辑器：起点/结局/子蓝图/演出/逻辑）。 */
+function stateNodeAccent(node: FXNode): string {
+  if (node.type === 'input') return BPG_TYPE_ACCENTS.root
+  if (node.type === 'output' || node.data.hud === 'ending') return BPG_TYPE_ACCENTS.end
+  if (node.type === 'group') return BPG_TYPE_ACCENTS.open
+  const badge = node.data.badge
+  if (badge === 'boss' || badge === 'qte') return BPG_TYPE_ACCENTS.perf
+  if (badge === 'choice') return BPG_TYPE_ACCENTS.open
+  return BPG_TYPE_ACCENTS.loop
+}
+
+interface SGNode {
+  id: string
+  label: string
+  accent: string
+  isSubflow: boolean
+  x: number
+  y: number
+}
+interface SGEdge {
+  id: string
+  source: string
+  sx: number
+  sy: number
+  tx: number
+  ty: number
+}
+interface SGGroup {
+  id: string
+  title: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+interface SGConnector {
+  key: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+interface SGModel {
+  nodes: SGNode[]
+  edges: SGEdge[]
+  groups: SGGroup[]
+  connectors: SGConnector[]
+  viewBox: { x: number; y: number; w: number; h: number }
+}
+
+/** fx 图节点列表 → 局部包围盒（含节点尺寸）。 */
+function bboxOf(fxNodes: FXNode[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const n of fxNodes) {
+    minX = Math.min(minX, n.position.x)
+    minY = Math.min(minY, n.position.y)
+    maxX = Math.max(maxX, n.position.x + SG_NODE_W)
+    maxY = Math.max(maxY, n.position.y + SG_NODE_H)
+  }
+  if (!fxNodes.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0 }
+  return { minX, minY, maxX, maxY }
+}
+
+/**
+ * 把整张蓝图（顶层 + 全部子流程）摊平到**同一张画布**：顶层节点按 autoLayout 排在上方，
+ * 每个子流程的内层图打包进一个带标题的虚线分组框，依次堆叠在下方，并从引用它的父节点
+ * （subFlowRef）拉一条虚线连过去。这样整体流程一屏可见、无需来回下钻。
+ */
+function buildCombined(graph: GameVideoBlueprintGraph): SGModel {
+  const posMap = new Map<string, { x: number; y: number }>()
+  const nodes: SGNode[] = []
+  const rawEdges: { id: string; source: string; target: string }[] = []
+  const groups: SGGroup[] = []
+
+  const top = toFXGraph(graph)
+  for (const n of top.nodes) {
+    posMap.set(n.id, { x: n.position.x, y: n.position.y })
+    nodes.push({
+      id: n.id,
+      label: n.data.label || n.id,
+      accent: stateNodeAccent(n),
+      isSubflow: n.type === 'group',
+      x: n.position.x,
+      y: n.position.y,
+    })
+  }
+  for (const e of top.edges) rawEdges.push({ id: e.id, source: e.source, target: e.target })
+  const topBox = bboxOf(top.nodes)
+
+  let cursorY = topBox.maxY + SG_GROUP_GAP
+  const groupX = topBox.minX
+  for (const sub of Object.values(graph.subflows ?? {})) {
+    const fx = toFXGraph({ ...graph, nodes: sub.nodes, edges: sub.edges, subflows: undefined })
+    const box = bboxOf(fx.nodes)
+    const originX = groupX + SG_GROUP_PAD - box.minX
+    const originY = cursorY + SG_GROUP_HEADER - box.minY
+    for (const n of fx.nodes) {
+      const x = originX + n.position.x
+      const y = originY + n.position.y
+      posMap.set(n.id, { x, y })
+      nodes.push({
+        id: n.id,
+        label: n.data.label || n.id,
+        accent: stateNodeAccent(n),
+        isSubflow: n.type === 'group',
+        x,
+        y,
+      })
+    }
+    for (const e of fx.edges) rawEdges.push({ id: e.id, source: e.source, target: e.target })
+    const gW = box.maxX - box.minX + SG_GROUP_PAD * 2
+    const gH = box.maxY - box.minY + SG_GROUP_HEADER + SG_GROUP_PAD
+    groups.push({ id: sub.id, title: sub.title, x: groupX, y: cursorY, w: gW, h: gH })
+    cursorY += gH + SG_GROUP_GAP
+  }
+
+  const edges: SGEdge[] = []
+  for (const e of rawEdges) {
+    const s = posMap.get(e.source)
+    const t = posMap.get(e.target)
+    if (!s || !t) continue
+    edges.push({ id: e.id, source: e.source, sx: s.x + SG_NODE_W, sy: s.y + SG_NODE_H / 2, tx: t.x, ty: t.y + SG_NODE_H / 2 })
+  }
+
+  const groupById = new Map(groups.map((g) => [g.id, g]))
+  const connectors: SGConnector[] = []
+  for (const node of graph.nodes) {
+    const ref = node.extensionElements.subFlowRef
+    const g = ref ? groupById.get(ref) : undefined
+    const p = posMap.get(node.id)
+    if (!g || !p) continue
+    connectors.push({ key: `${node.id}->${g.id}`, x1: p.x + SG_NODE_W / 2, y1: p.y + SG_NODE_H, x2: g.x + g.w / 2, y2: g.y })
+  }
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x)
+    minY = Math.min(minY, n.y)
+    maxX = Math.max(maxX, n.x + SG_NODE_W)
+    maxY = Math.max(maxY, n.y + SG_NODE_H)
+  }
+  for (const g of groups) {
+    minX = Math.min(minX, g.x)
+    minY = Math.min(minY, g.y)
+    maxX = Math.max(maxX, g.x + g.w)
+    maxY = Math.max(maxY, g.y + g.h)
+  }
+  if (!nodes.length && !groups.length) {
+    minX = minY = 0
+    maxX = maxY = 0
+  }
+  return {
+    nodes,
+    edges,
+    groups,
+    connectors,
+    viewBox: { x: minX - SG_PAD, y: minY - SG_PAD, w: maxX - minX + SG_PAD * 2, h: maxY - minY + SG_PAD * 2 },
+  }
+}
+
+const BlueprintStateGraph = memo(function BlueprintStateGraph({
+  graph,
+  currentNodeId,
+  visited,
+  traversedEdges,
+  onJump,
+}: {
+  graph: GameVideoBlueprintGraph
+  currentNodeId: string | null | undefined
+  visited: Set<string>
+  traversedEdges: Set<string>
+  onJump: (nodeId: string) => void
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const currentRef = useRef<SVGGElement | null>(null)
+
+  const model = useMemo(() => buildCombined(graph), [graph])
+
+  // 跟踪容器可视尺寸（面板缩放时变化），用于「自适应铺满 + 保底最小尺寸」。
+  const [vp, setVp] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const sync = () => setVp({ w: el.clientWidth, h: el.clientHeight })
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // svg 尺寸 = max(内容真实包围盒, 容器)：容器更大就放大铺满（viewBox 缩放，节点变大）；
+  // 容器更小就保持内容尺寸并滚动——绝不缩到比内容还小，避免节点挤成一团。
+  const svgW = Math.max(model.viewBox.w, vp.w)
+  const svgH = Math.max(model.viewBox.h, vp.h)
+
+  // 当前节点变化 → 滚动居中。用 getBoundingClientRect（屏幕像素）算偏移，兼容 viewBox 缩放。
+  useEffect(() => {
+    const box = scrollRef.current
+    const cur = currentRef.current
+    if (!box || !cur) return
+    const br = cur.getBoundingClientRect()
+    const cr = box.getBoundingClientRect()
+    box.scrollTo({
+      left: box.scrollLeft + (br.left - cr.left) + br.width / 2 - box.clientWidth / 2,
+      top: box.scrollTop + (br.top - cr.top) + br.height / 2 - box.clientHeight / 2,
+      behavior: 'smooth',
+    })
+  }, [currentNodeId, svgW, svgH])
+
+  return (
+    <>
+      <div className="bpx-sg-scroll" ref={scrollRef}>
+        <svg
+          className="bpx-sg-svg"
+          width={svgW}
+          height={svgH}
+          viewBox={`${model.viewBox.x} ${model.viewBox.y} ${model.viewBox.w} ${model.viewBox.h}`}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <defs>
+            <marker id="bpx-sg-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#9aa7b4" opacity="0.7" />
+            </marker>
+            <marker id="bpx-sg-arrow-done" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#3ec98a" />
+            </marker>
+          </defs>
+          <g className="bpx-sg-groups">
+            {model.groups.map((g) => (
+              <g key={g.id}>
+                <rect className="bpx-sg-group" x={g.x} y={g.y} width={g.w} height={g.h} rx={10} />
+                <text className="bpx-sg-group-title" x={g.x + 10} y={g.y + 17}>
+                  ▣ {g.title}
+                </text>
+              </g>
+            ))}
+          </g>
+          <g className="bpx-sg-connectors">
+            {model.connectors.map((c) => {
+              const midY = (c.y1 + c.y2) / 2
+              return (
+                <path
+                  key={c.key}
+                  className="bpx-sg-connector"
+                  d={`M ${c.x1},${c.y1} C ${c.x1},${midY} ${c.x2},${midY} ${c.x2},${c.y2}`}
+                />
+              )
+            })}
+          </g>
+          <g className="bpx-sg-edges">
+            {model.edges.map((e) => {
+              const dx = Math.max(30, Math.abs(e.tx - e.sx) * 0.5)
+              const d = `M ${e.sx},${e.sy} C ${e.sx + dx},${e.sy} ${e.tx - dx},${e.ty} ${e.tx},${e.ty}`
+              const done = traversedEdges.has(e.id)
+              return <path key={e.id} className={`bpx-sg-edge${done ? ' is-done' : ''}`} d={d} />
+            })}
+          </g>
+          {model.nodes.map((n) => {
+            const active = n.id === currentNodeId
+            const ran = visited.has(n.id) && !active
+            const label = n.label
+            const cls = ['bpx-sg-node', active ? 'is-active' : '', ran ? 'is-ran' : '']
+              .filter(Boolean)
+              .join(' ')
+            return (
+              <g
+                key={n.id}
+                ref={active ? currentRef : undefined}
+                className={cls}
+                transform={`translate(${n.x},${n.y})`}
+                onClick={() => onJump(n.id)}
+              >
+                <rect
+                  className="bpx-sg-box"
+                  width={SG_NODE_W}
+                  height={SG_NODE_H}
+                  rx={8}
+                  style={{ ['--sgc' as string]: n.accent }}
+                />
+                <rect className="bpx-sg-bar" width={SG_NODE_W} height={6} rx={3} style={{ fill: n.accent }} />
+                <text className="bpx-sg-label" x={10} y={26}>
+                  {label.length > 12 ? `${label.slice(0, 11)}…` : label}
+                </text>
+                {n.isSubflow && (
+                  <text className="bpx-sg-badge is-subflow" x={10} y={39}>
+                    子流程 ↓
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </svg>
+        {model.nodes.length === 0 && <div className="bpx-sg-empty">还没有可展示的玩法结构</div>}
+      </div>
+      <div className="bpx-sg-hint">
+        <span className="bpx-sg-lg bpx-sg-lg-ran" />跑过的路线
+        <span className="bpx-sg-lg bpx-sg-lg-cur" />正在执行 · 点节点直接执行
+      </div>
+    </>
+  )
+})
 
 /** 把 runtime 的实体血量合并进 initEntities（保留名字/头像/状态词汇），供 HudLayer/ChoiceLayer 用。 */
 function deriveEntities(
@@ -817,10 +1238,7 @@ function findBlueprintNode(
 }
 
 function injectStyles(): void {
-  if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = `
+  injectStyleOnce(STYLE_ID, `
     .bpx-root{position:absolute;inset:0;background:#05060a;color:#f4eee2;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden;outline:none}
     .bpx-empty{display:grid;place-items:center;height:100%;color:#9aa}
     .bpx-stage{position:absolute;inset:0}
@@ -859,17 +1277,38 @@ function injectStyles(): void {
     .bpx-tools button{padding:8px 12px;border-radius:10px;border:1px solid rgba(255,224,160,.32);background:rgba(24,20,14,.72);color:#ffe6b5;font-weight:800;cursor:pointer}
     .bpx-tools button.is-on{background:rgba(92,255,178,.18);border-color:rgba(92,255,178,.6);color:#ddffed}
     .bpx-blueprint,.bpx-logs{position:absolute;bottom:22px;max-height:56vh;overflow:auto;padding:14px;border-radius:14px;border:1px solid rgba(255,230,180,.18);background:rgba(5,7,10,.92);z-index:60}
-    .bpx-blueprint{left:22px;width:min(420px,40vw)}
+    .bpx-blueprint{left:22px;overflow:hidden;max-height:none;display:flex;flex-direction:column}
     .bpx-logs{right:22px;width:min(420px,40vw)}
-    .bpx-blueprint h3,.bpx-logs h3{margin:0 0 10px}
-    .bpx-blueprint ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-    .bpx-blueprint li{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);display:flex;gap:8px;align-items:baseline}
-    .bpx-blueprint li.active{outline:2px solid rgba(92,255,178,.7);background:rgba(40,80,60,.25)}
-    .bpx-blueprint li b{font-size:14px}
-    .bpx-blueprint li span,.bpx-blueprint li em{font-style:normal;font-size:11px;color:#9aa6b6}
+    .bpx-logs h3{margin:0 0 10px}
+    .bpx-panel-head{display:flex;align-items:center;gap:8px;margin:0 30px 10px 0;font-size:15px;font-weight:800;cursor:move;user-select:none;flex:none}
+    .bpx-panel-resize{position:absolute;width:16px;height:16px;cursor:nesw-resize;z-index:3;border-color:rgba(255,224,160,.85);border-style:solid}
+    .bpx-panel-resize:hover{border-color:#ffe6b5}
+    .bpx-panel-resize--ne{top:8px;right:8px;border-width:2px 2px 0 0;border-radius:0 5px 0 0;cursor:nesw-resize}
+    .bpx-panel-resize--se{bottom:8px;right:8px;border-width:0 2px 2px 0;border-radius:0 0 5px 0;cursor:nwse-resize}
+    .bpx-sg-scroll{position:relative;flex:1;min-height:0;overflow:auto;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(150,165,190,.04);background-image:linear-gradient(rgba(150,165,190,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(150,165,190,.05) 1px,transparent 1px);background-size:16px 16px}
+    .bpx-sg-svg{display:block}
+    .bpx-sg-group{fill:rgba(224,168,58,.05);stroke:rgba(224,168,58,.4);stroke-width:1.5;stroke-dasharray:5 4}
+    .bpx-sg-group-title{fill:#e0a83a;font-size:11px;font-weight:800;font-family:inherit}
+    .bpx-sg-connector{fill:none;stroke:rgba(224,168,58,.5);stroke-width:1.5;stroke-dasharray:3 3}
+    .bpx-sg-edge{fill:none;stroke:#9aa7b4;stroke-width:2;opacity:.5;marker-end:url(#bpx-sg-arrow)}
+    .bpx-sg-edge.is-done{stroke:#3ec98a;stroke-width:2.6;opacity:.95;marker-end:url(#bpx-sg-arrow-done)}
+    .bpx-sg-node{cursor:pointer}
+    .bpx-sg-box{fill:rgba(22,26,34,.96);stroke:color-mix(in srgb,var(--sgc,#4a90d8) 55%,#000);stroke-width:1.5;transition:stroke-width .1s}
+    .bpx-sg-node:hover .bpx-sg-box{stroke:var(--sgc,#4a90d8);stroke-width:2.2}
+    .bpx-sg-node.is-ran .bpx-sg-box{fill:rgba(30,70,52,.9);stroke:#3ec98a;stroke-width:1.8}
+    .bpx-sg-node.is-active .bpx-sg-box{fill:rgba(24,60,44,.95);stroke:#5cffb2;stroke-width:2.6;filter:drop-shadow(0 0 8px rgba(92,255,178,.9));animation:bpx-sg-pulse 1.4s ease-in-out infinite}
+    .bpx-sg-label{fill:#f4eee2;font-size:12px;font-weight:700;font-family:inherit;pointer-events:none}
+    .bpx-sg-node.is-active .bpx-sg-label{fill:#eafff5}
+    .bpx-sg-badge{fill:#9aa6b6;font-size:10px;font-family:inherit;pointer-events:none}
+    .bpx-sg-badge.is-subflow{fill:#e0a83a}
+    .bpx-sg-empty{position:absolute;inset:0;display:grid;place-items:center;color:#9aa6b6;font-size:12px}
+    .bpx-sg-hint{margin-top:8px;font-size:11px;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:5px}
+    .bpx-sg-lg{display:inline-block;width:9px;height:9px;border-radius:2px;margin-left:6px}
+    .bpx-sg-lg-ran{background:#3ec98a}
+    .bpx-sg-lg-cur{background:#5cffb2;box-shadow:0 0 6px rgba(92,255,178,.9)}
+    @keyframes bpx-sg-pulse{0%,100%{filter:drop-shadow(0 0 5px rgba(92,255,178,.55))}50%{filter:drop-shadow(0 0 11px rgba(92,255,178,.95))}}
     .bpx-logs ol{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:12px}
     .bpx-logs pre{white-space:pre-wrap;font-size:11px;color:#bfe4ff;background:rgba(255,255,255,.05);padding:10px;border-radius:10px;margin:0}
     @keyframes bpx-float{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}20%{opacity:1}100%{opacity:0;transform:translate(-50%,-82px) scale(1.12)}}
-  `
-  document.head.appendChild(style)
+  `)
 }

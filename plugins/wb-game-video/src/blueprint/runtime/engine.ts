@@ -60,6 +60,8 @@ export interface RuntimeState {
   vars: VarState
   items: ItemState
   visited: Set<string>
+  /** 已走过的边 id（用于蓝图状态机把跑过的路线标绿）。 */
+  traversedEdgeIds: Set<string>
   score: number
   entities: Record<string, EntityRuntime>
   /** call/return 子流程返回栈（节点 id）。 */
@@ -74,6 +76,8 @@ export class BlueprintRuntime {
   private readonly nodes = new Map<string, GameVideoBlueprintNode>()
   private readonly outgoing = new Map<string, GameVideoBlueprintEdge[]>()
   private readonly subflows: NonNullable<GameVideoBlueprintGraph['subflows']>
+  /** 子流程内层节点 id → 其所属子流程帧（供 jumpTo 重建返回栈）。 */
+  private readonly subflowOfNode = new Map<string, { subflowId: string; parentNodeId: string }>()
   readonly state: RuntimeState
   private queue: RuntimeDirective[] = []
   /**
@@ -89,7 +93,15 @@ export class BlueprintRuntime {
     this.subflows = graph.subflows ?? {}
     for (const node of graph.nodes) this.nodes.set(node.id, node)
     for (const subflow of Object.values(this.subflows)) {
-      for (const node of subflow.nodes) this.nodes.set(node.id, node)
+      for (const node of subflow.nodes) {
+        this.nodes.set(node.id, node)
+        if (subflow.parentNodeId) {
+          this.subflowOfNode.set(node.id, {
+            subflowId: subflow.id,
+            parentNodeId: subflow.parentNodeId,
+          })
+        }
+      }
     }
     const allEdges = [
       ...graph.edges,
@@ -106,6 +118,7 @@ export class BlueprintRuntime {
       vars: initVarState(scenario),
       items: {},
       visited: new Set<string>(),
+      traversedEdgeIds: new Set<string>(),
       score: 0,
       entities: initEntities(scenario),
       callStack: [],
@@ -125,6 +138,22 @@ export class BlueprintRuntime {
       return this.drain()
     }
     this.enterNode(startNode.id)
+    return this.drain()
+  }
+
+  /**
+   * 调试跳转：把运行时直接跳到某节点并就地执行（图形状态机点击节点触发）。
+   * 清掉与「从此处重跑」无关的返回栈/回合游标；若目标是子流程内层节点，则重建其
+   * 子流程帧，保证内层跑完能正确弹回父节点后续边。
+   */
+  jumpTo(id: string): RuntimeDirective[] {
+    if (!this.nodes.has(id)) return this.drain()
+    this.state.callStack = []
+    this.state.subflowStack = []
+    this.state.bossRoundIndex = 0
+    const frame = this.subflowOfNode.get(id)
+    if (frame) this.state.subflowStack.push({ parentNodeId: frame.parentNodeId, subflowId: frame.subflowId })
+    this.enterNode(id)
     return this.drain()
   }
 
@@ -220,7 +249,7 @@ export class BlueprintRuntime {
     }
     if (hs.target && this.nodes.has(hs.target)) {
       if (hs.mode !== 'goto') this.state.callStack.push(node.id)
-      this.enterNode(hs.target)
+      this.enterViaEdge(hs.target)
     }
     return this.drain()
   }
@@ -404,7 +433,7 @@ export class BlueprintRuntime {
     }
     const target = win ? boss.winTarget : boss.loseTarget
     if (target && this.nodes.has(target)) {
-      this.enterNode(target)
+      this.enterViaEdge(target)
     } else {
       this.state.phase = win ? 'victory' : 'defeat'
       this.emit({
@@ -442,9 +471,23 @@ export class BlueprintRuntime {
   }
 
   private applyEdge(edge: GameVideoBlueprintEdge): void {
+    this.state.traversedEdgeIds.add(edge.id)
     const ext = edge.extension
     if (!ext) return
     this.applyRuntimeEffects(ext.effects)
+  }
+
+  /**
+   * 沿一条图上已存在的边进入目标节点（Boss 胜负跳转 / 热点子流程等不走 applyEdge 的
+   * 转移用）——记录该边为「走过」，让状态机把这条路线也标绿。
+   */
+  private enterViaEdge(targetId: string): void {
+    const cur = this.state.currentNodeId
+    if (cur) {
+      const edge = (this.outgoing.get(cur) ?? []).find((e) => e.targetRef === targetId)
+      if (edge) this.state.traversedEdgeIds.add(edge.id)
+    }
+    this.enterNode(targetId)
   }
 
   private edgeConditionPasses(edge: GameVideoBlueprintEdge): boolean {
