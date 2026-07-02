@@ -15,6 +15,7 @@
  */
 
 import {
+  applyEntityEffects,
   applyEffects,
   applyItemEffects,
   evaluateCondition,
@@ -170,7 +171,7 @@ export class BlueprintRuntime {
     return this.resolveQteOutcome(node, outcome)
   }
 
-  /** 提交 Boss 战一回合结果（hit = 命中：扣 Boss 血；否则扣玩家血）。 */
+  /** 提交 Boss 战一回合结果。 */
   submitBossRound(hit: boolean): RuntimeDirective[] {
     if (this.state.phase !== 'awaitBoss') return this.drain()
     const node = this.currentNode()
@@ -181,13 +182,12 @@ export class BlueprintRuntime {
       return this.finishBoss(node, boss, true)
     }
     if (hit) {
-      this.damage(boss.entityId, round.damageToBoss ?? 0)
-      this.log(`${round.label ?? '回合'} 命中，Boss -${round.damageToBoss ?? 0}`)
+      this.applyRuntimeEffects(round.hitEffects)
+      this.log(`${round.label ?? '回合'} 命中`)
     } else {
-      this.damage(boss.playerEntityId ?? this.firstOfKind('player'), round.damageToPlayer ?? 0)
-      this.log(`${round.label ?? '回合'} 失手，玩家 -${round.damageToPlayer ?? 0}`)
+      this.applyRuntimeEffects(round.missEffects)
+      this.log(`${round.label ?? '回合'} 失手`)
     }
-    this.emit({ type: 'stateChanged' })
 
     if (this.entityHp(boss.entityId) <= 0) return this.finishBoss(node, boss, true)
     if (this.entityHp(boss.playerEntityId ?? this.firstOfKind('player')) <= 0) {
@@ -219,11 +219,9 @@ export class BlueprintRuntime {
     return this.drain()
   }
 
-  /** 视频时间轴上的结算点到点（由驱动层按 clip 时间调度回调）。 */
+  /** 视频时间轴上的判定点到点（由驱动层按 clip 时间调度回调）。 */
   applyDamagePoint(point: BlueprintDamagePoint): RuntimeDirective[] {
-    if (point.damageToBoss) this.damage(this.firstOfKind('boss'), point.damageToBoss)
-    if (point.damageToPlayer) this.damage(this.firstOfKind('player'), point.damageToPlayer)
-    if (point.damageToBoss || point.damageToPlayer) this.emit({ type: 'stateChanged' })
+    this.applyRuntimeEffects(point.effects)
     return this.drain()
   }
 
@@ -406,15 +404,7 @@ export class BlueprintRuntime {
   private applyOnEnter(node: GameVideoBlueprintNode): void {
     const onEnter = node.extensionElements.onEnter
     if (!onEnter) return
-    let changed = false
-    if (onEnter.effects && onEnter.effects.length > 0) {
-      this.state.vars = applyEffects(onEnter.effects, this.state.vars, this.scenario)
-      changed = true
-    }
-    if (onEnter.itemEffects && onEnter.itemEffects.length > 0) {
-      this.state.items = applyItemEffects(onEnter.itemEffects, this.state.items)
-      changed = true
-    }
+    let changed = this.applyRuntimeEffects(onEnter.effects, { emit: false })
     if (onEnter.setFlagVarIds && onEnter.setFlagVarIds.length > 0) {
       for (const id of onEnter.setFlagVarIds) this.state.vars[id] = 1
       changed = true
@@ -425,16 +415,7 @@ export class BlueprintRuntime {
   private applyEdge(edge: GameVideoBlueprintEdge): void {
     const ext = edge.extension
     if (!ext) return
-    let changed = false
-    if (ext.effects && ext.effects.length > 0) {
-      this.state.vars = applyEffects(ext.effects, this.state.vars, this.scenario)
-      changed = true
-    }
-    if (ext.itemEffects && ext.itemEffects.length > 0) {
-      this.state.items = applyItemEffects(ext.itemEffects, this.state.items)
-      changed = true
-    }
-    if (changed) this.emit({ type: 'stateChanged' })
+    this.applyRuntimeEffects(ext.effects)
   }
 
   private edgeConditionPasses(edge: GameVideoBlueprintEdge): boolean {
@@ -484,11 +465,23 @@ export class BlueprintRuntime {
 
   // ── 内部：实体血量 ────────────────────────────────────────────────────────
 
-  private damage(entityId: string | undefined, amount: number): void {
-    if (!entityId || amount <= 0) return
-    const e = this.state.entities[entityId]
-    if (!e) return
-    e.hp = Math.max(0, e.hp - amount)
+  private applyRuntimeEffects(
+    effects: BlueprintDamagePoint['effects'] | undefined,
+    opts: { emit?: boolean } = {},
+  ): boolean {
+    if (!effects || effects.length === 0) return false
+    const beforeVars = this.state.vars
+    const beforeItems = this.state.items
+    const beforeEntities = this.state.entities
+    this.state.vars = applyEffects(effects, this.state.vars, this.scenario)
+    this.state.items = applyItemEffects(effects, this.state.items)
+    this.state.entities = applyEntityEffects(effects, this.state.entities)
+    const changed =
+      beforeVars !== this.state.vars ||
+      beforeItems !== this.state.items ||
+      beforeEntities !== this.state.entities
+    if (changed && opts.emit !== false) this.emit({ type: 'stateChanged' })
+    return changed
   }
 
   private entityHp(entityId: string | undefined): number {

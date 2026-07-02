@@ -39,7 +39,7 @@
  */
 
 import { coerceHudRules } from './gameplayTypes'
-import type { Episode, Scenario, Scene, Shot } from './types'
+import type { Effect, Episode, Scenario, Scene, Shot } from './types'
 
 export function migrateV1ToV2(scenario: Scenario): Scenario {
   if (scenario.schemaVersion >= 2) return scenario
@@ -175,7 +175,7 @@ export function migrateV5ToV6(scenario: Scenario): Scenario {
  *      · 旧剧本视为「全开」（isModuleEnabled 默认 true），这里不强写，
  *        让向后兼容由 moduleFlags 兜底；只为显式 bump 版本号。
  *   2. Scenario.items?: Record<string, InventoryItem> —— 背包物品注册表
- *   3. Scene.entryGate / onEnterItemEffects / searchLoot、Branch.itemEffects、
+ *   3. Scene.entryGate / searchLoot、Effect.kind='item'、
  *      ConditionClause 'hasItem' —— 均为可选，运行时已 `?? []`/`?? {}` 兜底。
  *
  * 与 v5→v6 同理：旧数据不写这些字段也能照常播放，迁移仅显式建空 items 字典
@@ -223,6 +223,111 @@ export function migrateV8ToV9(scenario: Scenario): Scenario {
     ...scenario,
     schemaVersion: 9,
   }
+}
+
+function legacyHpEffect(id: string, entityId: string | undefined, value: unknown): Effect[] {
+  const n = Number(value)
+  if (!entityId || !Number.isFinite(n) || n === 0) return []
+  return [{ id, kind: 'entityStat', entityId, stat: 'hp', op: 'add', value: -Math.abs(n) }]
+}
+
+function migrateEffectList(raw: unknown, fallbackPrefix: string): Effect[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: Effect[] = []
+  raw.forEach((eff, i) => {
+    if (!eff || typeof eff !== 'object') return
+    const r = eff as Record<string, unknown>
+    if (r.kind === 'var' || (!r.kind && typeof r.varId === 'string')) {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-var-${i + 1}`,
+        kind: 'var',
+        varId: String(r.varId),
+        op: r.op === 'set' ? 'set' : 'add',
+        value: Number(r.value) || 0,
+      })
+    } else if (r.kind === 'flag') {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-flag-${i + 1}`,
+        kind: 'flag',
+        varId: String(r.varId ?? ''),
+        value: r.value !== false,
+      })
+    } else if (r.kind === 'item' || (!r.kind && typeof r.itemId === 'string')) {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-item-${i + 1}`,
+        kind: 'item',
+        itemId: String(r.itemId),
+        op: r.op === 'take' ? 'take' : 'give',
+        count: Math.max(1, Number(r.count) || 1),
+      })
+    } else if (r.kind === 'entityStat') {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-entity-${i + 1}`,
+        kind: 'entityStat',
+        entityId: String(r.entityId ?? ''),
+        stat: r.stat === 'qi' || r.stat === 'shield' ? r.stat : 'hp',
+        op: r.op === 'set' ? 'set' : 'add',
+        value: Number(r.value) || 0,
+      })
+    } else if (r.kind === 'status') {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-status-${i + 1}`,
+        kind: 'status',
+        statusId: String(r.statusId ?? ''),
+        ...(typeof r.entityId === 'string' ? { entityId: r.entityId } : {}),
+        op: r.op === 'remove' ? 'remove' : 'add',
+      })
+    }
+  })
+  return out.length > 0 ? out : undefined
+}
+
+export function migrateV9ToV10(scenario: Scenario): Scenario {
+  if (scenario.schemaVersion >= 10) return scenario
+  const bossId = Object.values(scenario.entities ?? {}).find((e) => e.kind === 'boss')?.id
+  const playerId = Object.values(scenario.entities ?? {}).find((e) => e.kind === 'player')?.id
+  const scenes: Record<string, Scene> = {}
+  for (const [sceneId, scene] of Object.entries(scenario.scenes)) {
+    const rawScene = scene as unknown as Record<string, unknown>
+    const onEnterEffects = [
+      ...(migrateEffectList(scene.onEnterEffects, `${sceneId}-enter`) ?? []),
+      ...(migrateEffectList(rawScene.onEnterItemEffects, `${sceneId}-enter-item`) ?? []),
+    ]
+    const branches = (scene.branches ?? []).map((branch) => {
+      const rawBranch = branch as unknown as Record<string, unknown>
+      const effects = [
+        ...(migrateEffectList(branch.effects, `${sceneId}-${branch.id}`) ?? []),
+        ...(migrateEffectList(rawBranch.itemEffects, `${sceneId}-${branch.id}-item`) ?? []),
+      ]
+      return {
+        ...branch,
+        effects: effects.length > 0 ? effects : undefined,
+        itemEffects: undefined,
+      } as unknown as typeof branch
+    })
+    const cues = scene.performance?.cues.map((cue) => {
+      const rawCue = cue as unknown as Record<string, unknown>
+      return {
+        id: cue.id,
+        atMs: cue.atMs,
+        label: cue.label,
+        layer: cue.layer,
+        effects: [
+          ...(migrateEffectList(cue.effects, `${sceneId}-${cue.id}`) ?? []),
+          ...legacyHpEffect(`${sceneId}-${cue.id}-boss-hp`, bossId, rawCue.damageToBoss),
+          ...legacyHpEffect(`${sceneId}-${cue.id}-player-hp`, playerId, rawCue.damageToPlayer),
+        ],
+      }
+    })
+    scenes[sceneId] = {
+      ...scene,
+      branches,
+      onEnterEffects: onEnterEffects.length > 0 ? onEnterEffects : undefined,
+      onEnterItemEffects: undefined,
+      performance: cues && cues.length > 0 ? { cues } : scene.performance,
+    } as unknown as Scene
+  }
+  return { ...scenario, schemaVersion: 10, scenes }
 }
 
 /**
@@ -364,6 +469,7 @@ export function migrateScenarioToLatest(scenario: Scenario): Scenario {
   if (s.schemaVersion === 6) s = migrateV6ToV7(s)
   if (s.schemaVersion === 7) s = migrateV7ToV8(s)
   if (s.schemaVersion === 8) s = migrateV8ToV9(s)
+  if (s.schemaVersion === 9) s = migrateV9ToV10(s)
   s = normalizeUiHud(s)
   s = normalizeSceneQte(s)
   // 末尾无条件兜底：跨过 v4 守卫导致 episodes 缺失的历史剧本也能拿回剧集。

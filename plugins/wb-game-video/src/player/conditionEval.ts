@@ -14,12 +14,11 @@
 import type {
   Branch,
   ConditionClause,
+  Effect,
   EntryGate,
   GameVariable,
-  ItemEffect,
   Scenario,
   Scene,
-  VarEffect,
 } from '../scenario/types'
 
 /** 运行时数值状态：varId -> 数字（flag 用 0/1） */
@@ -34,6 +33,8 @@ export interface EntityHpView {
   maxHp: number
   statusIds: string[]
 }
+
+export type MutableEntityState<T extends EntityHpView = EntityHpView> = Record<string, T>
 
 /** 条件求值上下文 */
 export interface EvalContext {
@@ -135,12 +136,13 @@ export function evaluateClause(
  * give 累加，take 扣减并夹到 ≥0；count 缺省 = 1。
  */
 export function applyItemEffects(
-  effects: ItemEffect[] | undefined,
+  effects: Effect[] | undefined,
   owned: ItemState,
 ): ItemState {
   if (!effects || effects.length === 0) return owned
   const next: ItemState = { ...owned }
   for (const eff of effects) {
+    if (eff.kind !== 'item') continue
     const n = eff.count ?? 1
     const cur = next[eff.itemId] ?? 0
     next[eff.itemId] = eff.op === 'give' ? cur + n : Math.max(0, cur - n)
@@ -208,17 +210,53 @@ export function evaluateSceneGate(scene: Scene | undefined, ctx: EvalContext): G
  * scenario 用于取变量定义做 clamp / flag 归一化。
  */
 export function applyEffects(
-  effects: VarEffect[] | undefined,
+  effects: Effect[] | undefined,
   vars: VarState,
   scenario: Scenario,
 ): VarState {
   if (!effects || effects.length === 0) return vars
   const next: VarState = { ...vars }
   for (const eff of effects) {
-    const def = scenario.variables?.[eff.varId]
-    const cur = next[eff.varId] ?? def?.initial ?? 0
-    const raw = eff.op === 'add' ? cur + eff.value : eff.value
-    next[eff.varId] = clampVar(def, raw)
+    if (eff.kind === 'var') {
+      const def = scenario.variables?.[eff.varId]
+      const cur = next[eff.varId] ?? def?.initial ?? 0
+      const raw = eff.op === 'add' ? cur + eff.value : eff.value
+      next[eff.varId] = clampVar(def, raw)
+    } else if (eff.kind === 'flag') {
+      next[eff.varId] = eff.value ? 1 : 0
+    }
+  }
+  return next
+}
+
+export function applyEntityEffects<T extends EntityHpView>(
+  effects: Effect[] | undefined,
+  entities: MutableEntityState<T>,
+): MutableEntityState<T> {
+  if (!effects || effects.length === 0) return entities
+  let next: MutableEntityState<T> = entities
+  for (const eff of effects) {
+    if (eff.kind === 'entityStat') {
+      const entity = next[eff.entityId]
+      if (!entity) continue
+      if (eff.stat !== 'hp') continue
+      const raw = eff.op === 'add' ? entity.hp + eff.value : eff.value
+      const hp = Math.max(0, Math.min(entity.maxHp, raw))
+      if (hp === entity.hp) continue
+      next = { ...next, [eff.entityId]: { ...entity, hp } }
+    } else if (eff.kind === 'status') {
+      const ids = eff.entityId ? [eff.entityId] : Object.keys(next)
+      for (const id of ids) {
+        const entity = next[id]
+        if (!entity) continue
+        const set = new Set(entity.statusIds)
+        if (eff.op === 'add') set.add(eff.statusId)
+        else set.delete(eff.statusId)
+        const statusIds = [...set]
+        if (statusIds.join('\0') === entity.statusIds.join('\0')) continue
+        next = { ...next, [id]: { ...entity, statusIds } }
+      }
+    }
   }
   return next
 }
@@ -277,7 +315,7 @@ export function describeClause(
   }
 }
 
-export function describeItemEffect(eff: ItemEffect, scenario: Scenario): string {
+export function describeItemEffect(eff: Extract<Effect, { kind: 'item' }>, scenario: Scenario): string {
   const name = scenario.items?.[eff.itemId]?.name ?? eff.itemId
   const n = eff.count ?? 1
   return eff.op === 'give' ? `获得 ${name}${n > 1 ? `×${n}` : ''}` : `消耗 ${name}${n > 1 ? `×${n}` : ''}`
@@ -290,8 +328,24 @@ export function describeCondition(branch: Branch, scenario: Scenario): string {
   return clauses.map((c) => describeClause(c, scenario)).join(' 且 ')
 }
 
-export function describeEffect(eff: VarEffect, scenario: Scenario): string {
-  const name = varName(scenario, eff.varId)
-  if (eff.op === 'set') return `${name} = ${eff.value}`
-  return `${name} ${eff.value >= 0 ? '+' : ''}${eff.value}`
+export function describeEffect(eff: Effect, scenario: Scenario): string {
+  if (eff.kind === 'var') {
+    const name = varName(scenario, eff.varId)
+    if (eff.op === 'set') return `${name} = ${eff.value}`
+    return `${name} ${eff.value >= 0 ? '+' : ''}${eff.value}`
+  }
+  if (eff.kind === 'flag') {
+    const name = varName(scenario, eff.varId)
+    return `${name} ${eff.value ? '已达成' : '未达成'}`
+  }
+  if (eff.kind === 'item') return describeItemEffect(eff, scenario)
+  if (eff.kind === 'entityStat') {
+    const name = scenario.entities?.[eff.entityId]?.name ?? eff.entityId
+    const stat = eff.stat === 'hp' ? 'HP' : eff.stat
+    if (eff.op === 'set') return `${name} ${stat} = ${eff.value}`
+    return `${name} ${stat} ${eff.value >= 0 ? '+' : ''}${eff.value}`
+  }
+  const statusName = scenario.statuses?.[eff.statusId]?.name ?? eff.statusId
+  const who = eff.entityId ? scenario.entities?.[eff.entityId]?.name ?? eff.entityId : '全部实体'
+  return `${who} ${eff.op === 'add' ? '获得' : '移除'}状态「${statusName}」`
 }

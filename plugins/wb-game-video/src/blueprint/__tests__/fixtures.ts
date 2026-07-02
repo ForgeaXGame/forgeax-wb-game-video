@@ -3,7 +3,7 @@
  * 给蓝图编译器、reactflow 转换层、运行时引擎做确定性单测。
  */
 
-import type { Branch, Scene, Scenario } from '../../scenario/types'
+import type { Branch, Effect, Scene, Scenario } from '../../scenario/types'
 
 function scene(partial: Partial<Scene> & { id: string }): Scene {
   return {
@@ -18,6 +18,14 @@ function scene(partial: Partial<Scene> & { id: string }): Scene {
 
 function branch(b: Branch): Branch {
   return b
+}
+
+function varEffect(id: string, varId: string, value: number): Effect {
+  return { id, kind: 'var', varId, op: 'add', value }
+}
+
+function hpEffect(id: string, entityId: string, value: number): Effect {
+  return { id, kind: 'entityStat', entityId, stat: 'hp', op: 'add', value }
 }
 
 /** start(loop+转场) → choice → {qte → boss} | {boss(+effect)} → good/bad 结局。 */
@@ -50,7 +58,7 @@ export function makeDemoScenario(): Scenario {
           kind: 'choice',
           label: '直冲 Boss',
           targetSceneId: 'boss',
-          effects: [{ varId: 'brave', op: 'add', value: 1 }],
+          effects: [varEffect('opt-rush-brave', 'brave', 1)],
         }),
       ],
     }),
@@ -85,8 +93,8 @@ export function makeDemoScenario(): Scenario {
         entityId: 'foe',
         playerEntityId: 'hero',
         rounds: [
-          { id: 'r1', label: '一招', damageToBoss: 100, damageToPlayer: 60 },
-          { id: 'r2', label: '二招', damageToBoss: 100, damageToPlayer: 60 },
+          { id: 'r1', label: '一招', hitEffects: [hpEffect('r1-boss-hp', 'foe', -100)], missEffects: [hpEffect('r1-player-hp', 'hero', -60)] },
+          { id: 'r2', label: '二招', hitEffects: [hpEffect('r2-boss-hp', 'foe', -100)], missEffects: [hpEffect('r2-player-hp', 'hero', -60)] },
         ],
         winSceneId: 'goodEnd',
         loseSceneId: 'badEnd',

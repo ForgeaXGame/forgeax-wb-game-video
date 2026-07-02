@@ -5,6 +5,7 @@ import {
   advanceRound,
   initBattle,
   isPerfect,
+  roundDamage,
   type BattleState,
 } from './bossRuntime'
 
@@ -15,7 +16,7 @@ import {
  * scene.boss 时挂载本层,视频作为定格背景,本层逐回合接管:
  *
  *   每回合出现一条「时机条」(timing bar):光标在条上左右扫动,
- *   命中中央高亮区(hit window)= 命中(damageToBoss),否则/超时 = 失手(damageToPlayer)。
+ *   命中中央高亮区(hit window)= 应用 hitEffects,否则/超时 = 应用 missEffects。
  *
  * 结算全部走 ./bossRuntime 纯函数;本层只负责输入采集 + 把每回合伤害
  * 通过 onDamage 回调同步到 Player 的全局 entities(HUD 实时掉血),并在分出
@@ -105,9 +106,8 @@ export function BossBattleOverlay({ scenario, boss, onDamage, onWin, onLose }: P
     const hit = forceMiss ? false : Math.abs(cursorRef.current - 0.5) <= HIT_HALF_WIDTH
     setFlash({ hit, key: battleRef.current.roundIndex })
     // 同步伤害到全局 entities(HUD 掉血)
-    const dmg = hit ? round.damageToBoss ?? 0 : round.damageToPlayer ?? 0
-    if (hit && playerEntityId) onDamage(boss.entityId, dmg, playerEntityId, 0)
-    else if (!hit && playerEntityId) onDamage(boss.entityId, 0, playerEntityId, dmg)
+    const dmg = roundDamage(round, hit)
+    if (playerEntityId) onDamage(boss.entityId, dmg.toBoss, playerEntityId, dmg.toPlayer)
     setBattle((s) => advanceRound(s, round, hit, totalRounds))
   }
 

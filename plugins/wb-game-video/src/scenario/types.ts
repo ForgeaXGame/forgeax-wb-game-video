@@ -91,6 +91,8 @@ export interface DialogueLine {
   endMs?: number
   /** 打字机速度（每字符 ms），不填用全局默认 */
   charMs?: number
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /**
@@ -141,6 +143,8 @@ export interface TextOverlayClip {
   shadow?: boolean
   /** 透明度 0~1。默认 1。 */
   opacity?: number
+  /** 时间轴/画面层级；数值越大越靠上。缺省由渲染层按类型兜底。 */
+  layer?: number
 }
 
 // ============================================================================
@@ -188,6 +192,8 @@ export interface FilterClip {
   presetId: string
   /** 强度 0~1，默认 1。 */
   intensity?: number
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /** 调节 clip：作者手动调的色彩参数（不挂预设）。 */
@@ -196,6 +202,8 @@ export interface AdjustClip {
   startMs: number
   endMs: number
   params: AdjustParams
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /** 特效 clip：叠层型动效（光效/抖动/马赛克/故障/暗角脉冲...）。 */
@@ -207,6 +215,8 @@ export interface EffectClip {
   presetId: string
   /** 强度 0~1，默认 1。 */
   intensity?: number
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /**
@@ -218,6 +228,8 @@ export interface EffectClip {
  */
 export interface StickerClip {
   id: string
+  /** 可选绑定的结算事件；存在时该贴纸只是 PerformanceCue 的视觉表现，不参与结算。 */
+  performanceCueId?: string
   startMs: number
   endMs: number
   kind: 'numeric' | 'builtin' | 'emoji' | 'image'
@@ -244,6 +256,8 @@ export interface StickerClip {
   enter?: string
   /** 出场动画预设 id。 */
   exit?: string
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /** 转场（节点级入场）：在 scene 开头一段时间内跑转场动画。 */
@@ -335,6 +349,8 @@ export interface QTECue {
   sweepDir?: 'up' | 'down' | 'left' | 'right'
   /** 自定义图标/标签（可选，UI 提示用） */
   label?: string
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
   /**
    * 键盘触发键（可选）。缺省 = Space / Enter。
    * 序列 QTE 可为每只 cue 指定 ArrowLeft / ArrowRight / ArrowUp 等。
@@ -490,13 +506,9 @@ export interface Branch {
    */
   gateMode?: 'hide' | 'lock'
   /**
-   * 选中该分支时触发的数值变化 —— v6 新增（如「安慰她 → 好感+10」）。
+   * 选中该分支时触发的状态变化。
    */
-  effects?: VarEffect[]
-  /**
-   * 选中该分支时触发的物品增减 —— v7 新增（如「交出钥匙 → 消耗钥匙」）。
-   */
-  itemEffects?: ItemEffect[]
+  effects?: Effect[]
 }
 
 // ============================================================================
@@ -549,23 +561,50 @@ export interface BranchCondition {
   all: ConditionClause[]
 }
 
-/** 数值副作用：选中分支 / 进入场景时改变某变量 */
+export type EffectOp = 'add' | 'set'
+
 export interface VarEffect {
+  id: string
+  kind: 'var'
   varId: string
-  op: 'add' | 'set'
+  op: EffectOp
   value: number
 }
 
-/**
- * 物品副作用 —— v7 背包系统。选中分支 / 进入场景时增减某物品。
- *   - give：获得 count 件（默认 1）
- *   - take：消耗 count 件（默认 1，不足则尽量扣到 0）
- */
 export interface ItemEffect {
+  id: string
+  kind: 'item'
   itemId: string
   op: 'give' | 'take'
-  count?: number
+  count: number
 }
+
+export interface EntityStatEffect {
+  id: string
+  kind: 'entityStat'
+  entityId: string
+  stat: 'hp' | 'qi' | 'shield'
+  op: EffectOp
+  value: number
+}
+
+export interface FlagEffect {
+  id: string
+  kind: 'flag'
+  varId: string
+  value: boolean
+}
+
+export interface StatusEffect {
+  id: string
+  kind: 'status'
+  statusId: string
+  entityId?: string
+  op: 'add' | 'remove'
+}
+
+/** 统一状态变化：选项、进入节点、判定点都使用同一结构。 */
+export type Effect = VarEffect | EntityStatEffect | FlagEffect | ItemEffect | StatusEffect
 
 /**
  * 背包物品定义 —— v7 背包系统。
@@ -1396,15 +1435,9 @@ export interface Scene {
   qte?: QTESpec
   branches: Branch[]
   /**
-   * 进入本场景时触发的数值变化 —— v6 新增（数值系统）。
-   * 例如「经过这一节点就 +好感」。每次进入都会触发（Player 用 visited 去重避免重复累加）。
+   * 进入本场景时触发的状态变化。每次进入都会触发（Player 用 visited 去重避免重复累加）。
    */
-  onEnterEffects?: VarEffect[]
-  /**
-   * 进入本场景时触发的物品增减 —— v7 新增（背包系统）。
-   * 例如「进入仓库 → 自动获得手电筒」。Player 用 visited 去重避免重复发放。
-   */
-  onEnterItemEffects?: ItemEffect[]
+  onEnterEffects?: Effect[]
   /**
    * 可搜寻战利品热点 —— v7 新增（背包系统）。
    * 玩家在场景画面上搜寻、悬停高亮、点击拾取对应物品。缺省 = 不可搜寻。

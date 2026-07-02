@@ -432,23 +432,20 @@ export function Player() {
     setVisited((prev) => (prev.includes(sceneId) ? prev : [...prev, sceneId]))
     // 数值系统：进入节点的数值副作用（如「经过这一节点 +好感」）。
     // 用 appliedEnterRef 去重，保证每个 sceneId 一轮游玩只累加一次。
-    const hasEnterVar = scene.onEnterEffects && scene.onEnterEffects.length > 0
-    const hasEnterItem = scene.onEnterItemEffects && scene.onEnterItemEffects.length > 0
+    const hasEnterEffects = scene.onEnterEffects && scene.onEnterEffects.length > 0
     const flagEffects = (scene.setFlags ?? []).map((varId) => ({
+      id: `flag-${scene.id}-${varId}`,
+      kind: 'flag' as const,
       varId,
-      op: 'set' as const,
-      value: 1,
+      value: true,
     }))
     const hasFlags = flagEffects.length > 0
-    if ((hasEnterVar || hasEnterItem || hasFlags) && !appliedEnterRef.current.has(sceneId)) {
+    if ((hasEnterEffects || hasFlags) && !appliedEnterRef.current.has(sceneId)) {
       appliedEnterRef.current.add(sceneId)
-      if (hasEnterVar || hasFlags) {
+      if (hasEnterEffects || hasFlags) {
         const effects = [...(scene.onEnterEffects ?? []), ...flagEffects]
         setVars((v) => applyEffects(effects, v, scenario))
-      }
-      if (hasEnterItem) {
-        const itemEffects = scene.onEnterItemEffects!
-        setOwnedItems((o) => applyItemEffects(itemEffects, o))
+        setOwnedItems((o) => applyItemEffects(effects, o))
       }
     }
   }, [sceneId, scene, resetTick, scenario])
@@ -1149,10 +1146,9 @@ export function Player() {
       nextVars = applyEffects(branch.effects, varsRef.current, scenario)
       setVars(nextVars)
     }
-    // 背包系统：选中分支的物品增减（如「用钥匙开门 → 消耗钥匙」）同步落地再喂门槛。
     let nextOwned = ownedItemsRef.current
-    if (branch.itemEffects && branch.itemEffects.length > 0) {
-      nextOwned = applyItemEffects(branch.itemEffects, ownedItemsRef.current)
+    if (branch.effects && branch.effects.length > 0) {
+      nextOwned = applyItemEffects(branch.effects, ownedItemsRef.current)
       setOwnedItems(nextOwned)
     }
     if (scene && resolveFireAt(scene) === 'video_end') {

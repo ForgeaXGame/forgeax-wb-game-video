@@ -1,4 +1,4 @@
-import type { MediaRef, PerformanceCue, Scenario, Scene } from './types'
+import type { Effect, MediaRef, PerformanceCue, Scenario, Scene } from './types'
 
 /** bundled demo 的固定 id —— 单一真源，供持久化层判定"这是内置 demo，不得抢占 activeId"。 */
 export const BUNDLED_DEMO_ID = 'demo-001'
@@ -43,6 +43,22 @@ function auto(id: string, targetSceneId: string, label?: string) {
 
 function choice(id: string, targetSceneId: string, label: string) {
   return { id, kind: 'choice' as const, targetSceneId, label }
+}
+
+function varEffect(id: string, varId: string, op: 'add' | 'set', value: number): Effect {
+  return { id, kind: 'var', varId, op, value }
+}
+
+function hpEffect(id: string, entityId: string, value: number): Effect {
+  return { id, kind: 'entityStat', entityId, stat: 'hp', op: 'add', value }
+}
+
+function bossDamageCue(id: string, atMs: number, value: number, label: string): PerformanceCue {
+  return { id, atMs, label, effects: [hpEffect(`${id}-hp`, 'ent-boss', -value)] }
+}
+
+function playerDamageCue(id: string, atMs: number, value: number, label: string): PerformanceCue {
+  return { id, atMs, label, effects: [hpEffect(`${id}-hp`, 'ent-player', -value)] }
 }
 
 export function getBlueprintCombatDemoScenario(): Scenario {
@@ -159,23 +175,23 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [
       {
         ...choice('my-s1', 'pjudge', '轻攻击'),
-        effects: [{ varId: 'qi', op: 'add', value: 2 }],
+        effects: [varEffect('my-s1-qi', 'qi', 'add', 2)],
       },
       {
         ...choice('my-s2', 'zjudge', '重攻击'),
         condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 2 }] },
         gateMode: 'lock',
-        effects: [{ varId: 'qi', op: 'add', value: -2 }],
+        effects: [varEffect('my-s2-qi', 'qi', 'add', -2)],
       },
       {
         ...choice('my-s3', 'fuzhu', '冥想'),
-        effects: [{ varId: 'qi', op: 'add', value: 2 }],
+        effects: [varEffect('my-s3-qi', 'qi', 'add', 2)],
       },
       {
         ...choice('my-ult', 'ult', '灭世'),
         condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }] },
         gateMode: 'lock',
-        effects: [{ varId: 'qi', op: 'set', value: 0 }],
+        effects: [varEffect('my-ult-qi', 'qi', 'set', 0)],
       },
     ],
   }))
@@ -190,7 +206,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
   add(bpScene('pu', '轻攻击', 'vd-wcc-pugong', { x: 700, y: 40 }, {
     durationMs: 5000,
     background: '变招判定为普通：欺身前扑挥击，命中迸出爪痕 / 刀痕与受击顿帧（威力1.0·命中100%·不可破防）。',
-    performance: { cues: [{ id: 'pu-hit', atMs: 1000, damageToBoss: 80, label: '命中结算 威力1.0' }] },
+    performance: { cues: [bossDamageCue('pu-hit', 1000, 80, '命中结算 威力1.0')] },
     branches: [auto('pu-done', 'my-done', 'Out')],
   }))
   add(bpScene('pu2', '轻攻击·变招', 'vd-wcc-pugong2', { x: 700, y: 220 }, {
@@ -198,10 +214,10 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     background: '变招判定触发：本次以轻攻击变招（反手补击 / 连段）打出，沿演出分 4 次逐次递增结算（威力 0.25 → 0.3 → 0.35 → 0.4）。',
     performance: {
       cues: [
-        { id: 'pu2-1', atMs: 600, damageToBoss: 20, label: '第1段 威力0.25' },
-        { id: 'pu2-2', atMs: 800, damageToBoss: 24, label: '第2段 威力0.3' },
-        { id: 'pu2-3', atMs: 1300, damageToBoss: 28, label: '第3段 威力0.35' },
-        { id: 'pu2-4', atMs: 1800, damageToBoss: 32, label: '第4段 威力0.4' },
+        bossDamageCue('pu2-1', 600, 20, '第1段 威力0.25'),
+        bossDamageCue('pu2-2', 800, 24, '第2段 威力0.3'),
+        bossDamageCue('pu2-3', 1300, 28, '第3段 威力0.35'),
+        bossDamageCue('pu2-4', 1800, 32, '第4段 威力0.4'),
       ] as PerformanceCue[],
     },
     branches: [auto('pu2-done', 'my-done', 'Out')],
@@ -217,7 +233,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
   add(bpScene('zhong', '重攻击', 'vd-wcc-zhong', { x: 700, y: 400 }, {
     durationMs: 6000,
     background: '变招判定为普通：蓄力后一记沉重扑砸 / 重劈，单组大字伤害弹出（威力1.8·命中95%·暴击+5%·破防）。',
-    performance: { cues: [{ id: 'zhong-hit', atMs: 1700, damageToBoss: 144, label: '命中结算 威力1.8' }] },
+    performance: { cues: [bossDamageCue('zhong-hit', 1700, 144, '命中结算 威力1.8')] },
     branches: [auto('zhong-done', 'my-done', 'Out')],
   }))
   add(bpScene('z2', '重攻击·变招', 'vd-wcc-zhong2', { x: 700, y: 580 }, {
@@ -225,8 +241,8 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     background: '变招判定触发：本次以重击变招（延迟 / 二段变化）打出，沿演出分 2 次逐次递增结算（威力 1.0 → 1.4）。',
     performance: {
       cues: [
-        { id: 'z2-1', atMs: 2500, damageToBoss: 80, label: '第1段 威力1.0' },
-        { id: 'z2-2', atMs: 3700, damageToBoss: 112, label: '第2段 威力1.4' },
+        bossDamageCue('z2-1', 2500, 80, '第1段 威力1.0'),
+        bossDamageCue('z2-2', 3700, 112, '第2段 威力1.4'),
       ] as PerformanceCue[],
     },
     branches: [auto('z2-done', 'my-done', 'Out')],
@@ -234,13 +250,13 @@ export function getBlueprintCombatDemoScenario(): Scenario {
   add(bpScene('fuzhu', '冥想', 'vd-wcc-huiqi', { x: 700, y: 760 }, {
     durationMs: 5000,
     background: '空藏冥想调息：回复气力+2、回血12%最大生命、解除异常状态（不造成伤害），用后进入 3 回合冷却。',
-    performance: { cues: [{ id: 'fuzhu-heal', atMs: 2000, label: '回气回血结算' }] },
+    performance: { cues: [{ id: 'fuzhu-heal', atMs: 2000, label: '回气回血结算', effects: [] }] },
     branches: [auto('fuzhu-done', 'my-done', 'Out')],
   }))
   add(bpScene('ult', '灭世', 'vd-wcc-dazhao', { x: 700, y: 940 }, {
     durationMs: 12000,
     background: '气力满（5）方可释放，释放清空气力；招牌绝技长前摇蓄力后全力爆发（威力3.0·命中100%）。',
-    performance: { cues: [{ id: 'ult-hit', atMs: 7000, damageToBoss: 240, label: '命中结算 威力3.0' }] },
+    performance: { cues: [bossDamageCue('ult-hit', 7000, 240, '命中结算 威力3.0')] },
     branches: [auto('ult-done', 'my-done', 'Out')],
   }))
   add(bpScene('my-done', '行动完毕', 'vd-wcc-idle', { x: 1020, y: 490 }, {
@@ -276,7 +292,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
         qteOutcome: 'good',
         targetSceneId: 'dodgeP',
         label: '受击闪避',
-        effects: [{ varId: 'qi', op: 'add', value: -1 }],
+        effects: [varEffect('ai-qte-good-qi', 'qi', 'add', -1)],
       },
       {
         id: 'ai-qte-fail',
@@ -284,26 +300,26 @@ export function getBlueprintCombatDemoScenario(): Scenario {
         qteOutcome: 'fail',
         targetSceneId: 'hurt',
         label: '受击',
-        effects: [{ varId: 'qi', op: 'add', value: 1 }],
+        effects: [varEffect('ai-qte-fail-qi', 'qi', 'add', 1)],
       },
     ],
   }))
   add(bpScene('block', '受击防反', 'vd-wcc-fangfan', { x: 560, y: 1280 }, {
     durationMs: 4000,
     background: '受击防反：主将精准格挡卸力、周身泛起反震光罩——完全免疫来袭伤害，并顺势反击敌方（威力1.2）。',
-    performance: { cues: [{ id: 'block-hit', atMs: 1800, damageToBoss: 96, label: '反击结算 威力1.2' }] },
+    performance: { cues: [bossDamageCue('block-hit', 1800, 96, '反击结算 威力1.2')] },
     branches: [auto('block-done', 'ai-done', 'Out')],
   }))
   add(bpScene('dodgeP', '受击闪避', 'vd-wcc-shanbi', { x: 560, y: 1440 }, {
     durationMs: 4000,
     background: '受击闪避：主将侧身卸力闪避，完全免疫来袭伤害并顺势反击敌方（威力0.8）；消耗气力1。',
-    performance: { cues: [{ id: 'dodge-hit', atMs: 2000, damageToBoss: 64, label: '反击结算 威力0.8' }] },
+    performance: { cues: [bossDamageCue('dodge-hit', 2000, 64, '反击结算 威力0.8')] },
     branches: [auto('dodge-done', 'ai-done', 'Out')],
   }))
   add(bpScene('hurt', '受击', 'vd-wcc-shouji', { x: 560, y: 1600 }, {
     durationMs: 4000,
     background: '防反失败：主将未能防反、正面中招踉跄硬直破势，承受小怪攻击全额伤害（命中100%·暴击8%），但受击积累气力+1。',
-    performance: { cues: [{ id: 'hurt-hit', atMs: 10, damageToPlayer: 120, label: '受击结算' }] },
+    performance: { cues: [playerDamageCue('hurt-hit', 10, 120, '受击结算')] },
     branches: [auto('hurt-done', 'ai-done', 'Out')],
   }))
   add(bpScene('ai-done', '行动完毕', 'vd-wcc-idle', { x: 820, y: 1440 }, {
@@ -319,7 +335,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     originIdea: '从新影游平台交互原型迁移的层级战斗蓝图 demo。',
     rootSceneId: 'enter',
     defaultCharMs: 32,
-    schemaVersion: 9,
+    schemaVersion: 10,
     modules: { gameplay: true, rules: true },
     variables: {
       qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },

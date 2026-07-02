@@ -48,9 +48,11 @@ export function roundDamage(
   round: BossRound,
   hit: boolean,
 ): { toBoss: number; toPlayer: number } {
-  return hit
-    ? { toBoss: Math.max(0, round.damageToBoss ?? 0), toPlayer: 0 }
-    : { toBoss: 0, toPlayer: Math.max(0, round.damageToPlayer ?? 0) }
+  const effects = hit ? round.hitEffects : round.missEffects
+  const damage = (effects ?? [])
+    .filter((effect) => effect.kind === 'entityStat' && effect.stat === 'hp' && effect.value < 0)
+    .reduce((sum, effect) => sum + Math.abs(effect.value), 0)
+  return hit ? { toBoss: damage, toPlayer: 0 } : { toBoss: 0, toPlayer: damage }
 }
 
 /**

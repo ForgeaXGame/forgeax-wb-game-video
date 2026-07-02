@@ -4,7 +4,7 @@ import { useSceneImageCache } from '../media/sceneImageCache'
 import { useMediaStore } from '../media/mediaStore'
 import { createImageProvider } from '../llm'
 import type { ImageClient } from '../llm/types'
-import type { Branch, DecisionSpec, Scene } from '../scenario/types'
+import type { Branch, DecisionSpec, Hotspot, Scene } from '../scenario/types'
 import { useCinemaHold } from './cinemaGate'
 import { injectStyleOnce } from '../styles/injectStyle'
 import {
@@ -14,6 +14,30 @@ import {
   type ItemState,
   type VarState,
 } from './conditionEval'
+
+function choiceHotspotId(branchId: string): string {
+  return `choice-${branchId}`
+}
+
+function findChoiceHotspot(hotspots: Hotspot[] | undefined, branch: Branch): Hotspot | undefined {
+  return (
+    hotspots?.find((h) => h.id === choiceHotspotId(branch.id)) ??
+    hotspots?.find((h) => h.id === branch.id) ??
+    hotspots?.find((h) => h.targetSceneId === branch.targetSceneId && !h.detour)
+  )
+}
+
+interface ChoiceItem {
+  branch: Branch
+  available: boolean
+  locked: boolean
+}
+
+type ChoiceHotspotItem = ChoiceItem & { hotspot: Hotspot }
+
+function hasHotspot(c: ChoiceItem & { hotspot?: Hotspot }): c is ChoiceHotspotItem {
+  return !!c.hotspot
+}
 
 /**
  * ChoiceLayer · 高级感选项层
@@ -82,6 +106,14 @@ export function ChoiceLayer({ scene, onPick, vars, visitedSceneIds, ownedItems, 
       })
       .filter((c) => c.available || c.locked)
   }, [scene.branches, ctx])
+  const hotspotChoices = useMemo(
+    () =>
+      choices
+        .map((c) => ({ ...c, hotspot: findChoiceHotspot(scene.hotspots, c.branch) }))
+        .filter(hasHotspot),
+    [choices, scene.hotspots],
+  )
+  const useHotspotLayout = decision?.presentation === 'hotspot' && !timed && hotspotChoices.length > 0
 
   function handlePick(b: Branch): void {
     if (picked) return
@@ -114,7 +146,7 @@ export function ChoiceLayer({ scene, onPick, vars, visitedSceneIds, ownedItems, 
   }, [timed, picked, choices])
 
   return (
-    <div className="ks-cl">
+    <div className={`ks-cl ${useHotspotLayout ? 'is-hotspot' : ''}`}>
       <div className="ks-cl-bg" />
 
       <header className="ks-cl-head">
@@ -131,24 +163,57 @@ export function ChoiceLayer({ scene, onPick, vars, visitedSceneIds, ownedItems, 
         )}
       </header>
 
-      <div
-        className="ks-cl-cards"
-        style={{
-          gridTemplateColumns: `repeat(${Math.max(1, Math.min(3, choices.length))}, minmax(0, 1fr))`,
-        }}
-      >
-        {choices.map((c, i) => (
-          <ChoiceCard
-            key={c.branch.id}
-            branch={c.branch}
-            index={i}
-            picked={picked}
-            locked={c.locked}
-            lockHint={c.locked ? describeCondition(c.branch, scenario) : ''}
-            onPick={() => handlePick(c.branch)}
-          />
-        ))}
-      </div>
+      {useHotspotLayout ? (
+        <div className="ks-cl-hotspot-stage">
+          {hotspotChoices.map((c, i) => {
+            const r = c.hotspot.r ?? 0.08
+            const isPicked = picked === c.branch.id
+            const isOther = picked != null && !isPicked
+            const lockHint = c.locked ? describeCondition(c.branch, scenario) : ''
+            return (
+              <button
+                key={c.branch.id}
+                type="button"
+                className={`ks-cl-hotspot ${isPicked ? 'is-picked' : ''} ${isOther ? 'is-other' : ''} ${c.locked ? 'is-locked' : ''}`}
+                style={{
+                  left: `${c.hotspot.x * 100}%`,
+                  top: `${c.hotspot.y * 100}%`,
+                  width: `${r * 2 * 100}%`,
+                  paddingBottom: `${r * 2 * 100}%`,
+                  animationDelay: `${i * 80}ms`,
+                }}
+                onClick={c.locked ? undefined : () => handlePick(c.branch)}
+                disabled={picked != null || c.locked}
+                title={c.locked && lockHint ? `未解锁 · 需要 ${lockHint}` : c.branch.label}
+              >
+                <span className="ks-cl-hotspot-ring" aria-hidden />
+                <span className="ks-cl-hotspot-label ks-cn">
+                  {c.hotspot.label ?? c.branch.label ?? c.branch.id}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div
+          className="ks-cl-cards"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(1, Math.min(3, choices.length))}, minmax(0, 1fr))`,
+          }}
+        >
+          {choices.map((c, i) => (
+            <ChoiceCard
+              key={c.branch.id}
+              branch={c.branch}
+              index={i}
+              picked={picked}
+              locked={c.locked}
+              lockHint={c.locked ? describeCondition(c.branch, scenario) : ''}
+              onPick={() => handlePick(c.branch)}
+            />
+          ))}
+        </div>
+      )}
 
     </div>
   )
@@ -370,6 +435,91 @@ const clCss = `
   height: 100%;
   background: linear-gradient(90deg, #fbbf24, #ef4444);
   transition: width 80ms linear;
+}
+.ks-cl.is-hotspot {
+  padding: 3vh 4vw 4vh;
+}
+.ks-cl.is-hotspot .ks-cl-bg {
+  background: rgba(2, 4, 8, 0.16);
+  backdrop-filter: blur(4px) saturate(105%) brightness(0.9);
+  -webkit-backdrop-filter: blur(4px) saturate(105%) brightness(0.9);
+}
+.ks-cl.is-hotspot .ks-cl-head {
+  align-self: start;
+  justify-self: center;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 6px;
+}
+.ks-cl.is-hotspot .ks-cl-h1 {
+  font-size: 20px;
+}
+.ks-cl.is-hotspot .ks-cl-eyebrow,
+.ks-cl.is-hotspot .ks-cl-rule {
+  display: none;
+}
+.ks-cl-hotspot-stage {
+  position: relative;
+  min-height: 0;
+}
+.ks-cl-hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #fff;
+  animation: ks-cl-card-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transition: opacity 220ms ease, filter 220ms ease, transform 220ms ease;
+}
+.ks-cl-hotspot-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,0.82);
+  box-shadow: 0 0 20px rgba(255,255,255,0.42), inset 0 0 18px rgba(255,255,255,0.14);
+  animation: ks-cl-hotspot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ks-cl-hotspot-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+.ks-cl-hotspot-label {
+  position: absolute;
+  left: 50%;
+  bottom: -28px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.62);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-size: 13px;
+  line-height: 1;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+.ks-cl-hotspot:hover:not(:disabled) {
+  transform: translate(-50%, -50%) scale(1.04);
+}
+.ks-cl-hotspot:hover:not(:disabled) .ks-cl-hotspot-ring {
+  border-color: #fff;
+  box-shadow: 0 0 30px rgba(255,255,255,0.72), inset 0 0 24px rgba(255,255,255,0.25);
+}
+.ks-cl-hotspot.is-picked {
+  transform: translate(-50%, -50%) scale(1.18);
+}
+.ks-cl-hotspot.is-other {
+  opacity: 0;
+  filter: blur(2px);
+}
+.ks-cl-hotspot.is-locked {
+  cursor: not-allowed;
+  filter: grayscale(1) brightness(0.7);
+  opacity: 0.55;
 }
 
 /* 卡片网格 */

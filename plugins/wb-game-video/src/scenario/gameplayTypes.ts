@@ -11,7 +11,7 @@
  * 与 types.ts 的循环 import 仅限 `type` 引用（编译期擦除，无运行时环）。
  */
 
-import type { QTESpec, BranchCondition } from './types'
+import type { QTESpec, BranchCondition, Effect } from './types'
 
 // ============================================================================
 // 两级状态机 —— 场景类别
@@ -129,6 +129,8 @@ export interface DecisionSpec {
   fireAt?: DecisionFireAt
   /** 清单式卡片 vs 画面热区（原型 optPresent；限时锁定 list）。 */
   presentation?: ChoicePresentation
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
   /** 限时 QTE 的交互形式（原型 qteKind）。 */
   qteKind?: QteKind
 }
@@ -144,10 +146,10 @@ export interface BossRound {
   id: string
   /** 回合提示 / 招式名。 */
   label?: string
-  /** 命中（QTE 通过 / 正确选择）对 Boss 的伤害。 */
-  damageToBoss?: number
-  /** 失手（QTE 失败 / 错误选择）对玩家的伤害。 */
-  damageToPlayer?: number
+  /** 命中（QTE 通过 / 正确选择）时触发的状态变化。 */
+  hitEffects?: Effect[]
+  /** 失手（QTE 失败 / 错误选择）时触发的状态变化。 */
+  missEffects?: Effect[]
   /** 本回合的 QTE 配置（回合级节奏点；与 scene.qte 互补）。 */
   qte?: QTESpec
 }
@@ -221,19 +223,17 @@ export interface Hotspot {
 // 演出结算轴（Performance cues）—— seedance attackBeat / 原型结算时间轴
 // ============================================================================
 
-/** 时间轴上的结算点 —— 到时刻对 Boss/玩家扣血或触发飘字。 */
+/** 时间轴上的判定点 —— 到时刻触发一组状态变化，可选绑定飘字表现。 */
 export interface PerformanceCue {
   id: string
   /** 触发时刻（ms，相对 scene 起点）。 */
   atMs: number
-  /** 对 Boss 实体伤害；缺省 entity = 第一个 kind=boss。 */
-  damageToBoss?: number
-  /** 对玩家实体伤害；缺省 entity = 第一个 kind=player。 */
-  damageToPlayer?: number
-  bossEntityId?: string
-  playerEntityId?: string
-  /** UI 飘字（可选）。 */
+  /** 触发时应用的状态变化。空数组表示纯判定/标记点。 */
+  effects: Effect[]
+  /** 编辑器/日志标签（可选）。 */
   label?: string
+  /** 时间轴/画面层级；数值越大越靠上。 */
+  layer?: number
 }
 
 /** 挂 Scene.performance —— FMV 演出内的「attackBeat」扣血轴。 */

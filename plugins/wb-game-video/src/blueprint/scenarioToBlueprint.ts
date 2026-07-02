@@ -178,7 +178,6 @@ function branchEdge(scene: Scene, br: Branch, used: Set<string>): GameVideoBluep
       qteOutcome: br.qteOutcome,
       condition: br.condition,
       effects: br.effects,
-      itemEffects: br.itemEffects,
       showAtMs: br.showAt,
       gateMode: br.gateMode,
     },
@@ -279,16 +278,14 @@ function extensionFor(scene: Scene): GameVideoExtensionElements {
 
 function onEnterOf(scene: Scene): GameVideoExtensionElements['onEnter'] {
   const effects = scene.onEnterEffects
-  const itemEffects = scene.onEnterItemEffects
   const setFlagVarIds = scene.setFlags
   if (
     (!effects || effects.length === 0) &&
-    (!itemEffects || itemEffects.length === 0) &&
     (!setFlagVarIds || setFlagVarIds.length === 0)
   ) {
     return undefined
   }
-  return { effects, itemEffects, setFlagVarIds }
+  return { effects, setFlagVarIds }
 }
 
 function mediaIdOf(scene: Scene): string | undefined {
@@ -318,8 +315,7 @@ function damagePointsOf(scene: Scene): BlueprintDamagePoint[] {
     x: 50,
     y: 40,
     note: cue.label ?? '结算',
-    damageToBoss: cue.damageToBoss,
-    damageToPlayer: cue.damageToPlayer,
+    effects: cue.effects,
   }))
 }
 
@@ -372,8 +368,8 @@ function compileBoss(boss: BossSpec): BlueprintBoss {
     rounds: boss.rounds.map((r) => ({
       id: r.id,
       label: r.label,
-      damageToBoss: r.damageToBoss,
-      damageToPlayer: r.damageToPlayer,
+      hitEffects: r.hitEffects,
+      missEffects: r.missEffects,
       qte: r.qte ? compileQte(r.qte) : undefined,
     })),
     winTarget: boss.winSceneId,
@@ -392,6 +388,7 @@ function compileDecision(decision: DecisionSpec): BlueprintDecision {
     prompt: decision.prompt,
     fireAt: decision.fireAt,
     presentation: decision.presentation,
+    layer: decision.layer,
   }
 }
 

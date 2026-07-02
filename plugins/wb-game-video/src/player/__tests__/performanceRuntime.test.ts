@@ -15,12 +15,21 @@ const scenario: Scenario = {
   },
 }
 
+const hp = (id: string, entityId: string, value: number) => ({
+  id,
+  kind: 'entityStat' as const,
+  entityId,
+  stat: 'hp' as const,
+  op: 'add' as const,
+  value: -value,
+})
+
 describe('performanceRuntime', () => {
   it('duePerformanceCues filters by time and dedupes', () => {
     const spec = {
       cues: [
-        { id: 'a', atMs: 1000, damageToBoss: 10 },
-        { id: 'b', atMs: 2000, damageToBoss: 20 },
+        { id: 'a', atMs: 1000, effects: [hp('a-hp', 'ent-boss', 10)] },
+        { id: 'b', atMs: 2000, effects: [hp('b-hp', 'ent-boss', 20)] },
       ],
     }
     expect(duePerformanceCues(spec, 500, new Set())).toEqual([])
@@ -31,7 +40,14 @@ describe('performanceRuntime', () => {
   it('applyPerformanceCue damages boss and player', () => {
     let ent = initEntities(scenario)
     const r = applyPerformanceCue(
-      { id: 'x', atMs: 0, damageToBoss: 40, damageToPlayer: 15 },
+      {
+        id: 'x',
+        atMs: 0,
+        effects: [
+          hp('x-boss', 'ent-boss', 40),
+          hp('x-player', 'ent-player', 15),
+        ],
+      },
       scenario,
       ent,
     )

@@ -109,7 +109,7 @@ function lintBranches(
       }
       lintCondition(issues, scenario, ids, branch.condition, scene.id, branch.id)
       for (const eff of branch.effects ?? []) {
-        if (eff.varId && !scenario.variables?.[eff.varId]) {
+        if ((eff.kind === 'var' || eff.kind === 'flag') && eff.varId && !scenario.variables?.[eff.varId]) {
           push(issues, {
             code: 'branch.unknown_var_effect',
             severity: 'error',
@@ -118,15 +118,31 @@ function lintBranches(
             message: `分支副作用引用未知变量 ${eff.varId}`,
           })
         }
-      }
-      for (const eff of branch.itemEffects ?? []) {
-        if (eff.itemId && !scenario.items?.[eff.itemId]) {
+        if (eff.kind === 'item' && eff.itemId && !scenario.items?.[eff.itemId]) {
           push(issues, {
             code: 'branch.unknown_item_effect',
             severity: 'error',
             sceneId: scene.id,
             branchId: branch.id,
             message: `分支物品副作用引用未知物品 ${eff.itemId}`,
+          })
+        }
+        if (eff.kind === 'entityStat' && eff.entityId && !scenario.entities?.[eff.entityId]) {
+          push(issues, {
+            code: 'branch.unknown_entity_effect',
+            severity: 'error',
+            sceneId: scene.id,
+            branchId: branch.id,
+            message: `分支副作用引用未知实体 ${eff.entityId}`,
+          })
+        }
+        if (eff.kind === 'status' && eff.statusId && !scenario.statuses?.[eff.statusId]) {
+          push(issues, {
+            code: 'branch.unknown_status_effect',
+            severity: 'error',
+            sceneId: scene.id,
+            branchId: branch.id,
+            message: `分支副作用引用未知状态 ${eff.statusId}`,
           })
         }
       }
@@ -349,12 +365,36 @@ function lintGameplay(
   lintCondition(issues, scenario, ids, scene.entryGate?.condition, scene.id)
 
   for (const eff of scene.onEnterEffects ?? []) {
-    if (eff.varId && !scenario.variables?.[eff.varId]) {
+    if ((eff.kind === 'var' || eff.kind === 'flag') && eff.varId && !scenario.variables?.[eff.varId]) {
       push(issues, {
         code: 'scene.unknown_on_enter_var',
         severity: 'error',
         sceneId: scene.id,
         message: `进入场景副作用引用未知变量 ${eff.varId}`,
+      })
+    }
+    if (eff.kind === 'item' && eff.itemId && !scenario.items?.[eff.itemId]) {
+      push(issues, {
+        code: 'scene.unknown_on_enter_item',
+        severity: 'error',
+        sceneId: scene.id,
+        message: `进入场景副作用引用未知物品 ${eff.itemId}`,
+      })
+    }
+    if (eff.kind === 'entityStat' && eff.entityId && !scenario.entities?.[eff.entityId]) {
+      push(issues, {
+        code: 'scene.unknown_on_enter_entity',
+        severity: 'error',
+        sceneId: scene.id,
+        message: `进入场景副作用引用未知实体 ${eff.entityId}`,
+      })
+    }
+    if (eff.kind === 'status' && eff.statusId && !scenario.statuses?.[eff.statusId]) {
+      push(issues, {
+        code: 'scene.unknown_on_enter_status',
+        severity: 'error',
+        sceneId: scene.id,
+        message: `进入场景副作用引用未知状态 ${eff.statusId}`,
       })
     }
   }

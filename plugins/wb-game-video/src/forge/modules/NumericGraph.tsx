@@ -21,7 +21,6 @@ import { describeCondition } from '../../player/conditionEval'
 import {
   VarDefRow,
   EffectListEditor,
-  ItemEffectListEditor,
   BranchGateEditor,
   ConditionRow,
   makeDefaultClause,
@@ -57,10 +56,8 @@ const NODE_H = 92
 
 interface NumNodeData {
   label: string
-  /** 进入本节点的数值变化条数。 */
+  /** 进入本节点的状态变化条数。 */
   effects: number
-  /** 进入本节点的获得/消耗物品条数。 */
-  itemEffects: number
   gate: 'none' | 'redirect' | 'block'
   /** 出向分支总数 / 其中带解锁条件的条数。 */
   branches: number
@@ -72,7 +69,7 @@ interface NumNodeData {
 
 function NumNode({ data }: NodeProps) {
   const d = data as NumNodeData
-  const hasMeta = d.effects > 0 || d.itemEffects > 0 || d.gate !== 'none' || d.conditional > 0
+  const hasMeta = d.effects > 0 || d.gate !== 'none' || d.conditional > 0
   return (
     <div className={`ks-ng-node${d.selected ? ' is-sel' : ''}${d.isEnding ? ' is-ending' : ''}`}>
       <Handle type="target" position={Position.Left} />
@@ -86,11 +83,6 @@ function NumNode({ data }: NodeProps) {
         {d.effects > 0 && (
           <span className="ks-ng-chip ks-ng-chip-eff" title="进入本节点时的数值变化">
             数值 ×{d.effects}
-          </span>
-        )}
-        {d.itemEffects > 0 && (
-          <span className="ks-ng-chip ks-ng-chip-item" title="进入本节点时获得/消耗物品">
-            物品 ×{d.itemEffects}
           </span>
         )}
         {d.gate !== 'none' && (
@@ -158,7 +150,6 @@ function NumericGraphInner() {
         data: {
           label: sc.title || sc.id,
           effects: sc.onEnterEffects?.length ?? 0,
-          itemEffects: sc.onEnterItemEffects?.length ?? 0,
           gate: gateKind(sc),
           branches: branchList.length,
           conditional,
@@ -355,23 +346,6 @@ function SceneNumericInspector({
               updateScene(scene.id, { onEnterEffects: effects.length ? effects : undefined })
             }
           />
-          {items.length > 0 && (
-            <>
-              <div className="ks-ne-sublabel">
-                <span className="ks-ne-sublabel-txt">物品变化</span>
-                <span className="ks-ne-sublabel-hint">如 获得 钥匙</span>
-              </div>
-              <ItemEffectListEditor
-                items={items}
-                effects={scene.onEnterItemEffects ?? []}
-                onChange={(itemEffects) =>
-                  updateScene(scene.id, {
-                    onEnterItemEffects: itemEffects.length ? itemEffects : undefined,
-                  })
-                }
-              />
-            </>
-          )}
         </div>
       </section>
 

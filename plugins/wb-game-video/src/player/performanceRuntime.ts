@@ -26,17 +26,16 @@ export function applyPerformanceCue(
   entities: EntitiesState,
 ): { entities: EntitiesState; notice?: string } {
   let next = entities
-  const bossId = cue.bossEntityId ?? defaultBossId(scenario)
-  const playerId = cue.playerEntityId ?? defaultPlayerId(scenario)
-  if (cue.damageToBoss && bossId) {
-    next = applyDamage(next, bossId, cue.damageToBoss)
-  }
-  if (cue.damageToPlayer && playerId) {
-    next = applyDamage(next, playerId, cue.damageToPlayer)
-  }
   const parts: string[] = []
-  if (cue.damageToBoss) parts.push(`巨龙 -${cue.damageToBoss}`)
-  if (cue.damageToPlayer) parts.push(`你 -${cue.damageToPlayer}`)
+  for (const effect of cue.effects) {
+    if (effect.kind !== 'entityStat' || effect.stat !== 'hp') continue
+    const fallback = effect.value < 0 ? defaultBossId(scenario) : defaultPlayerId(scenario)
+    const entityId = effect.entityId || fallback
+    if (!entityId) continue
+    next = applyDamage(next, entityId, -effect.value)
+    const entityName = scenario.entities?.[entityId]?.name ?? entityId
+    parts.push(`${entityName} ${effect.value >= 0 ? '+' : ''}${effect.value}`)
+  }
   const notice = cue.label ?? (parts.length ? parts.join(' · ') : undefined)
   return { entities: next, notice }
 }

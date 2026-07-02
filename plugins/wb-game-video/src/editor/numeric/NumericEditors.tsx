@@ -3,10 +3,10 @@ import type {
   Branch,
   BranchKind,
   ConditionClause,
+  Effect,
   GameVariable,
   GameVariableKind,
   InventoryItem,
-  ItemEffect,
   Scenario,
   VarEffect,
 } from '../../scenario/types'
@@ -91,22 +91,24 @@ export function EffectListEditor({
   onChange,
 }: {
   variables: GameVariable[]
-  effects: VarEffect[]
-  onChange: (effects: VarEffect[]) => void
+  effects: Effect[]
+  onChange: (effects: Effect[]) => void
 }) {
   const firstVarId = variables[0]?.id ?? ''
+  const varEffects = effects.filter((e): e is VarEffect => e.kind === 'var')
+  const otherEffects = effects.filter((e) => e.kind !== 'var')
   if (variables.length === 0) {
     return <div className="ks-ne-empty">先定义变量，才能设置效果</div>
   }
   return (
     <>
-      {effects.map((eff, i) => (
-        <div className="ks-ne-row" key={i}>
+      {varEffects.map((eff) => (
+        <div className="ks-ne-row" key={eff.id}>
           <select
             className="ks-ne-name"
             value={eff.varId}
             onChange={(e) =>
-              onChange(effects.map((x, j) => (j === i ? { ...x, varId: e.target.value } : x)))
+              onChange([...otherEffects, ...varEffects.map((x) => (x.id === eff.id ? { ...x, varId: e.target.value } : x))])
             }
           >
             {variables.map((v) => (
@@ -120,9 +122,9 @@ export function EffectListEditor({
             value={eff.op}
             onChange={(e) =>
               onChange(
-                effects.map((x, j) =>
-                  j === i ? { ...x, op: e.target.value as 'add' | 'set' } : x,
-                ),
+                [...otherEffects, ...varEffects.map((x) =>
+                  x.id === eff.id ? { ...x, op: e.target.value as 'add' | 'set' } : x,
+                )],
               )
             }
           >
@@ -135,16 +137,16 @@ export function EffectListEditor({
             value={eff.value}
             onChange={(e) =>
               onChange(
-                effects.map((x, j) =>
-                  j === i ? { ...x, value: Number(e.target.value) || 0 } : x,
-                ),
+                [...otherEffects, ...varEffects.map((x) =>
+                  x.id === eff.id ? { ...x, value: Number(e.target.value) || 0 } : x,
+                )],
               )
             }
           />
           <button
             type="button"
             className="ks-ne-del"
-            onClick={() => onChange(effects.filter((_, j) => j !== i))}
+            onClick={() => onChange([...otherEffects, ...varEffects.filter((x) => x.id !== eff.id)])}
             title="删除效果"
           >
             ✕
@@ -154,88 +156,9 @@ export function EffectListEditor({
       <button
         type="button"
         className="ks-ne-addbtn"
-        onClick={() => onChange([...effects, { varId: firstVarId, op: 'add', value: 1 }])}
+        onClick={() => onChange([...effects, { id: `var-${Date.now().toString(36)}`, kind: 'var', varId: firstVarId, op: 'add', value: 1 }])}
       >
         ＋ 新增效果
-      </button>
-    </>
-  )
-}
-
-/** 一组物品副作用编辑器（用于 branch.itemEffects 和 scene.onEnterItemEffects）。 */
-export function ItemEffectListEditor({
-  items,
-  effects,
-  onChange,
-}: {
-  items: InventoryItem[]
-  effects: ItemEffect[]
-  onChange: (effects: ItemEffect[]) => void
-}) {
-  const firstItemId = items[0]?.id ?? ''
-  if (items.length === 0) {
-    return <div className="ks-ne-empty">先在「背包系统」里定义物品</div>
-  }
-  return (
-    <>
-      {effects.map((eff, i) => (
-        <div className="ks-ne-row" key={i}>
-          <select
-            className="ks-ne-kind"
-            value={eff.op}
-            onChange={(e) =>
-              onChange(
-                effects.map((x, j) =>
-                  j === i ? { ...x, op: e.target.value as 'give' | 'take' } : x,
-                ),
-              )
-            }
-          >
-            <option value="give">获得</option>
-            <option value="take">消耗</option>
-          </select>
-          <select
-            className="ks-ne-name"
-            value={eff.itemId}
-            onChange={(e) =>
-              onChange(effects.map((x, j) => (j === i ? { ...x, itemId: e.target.value } : x)))
-            }
-          >
-            {items.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
-              </option>
-            ))}
-          </select>
-          <input
-            className="ks-ne-init"
-            type="number"
-            min={1}
-            value={eff.count ?? 1}
-            onChange={(e) =>
-              onChange(
-                effects.map((x, j) =>
-                  j === i ? { ...x, count: Math.max(1, Number(e.target.value) || 1) } : x,
-                ),
-              )
-            }
-          />
-          <button
-            type="button"
-            className="ks-ne-del"
-            onClick={() => onChange(effects.filter((_, j) => j !== i))}
-            title="删除物品效果"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        className="ks-ne-addbtn"
-        onClick={() => onChange([...effects, { itemId: firstItemId, op: 'give', count: 1 }])}
-      >
-        ＋ 物品效果
       </button>
     </>
   )
@@ -401,6 +324,7 @@ export function BranchGateEditor({
   variables,
   items = [],
   onPatch,
+  onRemove,
 }: {
   branch: Branch
   scenario: Scenario
@@ -408,6 +332,7 @@ export function BranchGateEditor({
   /** 背包物品（非空时分支可设「拥有物品」条件与「获得/消耗物品」效果）。 */
   items?: InventoryItem[]
   onPatch: (patch: Partial<Branch>) => void
+  onRemove?: () => void
 }) {
   const clauses = branch.condition?.all ?? []
   const sceneOptions = useMemo(
@@ -415,7 +340,7 @@ export function BranchGateEditor({
     [scenario.scenes],
   )
   const targetTitle = scenario.scenes[branch.targetSceneId]?.title || branch.targetSceneId
-  const hasEffects = (branch.effects?.length ?? 0) > 0 || (branch.itemEffects?.length ?? 0) > 0
+  const hasEffects = (branch.effects?.length ?? 0) > 0
 
   function setClauses(next: ConditionClause[]): void {
     onPatch({ condition: next.length ? { all: next } : undefined })
@@ -427,6 +352,11 @@ export function BranchGateEditor({
         <span className={`ks-ne-kindpill kind-${branch.kind}`}>{BRANCH_KIND_LABELS[branch.kind]}</span>
         <span className="ks-ne-gate-arrow">→</span>
         <span className="ks-ne-gate-target" title={targetTitle}>{targetTitle}</span>
+        {onRemove && (
+          <button type="button" className="ks-ne-del" onClick={onRemove} title="删除选项">
+            ✕
+          </button>
+        )}
       </div>
 
       <div className="ks-ne-gate-typerow">
@@ -448,6 +378,22 @@ export function BranchGateEditor({
           placeholder={branch.kind === 'choice' ? '按钮文字' : '标签(可选)'}
         />
       </div>
+
+      <div className="ks-ne-sublabel">
+        <span className="ks-ne-sublabel-txt">跳转目标</span>
+        <span className="ks-ne-sublabel-hint">玩家选择后进入的节点</span>
+      </div>
+      <select
+        className="ks-ne-name"
+        value={branch.targetSceneId}
+        onChange={(e) => onPatch({ targetSceneId: e.target.value })}
+      >
+        {sceneOptions.map((scene) => (
+          <option key={scene.id} value={scene.id}>
+            {scene.title}
+          </option>
+        ))}
+      </select>
 
       <div className="ks-ne-sublabel">
         <span className="ks-ne-sublabel-txt">解锁条件</span>
@@ -489,22 +435,13 @@ export function BranchGateEditor({
 
       <div className="ks-ne-sublabel">
         <span className="ks-ne-sublabel-txt">{branch.kind === 'choice' ? '选中后' : '经过后'}效果</span>
-        <span className="ks-ne-sublabel-hint">{hasEffects ? '改变数值 / 物品' : '可选 · 改变数值或物品'}</span>
+        <span className="ks-ne-sublabel-hint">{hasEffects ? '改变状态' : '可选 · 改变数值/物品/状态'}</span>
       </div>
       <EffectListEditor
         variables={variables}
         effects={branch.effects ?? []}
         onChange={(effects) => onPatch({ effects: effects.length ? effects : undefined })}
       />
-      {items.length > 0 && (
-        <ItemEffectListEditor
-          items={items}
-          effects={branch.itemEffects ?? []}
-          onChange={(itemEffects) =>
-            onPatch({ itemEffects: itemEffects.length ? itemEffects : undefined })
-          }
-        />
-      )}
     </div>
   )
 }

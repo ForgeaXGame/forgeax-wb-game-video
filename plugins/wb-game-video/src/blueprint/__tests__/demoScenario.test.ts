@@ -89,7 +89,7 @@ describe('real demo blueprint', () => {
       all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }],
     })
     expect(waitEdges.find((e) => e.name === '灭世')?.extension?.effects).toEqual([
-      { varId: 'qi', op: 'set', value: 0 },
+      { id: 'my-ult-qi', kind: 'var', varId: 'qi', op: 'set', value: 0 },
     ])
 
     const ai = graph.subflows?.['g-cb-ai']

@@ -403,8 +403,18 @@ export function BlueprintPlayer(): JSX.Element {
 
   function spawnFloats(p: BlueprintDamagePoint): void {
     const items: FloatItem[] = []
-    if (p.damageToBoss) items.push({ id: floatSeq.current++, text: `-${p.damageToBoss}`, x: p.x, y: p.y, kind: 'dmg' })
-    if (p.damageToPlayer) items.push({ id: floatSeq.current++, text: `-${p.damageToPlayer}`, x: p.x, y: p.y + 8, kind: 'hurt' })
+    for (const effect of p.effects) {
+      if (effect.kind !== 'entityStat' || effect.stat !== 'hp') continue
+      const value = Number(effect.value)
+      if (!Number.isFinite(value) || value === 0) continue
+      items.push({
+        id: floatSeq.current++,
+        text: value > 0 ? `+${value}` : `${value}`,
+        x: p.x,
+        y: p.y + items.length * 8,
+        kind: value < 0 ? 'dmg' : 'note',
+      })
+    }
     if (items.length === 0) items.push({ id: floatSeq.current++, text: p.note, x: p.x, y: p.y, kind: 'note' })
     setFloats((prev) => [...prev, ...items])
     for (const it of items) window.setTimeout(() => setFloats((prev) => prev.filter((f) => f.id !== it.id)), 1100)

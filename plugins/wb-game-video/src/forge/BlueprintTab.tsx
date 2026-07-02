@@ -324,16 +324,10 @@ function bpgTypeOfNode(
   if (node.elementType === 'end' || ext.hud === 'ending') {
     return { typeClass: 'end', accent: BPG_TYPE_ACCENTS.end, kindLabel: '结局' }
   }
-  switch (ext.sceneKind) {
-    case 'choice':
-      return { typeClass: 'open', accent: BPG_TYPE_ACCENTS.open, kindLabel: '选择' }
-    case 'battle':
-      return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: 'Boss战' }
-    case 'qte':
-      return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: 'QTE' }
-    default:
-      return { typeClass: 'loop', accent: BPG_TYPE_ACCENTS.loop, kindLabel: '剧情' }
+  if (ext.clipId || ext.mediaId) {
+    return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: '演出' }
   }
+  return { typeClass: 'loop', accent: BPG_TYPE_ACCENTS.loop, kindLabel: '逻辑' }
 }
 
 function deriveNodeData(
@@ -361,6 +355,12 @@ function deriveNodeData(
       .filter(Boolean)
       .join('·')
     badges.push({ glyph: '⏱', text: `QTE×${n}${extra ? `·${extra}` : ''}`, tone: 'qte' })
+  }
+  if (ext.options && ext.options.length > 0) {
+    badges.push({ glyph: '◇', text: `选项×${ext.options.length}`, tone: 'timed' })
+  }
+  if (ext.dmgPoints && ext.dmgPoints.length > 0) {
+    badges.push({ glyph: '✦', text: `判定×${ext.dmgPoints.length}`, tone: 'boss' })
   }
   if (ext.decision && (ext.decision.optType === 'timed' || ext.decision.optType === 'timed_qte')) {
     const sec = ext.decision.timeoutMs ? Math.round(ext.decision.timeoutMs / 1000) : null

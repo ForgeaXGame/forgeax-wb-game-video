@@ -53,8 +53,8 @@ const GAMEPLAY_REPLY = JSON.stringify({
           {
             id: 'r1',
             label: '格挡反击',
-            damageToBoss: 45,
-            damageToPlayer: 25,
+            hitEffects: [{ id: 'r1-hit-hp', kind: 'entityStat', entityId: 'boss_1', stat: 'hp', op: 'add', value: -45 }],
+            missEffects: [{ id: 'r1-miss-hp', kind: 'entityStat', entityId: 'player', stat: 'hp', op: 'add', value: -25 }],
             qte: {
               window: { perfect: 80, great: 160, good: 280 },
               score: { perfect: 100, great: 60, good: 25, miss: -30 },
@@ -66,7 +66,14 @@ const GAMEPLAY_REPLY = JSON.stringify({
         loseSceneId: 's3lose',
         // 悬空目标：应被 normalize 清理成 undefined
       },
-      performance: { cues: [{ id: 'pc1', atMs: 1200, damageToBoss: 30, label: '命中！' }] },
+      performance: {
+        cues: [{
+          id: 'pc1',
+          atMs: 1200,
+          label: '命中！',
+          effects: [{ id: 'pc1-hp', kind: 'entityStat', entityId: 'boss_1', stat: 'hp', op: 'add', value: -30 }],
+        }],
+      },
       dialogue: [],
       branches: [],
     },
@@ -138,7 +145,12 @@ describe('玩法优先自动生成 · normalize 透传', () => {
     expect(battle?.boss?.entityId).toBe('boss_1')
     expect(battle?.boss?.rounds).toHaveLength(1)
     expect(battle?.boss?.rounds[0]?.qte?.cues).toHaveLength(1)
-    expect(battle?.performance?.cues[0]?.damageToBoss).toBe(30)
+    expect(battle?.performance?.cues[0]?.effects[0]).toMatchObject({
+      kind: 'entityStat',
+      entityId: 'boss_1',
+      stat: 'hp',
+      value: -30,
+    })
   })
 
   it('decision / hotspots 存活', async () => {

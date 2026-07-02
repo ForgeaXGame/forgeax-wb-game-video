@@ -17,7 +17,7 @@
  * qte / boss / decision / hotspots（保留既有玩法）。
  */
 
-import type { BranchCondition, BranchKind, ItemEffect, QteOutcome, VarEffect } from '../scenario/types'
+import type { BranchCondition, BranchKind, Effect, QteOutcome } from '../scenario/types'
 
 // ── cinegame Base 形态（逐字移植，勿改；扩展走泛型）────────────────────────
 
@@ -88,7 +88,7 @@ export type BlueprintSceneKind = typeof BLUEPRINT_SCENE_KINDS[number]
 /** 视频播放方式 —— Loop 要素。 */
 export type BlueprintMediaPlayMode = 'once' | 'loop'
 
-/** 演出结算点（对齐 cinegame BlueprintDamagePoint + 本插件 PerformanceCue）。 */
+/** 演出判定点（对齐本插件 PerformanceCue）。 */
 export interface BlueprintDamagePoint {
   /** 触发时刻（秒，相对节点视频起点 —— 与 cinegame 一致用秒）。 */
   t: number
@@ -96,10 +96,7 @@ export interface BlueprintDamagePoint {
   x: number
   y: number
   note: string
-  /** 对 Boss 实体伤害（缺省取第一个 boss 实体）。 */
-  damageToBoss?: number
-  /** 对玩家实体伤害（缺省取第一个 player 实体）。 */
-  damageToPlayer?: number
+  effects: Effect[]
 }
 
 /** 选项 / 出边映射（对齐 cinegame BlueprintOption）。 */
@@ -142,14 +139,15 @@ export interface BlueprintDecision {
   /** 选完何时跳转。 */
   fireAt?: 'on_pick' | 'video_end'
   presentation?: 'list' | 'hotspot'
+  layer?: number
 }
 
 /** Boss 战一回合。 */
 export interface BlueprintBossRound {
   id: string
   label?: string
-  damageToBoss?: number
-  damageToPlayer?: number
+  hitEffects?: Effect[]
+  missEffects?: Effect[]
   qte?: BlueprintQte
 }
 
@@ -193,8 +191,7 @@ export interface BlueprintTransition {
 
 /** 进入节点时的副作用（数值/物品/flag）。 */
 export interface BlueprintOnEnter {
-  effects?: VarEffect[]
-  itemEffects?: ItemEffect[]
+  effects?: Effect[]
   /** 进入时写 1 的 flag varId 列表。 */
   setFlagVarIds?: string[]
 }
@@ -260,8 +257,7 @@ export interface GameVideoEdgeExtension {
   /** 三档 QTE 精确结果键；缺省按 kind 推断 pass/fail。 */
   qteOutcome?: QteOutcome
   condition?: BranchCondition
-  effects?: VarEffect[]
-  itemEffects?: ItemEffect[]
+  effects?: Effect[]
   /** 选项出现时刻（ms）—— kind='choice'。 */
   showAtMs?: number
   gateMode?: 'hide' | 'lock'

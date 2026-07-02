@@ -8,10 +8,19 @@ import {
 } from '../bossRuntime'
 import type { BossRound } from '../../../scenario/types'
 
+const hp = (id: string, value: number) => ({
+  id,
+  kind: 'entityStat' as const,
+  entityId: id.includes('player') ? 'player' : 'boss',
+  stat: 'hp' as const,
+  op: 'add' as const,
+  value: -value,
+})
+
 const round = (over: Partial<BossRound> = {}): BossRound => ({
   id: 'r',
-  damageToBoss: 30,
-  damageToPlayer: 20,
+  hitEffects: [hp('boss-hit', 30)],
+  missEffects: [hp('player-miss', 20)],
   ...over,
 })
 
@@ -23,7 +32,7 @@ describe('roundDamage', () => {
     expect(roundDamage(round(), false)).toEqual({ toBoss: 0, toPlayer: 20 })
   })
   it('缺省伤害视为 0', () => {
-    expect(roundDamage(round({ damageToBoss: undefined }), true)).toEqual({
+    expect(roundDamage(round({ hitEffects: undefined }), true)).toEqual({
       toBoss: 0,
       toPlayer: 0,
     })
@@ -59,7 +68,7 @@ describe('advanceRound + isPerfect', () => {
 
   it('中途失手扣玩家血 → 不再 perfect', () => {
     let s = initBattle(100, 50)
-    const rounds = [round(), round({ damageToBoss: 100 })]
+    const rounds = [round(), round({ hitEffects: [hp('boss-finish', 100)] })]
     s = advanceRound(s, rounds[0]!, false, rounds.length) // 失手：玩家 -20
     expect(s.playerHp).toBe(30)
     s = advanceRound(s, rounds[1]!, true, rounds.length) // 命中：Boss -100 → 死
@@ -69,7 +78,7 @@ describe('advanceRound + isPerfect', () => {
 
   it('玩家被打死 → lose', () => {
     let s = initBattle(100, 30)
-    const r = round({ damageToPlayer: 30 })
+    const r = round({ missEffects: [hp('player-lethal', 30)] })
     s = advanceRound(s, r, false, 3)
     expect(s.playerHp).toBe(0)
     expect(s.outcome).toBe('lose')
@@ -78,7 +87,7 @@ describe('advanceRound + isPerfect', () => {
 
   it('已结束的 state 再推进保持幂等', () => {
     let s = initBattle(100, 30)
-    s = advanceRound(s, round({ damageToPlayer: 30 }), false, 3)
+    s = advanceRound(s, round({ missEffects: [hp('player-lethal', 30)] }), false, 3)
     const after = advanceRound(s, round(), true, 3)
     expect(after).toBe(s)
   })

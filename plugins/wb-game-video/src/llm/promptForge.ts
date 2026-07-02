@@ -1,5 +1,5 @@
 import type { OrphanInfo } from '../scenario/reconnectOrphans'
-import type { QTESpec, Scene, Scenario } from '../scenario/types'
+import type { Effect, QTESpec, Scene, Scenario } from '../scenario/types'
 import type {
   BossRound,
   BossSpec,
@@ -1105,7 +1105,9 @@ function buildScenarioSchemaBlock(opts: SchemaBlockOptions): string {
 "boss": {                                    // 仅 kind='battle'
   "entityId": "boss_1", "playerEntityId": "player",
   "rounds": [
-    { "id": "r1", "label": "格挡反击", "damageToBoss": 40, "damageToPlayer": 25,
+    { "id": "r1", "label": "格挡反击",
+      "hitEffects": [{ "id":"r1-hit-hp", "kind":"entityStat", "entityId":"boss_1", "stat":"hp", "op":"add", "value":-40 }],
+      "missEffects": [{ "id":"r1-miss-hp", "kind":"entityStat", "entityId":"player", "stat":"hp", "op":"add", "value":-25 }],
       "qte": { "window": {"perfect":80,"great":160,"good":280},
                "score": {"perfect":100,"great":60,"good":25,"miss":-30},
                "cues": [ { "id":"c1","shape":"tap","x":0.5,"y":0.55,"appearAt":1500,"targetAt":2300,"label":"斩" } ] } }
@@ -1118,8 +1120,11 @@ function buildScenarioSchemaBlock(opts: SchemaBlockOptions): string {
 "hotspots": [                                // 可点画面热点（进支线 / 原地对话）
   { "id": "hs1", "x": 0.5, "y": 0.4, "label": "查看", "targetSceneId": "<支线真实 sceneId>", "mode": "return" }
 ],
-"performance": {                             // 结算轴：到点扣血 + 飘字
-  "cues": [ { "id": "pc1", "atMs": 1200, "damageToBoss": 30, "label": "命中！" } ]
+"performance": {                             // 判定轴：到点执行 effects，可选绑定飘字
+  "cues": [
+    { "id": "pc1", "atMs": 1200, "label": "命中！",
+      "effects": [{ "id":"pc1-hp", "kind":"entityStat", "entityId":"boss_1", "stat":"hp", "op":"add", "value":-30 }] }
+  ]
 },
 "qte": { ...上面的 QTE 形态, "sequence": true, "timeoutMs": 4000 }  // 连段=按序命中；timeoutMs=整段限时
 
@@ -1226,7 +1231,7 @@ function buildScriptSchemaBlock(): string {
 - 顶层 "entities": [{ "id","name","kind":"player|boss|enemy|ally","maxHp" }]（原文点明的角色/Boss + 血量）
 - 场景 "kind":"story|battle|qte|choice"、"boss"{entityId,rounds[],winSceneId,loseSceneId}、
   "decision"{optType,timeoutMs,defaultBranchId}、"hotspots"[{x,y,targetSceneId,mode}]、
-  "mediaPlayMode":"once|loop"、"performance"{cues:[{atMs,damageToBoss,label}]}
+  "mediaPlayMode":"once|loop"、"performance"{cues:[{atMs,label,effects:[...]}]}
 - 跳转类字段（winSceneId/loseSceneId/targetSceneId）必须指向原文真实存在的场景
 
 【软约束 · 跟原文走】
@@ -1686,6 +1691,47 @@ function isQteKind(v: unknown): v is QteKind {
   )
 }
 
+function normalizeEffects(raw: unknown, fallbackId: string): Effect[] {
+  if (!Array.isArray(raw)) return []
+  const out: Effect[] = []
+  raw.forEach((item, i) => {
+    if (!item || typeof item !== 'object') return
+    const r = item as Record<string, unknown>
+    const id = typeof r.id === 'string' && r.id ? r.id : `${fallbackId}-eff${i + 1}`
+    if (r.kind === 'entityStat') {
+      const entityId = typeof r.entityId === 'string' && r.entityId.trim() ? r.entityId.trim() : ''
+      if (!entityId) return
+      const stat = r.stat === 'qi' || r.stat === 'shield' ? r.stat : 'hp'
+      const op = r.op === 'set' ? 'set' : 'add'
+      out.push({ id, kind: 'entityStat', entityId, stat, op, value: Number(r.value) || 0 })
+    } else if (r.kind === 'var') {
+      const varId = typeof r.varId === 'string' && r.varId.trim() ? r.varId.trim() : ''
+      if (!varId) return
+      const op = r.op === 'set' ? 'set' : 'add'
+      out.push({ id, kind: 'var', varId, op, value: Number(r.value) || 0 })
+    } else if (r.kind === 'flag') {
+      const varId = typeof r.varId === 'string' && r.varId.trim() ? r.varId.trim() : ''
+      if (!varId) return
+      out.push({ id, kind: 'flag', varId, value: r.value !== false })
+    } else if (r.kind === 'item') {
+      const itemId = typeof r.itemId === 'string' && r.itemId.trim() ? r.itemId.trim() : ''
+      if (!itemId) return
+      out.push({ id, kind: 'item', itemId, op: r.op === 'take' ? 'take' : 'give', count: Math.max(1, Number(r.count) || 1) })
+    } else if (r.kind === 'status') {
+      const statusId = typeof r.statusId === 'string' && r.statusId.trim() ? r.statusId.trim() : ''
+      if (!statusId) return
+      out.push({
+        id,
+        kind: 'status',
+        statusId,
+        ...(typeof r.entityId === 'string' && r.entityId.trim() ? { entityId: r.entityId.trim() } : {}),
+        op: r.op === 'remove' ? 'remove' : 'add',
+      })
+    }
+  })
+  return out
+}
+
 function normalizeBoss(raw: unknown, sceneId: string): BossSpec | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const r = raw as Record<string, unknown>
@@ -1699,8 +1745,10 @@ function normalizeBoss(raw: unknown, sceneId: string): BossSpec | undefined {
     return {
       id: rid,
       ...(typeof rd.label === 'string' && rd.label.trim() ? { label: rd.label.trim() } : {}),
-      ...(typeof rd.damageToBoss === 'number' ? { damageToBoss: rd.damageToBoss } : {}),
-      ...(typeof rd.damageToPlayer === 'number' ? { damageToPlayer: rd.damageToPlayer } : {}),
+      hitEffects: normalizeEffects(rd.hitEffects, `${rid}-hit`),
+      ...(typeof r.playerEntityId === 'string' && r.playerEntityId.trim()
+        ? { missEffects: normalizeEffects(rd.missEffects, `${rid}-miss`) }
+        : { missEffects: normalizeEffects(rd.missEffects, `${rid}-miss`) }),
       ...(qte ? { qte } : {}),
     }
   })
@@ -1785,8 +1833,7 @@ function normalizePerformance(raw: unknown, sceneId: string): PerformanceSpec | 
     cues.push({
       id: typeof c.id === 'string' && c.id ? c.id : `${sceneId}-pc${i + 1}`,
       atMs: Math.max(0, Number(c.atMs) || i * 800),
-      ...(typeof c.damageToBoss === 'number' ? { damageToBoss: c.damageToBoss } : {}),
-      ...(typeof c.damageToPlayer === 'number' ? { damageToPlayer: c.damageToPlayer } : {}),
+      effects: normalizeEffects(c.effects, `${sceneId}-pc${i + 1}`),
       ...(typeof c.label === 'string' && c.label.trim() ? { label: c.label.trim() } : {}),
     })
   })
