@@ -53,10 +53,6 @@ import { resolveSceneQte } from '../qte/qteKindPresets'
 import { applyPerformanceCue, duePerformanceCues } from './performanceRuntime'
 import type { HotspotDetour } from '../scenario/types'
 import { CrossfadeLayer } from './CrossfadeLayer'
-import {
-  DEFAULT_PLAYBACK_VIDEO_URL,
-  resolveScenePlaybackVideoUrl,
-} from '../scenario/coldCliffDemoMedia'
 import type { MinigameEvent } from './minigameMessage'
 import {
   DIALOGUE_PREF_STORAGE_KEY,
@@ -1664,24 +1660,16 @@ function MultiShotLayer({
   const entries = useMediaStore((s) => s.entries)
   const shots = timedShots(scene)
   const active = resolveActiveShot(scene, currentMs) ?? shots[0]
-  if (!active) {
-    return (
-      <PlayerVideo
-        videoRef={videoRef}
-        src={DEFAULT_PLAYBACK_VIDEO_URL}
-        onEnded={onLastShotEnded}
-      />
-    )
-  }
+  if (!active) return null
   const isLast = active.id === shots[shots.length - 1]?.id
   const videoUrl = active.videoMediaRef ? entries[active.videoMediaRef]?.url : undefined
-  const playbackSrc = videoUrl ?? DEFAULT_PLAYBACK_VIDEO_URL
+  if (!videoUrl) return null
 
   return (
     <PlayerVideo
       key={active.id}
       videoRef={videoRef}
-      src={playbackSrc}
+      src={videoUrl}
       onEnded={isLast ? onLastShotEnded : undefined}
     />
   )
@@ -1712,7 +1700,7 @@ function SceneCanvas({
   //   否则继续走下面的 scene 级代表帧/整场视频分支（向后兼容）。
   //   相关代码：MultiShotLayer / editor/Timeline.tsx（SHOT 轨）/ scenario.setSceneShotKeyframe
 
-  const playbackSrc = resolveScenePlaybackVideoUrl(scene.media, mediaEntry?.url)
+  const playbackSrc = scene.media.kind === 'VIDEO' ? mediaEntry?.url : undefined
 
   // 演出编号（蓝图「演出编号」→ scene.clipId）→ 内置「视频」资产库一条演出。
   // 该节点没有真实可播视频（占位演出库尚未绑定素材）时，按所选演出渲染一帧带标签
@@ -1848,7 +1836,7 @@ function PlayerVideo({
   onEnded,
 }: {
   videoRef: React.MutableRefObject<HTMLVideoElement | null>
-  src: string
+  src?: string
   /**
    * 视频自然播完回调 —— 由 Player 顶层负责调 handleSceneEnd。
    *
@@ -1863,6 +1851,13 @@ function PlayerVideo({
   const [stalled, setStalled] = useState(false)
 
   useEffect(() => {
+    if (!src) {
+      videoRef.current = null
+      setNeedsUnmute(false)
+      setLoadError(null)
+      setStalled(false)
+      return
+    }
     const v = videoRef.current
     if (!v) return
     setNeedsUnmute(false)
@@ -1907,6 +1902,8 @@ function PlayerVideo({
     }
     setNeedsUnmute(false)
   }
+
+  if (!src) return null
 
   return (
     <>

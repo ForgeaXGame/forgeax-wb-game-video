@@ -7,7 +7,7 @@
  * 热点层）——蓝图节点 id 恒等于 scene id，可直接取回原始 Scene 喂给这些层，并用 runtime
  * 的实体/数值/背包状态驱动它们。
  *
- * 与 cinegame 对齐的运行时设施：真实 `<video>` 播放（mediaStore 解析，回落 demo 视频）、
+ * 与 cinegame 对齐的运行时设施：真实 `<video>` 播放（mediaStore / 固定视频库解析）、
  * `dmgPoints` 到点飘字+扣血（floatDamage）、蓝图面板 + 节点 JSON inspector、战斗日志、
  * 自动演示、重开。
  */
@@ -17,10 +17,7 @@ import { useScenarioStore } from '../scenario/scenarioStore'
 import { useShellStore } from '../shell/shellStore'
 import { useMediaStore } from '../media/mediaStore'
 import { getVideoClip } from '../scenario/gameAssetCatalog'
-import {
-  DEFAULT_PLAYBACK_VIDEO_URL,
-  primeColdCliffDemoMedia,
-} from '../scenario/coldCliffDemoMedia'
+import { primeColdCliffDemoMedia } from '../scenario/coldCliffDemoMedia'
 import { scenarioToBlueprint } from '../blueprint/scenarioToBlueprint'
 import { toFXGraph } from '../blueprint/blueprint-reactflow'
 import { BlueprintRuntime } from '../blueprint/runtime/engine'
@@ -264,8 +261,7 @@ export function BlueprintPlayer(): JSX.Element {
   const floatSeq = useRef(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const clip = snapshot.clip
-  const videoSrc =
-    clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url) || DEFAULT_PLAYBACK_VIDEO_URL
+  const videoSrc = clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url)
 
   injectStyles()
 
@@ -274,6 +270,12 @@ export function BlueprintPlayer(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!videoSrc) {
+      videoRef.current = null
+      setContentRect(null)
+      setNeedsUnmute(false)
+      return
+    }
     const v = videoRef.current
     if (!v) return
     let frame = 0
@@ -453,18 +455,20 @@ export function BlueprintPlayer(): JSX.Element {
   return (
     <div className="bpx-root" tabIndex={0}>
       <div className="bpx-stage" data-transition={clip?.transition ?? 'cut'}>
-        <StableBlueprintVideo
-          nodeId={clip?.nodeId}
-          runKey={runKey}
-          src={videoSrc}
-          loop={clip?.loop ?? false}
-          videoRef={videoRef}
-          onNeedsUnmuteChange={setNeedsUnmute}
-          onActiveVideoChange={() => setVideoBufferVersion((n) => n + 1)}
-          onEnded={() => {
-            if (!clip?.loop) advanceClip()
-          }}
-        />
+        {videoSrc && (
+          <StableBlueprintVideo
+            nodeId={clip?.nodeId}
+            runKey={runKey}
+            src={videoSrc}
+            loop={clip?.loop ?? false}
+            videoRef={videoRef}
+            onNeedsUnmuteChange={setNeedsUnmute}
+            onActiveVideoChange={() => setVideoBufferVersion((n) => n + 1)}
+            onEnded={() => {
+              if (!clip?.loop) advanceClip()
+            }}
+          />
+        )}
         {needsUnmute && (
           <button type="button" className="bpx-unmute" onClick={onUnmuteClick}>
             🔇 点击恢复声音

@@ -33,6 +33,18 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(s).toContain('onCanPlay={() => activateSlot')
   })
 
+  it('does not fall back to a default playback video when a node has no video', () => {
+    const player = source('BlueprintPlayer.tsx')
+    const demoMedia = readFileSync(
+      resolve(import.meta.dirname, '../../scenario/coldCliffDemoMedia.ts'),
+      'utf8',
+    )
+
+    expect(player).not.toContain('DEFAULT_PLAYBACK_VIDEO_URL')
+    expect(demoMedia).not.toContain('DEFAULT_PLAYBACK_MEDIA_ID')
+    expect(demoMedia).not.toContain('default-playback.mp4')
+  })
+
   it('passes qi runtime vars into the HUD and renders rage pips under the player bar', () => {
     const player = source('BlueprintPlayer.tsx')
     const hud = source('hud/HudLayer.tsx')

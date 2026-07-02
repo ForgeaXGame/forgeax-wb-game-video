@@ -1,6 +1,4 @@
 import { useMediaStore } from '../media/mediaStore'
-import type { MediaRef } from './types'
-
 /** file-server 归档版 MP4 —— 与 seedance prototype/game-config.js 对齐。 */
 const DIR = 'http://deqingyan-any6.devcloud.woa.com:8001/files/'
 
@@ -29,23 +27,6 @@ export const COLD_CLIFF_VIDEOS = {
   tr3b: `${DIR}tr3b_02178228974099400000000000000000000ffffac1814164d9b81.mp4`,
 } as const
 
-/** 试玩缺素材时的默认画面 —— 冷蓝悬崖 S1 开场。 */
-export const DEFAULT_PLAYBACK_VIDEO_URL = COLD_CLIFF_VIDEOS.s1
-
-export const DEFAULT_PLAYBACK_MEDIA_ID = 'm-default-playback'
-
-/**
- * 解析场景在 Player 里应播放的视频 URL。
- * 有已解析的 VIDEO 素材则用素材；否则一律回落到 DEFAULT_PLAYBACK_VIDEO_URL。
- */
-export function resolveScenePlaybackVideoUrl(
-  media: MediaRef,
-  mediaEntryUrl?: string,
-): string {
-  if (media.kind === 'VIDEO' && mediaEntryUrl) return mediaEntryUrl
-  return DEFAULT_PLAYBACK_VIDEO_URL
-}
-
 export type ColdCliffVideoKey = keyof typeof COLD_CLIFF_VIDEOS
 
 export function coldCliffMediaId(key: ColdCliffVideoKey): string {
@@ -67,15 +48,6 @@ export function primeColdCliffDemoMedia(): void {
         createdAt: entries[id]?.createdAt ?? 0,
         persistState: 'saved',
       }
-    }
-    entries[DEFAULT_PLAYBACK_MEDIA_ID] = {
-      id: DEFAULT_PLAYBACK_MEDIA_ID,
-      name: 'default-playback.mp4',
-      mimeType: 'video/mp4',
-      size: 0,
-      url: DEFAULT_PLAYBACK_VIDEO_URL,
-      createdAt: entries[DEFAULT_PLAYBACK_MEDIA_ID]?.createdAt ?? 0,
-      persistState: 'saved',
     }
     return { entries }
   })
