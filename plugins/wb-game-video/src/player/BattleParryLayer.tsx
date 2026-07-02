@@ -10,10 +10,13 @@ interface Props {
 
 type KeyState = 'idle' | 'armed' | 'hit' | 'miss'
 
-const PARRY_OPTIONS: Array<{ key: 'A' | 'B' | 'C'; outcome: QteOutcome }> = [
+/**
+ * 只显示 A、B 两个按钮。C（fail）是玩家不操作时的默认结局——超时即 finish('fail')，
+ * 无需在画面上给一个"主动选失败"的按钮。
+ */
+const PARRY_OPTIONS: Array<{ key: 'A' | 'B'; outcome: QteOutcome }> = [
   { key: 'A', outcome: 'pass' },
   { key: 'B', outcome: 'good' },
-  { key: 'C', outcome: 'fail' },
 ]
 
 export function isBattleParryQte(scene: Scene | undefined): boolean {
@@ -44,7 +47,7 @@ export function BattleParryLayer({ qte, onResolve }: Props) {
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setKeys(PARRY_OPTIONS.map((option) => (option.outcome === 'fail' ? 'hit' : 'miss')))
+      setKeys(PARRY_OPTIONS.map(() => 'miss'))
       window.setTimeout(() => finish('fail'), 180)
     }, qte.timeoutMs ?? 2600)
 
@@ -87,7 +90,7 @@ function ParryKey({
   state,
   onPress,
 }: {
-  label: 'A' | 'B' | 'C'
+  label: 'A' | 'B'
   text?: string
   state: KeyState
   onPress: () => void
@@ -99,7 +102,6 @@ function ParryKey({
       onClick={onPress}
       disabled={state === 'hit' || state === 'miss'}
     >
-      <span className="pvb-key-ring" />
       <span className="pvb-key-label">{label}</span>
       {text && <span className="pvb-key-text">{text}</span>}
       {state === 'hit' && <span className="pvb-key-spark" />}
@@ -110,7 +112,7 @@ function ParryKey({
 const PARRY_CSS = `
 .pvb-parry {
   position: absolute;
-  right: 24%;
+  right: 8%;
   top: 48%;
   transform: translateY(-50%);
   z-index: 46;
@@ -125,9 +127,8 @@ const PARRY_CSS = `
 .pvb-parry.show { display: flex; }
 .pvb-parry-tip { display: none !important; }
 .pvb-parry-keys { position: relative; width: 190px; height: 158px; }
-.pvb-parry-keys .pvb-key:nth-child(1) { position: absolute; left: 0; bottom: 0; }
-.pvb-parry-keys .pvb-key:nth-child(2) { position: absolute; left: 64px; top: 48px; }
-.pvb-parry-keys .pvb-key:nth-child(3) { position: absolute; right: 0; top: 0; }
+.pvb-parry-keys .pvb-key:nth-child(1) { position: absolute; left: 0; bottom: 0; animation-delay: 0s; }
+.pvb-parry-keys .pvb-key:nth-child(2) { position: absolute; right: 0; top: 0; animation-delay: -1.6s; }
 .pvb-key {
   position: relative;
   width: 62px; height: 62px;
@@ -153,7 +154,18 @@ const PARRY_CSS = `
   box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 2px 7px rgba(0,0,0,.6);
   transition: border-color .14s, background-color .14s;
 }
-.pvb-key.armed { opacity: 1; transform: scale(1); }
+/*
+ * armed 键改为「自身缓慢变大变小」代替原来的光圈脉冲。完整循环 3.2s（2 键各占 1.6s）：
+ * 每键只在自己那半个循环里放大再收回，另一半静止，靠 nth-child 的负 delay 错开 → A、B 依次
+ * 呼吸循环，任一时刻只有一个在动。
+ */
+.pvb-key.armed { opacity: 1; animation: pvbParryPulse 3.2s ease-in-out infinite; }
+@keyframes pvbParryPulse {
+  0%   { transform: scale(1);    }
+  25%  { transform: scale(1.22); }
+  50%  { transform: scale(1);    }
+  100% { transform: scale(1);    }
+}
 .pvb-key.armed::before {
   border-color: #ffd9a8;
   box-shadow: 0 0 16px rgba(255,200,120,.5), 0 2px 6px rgba(0,0,0,.5) inset;
@@ -214,21 +226,5 @@ const PARRY_CSS = `
   color: rgba(239,231,214,.9);
   text-shadow: 0 2px 5px rgba(0,0,0,.9);
   pointer-events: none;
-}
-.pvb-key-ring {
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid rgba(243,234,216,.55);
-  transform: scale(2.4);
-  transform-origin: center;
-  pointer-events: none;
-  opacity: .9;
-  animation: pvbParryRing 1.1s ease-in-out infinite;
-}
-@keyframes pvbParryRing {
-  0% { transform: scale(2.35); opacity: .25; }
-  50% { transform: scale(1.08); opacity: .95; }
-  100% { transform: scale(2.35); opacity: .25; }
 }
 `
