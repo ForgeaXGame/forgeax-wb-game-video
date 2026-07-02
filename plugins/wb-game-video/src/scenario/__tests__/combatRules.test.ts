@@ -7,8 +7,8 @@ import { applyCombatRules, readCombatRules } from '../combatRules'
 describe('combatRules', () => {
   it('reads structured combat values from the standalone demo scenario', () => {
     const rules = readCombatRules(getDemoScenario())
-    expect(rules.bossMaxHp).toBe(12000)
-    expect(rules.playerMaxHp).toBe(10000)
+    expect(rules.bossMaxHp).toBe(700)
+    expect(rules.playerMaxHp).toBe(300)
     expect(rules.playerAttack).toBe(80)
     expect(rules.bossAggression).toBe(0.5)
     expect(rules.qiMax).toBe(5)
