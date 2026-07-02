@@ -22,6 +22,24 @@
                font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; }
   body[data-pane="left"]   .pane-center { display: none; }
   body[data-pane="center"] .pane-left   { display: none; }
+  /* Marketplace preview capture — show agent list + detail panes together */
+  body[data-pane="marketplace"] {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+  }
+  body[data-pane="marketplace"] .pane-left,
+  body[data-pane="marketplace"] .pane-center {
+    display: flex !important;
+  }
+  body[data-pane="marketplace"] .pane-left {
+    width: min(280px, 26vw);
+    flex-shrink: 0;
+  }
+  body[data-pane="marketplace"] .pane-center {
+    flex: 1;
+    min-width: 0;
+  }
 
   /* ── Left pane ── */
   .pane-left { height: 100%; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
@@ -350,7 +368,7 @@
 
 <script type="module">
 const params = new URLSearchParams(location.search);
-const pane = params.get('pane') || 'center';
+const pane = params.get('marketplace') === '1' ? 'marketplace' : (params.get('pane') || 'center');
 document.body.dataset.pane = pane;
 
 const channel = new BroadcastChannel('wb-agent-persona');
