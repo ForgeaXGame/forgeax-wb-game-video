@@ -14,9 +14,10 @@ describe('real demo blueprint', () => {
   test('default demo is the standalone prototype combat scenario', () => {
     const scenario = getDemoScenario()
     expect(scenario.id).toBe('demo-001')
-    expect(scenario.rootSceneId).toBe('enter')
+    expect(scenario.rootSceneId).toBe('a_my')
     expect(scenario.title).toBe('战斗蓝图')
     expect(scenario.scenes.enter?.title).toBe('进战待机')
+    expect(scenario.scenes.a_my?.subFlowRef).toBe('g-cb-my')
   })
 
   test('compiles to a self-consistent graph', () => {
@@ -37,9 +38,9 @@ describe('real demo blueprint', () => {
     const scenario = getBlueprintCombatDemoScenario()
     const graph = scenarioToBlueprint(scenario)
     expect(graph.nodes.map((n) => n.id)).toEqual([
+      'a_my',
       'enter',
       'init',
-      'a_my',
       'b_ai',
       'a_chk',
       'b_chk',
@@ -51,10 +52,10 @@ describe('real demo blueprint', () => {
       'lose',
     ])
     expect(graph.edges.map((e) => `${e.sourceRef}->${e.targetRef}:${e.name ?? ''}`)).toEqual([
+      'a_my->a_chk:行动完毕',
       'enter->init:Out',
       'init->a_my:我方先手',
       'init->b_ai:敌方先手',
-      'a_my->a_chk:行动完毕',
       'b_ai->b_chk:行动完毕',
       'a_chk->a_ai:敌方出手',
       'a_chk->settle:分出胜负',
@@ -119,6 +120,19 @@ describe('real demo blueprint', () => {
       expect(clipId, `${node.id} should specify a fixed video clip`).toBeTruthy()
       expect(getVideoClip(clipId), `${node.id} clip ${clipId} should resolve`).toBeTruthy()
     }
+  })
+
+  test('skill choice appears on the idle loop and advances immediately after picking', () => {
+    const scenario = getBlueprintCombatDemoScenario()
+    const wait = scenario.scenes.wait
+
+    expect(wait?.mediaPlayMode).toBe('loop')
+    expect(wait?.decision).toMatchObject({
+      optType: 'static',
+      prompt: '选择技能',
+      windowStartMs: 1000,
+      fireAt: 'on_pick',
+    })
   })
 
   test('runtime auto-pilot walks the demo without throwing', () => {

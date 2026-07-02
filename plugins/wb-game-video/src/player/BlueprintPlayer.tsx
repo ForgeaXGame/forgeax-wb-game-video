@@ -41,6 +41,7 @@ import { BattleParryLayer, isBattleParryQte } from './BattleParryLayer'
 import { HotspotLayer } from './hotspots/HotspotLayer'
 import { initEntities, type EntitiesState } from './entities'
 import { evaluateCondition } from './conditionEval'
+import { choiceWindowStart } from './choiceTiming'
 
 const STYLE_ID = 'bpx-style'
 // 真实视频以 <video> 的 onEnded 为主推进；此超时只是「视频不结束（loop/加载失败）」
@@ -102,6 +103,7 @@ interface StableBlueprintVideoProps {
   onEnded: () => void
   onNeedsUnmuteChange: (needsUnmute: boolean) => void
   onActiveVideoChange: () => void
+  onVideoReady: (token: string) => void
 }
 
 const EMPTY: Snapshot = { interaction: { type: 'none' } }
@@ -129,6 +131,7 @@ const StableBlueprintVideo = memo(function StableBlueprintVideo({
   onEnded,
   onNeedsUnmuteChange,
   onActiveVideoChange,
+  onVideoReady,
 }: StableBlueprintVideoProps) {
   const slotARef = useRef<HTMLVideoElement | null>(null)
   const slotBRef = useRef<HTMLVideoElement | null>(null)
@@ -192,6 +195,7 @@ const StableBlueprintVideo = memo(function StableBlueprintVideo({
     } finally {
       frontSlotRef.current = slot
       setFrontSlot(slot)
+      onVideoReady(data.token)
       onActiveVideoChange()
     }
   }
@@ -254,6 +258,7 @@ export function BlueprintPlayer(): JSX.Element {
   const [demoRunning, setDemoRunning] = useState(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
   const [contentRect, setContentRect] = useState<ContentRect | null>(null)
+  const [readyVideoToken, setReadyVideoToken] = useState<string | null>(null)
   const [videoBufferVersion, setVideoBufferVersion] = useState(0)
   const tapsRef = useRef(0)
   const [taps, setTaps] = useState(0)
@@ -262,6 +267,8 @@ export function BlueprintPlayer(): JSX.Element {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const clip = snapshot.clip
   const videoSrc = clip?.url || (clip?.mediaId && mediaEntries[clip.mediaId]?.url)
+  const currentVideoToken = videoSrc ? videoToken({ nodeId: clip?.nodeId, runKey, src: videoSrc }) : null
+  const videoReady = !currentVideoToken || readyVideoToken === currentVideoToken
 
   injectStyles()
 
@@ -317,10 +324,10 @@ export function BlueprintPlayer(): JSX.Element {
 
   // 场景内时钟 —— 驱动字幕 / 叠字 / 热点出现窗口（elapsed ms）。
   useEffect(() => {
-    if (!runtime) return
+    if (!runtime || !videoReady) return
     const timer = window.setInterval(() => setElapsed((e) => e + CLOCK_TICK_MS), CLOCK_TICK_MS)
     return () => window.clearInterval(timer)
-  }, [runtime, snapshot.clip?.nodeId])
+  }, [runtime, snapshot.clip?.nodeId, videoReady])
 
   // dmgPoints 到点飘字 + 扣血（对齐 cinegame playClip 的 onPoint 定时）。
   useEffect(() => {
@@ -445,6 +452,8 @@ export function BlueprintPlayer(): JSX.Element {
   const scene: Scene | undefined = runtime.state.currentNodeId
     ? scenario.scenes[runtime.state.currentNodeId]
     : undefined
+  const choiceVisible =
+    scene && interaction.type === 'choice' && elapsed >= choiceWindowStart(scene)
 
   const hudEntities = deriveEntities(scenario, runtime)
   const score = runtime.state.score
@@ -473,6 +482,7 @@ export function BlueprintPlayer(): JSX.Element {
             loop={clip?.loop ?? false}
             videoRef={videoRef}
             onNeedsUnmuteChange={setNeedsUnmute}
+            onVideoReady={setReadyVideoToken}
             onActiveVideoChange={() => setVideoBufferVersion((n) => n + 1)}
             onEnded={() => {
               if (!clip?.loop) advanceClip()
@@ -508,7 +518,7 @@ export function BlueprintPlayer(): JSX.Element {
           </div>
         )}
 
-        {scene && interaction.type === 'choice' && isBattleSkillChoice(scene) && (
+        {choiceVisible && isBattleSkillChoice(scene) && (
           <BattleSkillLayer
             scene={scene}
             onPick={(b) => dispatch(runtime.chooseOption(b.id))}
@@ -520,7 +530,7 @@ export function BlueprintPlayer(): JSX.Element {
           />
         )}
 
-        {scene && interaction.type === 'choice' && !isBattleSkillChoice(scene) && (
+        {choiceVisible && !isBattleSkillChoice(scene) && (
           <ChoiceLayer
             scene={scene}
             onPick={(b) => dispatch(runtime.chooseOption(b.id))}

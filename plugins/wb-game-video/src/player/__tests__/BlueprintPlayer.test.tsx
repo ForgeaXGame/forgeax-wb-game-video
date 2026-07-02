@@ -48,4 +48,49 @@ describe('BlueprintPlayer (render smoke)', () => {
     expect(container.textContent).toContain('迎击（QTE）')
     expect(container.textContent).toContain('直冲 Boss')
   })
+
+  test('starts choice window timing after the video can play', async () => {
+    vi.useFakeTimers()
+    const scenario = makeDemoScenario()
+    scenario.rootSceneId = 'choose'
+    scenario.scenes.choose = {
+      ...scenario.scenes.choose!,
+      clipId: 'vd-wcc-idle',
+      mediaPlayMode: 'loop',
+      decision: {
+        optType: 'static',
+        prompt: '怎么办？',
+        windowStartMs: 1000,
+        fireAt: 'on_pick',
+      },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useScenarioStore.setState({ scenario } as any)
+
+    act(() => {
+      root.render(<BlueprintPlayer />)
+    })
+
+    expect(container.textContent).not.toContain('迎击（QTE）')
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(container.textContent).not.toContain('迎击（QTE）')
+
+    const video = container.querySelector('video')
+    expect(video).toBeTruthy()
+    await act(async () => {
+      video?.dispatchEvent(new Event('canplay', { bubbles: true }))
+      await Promise.resolve()
+    })
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+    expect(container.textContent).not.toContain('迎击（QTE）')
+    act(() => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(container.textContent).toContain('迎击（QTE）')
+    expect(container.textContent).toContain('直冲 Boss')
+  })
 })
