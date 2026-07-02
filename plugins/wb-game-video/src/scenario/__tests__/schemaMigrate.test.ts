@@ -79,9 +79,9 @@ describe('migrateV1ToV2', () => {
 })
 
 describe('migrateScenarioToLatest', () => {
-  it('v1 → v9（链式迁移到最新版本）', () => {
+  it('v1 → v10（链式迁移到最新版本）', () => {
     const out = migrateScenarioToLatest(mkV1())
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
   })
   it('v1 迁到最新后有空 items 容器', () => {
     const out = migrateScenarioToLatest(mkV1())
@@ -266,9 +266,9 @@ describe('migrateV8ToV9', () => {
     expect(out.ui?.accentColor).toBe('#ff0066')
   })
 
-  it('低版本经链式迁移自动到 v9 且玩法字段缺省不报错', () => {
+  it('低版本经链式迁移自动到 v10 且玩法字段缺省不报错', () => {
     const out = migrateScenarioToLatest(mkV1())
-    expect(out.schemaVersion).toBe(9)
+    expect(out.schemaVersion).toBe(10)
     expect(out.entities).toBeUndefined()
     expect(out.ui).toBeUndefined()
   })

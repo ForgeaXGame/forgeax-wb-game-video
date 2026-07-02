@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useScenarioStore } from '../scenarioStore'
 import { getDemoScenario } from '../demoScenario'
 import type { ActSkeleton } from '../streamingState'
+import { DEMO_ROOT } from './demoTestIds'
 
 /**
  * scenarioStore · 长文本分段管线 streaming 状态机契约（id: p3-store）
@@ -19,8 +20,8 @@ import type { ActSkeleton } from '../streamingState'
 function reset(): void {
   useScenarioStore.setState({
     scenario: getDemoScenario(),
-    selectedSceneId: 's1',
-    selection: { kind: 'scene', sceneId: 's1' },
+    selectedSceneId: DEMO_ROOT,
+    selection: { kind: 'scene', sceneId: DEMO_ROOT },
     mode: 'editor',
     streaming: null,
   })
@@ -170,8 +171,8 @@ describe('scenarioStore · streaming 状态机', () => {
     })
 
     it('未启动 streaming 时也能改 prompts（不动状态机）', () => {
-      useScenarioStore.getState().patchNodePrompts('s1', { scene: 'demo' })
-      expect(useScenarioStore.getState().scenario.scenes['s1']!.prompts?.scene).toBe(
+      useScenarioStore.getState().patchNodePrompts(DEMO_ROOT, { scene: 'demo' })
+      expect(useScenarioStore.getState().scenario.scenes[DEMO_ROOT]!.prompts?.scene).toBe(
         'demo',
       )
       expect(useScenarioStore.getState().streaming).toBeNull()

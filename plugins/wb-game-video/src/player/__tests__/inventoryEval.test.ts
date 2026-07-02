@@ -5,7 +5,7 @@ import {
   evaluateGate,
   type ItemState,
 } from '../conditionEval'
-import type { EntryGate } from '../../scenario/types'
+import type { EntryGate, Effect } from '../../scenario/types'
 
 const ctxBase = {
   vars: {},
@@ -14,17 +14,28 @@ const ctxBase = {
 
 describe('applyItemEffects', () => {
   it('give 累加数量', () => {
-    const out = applyItemEffects([{ itemId: 'key', op: 'give', count: 2 }], {})
+    const out = applyItemEffects(
+      [{ id: 'e-give-2', kind: 'item', itemId: 'key', op: 'give', count: 2 }],
+      {},
+    )
     expect(out.key).toBe(2)
   })
 
-  it('give 默认 count=1', () => {
-    const out = applyItemEffects([{ itemId: 'key', op: 'give' }], { key: 1 })
+  it('give 默认 count=1（运行时对缺 count 的兜底）', () => {
+    // 统一 Effect union 里 count 已是必填；这里用 cast 模拟历史/松散数据缺 count，
+    // 锁死 applyItemEffects 的 `count ?? 1` 兜底行为。
+    const out = applyItemEffects(
+      [{ id: 'e-give', kind: 'item', itemId: 'key', op: 'give' } as Effect],
+      { key: 1 },
+    )
     expect(out.key).toBe(2)
   })
 
   it('take 不会减到负数', () => {
-    const out = applyItemEffects([{ itemId: 'key', op: 'take', count: 5 }], { key: 2 })
+    const out = applyItemEffects(
+      [{ id: 'e-take-5', kind: 'item', itemId: 'key', op: 'take', count: 5 }],
+      { key: 2 },
+    )
     expect(out.key).toBe(0)
   })
 
@@ -36,7 +47,10 @@ describe('applyItemEffects', () => {
 
   it('不修改原对象', () => {
     const owned: ItemState = { key: 1 }
-    applyItemEffects([{ itemId: 'key', op: 'give', count: 1 }], owned)
+    applyItemEffects(
+      [{ id: 'e-give-1', kind: 'item', itemId: 'key', op: 'give', count: 1 }],
+      owned,
+    )
     expect(owned.key).toBe(1)
   })
 })

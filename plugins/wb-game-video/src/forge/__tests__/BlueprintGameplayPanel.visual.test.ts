@@ -31,4 +31,22 @@ describe('BlueprintGameplayPanel presentation controls', () => {
     expect(SOURCE).toContain('纯逻辑 / 隐藏计算节点')
     expect(SOURCE).toContain('{hasPerformance && (')
   })
+
+  it('exposes every out-edge (auto/qte/choice) to the branch editor, not only choice branches', () => {
+    // 之前只渲染 choiceBranches → auto/qte 出边（含 hpRatio 条件、qteOutcome）无法编辑。
+    expect(SOURCE).toContain('scene.branches.map((branch) => (')
+    expect(SOURCE).toContain('分支 / 出边')
+    // 仅 choice 分支保留删除入口，避免误删剧情树连线
+    expect(SOURCE).toContain("branch.kind === 'choice' ? () => removeChoiceBranch(branch.id) : undefined")
+  })
+
+  it('exposes a QTE spec editor (window/score/timeout/outcomeLabels) for qte scenes', () => {
+    expect(SOURCE).toContain('function QteSpecSection')
+    expect(SOURCE).toContain('{scene.qte && (')
+    expect(SOURCE).toContain('setWindow')
+    expect(SOURCE).toContain('setScore')
+    expect(SOURCE).toContain('setLabel')
+    expect(SOURCE).toContain('timeoutMs')
+    expect(SOURCE).toContain('outcomeLabels')
+  })
 })

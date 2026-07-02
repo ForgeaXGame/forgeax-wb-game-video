@@ -4,7 +4,7 @@ import { useScenarioStore } from '../scenario/scenarioStore'
 import { VIDEO_CLIPS, UI_SCHEMES, getVideoClip } from '../scenario/gameAssetCatalog'
 import { injectStyleOnce } from '../styles/injectStyle'
 import { BranchGateEditor } from '../editor/numeric/NumericEditors'
-import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Hotspot, PerformanceCue, Scenario, Scene, VarEffect } from '../scenario/types'
+import type { BossRound, Branch, DecisionSpec, Effect, EntityStatEffect, GameVariable, Hotspot, PerformanceCue, QTESpec, QteOutcome, Scenario, Scene, VarEffect } from '../scenario/types'
 import type { DecisionOptType, DecisionFireAt, ChoicePresentation, HudPreset, MediaPlayMode, QteKind } from '../scenario/gameplayTypes'
 
 /**
@@ -492,18 +492,18 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
 
       <section className="ks-bgp-sec">
         <div className="ks-bgp-vidhead">
-          <label className="ks-bgp-lbl" title="每个选项/出边的条件、跳转与状态变化。">分支</label>
+          <label className="ks-bgp-lbl" title="每条出边（选项 / 自动续播 / QTE 判定）的类型、条件、跳转与状态变化。auto/qte 出边同时是剧情树连线。">分支 / 出边</label>
           {scene.decision?.optType !== 'timed_qte' && (
             <button type="button" className="ks-bgp-linkbtn" onClick={addChoiceBranch}>
               + 添加选项
             </button>
           )}
         </div>
-        {choiceBranches.length === 0 ? (
-          <p className="ks-bgp-hint">当前节点没有 choice 分支。</p>
+        {scene.branches.length === 0 ? (
+          <p className="ks-bgp-hint">当前节点没有出边。</p>
         ) : (
           <div className="ks-bgp-branches">
-            {choiceBranches.map((branch) => (
+            {scene.branches.map((branch) => (
               <BranchGateEditor
                 key={branch.id}
                 branch={branch}
@@ -515,12 +515,19 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                     branches: scene.branches.map((b) => (b.id === branch.id ? { ...b, ...patch } : b)),
                   })
                 }
-                onRemove={() => removeChoiceBranch(branch.id)}
+                onRemove={branch.kind === 'choice' ? () => removeChoiceBranch(branch.id) : undefined}
               />
             ))}
           </div>
         )}
       </section>
+
+      {scene.qte && (
+        <QteSpecSection
+          qte={scene.qte}
+          onChange={(next) => updateScene(selectedSceneId, { qte: next })}
+        />
+      )}
 
       {scene.decision?.presentation === 'hotspot' && !timedDecision && (
         <ChoiceHotspotsSection
@@ -860,6 +867,82 @@ function PerformanceCuesSection({
       <button type="button" className="ks-bgp-add" onClick={addCue}>
         + 添加判定
       </button>
+    </section>
+  )
+}
+
+/**
+ * QTE 判定档编辑 —— 编辑 scene.qte 的命中窗口 / 评分 / 整段超时 / 多档标签。
+ * 与 CatalogTabs 的「每只 cue」编辑互补：这里管**整场 QTE 的判定规则**，
+ * 让试玩运行时能按 perfect/great/good/miss 与 pass/good/fail 三档正确结算。
+ */
+function QteSpecSection({
+  qte,
+  onChange,
+}: {
+  qte: QTESpec
+  onChange: (next: QTESpec) => void
+}) {
+  const set = (patch: Partial<QTESpec>): void => onChange({ ...qte, ...patch })
+  const setWindow = (k: 'perfect' | 'great' | 'good', v: number): void =>
+    set({ window: { ...qte.window, [k]: Math.max(0, Number.isFinite(v) ? v : 0) } })
+  const setScore = (k: 'perfect' | 'great' | 'good' | 'miss', v: number): void =>
+    set({ score: { ...qte.score, [k]: Number.isFinite(v) ? v : 0 } })
+  const labels = qte.outcomeLabels ?? {}
+  const setLabel = (k: QteOutcome, v: string): void => {
+    const next: Partial<Record<QteOutcome, string>> = { ...labels, [k]: v || undefined }
+    const cleaned = Object.fromEntries(
+      Object.entries(next).filter(([, val]) => val),
+    ) as Partial<Record<QteOutcome, string>>
+    set({ outcomeLabels: Object.keys(cleaned).length ? cleaned : undefined })
+  }
+
+  return (
+    <section className="ks-bgp-sec ks-bgp-qte">
+      <label
+        className="ks-bgp-lbl"
+        title="整场 QTE 的命中窗口 / 评分 / 整段超时 / 多档判定标签；试玩运行时按它结算 perfect/great/good/miss 与 pass/good/fail。"
+      >
+        QTE 判定
+      </label>
+      <div className="ks-bgp-field">
+        <span className="ks-bgp-fk" title="命中窗口 ms 容差（对 |delta| 比较）">命中窗口</span>
+        <div className="ks-bgp-qte-scores">
+          <input className="ks-bgp-input" type="number" min={0} placeholder="完美" title="完美窗口(ms)" value={qte.window.perfect} onChange={(e) => setWindow('perfect', Number(e.target.value))} />
+          <input className="ks-bgp-input" type="number" min={0} placeholder="良好" title="良好窗口(ms)" value={qte.window.great} onChange={(e) => setWindow('great', Number(e.target.value))} />
+          <input className="ks-bgp-input" type="number" min={0} placeholder="命中" title="命中窗口(ms)" value={qte.window.good} onChange={(e) => setWindow('good', Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="ks-bgp-field">
+        <span className="ks-bgp-fk" title="单点命中评分；失误一般为负">单点评分</span>
+        <div className="ks-bgp-qte-scores">
+          <input className="ks-bgp-input" type="number" placeholder="完美" title="完美分" value={qte.score.perfect} onChange={(e) => setScore('perfect', Number(e.target.value))} />
+          <input className="ks-bgp-input" type="number" placeholder="良好" title="良好分" value={qte.score.great} onChange={(e) => setScore('great', Number(e.target.value))} />
+          <input className="ks-bgp-input" type="number" placeholder="命中" title="命中分" value={qte.score.good} onChange={(e) => setScore('good', Number(e.target.value))} />
+          <input className="ks-bgp-input" type="number" placeholder="失误" title="失误分（一般为负）" value={qte.score.miss} onChange={(e) => setScore('miss', Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="ks-bgp-field">
+        <span className="ks-bgp-fk">整段超时</span>
+        <input
+          className="ks-bgp-input"
+          type="number"
+          min={0}
+          placeholder="不限时(ms)"
+          value={qte.timeoutMs ?? ''}
+          onChange={(e) =>
+            set({ timeoutMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })
+          }
+        />
+      </div>
+      <div className="ks-bgp-field">
+        <span className="ks-bgp-fk">档位标签</span>
+        <div className="ks-bgp-qte-scores">
+          <input className="ks-bgp-input" placeholder="完美 pass" title="完美档标签" value={labels.pass ?? ''} onChange={(e) => setLabel('pass', e.target.value)} />
+          <input className="ks-bgp-input" placeholder="成功 good" title="成功档标签" value={labels.good ?? ''} onChange={(e) => setLabel('good', e.target.value)} />
+          <input className="ks-bgp-input" placeholder="失败 fail" title="失败档标签" value={labels.fail ?? ''} onChange={(e) => setLabel('fail', e.target.value)} />
+        </div>
+      </div>
     </section>
   )
 }
@@ -1690,6 +1773,9 @@ const PANEL_CSS = `
 /* 标签 + 控件成行（演出编号 / 视频类型 / 演出方式 / 演出时长 / HUD 方案） */
 .ks-bgp-field { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 8px; }
 .ks-bgp-field .ks-bgp-input { width: 100%; }
+/* QTE 判定：把成组的数值/标签输入并排铺开 */
+.ks-bgp-qte-scores { display: flex; gap: 6px; min-width: 0; }
+.ks-bgp-qte-scores .ks-bgp-input { flex: 1 1 0; min-width: 0; }
 .ks-bgp-fk { font-size: 12px; color: rgba(255,255,255,0.55); }
 .ks-bgp-fv { font-size: 12px; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
 .ks-bgp-rounds { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }

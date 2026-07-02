@@ -164,12 +164,14 @@ export function EffectListEditor({
   )
 }
 
-/** 单条条件子句行（数值 / 旗标 / 经历过 / 拥有物品）。 */
+/** 单条条件子句行（数值 / 旗标 / 经历过 / 拥有物品 / 血量比例 / QTE分数 / 状态）。 */
 export function ConditionRow({
   clause,
   variables,
   sceneOptions,
   items = [],
+  entities = [],
+  statuses = [],
   onChange,
   onRemove,
 }: {
@@ -178,11 +180,17 @@ export function ConditionRow({
   sceneOptions: { id: string; title: string }[]
   /** 背包物品（非空时才提供「拥有物品」条件）。 */
   items?: InventoryItem[]
+  /** 玩法实体（非空时才提供「血量比例」「状态」条件的目标选择）。 */
+  entities?: { id: string; name: string }[]
+  /** 状态效果注册表（非空时才提供「状态」条件）。 */
+  statuses?: { id: string; name: string }[]
   onChange: (c: ConditionClause) => void
   onRemove: () => void
 }) {
   const firstVarId = variables[0]?.id ?? ''
   const firstItemId = items[0]?.id ?? ''
+  const firstEntityId = entities[0]?.id ?? ''
+  const firstStatusId = statuses[0]?.id ?? ''
   return (
     <div className="ks-ne-row">
       <select
@@ -193,6 +201,9 @@ export function ConditionRow({
           if (type === 'var') onChange({ type: 'var', varId: firstVarId, op: 'gte', value: 1 })
           else if (type === 'flag') onChange({ type: 'flag', varId: firstVarId, equals: true })
           else if (type === 'hasItem') onChange({ type: 'hasItem', itemId: firstItemId, count: 1 })
+          else if (type === 'hpRatio') onChange({ type: 'hpRatio', entityId: firstEntityId, op: 'gt', value: 0 })
+          else if (type === 'score') onChange({ type: 'score', op: 'gte', value: 1 })
+          else if (type === 'status') onChange({ type: 'status', statusId: firstStatusId, present: true })
           else onChange({ type: 'visited', sceneId: sceneOptions[0]?.id ?? '' })
         }}
       >
@@ -200,6 +211,9 @@ export function ConditionRow({
         <option value="flag">旗标</option>
         <option value="visited">经历过</option>
         {items.length > 0 && <option value="hasItem">拥有物品</option>}
+        {entities.length > 0 && <option value="hpRatio">血量比例</option>}
+        <option value="score">QTE分数</option>
+        {statuses.length > 0 && <option value="status">状态</option>}
       </select>
 
       {clause.type === 'hasItem' && (
@@ -300,6 +314,109 @@ export function ConditionRow({
         </select>
       )}
 
+      {clause.type === 'hpRatio' && (
+        <>
+          <select
+            className="ks-ne-name"
+            value={clause.entityId}
+            onChange={(e) => onChange({ ...clause, entityId: e.target.value })}
+          >
+            {entities.map((en) => (
+              <option key={en.id} value={en.id}>
+                {en.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ks-ne-op"
+            value={clause.op}
+            onChange={(e) => onChange({ ...clause, op: e.target.value as typeof clause.op })}
+          >
+            <option value="gte">≥</option>
+            <option value="gt">&gt;</option>
+            <option value="lte">≤</option>
+            <option value="lt">&lt;</option>
+            <option value="eq">=</option>
+            <option value="neq">≠</option>
+          </select>
+          <input
+            className="ks-ne-init"
+            type="number"
+            min={0}
+            max={100}
+            value={Math.round((clause.value ?? 0) * 100)}
+            onChange={(e) =>
+              onChange({ ...clause, value: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })
+            }
+            title="血量百分比 0~100"
+          />
+          <span className="ks-ne-suffix">%</span>
+        </>
+      )}
+
+      {clause.type === 'score' && (
+        <>
+          <span className="ks-ne-suffix ks-ne-suffix-lead">分数</span>
+          <select
+            className="ks-ne-op"
+            value={clause.op}
+            onChange={(e) => onChange({ ...clause, op: e.target.value as typeof clause.op })}
+          >
+            <option value="gte">≥</option>
+            <option value="gt">&gt;</option>
+            <option value="lte">≤</option>
+            <option value="lt">&lt;</option>
+            <option value="eq">=</option>
+            <option value="neq">≠</option>
+          </select>
+          <input
+            className="ks-ne-init"
+            type="number"
+            value={clause.value}
+            onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })}
+          />
+        </>
+      )}
+
+      {clause.type === 'status' && (
+        <>
+          <select
+            className="ks-ne-name"
+            value={clause.statusId}
+            onChange={(e) => onChange({ ...clause, statusId: e.target.value })}
+          >
+            {statuses.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ks-ne-kind"
+            value={clause.entityId ?? ''}
+            onChange={(e) =>
+              onChange({ ...clause, entityId: e.target.value || undefined })
+            }
+            title="目标实体（留空=任意）"
+          >
+            <option value="">任意</option>
+            {entities.map((en) => (
+              <option key={en.id} value={en.id}>
+                {en.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ks-ne-op"
+            value={clause.present ? '1' : '0'}
+            onChange={(e) => onChange({ ...clause, present: e.target.value === '1' })}
+          >
+            <option value="1">带有</option>
+            <option value="0">没有</option>
+          </select>
+        </>
+      )}
+
       <button type="button" className="ks-ne-del" onClick={onRemove} title="删除条件">
         ✕
       </button>
@@ -338,6 +455,14 @@ export function BranchGateEditor({
   const sceneOptions = useMemo(
     () => Object.values(scenario.scenes).map((s) => ({ id: s.id, title: s.title ?? s.id })),
     [scenario.scenes],
+  )
+  const entityOptions = useMemo(
+    () => Object.values(scenario.entities ?? {}).map((en) => ({ id: en.id, name: en.name })),
+    [scenario.entities],
+  )
+  const statusOptions = useMemo(
+    () => Object.values(scenario.statuses ?? {}).map((st) => ({ id: st.id, name: st.name })),
+    [scenario.statuses],
   )
   const targetTitle = scenario.scenes[branch.targetSceneId]?.title || branch.targetSceneId
   const hasEffects = (branch.effects?.length ?? 0) > 0
@@ -379,6 +504,22 @@ export function BranchGateEditor({
         />
       </div>
 
+      {(branch.kind === 'qte_pass' || branch.kind === 'qte_fail') && (
+        <div className="ks-ne-gate-typerow">
+          <span className="ks-ne-suffix ks-ne-suffix-lead">判定档</span>
+          <select
+            className="ks-ne-name"
+            value={branch.qteOutcome ?? (branch.kind === 'qte_pass' ? 'pass' : 'fail')}
+            onChange={(e) => onPatch({ qteOutcome: e.target.value as 'pass' | 'good' | 'fail' })}
+            title="该分支对应的 QTE 判定档（多档防反：完美 pass / 成功 good / 失败 fail）"
+          >
+            <option value="pass">完美 pass</option>
+            <option value="good">成功 good</option>
+            <option value="fail">失败 fail</option>
+          </select>
+        </div>
+      )}
+
       <div className="ks-ne-sublabel">
         <span className="ks-ne-sublabel-txt">跳转目标</span>
         <span className="ks-ne-sublabel-hint">玩家选择后进入的节点</span>
@@ -406,6 +547,8 @@ export function BranchGateEditor({
           variables={variables}
           sceneOptions={sceneOptions}
           items={items}
+          entities={entityOptions}
+          statuses={statusOptions}
           onChange={(nc) => setClauses(clauses.map((x, j) => (j === i ? nc : x)))}
           onRemove={() => setClauses(clauses.filter((_, j) => j !== i))}
         />
@@ -501,6 +644,12 @@ const css = `
 .ks-ne-kind { flex: 0 0 auto; }
 .ks-ne-op { flex: 0 0 46px; text-align: center; }
 .ks-ne-init { flex: 0 0 64px; }
+.ks-ne-suffix {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+.ks-ne-suffix-lead { margin-right: 2px; }
 .ks-ne-del {
   appearance: none;
   flex: 0 0 auto;
