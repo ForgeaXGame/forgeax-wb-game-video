@@ -140,6 +140,11 @@ function BlueprintInner() {
       })
     }
 
+    // 回环边要绕开所有节点：取全图节点顶缘，把「返程车道」抬到最高节点之上，
+    // 这样弧线整段都落在节点外的空白处，不会穿过任何节点。
+    const nodeTops = Object.values(layout).map((r) => r.y)
+    const loopbackLaneY = (nodeTops.length ? Math.min(...nodeTops) : 0) - LOOPBACK_LANE_MARGIN
+
     const nextEdges: Edge[] = []
     for (const e of graph.edges) {
       if (!layout[e.sourceRef] || !layout[e.targetRef]) continue
@@ -151,13 +156,16 @@ function BlueprintInner() {
         sourceHandle: e.id,
         type: 'bpBranch',
         animated: false,
-        zIndex: loopback ? 20 : 1,
+        // 所有连线都落在节点「之下」（z 0 = react-flow 默认 edge 在 node 之下），
+        // 与原型 `.bpg-wires{z-index:0}` vs `.bpg-node{z-index:1}` 对齐——线永不覆盖节点。
+        zIndex: 0,
         data: {
           kind: e.extension?.kind ?? 'auto',
           label: e.name,
           hasCondition: !!e.extension?.condition,
           effectCount: e.extension?.effects?.length ?? 0,
           loopback,
+          loopbackLaneY,
         },
       })
     }
@@ -485,7 +493,12 @@ interface BPEdgeData extends Record<string, unknown> {
   hasCondition: boolean
   effectCount: number
   loopback?: boolean
+  /** 回环边的「返程车道」Y（全图节点顶缘之上），使弧线整段绕开节点。 */
+  loopbackLaneY?: number
 }
+
+/** 回环边返程车道相对全图最高节点顶缘再上抬的间距（px）。 */
+const LOOPBACK_LANE_MARGIN = 56
 
 const BlueprintEdge = memo(function BlueprintEdge({
   id,
@@ -501,7 +514,7 @@ const BlueprintEdge = memo(function BlueprintEdge({
   const d = (data ?? {}) as BPEdgeData
   const style = resolveBranchEdgeStyle(d.kind)
   const [path, labelX, labelY] = d.loopback
-    ? getLoopbackPath(sourceX, sourceY, targetX, targetY)
+    ? getLoopbackPath(sourceX, sourceY, targetX, targetY, d.loopbackLaneY)
     : getBezierPath({
         sourceX,
         sourceY,
@@ -519,19 +532,16 @@ const BlueprintEdge = memo(function BlueprintEdge({
     <>
       <BaseEdge
         id={id}
-        className={d.loopback ? 'ks-bp-edge-loopback' : undefined}
         path={path}
         style={{
-          stroke: selected ? '#e0795f' : d.loopback ? '#d8e4f0' : style.stroke,
-          strokeWidth: selected ? 3.6 : d.loopback ? 3.2 : style.strokeWidth,
+          stroke: selected ? '#e0795f' : style.stroke,
+          strokeWidth: selected ? 3.6 : style.strokeWidth,
           fill: 'none',
-          opacity: selected ? 1 : d.loopback ? 0.98 : 0.92,
-          strokeDasharray: d.loopback ? '8 6' : style.strokeDasharray,
+          opacity: selected ? 1 : 0.92,
+          strokeDasharray: style.strokeDasharray,
           filter: selected
             ? 'drop-shadow(0 0 5px rgba(224,121,95,.75))'
-            : d.loopback
-              ? 'drop-shadow(0 0 6px rgba(216,228,240,.45)) drop-shadow(0 2px 2px rgba(0,0,0,.75))'
-              : 'drop-shadow(0 1px 2px rgba(0,0,0,.55))',
+            : 'drop-shadow(0 1px 2px rgba(0,0,0,.55))',
         }}
       />
       {showLabel && (
@@ -562,20 +572,30 @@ function isLoopbackEdge(
   return target.x + target.width < source.x
 }
 
+/**
+ * 回环边走线：从源右侧引出 → 抬到全图节点之上的「返程车道」→ 平移回目标左侧落下。
+ * 车道 Y(`laneY`) 取自全图最高节点顶缘之上，保证整段弧线都在节点外的空白处，
+ * 不穿过任何节点；缺省时退回「源/目标上方 150px」的旧行为。
+ */
 function getLoopbackPath(
   sourceX: number,
   sourceY: number,
   targetX: number,
   targetY: number,
+  laneY?: number,
 ): [string, number, number] {
-  const topY = Math.min(sourceY, targetY) - 150
+  const topY = Math.min(laneY ?? Math.min(sourceY, targetY) - 150, sourceY - 40, targetY - 40)
   const sourceBendX = sourceX + 110
   const targetBendX = targetX - 110
   const path = [
     `M ${sourceX},${sourceY}`,
     `C ${sourceBendX},${topY} ${targetBendX},${topY} ${targetX},${targetY}`,
   ].join(' ')
-  return [path, (sourceX + targetX) / 2, topY]
+  // 文案落在弧线自身的中点（三次贝塞尔 t=0.5：系数 1/8·3/8·3/8·1/8），
+  // 而非控制点车道高度 topY——否则车道被抬高后 label 会飘在线的上方。
+  const labelX = 0.125 * sourceX + 0.375 * sourceBendX + 0.375 * targetBendX + 0.125 * targetX
+  const labelY = 0.125 * (sourceY + targetY) + 0.75 * topY
+  return [path, labelX, labelY]
 }
 
 const BP_NODE_TYPES: NodeTypes = { bp: BlueprintNode }
@@ -751,11 +771,5 @@ function BP_CSS(): string {
   text-overflow: ellipsis;
 }
 .ks-bp-edge-marks { font-weight: 800; }
-.ks-bp-canvas .react-flow__edge-path.ks-bp-edge-loopback {
-  animation: ks-bp-loopback-flow 1.4s linear infinite;
-}
-@keyframes ks-bp-loopback-flow {
-  to { stroke-dashoffset: -28; }
-}
 `
 }

@@ -13,9 +13,15 @@ describe('BlueprintTab loopback edges', () => {
     expect(SOURCE).toContain('loopback')
   })
 
-  it('draws loopback edges with an elevated visible path above nodes', () => {
+  it('routes loopback edges through their own arced path', () => {
     expect(SOURCE).toContain('getLoopbackPath')
-    expect(SOURCE).toContain('ks-bp-edge-loopback')
-    expect(SOURCE).toContain('strokeDasharray')
+  })
+
+  it('draws loopback edges as plain solid wires behind nodes (no dash / animation / elevation)', () => {
+    // 所有连线（含回环边）落在节点「之下」（z 0），线永不覆盖节点；与原型 `.bpg-wires` 对齐。
+    expect(SOURCE).toContain('zIndex: 0')
+    // 不再有虚线滚动动画，也不再把回环边单独描成高亮虚线。
+    expect(SOURCE).not.toContain('ks-bp-edge-loopback')
+    expect(SOURCE).not.toContain('ks-bp-loopback-flow')
   })
 })
