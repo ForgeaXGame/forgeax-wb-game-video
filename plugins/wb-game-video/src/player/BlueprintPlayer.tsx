@@ -40,6 +40,9 @@ import { TextOverlayLayer } from './TextOverlayLayer'
 import { ChoiceLayer } from './ChoiceLayer'
 import { BattleSkillLayer, isBattleSkillChoice } from './BattleSkillLayer'
 import { BattleParryLayer, isBattleParryQte } from './BattleParryLayer'
+import { InkKouLayer, isInkKouQte } from './InkKouLayer'
+import { InkYingMoLayer, isInkYingMoChoice } from './InkYingMoLayer'
+import { NarrativeStatsLayer } from './NarrativeStatsLayer'
 import { HotspotLayer } from './hotspots/HotspotLayer'
 import { StickerLayer } from './SceneFxLayers'
 import { initEntities, type EntitiesState } from './entities'
@@ -697,6 +700,9 @@ export function BlueprintPlayer(): JSX.Element {
         {scene && hudVisible && (
           <div className="bpx-content-ui" style={contentStyle}>
             <HudLayer scenario={scenario} scene={scene} entities={hudEntities} vars={vars} score={score} />
+            {scene && clip?.hud === 'narrative' && (
+              <NarrativeStatsLayer scenario={scenario} vars={vars} />
+            )}
           </div>
         )}
 
@@ -713,7 +719,19 @@ export function BlueprintPlayer(): JSX.Element {
           />
         )}
 
-        {choiceVisible && !isBattleSkillChoice(scene) && (
+        {choiceVisible && isInkYingMoChoice(scene) && (
+          <InkYingMoLayer
+            scene={scene}
+            onPick={(b) => dispatch(runtime.chooseOption(b.id))}
+            vars={vars}
+            visitedSceneIds={visitedList}
+            ownedItems={ownedItems}
+            entities={hudEntities}
+            score={score}
+          />
+        )}
+
+        {choiceVisible && !isBattleSkillChoice(scene) && !isInkYingMoChoice(scene) && (
           <ChoiceLayer
             scene={scene}
             onPick={(b) => dispatch(runtime.chooseOption(b.id))}
@@ -747,7 +765,14 @@ export function BlueprintPlayer(): JSX.Element {
             />
           )}
 
-          {qteLayerActive && !showBattleParry && activeQte && (activeQte.cues?.length ?? 0) > 0 && (
+          {scene && qteLayerActive && !showBattleParry && isInkKouQte(scene) && liveParryQte && runtime && (
+            <InkKouLayer
+              qte={liveParryQte}
+              onResolve={(outcome) => dispatch(runtime.submitQteOutcome(outcome))}
+            />
+          )}
+
+          {qteLayerActive && !showBattleParry && (!scene || !isInkKouQte(scene)) && activeQte && (activeQte.cues?.length ?? 0) > 0 && (
             <QTEOverlay
               spec={activeQte}
               elapsed={elapsed}

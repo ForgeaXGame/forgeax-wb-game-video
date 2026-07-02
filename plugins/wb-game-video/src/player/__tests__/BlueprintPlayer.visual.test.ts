@@ -112,4 +112,16 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(parry).toContain('width: 190px')
     expect(parry).toContain('width: 62px; height: 62px;')
   })
+
+  it('mounts ink narrative layers additively without touching battle branches', () => {
+    const SOURCE = source('BlueprintPlayer.tsx')
+    expect(SOURCE).toContain('isInkKouQte')
+    expect(SOURCE).toContain('InkKouLayer')
+    expect(SOURCE).toContain('isInkYingMoChoice')
+    expect(SOURCE).toContain('InkYingMoLayer')
+    expect(SOURCE).toContain('NarrativeStatsLayer')
+    // 战斗分支保持
+    expect(SOURCE).toContain('isBattleParryQte')
+    expect(SOURCE).toContain('isBattleSkillChoice')
+  })
 })
