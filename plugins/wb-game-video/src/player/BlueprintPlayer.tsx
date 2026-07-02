@@ -666,7 +666,7 @@ export function BlueprintPlayer(): JSX.Element {
             }}
           />
         )}
-        {needsUnmute && (
+        {!playerOnly && needsUnmute && (
           <button type="button" className="bpx-unmute" onClick={onUnmuteClick}>
             🔇 点击恢复声音
           </button>
