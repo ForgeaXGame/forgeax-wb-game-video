@@ -65,4 +65,12 @@ describe('BlueprintGameplayPanel presentation controls', () => {
     expect(SOURCE).toContain('once: once || undefined')
     expect(SOURCE).toContain('首次')
   })
+
+  it('exposes ink narrative variants (inkKou / inkYingMo / narrative)', () => {
+    expect(SOURCE).toContain('inkKou')
+    expect(SOURCE).toContain('inkYingMo')
+    expect(SOURCE).toContain('narrative')
+    expect(SOURCE).toContain('叩')       // qteUi option 文案
+    expect(SOURCE).toContain('应默')     // choiceUi option 文案
+  })
 })

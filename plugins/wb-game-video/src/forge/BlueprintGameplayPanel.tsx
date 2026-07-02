@@ -67,6 +67,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
 
   const scene = scenario.scenes[selectedSceneId]
   if (!scene) return null
+  const activeScene = scene
 
   const panelKind = scene.boss ? 'battle' : scene.qte?.cues.length ? 'qte' : scene.decision ? 'choice' : 'story'
   const clip = getVideoClip(scene.clipId)
@@ -97,30 +98,30 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
     if (patch === null) {
       updateScene(selectedSceneId, {
         decision: undefined,
-        branches: scene.branches.map((branch) =>
+        branches: activeScene.branches.map((branch) =>
           branch.kind === 'choice' ? { ...branch, kind: 'auto' } : branch,
         ),
       })
       return
     }
-    const cur: DecisionSpec = scene!.decision ?? { mode: 'pause' }
+    const cur: DecisionSpec = activeScene.decision ?? { mode: 'pause' }
     updateScene(selectedSceneId, { decision: { ...cur, ...patch } })
   }
 
   function setRounds(rounds: BossRound[]): void {
-    if (!scene!.boss) return
-    updateScene(selectedSceneId, { boss: { ...scene!.boss, rounds } })
+    if (!activeScene.boss) return
+    updateScene(selectedSceneId, { boss: { ...activeScene.boss, rounds } })
   }
 
-  function setChoiceUi(choiceUi: 'default' | 'battleSkillBar'): void {
-    const nextExt: Record<string, unknown> = { ...(scene!.ext ?? {}) }
+  function setChoiceUi(choiceUi: 'default' | 'battleSkillBar' | 'inkYingMo'): void {
+    const nextExt: Record<string, unknown> = { ...(activeScene.ext ?? {}) }
     if (choiceUi === 'default') delete nextExt.choiceUi
     else nextExt.choiceUi = choiceUi
     updateScene(selectedSceneId, { ext: Object.keys(nextExt).length > 0 ? nextExt : undefined })
   }
 
-  function setQteUi(qteUi: 'default' | 'battleParry'): void {
-    const nextExt: Record<string, unknown> = { ...(scene!.ext ?? {}) }
+  function setQteUi(qteUi: 'default' | 'battleParry' | 'inkKou'): void {
+    const nextExt: Record<string, unknown> = { ...(activeScene.ext ?? {}) }
     if (qteUi === 'default') delete nextExt.qteUi
     else nextExt.qteUi = qteUi
     updateScene(selectedSceneId, { ext: Object.keys(nextExt).length > 0 ? nextExt : undefined })
@@ -133,10 +134,10 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   function addChoiceBranch(): void {
     const id = `choice-${Date.now().toString(36)}`
     updateScene(selectedSceneId, {
-      decision: scene.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
-      kind: scene.kind === 'choice' ? scene.kind : 'choice',
+      decision: activeScene.decision ?? { optType: 'static', mode: 'pause', prompt: '请选择' },
+      kind: activeScene.kind === 'choice' ? activeScene.kind : 'choice',
       branches: [
-        ...scene.branches,
+        ...activeScene.branches,
         {
           id,
           kind: 'choice',
@@ -148,12 +149,12 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
   }
 
   function removeChoiceBranch(branchId: string): void {
-    const branches = scene.branches.filter((b) => b.id !== branchId)
+    const branches = activeScene.branches.filter((b) => b.id !== branchId)
     const hasChoice = branches.some((b) => b.kind === 'choice')
     updateScene(selectedSceneId, {
       branches,
-      decision: hasChoice ? scene.decision : undefined,
-      kind: hasChoice && scene.kind !== 'choice' ? 'choice' : scene.kind,
+      decision: hasChoice ? activeScene.decision : undefined,
+      kind: hasChoice && activeScene.kind !== 'choice' ? 'choice' : activeScene.kind,
     })
   }
 
@@ -262,6 +263,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
             ))}
           </select>
         </div>
+        {/* HUD 方案说明：main/battle/explore/hidden/narrative（叙事主界面，国风四维 HUD） */}
       </section>
 
       <CalcSection
@@ -342,11 +344,12 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
               <span className="ks-bgp-fk">QTE UI</span>
               <select
                 className="ks-bgp-input"
-                value={scene.ext?.qteUi === 'battleParry' ? 'battleParry' : 'default'}
-                onChange={(e) => setQteUi(e.target.value as 'default' | 'battleParry')}
+                value={(scene.ext?.qteUi as string | undefined) ?? 'default'}
+                onChange={(e) => setQteUi(e.target.value as 'default' | 'battleParry' | 'inkKou')}
               >
                 <option value="default">默认 QTE 按钮</option>
                 <option value="battleParry">战斗防反按键</option>
+                <option value="inkKou">叩 · 国风</option>
               </select>
             </div>
             <div className="ks-bgp-field">
@@ -400,11 +403,12 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
               <span className="ks-bgp-fk">按钮样式</span>
               <select
                 className="ks-bgp-input"
-                value={scene.ext?.choiceUi === 'battleSkillBar' ? 'battleSkillBar' : 'default'}
-                onChange={(e) => setChoiceUi(e.target.value as 'default' | 'battleSkillBar')}
+                value={(scene.ext?.choiceUi as string | undefined) ?? 'default'}
+                onChange={(e) => setChoiceUi(e.target.value as 'default' | 'battleSkillBar' | 'inkYingMo')}
               >
                 <option value="default">默认选择卡片</option>
                 <option value="battleSkillBar">战斗技能栏</option>
+                <option value="inkYingMo">应默 · 国风</option>
               </select>
             </div>
             {timedDecision && (
@@ -492,7 +496,7 @@ export function BlueprintGameplayPanel({ onCollapse }: { onCollapse?: () => void
                 items={items}
                 onPatch={(patch) =>
                   updateScene(selectedSceneId, {
-                    branches: scene.branches.map((b) => (b.id === branch.id ? { ...b, ...patch } : b)),
+                    branches: activeScene.branches.map((b) => (b.id === branch.id ? { ...b, ...patch } : b)),
                   })
                 }
                 onRemove={

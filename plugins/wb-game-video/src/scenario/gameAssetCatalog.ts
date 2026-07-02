@@ -130,6 +130,7 @@ export const UI_SCHEMES: readonly UiScheme[] = [
   { id: 'battle', label: '战斗界面', desc: '战斗 HUD：玩家 + Boss 血条、技能、状态图标。' },
   { id: 'explore', label: '探索界面', desc: '探索 HUD：背包 / 热点提示 / 简化操作。' },
   { id: 'hidden', label: '隐藏界面', desc: '纯过场：隐藏全部 HUD，只留画面。' },
+  { id: 'narrative', label: '叙事主界面', desc: '叙事 HUD：左上四维属性（理智/佛性/业障/痴），适用于国风叙事段。' },
 ]
 
 /** 一条玩法规则（固定展示数据）。 */
