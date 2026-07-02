@@ -349,8 +349,8 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },
     },
     entities: {
-      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 10000, initialHp: 10000 },
-      'ent-boss': { id: 'ent-boss', name: '小怪 · 无常豺', kind: 'boss', maxHp: 12000, initialHp: 12000 },
+      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300 },
+      'ent-boss': { id: 'ent-boss', name: '小怪 · 无常豺', kind: 'boss', maxHp: 700, initialHp: 700 },
     },
     ui: {
       hud: [
