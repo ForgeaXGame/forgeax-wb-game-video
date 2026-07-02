@@ -1143,11 +1143,11 @@ const PANEL_CSS = `
 .ks-bgp {
   position: absolute;
   top: 12px; right: 12px; bottom: 12px;
-  width: 300px;
+  width: 450px;
   z-index: 12;
   display: flex; flex-direction: column; gap: 14px;
   padding: 16px;
-  overflow-y: auto;
+  overflow: hidden; /* 自身不滚动；滚动交给内容区，标题栏常驻顶部 */
   background: rgba(12, 14, 22, 0.92);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.1);
@@ -1163,6 +1163,7 @@ const PANEL_CSS = `
 .ks-bgp.ks-kind-qte    { --ks-kind: #22d3ee; }
 .ks-bgp.ks-kind-choice { --ks-kind: #f59e0b; }
 .ks-bgp-head {
+  flex: none; /* 常驻顶部，不随内容滚动 */
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -1186,8 +1187,36 @@ const PANEL_CSS = `
 .ks-bgp-collapse:hover { color: #fff; background: rgba(255,255,255,0.14); }
 .ks-bgp-title { font-size: 15px; font-weight: 600; color: #fff; }
 .ks-bgp-sub { font-size: 11px; letter-spacing: 0.18em; color: var(--ks-kind); }
-.ks-bgp-sec { display: flex; flex-direction: column; gap: 6px; }
-.ks-bgp-lbl { font-size: 11px; letter-spacing: 0.1em; color: rgba(255,255,255,0.55); }
+/* 内容区：独占剩余高度并单独滚动（标题栏固定），各分块之间留出间距 */
+.ks-bgp-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+}
+/* 每个分块（演出 / 界面 / 选项 / 分支…）= 一张卡片，清晰分隔 */
+.ks-bgp-sec {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 12px 13px;
+  background: rgba(255,255,255,0.028);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+}
+/* 分块标题：前置一条主题色竖条（分块视觉锚点，颜色随节点类型），加粗提亮 */
+.ks-bgp-lbl {
+  position: relative;
+  padding-left: 11px;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.86);
+}
+.ks-bgp-lbl::before {
+  content: '';
+  position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 12px; border-radius: 2px;
+  background: var(--ks-kind, #f59e0b);
+}
 .ks-bgp-hint { font-size: 11px; color: rgba(255,255,255,0.45); margin: 0; }
 .ks-bgp-input {
   width: 100%;
