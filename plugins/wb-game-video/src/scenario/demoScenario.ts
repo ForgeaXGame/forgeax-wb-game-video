@@ -153,7 +153,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     mediaPlayMode: 'loop',
     durationMs: 8000,
     kind: 'choice',
-    decision: { optType: 'static', prompt: '选择技能' },
+    decision: { optType: 'static', prompt: '选择技能', windowStartMs: 1000, fireAt: 'on_pick' },
     ext: { choiceUi: 'battleSkillBar' },
     background: '我方回合待机循环（idle）：弹出战斗界面，呈现 4 个技能（轻攻击 / 重攻击 / 冥想 / 灭世），按当前气力 / 冷却可用性灰显不可选项，等待空藏选择（防反不在此选择，改由敌方进攻时的「防反」反应触发）。',
     branches: [
@@ -317,7 +317,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     title: '战斗蓝图',
     synopsis: '回合制循环（待机 / 演出 / 结算）：进战待机 → 出手判断 → 先手出手 → 后手出手 → 回合结束 → 胜负。',
     originIdea: '从新影游平台交互原型迁移的层级战斗蓝图 demo。',
-    rootSceneId: 'enter',
+    rootSceneId: 'a_my',
     defaultCharMs: 32,
     schemaVersion: 9,
     modules: { gameplay: true, rules: true },
