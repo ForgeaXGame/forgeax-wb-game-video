@@ -116,6 +116,15 @@ export interface BlueprintQte {
   windowMs: number
   /** 节奏点时刻（ms，相对节点起点）。 */
   cueMs: number[]
+  /** 每个节奏点的输入配置；与 cueMs 同序。 */
+  cues?: Array<{
+    id: string
+    triggerKey?: string
+    shape?: 'tap' | 'hold' | 'sweep'
+    durationMs?: number
+    sweepDir?: 'up' | 'down' | 'left' | 'right'
+    label?: string
+  }>
   /** 序列：必须按序命中。 */
   sequence?: boolean
   /** 整段超时（ms）。 */

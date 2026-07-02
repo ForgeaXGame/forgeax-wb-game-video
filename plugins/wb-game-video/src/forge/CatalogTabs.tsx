@@ -108,6 +108,7 @@ interface PreviewOverlay {
   label: string
   x: number
   y: number
+  r?: number
   layer: number
   movable: boolean
   target:
@@ -351,6 +352,7 @@ function activePreviewOverlays(scene: Scene, materials: MaterialItem[], ms: numb
             label: h.label ?? '选项',
             x: h.x,
             y: h.y,
+            r: h.r,
             layer: normalizeLayer(decision.layer, 3),
             movable: true,
             target: { kind: 'hotspot', hotspotId: h.id },
@@ -472,6 +474,7 @@ export function VideoCatalogTab() {
   const [playheadMs, setPlayheadMs] = useState(0)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [overlayDragId, setOverlayDragId] = useState<string | null>(null)
+  const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null)
   const [drag, setDrag] = useState<{
     key: string
     mode: 'move' | 'start' | 'end'
@@ -615,28 +618,7 @@ export function VideoCatalogTab() {
       })
       setSelectedMaterialKey(`settlement:${id}`)
     } else if (template === 'qte') {
-      const id = `q-${Date.now().toString(36)}`
-      const cue: QTECue = {
-        id,
-        shape: 'tap',
-        x: 0.5,
-        y: 0.55,
-        appearAt: startMs,
-        targetAt: endMs,
-        label: 'QTE',
-        layer: 2,
-      }
-      updateScene(scene.id, {
-        kind: 'qte',
-        qte: scene.qte
-          ? { ...scene.qte, cues: [...scene.qte.cues, cue] }
-          : {
-              cues: [cue],
-              window: { perfect: 120, great: 280, good: 480 },
-              score: { perfect: 100, great: 60, good: 30, miss: 0 },
-            },
-      })
-      setSelectedMaterialKey(`qte:${id}`)
+      addQteCue()
     } else {
       const existingChoice = scene.branches.find((b) => b.kind === 'choice')
       const branch: Branch =
@@ -804,6 +786,44 @@ export function VideoCatalogTab() {
     })
   }
 
+  function addQteCue(afterCueId?: string): void {
+    if (!scene) return
+    const cues = scene.qte?.cues ?? []
+    const base = afterCueId ? cues.find((cue) => cue.id === afterCueId) : cues[cues.length - 1]
+    const start = clampMs((base?.targetAt ?? playheadMs) + 500, 0, Math.max(0, maxMs - 100))
+    const end = clampMs(start + 800, start + 100, maxMs)
+    const id = `q-${Date.now().toString(36)}`
+    const cue: QTECue = {
+      id,
+      shape: base?.shape ?? 'tap',
+      triggerKey: base?.triggerKey,
+      x: base?.x ?? 0.5,
+      y: base?.y ?? 0.55,
+      appearAt: start,
+      targetAt: end,
+      label: `QTE ${cues.length + 1}`,
+      layer: base?.layer ?? 2,
+    }
+    updateScene(scene.id, {
+      kind: 'qte',
+      qte: scene.qte
+        ? { ...scene.qte, cues: [...cues, cue] }
+        : {
+            cues: [cue],
+            window: { perfect: 120, great: 280, good: 480 },
+            score: { perfect: 100, great: 60, good: 30, miss: 0 },
+          },
+    })
+    setSelectedMaterialKey(`qte:${id}`)
+  }
+
+  function removeQteCue(cueId: string): void {
+    if (!scene?.qte) return
+    const cues = scene.qte.cues.filter((cue) => cue.id !== cueId)
+    updateScene(scene.id, { qte: cues.length ? { ...scene.qte, cues } : undefined })
+    if (selectedMaterialKey === `qte:${cueId}`) setSelectedMaterialKey(cues[0] ? `qte:${cues[0].id}` : null)
+  }
+
   function patchOverlayPosition(overlay: PreviewOverlay, x: number, y: number): void {
     if (!scene || !overlay.movable) return
     const target = overlay.target
@@ -853,6 +873,7 @@ export function VideoCatalogTab() {
     e.stopPropagation()
     setSelectedMaterialKey(overlay.materialKey)
     setSideMode('inspector')
+    setActiveHotspotId(overlay.target.kind === 'hotspot' ? overlay.target.hotspotId : null)
     if (!overlay.movable) return
     e.currentTarget.setPointerCapture(e.pointerId)
     setOverlayDragId(overlay.id)
@@ -868,6 +889,7 @@ export function VideoCatalogTab() {
 
   function onOverlayPointerUp(): void {
     setOverlayDragId(null)
+    setActiveHotspotId(null)
   }
 
   function onPointerDown(e: React.PointerEvent, item: MaterialItem, mode: 'move' | 'start' | 'end'): void {
@@ -991,7 +1013,7 @@ export function VideoCatalogTab() {
                         role="button"
                         tabIndex={0}
                         aria-label={`${materialLabel(o.kind)}：${o.label}${o.movable ? '，可拖动' : ''}`}
-                        className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}`}
+                        className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${o.target.kind === 'hotspot' && activeHotspotId === o.target.hotspotId ? ' is-hotspot-editing' : ''}`}
                         style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: 20 + o.layer }}
                         onPointerDown={(e) => onOverlayPointerDown(e, o)}
                         onPointerMove={(e) => onOverlayPointerMove(e, o)}
@@ -999,6 +1021,12 @@ export function VideoCatalogTab() {
                         onLostPointerCapture={onOverlayPointerUp}
                       >
                         {o.kind === 'qte' ? <span className="gc-preview-ring" /> : null}
+                        {o.kind === 'option' && o.target.kind === 'hotspot' ? (
+                          <span
+                            className="gc-preview-hotspot-ring"
+                            style={{ ['--gc-hotspot-r' as string]: `${(o.r ?? 0.08) * 200}%` }}
+                          />
+                        ) : null}
                         <span className="gc-preview-label">{o.label}</span>
                       </div>
                     )
@@ -1105,6 +1133,10 @@ export function VideoCatalogTab() {
               onPatch={patchSelected}
               onTiming={(item, start, end) => patchMaterial(item, { startMs: start, endMs: end })}
               onPatchHotspot={patchHotspot}
+              onHotspotDragState={setActiveHotspotId}
+              onAddQteCue={addQteCue}
+              onRemoveQteCue={removeQteCue}
+              onSelectQteCue={(cueId) => setSelectedMaterialKey(`qte:${cueId}`)}
               onSettlementMode={setSettlementMode}
             />
           )}
@@ -1139,6 +1171,48 @@ function MaterialCard({
   )
 }
 
+function RangeField({
+  label,
+  value,
+  min,
+  max,
+  unit,
+  onChange,
+  onDragStart,
+  onDragEnd,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  unit: string
+  onChange: (value: number) => void
+  onDragStart: () => void
+  onDragEnd: () => void
+}) {
+  const rounded = Math.round(value * 10) / 10
+  return (
+    <label className="gc-range-field">
+      <span>
+        {label}
+        <b>{rounded}{unit}</b>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.5}
+        value={rounded}
+        onPointerDown={onDragStart}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
+        onBlur={onDragEnd}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </label>
+  )
+}
+
 function MaterialInspector({
   scenario,
   scene,
@@ -1146,6 +1220,10 @@ function MaterialInspector({
   onPatch,
   onTiming,
   onPatchHotspot,
+  onHotspotDragState,
+  onAddQteCue,
+  onRemoveQteCue,
+  onSelectQteCue,
   onSettlementMode,
 }: {
   scenario: Scenario
@@ -1154,6 +1232,10 @@ function MaterialInspector({
   onPatch: (patch: Record<string, unknown>) => void
   onTiming: (item: MaterialItem, startMs: number, endMs: number) => void
   onPatchHotspot: (hotspotId: string, patch: Partial<Hotspot>) => void
+  onHotspotDragState: (hotspotId: string | null) => void
+  onAddQteCue: (afterCueId?: string) => void
+  onRemoveQteCue: (cueId: string) => void
+  onSelectQteCue: (cueId: string) => void
   onSettlementMode: (item: MaterialItem, mode: SettlementMode) => void
 }) {
   if (!scene || !item) {
@@ -1297,9 +1379,45 @@ function MaterialInspector({
       )}
       {item.kind === 'qte' && current && 'shape' in current && (
         <>
+          <div className="gc-qte-cues-head">
+            <span>按键点 · {scene.qte?.cues.length ?? 0}</span>
+            <button type="button" className="gc-mini-action" onClick={() => onAddQteCue(current.id)}>
+              + 添加按键点
+            </button>
+          </div>
+          <div className="gc-qte-cue-list">
+            {(scene.qte?.cues ?? []).map((cue, i) => (
+              <button
+                key={cue.id}
+                type="button"
+                className={`gc-qte-cue-chip${cue.id === current.id ? ' is-on' : ''}`}
+                onClick={() => onSelectQteCue(cue.id)}
+                onDoubleClick={() => onRemoveQteCue(cue.id)}
+                title="双击删除该按键点"
+              >
+                {i + 1}. {cue.triggerKey || cue.label || cue.shape}
+              </button>
+            ))}
+          </div>
           <label className="gc-field">
             <span>标签</span>
             <input value={current.label ?? ''} onChange={(e) => onPatch({ label: e.target.value || undefined })} />
+          </label>
+          <label className="gc-field">
+            <span>触发键</span>
+            <select value={current.triggerKey ?? ''} onChange={(e) => onPatch({ triggerKey: e.target.value || undefined })}>
+              <option value="">默认（空格 / Enter / 点击）</option>
+              <option value="Space">Space</option>
+              <option value="Enter">Enter</option>
+              <option value="KeyA">A</option>
+              <option value="KeyD">D</option>
+              <option value="KeyW">W</option>
+              <option value="KeyS">S</option>
+              <option value="ArrowLeft">←</option>
+              <option value="ArrowRight">→</option>
+              <option value="ArrowUp">↑</option>
+              <option value="ArrowDown">↓</option>
+            </select>
           </label>
           <label className="gc-field">
             <span>形态</span>
@@ -1309,6 +1427,31 @@ function MaterialInspector({
               <option value="sweep">Sweep</option>
             </select>
           </label>
+          {current.shape === 'hold' && (
+            <label className="gc-field">
+              <span>按住时长 ms</span>
+              <input
+                type="number"
+                min={100}
+                value={current.durationMs ?? 500}
+                onChange={(e) => onPatch({ durationMs: Math.max(100, Number(e.target.value) || 500) })}
+              />
+            </label>
+          )}
+          {current.shape === 'sweep' && (
+            <label className="gc-field">
+              <span>滑动方向</span>
+              <select value={current.sweepDir ?? 'right'} onChange={(e) => onPatch({ sweepDir: e.target.value })}>
+                <option value="left">左</option>
+                <option value="right">右</option>
+                <option value="up">上</option>
+                <option value="down">下</option>
+              </select>
+            </label>
+          )}
+          <button type="button" className="gc-mini-danger" onClick={() => onRemoveQteCue(current.id)}>
+            删除当前按键点
+          </button>
         </>
       )}
       {item.kind === 'option' && current && 'optType' in current && (
@@ -1325,27 +1468,37 @@ function MaterialInspector({
             </select>
           </label>
           {current.presentation === 'hotspot' && firstHotspot && (
-            <div className="gc-field-row">
-              <label>
-                <span>热区 X%</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={Math.round(firstHotspot.x * 100)}
-                  onChange={(e) => onPatchHotspot(firstHotspot.id, { x: clamp01(Number(e.target.value) / 100) })}
-                />
-              </label>
-              <label>
-                <span>热区 Y%</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={Math.round(firstHotspot.y * 100)}
-                  onChange={(e) => onPatchHotspot(firstHotspot.id, { y: clamp01(Number(e.target.value) / 100) })}
-                />
-              </label>
+            <div className="gc-hotspot-sliders">
+              <RangeField
+                label="热区 X"
+                value={firstHotspot.x * 100}
+                min={0}
+                max={100}
+                unit="%"
+                onDragStart={() => onHotspotDragState(firstHotspot.id)}
+                onDragEnd={() => onHotspotDragState(null)}
+                onChange={(value) => onPatchHotspot(firstHotspot.id, { x: clamp01(value / 100) })}
+              />
+              <RangeField
+                label="热区 Y"
+                value={firstHotspot.y * 100}
+                min={0}
+                max={100}
+                unit="%"
+                onDragStart={() => onHotspotDragState(firstHotspot.id)}
+                onDragEnd={() => onHotspotDragState(null)}
+                onChange={(value) => onPatchHotspot(firstHotspot.id, { y: clamp01(value / 100) })}
+              />
+              <RangeField
+                label="热区范围"
+                value={(firstHotspot.r ?? 0.08) * 100}
+                min={2}
+                max={40}
+                unit="%"
+                onDragStart={() => onHotspotDragState(firstHotspot.id)}
+                onDragEnd={() => onHotspotDragState(null)}
+                onChange={(value) => onPatchHotspot(firstHotspot.id, { r: clamp01(value / 100) })}
+              />
             </div>
           )}
         </>
@@ -1647,7 +1800,7 @@ const CATALOG_CSS = `
 .gc-stage-video {
   position: relative;
   height: 100%;
-  --gc-timeline-h: clamp(118px, 18dvh, 220px);
+  --gc-timeline-h: clamp(204px, 22dvh, 240px);
 }
 .gc-video-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .gc-video-title { color: var(--gc-text); font-size: 16px; font-weight: 700; }
@@ -1719,6 +1872,11 @@ const CATALOG_CSS = `
   border-color: var(--gc-accent);
   box-shadow: 0 0 0 2px rgba(240,136,64,.24), 0 0 18px rgba(240,136,64,.3);
 }
+.gc-preview-overlay.is-hotspot-editing .gc-preview-label {
+  border-color: rgba(248,113,113,.95);
+  background: rgba(88,18,18,.74);
+  box-shadow: 0 0 0 2px rgba(248,113,113,.34), 0 0 22px rgba(248,113,113,.45);
+}
 .gc-preview-overlay .gc-preview-label {
   padding: 4px 10px;
   border-radius: 999px;
@@ -1760,6 +1918,20 @@ const CATALOG_CSS = `
   border: 2px solid rgba(95,163,247,.9);
   box-shadow: 0 0 20px rgba(95,163,247,.55), inset 0 0 12px rgba(95,163,247,.25);
   animation: gcPreviewPulse 1.2s ease-in-out infinite;
+}
+.gc-preview-hotspot-ring {
+  position: absolute;
+  width: var(--gc-hotspot-r, 16%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px dashed rgba(199,155,242,.72);
+  background: rgba(199,155,242,.08);
+  box-shadow: 0 0 16px rgba(199,155,242,.2);
+}
+.gc-preview-overlay.is-hotspot-editing .gc-preview-hotspot-ring {
+  border-color: rgba(248,113,113,.95);
+  background: rgba(248,113,113,.14);
+  box-shadow: 0 0 22px rgba(248,113,113,.42);
 }
 @keyframes gcPreviewPulse {
   0%, 100% { transform: scale(1); opacity: .8; }
@@ -1804,7 +1976,7 @@ const CATALOG_CSS = `
 .gc-mtimeline {
   position: relative;
   height: var(--gc-timeline-h);
-  min-height: 96px;
+  min-height: 204px;
   border-radius: 10px;
   border: 1px solid var(--gc-line-soft);
   background:
@@ -1961,6 +2133,27 @@ const CATALOG_CSS = `
 }
 .gc-inspector-card { display: flex; flex-direction: column; gap: 12px; }
 .gc-inspector-title { color: var(--gc-text); font-size: 15px; font-weight: 700; }
+.gc-hotspot-sliders { display: flex; flex-direction: column; gap: 10px; }
+.gc-range-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gc-range-field span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--gc-faint);
+  font-size: 11px;
+}
+.gc-range-field b {
+  color: var(--gc-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.gc-range-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--gc-accent);
+}
 .gc-field,
 .gc-field-row label {
   display: flex;
@@ -1994,7 +2187,7 @@ const CATALOG_CSS = `
 .gc-frame-hint { font-size: 12px; color: rgba(255,255,255,0.5); letter-spacing: 0.08em; }
 
 @media (max-aspect-ratio: 4 / 3), (max-width: 980px) {
-  .gc-stage-video { --gc-timeline-h: clamp(96px, 15dvh, 160px); }
+  .gc-stage-video { --gc-timeline-h: clamp(204px, 20dvh, 228px); }
   .gc-video-top {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2008,7 +2201,7 @@ const CATALOG_CSS = `
 }
 
 @media (max-height: 760px) {
-  .gc-stage-video { --gc-timeline-h: clamp(88px, 14dvh, 132px); }
+  .gc-stage-video { --gc-timeline-h: 204px; }
   .gc-video-head { gap: 8px; }
   .gc-video-title { font-size: 14px; }
   .gc-prompt { padding: 9px; }

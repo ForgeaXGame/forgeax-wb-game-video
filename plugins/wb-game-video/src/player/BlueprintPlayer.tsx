@@ -437,6 +437,27 @@ export function BlueprintPlayer(): JSX.Element {
     setTaps(tapsRef.current)
   }
 
+  function qteKeyMatches(expected: string | undefined, e: KeyboardEvent): boolean {
+    if (!expected) return e.code === 'Space' || e.key === ' ' || e.key === 'Enter'
+    return e.code === expected || e.key === expected
+  }
+
+  useEffect(() => {
+    if (snapshot.interaction.type !== 'qte') return
+    if (hasTieredQteOutcomes(snapshot.interaction.qte)) return
+    const qte = snapshot.interaction.qte
+    function onKeyDown(e: KeyboardEvent): void {
+      const cue = qte.cueMs[tapsRef.current] != null ? qte.cues?.[tapsRef.current] : undefined
+      const expected = cue?.triggerKey
+      if (!qteKeyMatches(expected, e)) return
+      e.preventDefault()
+      onTap()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot.interaction.type, snapshot.clip?.nodeId])
+
   function onUnmuteClick(): void {
     const v = videoRef.current
     if (!v) return
