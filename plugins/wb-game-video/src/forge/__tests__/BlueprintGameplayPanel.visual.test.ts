@@ -15,8 +15,12 @@ describe('BlueprintGameplayPanel presentation controls', () => {
     expect(SOURCE).toContain('战斗技能栏')
   })
 
-  it('hides choiceUi from the generic extension editor to avoid duplicate editing paths', () => {
-    expect(SOURCE).toContain("RESERVED_EXT_KEYS = ['video', 'choiceUi', 'qteUi']")
+  it('keeps gameplay panel focused — no subflow return / video gen / ext editor blocks', () => {
+    expect(SOURCE).not.toContain('function VideoGenSection')
+    expect(SOURCE).not.toContain('function ExtAttrsSection')
+    expect(SOURCE).not.toContain('returnsToCaller: e.target.checked')
+    expect(SOURCE).not.toContain('>视频生成<')
+    expect(SOURCE).not.toContain('>扩展属性<')
   })
 
   it('exposes battle parry as a first-class QTE UI control backed by ext.qteUi', () => {
@@ -26,27 +30,39 @@ describe('BlueprintGameplayPanel presentation controls', () => {
     expect(SOURCE).toContain('战斗防反按键')
   })
 
-  it('collapses performance detail fields when the scene has no clip (logic-only nodes)', () => {
-    expect(SOURCE).toContain('function sceneHasPerformance')
-    expect(SOURCE).toContain('纯逻辑 / 隐藏计算节点')
-    expect(SOURCE).toContain('{hasPerformance && (')
+  it('maps prototype calc group to scene.calcType with readonly settlement preview', () => {
+    expect(SOURCE).toContain('function CalcSection')
+    expect(SOURCE).toContain('计算类型')
+    expect(SOURCE).toContain('scene.calcType')
+    expect(SOURCE).toContain('listPerformanceSettlements')
+    expect(SOURCE).toContain('branchOutcomeLabels')
+    expect(SOURCE).toContain('演出飘字')
+    expect(SOURCE).not.toContain('PerformanceCuesSection')
+    expect(SOURCE).not.toContain('>判定<')
   })
 
-  it('exposes every out-edge (auto/qte/choice) to the branch editor, not only choice branches', () => {
-    // 之前只渲染 choiceBranches → auto/qte 出边（含 hpRatio 条件、qteOutcome）无法编辑。
-    expect(SOURCE).toContain('scene.branches.map((branch) => (')
-    expect(SOURCE).toContain('分支 / 出边')
-    // 仅 choice 分支保留删除入口，避免误删剧情树连线
-    expect(SOURCE).toContain("branch.kind === 'choice' ? () => removeChoiceBranch(branch.id) : undefined")
+  it('routes time/visual option fields to video timeline, not blueprint panel', () => {
+    expect(SOURCE).not.toContain('function ChoiceHotspotsSection')
+    expect(SOURCE).not.toContain('windowStartMs: e.target.value')
+    expect(SOURCE).not.toContain('windowEndMs: e.target.value')
+    expect(SOURCE).toContain('时间轴选中「选项」控件编辑')
+    expect(SOURCE).toContain('QTE 窗口')
   })
 
-  it('exposes a QTE spec editor (window/score/timeout/outcomeLabels) for qte scenes', () => {
-    expect(SOURCE).toContain('function QteSpecSection')
-    expect(SOURCE).toContain('{scene.qte && (')
-    expect(SOURCE).toContain('setWindow')
-    expect(SOURCE).toContain('setScore')
-    expect(SOURCE).toContain('setLabel')
-    expect(SOURCE).toContain('timeoutMs')
-    expect(SOURCE).toContain('outcomeLabels')
+  it('labels timed_qte section as QTE interaction not choice list', () => {
+    expect(SOURCE).toContain("'timed_qte' ? 'QTE 交互'")
+    expect(SOURCE).toContain('QTE 按键点')
+  })
+
+  it('shows QTE branches and read-only cue list for timed_qte nodes', () => {
+    expect(SOURCE).toContain("b.kind === 'qte_pass' || b.kind === 'qte_fail'")
+    expect(SOURCE).toContain('ks-bgp-qte-cue-list')
+    expect(SOURCE).toContain('判定针对')
+    expect(SOURCE).toContain('battleParryMultiCue')
+  })
+
+  it('supports VarEffect.once toggle in numeric attrs section', () => {
+    expect(SOURCE).toContain('once: once || undefined')
+    expect(SOURCE).toContain('首次')
   })
 })

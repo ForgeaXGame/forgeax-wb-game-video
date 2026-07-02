@@ -121,6 +121,9 @@ describe('real demo blueprint', () => {
     const ai = graph.subflows?.['g-cb-ai']
     expect(ai?.nodes.map((n) => n.id)).toEqual(['bt', 'tele', 'block', 'dodgeP', 'hurt', 'ai-done'])
     expect(ai?.nodes.find((n) => n.id === 'tele')?.extensionElements.clipId).toBe('vd-wcc-qianyao')
+    expect(ai?.nodes.find((n) => n.id === 'tele')?.extensionElements.calcType).toBe('防反判定')
+    expect(my?.nodes.find((n) => n.id === 'pu')?.extensionElements.calcType).toBe('轻攻击')
+    expect(graph.nodes.find((n) => n.id === 'init')?.extensionElements.calcType).toBe('出手判断')
     expect(ai?.edges.map((e) => `${e.sourceRef}->${e.targetRef}:${e.name}:${e.extension?.qteOutcome ?? ''}`)).toEqual([
       'bt->tele:进攻:',
       'tele->block:受击防反:pass',
@@ -172,6 +175,38 @@ describe('real demo blueprint', () => {
       windowStartMs: 1000,
       fireAt: 'on_pick',
     })
+  })
+
+  test('light attack choice walks pjudge → pu → my-done in player subflow', () => {
+    const scenario = getBlueprintCombatDemoScenario()
+    const graph = scenarioToBlueprint(scenario, 'g-cb-my')
+    const rt = new BlueprintRuntime(graph, scenario)
+    rt.start()
+    expect(rt.state.currentNodeId).toBe('wait')
+    expect(rt.state.phase).toBe('awaitChoice')
+
+    rt.chooseOption('my-s1')
+    expect(rt.state.visited.has('pjudge')).toBe(true)
+    expect(rt.state.currentNodeId).toBe('pu')
+    expect(rt.state.phase).toBe('playing')
+
+    rt.onClipEnded()
+    expect(rt.state.currentNodeId).toBe('my-done')
+    expect(rt.state.visited.has('pu')).toBe(true)
+  })
+
+  test('light attack on full graph visits parent HP check after skill clip', () => {
+    const scenario = getBlueprintCombatDemoScenario()
+    const graph = scenarioToBlueprint(scenario)
+    const rt = new BlueprintRuntime(graph, scenario)
+    rt.start()
+    rt.onClipEnded()
+    expect(rt.state.currentNodeId).toBe('wait')
+
+    rt.chooseOption('my-s1')
+    rt.onClipEnded()
+    expect(rt.state.visited.has('my-done')).toBe(true)
+    expect(rt.state.visited.has('a_chk')).toBe(true)
   })
 
   test('runtime auto-pilot walks the demo without throwing', () => {

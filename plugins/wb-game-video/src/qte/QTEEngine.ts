@@ -205,15 +205,19 @@ export function qtePassed(spec: QTESpec, verdicts: HitVerdict[]): boolean {
 }
 
 /**
- * 整段超时截止时刻（ms，相对 scene 起点）—— v9 玩法系统。
- * = 首个 cue 的 appearAt + spec.timeoutMs。无 timeoutMs / 无 cue → null（不限时）。
- * 运行时（Player RAF）拿 elapsed 与之比较，越过且 QTE 未完成即判失败。
+ * 整段超时截止时刻（ms，相对 scene 起点）。
+ * - 单 cue（战斗防反墨章）：首个 appearAt + timeoutMs（原 prototype 语义）。
+ * - 多 cue：最后一个 cue 的判定窗结束 + timeoutMs，避免第二个按键点尚未出现就整段超时。
  */
 export function qteTimeoutDeadlineMs(spec: QTESpec | undefined): number | null {
   const cues = qteCues(spec)
   if (!spec || spec.timeoutMs == null || cues.length === 0) return null
-  const firstAppear = Math.min(...cues.map((c) => c.appearAt))
-  return firstAppear + spec.timeoutMs
+  const good = spec.window?.good ?? 480
+  if (cues.length === 1) {
+    return Math.min(...cues.map((c) => c.appearAt)) + spec.timeoutMs
+  }
+  const lastLiveEnd = Math.max(...cues.map((c) => c.targetAt + good))
+  return lastLiveEnd + spec.timeoutMs
 }
 
 /**

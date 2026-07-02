@@ -25,8 +25,8 @@ import type {
   BossSpec,
   DecisionSpec,
   Hotspot,
-  PerformanceSpec,
 } from '../scenario/gameplayTypes'
+import { listPerformanceSettlements } from '../scenario/performanceSettlement.js'
 import {
   GAME_VIDEO_BLUEPRINT_SCHEMA_VERSION,
   type BlueprintBoss,
@@ -252,7 +252,7 @@ function extensionFor(scene: Scene): GameVideoExtensionElements {
     stateKey: scene.id,
     sceneKind: (scene.kind ?? 'story') as BlueprintSceneKind,
     mediaPlayMode: (scene.mediaPlayMode ?? 'once') as BlueprintMediaPlayMode,
-    calcType: scene.kind && scene.kind !== 'story' ? scene.kind : undefined,
+    calcType: scene.calcType ?? (scene.kind && scene.kind !== 'story' ? scene.kind : undefined),
     dmgPoints: damagePointsOf(scene),
     options: optionsOf(scene),
     durationMs: scene.durationMs,
@@ -308,15 +308,19 @@ function hudFor(scene: Scene): BlueprintHudMode {
 }
 
 function damagePointsOf(scene: Scene): BlueprintDamagePoint[] {
-  const perf: PerformanceSpec | undefined = scene.performance
-  if (!perf || perf.cues.length === 0) return []
-  return perf.cues.map((cue) => ({
-    t: cue.atMs / 1000,
-    x: 50,
-    y: 40,
-    note: cue.label ?? '结算',
-    effects: cue.effects,
-  }))
+  const views = listPerformanceSettlements(scene)
+  if (views.length === 0) return []
+  const cues = scene.performance?.cues ?? []
+  return views.map((view) => {
+    const cue = cues.find((c) => c.id === view.id)
+    return {
+      t: view.atMs / 1000,
+      x: view.xPct,
+      y: view.yPct,
+      note: view.label,
+      effects: cue?.effects ?? [],
+    }
+  })
 }
 
 function optionsOf(scene: Scene): BlueprintOption[] | undefined {

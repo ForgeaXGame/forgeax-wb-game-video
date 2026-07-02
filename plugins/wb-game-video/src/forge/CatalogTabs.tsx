@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { injectStyleOnce } from '../styles/injectStyle'
+import { resolveOptType, qteInteractionWindowEnd } from '../player/choiceTiming'
+import {
+  computeVideoContentRect,
+  pointerToVideoNorm,
+  type VideoContentRect,
+} from '../player/videoContentRect'
+import { useShellStore } from '../shell/shellStore'
 import { useScenarioStore } from '../scenario/scenarioStore'
 import { applyCombatRules, readCombatRules, type CombatRulesPatch } from '../scenario/combatRules'
 import {
@@ -87,7 +94,7 @@ function CatalogShell<T extends CatalogItem>({
 
 /* ── 视频 ─────────────────────────────────────────────── */
 
-type MaterialKind = 'subtitle' | 'settlement' | 'qte' | 'option'
+type MaterialKind = 'subtitle' | 'settlement' | 'qte' | 'qte_window' | 'option'
 
 interface MaterialItem {
   key: string
@@ -164,10 +171,16 @@ function materialLabel(kind: MaterialKind): string {
     case 'settlement':
       return '结算飘字'
     case 'qte':
-      return 'QTE'
+      return 'QTE 按键点'
+    case 'qte_window':
+      return 'QTE 窗口'
     case 'option':
       return '选项'
   }
+}
+
+function materialDisplayLabel(item: Pick<MaterialItem, 'kind' | 'key'>): string {
+  return materialLabel(item.kind)
 }
 
 function materialClass(kind: MaterialKind): string {
@@ -178,6 +191,8 @@ function materialClass(kind: MaterialKind): string {
       return 'is-settlement'
     case 'qte':
       return 'is-qte'
+    case 'qte_window':
+      return 'is-qte-window'
     case 'option':
       return 'is-option'
   }
@@ -273,7 +288,24 @@ function collectMaterials(scene: Scene): MaterialItem[] {
     })
   }
   const choiceBranches = scene.branches.filter((b) => b.kind === 'choice')
-  if (scene.decision && choiceBranches.length > 0) {
+  if (scene.decision && resolveOptType(scene.decision) === 'timed_qte') {
+    const startMs = scene.decision.windowStartMs ?? scene.decision.atMs ?? 0
+    const endMs = scene.qte?.cues?.length
+      ? qteInteractionWindowEnd(scene)
+      : scene.decision.windowEndMs ??
+        (scene.decision.timeoutMs != null
+          ? startMs + scene.decision.timeoutMs
+          : scene.durationMs)
+    out.push({
+      key: 'qte-window',
+      id: 'qte-decision',
+      kind: 'qte_window',
+      label: '整段限时',
+      startMs,
+      endMs,
+      layer: normalizeLayer(scene.decision.layer, 3),
+    })
+  } else if (scene.decision && choiceBranches.length > 0) {
     const startMs = scene.decision.windowStartMs ?? scene.decision.atMs ?? 0
     const endMs = scene.decision.windowEndMs ?? scene.durationMs
     out.push({
@@ -338,7 +370,7 @@ function activePreviewOverlays(scene: Scene, materials: MaterialItem[], ms: numb
     })
   }
   const decision = scene.decision
-  if (decision) {
+  if (decision && resolveOptType(decision) !== 'timed_qte') {
     const start = decision.windowStartMs ?? decision.atMs ?? 0
     const end = decision.windowEndMs ?? scene.durationMs
     if (ms >= start && ms <= end) {
@@ -456,6 +488,9 @@ function materialDisabledReason(template: MaterialTemplate, scene: Scene | undef
   if (!scene || !hasVideo) return '当前节点未绑定视频素材'
   const hasQteResultBranches = scene.branches.some((b) => b.kind === 'qte_pass' || b.kind === 'qte_fail')
   const hasBoss = !!scene.boss
+  if (template === 'option' && scene.decision && resolveOptType(scene.decision) === 'timed_qte') {
+    return '限时 QTE 节点请编辑「QTE 窗口」轨，不添加选项'
+  }
   if (template === 'option' && hasQteResultBranches) {
     return 'QTE 节点请使用成功/失败分支，不配置普通选项'
   }
@@ -466,9 +501,12 @@ function materialDisabledReason(template: MaterialTemplate, scene: Scene | undef
 }
 
 export function VideoCatalogTab() {
+  const listBodyRef = useRef<HTMLDivElement | null>(null)
   const [selectedId, setSelectedId] = useState<string>(VIDEO_CLIPS[0]?.id ?? '')
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [contentRect, setContentRect] = useState<VideoContentRect | null>(null)
   const [sideMode, setSideMode] = useState<'library' | 'inspector' | null>(null)
   const [selectedMaterialKey, setSelectedMaterialKey] = useState<string | null>(null)
   const [playheadMs, setPlayheadMs] = useState(0)
@@ -485,6 +523,7 @@ export function VideoCatalogTab() {
   } | null>(null)
   const scenario = useScenarioStore((s) => s.scenario)
   const selectedSceneId = useScenarioStore((s) => s.selectedSceneId)
+  const forgeView = useShellStore((s) => s.forgeView)
   const updateScene = useScenarioStore((s) => s.updateScene)
   const scene = scenario.scenes[selectedSceneId]
   const selectedClip = VIDEO_CLIPS.find((v) => v.id === selectedId)
@@ -494,6 +533,7 @@ export function VideoCatalogTab() {
   const timelineClip = editingBoundClip ? boundClip : previewClip
   const maxMs = Math.max(1000, videoDurationMs ?? timelineClip?.durMs ?? scene?.durationMs ?? 0)
   const hasEditableVideo = Boolean(scene && editingBoundClip && timelineClip)
+  const isTimedQteNode = scene?.decision ? resolveOptType(scene.decision) === 'timed_qte' : false
   const materials = useMemo(() => (scene ? collectMaterials(scene) : []), [scene])
   const previewOverlays = useMemo(
     () => (scene && editingBoundClip ? activePreviewOverlays(scene, materials, playheadMs) : []),
@@ -504,10 +544,51 @@ export function VideoCatalogTab() {
   const qteDisabled = materialDisabledReason('qte', scene, hasEditableVideo)
   const optionDisabled = materialDisabledReason('option', scene, hasEditableVideo)
 
+  // 切到视频视图 / 换节点时，左栏跟随当前节点绑定的 clipId（避免总从第一条开始）。
+  useEffect(() => {
+    const clipId = scene?.clipId
+    if (!clipId || !VIDEO_CLIPS.some((v) => v.id === clipId)) return
+    setSelectedId(clipId)
+    requestAnimationFrame(() => {
+      listBodyRef.current
+        ?.querySelector(`[data-clip-id="${clipId}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [forgeView, selectedSceneId, scene?.clipId])
+
+  useEffect(() => {
+    if (selectedMaterialKey === 'option:qte-window') setSelectedMaterialKey('qte-window')
+  }, [selectedMaterialKey])
+
   useEffect(() => {
     setVideoDurationMs(null)
     setPlayheadMs(0)
+    setContentRect(null)
   }, [timelineClip?.id, scene?.id, editingBoundClip])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) {
+      setContentRect(null)
+      return
+    }
+    let frame = 0
+    const update = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const rect = computeVideoContentRect(v)
+        if (rect) setContentRect(rect)
+      })
+    }
+    update()
+    v.addEventListener('loadedmetadata', update)
+    window.addEventListener('resize', update)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      v.removeEventListener('loadedmetadata', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [timelineClip?.id, editingBoundClip])
 
   function setPrompt(next: string): void {
     if (!scene) return
@@ -527,7 +608,7 @@ export function VideoCatalogTab() {
     switch (item.kind) {
       case 'subtitle':
         updateScene(scene.id, {
-          dialogue: scene.dialogue.map((d) =>
+          dialogue: (scene.dialogue ?? []).map((d) =>
             d.id === item.id ? { ...d, startMs: start, endMs: end, layer } : d,
           ),
         })
@@ -560,6 +641,26 @@ export function VideoCatalogTab() {
                 ),
               }
             : undefined,
+          ...(scene.decision?.optType === 'timed_qte' && scene.qte
+            ? {
+                decision: {
+                  ...scene.decision,
+                  windowEndMs: qteInteractionWindowEnd(scene, {
+                    ...scene.qte,
+                    cues: scene.qte.cues.map((c) =>
+                      c.id === item.id ? { ...c, appearAt: start, targetAt: end, layer } : c,
+                    ),
+                  }),
+                },
+              }
+            : {}),
+        })
+        break
+      case 'qte_window':
+        updateScene(scene.id, {
+          decision: scene.decision
+            ? { ...scene.decision, windowStartMs: start, windowEndMs: end, layer }
+            : undefined,
         })
         break
       case 'option':
@@ -587,7 +688,7 @@ export function VideoCatalogTab() {
         endMs,
         layer: 0,
       }
-      updateScene(scene.id, { dialogue: [...scene.dialogue, line] })
+      updateScene(scene.id, { dialogue: [...(scene.dialogue ?? []), line] })
       setSelectedMaterialKey(`subtitle:${id}`)
     } else if (template === 'settlement') {
       const id = `settle-${Date.now().toString(36)}`
@@ -657,7 +758,7 @@ export function VideoCatalogTab() {
     if (!scene || !selectedMaterial) return
     if (selectedMaterial.kind === 'subtitle') {
       updateScene(scene.id, {
-        dialogue: scene.dialogue.map((d) =>
+        dialogue: (scene.dialogue ?? []).map((d) =>
           d.id === selectedMaterial.id ? { ...d, ...patch } : d,
         ),
       })
@@ -708,10 +809,29 @@ export function VideoCatalogTab() {
             }
           : undefined,
       })
-    } else {
+    } else if (selectedMaterial.kind === 'qte_window' || selectedMaterial.kind === 'option') {
       const decisionPatch = patch as Partial<NonNullable<Scene['decision']>>
+      const nextDecision = scene.decision ? { ...scene.decision, ...decisionPatch } : undefined
+      const nextQte =
+        selectedMaterial.kind === 'qte_window' &&
+        Object.prototype.hasOwnProperty.call(patch, 'timeoutMs') &&
+        scene.qte
+          ? { ...scene.qte, timeoutMs: patch.timeoutMs as number | undefined }
+          : scene.qte
+      const nextScene = { ...scene, decision: nextDecision, qte: nextQte }
+      const windowEndMs =
+        selectedMaterial.kind === 'qte_window' && nextDecision?.optType === 'timed_qte' && nextQte
+          ? qteInteractionWindowEnd(nextScene)
+          : nextDecision?.windowEndMs
       updateScene(scene.id, {
-        decision: scene.decision ? { ...scene.decision, ...decisionPatch } : undefined,
+        decision:
+          nextDecision != null
+            ? {
+                ...nextDecision,
+                ...(windowEndMs != null ? { windowEndMs } : {}),
+              }
+            : undefined,
+        ...(nextQte ? { qte: nextQte } : {}),
       })
     }
   }
@@ -804,15 +924,30 @@ export function VideoCatalogTab() {
       label: `QTE ${cues.length + 1}`,
       layer: base?.layer ?? 2,
     }
+    const nextCues = [...cues, cue]
+    const nextQte = scene.qte
+      ? { ...scene.qte, cues: nextCues }
+      : {
+          cues: nextCues,
+          window: { perfect: 120, great: 280, good: 480 },
+          score: { perfect: 100, great: 60, good: 30, miss: 0 },
+        }
+    const nextExt: Record<string, unknown> = { ...(scene.ext ?? {}) }
+    if (nextCues.length > 1 && nextExt.qteUi === 'battleParry') {
+      delete nextExt.qteUi
+    }
     updateScene(scene.id, {
       kind: 'qte',
-      qte: scene.qte
-        ? { ...scene.qte, cues: [...cues, cue] }
-        : {
-            cues: [cue],
-            window: { perfect: 120, great: 280, good: 480 },
-            score: { perfect: 100, great: 60, good: 30, miss: 0 },
-          },
+      qte: nextQte,
+      ext: Object.keys(nextExt).length > 0 ? nextExt : undefined,
+      ...(scene.decision?.optType === 'timed_qte'
+        ? {
+            decision: {
+              ...scene.decision,
+              windowEndMs: qteInteractionWindowEnd(scene, nextQte),
+            },
+          }
+        : {}),
     })
     setSelectedMaterialKey(`qte:${id}`)
   }
@@ -860,13 +995,19 @@ export function VideoCatalogTab() {
   }
 
   function positionFromFrame(e: React.PointerEvent): { x: number; y: number } | null {
-    const rect = frameRef.current?.getBoundingClientRect()
-    if (!rect || rect.width <= 0 || rect.height <= 0) return null
-    return {
-      x: clamp01((e.clientX - rect.left) / rect.width),
-      y: clamp01((e.clientY - rect.top) / rect.height),
-    }
+    const frame = frameRef.current
+    if (!frame) return null
+    return pointerToVideoNorm(e.clientX, e.clientY, frame, videoRef.current)
   }
+
+  const previewContentStyle = contentRect
+    ? {
+        left: `${contentRect.left}px`,
+        top: `${contentRect.top}px`,
+        width: `${contentRect.width}px`,
+        height: `${contentRect.height}px`,
+      }
+    : undefined
 
   function onOverlayPointerDown(e: React.PointerEvent<HTMLDivElement>, overlay: PreviewOverlay): void {
     e.preventDefault()
@@ -932,11 +1073,12 @@ export function VideoCatalogTab() {
           <span className="gc-list-title">视频素材</span>
           <span className="gc-list-count">{VIDEO_CLIPS.length}</span>
         </div>
-        <div className="gc-list-body">
+        <div className="gc-list-body" ref={listBodyRef}>
           {VIDEO_CLIPS.map((it) => (
             <button
               key={it.id}
               type="button"
+              data-clip-id={it.id}
               className={`gc-row${it.id === selectedId ? ' is-on' : ''}`}
               onClick={() => setSelectedId(it.id)}
             >
@@ -968,7 +1110,10 @@ export function VideoCatalogTab() {
                 onClick={() => {
                   if (!scene) return
                   if (previewClip && !editingBoundClip) {
-                    updateScene(scene.id, { clipId: previewClip.id })
+                    updateScene(scene.id, {
+                      clipId: previewClip.id,
+                      durationMs: previewClip.durMs ?? scene.durationMs,
+                    })
                     return
                   }
                   setSideMode('library')
@@ -985,6 +1130,7 @@ export function VideoCatalogTab() {
                 </span>
                 <video
                   key={timelineClip.id}
+                  ref={videoRef}
                   className="gc-video"
                   src={timelineClip.url}
                   controls
@@ -1004,6 +1150,7 @@ export function VideoCatalogTab() {
                   onSeeked={(e) => setPlayheadMs(clampMs(e.currentTarget.currentTime * 1000, 0, maxMs))}
                   onEnded={() => setPlayheadMs(maxMs)}
                 />
+                <div className="gc-content-anchor" style={previewContentStyle}>
                 <div className="gc-preview-overlays">
                   {previewOverlays.map((o) => {
                     const selected = selectedMaterialKey === o.materialKey
@@ -1032,6 +1179,7 @@ export function VideoCatalogTab() {
                     )
                   })}
                 </div>
+                </div>
               </div>
               <label className="gc-prompt">
                 <span>提示词</span>
@@ -1047,6 +1195,11 @@ export function VideoCatalogTab() {
               <>
                 <div className="gc-materialbar">
                   <span className="gc-materialbar-meta">时间轴 · {fmtDur(maxMs)}</span>
+                  {isTimedQteNode ? (
+                    <span className="gc-materialbar-hint">
+                      蓝实线 = QTE 按键点 · 青虚线 = QTE 窗口（整段限时，非选项）
+                    </span>
+                  ) : null}
                 </div>
                 <div
                   ref={timelineRef}
@@ -1071,10 +1224,10 @@ export function VideoCatalogTab() {
                         className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}`}
                         style={{ left: `${left}%`, width: `${width}%`, top: `${layerTop(m.layer)}px` }}
                         onPointerDown={(e) => onPointerDown(e, m, 'move')}
-                        title={`${materialLabel(m.kind)} · ${fmtDur(m.startMs)} - ${fmtDur(m.endMs)}`}
+                        title={`${materialDisplayLabel(m)} · ${fmtDur(m.startMs)} - ${fmtDur(m.endMs)}`}
                       >
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
-                        <span>{m.label}</span>
+                        <span>{materialDisplayLabel(m)}{m.label ? ` · ${m.label}` : ''}</span>
                         <button className="gc-mhandle is-right" onPointerDown={(e) => onPointerDown(e, m, 'end')} aria-label="调整终点" />
                       </div>
                     )
@@ -1113,17 +1266,32 @@ export function VideoCatalogTab() {
                 onClick={() => addMaterial('settlement')}
               />
               <MaterialCard
-                title="QTE"
-                desc="限时按键点，写入当前节点 QTE 轨。"
+                title="QTE 按键点"
+                desc={
+                  isTimedQteNode
+                    ? '单个按键的时刻与坐标；整段限时在「QTE 窗口」轨编辑。'
+                    : '限时按键点，写入当前节点 QTE 轨。'
+                }
                 disabledReason={qteDisabled}
                 onClick={() => addMaterial('qte')}
               />
-              <MaterialCard
-                title="选项"
-                desc="添加节点选项，可切换清单或画面热区。"
-                disabledReason={optionDisabled}
-                onClick={() => addMaterial('option')}
-              />
+              {isTimedQteNode ? (
+                <MaterialCard
+                  title="QTE 窗口"
+                  desc="整段 QTE 何时生效、超时多久；时间轴已自动生成该轨。"
+                  onClick={() => {
+                    setSelectedMaterialKey('qte-window')
+                    setSideMode('inspector')
+                  }}
+                />
+              ) : (
+                <MaterialCard
+                  title="选项"
+                  desc="添加节点选项，可切换清单或画面热区。"
+                  disabledReason={optionDisabled}
+                  onClick={() => addMaterial('option')}
+                />
+              )}
             </div>
           ) : (
             <MaterialInspector
@@ -1258,7 +1426,7 @@ function MaterialInspector({
       ? scene.dialogue.find((d) => d.id === item.id)
       : item.kind === 'qte'
       ? scene.qte?.cues.find((c) => c.id === item.id)
-      : item.kind === 'option'
+      : item.kind === 'qte_window' || item.kind === 'option'
         ? scene.decision
         : undefined
   const branches = scene.branches.filter((b) => b.kind === 'choice')
@@ -1269,7 +1437,7 @@ function MaterialInspector({
   const settlementMode: SettlementMode = cue ? 'damage' : 'text'
   return (
     <div className="gc-inspector-card">
-      <div className="gc-inspector-title">{materialLabel(item.kind)}</div>
+      <div className="gc-inspector-title">{materialDisplayLabel(item)}</div>
       <div className="gc-field-row">
         <label>
           <span>开始</span>
@@ -1452,6 +1620,31 @@ function MaterialInspector({
           <button type="button" className="gc-mini-danger" onClick={() => onRemoveQteCue(current.id)}>
             删除当前按键点
           </button>
+        </>
+      )}
+      {item.kind === 'qte_window' && current && 'optType' in current && (
+        <>
+          <p className="gc-inspector-hint">
+            整段 QTE 何时生效、何时整段超时。试玩<strong>不会</strong>再弹「选项清单」——玩家只经历一次 QTE；
+            「QTE 按键点」轨上的圆点才是各次按键时刻。
+          </p>
+          <label className="gc-field">
+            <span>设计备注（可选）</span>
+            <input value={current.prompt ?? ''} onChange={(e) => onPatch({ prompt: e.target.value || undefined })} />
+          </label>
+          <label className="gc-field">
+            <span>整段限时 ms</span>
+            <input
+              type="number"
+              min={500}
+              step={500}
+              value={current.timeoutMs ?? scene.qte?.timeoutMs ?? ''}
+              onChange={(e) => {
+                const timeoutMs = e.target.value ? Number(e.target.value) : undefined
+                onPatch({ timeoutMs })
+              }}
+            />
+          </label>
         </>
       )}
       {item.kind === 'option' && current && 'optType' in current && (
@@ -1843,6 +2036,11 @@ const CATALOG_CSS = `
 }
 .gc-badge em { font-style: normal; font-weight: 700; color: var(--gc-muted); opacity: 0.85; }
 .gc-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.gc-content-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .gc-preview-overlays {
   position: absolute;
   inset: 0;
@@ -1962,8 +2160,9 @@ const CATALOG_CSS = `
   font-size: 13px;
   line-height: 1.5;
 }
-.gc-materialbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gc-materialbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .gc-materialbar-meta { color: var(--gc-faint); font-size: 12px; }
+.gc-materialbar-hint { color: rgba(184, 240, 238, 0.72); font-size: 11px; }
 .gc-readonly-note {
   padding: 12px;
   border-radius: 10px;
@@ -2057,6 +2256,13 @@ const CATALOG_CSS = `
 .gc-mclip.is-settlement::before { background: var(--gc-accent); }
 .gc-mclip.is-qte { border-color: rgba(95,163,247,.58); color: #cfe4ff; }
 .gc-mclip.is-qte::before { background: #5fa3f7; }
+.gc-mclip.is-qte-window {
+  border-color: rgba(56, 189, 186, 0.62);
+  border-style: dashed;
+  color: #b8f0ee;
+  background: rgba(8, 28, 30, 0.72);
+}
+.gc-mclip.is-qte-window::before { background: #38bdba; opacity: 0.85; }
 .gc-mclip.is-option { border-color: rgba(199,155,242,.58); color: #eadbff; }
 .gc-mclip.is-option::before { background: #c79bf2; }
 .gc-mhandle {
@@ -2133,6 +2339,12 @@ const CATALOG_CSS = `
 }
 .gc-inspector-card { display: flex; flex-direction: column; gap: 12px; }
 .gc-inspector-title { color: var(--gc-text); font-size: 15px; font-weight: 700; }
+.gc-inspector-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255,255,255,0.58);
+}
 .gc-hotspot-sliders { display: flex; flex-direction: column; gap: 10px; }
 .gc-range-field {
   display: flex;

@@ -569,6 +569,8 @@ export interface VarEffect {
   varId: string
   op: EffectOp
   value: number
+  /** true = 仅首次进入本节点时结算（对齐原型「首次」）。 */
+  once?: boolean
 }
 
 export interface ItemEffect {
@@ -1700,6 +1702,11 @@ export interface Scene {
    * 演出结算轴 —— 时间轴 attackBeat（扣血 / 飘字）。见 gameplayTypes.PerformanceSpec。
    */
   performance?: import('./gameplayTypes.js').PerformanceSpec
+  /**
+   * 蓝图「计算」组 —— 预定义计算类型 id（见 calcTypes.CALC_TYPE_CATALOG）。
+   * 有值时蓝图展示「计算」而非「选项」；具体时刻 / 飘字在视频时间轴编辑。
+   */
+  calcType?: import('./calcTypes.js').CalcTypeId
   /**
    * 通用扩展属性位 —— 让作者 / Nodia 按「规则」往节点上挂任意自定义玩法维度，
    * 而不必把每个维度都沉淀成 typed schema 字段（保持核心 schema 稳定）。

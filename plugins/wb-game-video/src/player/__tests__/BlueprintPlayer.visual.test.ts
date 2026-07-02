@@ -15,8 +15,15 @@ describe('BlueprintPlayer prototype combat visuals', () => {
 
   it('only resets clip elapsed time when a new clip starts playing', () => {
     const s = source('BlueprintPlayer.tsx')
-    expect(s).toContain("dirs.some((d) => d.type === 'playClip')")
+    expect(s).toContain("dirs.find((d) => d.type === 'playClip')")
     expect(s).toContain('if (resetElapsed) setElapsed(0)')
+  })
+
+  it('drives subtitle and sticker timing from video currentTime, not a detached wall clock', () => {
+    const s = source('BlueprintPlayer.tsx')
+    expect(s).toContain('video.currentTime')
+    expect(s).toContain('<StickerLayer')
+    expect(s).toContain('<DialogueBox')
   })
 
   it('keeps the video element stable across overlay-only state changes', () => {
@@ -94,6 +101,9 @@ describe('BlueprintPlayer prototype combat visuals', () => {
     expect(demo).toContain("qteUi: 'battleParry'")
     expect(player).toContain('isBattleParryQte(scene)')
     expect(player).toContain('<BattleParryLayer')
+    expect(player).toContain('shouldActivateTimedQte')
+    expect(player).toContain('resolveSceneQte')
+    expect(player).toContain('<QTEOverlay')
     expect(parry).toContain('pvb-parry')
     expect(parry).toContain('pvb-key-label')
     expect(parry).toContain("PARRY_OPTIONS: Array<{ key: 'A' | 'B'; outcome: QteOutcome }>")

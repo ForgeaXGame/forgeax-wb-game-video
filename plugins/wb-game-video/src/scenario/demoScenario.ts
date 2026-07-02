@@ -83,6 +83,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [auto('enter-init', 'init', 'Out')],
   }))
   add(bpScene('init', '出手判断', null, { x: 300, y: 220 }, {
+    calcType: '出手判断',
     durationMs: 600,
     background: '每回合开始，比较双方「出手速度」做隐藏计算判定本回合先攻方（速度大者先手，相等则空藏先手；无界面选项）。',
     branches: [
@@ -101,6 +102,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [auto('b-ai-check', 'b_chk', '行动完毕')],
   }))
   add(bpScene('a_chk', '血量判定', null, { x: 760, y: 120 }, {
+    calcType: '血量判定',
     durationMs: 600,
     background: '我方（先手）行动后隐藏计算双方血量：敌方血量清空则本回合直接分出胜负；否则进入敌方出手（本回合后手）。',
     branches: [
@@ -112,6 +114,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('b_chk', '血量判定', null, { x: 760, y: 340 }, {
+    calcType: '血量判定',
     durationMs: 600,
     background: '敌方（先手）行动后隐藏计算双方血量：我方血量清空则本回合直接分出胜负；否则进入我方出手（本回合后手）。',
     branches: [
@@ -133,6 +136,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [auto('b-my-round', 'round', '行动完毕')],
   }))
   add(bpScene('round', '回合结束判定', null, { x: 1220, y: 220 }, {
+    calcType: '回合结束判定',
     durationMs: 600,
     background: '本回合双方均已出手，隐藏计算双方血量：任一方血量清空则战斗结束、进入胜负判定；否则进入下一回合、重新做出手判断。',
     branches: [
@@ -149,6 +153,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('settle', '胜负判定', null, { x: 1440, y: 220 }, {
+    calcType: '胜负判定',
     durationMs: 600,
     background: '一方血量清空，战斗结束：隐藏计算比较双方存活——敌将（无常豺）倒下则我方胜利、主将倒下则我方失败。',
     branches: [
@@ -204,6 +209,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('pjudge', '变招判定', null, { x: 380, y: 130 }, {
+    calcType: '变招判定',
     durationMs: 500,
     background: '选定轻攻击后、出手前先做隐藏计算（50% 概率，无界面选项）：本次轻击究竟以「轻攻击」还是「轻攻击·变招」打出。',
     branches: [
@@ -212,12 +218,14 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('pu', '轻攻击', 'vd-wcc-pugong', { x: 700, y: 40 }, {
+    calcType: '轻攻击',
     durationMs: 5000,
     background: '变招判定为普通：欺身前扑挥击，命中迸出爪痕 / 刀痕与受击顿帧（威力1.0·命中100%·不可破防）。',
     performance: { cues: [bossDamageCue('pu-hit', 1000, 80, '命中结算 威力1.0')] },
     branches: [auto('pu-done', 'my-done', 'Out')],
   }))
   add(bpScene('pu2', '轻攻击·变招', 'vd-wcc-pugong2', { x: 700, y: 220 }, {
+    calcType: '轻攻击·变招',
     durationMs: 5000,
     background: '变招判定触发：本次以轻攻击变招（反手补击 / 连段）打出，沿演出分 4 次逐次递增结算（威力 0.25 → 0.3 → 0.35 → 0.4）。',
     performance: {
@@ -231,6 +239,7 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [auto('pu2-done', 'my-done', 'Out')],
   }))
   add(bpScene('zjudge', '变招判定', null, { x: 380, y: 490 }, {
+    calcType: '变招判定',
     durationMs: 500,
     background: '选定重攻击（已扣气力2）后、出手前先做隐藏计算（50% 概率，无界面选项）：本次重击究竟以「重攻击」还是「重攻击·变招」打出。',
     branches: [
@@ -239,12 +248,14 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('zhong', '重攻击', 'vd-wcc-zhong', { x: 700, y: 400 }, {
+    calcType: '重攻击',
     durationMs: 6000,
     background: '变招判定为普通：蓄力后一记沉重扑砸 / 重劈，单组大字伤害弹出（威力1.8·命中95%·暴击+5%·破防）。',
     performance: { cues: [bossDamageCue('zhong-hit', 1700, 144, '命中结算 威力1.8')] },
     branches: [auto('zhong-done', 'my-done', 'Out')],
   }))
   add(bpScene('z2', '重攻击·变招', 'vd-wcc-zhong2', { x: 700, y: 580 }, {
+    calcType: '重攻击·变招',
     durationMs: 6000,
     background: '变招判定触发：本次以重击变招（延迟 / 二段变化）打出，沿演出分 2 次逐次递增结算（威力 1.0 → 1.4）。',
     performance: {
@@ -256,12 +267,14 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     branches: [auto('z2-done', 'my-done', 'Out')],
   }))
   add(bpScene('fuzhu', '冥想', 'vd-wcc-huiqi', { x: 700, y: 760 }, {
+    calcType: '冥想',
     durationMs: 5000,
     background: '空藏冥想调息：回复气力+2、回血12%最大生命、解除异常状态（不造成伤害），用后进入 3 回合冷却。',
     performance: { cues: [{ id: 'fuzhu-heal', atMs: 2000, label: '回气回血结算', effects: [] }] },
     branches: [auto('fuzhu-done', 'my-done', 'Out')],
   }))
   add(bpScene('ult', '灭世', 'vd-wcc-dazhao', { x: 700, y: 940 }, {
+    calcType: '灭世',
     durationMs: 12000,
     background: '气力满（5）方可释放，释放清空气力；招牌绝技长前摇蓄力后全力爆发（威力3.0·命中100%）。',
     performance: { cues: [bossDamageCue('ult-hit', 7000, 240, '命中结算 威力3.0')] },
@@ -275,11 +288,13 @@ export function getBlueprintCombatDemoScenario(): Scenario {
 
   // 子蓝图：敌方回合。严格对齐 `g-cb-ai`。
   add(bpScene('bt', '行为树决策', null, { x: 80, y: 1380 }, {
+    calcType: '行为树决策',
     durationMs: 500,
     background: '敌将行为树读取双方血量 / 状态做隐藏计算评估，本回合发起进攻（无界面选项）：进入攻击前摇预警，随后由空藏在前摇窗口做「防反」QTE 决定结果。',
     branches: [auto('ai-atk', 'tele', '进攻')],
   }))
   add(bpScene('tele', '攻击前摇', 'vd-wcc-qianyao', { x: 320, y: 1380 }, {
+    calcType: '防反判定',
     kind: 'qte',
     durationMs: 4000,
     decision: { optType: 'timed_qte', qteKind: 'parry', timeoutMs: 2600, prompt: '防反 QTE · 按 A/B/C 选择判定' },
@@ -313,18 +328,21 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     ],
   }))
   add(bpScene('block', '受击防反', 'vd-wcc-fangfan', { x: 560, y: 1280 }, {
+    calcType: '防反·大成功',
     durationMs: 4000,
     background: '受击防反：主将精准格挡卸力、周身泛起反震光罩——完全免疫来袭伤害，并顺势反击敌方（威力1.2）。',
     performance: { cues: [bossDamageCue('block-hit', 1800, 96, '反击结算 威力1.2')] },
     branches: [auto('block-done', 'ai-done', 'Out')],
   }))
   add(bpScene('dodgeP', '受击闪避', 'vd-wcc-shanbi', { x: 560, y: 1440 }, {
+    calcType: '防反·成功',
     durationMs: 4000,
     background: '受击闪避：主将侧身卸力闪避，完全免疫来袭伤害并顺势反击敌方（威力0.8）；消耗气力1。',
     performance: { cues: [bossDamageCue('dodge-hit', 2000, 64, '反击结算 威力0.8')] },
     branches: [auto('dodge-done', 'ai-done', 'Out')],
   }))
   add(bpScene('hurt', '受击', 'vd-wcc-shouji', { x: 560, y: 1600 }, {
+    calcType: '防反·失败',
     durationMs: 4000,
     background: '防反失败：主将未能防反、正面中招踉跄硬直破势，承受小怪攻击全额伤害（命中100%·暴击8%），但受击积累气力+1。',
     performance: { cues: [playerDamageCue('hurt-hit', 10, 120, '受击结算')] },
