@@ -192,6 +192,22 @@ const StableBlueprintVideo = memo(function StableBlueprintVideo({
     }))
   }, [nodeId, runKey, src, loop])
 
+  // 双缓冲激活兜底：activateSlot 只由 <video onCanPlay> 触发，但当某 slot 复用
+  // 一个 src 未变的 <video> 元素时（如重开后 n_open→n_door，n_door 回到它原来的
+  // slot），浏览器不重发 canplay → 该 slot 永不 activate、升不上 front。这里在 slots
+  // 变化后补一刀：目标 slot 的 video 已 ready（readyState ≥ HAVE_CURRENT_DATA）却
+  // 还没成为 front，就主动激活。
+  useEffect(() => {
+    for (const slot of ['a', 'b'] as VideoSlot[]) {
+      const data = slots[slot]
+      if (!data || data.token !== currentTokenRef.current) continue
+      if (frontSlotRef.current === slot) continue
+      const video = slot === 'a' ? slotARef.current : slotBRef.current
+      if (video && video.readyState >= 2) void activateSlot(slot)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots])
+
   async function activateSlot(slot: VideoSlot): Promise<void> {
     const data = slots[slot]
     if (!data || data.token !== currentTokenRef.current) return
@@ -214,6 +230,16 @@ const StableBlueprintVideo = memo(function StableBlueprintVideo({
         // Keep the latest frame visible even if the browser refuses autoplay entirely.
       }
     } finally {
+      // 双缓冲只切显示不停旧视频：QTE 中途跳场景时旧 slot 仍在播，声音不断。
+      // 新 slot 成为 front 前，暂停并重置旧 front slot 的 <video>。
+      const prevSlot = frontSlotRef.current
+      if (prevSlot !== slot) {
+        const prevVideo = prevSlot === 'a' ? slotARef.current : slotBRef.current
+        if (prevVideo) {
+          prevVideo.pause()
+          prevVideo.currentTime = 0
+        }
+      }
       frontSlotRef.current = slot
       setFrontSlot(slot)
       onVideoReady(data.token)
@@ -765,7 +791,7 @@ export function BlueprintPlayer(): JSX.Element {
             />
           )}
 
-          {scene && qteLayerActive && !showBattleParry && isInkKouQte(scene) && liveParryQte && runtime && (
+          {scene && qteLayerActive && !showBattleParry && elapsed >= firstQteAppearMs && isInkKouQte(scene) && liveParryQte && runtime && (
             <InkKouLayer
               qte={liveParryQte}
               anchorX={activeQte?.cues?.[0]?.x ?? 0.58}
