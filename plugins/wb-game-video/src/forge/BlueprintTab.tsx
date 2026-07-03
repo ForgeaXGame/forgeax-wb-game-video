@@ -32,7 +32,7 @@ import {
   type BpgTypeClass,
 } from '../editor/storygraph/blueprintGraphStyle'
 import { handleSceneNodeDragStop } from '../editor/storygraph/sceneNodeHandlers'
-import { computeStoryGraphLayout } from '../scenario/layout'
+import { computeStoryGraphLayout, type NodeRect } from '../scenario/layout'
 import { injectStyleOnce } from '../styles/injectStyle'
 import type { BranchKind, Scenario } from '../scenario/types'
 import { scenarioToBlueprint } from '../blueprint/scenarioToBlueprint'
@@ -67,6 +67,8 @@ function BlueprintInner() {
   const selectedSceneId = useScenarioStore((s) => s.selectedSceneId)
   const selectScene = useScenarioStore((s) => s.selectScene)
   const setScenePos = useScenarioStore((s) => s.setScenePos)
+  const pinAllScenePositions = useScenarioStore((s) => s.pinAllScenePositions)
+  const resetLayout = useScenarioStore((s) => s.resetLayout)
   const loadScenario = useScenarioStore((s) => s.loadScenario)
   const stageSceneId = useShellStore((s) => s.stageSceneId)
   const forgeView = useShellStore((s) => s.forgeView)
@@ -79,13 +81,33 @@ function BlueprintInner() {
   const [graphStack, setGraphStack] = useState<string[]>([])
   const currentGraphId = graphStack[graphStack.length - 1]
 
-  useEffect(() => {
-    if (activeId) setPanelOpen(true)
-  }, [activeId])
-
+  // 进入蓝图不自动展开「配置」面板 —— 只有用户点击节点（onNodeClick /
+  // onNodeDoubleClick 里显式 setPanelOpen(true)）才打开，避免一进来就被面板挡住画布。
   useEffect(() => {
     setGraphStack([])
   }, [scenario.id])
+
+  // 蓝图图（新 schema）是节点/连线的 SSOT —— 编辑器与试玩运行时走同一张图，
+  // 不再各自从 Scenario.branches 派生（消除「所见 ≠ 所跑」）。
+  const graph = useMemo(() => scenarioToBlueprint(scenario, currentGraphId), [scenario, currentGraphId])
+
+  // 把「每个节点按内容估算的真实高度」喂给 dagre —— 否则用固定 NODE_H(96) 会低估
+  // 分支/角标多的节点（实测可达 ~150px），同列相邻节点竖向叠在一起（作者反馈的
+  // 「初始化就堆叠遮挡」）。宽度恒为 NODE_W；高度宁可略高（只多留白，绝不重叠）。
+  const nodeSizes = useMemo(() => {
+    const outCount = new Map<string, number>()
+    for (const e of graph.edges) {
+      outCount.set(e.sourceRef, (outCount.get(e.sourceRef) ?? 0) + 1)
+    }
+    const sizes: Record<string, { width: number; height: number }> = {}
+    for (const node of graph.nodes) {
+      sizes[node.id] = {
+        width: NODE_W,
+        height: estimateNodeHeight(node, outCount.get(node.id) ?? 0),
+      }
+    }
+    return sizes
+  }, [graph])
 
   const layout = useMemo(
     () =>
@@ -97,13 +119,11 @@ function BlueprintInner() {
         rankSep: 64,
         marginX: 24,
         marginY: 24,
+        nodeSizes,
       }),
-    [scenario],
+    [scenario, nodeSizes],
   )
 
-  // 蓝图图（新 schema）是节点/连线的 SSOT —— 编辑器与试玩运行时走同一张图，
-  // 不再各自从 Scenario.branches 派生（消除「所见 ≠ 所跑」）。
-  const graph = useMemo(() => scenarioToBlueprint(scenario, currentGraphId), [scenario, currentGraphId])
   const crumbs = useMemo(
     () => [
       { id: undefined as string | undefined, label: scenario.title || '顶层蓝图' },
@@ -140,15 +160,25 @@ function BlueprintInner() {
       })
     }
 
-    // 回环边要绕开所有节点：取全图节点顶缘，把「返程车道」抬到最高节点之上，
-    // 这样弧线整段都落在节点外的空白处，不会穿过任何节点。
-    const nodeTops = Object.values(layout).map((r) => r.y)
-    const loopbackLaneY = (nodeTops.length ? Math.min(...nodeTops) : 0) - LOOPBACK_LANE_MARGIN
+    // 收集「当前画布可见」的节点矩形 —— 只用 graph.nodes（当前图/子图渲染的节点），
+    // 不能用 Object.values(layout)（含未渲染的子蓝图场景，会把车道无谓地抬到半空）。
+    const visibleRects: NodeRect[] = []
+    for (const node of graph.nodes) {
+      const rect = layout[node.id]
+      if (rect) visibleRects.push(rect)
+    }
 
     const nextEdges: Edge[] = []
     for (const e of graph.edges) {
       if (!layout[e.sourceRef] || !layout[e.targetRef]) continue
       const loopback = isLoopbackEdge(e, layout)
+      // 回环边返程车道**按本条边自己算**：只抬到「水平方向真正与这条边跨度相交」的
+      // 可见节点顶缘之上，而不是全图最高节点。这样拖动线跨度之外的节点不会改变车道
+      // （线保持不动，符合「拖了不相关节点、线不该动」的直觉）；只有真正会被这条线
+      // 经过/遮挡的节点才影响它。源/目标自身必在跨度内，故也一定被清到。
+      const loopbackLaneY = loopback
+        ? loopbackLaneFor(layout[e.sourceRef]!, layout[e.targetRef]!, visibleRects)
+        : undefined
       nextEdges.push({
         id: e.id,
         source: e.sourceRef,
@@ -254,6 +284,18 @@ function BlueprintInner() {
               setGraphStack((prev) => [...prev, subFlowRef])
             }}
             onNodeDragStop={(_e, node) => {
+              // 「拖谁只动谁」：把当前画布上所有节点的位置一次性 pin 进 scene.pos，
+              // dagre 从此不再碰任何人 —— 否则只 pin 被拖节点，其余仍是 dynamic，
+              // 下一次重算布局会被 dagre 重新摆放（作者看到的「拖一个、其它全跳」，
+              // 以及刷新后「只剩这一个记住、其余重排」）。pinAllScenePositions 只写
+              // 尚未 pin 的节点，所以第二次起不会产生多余历史。
+              const positions: Record<string, { x: number; y: number }> = {}
+              for (const n of nodes) {
+                positions[n.id] = { x: n.position.x, y: n.position.y }
+              }
+              positions[node.id] = { x: node.position.x, y: node.position.y }
+              pinAllScenePositions(positions)
+              // 被拖节点若已 pin（demo / 第二次拖），pinAll 会跳过它，必须单独写落点。
               handleSceneNodeDragStop(node.id, node.position, {
                 selectScene,
                 setScenePos,
@@ -271,6 +313,26 @@ function BlueprintInner() {
             panOnDrag
           >
           </ReactFlow>
+        )}
+        {nodes.length > 0 && (
+          <button
+            type="button"
+            className="ks-bp-autolayout"
+            title="自适应排版：清除手动拖动的位置，用默认算法重新排布并框选全景"
+            onClick={() => {
+              // 清掉所有 scene.pos → 布局完全交回 dagre（默认排版），覆盖手动拖动。
+              resetLayout()
+              // 等 setNodes 提交 + react-flow 重新测量后再框全景（双 rAF 保证时序）。
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() =>
+                  fitView({ padding: 0.18, duration: 300, maxZoom: 1 }),
+                ),
+              )
+            }}
+          >
+            <span aria-hidden>⤢</span>
+            自适应
+          </button>
         )}
         {nodes.length > 0 && activeId && panelOpen && (
           <BlueprintGameplayPanel onCollapse={() => setPanelOpen(false)} />
@@ -336,6 +398,38 @@ function bpgTypeOfNode(
     return { typeClass: 'perf', accent: BPG_TYPE_ACCENTS.perf, kindLabel: '演出' }
   }
   return { typeClass: 'loop', accent: BPG_TYPE_ACCENTS.loop, kindLabel: '逻辑' }
+}
+
+/**
+ * 估算蓝图节点渲染高度（px），喂给 dagre 让布局按真实占位排布、彼此不重叠。
+ *
+ * 结构与 BlueprintNode 渲染一致：标题条 + 输入/输出引脚区 + 底部信息区（类型行 +
+ * 最多 2 个角标）。行数越多越高。刻意略微高估（宁多留白不重叠）。
+ */
+function estimateNodeHeight(node: GameVideoBlueprintNode, outCount: number): number {
+  const TITLE_H = 34
+  const hasInput = node.incoming.length > 0
+  const bodyRows = Math.max(hasInput ? 1 : 0, outCount)
+  const bodyH = 22 + bodyRows * 20
+  // 底部信息区恒有「类型」行；再加最多 2 个角标行。
+  const badgeCount = countBadges(node)
+  const subH = 16 + (1 + Math.min(2, badgeCount)) * 15
+  return Math.max(NODE_H, TITLE_H + bodyH + subH)
+}
+
+/** 统计节点会渲染出多少个角标（与 deriveNodeData 的 badge 逻辑保持一致）。 */
+function countBadges(node: GameVideoBlueprintNode): number {
+  const ext = node.extensionElements
+  let n = 0
+  if (ext.boss) n++
+  if (ext.qte) n++
+  if (ext.options && ext.options.length > 0) n++
+  if (ext.dmgPoints && ext.dmgPoints.length > 0) n++
+  if (ext.decision && (ext.decision.optType === 'timed' || ext.decision.optType === 'timed_qte')) n++
+  if (ext.entryGate) n++
+  if (ext.hotspots && ext.hotspots.length > 0) n++
+  if (ext.subFlowRef) n++
+  return n
 }
 
 function deriveNodeData(
@@ -497,8 +591,14 @@ interface BPEdgeData extends Record<string, unknown> {
   loopbackLaneY?: number
 }
 
-/** 回环边返程车道相对全图最高节点顶缘再上抬的间距（px）。 */
-const LOOPBACK_LANE_MARGIN = 56
+/**
+ * 回环边返程车道相对「可见最高节点顶缘」再上抬的间距（px）。
+ *
+ * 取值要点：当回环边的源/目标本身就是最高节点时（如「回合结束判定」回到「出手判断」），
+ * 车道离顶缘太近会被该节点自身遮住。所以留够一档间距（约一个节点标题条高度以上），
+ * 让弧线一出节点就抬到其上方空白处，既不遮挡也不至于飘到半空。
+ */
+const LOOPBACK_LANE_MARGIN = 120
 
 const BlueprintEdge = memo(function BlueprintEdge({
   id,
@@ -570,6 +670,26 @@ function isLoopbackEdge(
   const target = layout[edge.targetRef]
   if (!source || !target) return false
   return target.x + target.width < source.x
+}
+
+/**
+ * 为一条回环边计算返程车道 Y（world 坐标）。
+ *
+ * 只考虑「水平方向与本条边跨度 [left, right] 相交」的可见节点顶缘，抬到其上
+ * LOOPBACK_LANE_MARGIN。跨度外的节点（拖到别处、根本不在这条线下面的）不参与，
+ * 所以拖动它们不会让这条线移动。源/目标自身一定在跨度内，故车道必在它们之上。
+ */
+function loopbackLaneFor(src: NodeRect, tgt: NodeRect, rects: NodeRect[]): number {
+  const left = Math.min(src.x, tgt.x)
+  const right = Math.max(src.x + src.width, tgt.x + tgt.width)
+  let top = Math.min(src.y, tgt.y)
+  for (const r of rects) {
+    // x 区间相交（含源/目标自身）→ 这条线会横穿它上方，需要清到它顶缘之上
+    if (r.x < right && r.x + r.width > left && r.y < top) {
+      top = r.y
+    }
+  }
+  return top - LOOPBACK_LANE_MARGIN
 }
 
 /**
@@ -669,6 +789,30 @@ function BP_CSS(): string {
 }
 .ks-bp-empty-glyph { font-size: 40px; color: var(--color-text-tertiary, rgba(255,255,255,0.3)); }
 .ks-bp-empty-text { font-size: 13px; color: var(--color-text-secondary, rgba(255,255,255,0.6)); }
+
+/* 右下角「自适应」浮动按钮 —— 重排为默认布局并框选全景 */
+.ks-bp-autolayout {
+  position: absolute;
+  right: 16px; bottom: 16px;
+  z-index: 5;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  font-size: 12px; font-weight: 700;
+  color: #e7ecf3;
+  background: rgba(28, 32, 40, 0.86);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 9px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.ks-bp-autolayout:hover {
+  background: rgba(40, 46, 58, 0.94);
+  border-color: rgba(255,255,255,0.28);
+}
+.ks-bp-autolayout:active { transform: translateY(1px); }
+.ks-bp-autolayout span { font-size: 14px; line-height: 1; }
 
 /* ── UE4 蓝图节点（对齐原型 .bpg-node） ───────────────── */
 .ks-bpg-node {
