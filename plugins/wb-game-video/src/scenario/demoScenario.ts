@@ -109,11 +109,12 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     durationMs: 600,
     background: '每回合开始，比较双方「出手速度」做隐藏计算判定本回合先攻方（速度大者先手，相等则空藏先手；无界面选项）。',
     branches: [
+      auto('init-me', 'a_my', '我方先手'),
       // 运行时动态判先手：我方速度 ≥ 敌方速度 → 我方先手；否则落到无条件的「敌方先手」兜底。
-      {
-        ...auto('init-me', 'a_my', '我方先手'),
-        condition: { all: [{ type: 'attrCompare', left: 'ent-player', attr: 'speed', op: 'gte', right: 'ent-boss' }] },
-      },
+      // {
+      //   ...auto('init-me', 'a_my', '我方先手'),
+      //   condition: { all: [{ type: 'attrCompare', left: 'ent-player', attr: 'speed', op: 'gte', right: 'ent-boss' }] },
+      // },
       auto('init-foe', 'b_ai', '敌方先手'),
     ],
   }))
@@ -393,8 +394,10 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },
     },
     entities: {
-      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300, speed: 30 },
-      'ent-boss': { id: 'ent-boss', name: '小怪', kind: 'boss', maxHp: 700, initialHp: 700, speed: 25 },
+      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300 },
+      'ent-boss': { id: 'ent-boss', name: '小怪', kind: 'boss', maxHp: 700, initialHp: 700 },
+      // 'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300, speed: 30 },
+      // 'ent-boss': { id: 'ent-boss', name: '小怪', kind: 'boss', maxHp: 700, initialHp: 700, speed: 25 },
     },
     ui: {
       hud: [
