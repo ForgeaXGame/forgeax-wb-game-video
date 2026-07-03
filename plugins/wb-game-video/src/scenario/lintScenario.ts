@@ -235,6 +235,18 @@ function lintClause(
       break
     case 'score':
       break
+    case 'attrCompare':
+      for (const entityId of [clause.left, clause.right]) {
+        if (!scenario.entities?.[entityId]) {
+          push(issues, {
+            code: 'condition.unknown_entity',
+            severity: 'error',
+            ...base,
+            message: `属性比较条件引用未知实体 ${entityId}`,
+          })
+        }
+      }
+      break
   }
 }
 

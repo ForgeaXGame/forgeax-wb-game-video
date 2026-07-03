@@ -15,6 +15,7 @@ import type {
   Branch,
   ConditionClause,
   Effect,
+  EntityAttr,
   EntryGate,
   GameVariable,
   Scenario,
@@ -32,6 +33,8 @@ export interface EntityHpView {
   hp: number
   maxHp: number
   statusIds: string[]
+  /** 出手速度等运行时可比较属性（attrCompare 用）；缺省视为 0。 */
+  speed?: number
 }
 
 export type MutableEntityState<T extends EntityHpView = EntityHpView> = Record<string, T>
@@ -70,6 +73,17 @@ function compareOp(
       return cur !== value
     default:
       return true
+  }
+}
+
+/** 读实体的可比较属性（attrCompare 用）；实体/属性缺失视为 0。 */
+function entityAttr(entity: EntityHpView | undefined, attr: EntityAttr): number {
+  if (!entity) return 0
+  switch (attr) {
+    case 'speed':
+      return entity.speed ?? 0
+    default:
+      return 0
   }
 }
 
@@ -125,6 +139,11 @@ export function evaluateClause(
         ? has(ctx.entities?.[clause.entityId])
         : Object.values(ctx.entities ?? {}).some(has)
       return present === clause.present
+    }
+    case 'attrCompare': {
+      const left = entityAttr(ctx.entities?.[clause.left], clause.attr)
+      const right = entityAttr(ctx.entities?.[clause.right], clause.attr)
+      return compareOp(left, clause.op, right)
     }
     default:
       return true
@@ -239,11 +258,18 @@ export function applyEntityEffects<T extends EntityHpView>(
     if (eff.kind === 'entityStat') {
       const entity = next[eff.entityId]
       if (!entity) continue
-      if (eff.stat !== 'hp') continue
-      const raw = eff.op === 'add' ? entity.hp + eff.value : eff.value
-      const hp = Math.max(0, Math.min(entity.maxHp, raw))
-      if (hp === entity.hp) continue
-      next = { ...next, [eff.entityId]: { ...entity, hp } }
+      if (eff.stat === 'hp') {
+        const raw = eff.op === 'add' ? entity.hp + eff.value : eff.value
+        const hp = Math.max(0, Math.min(entity.maxHp, raw))
+        if (hp === entity.hp) continue
+        next = { ...next, [eff.entityId]: { ...entity, hp } }
+      } else if (eff.stat === 'speed') {
+        const cur = entity.speed ?? 0
+        const speed = Math.max(0, eff.op === 'add' ? cur + eff.value : eff.value)
+        if (speed === cur) continue
+        next = { ...next, [eff.entityId]: { ...entity, speed } }
+      }
+      // qi / shield 暂无运行时载体，忽略（与既有行为一致）。
     } else if (eff.kind === 'status') {
       const ids = eff.entityId ? [eff.entityId] : Object.keys(next)
       for (const id of ids) {
@@ -272,6 +298,10 @@ const OP_LABEL: Record<string, string> = {
   lt: '<',
   eq: '=',
   neq: '≠',
+}
+
+const ATTR_LABEL: Record<EntityAttr, string> = {
+  speed: '出手速度',
 }
 
 function varName(scenario: Scenario, id: string): string {
@@ -310,6 +340,11 @@ export function describeClause(
         : '任一方'
       return clause.present ? `${who} 处于「${sName}」` : `${who} 未处于「${sName}」`
     }
+    case 'attrCompare': {
+      const leftName = scenario.entities?.[clause.left]?.name ?? clause.left
+      const rightName = scenario.entities?.[clause.right]?.name ?? clause.right
+      return `${leftName} ${ATTR_LABEL[clause.attr] ?? clause.attr} ${OP_LABEL[clause.op] ?? clause.op} ${rightName}`
+    }
     default:
       return ''
   }
@@ -341,7 +376,7 @@ export function describeEffect(eff: Effect, scenario: Scenario): string {
   if (eff.kind === 'item') return describeItemEffect(eff, scenario)
   if (eff.kind === 'entityStat') {
     const name = scenario.entities?.[eff.entityId]?.name ?? eff.entityId
-    const stat = eff.stat === 'hp' ? 'HP' : eff.stat
+    const stat = eff.stat === 'hp' ? 'HP' : eff.stat === 'speed' ? '出手速度' : eff.stat
     if (eff.op === 'set') return `${name} ${stat} = ${eff.value}`
     return `${name} ${stat} ${eff.value >= 0 ? '+' : ''}${eff.value}`
   }

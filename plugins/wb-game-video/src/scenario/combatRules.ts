@@ -68,14 +68,14 @@ export function readCombatRules(scenario: Scenario): CombatRulesDraft {
     playerAttack: ext.playerAttack ?? 80,
     playerDefense: ext.playerDefense ?? 40,
     playerCritRate: ext.playerCritRate ?? 10,
-    playerSpeed: ext.playerSpeed ?? 30,
+    playerSpeed: player?.speed ?? ext.playerSpeed ?? 30,
     bossMaxHp: boss?.maxHp ?? 1200,
     bossInitialHp: boss?.initialHp ?? boss?.maxHp ?? 1200,
     bossAttack: ext.bossAttack ?? 75,
     bossDefense: ext.bossDefense ?? 50,
     bossCritRate: ext.bossCritRate ?? 8,
     bossAggression: ext.bossAggression ?? 0.5,
-    bossSpeed: ext.bossSpeed ?? 25,
+    bossSpeed: boss?.speed ?? ext.bossSpeed ?? 25,
     qiInitial: qi?.initial ?? 0,
     qiMax: qi?.max ?? 5,
     lightQiGain: varEffectValue(light, 'add', 2),
@@ -103,6 +103,7 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
       ...player,
       maxHp: next.playerMaxHp,
       initialHp: patch.playerInitialHp ?? (patch.playerMaxHp != null ? next.playerMaxHp : next.playerInitialHp),
+      speed: next.playerSpeed,
     }
   }
   const boss = entities[BOSS_ID]
@@ -111,6 +112,7 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
       ...boss,
       maxHp: next.bossMaxHp,
       initialHp: patch.bossInitialHp ?? (patch.bossMaxHp != null ? next.bossMaxHp : next.bossInitialHp),
+      speed: next.bossSpeed,
     }
   }
 
@@ -122,8 +124,9 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
     max: next.qiMax,
   }
 
+  // 出手判断不再靠预排序 init 分支——速度写在实体属性上，运行时由 init 的
+  // attrCompare 条件（ent-player.speed ≥ ent-boss.speed）动态判先手。
   const scenes = { ...scenario.scenes }
-  scenes.init = orderInitiativeBranches(scenes.init, next.playerSpeed, next.bossSpeed)
   scenes.wait = updateSceneBranch(scenes.wait, 'my-s1', {
     effects: qiEffects('add', next.lightQiGain),
   })
@@ -161,16 +164,15 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
     scenes,
     ext: {
       ...(scenario.ext ?? {}),
+      // 注意：speed 的 SSOT 是实体属性（entities[*].speed），不再写进 ext，避免双源。
       [EXT_KEY]: {
         playerAttack: next.playerAttack,
         playerDefense: next.playerDefense,
         playerCritRate: next.playerCritRate,
-        playerSpeed: next.playerSpeed,
         bossAttack: next.bossAttack,
         bossDefense: next.bossDefense,
         bossCritRate: next.bossCritRate,
         bossAggression: next.bossAggression,
-        bossSpeed: next.bossSpeed,
       } satisfies CombatRulesExt,
     },
   }
@@ -214,18 +216,6 @@ function updateSceneBranch(scene: Scene | undefined, branchId: string, patch: Pa
     ...scene,
     branches: scene.branches.map((b) => (b.id === branchId ? { ...b, ...patch } : b)),
   }
-}
-
-function orderInitiativeBranches(scene: Scene | undefined, playerSpeed: number, bossSpeed: number): Scene {
-  if (!scene) throw new Error('missing init scene')
-  const branches = [...scene.branches]
-  const playerFirst = playerSpeed >= bossSpeed
-  branches.sort((a, b) => {
-    const ar = a.targetSceneId === (playerFirst ? 'a_my' : 'b_ai') ? 0 : 1
-    const br = b.targetSceneId === (playerFirst ? 'a_my' : 'b_ai') ? 0 : 1
-    return ar - br
-  })
-  return { ...scene, branches }
 }
 
 function updateFirstCueDamage(scene: Scene | undefined, entityId: string, damage: number): Scene {

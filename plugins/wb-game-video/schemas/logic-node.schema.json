@@ -349,6 +349,19 @@
             "entityId": { "type": "string" },
             "present": { "type": "boolean" }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "left", "attr", "op", "right"],
+          "description": "两实体同一属性运行时比较（left.attr op right.attr），如出手判断比较双方速度。",
+          "properties": {
+            "type": { "const": "attrCompare" },
+            "left": { "type": "string" },
+            "attr": { "enum": ["speed"] },
+            "op": { "enum": ["gte", "lte", "gt", "lt", "eq", "neq"] },
+            "right": { "type": "string" }
+          }
         }
       ]
     },

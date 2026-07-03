@@ -18,6 +18,7 @@
 import type {
   SceneKind,
   EntitySpec,
+  EntityAttr,
   StatusSpec,
   DecisionSpec,
   BossSpec,
@@ -29,6 +30,7 @@ export type {
   SceneKind,
   EntityKind,
   EntitySpec,
+  EntityAttr,
   StatusSpec,
   DecisionSpec,
   DecisionOptType,
@@ -555,6 +557,18 @@ export type ConditionClause =
   | { type: 'score'; op: 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'neq'; value: number }
   /** 玩法系统(v9)：某实体当前是否带某状态效果。 */
   | { type: 'status'; statusId: string; entityId?: string; present: boolean }
+  /**
+   * 玩法系统(v10)：两实体的同一属性运行时比较（left.attr op right.attr）。
+   * 用于「出手判断」等需要比较双方动态数值（速度大者先手）的隐藏判定——
+   * 与 hpRatio/var 的「动态值 vs 常量」不同，这里两侧都是运行时可变量。
+   */
+  | {
+      type: 'attrCompare'
+      left: string
+      attr: EntityAttr
+      op: 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'neq'
+      right: string
+    }
 
 export interface BranchCondition {
   /** 全部满足（AND）才解锁；空数组 = 无条件 */
@@ -585,7 +599,7 @@ export interface EntityStatEffect {
   id: string
   kind: 'entityStat'
   entityId: string
-  stat: 'hp' | 'qi' | 'shield'
+  stat: 'hp' | 'qi' | 'shield' | 'speed'
   op: EffectOp
   value: number
 }

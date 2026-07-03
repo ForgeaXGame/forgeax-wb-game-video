@@ -26,7 +26,7 @@ describe('combatRules', () => {
     expect(rt.state.entities['ent-boss']?.hp).toBe(100)
   })
 
-  it('stores editable actor attributes and applies speed to initiative routing', () => {
+  it('stores editable actor attributes and drives initiative via runtime speed compare', () => {
     const scenario = applyCombatRules(getDemoScenario(), {
       playerAttack: 88,
       playerDefense: 44,
@@ -39,11 +39,48 @@ describe('combatRules', () => {
       bossSpeed: 30,
     })
     const rules = readCombatRules(scenario)
-    const initTargets = scenario.scenes.init?.branches.map((b) => b.targetSceneId)
 
     expect(rules.playerAttack).toBe(88)
     expect(rules.bossAggression).toBe(0.8)
-    expect(initTargets?.[0]).toBe('b_ai')
+    // 速度写在实体属性（SSOT），不再预排序 init 分支；分支顺序保持静态。
+    expect(scenario.entities?.['ent-player']?.speed).toBe(10)
+    expect(scenario.entities?.['ent-boss']?.speed).toBe(30)
+    expect(scenario.scenes.init?.branches.map((b) => b.targetSceneId)).toEqual(['a_my', 'b_ai'])
+
+    // 运行时按 attrCompare 动态判先手：我方更慢(10<30) → 敌方先手，先进 b_ai。
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+    rt.start()
+    rt.onClipEnded()
+    expect(rt.state.visited.has('b_ai')).toBe(true)
+    expect(rt.state.visited.has('a_my')).toBe(false)
+  })
+
+  it('routes initiative to the player when player speed is not slower', () => {
+    // demo 默认 player 30 ≥ boss 25 → 我方先手，先进 a_my。
+    const scenario = getDemoScenario()
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+    rt.start()
+    rt.onClipEnded()
+    expect(rt.state.visited.has('a_my')).toBe(true)
+    expect(rt.state.visited.has('b_ai')).toBe(false)
+  })
+
+  it('re-evaluates initiative when speed changes at runtime via entityStat effect', () => {
+    const scenario = getDemoScenario()
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+    rt.start()
+    // 运行时给敌方加速，超过我方（25+10 > 30）：此后出手判断应改判敌方先手。
+    rt.applyDamagePoint({
+      t: 0,
+      x: 0,
+      y: 0,
+      note: 'buff speed',
+      effects: [{ id: 'buff-spd', kind: 'entityStat', entityId: 'ent-boss', stat: 'speed', op: 'add', value: 10 }],
+    })
+    rt.onClipEnded()
+    expect(rt.state.entities['ent-boss']?.speed).toBe(35)
+    expect(rt.state.visited.has('b_ai')).toBe(true)
+    expect(rt.state.visited.has('a_my')).toBe(false)
   })
 
   it('updates qi thresholds and skill damage in scenario data', () => {

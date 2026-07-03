@@ -204,6 +204,8 @@ export function ConditionRow({
           else if (type === 'hpRatio') onChange({ type: 'hpRatio', entityId: firstEntityId, op: 'gt', value: 0 })
           else if (type === 'score') onChange({ type: 'score', op: 'gte', value: 1 })
           else if (type === 'status') onChange({ type: 'status', statusId: firstStatusId, present: true })
+          else if (type === 'attrCompare')
+            onChange({ type: 'attrCompare', left: firstEntityId, attr: 'speed', op: 'gte', right: entities[1]?.id ?? firstEntityId })
           else onChange({ type: 'visited', sceneId: sceneOptions[0]?.id ?? '' })
         }}
       >
@@ -214,6 +216,7 @@ export function ConditionRow({
         {entities.length > 0 && <option value="hpRatio">血量比例</option>}
         <option value="score">QTE分数</option>
         {statuses.length > 0 && <option value="status">状态</option>}
+        {entities.length > 0 && <option value="attrCompare">属性比较</option>}
       </select>
 
       {clause.type === 'hasItem' && (
@@ -414,6 +417,48 @@ export function ConditionRow({
             <option value="1">带有</option>
             <option value="0">没有</option>
           </select>
+        </>
+      )}
+
+      {clause.type === 'attrCompare' && (
+        <>
+          <select
+            className="ks-ne-name"
+            value={clause.left}
+            onChange={(e) => onChange({ ...clause, left: e.target.value })}
+            title="左侧实体"
+          >
+            {entities.map((en) => (
+              <option key={en.id} value={en.id}>
+                {en.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ks-ne-op"
+            value={clause.op}
+            onChange={(e) => onChange({ ...clause, op: e.target.value as typeof clause.op })}
+          >
+            <option value="gte">≥</option>
+            <option value="gt">&gt;</option>
+            <option value="lte">≤</option>
+            <option value="lt">&lt;</option>
+            <option value="eq">=</option>
+            <option value="neq">≠</option>
+          </select>
+          <select
+            className="ks-ne-name"
+            value={clause.right}
+            onChange={(e) => onChange({ ...clause, right: e.target.value })}
+            title="右侧实体"
+          >
+            {entities.map((en) => (
+              <option key={en.id} value={en.id}>
+                {en.name}
+              </option>
+            ))}
+          </select>
+          <span className="ks-ne-unit" title="比较属性">出手速度</span>
         </>
       )}
 

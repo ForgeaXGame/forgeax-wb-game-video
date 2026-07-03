@@ -265,7 +265,7 @@ function migrateEffectList(raw: unknown, fallbackPrefix: string): Effect[] | und
         id: typeof r.id === 'string' ? r.id : `${fallbackPrefix}-entity-${i + 1}`,
         kind: 'entityStat',
         entityId: String(r.entityId ?? ''),
-        stat: r.stat === 'qi' || r.stat === 'shield' ? r.stat : 'hp',
+        stat: r.stat === 'qi' || r.stat === 'shield' || r.stat === 'speed' ? r.stat : 'hp',
         op: r.op === 'set' ? 'set' : 'add',
         value: Number(r.value) || 0,
       })

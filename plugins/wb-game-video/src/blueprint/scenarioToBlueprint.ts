@@ -471,6 +471,8 @@ function clauseExpression(clause: ConditionClause): string {
       return `score ${opSymbol(clause.op)} ${clause.value}`
     case 'status':
       return `status(${clause.statusId}${clause.entityId ? `,${clause.entityId}` : ''}) == ${clause.present}`
+    case 'attrCompare':
+      return `${clause.left}.${clause.attr} ${opSymbol(clause.op)} ${clause.right}.${clause.attr}`
     default:
       return 'true'
   }

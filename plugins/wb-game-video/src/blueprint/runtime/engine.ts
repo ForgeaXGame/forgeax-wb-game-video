@@ -52,6 +52,8 @@ export interface EntityRuntime {
   maxHp: number
   kind: string
   statusIds: string[]
+  /** 出手速度（先手判定 attrCompare 用）；可被 entityStat(speed) 运行时改写。 */
+  speed: number
 }
 
 export interface RuntimeState {
@@ -545,7 +547,7 @@ export class BlueprintRuntime {
   private evalCtx(): EvalContext {
     const entities: Record<string, EntityHpView> = {}
     for (const [id, e] of Object.entries(this.state.entities)) {
-      entities[id] = { hp: e.hp, maxHp: e.maxHp, statusIds: e.statusIds }
+      entities[id] = { hp: e.hp, maxHp: e.maxHp, statusIds: e.statusIds, speed: e.speed }
     }
     return {
       vars: this.state.vars,
@@ -628,6 +630,7 @@ function initEntities(scenario: Scenario): Record<string, EntityRuntime> {
       maxHp: e.maxHp,
       kind: e.kind,
       statusIds: [],
+      speed: e.speed ?? 0,
     }
   }
   return out

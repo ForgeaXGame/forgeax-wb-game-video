@@ -59,6 +59,13 @@ export type ChoiceUi = 'default' | 'battleSkillBar' | 'inkYingMo'
 export type EntityKind = 'player' | 'boss' | 'enemy' | 'ally'
 
 /**
+ * 实体的运行时可比较属性（闭合 union）—— 供条件子句 attrCompare 与 entityStat 副作用共用。
+ * 血量走 hp（既有 maxHp/initialHp + hpRatio 语义），这里收敛「非血量」的数值属性。
+ * 目前仅 speed（出手速度，先手判定用）；后续要加 attack/defense 等按需扩展本 union。
+ */
+export type EntityAttr = 'speed'
+
+/**
  * 一个可被 HUD 展示、可在 Boss 战里掉血的实体。
  * 挂在 Scenario.entities（全局注册表）。
  */
@@ -71,6 +78,8 @@ export interface EntitySpec {
   maxHp: number
   /** 初始血量（缺省 = maxHp）。 */
   initialHp?: number
+  /** 出手速度（先手判定：速度大者先手）。缺省 = 0。运行时可被 entityStat(speed) 改写。 */
+  speed?: number
   /** HUD 头像 mediaStore id。 */
   portraitMediaId?: string
   /** 作者备注。 */
