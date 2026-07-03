@@ -1,8 +1,30 @@
 import type { Effect, MediaRef, PerformanceCue, Scenario, Scene } from './types'
+// `game-nodia-fighting` 工程磁盘上的 `game-video/scenarios.json` 的一次性冻结拷贝
+// （整份 { version, activeId, items } DB，原样复制）。
+import nodiaScenariosDb from './nodiaBlueprintDemo.json'
 
 /** bundled demo 的固定 id —— 单一真源，供持久化层判定"这是内置 demo，不得抢占 activeId"。 */
 export const BUNDLED_DEMO_ID = 'demo-001'
 export const COMBAT_BLUEPRINT_DEMO_ID = BUNDLED_DEMO_ID
+
+/**
+ * 「载入战斗蓝图 Demo」按钮专用的剧本 —— 从上面那份 scenarios.json 拷贝里取出「活动本」
+ * （`activeId` 指向的 item，即 `nodia-main`：叙事段 + 小怪战斗一体）的 scenario。
+ * 刻意与共享的内置 demo（`getBlueprintCombatDemoScenario` / `demo-001`，也是默认 store 初值
+ * + 大量单测的样板）分开：按钮换数据源不牵动那条通用链路。
+ *
+ * `loadScenario` 内部会跑 migrate + sanitize，所以这里返回原始 JSON 即可（每次返回全新拷贝，
+ * 避免调用方原地改到共享常量）。
+ */
+export function getNodiaBlueprintDemoScenario(): Scenario {
+  const db = nodiaScenariosDb as {
+    activeId?: string
+    items: Array<{ id: string; scenario: unknown }>
+  }
+  const item = db.items.find((it) => it.id === db.activeId) ?? db.items[0]
+  if (!item) throw new Error('nodiaBlueprintDemo.json 里没有任何 scenario item')
+  return structuredClone(item.scenario) as unknown as Scenario
+}
 
 /**
  * 默认演示剧情 —— 新影游平台 standalone 原型的「战斗蓝图」。
@@ -87,7 +109,11 @@ export function getBlueprintCombatDemoScenario(): Scenario {
     durationMs: 600,
     background: '每回合开始，比较双方「出手速度」做隐藏计算判定本回合先攻方（速度大者先手，相等则空藏先手；无界面选项）。',
     branches: [
-      auto('init-me', 'a_my', '我方先手'),
+      // 运行时动态判先手：我方速度 ≥ 敌方速度 → 我方先手；否则落到无条件的「敌方先手」兜底。
+      {
+        ...auto('init-me', 'a_my', '我方先手'),
+        condition: { all: [{ type: 'attrCompare', left: 'ent-player', attr: 'speed', op: 'gte', right: 'ent-boss' }] },
+      },
       auto('init-foe', 'b_ai', '敌方先手'),
     ],
   }))
@@ -367,8 +393,8 @@ export function getBlueprintCombatDemoScenario(): Scenario {
       qi: { id: 'qi', name: '气力', kind: 'number', initial: 0, min: 0, max: 5 },
     },
     entities: {
-      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300 },
-      'ent-boss': { id: 'ent-boss', name: '小怪', kind: 'boss', maxHp: 700, initialHp: 700 },
+      'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 300, speed: 30 },
+      'ent-boss': { id: 'ent-boss', name: '小怪', kind: 'boss', maxHp: 700, initialHp: 700, speed: 25 },
     },
     ui: {
       hud: [

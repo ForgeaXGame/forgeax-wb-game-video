@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 
 import { useScenarioStore } from '../scenario/scenarioStore'
-import { getBlueprintCombatDemoScenario } from '../scenario/demoScenario'
+import { getNodiaBlueprintDemoScenario } from '../scenario/demoScenario'
 import { useShellStore } from '../shell/shellStore'
 import { BlueprintGameplayPanel } from './BlueprintGameplayPanel'
 import { resolveBranchEdgeStyle } from '../editor/storygraph/BranchEdge'
@@ -238,7 +238,7 @@ function BlueprintInner() {
         <button
           type="button"
           className="ks-bp-demo-btn"
-          onClick={() => loadScenario(getBlueprintCombatDemoScenario())}
+          onClick={() => loadScenario(getNodiaBlueprintDemoScenario())}
         >
           载入战斗蓝图 Demo
         </button>
