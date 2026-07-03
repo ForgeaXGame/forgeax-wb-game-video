@@ -58,4 +58,17 @@ describe('InkYingMoLayer', () => {
     })
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-ying' }))
   })
+
+  it('timed decision auto-picks defaultBranchId (默) on timeout', async () => {
+    const timedScene = {
+      ...scene,
+      decision: { optType: 'timed', timeoutMs: 20, defaultBranchId: 'b-mo' },
+    } as unknown as Scene
+    const onPick = vi.fn()
+    act(() => {
+      root.render(<InkYingMoLayer scene={timedScene} onPick={onPick} />)
+    })
+    await new Promise((r) => setTimeout(r, 80))
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'b-mo' }))
+  })
 })

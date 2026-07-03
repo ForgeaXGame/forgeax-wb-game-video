@@ -768,6 +768,9 @@ export function BlueprintPlayer(): JSX.Element {
           {scene && qteLayerActive && !showBattleParry && isInkKouQte(scene) && liveParryQte && runtime && (
             <InkKouLayer
               qte={liveParryQte}
+              anchorX={activeQte?.cues?.[0]?.x ?? 0.58}
+              anchorY={activeQte?.cues?.[0]?.y ?? 0.39}
+              glyph={activeQte?.cues?.[0]?.label || '叩'}
               onResolve={(outcome) => dispatch(runtime.submitQteOutcome(outcome))}
             />
           )}

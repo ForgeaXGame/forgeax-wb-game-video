@@ -114,6 +114,9 @@ function presetAllows(preset: HudPreset, el: HudElement, ctx: HudCtx): boolean {
       return false
     case 'explore':
       return el === 'playerHp'
+    case 'narrative':
+      // 叙事段:只己方血条;敌方血条/score/倒计时一律不显(四维属性由 NarrativeStatsLayer 独立渲染)。
+      return el === 'playerHp'
     case 'main':
       return el === 'playerHp' || el === 'score' || el === 'timer' || (el === 'status' && ctx.hasStatus)
     case 'battle':
