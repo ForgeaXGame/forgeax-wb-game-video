@@ -73,10 +73,16 @@ async function seedCharacter(name: string): Promise<string> {
   return res.manifest.assetPath;
 }
 
-test('auto-rig: gateway skips balance pre-check and reaches paid endpoint', async () => {
+test('auto-rig: rejects cos_not_configured before any paid fetch (no COS + mock source)', async () => {
   const assetPath = await seedCharacter('hero');
-  await expect(tools['gen3d:auto-rig']({ slug: SLUG, assetPath })).rejects.toThrow(/unexpected paid fetch/);
-  expect(nonBalanceCalls.length).toBeGreaterThan(0);
+  // The decouple change (d42b365) gates auto-rig: a mock source (sourceJobId
+  // starts with 'mock') with no COS has no shareable model_url and no Meshy
+  // input_task_id, so it must reject cos_not_configured BEFORE any paid call —
+  // not burn a paid fetch. balance pre-check is skipped (gateway returns null).
+  await expect(tools['gen3d:auto-rig']({ slug: SLUG, assetPath })).rejects.toMatchObject({
+    code: 'cos_not_configured',
+  });
+  expect(nonBalanceCalls.length).toBe(0);
   const asset = await new PerGameAssetStore().getAsset(SLUG, assetPath);
   expect(asset?.readiness.rigged).toBe(false);
 });

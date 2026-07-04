@@ -45,6 +45,7 @@ function result(providerMode: 'real' | 'mock', glb: Uint8Array): ProviderResult 
     mode: 'text',
     providerMode,
     sourceJobId: providerMode === 'real' ? 'task-1' : null,
+    sourceModelUrl: providerMode === 'real' ? 'https://assets.meshy.ai/task-1/model.glb' : null,
     prompt: 'a barrel',
     files: [
       { role: 'source_mesh', format: 'glb', data: glb },

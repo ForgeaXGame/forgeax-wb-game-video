@@ -12,8 +12,8 @@
 //   - remesh(): re-mesh an existing model to a target polycount + topology.
 //   - retexture(): re-skin an existing model from a text/image style (+PBR).
 //
-// All outputs come back as gateway gateway `data[]` array (type+format tagged)
-// and are flattened by extractUrls() then downloaded to bytes.
+// All outputs come back as gateway `data[]` array (type+format tagged) and are
+// flattened by extractGatewayUrls() (shared SSOT) then downloaded to bytes.
 //
 // LiteLLM gateway endpoint:
 //   POST /v1/3d/generations  — submit (body includes `model`)
@@ -24,6 +24,7 @@ import type { FileFormat, FileRole, GenerationMode, TextureKind } from '../../sh
 import type { MeshyEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
+import { extractGatewayUrls } from './gateway-data';
 
 const GATEWAY_SUBMIT = '/v1/3d/generations';
 const GATEWAY_POLL = '/v1/3d/tasks';
@@ -169,6 +170,7 @@ export class MeshyProvider {
       mode: input.mode as GenerationMode,
       providerMode: 'real',
       sourceJobId,
+      sourceModelUrl: primaryMeshUrl(urls),
       prompt: input.prompt ?? null,
       files,
     };
@@ -201,7 +203,7 @@ export class MeshyProvider {
 
     const urls = await this.poll('remesh', sourceJobId);
     const files = await this.downloadFiles(urls);
-    return { provider: 'meshy', mode: 'remesh', providerMode: 'real', sourceJobId, prompt: null, files };
+    return { provider: 'meshy', mode: 'remesh', providerMode: 'real', sourceJobId, sourceModelUrl: primaryMeshUrl(urls), prompt: null, files };
   }
 
   // Retexture an existing model from a text or image style. Emits a NEW derived
@@ -240,6 +242,7 @@ export class MeshyProvider {
       mode: 'retexture',
       providerMode: 'real',
       sourceJobId,
+      sourceModelUrl: primaryMeshUrl(urls),
       prompt: input.textStylePrompt ?? null,
       files,
     };
@@ -357,7 +360,7 @@ export class MeshyProvider {
       const status = String(resp.status ?? '').toLowerCase();
       if (status === SUCCESS) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
-        return extractUrls(resp);
+        return extractGatewayUrls(resp);
       }
       if (FAILURE.has(status)) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_failed', sourceJobId: taskId, detail: taskErrorMessage(resp) ?? status });
@@ -408,36 +411,15 @@ function submitTaskId(resp: Record<string, unknown>): string | null {
   return (resp.id as string) ?? null;
 }
 
+// Pick the primary mesh URL (GLB preferred) from a poll's flattened url map, to
+// chain into remesh/retexture as model_url. The gateway's remesh/retexture routes
+// require a public model_url, not a task id; the generate output's Meshy CDN url
+// is directly re-fetchable by the gateway, so no COS round-trip is needed.
+function primaryMeshUrl(urls: Record<string, string>): string | null {
+  return urls.glb ?? urls.fbx ?? urls.obj ?? urls.usdz ?? urls.stl ?? null;
+}
+
 function taskErrorMessage(resp: Record<string, unknown>): string | undefined {
   const err = resp.error as Record<string, unknown> | undefined;
   return err && typeof err.message === 'string' && err.message ? err.message : undefined;
-}
-
-// Flatten the LiteLLM gateway success response `data[]` array into a flat
-// url map compatible with downloadFiles(). data[] entries carry type+format:
-//   type="mesh", format="glb"   → key "glb"
-//   type="preview", format="png" → key "__thumbnail"
-//   type="texture", ...          → key "__texture_<texture_kind>"
-// PBR textures carry texture_kind in the entry; absent kinds are simply skipped.
-function extractUrls(resp: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {};
-  const data = resp.data;
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      if (typeof item !== 'object' || !item) continue;
-      const url = (item as Record<string, unknown>).url;
-      if (typeof url !== 'string' || !url) continue;
-      const type = String((item as Record<string, unknown>).type ?? '');
-      const format = String((item as Record<string, unknown>).format ?? '');
-      if (type === 'mesh') {
-        out[format] = url;
-      } else if (type === 'preview') {
-        out.__thumbnail = url;
-      } else if (type === 'texture') {
-        const kind = String((item as Record<string, unknown>).texture_kind ?? format);
-        out[`__texture_${kind}`] = url;
-      }
-    }
-  }
-  return out;
 }

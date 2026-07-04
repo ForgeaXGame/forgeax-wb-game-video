@@ -10,7 +10,7 @@
 3D 资产**生成**入口。职责：从 prompt / image / multi-view 输入产出原始 3D mesh。
 包含 `pose_standardization`（图片→标准化姿态图）作为生成的上游预处理。
 
-Providers：`hunyuan_workflow` / `meshy` / `rodin`（待 key）。
+Providers：`hunyuan_workflow` / `meshy`（经 LiteLLM 3D 网关）；`rodin` 暂未接入网关（代码保留,`getRodinEnv` 恒 null）。
 `pose_standardization` 使用 Hunyuan REST，但归属 gen3d 因为它是图片→图片的预处理，服务于 views 生成。
 
 输出：`Gen3DAssetManifest`（含 `source_mesh` + `preview_image`）。
@@ -108,7 +108,7 @@ Lab 里的 benchmark 结论（哪个 provider 擅长什么）作为选型背景�
 ### Provider
 
 3D 生成 API 后端。由 `(providerId, baseUrl, apiKey)` 唯一确定。
-当前：`hunyuan_workflow` / `meshy` / `rodin`（gen3d 内）；`hunyuan_rest`（跨 gen3d 和 3d-pipeline）。
+当前：`hunyuan_workflow` / `meshy`（经 LiteLLM 3D 网关）；`rodin` 暂未接入网关（代码保留,gen3d 内）；`hunyuan_rest`（跨 gen3d 和 3d-pipeline）。
 
 ### Mode
 

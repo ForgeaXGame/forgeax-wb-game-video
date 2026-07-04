@@ -6,18 +6,19 @@
 // "<2000 faces + clean topology" than asking lowpoly mode to one-shot it (lowpoly
 // silently ignores target_polycount/topology).
 //
-//   [1] generate(standard, no PBR)   → clean base geometry (a chainable task id)
+//   [1] generate(standard, no PBR)   → clean base geometry (a chainable model url)
 //   [2] remesh(target=1500, triangle) → low-poly geometry
 //   [3] retexture(PBR, style)         → skin the FINAL low-poly UVs (only if PBR)
 //
 // The result is tagged with the ORIGINAL mode/prompt so it lists + caches like a
 // normal generation but carries the low-poly geometry + full PBR set (captured by
-// MeshyProvider.extractUrls/downloadFiles, Phase 1).
+// MeshyProvider.extractGatewayUrls/downloadFiles, Phase 1).
 //
-// ⚠️ Real-Meshy validation deferred (PLAN §9): whether a generate task id is a
-// valid remesh input — and a remesh task id a valid retexture input — is only
-// confirmed in the post-T2 e2e batch. The input_task_id chaining below is the
-// SINGLE spot to switch to a COS model_url if live Meshy rejects task-id chaining.
+// Chaining is by model_url, NOT task id (validated on the live gateway
+// 2026-07-03): the gateway's meshy-3d-remesh/retexture routes reject input_task_id
+// with "Missing required parameter(s): ['model_url']" (HTTP 500). Each stage's
+// ProviderResult.sourceModelUrl is the prior stage's Meshy CDN GLB url, which the
+// gateway re-fetches directly (no COS round-trip needed).
 
 import type { ProviderResult } from '../shared/catalog';
 import type { MeshyProvider } from './providers/meshy';
@@ -69,28 +70,28 @@ export async function producePreciseLowpoly(
     enablePbr: false,
     params: input.stageOneParams,
   });
-  const generatedTaskId = generated.sourceJobId;
-  // No chainable task id (e.g. a mock) → return the standard mesh as-is.
-  if (!generatedTaskId) return tag(generated);
+  const generatedUrl = generated.sourceModelUrl;
+  // No chainable model url (e.g. a mock) → return the standard mesh as-is.
+  if (!generatedUrl) return tag(generated);
 
   // [2] Remesh down to the low-poly triangle budget.
   const remeshed = await provider.remesh({
-    inputTaskId: generatedTaskId,
+    modelUrl: generatedUrl,
     targetPolycount: input.targetPolycount,
     topology: 'triangle',
   });
-  const remeshedTaskId = remeshed.sourceJobId;
+  const remeshedUrl = remeshed.sourceModelUrl;
 
   // [3] Optional PBR retexture of the low-poly mesh. Style = the original prompt
   // (text) or reference image (image/views). Skipped when PBR is off or no style.
-  if (input.enablePbr && remeshedTaskId) {
+  if (input.enablePbr && remeshedUrl) {
     const style =
       input.mode === 'text'
         ? { textStylePrompt: input.prompt }
         : { imageStyleUrl: input.imageUrl ?? input.imageUrls?.[0] };
     if (style.textStylePrompt || style.imageStyleUrl) {
       const retextured = await provider.retexture({
-        inputTaskId: remeshedTaskId,
+        modelUrl: remeshedUrl,
         ...style,
         enablePbr: true,
         aiModel: input.aiModel,

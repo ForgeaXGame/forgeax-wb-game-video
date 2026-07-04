@@ -2,8 +2,8 @@
 //
 // Real provider calls are OFF by default. They turn on ONLY when both:
 //   1. GEN3D_ENABLE_REAL_PROVIDERS === "1", and
-//   2. a LiteLLM gateway key is present in Studio global .env (LITELLM_PROXY_KEY
-//      or ANTHROPIC_API_KEY — see pickLitellmFromEnv).
+//   2. a 3D gateway key is present in Studio global .env (FORGEAX_3D_GATEWAY_KEY,
+//      ANTHROPIC_API_KEY, or LITELLM_PROXY_KEY — see pickLitellmFromEnv).
 // Otherwise generation falls back to the deterministic no-quota mock. Secrets
 // are read from process.env (server loads $FORGEAX_PROJECT_ROOT/.env) or, for
 // standalone smokes, from the plugin-local .env. Nothing here is logged.
@@ -68,28 +68,47 @@ function normalizeProxyBase(raw: string): string {
   return raw.replace(/\/+$/, '').replace(/\/v1$/, '');
 }
 
+// 3D gateway base URL is resolved SEPARATELY from the chat/image
+// LITELLM_PROXY_BASE_URL: that variable points at the chat proxy (e.g.
+// Moonshot) which does NOT host /v1/3d/generations. Priority:
+//   1. FORGEAX_3D_GATEWAY_BASE_URL — 3D-only override (shared by wb-gen3d /
+//      wb-ai-asset; ops pins a 3D-specific host)
+//   2. ANTHROPIC_BASE_URL         — the forgeax proxy (same host that serves 3D)
+//   3. DEFAULT_LITELLM_BASE       — https://llm-proxy.forgeax.com
+// LITELLM_PROXY_BASE_URL is intentionally NOT consulted for 3D.
+function resolveGatewayBaseUrl(env: Record<string, string | undefined>): string {
+  const dedicated = env.FORGEAX_3D_GATEWAY_BASE_URL?.trim();
+  if (dedicated) return normalizeProxyBase(dedicated);
+  const anthropic = env.ANTHROPIC_BASE_URL?.trim();
+  if (anthropic) return normalizeProxyBase(anthropic);
+  return DEFAULT_LITELLM_BASE;
+}
+
 /**
- * Resolve LiteLLM gateway credentials from Studio global .env (process.env).
- * Priority matches forgeax-studio settings policy:
- *   1. LITELLM_PROXY_KEY (+ optional LITELLM_PROXY_BASE_URL)
- *   2. ANTHROPIC_API_KEY (+ optional ANTHROPIC_BASE_URL)
+ * Resolve LiteLLM gateway credentials for 3D generation. The 3D gateway is
+ * decoupled from the chat/image LITELLM_PROXY_* vars, which may point at a
+ * different proxy (e.g. Moonshot) that does not host /v1/3d/generations.
+ *
+ * Key priority:
+ *   1. FORGEAX_3D_GATEWAY_KEY — 3D-only override (shared by all 3D plugins)
+ *   2. ANTHROPIC_API_KEY      — the forgeax proxy key (default 3D gateway auth)
+ *   3. LITELLM_PROXY_KEY      — legacy fallback (kept for pre-decouple configs)
+ * Base URL priority: FORGEAX_3D_GATEWAY_BASE_URL > ANTHROPIC_BASE_URL > default.
  * Plugin-local .env must NOT hold a separate gateway key — configure in
  * Studio Settings → API Keys.
  */
 export function pickLitellmFromEnv(env: Record<string, string | undefined>): LitellmEnv | null {
-  const proxyKey = env.LITELLM_PROXY_KEY?.trim();
-  if (proxyKey) {
-    return {
-      apiKey: proxyKey,
-      baseUrl: normalizeProxyBase(env.LITELLM_PROXY_BASE_URL?.trim() || DEFAULT_LITELLM_BASE),
-    };
+  const dedicatedKey = env.FORGEAX_3D_GATEWAY_KEY?.trim();
+  if (dedicatedKey) {
+    return { apiKey: dedicatedKey, baseUrl: resolveGatewayBaseUrl(env) };
   }
   const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
   if (anthropicKey) {
-    return {
-      apiKey: anthropicKey,
-      baseUrl: normalizeProxyBase(env.ANTHROPIC_BASE_URL?.trim() || DEFAULT_LITELLM_BASE),
-    };
+    return { apiKey: anthropicKey, baseUrl: resolveGatewayBaseUrl(env) };
+  }
+  const proxyKey = env.LITELLM_PROXY_KEY?.trim();
+  if (proxyKey) {
+    return { apiKey: proxyKey, baseUrl: resolveGatewayBaseUrl(env) };
   }
   return null;
 }

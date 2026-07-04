@@ -10,6 +10,7 @@ import type { FileFormat, FileRole, GenerationMode } from '../../shared/manifest
 import type { HunyuanEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
+import { extractGatewayUrls } from './gateway-data';
 
 const GATEWAY_SUBMIT = '/v1/3d/generations';
 const GATEWAY_POLL = '/v1/3d/tasks';
@@ -139,7 +140,7 @@ export class HunyuanWorkflowProvider {
       const status = String(resp.status ?? '').toLowerCase();
       if (status === SUCCESS) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
-        return extractUrls(resp);
+        return extractGatewayUrls(resp);
       }
       if (FAILURE.has(status)) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'hunyuan_workflow', mode, event: 'poll_failed', sourceJobId: taskId, detail: taskErrorMessage(resp) ?? status });
@@ -217,25 +218,4 @@ function buildPayload(model: string, input: HunyuanGenerateInput): Record<string
     }
   }
   return payload;
-}
-
-// Flatten the LiteLLM gateway `data[]` array into a flat url map.
-function extractUrls(resp: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {};
-  const data = resp.data;
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      if (typeof item !== 'object' || !item) continue;
-      const url = (item as Record<string, unknown>).url;
-      if (typeof url !== 'string' || !url) continue;
-      const type = String((item as Record<string, unknown>).type ?? '');
-      const format = String((item as Record<string, unknown>).format ?? '');
-      if (type === 'mesh') {
-        out[format] = url;
-      } else if (type === 'preview') {
-        out.__thumbnail = url;
-      }
-    }
-  }
-  return out;
 }
