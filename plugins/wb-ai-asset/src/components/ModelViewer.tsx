@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { t } from '@/i18n';
 
 interface ModelStats {
   faces: number;
@@ -154,10 +155,10 @@ export function ModelViewer({ url }: { url: string }) {
   return (
     <div className="aa-viewer">
       <div ref={mountRef} className="aa-viewer-canvas" />
-      {status === 'loading' && <div className="aa-viewer-overlay">加载模型…</div>}
+      {status === 'loading' && <div className="aa-viewer-overlay">{t('viewer.loading')}</div>}
       {status === 'error' && (
         <div className="aa-viewer-overlay aa-viewer-overlay--error" title={errMsg}>
-          模型加载失败（mock 模型不可渲染属正常）
+          {t('viewer.loadError')}
         </div>
       )}
       <div className="aa-viewer-toolbar">
@@ -167,13 +168,13 @@ export function ModelViewer({ url }: { url: string }) {
           aria-pressed={showGrid}
           onClick={() => setShowGrid((v) => !v)}
         >
-          网格
+          {t('viewer.grid')}
         </button>
       </div>
       {stats && (
         <div className="aa-viewer-info">
-          <span>{fmt(stats.faces)} 面</span>
-          <span>{fmt(stats.vertices)} 顶点</span>
+          <span>{t('stat.faces', { count: fmt(stats.faces) })}</span>
+          <span>{t('stat.vertices', { count: fmt(stats.vertices) })}</span>
           <span>
             {stats.size.x.toFixed(2)} × {stats.size.y.toFixed(2)} × {stats.size.z.toFixed(2)}
           </span>

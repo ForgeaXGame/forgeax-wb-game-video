@@ -1,5 +1,6 @@
 import { type Gen3DAssetManifest, selectFile } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
+import { t } from '@/i18n';
 
 function caption(m: Gen3DAssetManifest): string {
   if (m.userLabel?.trim()) return m.userLabel.trim();
@@ -28,20 +29,20 @@ export function AssetLibrary({
       <header className="aa-card-head">
         <h3 className="aa-card-title">
           <span className="aa-card-icon">🗂️</span>
-          资产库
+          {t('asset.title')}
           <span className="aa-count">{assets.length}</span>
         </h3>
         <div className="aa-card-actions">
           <button type="button" className="aa-btn aa-btn--ghost" onClick={onRefresh} disabled={!gameActive}>
-            刷新
+            {t('btn.refresh')}
           </button>
         </div>
       </header>
 
       {!gameActive ? (
-        <p className="aa-empty">未选择游戏。打开一个游戏后，生成的资产会落在此处。</p>
+        <p className="aa-empty">{t('asset.emptyNoGame')}</p>
       ) : assets.length === 0 ? (
-        <p className="aa-empty">还没有资产。用左侧的「生成」开始第一个低模小物件。</p>
+        <p className="aa-empty">{t('asset.emptyNoAssets')}</p>
       ) : (
         <ul className="aa-asset-grid">
           {assets.map((m) => {

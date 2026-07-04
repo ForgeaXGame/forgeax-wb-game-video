@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { callTool } from '@/lib/toolClient';
+import { t } from '@/i18n';
 import type { CredentialsState } from '@/types';
 
 type FieldKey = 'COS_SECRET_ID' | 'COS_SECRET_KEY' | 'COS_BUCKET' | 'COS_REGION';
 
 const FIELDS: { key: FieldKey; label: string; secret: boolean; placeholder: string }[] = [
-  { key: 'COS_SECRET_ID', label: 'COS SecretId（可选，本地图中转用）', secret: true, placeholder: 'AKID...' },
-  { key: 'COS_SECRET_KEY', label: 'COS SecretKey（可选）', secret: true, placeholder: '...' },
-  { key: 'COS_BUCKET', label: 'COS Bucket（可选）', secret: false, placeholder: 'my-bucket-1250000000' },
-  { key: 'COS_REGION', label: 'COS Region（可选）', secret: false, placeholder: 'ap-guangzhou' },
+  { key: 'COS_SECRET_ID', label: 'cred.field.secretId', secret: true, placeholder: 'AKID...' },
+  { key: 'COS_SECRET_KEY', label: 'cred.field.secretKey', secret: true, placeholder: '...' },
+  { key: 'COS_BUCKET', label: 'cred.field.bucket', secret: false, placeholder: 'my-bucket-1250000000' },
+  { key: 'COS_REGION', label: 'cred.field.region', secret: false, placeholder: 'ap-guangzhou' },
 ];
 
 // Plugin-local .env: COS keys + master switch. LiteLLM gateway key is read-only
@@ -58,22 +59,25 @@ export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; on
     <div className="aa-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="aa-modal" onClick={(e) => e.stopPropagation()}>
         <header className="aa-modal-head">
-          <h3>COS 凭证 / 供应商开关</h3>
+          <h3>{t('cred.title')}</h3>
           <button type="button" className="aa-btn aa-btn--ghost" onClick={onClose}>✕</button>
         </header>
 
         <label className="aa-switch">
           <input type="checkbox" checked={enableReal} onChange={(e) => setEnableReal(e.target.checked)} />
-          <span>启用真实供应商调用（关闭则走确定性 mock，不消耗额度）</span>
+          <span>{t('cred.enableReal')}</span>
         </label>
 
         <section className="aa-litellm-readonly">
           <span className={`aa-litellm-badge ${state?.litellmConfigured ? 'is-on' : 'is-off'}`}>
-            LiteLLM 网关：{state?.litellmConfigured ? '已配置' : '未配置'}
+            {t('cred.gatewayStatus', {
+              state: state?.litellmConfigured ? t('cred.gatewayConfigured') : t('cred.gatewayNotConfigured'),
+            })}
           </span>
           <p className="aa-hint-small">
-            网关密钥由 Studio「设置 → API Keys」统一管理（ANTHROPIC_API_KEY 或 LITELLM_PROXY_KEY），此处不可编辑。
-            {state?.litellmProxyKey ? ` 当前：${state.litellmProxyKey}` : ''}
+            {t('cred.gatewayHint', {
+              current: state?.litellmProxyKey ? t('cred.gatewayCurrent', { key: state.litellmProxyKey }) : '',
+            })}
           </p>
         </section>
 
@@ -82,11 +86,11 @@ export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; on
             const masked = state?.credentials?.[f.key] ?? null;
             return (
               <label key={f.key} className="aa-field">
-                <span className="aa-field-label">{f.label}</span>
+                <span className="aa-field-label">{t(f.label)}</span>
                 <input
                   type={f.secret ? 'password' : 'text'}
                   value={drafts[f.key] ?? ''}
-                  placeholder={masked ? `已设置：${masked}（留空保持，输入 - 清除）` : f.placeholder}
+                  placeholder={masked ? t('cred.placeholderSet', { masked }) : f.placeholder}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
                   autoComplete="off"
                   spellCheck={false}
@@ -99,9 +103,9 @@ export function CredentialsModal({ onClose, onSaved }: { onClose: () => void; on
         {error ? <p className="aa-error">{error}</p> : null}
 
         <footer className="aa-modal-foot">
-          <button type="button" className="aa-btn aa-btn--ghost" onClick={onClose}>取消</button>
+          <button type="button" className="aa-btn aa-btn--ghost" onClick={onClose}>{t('btn.cancel')}</button>
           <button type="button" className="aa-btn aa-btn--primary" onClick={save} disabled={busy}>
-            {busy ? '保存中…' : '保存并即时生效'}
+            {busy ? t('btn.saving') : t('btn.save')}
           </button>
         </footer>
       </div>

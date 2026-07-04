@@ -8,6 +8,7 @@ import { downloadBundle } from '@/lib/exportBundle';
 import { ModelViewer } from '@/components/ModelViewer';
 import { MotionBrowser } from '@/components/MotionBrowser';
 import { EDITOR_ICON_MAP, motionMeta } from '@/ui-meta';
+import { t } from '@/i18n';
 
 // One semantic glyph per action, drawn from the shared editor icon vocabulary
 // so the same action reads the same across step / CTA / empty / library.
@@ -52,28 +53,28 @@ export function Workspace({
     <div className="gx-workspace">
       <div className="ws-header">
         <span className="ws-eyebrow">Hunyuan3D / Meshy / Rodin</span>
-        <h1 className="ws-title">生成结果</h1>
+        <h1 className="ws-title">{t('ws.title')}</h1>
       </div>
 
       {error && (
         <div className="gx-error" role="alert">
           <div className="gx-error-head">
-            <AlertIcon size={15} /> 生成失败
+            <AlertIcon size={15} /> {t('ws.error.title')}
           </div>
           <p className="gx-error-msg">{error}</p>
           <div className="gx-error-actions">
             <button type="button" className="fx-btn fx-btn--sm" disabled={!canRetry} onClick={onRetry}>
-              重试
+              {t('ws.btn.retry')}
             </button>
             <button
               type="button"
               className="fx-btn fx-btn--sm"
               onClick={() => navigator.clipboard?.writeText(error)}
             >
-              复制详情
+              {t('ws.btn.copyDetails')}
             </button>
             <button type="button" className="fx-btn fx-btn--sm" onClick={onDismissError}>
-              关闭
+              {t('ws.btn.close')}
             </button>
           </div>
         </div>
@@ -82,8 +83,8 @@ export function Workspace({
       {busy && (
         <div className="gx-state">
           <RefreshIcon className="gx-spin" size={24} />
-          <div className="gx-state-title">生成中…</div>
-          <p className="gx-state-copy">混元真实生成可能需要数分钟，请保持页面打开。</p>
+          <div className="gx-state-title">{t('ws.busy.title')}</div>
+          <p className="gx-state-copy">{t('ws.busy.copy')}</p>
         </div>
       )}
 
@@ -125,10 +126,8 @@ export function Workspace({
       ) : (
         <div className="gx-state">
           <GenerateIcon size={26} />
-          <div className="gx-state-title">还没有结果</div>
-          <p className="gx-state-copy">
-            在左侧填写描述 / 图片 / 多视图并点击「生成 3D」，或从右侧资产库选择一个查看模型。
-          </p>
+          <div className="gx-state-title">{t('ws.empty.title')}</div>
+          <p className="gx-state-copy">{t('ws.empty.copy')}</p>
         </div>
       )}
     </div>
@@ -174,7 +173,12 @@ function ResultCard({
       if (!url) return null;
       if (f.motionRef) return { url, label: f.motionRef.label, key: motionRefKey(f.motionRef) };
       if (f.motionType !== undefined) {
-        return { url, label: motionMeta[f.motionType]?.label ?? `动作 ${f.motionType}`, key: `m${f.motionType}` };
+        const meta = motionMeta[f.motionType];
+        return {
+          url,
+          label: meta ? t(meta.label) : t('ws.motionFallback', { n: f.motionType }),
+          key: `m${f.motionType}`,
+        };
       }
       return null;
     })
@@ -183,7 +187,7 @@ function ResultCard({
   const baseUrl = blobUrl(baseFile);
   const viewerClips =
     motionClips.length > 0
-      ? [...(baseUrl ? [{ url: baseUrl, label: '原模型', key: 'base' }] : []), ...motionClips]
+      ? [...(baseUrl ? [{ url: baseUrl, label: t('ws.clip.base'), key: 'base' }] : []), ...motionClips]
       : undefined;
   // Refine is Meshy-only second stage texturing a white-mesh text preview. Only
   // real previews carry a usable sourceJobId.
@@ -212,7 +216,7 @@ function ResultCard({
       ) : (
         <div className="model-viewer--empty">
           <Box size={28} />
-          <span>无 GLB 模型</span>
+          <span>{t('ws.noGlb')}</span>
         </div>
       )}
 
@@ -242,7 +246,7 @@ function ResultCard({
             disabled={busy}
             onClick={() => onRefine(refineTaskId)}
           >
-            <RefineIcon size={14} /> {busy ? '处理中…' : '加贴图 (refine)'}
+            <RefineIcon size={14} /> {busy ? t('ws.btn.busy') : t('ws.refine.btn')}
           </button>
         )}
         <ExportBundleButton manifest={manifest} />
@@ -287,21 +291,19 @@ function DownstreamPanel({
     <section className="downstream">
       <div className="downstream-head">
         <RigIcon size={14} />
-        <span>下游：绑骨 → 动作</span>
+        <span>{t('ws.downstream.title')}</span>
       </div>
 
       {/* Step 1: auto-rig */}
       <div className="downstream-step">
         <span className="downstream-step-no">1</span>
         <div className="downstream-step-body">
-          <div className="downstream-step-title">绑定骨架</div>
+          <div className="downstream-step-title">{t('ws.rig.title')}</div>
           {rigged ? (
-            <small className="downstream-ok">已绑骨（humanoid）· 可应用动作</small>
+            <small className="downstream-ok">{t('ws.rig.done')}</small>
           ) : (
             <small className="downstream-hint">
-              {isCharacter
-                ? '为带贴图的高模角色绑定人形骨架（保贴图）。'
-                : '绑骨仅对人形角色有意义；此资产在「物件」槽，绑骨结果可能无效。'}
+              {isCharacter ? t('ws.rig.hint.char') : t('ws.rig.hint.mesh')}
             </small>
           )}
         </div>
@@ -311,7 +313,7 @@ function DownstreamPanel({
           disabled={busy || rigged}
           onClick={() => onAutoRig(assetPath)}
         >
-          <RigIcon size={14} /> {rigged ? '已绑骨' : busy ? '处理中…' : '自动绑骨'}
+          <RigIcon size={14} /> {rigged ? t('ws.rig.btn.done') : busy ? t('ws.btn.busy') : t('ws.rig.btn.action')}
         </button>
       </div>
 
@@ -320,12 +322,12 @@ function DownstreamPanel({
         <span className="downstream-step-no">2</span>
         <div className="downstream-step-body">
           <div className="downstream-step-title">
-            <MotionIcon size={13} /> 应用动作
+            <MotionIcon size={13} /> {t('ws.motion.title')}
           </div>
           {rigged ? (
             <MotionBrowser manifest={manifest} busy={busy} onApplyMotion={onApplyMotion} />
           ) : (
-            <small className="downstream-hint">先完成绑骨，再浏览并选择动作。</small>
+            <small className="downstream-hint">{t('ws.motion.hint.prereq')}</small>
           )}
         </div>
       </div>
@@ -336,10 +338,10 @@ function DownstreamPanel({
           type="button"
           className="fx-btn fx-btn--sm"
           disabled={busy}
-          title="可选：减面重拓扑，产出新的低模资产（高模保留，贴图不保留）"
+          title={t('ws.lowpoly.title')}
           onClick={() => onRetopoLowpoly(assetPath)}
         >
-          <LowpolyIcon size={14} /> 低模重拓扑（可选旁路）
+          <LowpolyIcon size={14} /> {t('ws.lowpoly.btn')}
         </button>
       </div>
     </section>
@@ -371,14 +373,14 @@ function ExportBundleButton({ manifest }: { manifest: Gen3DAssetManifest }): JSX
         type="button"
         className="fx-btn fx-btn--sm"
         disabled={exporting}
-        title="把主模型 + 绑骨 + 全部动作(GLB/FBX) + 贴图 + 预览图 + manifest.json 打包成一个 .zip 下载"
+        title={t('ws.export.title')}
         onClick={onExport}
       >
-        <HandoffIcon size={14} /> {exporting ? '打包中…' : '导出资产包 (.zip)'}
+        <HandoffIcon size={14} /> {exporting ? t('ws.export.busy') : t('ws.export.btn')}
       </button>
       {error && (
         <small className="downstream-hint" role="alert" style={{ flexBasis: '100%' }}>
-          导出失败：{error}
+          {t('ws.export.fail', { error })}
         </small>
       )}
     </>
@@ -393,7 +395,7 @@ function PreviewThumb({ file }: { file: ManifestFile | null }): JSX.Element {
   return (
     <div className="preview-thumb preview-thumb--empty" aria-hidden="true">
       <ImgIcon size={20} />
-      <span>{file ? `${(file.bytes / 1024).toFixed(0)} KB` : 'no preview'}</span>
+      <span>{file ? `${(file.bytes / 1024).toFixed(0)} KB` : t('ws.noPreview')}</span>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Eraser, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import { callTool } from '@/lib/toolClient';
 import type { CredentialsPatch, CredentialsState, Gen3DCredentials } from '@/types';
+import { t } from '@/i18n';
 
 // Plugin-local credentials: COS upload keys + master real/mock switch.
 // LiteLLM gateway key is read-only from Studio Settings → API Keys.
@@ -162,18 +163,18 @@ export function CredentialsModal({
         className="gx-modal motion-fade-in"
         role="dialog"
         aria-modal="true"
-        aria-label="3D 供应商密钥配置"
+        aria-label={t('cred.aria.title')}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="gx-modal-head">
           <span className="gx-modal-title">
             <KeyRound size={15} aria-hidden="true" />
-            供应商密钥配置
+            {t('cred.title')}
           </span>
           <button
             type="button"
             className="fx-icon-btn gx-modal-close"
-            aria-label="关闭"
+            aria-label={t('cred.aria.close')}
             onClick={onClose}
             disabled={busy}
           >
@@ -185,17 +186,17 @@ export function CredentialsModal({
           {phase === 'loading' && (
             <div className="gx-modal-state">
               <RefreshCw size={20} className="gx-spin" aria-hidden="true" />
-              <span>读取密钥配置…</span>
+              <span>{t('cred.loading')}</span>
             </div>
           )}
 
           {phase === 'error' && (
             <div className="gx-modal-state">
               <ShieldAlert size={22} aria-hidden="true" />
-              <span className="gx-state-title">读取密钥配置失败</span>
+              <span className="gx-state-title">{t('cred.error.title')}</span>
               <p className="gx-state-copy">{loadError}</p>
               <button type="button" className="fx-btn fx-btn--sm" onClick={() => void load()}>
-                重试
+                {t('cred.btn.retry')}
               </button>
             </div>
           )}
@@ -204,9 +205,9 @@ export function CredentialsModal({
             <>
               <section className="cred-section">
                 <div className="cred-section-head">
-                  <span className="cred-section-title">真实供应商总开关</span>
+                  <span className="cred-section-title">{t('cred.section.realSwitch')}</span>
                 </div>
-                <div className="fx-segmented" role="radiogroup" aria-label="真实供应商总开关">
+                <div className="fx-segmented" role="radiogroup" aria-label={t('cred.section.realSwitch')}>
                   <button
                     type="button"
                     role="radio"
@@ -215,7 +216,7 @@ export function CredentialsModal({
                     onClick={() => changeEnabled(true)}
                   >
                     <ShieldAlert size={15} aria-hidden="true" />
-                    <span>真实供应商</span>
+                    <span>{t('cred.option.real')}</span>
                   </button>
                   <button
                     type="button"
@@ -225,28 +226,28 @@ export function CredentialsModal({
                     onClick={() => changeEnabled(false)}
                   >
                     <ShieldCheck size={15} aria-hidden="true" />
-                    <span>全部 mock</span>
+                    <span>{t('cred.option.mock')}</span>
                   </button>
                 </div>
-                <p className="step-note">关闭时全部回退 mock，不消耗配额。</p>
+                <p className="step-note">{t('cred.hint.realSwitch')}</p>
               </section>
 
               <section className="cred-section">
                 <div className="cred-section-head">
-                  <span className="cred-section-title">LiteLLM 网关</span>
-                  <span className="cred-tag">Studio 设置</span>
+                  <span className="cred-section-title">{t('cred.section.litellm')}</span>
+                  <span className="cred-tag">{t('cred.tag.studio')}</span>
                   <StatusBadge configured={litellmConfigured} />
                 </div>
                 <p className="step-note">
-                  网关密钥由 Studio「设置 → API Keys」统一管理（ANTHROPIC_API_KEY 或 LITELLM_PROXY_KEY），此处不可编辑。
-                  {litellmProxyKey ? ` 当前：${litellmProxyKey}` : ' 当前未配置。'}
+                  {t('cred.hint.litellm')}{' '}
+                  {litellmProxyKey ? t('cred.hint.litellmCurrent', { key: litellmProxyKey }) : t('cred.hint.litellmNone')}
                 </p>
               </section>
 
               <section className="cred-section">
                 <div className="cred-section-head">
-                  <span className="cred-section-title">对象存储 COS</span>
-                  <span className="cred-tag">传输</span>
+                  <span className="cred-section-title">{t('cred.section.cos')}</span>
+                  <span className="cred-tag">{t('cred.tag.transfer')}</span>
                   <StatusBadge configured={masked?.COS_SECRET_ID != null && masked?.COS_SECRET_KEY != null} />
                 </div>
                 <SecretField
@@ -285,9 +286,7 @@ export function CredentialsModal({
                     onChange={(e) => changeCosRegion(e.target.value)}
                   />
                 </label>
-                <p className="step-note">
-                  上传本地图到 COS 需要公网 URL 中转时配置；纯文本/图像生成可不配。
-                </p>
+                <p className="step-note">{t('cred.hint.cos')}</p>
               </section>
             </>
           )}
@@ -298,13 +297,13 @@ export function CredentialsModal({
             <span
               className={`gx-modal-msg ${saveError ? 'gx-modal-msg--err' : justSaved ? 'gx-modal-msg--ok' : ''}`}
             >
-              {saveError ?? (justSaved ? '已保存 ✓' : '')}
+              {saveError ?? (justSaved ? t('cred.msg.saved') : '')}
             </span>
             <button type="button" className="fx-btn fx-btn--sm" onClick={onClose} disabled={busy}>
-              关闭
+              {t('cred.btn.close')}
             </button>
             <button type="button" className="fx-btn fx-btn--primary" onClick={() => void save()} disabled={busy}>
-              {busy ? '保存中…' : '保存'}
+              {busy ? t('cred.btn.saving') : t('cred.btn.save')}
             </button>
           </footer>
         )}
@@ -316,7 +315,7 @@ export function CredentialsModal({
 function StatusBadge({ configured }: { configured: boolean }) {
   return (
     <span className={`cred-badge ${configured ? 'cred-badge--on' : 'cred-badge--off'}`}>
-      {configured ? '已配置' : '未配置'}
+      {configured ? t('cred.badge.configured') : t('cred.badge.notConfigured')}
     </span>
   );
 }
@@ -336,11 +335,11 @@ function SecretField({
 }) {
   const configured = mask != null;
   const placeholder = edit.cleared
-    ? '将清除该密钥（保存后生效）'
+    ? t('cred.secret.placeholder.clear')
     : configured
-      ? `已配置 ${mask}`
-      : '未配置 — 粘贴 API Key';
-  const pending = edit.value.trim() !== '' ? '将保存新密钥' : edit.cleared ? '将清除该密钥' : null;
+      ? t('cred.secret.placeholder.configured', { mask })
+      : t('cred.secret.placeholder.empty');
+  const pending = edit.value.trim() !== '' ? t('cred.secret.pending.save') : edit.cleared ? t('cred.secret.pending.clear') : null;
   return (
     <label className="field">
       <span className="field-label">{label}</span>
@@ -355,9 +354,9 @@ function SecretField({
           onChange={(e) => onChange(e.target.value)}
         />
         {configured && (
-          <button type="button" className="fx-btn fx-btn--sm" onClick={onClear} title="清除已保存的密钥">
+          <button type="button" className="fx-btn fx-btn--sm" onClick={onClear} title={t('cred.secret.clearTitle')}>
             <Eraser size={13} aria-hidden="true" />
-            清除
+            {t('cred.secret.btn.clear')}
           </button>
         )}
       </div>

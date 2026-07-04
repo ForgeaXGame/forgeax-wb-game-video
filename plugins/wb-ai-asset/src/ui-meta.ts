@@ -10,21 +10,21 @@ export interface ModeMeta {
 export const primaryModeMeta: Record<PrimaryMode, ModeMeta> = {
   text: {
     toolId: 'aiasset:text-to-3d',
-    label: '文生',
+    label: 'meta.text.label',
     icon: '✏️',
-    hint: '用一句描述生成低模小物件，例如「a wooden barrel」。',
+    hint: 'meta.text.hint',
   },
   image: {
     toolId: 'aiasset:image-to-3d',
-    label: '图生',
+    label: 'meta.image.label',
     icon: '🖼️',
-    hint: '从一张参考图生成低模。本地图请先上传换取可访问 URL。',
+    hint: 'meta.image.hint',
   },
   views: {
     toolId: 'aiasset:multi-image-to-3d',
-    label: '多视角',
+    label: 'meta.views.label',
     icon: '🎞️',
-    hint: '用 1–4 张不同角度的同一物体图，轮廓更准。',
+    hint: 'meta.views.hint',
   },
 };
 

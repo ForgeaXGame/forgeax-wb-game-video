@@ -13,16 +13,17 @@ import { blobUrl } from '@/lib/blobUrl';
 import { callTool } from '@/lib/toolClient';
 import type { ScoreQualityResult } from '@/types';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
+import { t } from '@/i18n';
 
 const GaugeIcon = EDITOR_ICON_MAP.quality;
 const DIMS = ['geometry', 'topology', 'texture', 'pbr', 'prompt_fidelity'] as const;
 type Dim = (typeof DIMS)[number];
 const DIM_LABEL: Record<Dim, string> = {
-  geometry: '几何',
-  topology: '拓扑',
-  texture: '贴图',
-  pbr: 'PBR',
-  prompt_fidelity: '语义贴合',
+  geometry: 'quality.dim.geometry',
+  topology: 'quality.dim.topology',
+  texture: 'quality.dim.texture',
+  pbr: 'quality.dim.pbr',
+  prompt_fidelity: 'quality.dim.fidelity',
 };
 
 export function QualityInspector({
@@ -103,9 +104,9 @@ export function QualityInspector({
       <section className="reserved-card">
         <div className="reserved-head">
           <GaugeIcon size={15} />
-          <span className="reserved-title">质量评分</span>
+          <span className="reserved-title">{t('quality.title')}</span>
         </div>
-        <p className="reserved-note">从资产库选择一个资产以计算五维质量评分。</p>
+        <p className="reserved-note">{t('quality.hint.select')}</p>
       </section>
     );
   }
@@ -114,12 +115,12 @@ export function QualityInspector({
     <section className="reserved-card">
       <div className="reserved-head">
         <GaugeIcon size={15} />
-        <span className="reserved-title">质量评分</span>
-        {total !== null && <span className="reserved-badge">总分 {total}</span>}
+        <span className="reserved-title">{t('quality.title')}</span>
+        {total !== null && <span className="reserved-badge">{t('quality.badge.total', { total })}</span>}
       </div>
 
       {phase === 'unparsable' ? (
-        <p className="reserved-note">无法解析模型（mock 资产为占位字节，无法客观评分）。</p>
+        <p className="reserved-note">{t('quality.hint.unparsable')}</p>
       ) : (
         <div className="quality-dims">
           {DIMS.map((dim) => {
@@ -127,13 +128,13 @@ export function QualityInspector({
             const src = source(dim);
             return (
               <div className="q-row" key={dim}>
-                <span className="q-label">{DIM_LABEL[dim]}</span>
+                <span className="q-label">{t(DIM_LABEL[dim])}</span>
                 <div className="q-bar">
                   <div className="q-bar-fill" style={{ width: `${v ?? 0}%` }} />
                 </div>
                 <span className="q-val">{v ?? '—'}</span>
                 <span className={`q-src q-src--${src}`}>
-                  {src === 'auto' ? '自动' : src === 'manual' ? '手动' : '—'}
+                  {src === 'auto' ? t('quality.src.auto') : src === 'manual' ? t('quality.src.manual') : '—'}
                 </span>
                 {editing && (
                   <input
@@ -154,15 +155,15 @@ export function QualityInspector({
       )}
 
       {selected.targetFaceCount == null && phase === 'ready' && (
-        <p className="reserved-note">无目标面数（mock/旧/低模派生）→ 拓扑维记为「—」。</p>
+        <p className="reserved-note">{t('quality.hint.noTarget')}</p>
       )}
-      <p className="reserved-note">语义贴合（prompt_fidelity）继承自源，待 AI 评分（P4）。</p>
+      <p className="reserved-note">{t('quality.hint.fidelity')}</p>
 
       {editing && (
         <textarea
           className="fx-textarea"
           rows={2}
-          placeholder="评分备注（可选）"
+          placeholder={t('quality.placeholder.notes')}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
@@ -175,15 +176,15 @@ export function QualityInspector({
           disabled={phase === 'computing'}
           onClick={() => setEditing((e) => !e)}
         >
-          {editing ? '取消手动' : '手动覆盖'}
+          {editing ? t('quality.btn.cancelManual') : t('quality.btn.manualOverride')}
         </button>
         <button
           type="button"
           className="fx-btn fx-btn--sm"
           disabled
-          title="AI 视觉评分待 server 授权后开放（P4）"
+          title={t('quality.btn.aiTitle')}
         >
-          AI 评分
+          {t('quality.btn.ai')}
         </button>
         <button
           type="button"
@@ -191,7 +192,7 @@ export function QualityInspector({
           disabled={saving || phase === 'computing' || phase === 'unparsable'}
           onClick={save}
         >
-          {saving ? '保存中…' : '保存评分'}
+          {saving ? t('quality.btn.saving') : t('quality.btn.save')}
         </button>
       </div>
     </section>

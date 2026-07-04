@@ -11,7 +11,7 @@ export interface HdrPreset {
 }
 
 export const HDR_PRESETS: HdrPreset[] = [
-  { id: 'builtin-neutral', label: '中性影棚 (内置)', file: null },
+  { id: 'builtin-neutral', label: 'env.builtinNeutral', file: null },
 ];
 
 const SOLID_COLOR = 0x14171c;
