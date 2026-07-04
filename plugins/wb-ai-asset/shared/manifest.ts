@@ -317,10 +317,13 @@ export interface WbAssetMeta {
 }
 
 // Engine external-asset-package meta — lives in `<name>.glb.meta.json`, conforms
-// to engine meta.schema.json (additionalProperties:false). vite-plugin-pack
-// buildCatalog reads this to fold the GLB into the runtime registry so
-// loadByGuid<SceneAsset> can fetch + parse the mesh. GUIDs are deterministic
-// (sha256 of contentHash:sourceIndex) so re-cooking the same GLB never churns
+// to engine meta.schema.json where `importSettings` is a free-form object.
+// vite-plugin-pack buildCatalog reads this to fold the GLB into the runtime
+// registry so loadByGuid<SceneAsset> can fetch + parse the mesh; the gltf
+// importer additionally requires a `kind: 'texture'` row per glTF image or the
+// runtime renders flat-shaded. GUIDs are deterministic (mesh:
+// sha256(contentHash:sourceIndex); material/scene/texture:
+// sha256(contentHash:kind:sourceIndex)) so re-cooking the same GLB never churns
 // identity; editor import reuses these via cookGltfMeta's existingMeta path.
 export interface ExternalAssetMeta {
   schemaVersion: 1;
@@ -329,7 +332,21 @@ export interface ExternalAssetMeta {
   // Companion GLB file name (e.g. prop-boulder.glb). Omit to let the engine
   // derive it by stripping .meta.json from the sidecar path.
   source?: string;
-  importSettings: { colorSpace: 'srgb' | 'linear'; mipmap: 'auto' | 'none' };
+  // Free-form per the engine schema. The engine's toAssetPack emits
+  // { defaultSceneIndex, diagnostics }; the importer only reads `mipmap`
+  // (defaulting to true) and derives per-image colorSpace itself, so
+  // colorSpace here is at most a legacy hint. All fields optional so both
+  // the engine cook and this plugin's cook satisfy the type.
+  importSettings: {
+    defaultSceneIndex?: number;
+    diagnostics?: {
+      nodeNames: ReadonlyArray<string>;
+      unsupportedExtensions: ReadonlyArray<string>;
+      matrixTrsCoexistNodes: ReadonlyArray<string>;
+    };
+    colorSpace?: 'srgb' | 'linear';
+    mipmap?: 'auto' | 'none';
+  };
   subAssets: ReadonlyArray<{
     guid: string;
     sourceIndex: number;
