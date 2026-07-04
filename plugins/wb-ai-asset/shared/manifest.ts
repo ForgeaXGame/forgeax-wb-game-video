@@ -274,7 +274,14 @@ export interface RigChain {
   rigExpiresAt: number | null;
 }
 
-export interface AssetSidecar {
+// wb-ai-asset private metadata — lives in `<name>.glb.wb.json`, kept SEPARATE
+// from the engine's `<name>.glb.meta.json` (ExternalAssetMeta). Engine
+// meta.schema.json is additionalProperties:false, so merging the wb fields
+// (producer/createdAt/contentHash/dependencies/custom) into the engine meta
+// makes the scanner reject the whole game's catalog (pack-malformed-meta,
+// fail-fast → buildCatalog never ingests the game → every loadByGuid fails →
+// monsters/dungeon fall back to builtin cubes). The split is the contract.
+export interface WbAssetMeta {
   schemaVersion: 1;
   producer: {
     plugin: string;
@@ -307,6 +314,28 @@ export interface AssetSidecar {
     // dispatches by custom.rig.rigProvider and reads rig.rigTaskId (Meshy).
     rig?: RigChain;
   };
+}
+
+// Engine external-asset-package meta — lives in `<name>.glb.meta.json`, conforms
+// to engine meta.schema.json (additionalProperties:false). vite-plugin-pack
+// buildCatalog reads this to fold the GLB into the runtime registry so
+// loadByGuid<SceneAsset> can fetch + parse the mesh. GUIDs are deterministic
+// (sha256 of contentHash:sourceIndex) so re-cooking the same GLB never churns
+// identity; editor import reuses these via cookGltfMeta's existingMeta path.
+export interface ExternalAssetMeta {
+  schemaVersion: 1;
+  kind: 'external-asset-package';
+  importer: 'gltf';
+  // Companion GLB file name (e.g. prop-boulder.glb). Omit to let the engine
+  // derive it by stripping .meta.json from the sidecar path.
+  source?: string;
+  importSettings: { colorSpace: 'srgb' | 'linear'; mipmap: 'auto' | 'none' };
+  subAssets: ReadonlyArray<{
+    guid: string;
+    sourceIndex: number;
+    kind: string;
+    name?: string;
+  }>;
 }
 
 export const FILE_ROLES: readonly FileRole[] = [

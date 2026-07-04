@@ -29,7 +29,7 @@ import {
   emptyQuality,
   motionRefFromLegacy,
   reportToScore,
-  type AssetSidecar,
+  type ExternalAssetMeta,
   type AssetSlot,
   type FileFormat,
   type FileRole,
@@ -41,6 +41,7 @@ import {
   type SidecarDependency,
   type SkeletonProfile,
   type TextureKind,
+  type WbAssetMeta,
 } from '../shared/manifest';
 import type {
   AppendDerivedFilesInput,
@@ -50,6 +51,7 @@ import type {
   PutScratchResult,
   WriteAssetInput,
 } from './asset-storage';
+import { cookExternalAssetFields } from './external-meta-cook';
 
 const PLUGIN_ID = 'wb-ai-asset';
 const PLUGIN_VERSION = '0.1.0';
@@ -202,6 +204,7 @@ export class PerGameAssetStore implements AssetStorage {
     let mainRel = '';
     let mainSha = '';
     let mainBytes = 0;
+    let mainGlbBytes: Uint8Array | null = null;
 
     for (const p of planned) {
       const abs = resolve(dir, p.fileName);
@@ -229,6 +232,7 @@ export class PerGameAssetStore implements AssetStorage {
         mainRel = rel;
         mainSha = sha256;
         mainBytes = bytes;
+        mainGlbBytes = p.input.data;
       } else {
         dependencies.push({
           path: p.fileName,
@@ -240,7 +244,12 @@ export class PerGameAssetStore implements AssetStorage {
     }
 
     const readiness = computeReadiness(manifestFiles);
-    const sidecar: AssetSidecar = {
+    // wb private meta → <name>.glb.wb.json (separate from the engine meta).
+    // Split is required: engine meta.schema.json is additionalProperties:false,
+    // so merging these wb fields into .glb.meta.json makes the scanner reject
+    // the whole game's catalog (pack-malformed-meta → buildCatalog skips the
+    // game → every loadByGuid fails → runtime falls back to builtin cubes).
+    const wbMeta: WbAssetMeta = {
       schemaVersion: 1,
       producer: { plugin: PLUGIN_ID, pluginVersion: PLUGIN_VERSION },
       createdAt: now,
@@ -261,8 +270,24 @@ export class PerGameAssetStore implements AssetStorage {
         ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
       },
     };
-    const sidecarAbs = resolve(dir, `${baseName}.glb.meta.json`);
-    await writeFile(sidecarAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+    const wbAbs = resolve(dir, `${baseName}.glb.wb.json`);
+    await writeFile(wbAbs, `${JSON.stringify(wbMeta, null, 2)}\n`, 'utf8');
+
+    // Engine external-asset-package meta → <name>.glb.meta.json (conforms to
+    // engine meta.schema.json, additionalProperties:false). Null when the GLB
+    // can't be parsed (Draco etc.) → skip writing engine meta; buildCatalog
+    // simply skips runtime ingestion (known limitation, mirrored in geometry-check).
+    if (mainGlbBytes) {
+      const engineMeta = await cookExternalAssetFields(
+        mainGlbBytes,
+        `sha256:${mainSha}`,
+        `${baseName}.glb`,
+      );
+      if (engineMeta) {
+        const metaAbs = resolve(dir, `${baseName}.glb.meta.json`);
+        await writeFile(metaAbs, `${JSON.stringify(engineMeta, null, 2)}\n`, 'utf8');
+      }
+    }
 
     return {
       manifestVersion: 1,
@@ -288,21 +313,15 @@ export class PerGameAssetStore implements AssetStorage {
     const { slot, fileName } = parseAssetPath(assetPath);
     if (!slot) return null;
     const dir = slotDir(slug, slot);
-    const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
-    let raw: string;
-    try {
-      raw = await readFile(sidecarAbs, 'utf8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-      throw error;
-    }
-    const sidecar = JSON.parse(raw) as AssetSidecar;
-    return sidecarToManifest(slug, slot, fileName, sidecar);
+    const wbMeta = await readWbMeta(dir, fileName);
+    if (!wbMeta) return null;
+    return sidecarToManifest(slug, slot, fileName, wbMeta);
   }
 
   async listAssets(slug: string, assetSlot?: AssetSlot): Promise<Gen3DAssetManifest[]> {
     const slots: AssetSlot[] = assetSlot ? [assetSlot] : ['characters', 'meshes'];
     const out: Gen3DAssetManifest[] = [];
+    const seen = new Set<string>();
     for (const slot of slots) {
       const dir = slotDir(slug, slot);
       let entries: string[];
@@ -312,9 +331,15 @@ export class PerGameAssetStore implements AssetStorage {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw error;
       }
+      // Collect candidate GLB base names from .glb.wb.json (new split format)
+      // and .glb.meta.json (legacy merged format). Engine-imported metas with
+      // no wb fields (monster/witch) are filtered out by getAsset→readWbMeta.
       for (const name of entries) {
-        if (!name.endsWith('.glb.meta.json')) continue;
-        const fileName = name.replace(/\.meta\.json$/, '');
+        const m = /^(.+\.glb)\.(?:wb|meta)\.json$/.exec(name);
+        if (!m) continue;
+        const fileName = m[1];
+        if (seen.has(fileName)) continue;
+        seen.add(fileName);
         const manifest = await this.getAsset(slug, relPath(slot, fileName));
         if (manifest) out.push(manifest);
       }
@@ -327,21 +352,19 @@ export class PerGameAssetStore implements AssetStorage {
       const { slot, fileName } = parseAssetPath(assetPath);
       if (!slot) return { cacheKey: null };
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
 
       let cacheKey: string | null = null;
       let deps: SidecarDependency[] = [];
-      try {
-        const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-        cacheKey = sidecar.custom?.cacheKey ?? null;
-        deps = sidecar.dependencies ?? [];
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (wbMeta) {
+        cacheKey = wbMeta.custom?.cacheKey ?? null;
+        deps = wbMeta.dependencies ?? [];
       }
 
-      // Remove main GLB + sidecar + every same-basename sidefile.
+      // Remove main GLB + engine meta + wb meta + every same-basename sidefile.
       await rm(resolve(dir, fileName), { force: true });
-      await rm(sidecarAbs, { force: true });
+      await rm(resolve(dir, `${fileName}.meta.json`), { force: true });
+      await rm(resolve(dir, `${fileName}.wb.json`), { force: true });
       for (const dep of deps) {
         await rm(resolve(dir, dep.path), { force: true });
       }
@@ -360,19 +383,13 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
-      let sidecar: AssetSidecar;
-      try {
-        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
-        }
-        throw error;
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
       }
 
       const baseName = fileName.replace(/\.glb$/, '');
-      const deps = [...(sidecar.dependencies ?? [])];
+      const deps = [...(wbMeta.dependencies ?? [])];
 
       for (const f of input.files) {
         // <base>.<role>[.motion-<system>-<id>].<format> as a same-basename
@@ -409,11 +426,11 @@ export class PerGameAssetStore implements AssetStorage {
       }
 
       const now = new Date().toISOString();
-      const updated: AssetSidecar = {
-        ...sidecar,
+      const updated: WbAssetMeta = {
+        ...wbMeta,
         dependencies: deps,
         custom: {
-          ...sidecar.custom,
+          ...wbMeta.custom,
           // Persist rig-chain identity so apply-motion can dispatch by system
           // and read the Meshy rig_task_id (ADR-0006 §Decision 3).
           ...(input.rigChain ? { rig: input.rigChain } : {}),
@@ -422,7 +439,7 @@ export class PerGameAssetStore implements AssetStorage {
       // Recompute readiness from the full file set (main + deps).
       const manifest = sidecarToManifest(slug, slot, fileName, updated);
       updated.custom = { ...updated.custom, readiness: manifest.readiness };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeWbMeta(dir, fileName, updated);
       return { ...manifest, updatedAt: now };
     });
   }
@@ -441,22 +458,16 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
-      let sidecar: AssetSidecar;
-      try {
-        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
-        }
-        throw error;
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
       }
       const trimmed = label?.trim() || null;
-      const updated: AssetSidecar = {
-        ...sidecar,
-        custom: { ...sidecar.custom, userLabel: trimmed },
+      const updated: WbAssetMeta = {
+        ...wbMeta,
+        custom: { ...wbMeta.custom, userLabel: trimmed },
       };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeWbMeta(dir, fileName, updated);
       return sidecarToManifest(slug, slot, fileName, updated);
     });
   }
@@ -475,21 +486,15 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
-      let sidecar: AssetSidecar;
-      try {
-        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
-        }
-        throw error;
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
       }
-      const updated: AssetSidecar = {
-        ...sidecar,
-        custom: { ...sidecar.custom, quality: report },
+      const updated: WbAssetMeta = {
+        ...wbMeta,
+        custom: { ...wbMeta.custom, quality: report },
       };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeWbMeta(dir, fileName, updated);
       return sidecarToManifest(slug, slot, fileName, updated);
     });
   }
@@ -565,7 +570,7 @@ function sidecarToManifest(
   slug: string,
   slot: AssetSlot,
   fileName: string,
-  sidecar: AssetSidecar,
+  sidecar: WbAssetMeta,
 ): Gen3DAssetManifest {
   const c = sidecar.custom;
   const mainRel = relPath(slot, fileName);
@@ -635,4 +640,33 @@ function sidecarToManifest(
     createdAt: sidecar.createdAt,
     updatedAt: sidecar.createdAt,
   };
+}
+
+// Read wb private meta from <name>.glb.wb.json. Backward compat: if the wb
+// file is absent, fall back to <name>.glb.meta.json's legacy wb fields (older
+// sidecars merged wb + external into one .glb.meta.json before the split —
+// the split-sidecar migration writes .glb.wb.json and strips wb fields from
+// .glb.meta.json, but unmigrated sidecars still need to read).
+async function readWbMeta(dir: string, glbFileName: string): Promise<WbAssetMeta | null> {
+  const wbAbs = resolve(dir, `${glbFileName}.wb.json`);
+  try {
+    return JSON.parse(await readFile(wbAbs, 'utf8')) as WbAssetMeta;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  // Backward compat: legacy .glb.meta.json had wb fields merged in.
+  const metaAbs = resolve(dir, `${glbFileName}.meta.json`);
+  try {
+    const raw = await readFile(metaAbs, 'utf8');
+    const legacy = JSON.parse(raw) as WbAssetMeta & { kind?: unknown; importer?: unknown };
+    if (legacy.producer && legacy.custom) return legacy;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return null;
+}
+
+async function writeWbMeta(dir: string, glbFileName: string, meta: WbAssetMeta): Promise<void> {
+  const wbAbs = resolve(dir, `${glbFileName}.wb.json`);
+  await writeFile(wbAbs, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 }
