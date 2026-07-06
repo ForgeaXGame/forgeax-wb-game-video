@@ -4,6 +4,7 @@ import type { Engine } from '../core/Engine'
 import type { CameraStore } from '../core/CameraStore'
 import type { PreviewControls } from './PreviewControls'
 import { globalState } from '../shared/GlobalState'
+import { t, tf } from '../i18n'
 
 function pipelineIcon(id: string, cls = 'pipeline-icon-svg'): string {
   const paths: Record<string, string> = {
@@ -307,7 +308,7 @@ export class PipelinePanel {
     this.leftPanel.innerHTML = `
       <div class="pipeline-loading">
         <div class="pipeline-loading-spinner"></div>
-        <div class="pipeline-loading-text">${pipelineIcon(meta.id)}${meta.name} 加载中…</div>
+        <div class="pipeline-loading-text">${tf('pipeline.loading.hint', { icon: pipelineIcon(meta.id), name: meta.name })}</div>
       </div>
     `
   }
@@ -323,9 +324,9 @@ export class PipelinePanel {
     const stack = err instanceof Error && err.stack ? err.stack : ''
     this.leftPanel.innerHTML = `
       <div class="pipeline-loading pipeline-loading-error">
-        ⚠️ 加载失败:${meta.id}
+        ${tf('pipeline.loadError', { id: meta.id })}
         ${detail ? `<div style="margin-top:8px;font-size:12px;color:#ff8888;word-break:break-all;max-width:420px">${escapeHtml(detail)}</div>` : ''}
-        ${stack ? `<details style="margin-top:8px;max-width:440px"><summary style="font-size:11px;opacity:0.7;cursor:pointer">堆栈详情</summary><pre style="font-size:10px;opacity:0.7;white-space:pre-wrap;word-break:break-all;text-align:left">${escapeHtml(stack)}</pre></details>` : '<div style="margin-top:8px;font-size:12px;opacity:0.7">查看控制台获取详情</div>'}
+        ${stack ? `<details style="margin-top:8px;max-width:440px"><summary style="font-size:11px;opacity:0.7;cursor:pointer">${t('pipeline.loadError.stack')}</summary><pre style="font-size:10px;opacity:0.7;white-space:pre-wrap;word-break:break-all;text-align:left">${escapeHtml(stack)}</pre></details>` : `<div style="margin-top:8px;font-size:12px;opacity:0.7">${t('pipeline.loadError.hint')}</div>`}
       </div>
     `
   }

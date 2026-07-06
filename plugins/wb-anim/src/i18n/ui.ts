@@ -306,6 +306,19 @@ const EN: Record<string, string> = {
   'spine.banner.title': 'Character design not complete',
   'spine.banner.body': 'Create a character in wb-character before running Spine. You can preview each step UI now.',
   'spine.needPanels': 'Spine pipeline requires full panel layout support.',
+  'shell.emptyLeft': 'Select a pipeline tab above',
+  'pipeline.loading.hint': '{icon} {name} loading…',
+  'pipeline.loadError': '⚠️ Failed to load: {id}',
+  'pipeline.loadError.hint': 'See console for details',
+  'pipeline.loadError.stack': 'Stack trace',
+  'main.loading.initEngine': 'Initializing engine...',
+  'main.loading.creatingEngine': 'Creating engine...',
+  'main.loading.engineCreated': 'Engine created',
+  'main.loading.discoveringPipelines': 'Discovering pipelines...',
+  'main.loading.cameraPresets': 'Loading camera presets...',
+  'main.loading.buildingUI': 'Building interface...',
+  'main.loading.ready': 'Ready',
+  'main.error.title': 'Startup error',
 };
 
 const ZH: Record<string, string> = {
@@ -609,6 +622,19 @@ const ZH: Record<string, string> = {
   'spine.banner.title': '提示：还未完成角色设计',
   'spine.banner.body': '去 wb-character 生成角色后再跑 Spine 流水线；当前可预览/调试各步骤 UI。',
   'spine.needPanels': 'Spine 管线需要完整的面板布局支持。',
+  'shell.emptyLeft': '选择上方的管线标签开始',
+  'pipeline.loading.hint': '{icon} {name} 加载中…',
+  'pipeline.loadError': '⚠️ 加载失败：{id}',
+  'pipeline.loadError.hint': '查看控制台获取详情',
+  'pipeline.loadError.stack': '堆栈详情',
+  'main.loading.initEngine': '初始化引擎...',
+  'main.loading.creatingEngine': '正在创建引擎...',
+  'main.loading.engineCreated': '引擎已创建',
+  'main.loading.discoveringPipelines': '正在发现管线...',
+  'main.loading.cameraPresets': '正在加载相机预设...',
+  'main.loading.buildingUI': '正在构建界面...',
+  'main.loading.ready': '准备就绪',
+  'main.error.title': '启动错误',
 };
 
 export const UI_CATALOGS: Record<Locale, Record<string, string>> = { en: EN, zh: ZH };
