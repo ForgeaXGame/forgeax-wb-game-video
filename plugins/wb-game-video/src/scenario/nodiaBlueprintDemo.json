@@ -503,16 +503,7 @@
                 "id": "my-s3",
                 "kind": "choice",
                 "targetSceneId": "fuzhu",
-                "label": "冥想",
-                "effects": [
-                  {
-                    "id": "qi-add-2",
-                    "kind": "var",
-                    "varId": "qi",
-                    "op": "add",
-                    "value": 2
-                  }
-                ]
+                "label": "冥想"
               },
               {
                 "id": "my-ult",
@@ -860,14 +851,30 @@
             ],
             "hudPreset": "battle",
             "calcType": "冥想",
-            "background": "空藏冥想调息：回复气力+2、回血12%最大生命、解除异常状态（不造成伤害），用后进入 3 回合冷却。",
+            "background": "空藏冥想调息：回复气力+2、回血 30、解除异常状态（不造成伤害），用后进入 3 回合冷却。",
             "performance": {
               "cues": [
                 {
                   "id": "fuzhu-heal",
                   "atMs": 2000,
                   "label": "回气回血结算",
-                  "effects": []
+                  "effects": [
+                    {
+                      "id": "fuzhu-qi",
+                      "kind": "var",
+                      "varId": "qi",
+                      "op": "add",
+                      "value": 2
+                    },
+                    {
+                      "id": "fuzhu-heal-hp",
+                      "kind": "entityStat",
+                      "entityId": "ent-player",
+                      "stat": "hp",
+                      "op": "add",
+                      "value": 30
+                    }
+                  ]
                 }
               ]
             },
@@ -2293,16 +2300,7 @@
                 "id": "my-s3",
                 "kind": "choice",
                 "targetSceneId": "fuzhu",
-                "label": "冥想",
-                "effects": [
-                  {
-                    "id": "my-s3-qi",
-                    "kind": "var",
-                    "varId": "qi",
-                    "op": "add",
-                    "value": 2
-                  }
-                ]
+                "label": "冥想"
               },
               {
                 "id": "my-ult",
@@ -2678,14 +2676,30 @@
             ],
             "hudPreset": "battle",
             "calcType": "冥想",
-            "background": "空藏冥想调息：回复气力+2、回血12%最大生命、解除异常状态（不造成伤害），用后进入 3 回合冷却。",
+            "background": "空藏冥想调息：回复气力+2、回血 30、解除异常状态（不造成伤害），用后进入 3 回合冷却。",
             "performance": {
               "cues": [
                 {
                   "id": "fuzhu-heal",
                   "atMs": 2000,
                   "label": "回气回血结算",
-                  "effects": []
+                  "effects": [
+                    {
+                      "id": "fuzhu-qi",
+                      "kind": "var",
+                      "varId": "qi",
+                      "op": "add",
+                      "value": 2
+                    },
+                    {
+                      "id": "fuzhu-heal-hp",
+                      "kind": "entityStat",
+                      "entityId": "ent-player",
+                      "stat": "hp",
+                      "op": "add",
+                      "value": 30
+                    }
+                  ]
                 }
               ]
             },

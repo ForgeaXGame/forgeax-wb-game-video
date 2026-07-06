@@ -1,4 +1,4 @@
-import type { Branch, Effect, EntityStatEffect, PerformanceCue, Scenario, Scene, VarEffect } from './types'
+import type { Branch, Effect, EntityStatEffect, Scenario, Scene, VarEffect } from './types'
 
 export interface CombatRulesDraft {
   playerMaxHp: number
@@ -18,7 +18,6 @@ export interface CombatRulesDraft {
   qiMax: number
   lightQiGain: number
   heavyQiCost: number
-  meditateQiGain: number
   ultQiRequired: number
   lightDamage: number
   heavyDamage: number
@@ -57,7 +56,6 @@ export function readCombatRules(scenario: Scenario): CombatRulesDraft {
   const wait = scenario.scenes.wait
   const light = branchById(wait, 'my-s1')
   const heavy = branchById(wait, 'my-s2')
-  const meditate = branchById(wait, 'my-s3')
   const ult = branchById(wait, 'my-ult')
   const parryGood = branchById(scenario.scenes.tele, 'ai-qte-good')
   const parryFail = branchById(scenario.scenes.tele, 'ai-qte-fail')
@@ -80,7 +78,6 @@ export function readCombatRules(scenario: Scenario): CombatRulesDraft {
     qiMax: qi?.max ?? 5,
     lightQiGain: varEffectValue(light, 'add', 2),
     heavyQiCost: Math.abs(varEffectValue(heavy, 'add', -2)),
-    meditateQiGain: varEffectValue(meditate, 'add', 2),
     ultQiRequired: ult?.condition?.all.find((c) => c.type === 'var' && c.varId === QI_ID)?.value ?? 5,
     lightDamage: firstDamageToBoss(scenario.scenes.pu, 80),
     heavyDamage: firstDamageToBoss(scenario.scenes.zhong, 144),
@@ -135,9 +132,8 @@ export function applyCombatRules(scenario: Scenario, patch: CombatRulesPatch): S
     gateMode: 'lock',
     effects: qiEffects('add', -next.heavyQiCost),
   })
-  scenes.wait = updateSceneBranch(scenes.wait, 'my-s3', {
-    effects: qiEffects('add', next.meditateQiGain),
-  })
+  // 冥想（my-s3）不再由规则读写——气力+2 与回血+30 都挂在 fuzhu 的「回气回血结算」
+  // cue 上，到 atMs 才结算；SSOT 落在演出时间轴，在 cue 面板编辑。
   scenes.wait = updateSceneBranch(scenes.wait, 'my-ult', {
     condition: { all: [{ type: 'var', varId: QI_ID, op: 'gte', value: next.ultQiRequired }] },
     gateMode: 'lock',

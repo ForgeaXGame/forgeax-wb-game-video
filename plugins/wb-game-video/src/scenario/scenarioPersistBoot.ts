@@ -37,7 +37,7 @@ import { sanitizeScenarioForIO } from './sanitize'
  *
  * 仅在"成功读到磁盘"后才执行，故不会因磁盘瞬时不可用而清空本地。
  */
-const DISK_RECONCILE_EPOCH = 4
+const DISK_RECONCILE_EPOCH = 6
 
 function reconcileEpochKey(): string {
   return `gamevideo:reconcile-epoch${gameKeySuffix()}`

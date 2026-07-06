@@ -33,7 +33,7 @@ import type {
   BlueprintOption,
   BlueprintQte,
 } from '../blueprint/blueprint-schema'
-import type { Hotspot, QTECue, QTESpec, Scene } from '../scenario/types'
+import type { Effect, EntityStatEffect, Hotspot, QTECue, QTESpec, Scene } from '../scenario/types'
 import { HudLayer } from './hud/HudLayer'
 import { DialogueBox } from './DialogueBox'
 import { TextOverlayLayer } from './TextOverlayLayer'
@@ -105,7 +105,7 @@ interface FloatItem {
   text: string
   x: number
   y: number
-  kind: 'dmg' | 'hurt' | 'note'
+  kind: 'dmg' | 'hurt' | 'note' | 'heal'
 }
 
 interface ContentRect {
@@ -392,6 +392,9 @@ export function BlueprintPlayer(): JSX.Element {
     setSnapshot((prev) => applyDirectives(prev, dirs))
     if (resetElapsed) setElapsed(0)
     setLogs((prev) => [...prev, ...dirs.map(logLine).filter((l): l is string => !!l)].slice(-MAX_LOGS))
+    for (const d of dirs) {
+      if (d.type === 'floatEffects') spawnOnEnterFloats(d.effects)
+    }
     force((n) => n + 1)
   }
 
@@ -589,12 +592,26 @@ export function BlueprintPlayer(): JSX.Element {
         text: value > 0 ? `+${value}` : `${value}`,
         x: p.x,
         y: p.y + items.length * 8,
-        kind: value < 0 ? 'dmg' : 'note',
+        kind: value < 0 ? 'dmg' : 'heal',
       })
     }
     if (items.length === 0) items.push({ id: floatSeq.current++, text: p.note, x: p.x, y: p.y, kind: 'note' })
     setFloats((prev) => [...prev, ...items])
     for (const it of items) window.setTimeout(() => setFloats((prev) => prev.filter((f) => f.id !== it.id)), 1100)
+  }
+
+  /**
+   * 进入节点即时结算的实体 HP 效果（onEnter，如冥想回血 +30）弹飘字。
+   * 无 clip 时间坐标，按实体（Boss 顶部血条 / 我方右下血条）就近安置。
+   */
+  function spawnOnEnterFloats(effects: Effect[]): void {
+    const hp = effects.filter(
+      (e): e is EntityStatEffect => e.kind === 'entityStat' && e.stat === 'hp' && Number(e.value) !== 0,
+    )
+    if (hp.length === 0) return
+    const isBoss = scenario?.entities?.[hp[0].entityId]?.kind === 'boss'
+    const at = isBoss ? { x: 50, y: 22 } : { x: 80, y: 72 }
+    spawnFloats({ t: 0, x: at.x, y: at.y, note: '', effects: hp })
   }
 
   const exit = (): void => {
@@ -1452,7 +1469,7 @@ function injectStyles(): void {
     .bpx-clip-tag strong{font-size:15px}
     .bpx-floats{position:absolute;inset:0;pointer-events:none;z-index:30}
     .bpx-float{position:absolute;transform:translate(-50%,-50%);font-size:34px;font-weight:900;text-shadow:0 3px 8px #000;animation:bpx-float 1s ease-out forwards}
-    .bpx-float--dmg{color:#fff3db}.bpx-float--hurt{color:#ff5656}.bpx-float--note{color:#ffe35b;font-size:22px}
+    .bpx-float--dmg{color:#fff3db}.bpx-float--hurt{color:#ff5656}.bpx-float--note{color:#ffe35b;font-size:22px}.bpx-float--heal{color:#66e29a}
     .bpx-qte{position:absolute;right:9%;top:34%;text-align:center;z-index:40;pointer-events:auto}
     .bpx-qte-btn{width:120px;height:120px;border-radius:50%;border:2px solid rgba(158,255,202,.9);background:radial-gradient(circle,rgba(84,255,170,.24),rgba(5,15,10,.84));color:#ddffed;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 0 28px rgba(85,255,180,.32);margin:0 6px}
     .bpx-qte-btn--good{border-color:rgba(130,190,255,.9);background:radial-gradient(circle,rgba(75,145,255,.22),rgba(5,10,22,.84));color:#dcecff;box-shadow:0 0 24px rgba(85,150,255,.28)}

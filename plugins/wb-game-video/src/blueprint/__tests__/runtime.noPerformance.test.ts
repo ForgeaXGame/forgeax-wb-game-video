@@ -120,6 +120,31 @@ describe('BlueprintRuntime — 无演出节点', () => {
     expect(rt.state.currentNodeId).toBe('b')
   })
 
+  test('onEnter entity HP effect emits a floatEffects directive (generic on-enter heal +30)', () => {
+    const heal: Effect = { id: 'heal', kind: 'entityStat', entityId: 'ent-player', stat: 'hp', op: 'add', value: 30 }
+    const scenario = scenarioOf(
+      [
+        perf('p1', 'clip-1', [auto('p1-next', 'rest')], { mediaPlayMode: 'loop' }),
+        perf('rest', 'clip-rest', [], { onEnterEffects: [heal] }),
+      ],
+      'p1',
+      {
+        entities: {
+          'ent-player': { id: 'ent-player', name: '空藏', kind: 'player', maxHp: 300, initialHp: 100 },
+        },
+      },
+    )
+    const rt = new BlueprintRuntime(scenarioToBlueprint(scenario), scenario)
+    rt.start()
+
+    const out = rt.onClipEnded()
+    const float = out.find((d): d is Extract<RuntimeDirective, { type: 'floatEffects' }> => d.type === 'floatEffects')
+    expect(float).toBeDefined()
+    expect(float?.effects[0]).toMatchObject({ kind: 'entityStat', stat: 'hp', value: 30 })
+    // onEnter 立即结算：100 + 30 = 130（封顶 maxHp 300）。
+    expect(rt.state.entities['ent-player']?.hp).toBe(130)
+  })
+
   test('a cycle of always-true no-performance nodes is guarded (no stack overflow)', () => {
     // l1 → l2 → l1 全为无演出且 auto 恒真：不应爆栈，应被环防护停下。
     const scenario = scenarioOf(

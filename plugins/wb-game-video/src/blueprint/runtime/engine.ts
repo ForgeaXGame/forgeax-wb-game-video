@@ -491,6 +491,13 @@ export class BlueprintRuntime {
       changed = true
     }
     if (changed) this.emit({ type: 'stateChanged' })
+    // 进场即时结算的实体 HP 变化（如冥想回血 +30）给视图一个飘字信号；位置由视图层就近安置。
+    const floatable = (onEnter.effects ?? []).filter(
+      (e) => e.kind === 'entityStat' && e.stat === 'hp' && e.value !== 0,
+    )
+    if (floatable.length > 0) {
+      this.emit({ type: 'floatEffects', nodeId: this.state.currentNodeId ?? node.id, effects: floatable })
+    }
   }
 
   private applyEdge(edge: GameVideoBlueprintEdge): void {

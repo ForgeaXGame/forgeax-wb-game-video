@@ -222,10 +222,9 @@ export function getBlueprintCombatDemoScenario(): Scenario {
         gateMode: 'lock',
         effects: [varEffect('my-s2-qi', 'qi', 'add', -2)],
       },
-      {
-        ...choice('my-s3', 'fuzhu', '冥想'),
-        effects: [varEffect('my-s3-qi', 'qi', 'add', 2)],
-      },
+      // 冥想的两个收益（气力+2、回血+30）都挂在 fuzhu 的「回气回血结算」cue 上，
+      // 分支只负责跳转，收益到 cue 的 atMs 才结算。
+      choice('my-s3', 'fuzhu', '冥想'),
       {
         ...choice('my-ult', 'ult', '灭世'),
         condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }] },
@@ -295,8 +294,22 @@ export function getBlueprintCombatDemoScenario(): Scenario {
   add(bpScene('fuzhu', '冥想', 'vd-wcc-huiqi', { x: 700, y: 760 }, {
     calcType: '冥想',
     durationMs: 5000,
-    background: '空藏冥想调息：回复气力+2、回血12%最大生命、解除异常状态（不造成伤害），用后进入 3 回合冷却。',
-    performance: { cues: [{ id: 'fuzhu-heal', atMs: 2000, label: '回气回血结算', effects: [] }] },
+    background: '空藏冥想调息：回复气力+2、回血 30、解除异常状态（不造成伤害），用后进入 3 回合冷却。',
+    // 冥想的收益（气力+2、回血+30）挂在演出时间轴的「回气回血结算」cue 上，
+    // 到 atMs 才结算（比进场瞬间更贴合演出节奏），飘字/血条走现成 cue 结算路径。
+    performance: {
+      cues: [
+        {
+          id: 'fuzhu-heal',
+          atMs: 2000,
+          label: '回气回血结算',
+          effects: [
+            varEffect('fuzhu-qi', 'qi', 'add', 2),
+            hpEffect('fuzhu-heal-hp', 'ent-player', 30),
+          ],
+        },
+      ],
+    },
     branches: [auto('fuzhu-done', 'my-done', 'Out')],
   }))
   add(bpScene('ult', '灭世', 'vd-wcc-dazhao', { x: 700, y: 940 }, {

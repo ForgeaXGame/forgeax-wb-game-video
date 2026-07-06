@@ -83,6 +83,35 @@ describe('combatRules', () => {
     expect(rt.state.visited.has('a_my')).toBe(false)
   })
 
+  it('meditate gains (qi + heal) both settle on the fuzhu-heal cue', () => {
+    const scenario = getDemoScenario()
+    const fuzhu = scenario.scenes.fuzhu
+    // 气力+2 与回血+30 挂在演出时间轴的「回气回血结算」cue 上，到 atMs 才结算。
+    const cue = fuzhu?.performance?.cues.find((c) => c.id === 'fuzhu-heal')
+    expect(cue?.atMs).toBe(2000)
+    const qi = cue?.effects.find((e) => e.kind === 'var' && e.varId === 'qi')
+    expect(qi).toMatchObject({ kind: 'var', op: 'add', value: 2 })
+    const heal = cue?.effects.find(
+      (e) => e.kind === 'entityStat' && e.entityId === 'ent-player' && e.stat === 'hp',
+    )
+    expect(heal).toMatchObject({ kind: 'entityStat', op: 'add', value: 30 })
+    // onEnterEffects 不再承载冥想收益。
+    expect(fuzhu?.onEnterEffects ?? []).toHaveLength(0)
+    // 冥想分支只负责跳转，不带气力效果。
+    const branch = scenario.scenes.wait?.branches.find((b) => b.id === 'my-s3')
+    expect(branch?.effects ?? []).toHaveLength(0)
+  })
+
+  it('applyCombatRules leaves the meditate cue gains intact', () => {
+    // 冥想脱离规则读写：applyCombatRules 后 fuzhu-heal cue 的 qi/heal 不被覆盖或清除。
+    const scenario = applyCombatRules(getDemoScenario(), { qiMax: 7 })
+    const cue = scenario.scenes.fuzhu?.performance?.cues.find((c) => c.id === 'fuzhu-heal')
+    const gains = cue?.effects ?? []
+    expect(gains.find((e) => e.kind === 'var' && e.varId === 'qi')).toMatchObject({ value: 2 })
+    expect(gains.find((e) => e.kind === 'entityStat' && e.stat === 'hp')).toMatchObject({ value: 30 })
+    expect(scenario.scenes.wait?.branches.find((b) => b.id === 'my-s3')?.effects ?? []).toHaveLength(0)
+  })
+
   it('updates qi thresholds and skill damage in scenario data', () => {
     const scenario = applyCombatRules(getDemoScenario(), {
       qiMax: 7,

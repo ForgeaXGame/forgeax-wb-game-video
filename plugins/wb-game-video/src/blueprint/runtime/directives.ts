@@ -17,6 +17,7 @@ import type {
   BlueprintTransition,
   BlueprintDamagePoint,
 } from '../blueprint-schema'
+import type { Effect } from '../../scenario/types'
 
 /** 播放某节点的演出片段（Loop / once + 转场 + HUD）。 */
 export interface PlayClipDirective {
@@ -85,6 +86,17 @@ export interface StateChangedDirective {
   type: 'stateChanged'
 }
 
+/**
+ * 进入节点时即时结算的实体数值效果，供视图层就近弹飘字（如冥想进场回血 +30）。
+ * 与 dmgPoints（沿视频时间轴到点触发）不同：onEnter 效果在进入节点那一刻立即生效，
+ * 没有 clip 时间坐标，位置由视图层按实体（我方/敌方）就近安置。
+ */
+export interface FloatEffectsDirective {
+  type: 'floatEffects'
+  nodeId: string
+  effects: Effect[]
+}
+
 /** 日志（调试 / 战斗记录）。 */
 export interface LogDirective {
   type: 'log'
@@ -100,4 +112,5 @@ export type RuntimeDirective =
   | DialogueDirective
   | BannerDirective
   | StateChangedDirective
+  | FloatEffectsDirective
   | LogDirective
