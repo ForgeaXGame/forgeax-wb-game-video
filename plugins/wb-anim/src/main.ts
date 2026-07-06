@@ -10,7 +10,9 @@ import { UIManager } from './ui/UIManager'
 import type { PipelineContext } from './core/types'
 import { bindHideableEvents, ensureHideableStyles } from './shared/HideableImage'
 import { globalState } from './shared/GlobalState'
-import { initLocaleSync, setLocale, t } from './i18n'
+import { initLocaleSync, t } from './i18n'
+
+initLocaleSync()
 
 const T0 = performance.now()
 let TLAST = T0
@@ -45,8 +47,9 @@ function applyPaneAttribute() {
 
 async function main() {
   applyPaneAttribute()
-  initLocaleSync()
 
+  // Studio 把当前 game slug 拼进 iframe URL(?slug=)。bridge 的 STUDIO_INIT 也会
+  // 带 slug,但那是异步的;handoff 加载要尽早拿到 slug,所以先从 URL 兜底读一次。
   const urlSlug = new URLSearchParams(location.search).get('slug')
   if (urlSlug) globalState.setSlug(urlSlug)
 
@@ -57,14 +60,11 @@ async function main() {
       globalState.setSlug(m.ctx.slug)
     }
   })
-  bridge.sendLoading(0, t('main.loading.initEngine'))
+  bridge.sendLoading(0, t('main.initEngine'))
 
   if (forgeaxHost.available) {
     forgeaxHost.handshake(2000).then((r) => {
       if (r.ctx?.sessionId) globalState.setSlug(r.ctx.sessionId)
-      if (!new URLSearchParams(location.search).get('locale')) {
-        setLocale(r.locale === 'zh' ? 'zh' : 'en')
-      }
     }).catch(() => { /* standalone or host not ready */ })
 
     forgeaxHost.onSurfaceDispatch(({ actionId }) => {
@@ -74,21 +74,21 @@ async function main() {
     })
   }
 
-  setLoadingText(t('main.loading.creatingEngine'))
+  setLoadingText(t('main.creatingEngine'))
   const canvas = document.getElementById('viewport') as HTMLCanvasElement
   if (!canvas) throw new Error('#viewport canvas not found')
 
   const engine = new Engine(canvas)
-  bridge.sendLoading(20, t('main.loading.engineCreated'))
-  setLoadingText(t('main.loading.engineCreated'))
+  bridge.sendLoading(20, t('main.engineReady'))
+  setLoadingText(t('main.engineReady'))
 
   const cameraStore = new CameraStore()
   const sceneManager = new SceneManager(engine)
   const characterPreview = new CharacterPreview(engine)
   const eventBus = new EventBus()
 
-  bridge.sendLoading(40, t('main.loading.discoveringPipelines'))
-  setLoadingText(t('main.loading.discoveringPipelines'))
+  bridge.sendLoading(40, t('main.discoverPipelines'))
+  setLoadingText(t('main.discoverPipelines'))
   const registry = new PipelineRegistry()
 
   // Workbench bridge ── 暴露给主工程的 workbench 编辑器 / 智能体调用。
@@ -109,8 +109,8 @@ async function main() {
     return true
   }
 
-  bridge.sendLoading(60, t('main.loading.cameraPresets'))
-  setLoadingText(t('main.loading.cameraPresets'))
+  bridge.sendLoading(60, t('main.loadCamera'))
+  setLoadingText(t('main.loadCamera'))
   await cameraStore.init()
 
   const context: PipelineContext = {
@@ -124,8 +124,8 @@ async function main() {
   ensureHideableStyles()
   bindHideableEvents()
 
-  bridge.sendLoading(80, t('main.loading.buildingUI'))
-  setLoadingText(t('main.loading.buildingUI'))
+  bridge.sendLoading(80, t('main.buildUI'))
+  setLoadingText(t('main.buildUI'))
   const uiRoot = document.getElementById('ui-root')!
   const uiManager = new UIManager(uiRoot, engine, sceneManager, cameraStore, registry, context)
   uiManager.init()
@@ -135,7 +135,7 @@ async function main() {
   // 不再阻塞首屏可见时间。
   hideLoading()
   console.log(tick('🎬 loading 屏幕已隐藏'))
-  bridge.sendLoading(100, t('main.loading.ready'))
+  bridge.sendLoading(100, t('main.ready'))
   bridge.sendReady()
   engine.start()
 
@@ -277,6 +277,6 @@ main().catch((err) => {
   const overlay = document.getElementById('error-overlay')
   if (overlay) {
     overlay.classList.add('visible')
-    overlay.innerHTML = `<h2>${t('main.error.title')}</h2>${err?.stack || err}`
+    overlay.innerHTML = `<h2>${t('error.startup')}</h2>${err?.stack || err}`
   }
 })
