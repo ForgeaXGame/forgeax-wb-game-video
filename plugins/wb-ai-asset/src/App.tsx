@@ -3,6 +3,7 @@ import type { Gen3DAssetManifest } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
 import { hasActiveGame } from '@/lib/gameSlug';
 import type { ListAssetsResult, ProviderStatus } from '@/types';
+import { onLocaleChange } from '@/i18n';
 import { SetupSidebar } from '@/components/SetupSidebar';
 import { Workspace } from '@/components/Workspace';
 import { AssetLibrary } from '@/components/AssetLibrary';
@@ -18,6 +19,9 @@ interface AppProps {
 // (aiasset:list-assets) is the cross-pane source of truth, so a generation in
 // one iframe surfaces in the other on refresh (manual button + window focus).
 export function App({ pane }: AppProps) {
+  const [localeRev, bumpLocale] = useState(0);
+  useEffect(() => onLocaleChange(() => bumpLocale((n) => n + 1)), []);
+
   const [status, setStatus] = useState<ProviderStatus | null>(null);
   const [assets, setAssets] = useState<Gen3DAssetManifest[]>([]);
   const [selected, setSelected] = useState<Gen3DAssetManifest | null>(null);
@@ -59,7 +63,7 @@ export function App({ pane }: AppProps) {
   const showCenter = pane === 'center' || pane === 'standalone';
 
   return (
-    <div className={`aa-root aa-root--${pane}`}>
+    <div className={`aa-root aa-root--${pane}`} key={localeRev}>
       {showLeft && (
         <SetupSidebar
           status={status}
