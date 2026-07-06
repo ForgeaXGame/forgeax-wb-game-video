@@ -63,6 +63,64 @@ export function extractGatewayUrls(resp: Record<string, unknown>): Record<string
   return out;
 }
 
+// Rig-specific URL extraction. The Meshy auto-rig gateway response carries
+// FIVE mesh entries per format, and `extractGatewayUrls`' `out[format] = url`
+// (last-wins) lets the final `Animation_*_withSkin_armature.glb` (a
+// skeleton-only 288-face proxy, no mesh) overwrite `Character_output.glb` (the
+// full rigged mesh). That made wb-gen3d store a skeleton-only rigged_model.glb
+// → viewport showed 288 faces, mesh invisible. Classify by Meshy output
+// filename instead:
+//   Character_output.{glb,fbx}                 → the rigged model (mesh+skeleton)
+//   Animation_Walking_withSkin.{glb,fbx}       → free walk clip (full mesh+anim)
+//   Animation_Running_withSkin.{glb,fbx}       → free run clip (full mesh+anim)
+//   *_armature.{glb,fbx}                       → skeleton-only proxies (skipped)
+// `extractGatewayUrls` is left untouched for generate/animate, whose responses
+// carry one mesh per format and don't need this disambiguation.
+export interface RigUrls {
+  glb: string | undefined;
+  fbx: string | undefined;
+  walkGlb: string | undefined;
+  walkFbx: string | undefined;
+  runGlb: string | undefined;
+  runFbx: string | undefined;
+}
+
+export function extractRigUrls(resp: Record<string, unknown>): RigUrls {
+  const out: RigUrls = {
+    glb: undefined,
+    fbx: undefined,
+    walkGlb: undefined,
+    walkFbx: undefined,
+    runGlb: undefined,
+    runFbx: undefined,
+  };
+  const data = resp.data;
+  if (!Array.isArray(data)) return out;
+  for (const raw of data) {
+    if (typeof raw !== 'object' || !raw) continue;
+    const item = raw as Record<string, unknown>;
+    const url = item.url;
+    if (typeof url !== 'string' || !url) continue;
+    if (String(item.type ?? '') !== 'mesh') continue;
+    const format = String(item.format ?? '');
+    if (format !== 'glb' && format !== 'fbx') continue;
+    const name = gatewayFileName(url);
+    const isGlb = format === 'glb';
+    if (/^Character_output\./i.test(name)) {
+      if (isGlb) out.glb = url;
+      else out.fbx = url;
+    } else if (/^Animation_Walking_withSkin\./i.test(name)) {
+      if (isGlb) out.walkGlb = url;
+      else out.walkFbx = url;
+    } else if (/^Animation_Running_withSkin\./i.test(name)) {
+      if (isGlb) out.runGlb = url;
+      else out.runFbx = url;
+    }
+    // _armature variants and anything else: ignored (skeleton-only, no mesh).
+  }
+  return out;
+}
+
 function gatewayFileName(url: string): string {
   const path = url.split('?', 1)[0] ?? url;
   return path.split('/').pop() ?? '';

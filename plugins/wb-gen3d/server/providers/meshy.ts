@@ -20,7 +20,7 @@ import { MESHY_ACTIONS, MESHY_ACTION_BASE } from '../../shared/meshy-actions';
 import type { MeshyEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
-import { extractGatewayUrls } from './gateway-data';
+import { extractGatewayUrls, extractRigUrls } from './gateway-data';
 
 const GATEWAY_SUBMIT = '/v1/3d/generations';
 const GATEWAY_POLL = '/v1/3d/tasks';
@@ -182,9 +182,13 @@ export class MeshyProvider {
     };
   }
 
-  // Auto-rig via gateway (model=meshy-3d-auto-rigging). Response data[] carries
-  // rigged mesh entries by type+format. The gateway does NOT return rig_type,
-  // expires_at, or basic_animations — those were Meshy direct API fields only.
+  // Auto-rig via gateway (model=meshy-3d-auto-rigging). The rig response data[]
+  // carries the rigged Character_output plus free walk/run clips (withSkin and
+  // _armature variants per format). extractRigUrls classifies by filename so
+  // Character_output.glb (full mesh+skeleton) is picked, not the last
+  // _armature.glb (skeleton-only proxy); the walk/run _withSkin clips are
+  // returned as basicAnimations. The gateway does NOT return rig_type or
+  // expires_at — those were Meshy direct API fields only.
   async rig(input: MeshyRigInput): Promise<MeshyRigResult> {
     if (!input.inputTaskId && !input.modelUrl) {
       throw Object.assign(new Error('meshy rig needs inputTaskId or modelUrl'), {
@@ -205,9 +209,24 @@ export class MeshyProvider {
     await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode: 'image', event: 'submit', sourceJobId: taskId, detail: 'rig' });
 
     const resp = await this.pollTask(taskId, 'rig');
-    const urls = extractGatewayUrls(resp);
+    const urls = extractRigUrls(resp);
     if (!urls.glb) {
-      throw Object.assign(new Error('meshy rig returned no rigged glb'), { code: 'provider_no_output' });
+      throw Object.assign(new Error('meshy rig returned no rigged glb (Character_output.glb)'), { code: 'provider_no_output' });
+    }
+    const basicAnimations: MeshyBasicAnimation[] = [];
+    if (urls.walkGlb) {
+      basicAnimations.push({
+        category: 'walking',
+        glb: await this.downloadImpl(urls.walkGlb),
+        fbx: urls.walkFbx ? await this.downloadImpl(urls.walkFbx) : null,
+      });
+    }
+    if (urls.runGlb) {
+      basicAnimations.push({
+        category: 'running',
+        glb: await this.downloadImpl(urls.runGlb),
+        fbx: urls.runFbx ? await this.downloadImpl(urls.runFbx) : null,
+      });
     }
     return {
       sourceJobId: taskId,
@@ -216,8 +235,7 @@ export class MeshyProvider {
       expiresAt: null,
       glb: await this.downloadImpl(urls.glb),
       fbx: urls.fbx ? await this.downloadImpl(urls.fbx) : null,
-      // Gateway does NOT return free bundled animations — set empty.
-      basicAnimations: [],
+      basicAnimations,
     };
   }
 

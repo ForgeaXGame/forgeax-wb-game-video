@@ -22,15 +22,27 @@ const GATEWAY_POLL = '/v1/3d/tasks';
 const RIG_TASK_ID = 'three_d_rig_task';
 const ANIM_TASK_ID = 'three_d_anim_task';
 
-// Gateway response shapes for rig/animate.
+// Gateway rig response mirrors the real Meshy auto-rig output: the rigged
+// Character_output + free walk/run clips, each as a full-mesh _withSkin GLB/FBX
+// AND a skeleton-only _armature GLB/FBX. The _armature entry is the LAST glb,
+// so the old extractGatewayUrls (out[format]=url, last-wins) overwrote
+// Character_output.glb with the 288-face armature proxy → mesh invisible.
+// extractRigUrls classifies by filename so Character_output.glb wins and the
+// _withSkin clips become basicAnimations; _armature variants are skipped.
 const RIG_RESP = {
   id: RIG_TASK_ID,
   object: '3d.generation',
   status: 'succeeded',
   progress: 100,
   data: [
-    { url: 'https://cdn.meshy.ai/rig.glb', type: 'mesh', format: 'glb' },
-    { url: 'https://cdn.meshy.ai/rig.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Character_output.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Character_output.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin_armature.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin_armature.glb', type: 'mesh', format: 'glb' },
   ],
   error: null,
 };
@@ -99,12 +111,21 @@ test('rig(): submit→poll→download via gateway with correct payload + result 
   expect(polls[0].path).toBe(`${GATEWAY_POLL}/${RIG_TASK_ID}`);
 
   expect(rig.sourceJobId).toBe(RIG_TASK_ID);
-  // Gateway does NOT return rig_type / expires_at / basic_animations.
+  // Gateway does NOT return rig_type / expires_at.
   expect(rig.rigType).toBeNull();
   expect(rig.expiresAt).toBeNull();
-  expect(rig.basicAnimations).toEqual([]);
-  expect(decode(rig.glb)).toBe('https://cdn.meshy.ai/rig.glb');
-  expect(rig.fbx && decode(rig.fbx)).toBe('https://cdn.meshy.ai/rig.fbx');
+  // Character_output.glb is the rigged model, NOT the last _armature.glb.
+  expect(decode(rig.glb)).toBe('https://cdn.meshy.ai/Character_output.glb');
+  expect(rig.fbx && decode(rig.fbx)).toBe('https://cdn.meshy.ai/Character_output.fbx');
+  // Free walk/run _withSkin clips are returned as basicAnimations (full mesh+anim).
+  expect(rig.basicAnimations.length).toBe(2);
+  expect(rig.basicAnimations.map((b) => b.category)).toEqual(['walking', 'running']);
+  expect(decode(rig.basicAnimations[0]!.glb)).toBe('https://cdn.meshy.ai/Animation_Walking_withSkin.glb');
+  expect(rig.basicAnimations[0]!.fbx && decode(rig.basicAnimations[0]!.fbx)).toBe('https://cdn.meshy.ai/Animation_Walking_withSkin.fbx');
+  expect(decode(rig.basicAnimations[1]!.glb)).toBe('https://cdn.meshy.ai/Animation_Running_withSkin.glb');
+  expect(rig.basicAnimations[1]!.fbx && decode(rig.basicAnimations[1]!.fbx)).toBe('https://cdn.meshy.ai/Animation_Running_withSkin.fbx');
+  // The skeleton-only _armature GLBs must NOT be downloaded.
+  expect(downloads.every((u) => !/_armature\./.test(u))).toBe(true);
 });
 
 test('rig(): inputTaskId fast path sends input_task_id, not model_url', async () => {
