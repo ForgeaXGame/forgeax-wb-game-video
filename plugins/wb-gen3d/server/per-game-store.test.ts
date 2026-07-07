@@ -1,5 +1,5 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { PerGameAssetStore } from './per-game-store';
@@ -35,6 +35,30 @@ async function writeOne() {
     },
   });
 }
+
+test('writeAsset uses .glb.gen3d-meta.json sidecar (not engine pack .meta.json)', async () => {
+  const m = await store.writeAsset({
+    slug: SLUG,
+    assetSlot: 'meshes',
+    assetName: 'sidecar-ext-check',
+    files: [{ data: GLB, format: 'glb', role: 'source_mesh' }],
+    meta: {
+      provider: 'meshy',
+      providerMode: 'mock',
+      mode: 'text',
+      sourceJobId: null,
+      prompt: 'sidecar naming',
+      sourceInputAssetPaths: [],
+    },
+  });
+  const fileName = m.assetPath.replace(/^assets\/3d\/meshes\//, '');
+  const dir = resolve(root, '.forgeax', 'games', SLUG, 'assets', '3d', 'meshes');
+  const newSidecar = resolve(dir, `${fileName}.gen3d-meta.json`);
+  const legacySidecar = resolve(dir, `${fileName}.meta.json`);
+  const raw = await readFile(newSidecar, 'utf8');
+  expect(raw).toContain('"schemaVersion"');
+  await expect(readFile(legacySidecar, 'utf8')).rejects.toThrow();
+});
 
 test('writeAsset surfaces targetFaceCount; quality starts empty', async () => {
   const m = await writeOne();

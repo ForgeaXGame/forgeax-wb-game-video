@@ -3,7 +3,7 @@
 //
 // Layout (active game's runtime asset library):
 //   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb
-//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb.meta.json
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.glb.gen3d-meta.json
 //   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.png          (preview)
 //   <projectRoot>/.forgeax/games/<slug>/assets/3d/{characters|meshes}/<name>.texture.png  (external texture)
 //
@@ -16,7 +16,7 @@
 // OBJ source_mesh is dropped by default: only the GLB main mesh is kept.
 
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 import {
@@ -50,6 +50,46 @@ import type {
 
 const PLUGIN_ID = 'wb-gen3d';
 const PLUGIN_VERSION = '0.1.0';
+
+/** Gen3d provenance sidecar — NOT engine pack `*.meta.json` (pack scanner collision). */
+export const GEN3D_SIDECAR_SUFFIX = '.glb.gen3d-meta.json';
+
+function sidecarAbsForBaseName(dir: string, baseName: string): string {
+  return resolve(dir, `${baseName}${GEN3D_SIDECAR_SUFFIX}`);
+}
+
+function sidecarAbsForGlbFile(dir: string, glbFileName: string): string {
+  return resolve(dir, `${glbFileName}.gen3d-meta.json`);
+}
+
+function legacySidecarAbsForGlbFile(dir: string, glbFileName: string): string {
+  return resolve(dir, `${glbFileName}.meta.json`);
+}
+
+async function resolveExistingSidecarAbs(dir: string, glbFileName: string): Promise<string | null> {
+  for (const abs of [
+    sidecarAbsForGlbFile(dir, glbFileName),
+    legacySidecarAbsForGlbFile(dir, glbFileName),
+  ]) {
+    try {
+      await access(abs);
+      return abs;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return null;
+}
+
+async function writeSidecarJson(
+  dir: string,
+  glbFileName: string,
+  sidecar: AssetSidecar,
+): Promise<void> {
+  const newAbs = sidecarAbsForGlbFile(dir, glbFileName);
+  await writeFile(newAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+  await rm(legacySidecarAbsForGlbFile(dir, glbFileName), { force: true });
+}
 
 function projectRoot(): string {
   // Match the marketplace convention (see node-editor runtime.ts).
@@ -249,7 +289,7 @@ export class PerGameAssetStore implements AssetStorage {
         ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
       },
     };
-    const sidecarAbs = resolve(dir, `${baseName}.glb.meta.json`);
+    const sidecarAbs = sidecarAbsForBaseName(dir, baseName);
     await writeFile(sidecarAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
 
     return {
@@ -276,7 +316,8 @@ export class PerGameAssetStore implements AssetStorage {
     const { slot, fileName } = parseAssetPath(assetPath);
     if (!slot) return null;
     const dir = slotDir(slug, slot);
-    const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+    const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+    if (!sidecarAbs) return null;
     let raw: string;
     try {
       raw = await readFile(sidecarAbs, 'utf8');
@@ -300,9 +341,18 @@ export class PerGameAssetStore implements AssetStorage {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw error;
       }
+      const seen = new Set<string>();
       for (const name of entries) {
-        if (!name.endsWith('.glb.meta.json')) continue;
-        const fileName = name.replace(/\.meta\.json$/, '');
+        let fileName: string | null = null;
+        if (name.endsWith('.glb.gen3d-meta.json')) {
+          fileName = name.replace(/\.gen3d-meta\.json$/, '');
+        } else if (name.endsWith('.glb.meta.json')) {
+          fileName = name.replace(/\.meta\.json$/, '');
+        } else {
+          continue;
+        }
+        if (seen.has(fileName)) continue;
+        seen.add(fileName);
         const manifest = await this.getAsset(slug, relPath(slot, fileName));
         if (manifest) out.push(manifest);
       }
@@ -315,21 +365,24 @@ export class PerGameAssetStore implements AssetStorage {
       const { slot, fileName } = parseAssetPath(assetPath);
       if (!slot) return { cacheKey: null };
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
 
       let cacheKey: string | null = null;
       let deps: SidecarDependency[] = [];
-      try {
-        const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
-        cacheKey = sidecar.custom?.cacheKey ?? null;
-        deps = sidecar.dependencies ?? [];
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (sidecarAbs) {
+        try {
+          const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+          cacheKey = sidecar.custom?.cacheKey ?? null;
+          deps = sidecar.dependencies ?? [];
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
       }
 
-      // Remove main GLB + sidecar + every same-basename sidefile.
+      // Remove main GLB + sidecar(s) + every same-basename sidefile.
       await rm(resolve(dir, fileName), { force: true });
-      await rm(sidecarAbs, { force: true });
+      await rm(sidecarAbsForGlbFile(dir, fileName), { force: true });
+      await rm(legacySidecarAbsForGlbFile(dir, fileName), { force: true });
       for (const dep of deps) {
         await rm(resolve(dir, dep.path), { force: true });
       }
@@ -348,7 +401,10 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
       let sidecar: AssetSidecar;
       try {
         sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
@@ -410,7 +466,7 @@ export class PerGameAssetStore implements AssetStorage {
       // Recompute readiness from the full file set (main + deps).
       const manifest = sidecarToManifest(slug, slot, fileName, updated);
       updated.custom = { ...updated.custom, readiness: manifest.readiness };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeSidecarJson(dir, fileName, updated);
       return { ...manifest, updatedAt: now };
     });
   }
@@ -429,7 +485,10 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
       let sidecar: AssetSidecar;
       try {
         sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
@@ -444,7 +503,7 @@ export class PerGameAssetStore implements AssetStorage {
         ...sidecar,
         custom: { ...sidecar.custom, userLabel: trimmed },
       };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeSidecarJson(dir, fileName, updated);
       return sidecarToManifest(slug, slot, fileName, updated);
     });
   }
@@ -463,7 +522,10 @@ export class PerGameAssetStore implements AssetStorage {
         });
       }
       const dir = slotDir(slug, slot);
-      const sidecarAbs = resolve(dir, `${fileName}.meta.json`);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
       let sidecar: AssetSidecar;
       try {
         sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
@@ -477,7 +539,7 @@ export class PerGameAssetStore implements AssetStorage {
         ...sidecar,
         custom: { ...sidecar.custom, quality: report },
       };
-      await writeFile(sidecarAbs, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+      await writeSidecarJson(dir, fileName, updated);
       return sidecarToManifest(slug, slot, fileName, updated);
     });
   }
