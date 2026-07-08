@@ -44,7 +44,8 @@ export interface VideoClip {
 const USE_LOCAL_CLIPS = true
 
 /** 远程直链根路径 —— USE_LOCAL_CLIPS=false 或本地缺文件时的回落来源。 */
-const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resource/zhandou'
+// const CLIP_BASE = 'http://deqingyan-any6.devcloud.woa.com:8001/files/game_resource/zhandou'
+const CLIP_BASE = ''
 
 // Vite 构建期把 zhandou/*.mp4 静态导入成带 hash 的最终 URL（dev 直接给源路径），运行时零成本。
 const localClipModules = import.meta.glob<string>('../assets/zhandou/*.mp4', {
