@@ -1,6 +1,5 @@
 import { useMediaStore } from '../media/mediaStore'
 /** file-server 归档版 MP4 —— 与 seedance prototype/game-config.js 对齐。 */
-// const DIR = 'http://deqingyan-any6.devcloud.woa.com:8001/files/'
 const DIR = ''
 
 export const COLD_CLIFF_VIDEOS = {
