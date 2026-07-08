@@ -4,6 +4,9 @@ import './bootMigrateLegacyKeys'
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { GraphPlayer } from './blueprint/graph/react/GraphPlayer'
+import { GraphStudio } from './blueprint/graph/react/GraphStudio'
+import { NODIA_DEMO } from './blueprint/graph/demo'
 import './styles/global.css'
 
 const root = document.getElementById('root')
@@ -191,10 +194,31 @@ class TopErrorBoundary extends Component<
   }
 }
 
-createRoot(root).render(
-  <StrictMode>
+// 表面路由：
+//   默认（含 workbench 嵌入 ?pane=left/center、?surface=player、?surface=legacy）
+//                               → 旧 App（蓝图/视频/界面/规则/试玩 tab 壳 + 侧栏，保留原交互）
+//   ?surface=graphstudio        → GraphStudio（可编辑蓝图 + 试玩 + 运行时可视化，新引擎；开发单独看）
+//   ?surface=graphplay          → GraphPlayer（纯试玩，新引擎）
+// graph* 表面不套 StrictMode，避免 start() 被双调用重复推进。
+const _surface = new URLSearchParams(location.search).get('surface')
+if (_surface === 'graphstudio' || _surface === 'graphplay') {
+  createRoot(root).render(
     <TopErrorBoundary>
-      <App />
-    </TopErrorBoundary>
-  </StrictMode>,
-)
+      <div style={{ position: 'fixed', inset: 0 }}>
+        {_surface === 'graphplay' ? (
+          <GraphPlayer scenario={NODIA_DEMO} />
+        ) : (
+          <GraphStudio scenario={NODIA_DEMO} />
+        )}
+      </div>
+    </TopErrorBoundary>,
+  )
+} else {
+  createRoot(root).render(
+    <StrictMode>
+      <TopErrorBoundary>
+        <App />
+      </TopErrorBoundary>
+    </StrictMode>,
+  )
+}

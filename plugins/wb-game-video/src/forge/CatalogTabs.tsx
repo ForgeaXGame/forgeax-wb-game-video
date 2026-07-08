@@ -44,7 +44,7 @@ interface CatalogItem {
   label: string
 }
 
-function CatalogShell<T extends CatalogItem>({
+export function CatalogShell<T extends CatalogItem>({
   icon,
   title,
   items,
@@ -1902,7 +1902,7 @@ function EmptyPreview({ text }: { text: string }) {
   )
 }
 
-const CATALOG_CSS = `
+export const CATALOG_CSS = `
 .gc-tab {
   --gc-bg: var(--work, #0e0c09);
   --gc-panel: var(--panel, #1b1713);

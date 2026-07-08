@@ -41,6 +41,15 @@ const VIEW_DEFS: Array<{ id: ForgeView; label: string; hint: string }> = [
   { id: 'play', label: '试玩', hint: '当前游戏试玩 · 切到其他视图即退出' },
 ]
 
+/** 新引擎（graph）并行入口——单独一行，对齐旧 蓝图/视频/界面/规则/试玩。各页共用同一份场景数据。 */
+const GRAPH_VIEW_DEFS: Array<{ id: ForgeView; label: string; hint: string }> = [
+  { id: 'graph', label: '蓝图', hint: '新引擎蓝图工作室 · 可编辑画布 + 右上试玩浮层（点节点才出配置）' },
+  { id: 'graphvideo', label: '视频', hint: '内置演出视频库 · 蓝图「视频」下拉的数据源' },
+  { id: 'graphui', label: '界面', hint: '全局 HUD 配置' },
+  { id: 'graphrule', label: '规则', hint: '实体 / 变量 / 场景设置 / 反应规则（左侧切换）' },
+  { id: 'graphplay', label: '试玩', hint: '新引擎预览 · 跑当前编辑的场景' },
+]
+
 /**
  * 「图像」视图下的一级分区（与「剧本」视图下「段子」三级同样式）。
  * 2026-06：把原本堆在内容区的 风格 / 参考图 / UI 三块切换提到边栏。
@@ -127,6 +136,22 @@ export function ReelSidebar() {
       <Section>
         <PillGroup>
           {VIEW_DEFS.map((v) => (
+            <PillButton
+              key={v.id}
+              active={forgeView === v.id}
+              onClick={() => setForgeView(v.id)}
+              hint={v.hint}
+            >
+              {v.label}
+            </PillButton>
+          ))}
+        </PillGroup>
+      </Section>
+
+      {/* 新引擎（graph）并行入口 —— 单独一行 */}
+      <Section label="新引擎">
+        <PillGroup>
+          {GRAPH_VIEW_DEFS.map((v) => (
             <PillButton
               key={v.id}
               active={forgeView === v.id}
@@ -248,7 +273,7 @@ export function ReelSidebar() {
         </div>
       )}
 
-      {forgeView !== 'tree' && forgeView !== 'assets' && forgeView !== 'play' && (
+      {forgeView !== 'tree' && forgeView !== 'assets' && forgeView !== 'play' && !forgeView.startsWith('graph') && (
         <footer className="rs-foot">
           <span className="rs-foot-dot" aria-hidden />
           <span className="rs-foot-text">
@@ -263,6 +288,17 @@ export function ReelSidebar() {
                     : forgeView === 'rule'
                       ? '规则 · 玩法规则总览'
                       : `模块 · ${IMAGE_SECTION_DEFS.find((t) => t.id === imageSection)?.label ?? ''}`}
+          </span>
+        </footer>
+      )}
+
+      {forgeView.startsWith('graph') && (
+        <footer className="rs-foot">
+          <span className="rs-foot-dot" aria-hidden />
+          <span className="rs-foot-text">
+            {forgeView === 'graph' ? '新引擎 · 蓝图工作室'
+              : forgeView === 'graphplay' ? '新引擎 · 预览试玩'
+                : '新引擎 · 场景配置'}
           </span>
         </footer>
       )}

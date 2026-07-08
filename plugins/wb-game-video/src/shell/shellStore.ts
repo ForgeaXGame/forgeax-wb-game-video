@@ -51,6 +51,12 @@ export type ForgeView =
   | 'rule'
   | 'play'
   | 'assets'
+  // 新引擎（graph）并行入口，对齐旧结构：graph=蓝图 / graphvideo=视频 / graphui=界面(全局HUD) / graphrule=规则(实体·变量·场景设置·反应规则) / graphplay=试玩。
+  | 'graph'
+  | 'graphvideo'
+  | 'graphui'
+  | 'graphrule'
+  | 'graphplay'
 
 const FORGE_VIEW_IDS: readonly ForgeView[] = [
   'script',
@@ -62,6 +68,11 @@ const FORGE_VIEW_IDS: readonly ForgeView[] = [
   'rule',
   'play',
   'assets',
+  'graph',
+  'graphvideo',
+  'graphui',
+  'graphrule',
+  'graphplay',
 ]
 
 /**
@@ -77,6 +88,11 @@ const TABBED_FORGE_VIEWS: readonly ForgeView[] = [
   'ui',
   'rule',
   'play',
+  'graph',
+  'graphvideo',
+  'graphui',
+  'graphrule',
+  'graphplay',
 ]
 
 /** 把任意 forgeView 收敛到有 tab 入口的视图（无 tab 的旧视图 → blueprint）。 */
