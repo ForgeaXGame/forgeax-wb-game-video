@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:upload-image args",
+  "type": "object",
+  "properties": {
+    "slug": { "type": "string", "description": "Active game slug (auto-injected by host; not used for storage — uploads are transfer artifacts)." },
+    "base64": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base64-encoded image bytes (a data: URL prefix is tolerated and stripped)."
+    },
+    "mimetype": {
+      "type": "string",
+      "enum": ["image/png", "image/jpeg", "image/jpg", "image/webp"],
+      "description": "Image MIME type. Drives the COS object key extension."
+    }
+  },
+  "required": ["base64", "mimetype"],
+  "additionalProperties": false
+}

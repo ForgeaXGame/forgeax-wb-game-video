@@ -2,10 +2,17 @@
 //
 // Real provider calls are OFF by default. They turn on ONLY when both:
 //   1. GEN3D_ENABLE_REAL_PROVIDERS === "1", and
-//   2. the provider's required credentials are present.
+//   2. a 3D gateway key is present in Studio global .env (FORGEAX_3D_GATEWAY_KEY,
+//      ANTHROPIC_API_KEY, or LITELLM_PROXY_KEY — see pickLitellmFromEnv).
 // Otherwise generation falls back to the deterministic no-quota mock. Secrets
 // are read from process.env (server loads $FORGEAX_PROJECT_ROOT/.env) or, for
 // standalone smokes, from the plugin-local .env. Nothing here is logged.
+//
+// All 3D providers now route through the LiteLLM gateway — see AGENTS.md
+// «最优 > 兼容». The old per-provider keys (MESHY_API_KEY, HUNYUAN_API_KEY,
+// RODIN_API_KEY) are removed. Rodin is disabled because the gateway has no
+// Rodin/Hyper3D model. Meshy and Hunyuan map to gateway models (meshy-3d-* /
+// hunyuan-3d-*).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -50,6 +57,69 @@ export function realProvidersEnabled(): boolean {
   return read('GEN3D_ENABLE_REAL_PROVIDERS') === '1';
 }
 
+export interface LitellmEnv {
+  apiKey: string;
+  baseUrl: string;
+}
+
+const DEFAULT_LITELLM_BASE = 'https://llm-proxy.forgeax.com';
+
+function normalizeProxyBase(raw: string): string {
+  return raw.replace(/\/+$/, '').replace(/\/v1$/, '');
+}
+
+// 3D gateway base URL is resolved SEPARATELY from the chat/image
+// LITELLM_PROXY_BASE_URL: that variable points at the chat proxy (e.g.
+// Moonshot) which does NOT host /v1/3d/generations. Priority:
+//   1. FORGEAX_3D_GATEWAY_BASE_URL — 3D-only override (shared by wb-gen3d /
+//      wb-ai-asset; ops pins a 3D-specific host)
+//   2. ANTHROPIC_BASE_URL         — the forgeax proxy (same host that serves 3D)
+//   3. DEFAULT_LITELLM_BASE       — https://llm-proxy.forgeax.com
+// LITELLM_PROXY_BASE_URL is intentionally NOT consulted for 3D.
+function resolveGatewayBaseUrl(env: Record<string, string | undefined>): string {
+  const dedicated = env.FORGEAX_3D_GATEWAY_BASE_URL?.trim();
+  if (dedicated) return normalizeProxyBase(dedicated);
+  const anthropic = env.ANTHROPIC_BASE_URL?.trim();
+  if (anthropic) return normalizeProxyBase(anthropic);
+  return DEFAULT_LITELLM_BASE;
+}
+
+/**
+ * Resolve LiteLLM gateway credentials for 3D generation. The 3D gateway is
+ * decoupled from the chat/image LITELLM_PROXY_* vars, which may point at a
+ * different proxy (e.g. Moonshot) that does not host /v1/3d/generations.
+ *
+ * Key priority:
+ *   1. FORGEAX_3D_GATEWAY_KEY — 3D-only override (shared by all 3D plugins)
+ *   2. ANTHROPIC_API_KEY      — the forgeax proxy key (default 3D gateway auth)
+ *   3. LITELLM_PROXY_KEY      — legacy fallback (kept for pre-decouple configs)
+ * Base URL priority: FORGEAX_3D_GATEWAY_BASE_URL > ANTHROPIC_BASE_URL > default.
+ * Plugin-local .env must NOT hold a separate gateway key — configure in
+ * Studio Settings → API Keys.
+ */
+export function pickLitellmFromEnv(env: Record<string, string | undefined>): LitellmEnv | null {
+  const dedicatedKey = env.FORGEAX_3D_GATEWAY_KEY?.trim();
+  if (dedicatedKey) {
+    return { apiKey: dedicatedKey, baseUrl: resolveGatewayBaseUrl(env) };
+  }
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    return { apiKey: anthropicKey, baseUrl: resolveGatewayBaseUrl(env) };
+  }
+  const proxyKey = env.LITELLM_PROXY_KEY?.trim();
+  if (proxyKey) {
+    return { apiKey: proxyKey, baseUrl: resolveGatewayBaseUrl(env) };
+  }
+  return null;
+}
+
+// Returns the LiteLLM gateway credentials, or null when not configured.
+// All 3D providers now route through this single gateway key.
+export function getLitellmEnv(): LitellmEnv | null {
+  loadPluginEnvOnce();
+  return pickLitellmFromEnv(process.env);
+}
+
 export interface HunyuanEnv {
   apiKey: string;
   baseUrl: string;
@@ -59,16 +129,16 @@ export interface HunyuanEnv {
   rateLimitPerMin: number;
 }
 
-// Returns null when the real Hunyuan path is not fully configured. Callers must
-// fall back to mock when this is null — never throw a quota path on by accident.
+// Returns null when the real Hunyuan path is not fully configured. Now reads the
+// LiteLLM gateway key instead of the direct HUNYUAN_API_KEY. Callers must fall
+// back to mock when this is null — never throw a quota path on by accident.
 export function getHunyuanEnv(): HunyuanEnv | null {
   if (!realProvidersEnabled()) return null;
-  const apiKey = read('HUNYUAN_API_KEY');
-  const baseUrl = read('HUNYUAN_BASE_URL');
-  if (!apiKey || !baseUrl) return null;
+  const litellm = getLitellmEnv();
+  if (!litellm) return null;
   return {
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ''),
+    apiKey: litellm.apiKey,
+    baseUrl: litellm.baseUrl,
     defaultFaceCount: toInt(read('HUNYUAN_DEFAULT_FACE_COUNT'), 30000),
     pollIntervalMs: toInt(read('HUNYUAN_POLL_INTERVAL_MS'), 5000),
     pollTimeoutMs: toInt(read('HUNYUAN_POLL_TIMEOUT_MS'), 600000),
@@ -85,17 +155,16 @@ export interface MeshyEnv {
   rateLimitPerMin: number;
 }
 
-// Returns null when the real Meshy path is not fully configured. Unlike Hunyuan,
-// Meshy has a stable public base URL default (api.meshy.ai), so only the key is
-// required. Callers must fall back to mock when this is null.
+// Returns null when the real Meshy path is not fully configured. Now reads the
+// LiteLLM gateway key instead of the direct MESHY_API_KEY. Callers must fall
+// back to mock when this is null.
 export function getMeshyEnv(): MeshyEnv | null {
   if (!realProvidersEnabled()) return null;
-  const apiKey = read('MESHY_API_KEY');
-  if (!apiKey) return null;
-  const baseUrl = read('MESHY_BASE_URL') ?? 'https://api.meshy.ai';
+  const litellm = getLitellmEnv();
+  if (!litellm) return null;
   return {
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ''),
+    apiKey: litellm.apiKey,
+    baseUrl: litellm.baseUrl,
     defaultPolycount: toInt(read('MESHY_DEFAULT_POLYCOUNT'), 30000),
     pollIntervalMs: toInt(read('MESHY_POLL_INTERVAL_MS'), 5000),
     pollTimeoutMs: toInt(read('MESHY_POLL_TIMEOUT_MS'), 600000),
@@ -111,22 +180,10 @@ export interface RodinEnv {
   rateLimitPerMin: number;
 }
 
-// Returns null when the real Rodin (Hyper3D) path is not fully configured.
-// Like the other providers it is gated by GEN3D_ENABLE_REAL_PROVIDERS; the
-// public base URL (api.hyper3d.com) is the default, so only the key is
-// required. Callers must fall back to mock when this is null.
+// Rodin (Hyper3D) is not available on the LiteLLM gateway. Returns null with
+// a log-visible message. The UI should surface «Rodin 暂未接入网关».
 export function getRodinEnv(): RodinEnv | null {
-  if (!realProvidersEnabled()) return null;
-  const apiKey = read('RODIN_API_KEY');
-  if (!apiKey) return null;
-  const baseUrl = read('RODIN_BASE_URL') ?? 'https://api.hyper3d.com';
-  return {
-    apiKey,
-    baseUrl: baseUrl.replace(/\/+$/, ''),
-    pollIntervalMs: toInt(read('RODIN_POLL_INTERVAL_MS'), 5000),
-    pollTimeoutMs: toInt(read('RODIN_POLL_TIMEOUT_MS'), 600000),
-    rateLimitPerMin: toInt(read('RODIN_RATE_LIMIT_PER_MIN'), 3),
-  };
+  return null;
 }
 
 function toInt(value: string | undefined, fallback: number): number {

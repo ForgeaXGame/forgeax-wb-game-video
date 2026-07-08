@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { callTool } from '@/lib/toolClient';
+import { t } from '@/i18n';
 import type { UploadImageResult } from '@/types';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
 
@@ -43,7 +44,7 @@ export function ImageInputField({
   async function pickFile(file: File) {
     setError(null);
     if (file.size > MAX_UPLOAD_BYTES) {
-      setError(`图片过大（${(file.size / 1024 / 1024).toFixed(1)}MB），上限 8MB`);
+      setError(t('image.error.tooBig', { mb: (file.size / 1024 / 1024).toFixed(1) }));
       return;
     }
     setBusy(true);
@@ -51,12 +52,12 @@ export function ImageInputField({
       const { base64, mimetype } = await fileToBase64(file);
       const r = await callTool<UploadImageResult>('gen3d:upload-image', { base64, mimetype });
       if (!r.ok) {
-        setError(r.error === 'cos_not_configured' ? '未配置 COS 上传，请改为手填图片 URL' : r.error);
+        setError(r.error === 'cos_not_configured' ? t('image.error.noCos') : r.error);
         return;
       }
       onChange(r.result.url);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '上传失败');
+      setError(e instanceof Error ? e.message : t('image.error.uploadFail'));
     } finally {
       setBusy(false);
     }
@@ -78,10 +79,10 @@ export function ImageInputField({
           className="fx-btn fx-btn--sm"
           disabled={busy}
           onClick={() => inputRef.current?.click()}
-          title="选择本地图片上传"
+          title={t('image.title.upload')}
         >
           <UploadIcon size={14} aria-hidden="true" />
-          {busy ? '上传中…' : '本地图片'}
+          {busy ? t('image.btn.busy') : t('image.btn.upload')}
         </button>
         <input
           ref={inputRef}

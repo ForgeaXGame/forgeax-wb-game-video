@@ -1,5 +1,32 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-29 — LiteLLM 3D 网关接入 + Rodin 暂禁 + 凭证统一（`#16` 系列）。** 3D 生成（Meshy / Hunyuan）改走 LiteLLM 3D 网关（`/v1/3d/generations`），凭证由 Studio「设置 → API Keys」统一管理（优先级 `FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`），插件本地 `.env` 只留 COS + 总开关。Rodin（Hyper3D）网关无对应 model，`getRodinEnv` 恒返回 null（`rodin.ts` 代码保留,manifest / catalog 标注「暂未接入网关」）。3D 网关 base URL 与 chat/image 的 `LITELLM_PROXY_*` 解耦（后者可能指向 Moonshot 等无 3D 端点的代理）——见 `server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`。`getBalance()` 恒为 null（网关无余额端点）,auto-rig / apply-motion 跳过余额预检直达付费端点。
+
+> **2026-06-25（其二）— 新审阅入口：2D→3D CLI / UI 分阶段体验修复方案，待其他 agent review。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-staged-character-gen3d-flow.md`](./docs/PLAN-2026-06-25-staged-character-gen3d-flow.md)，review handoff = [`docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md`](./docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md)。
+> - **用户实测问题**：CLI 自然语言会绕过 `wb-character` 的候选/选择流程，直接 `character:generate-turnaround` → `gen3d:views-to-3d` → `auto-rig/apply-motion`，中间不等用户确认；`wb-character` 当前也没有“生成 3D 四视图 / 送去 3D”的按钮。
+> - **新目标**：从“一条链跑完”改成 **2D 设定/选择 → 四视图 → 静态 3D → 可选动作** 四段，每段停下；`wb-character` final phase 补四视图按钮和 handoff；`auto-rig` / `apply-motion` 用真实 `requireConfirm` 硬门控。
+> - **Reviewer 先读**：PLAN §0–§4 + review handoff §1–§5。重点审 `wb-character` UI 入口、`generate-turnaround` 返回 schema、`ConfirmDialog` 的 `confirmId`/`token` 漂移、`gen3d` manifest 的 `requireConfirm`。
+> - **本条是方案/交接，未实现**；不要把下方 6/23 “Forge 直接编排”理解为“允许一口气跑到底”。ADR-0008 D-A 的“Forge 直接编排”仍成立，但必须补阶段停顿和用户确认。
+
+> **2026-06-25 — 架构对齐：feature 分支 vs origin/main 分叉 · 迁移 SSOT 落档。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-migrate-to-forgeax-core.md`](./docs/PLAN-2026-06-25-migrate-to-forgeax-core.md)。
+> - **当前状态**：`laurenceelu/feat-20260622-character-gen3d-link` 三仓**均未合 main**（studio 落后 main 183 / mp 28 / server 43）。T0–T3 编码 + 测试在分支上完成；**T4 真机未签字**。
+> - **架构变动（main 已有）**：server 瘦壳 + `forgeax-cli`（`packages/cli` 编排层）+ `forgeax-core` sidecar 子进程(**不是 vendored `packages/core`**，见 PLAN §2 修正后的四层模型)；host-tools 桥**迁进 forgeax-cli**（`packages/cli/builtin/kits/host-tools/...`），**不是被删**——6/23「桥失效」判断过于悲观。
+> - **硬阻塞 B1（已解 2026-06-25）**：`character-forge` 已内聚进 `wb-character/server/`（commit `cc21af6`）；不再 import 已删的 server 路径。
+> - **下一步**：批次 1 cherry-pick 已完成 → 批次 2 server 重写 → T4 真机 → 合 main。
+
+> **2026-06-23 — 新线：2D 角色 → 3D 角色（turnaround 收尾 · 联动 gen3d · CLI 自主端到端）。方案已过 grill review（ADR-0008）；**T1/T2/T3 已提交 · T0 HTTP 探针 PASS**（`scripts/t0-host-tools-probe.mjs`）**· 剩 T4 真机验证**（UI handoff 目视 + 真 key 2D→3D + opt-in motion）。T1 lazy transfer 已随 `08c029a` 提交。执行 / 审阅 SSOT = [`docs/PLAN-2026-06-23-character-to-gen3d-cli.md`](./docs/PLAN-2026-06-23-character-to-gen3d-cli.md)。
+> - **一句话**：把 wb-character 出的角色四视图喂进 gen3d 出 3D。UI handoff 路径 + Forge CLI 一条链直接编排（ADR-0008 D-A）。
+> - **已确认决策**（勿 re-litigate）：scope = 两步走；**cli_arch = Forge 直接编排**（`character:generate-turnaround` → `gen3d:views-to-3d`，不经两 agent 穿线；见 ADR-0008 D-A）。
+> - **reviewer 先读 PLAN §0/§1/§7**；PLAN §2 是反失真的代码证据（file:line / commit）——**别信本文件下方旧块的"待执行"状态**。
+> - **跨仓改动面**：wb-character（B1 已内聚 character-forge）+ wb-gen3d + `agent-gen3d` persona + marketplace `src/system-prompt/80-workbench-agents.md`（派单表，非插件目录，**需授权**）。
+
+> **2026-06-22 — agent 化收敛：「3D 角色生成助手」(`agent-gen3d`) 雏形落地 + 「静态优先」决策定案（待其他 agent review）。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-22-gen3d-character-agent.md`](./docs/PLAN-2026-06-22-gen3d-character-agent.md)。
+> - **分支现状**：上一条线 `feat-20260617-gen3d-agentify-roadmap`（Meshy 公网绑骨/动画 P0–P3 + 插件内密钥 + agent 化路线图）**已合并入 main**（studio `7a5f739` / marketplace `8499d04`；main 之后又推进了公开镜像 / website / README 等与 gen3d 无关的提交）。本轮新分支 = **`laurenceelu/feat-20260622-gen3d-agent-persona`**（studio + marketplace 同名）。
+> - **本轮已落地**：**A1** 新增 `plugins/agent-gen3d/`（`forgeax-plugin.json` 声明 `provides.agent.tools:["gen3d:*"]` + `persona/zh.md`（已按静态优先写）+ `memory/lessons.md`）；**A2 一半** 把 `wb-gen3d` 的 `gen3d:score-quality` / `gen3d:rename-asset` 翻 `exposedToAI:true`。`bun packages/types/test/validate-manifests.ts` → **57/57 ok**。⇒「生成 + 评分 + 命名」半条产线已 agent-ready（10 个 `gen3d:*` 工具对 AI 可见）。
+> - **已锁产品决策**（勿 re-litigate）：① **只做角色（人物）**，不做道具 / 场景 / 建筑；② **静态优先**——默认只交付静态角色 + 交付时主动提示可动，**仅用户明确要会动**才绑骨 / 套动作（省真实配额）。
+> - **下一步（reviewer 执行，见 PLAN §4/§5）**：T1 起 stack 做 A0 动态确认（让 `agent-gen3d` 真调一次 `gen3d:list-assets`，零配额）；T3 翻「会动」半套（`auto-rig`/`apply-motion`/`list-motions` → `exposedToAI:true`），**卡 operator 真机目视签字 + 花钱护栏**。
+> - **⚠️ 文档失真提醒**：本文件下方 `2026-06-21` 各条仍写 `PROPOSAL / 未开始编码` —— 实则 Meshy 绑骨/动画 P0–P3 已实现并入 main（见 `c74b9a9` 等提交）。**以 2026-06-25 顶块 + PLAN-2026-06-22/23/25 为准**；`.workbuddy/CURSOR_HANDOFF.md` 已于 2026-06-25 对齐。
+
 > **2026-06-21（其二）— 公开镜像「零某云」门禁：临时去品牌词，解耦债务已挂账。** 开源公开镜像有一道**按字面词扫描**的门禁（仓库根 `scripts/mirror/publish.sh` 的 `gate()`）。本插件 `server/cos-uploader.ts` + `.env.example` 注释里点名了某云对象存储厂商，会触发门禁。**本批仅把这两处品牌词改成中性表述（"cloud object storage (COS)"）让门禁通过**；底层对象存储 SDK 依赖（`cos-nodejs-sdk-v5`）**仍在**——门禁按词扫描、抓不到这个依赖，所以 **「门禁绿」≠「无该云依赖」**。公开镜像正式转 public 前**必须二选一**：① 把 wb-gen3d 排除出镜像 + 门禁 denylist 补 `cos-nodejs-sdk-v5`；② 把 `cos-uploader` 抽象成厂商中立存储（默认 S3 兼容、该 SDK 转可选依赖，保留 3D 生成）。**完整决策 + 债务 + 真解见 [`docs/adr/0007-cos-public-mirror-scrub-and-decouple-debt.md`](./docs/adr/0007-cos-public-mirror-scrub-and-decouple-debt.md)**（该 ADR 在 `docs/`，不进镜像，故可点名）。
 
 > **2026-06-21 — 公测版绑骨/动画改用 Meshy 公网 API（§8 已拍板 · P0–P3 已实现 · mock-first / quota-safe / `exposedToAI` 仍 false）。** 上级指示公测接公网，
@@ -34,7 +61,7 @@
 > 早前 6/14 落地的三批（已完成，勿重复）：视图器 P1+P2（`f5aa49c`）/ 五维评分 P3（`24143d7`）/ Provider 参数 P5（`608c365`）。
 > IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成执行 SSOT**。
 
-Last updated: 2026-06-21 Asia/Hong_Kong
+Last updated: 2026-06-29 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
@@ -548,17 +575,23 @@ there is no separate "global → game" copy step.
 
 ## Real Provider Activation (quota-safe by default)
 
-Real Hunyuan calls require BOTH, set in a plugin-local `.env` (gitignored; copy
-`.env.example`):
+Real 3D generation goes through the LiteLLM 3D gateway. The gateway key is
+managed centrally in **Studio Settings → API Keys** (priority
+`FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`); the
+plugin-local `.env` **never** holds it. The plugin `.env` (gitignored; copy
+`.env.example`) holds only:
 
-- `GEN3D_ENABLE_REAL_PROVIDERS=1`
-- `HUNYUAN_API_KEY=<uuid>` and `HUNYUAN_BASE_URL=<your-hunyuan-openapi-host>`
+- `GEN3D_ENABLE_REAL_PROVIDERS=1` — master switch (real calls vs quota-safe mock)
+- `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` — object
+  storage for URL-fetching providers (image / views / pose standardization)
 
-Auth is plain `Authorization: Bearer <key>` (no request signing). Submit + poll
-share two endpoints (`/openapi/v1/workflow/invoke/async`,
-`/openapi/v1/workflow/detail`) differentiated by the `model` field. The
-`RateGuard` caps submits (default 3/min). With the switch unset/0 or no key,
-generation stays mock-only and never touches the network.
+The gateway forwards to Meshy / Hunyuan models (`meshy-3d-*` / `hunyuan-*`);
+**Rodin (Hyper3D) is not on the gateway** (`getRodinEnv` returns null; `rodin.ts`
+code retained, disabled until the gateway adds a Hyper3D model). With the switch
+unset/0 or no gateway key, generation stays mock-only and never touches the
+network. The 3D gateway base URL is decoupled from the chat/image
+`LITELLM_PROXY_*` vars (which may point at a different proxy); see
+`server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`.
 
 ## Verification So Far
 

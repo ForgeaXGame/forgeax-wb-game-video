@@ -19,6 +19,7 @@ import {
 import { StepCard } from '@/components/StepCard';
 import { ImageInputField } from '@/components/ImageInputField';
 import { CredentialsModal } from '@/components/CredentialsModal';
+import { t } from '@/i18n';
 
 type StepId = 'provider' | 'input' | 'pose' | 'params';
 
@@ -64,6 +65,60 @@ export function SetupSidebar({
   const [providerParams, setProviderParams] = useState<Record<string, ParamValue>>({});
   useEffect(() => setProviderParams({}), [provider]);
 
+  // Cross-workbench handoff from wb-character「送去生成 3D 模型」: the Studio host
+  // writes the view URLs to a shared same-origin localStorage key (see
+  // StandalonePluginIframe.doNavigate) then flips to this workbench. Prefill the
+  // views-mode inputs from it. We read on mount (fresh iframe — value already
+  // written) AND on the 'storage' event (keep-alive iframe already mounted; the
+  // parent's write fires storage in this same-origin child document). Only
+  // consume payloads addressed to us so a wb-anim handoff isn't swallowed.
+  useEffect(() => {
+    const HANDOFF_KEY = 'forgeax:anim-handoff';
+    const SELF_PLUGIN_ID = '@forgeax-plugin/wb-gen3d';
+    function applyHandoff() {
+      let raw: string | null = null;
+      try {
+        raw = window.localStorage.getItem(HANDOFF_KEY);
+      } catch {
+        return;
+      }
+      if (!raw) return;
+      let data: {
+        targetPluginId?: string;
+        views?: { front?: string; back?: string; left?: string; right?: string };
+        name?: string;
+      } | null = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      if (!data || data.targetPluginId !== SELF_PLUGIN_ID) return;
+      const views = data.views;
+      if (!views || !views.front) return;
+      setMode('views');
+      setAssetSlot('characters');
+      setFrontUrl(views.front);
+      setBackUrl(views.back ?? '');
+      setLeftUrl(views.left ?? '');
+      setRightUrl(views.right ?? '');
+      if (views.left || views.right) setShowMoreViews(true);
+      if (data.name) setAssetName(data.name.slice(0, 60));
+      setOpenStep('input');
+      try {
+        window.localStorage.removeItem(HANDOFF_KEY);
+      } catch {
+        /* best-effort: stale key just means a no-op re-apply on next mount */
+      }
+    }
+    applyHandoff();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === HANDOFF_KEY && e.newValue) applyHandoff();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const visibleParamFields: ParamField[] = providerParamSpec[provider].filter(
     (f) => f.verified && f.appliesToModes.includes(mode),
   );
@@ -77,13 +132,15 @@ export function SetupSidebar({
   const inputSummary =
     mode === 'text'
       ? prompt.trim()
-        ? `“${prompt.trim().slice(0, 16)}${prompt.trim().length > 16 ? '…' : ''}”`
-        : '未填写描述'
+        ? t('setup.summary.prompt', {
+            text: prompt.trim().slice(0, 16) + (prompt.trim().length > 16 ? '…' : ''),
+          })
+        : t('setup.summary.noPrompt')
       : mode === 'image'
         ? imageUrl.trim()
-          ? '已填图片 URL'
-          : '未填图片 URL'
-        : `${filledViews} 张视图`;
+          ? t('setup.summary.imageUrl')
+          : t('setup.summary.noImageUrl')
+        : t('setup.summary.views', { n: filledViews });
 
   const canSubmit =
     !busy &&
@@ -139,8 +196,8 @@ export function SetupSidebar({
 
           <StepCard
             index={1}
-            title="供应商"
-            summary={providerMeta[provider].label}
+            title={t('setup.provider.title')}
+            summary={t(providerMeta[provider].label)}
             open={openStep === 'provider'}
             onToggle={() => toggle('provider')}
           >
@@ -154,20 +211,18 @@ export function SetupSidebar({
                   className={`fx-segmented-btn ${provider === p ? 'is-selected' : ''}`}
                   onClick={() => setProvider(p)}
                 >
-                  <span>{providerMeta[p].label}</span>
+                  <span>{t(providerMeta[p].label)}</span>
                 </button>
               ))}
             </div>
-            <p className="step-note">
-              混元走 workflow 命名视图槽；Meshy 文生为白模，需在结果卡片二次加贴图。
-            </p>
+            <p className="step-note">{t('setup.provider.hint')}</p>
           </StepCard>
 
           {usesImageInput && (
             <StepCard
               index={2}
-              title="姿态标准化（可选）"
-              summary={poseResult ? '已生成标准化图' : '未使用'}
+              title={t('setup.pose.title')}
+              summary={poseResult ? t('setup.pose.summary.done') : t('setup.pose.summary.idle')}
               open={openStep === 'pose'}
               onToggle={() => toggle('pose')}
             >
@@ -182,12 +237,12 @@ export function SetupSidebar({
 
           <StepCard
             index={usesImageInput ? 3 : 2}
-            title="输入方式"
-            summary={`${modeMeta[mode].label} · ${inputSummary}`}
+            title={t('setup.input.title')}
+            summary={`${t(modeMeta[mode].label)} · ${inputSummary}`}
             open={openStep === 'input'}
             onToggle={() => toggle('input')}
           >
-            <div className="fx-segmented" role="tablist" aria-label="生成模式">
+            <div className="fx-segmented" role="tablist" aria-label={t('setup.input.aria.mode')}>
               {(Object.keys(modeMeta) as Mode[]).map((m) => {
                 const Icon = modeMeta[m].icon;
                 return (
@@ -200,15 +255,15 @@ export function SetupSidebar({
                     onClick={() => changeMode(m)}
                   >
                     <Icon size={15} aria-hidden="true" />
-                    <span>{modeMeta[m].label}</span>
+                    <span>{t(modeMeta[m].label)}</span>
                   </button>
                 );
               })}
             </div>
 
             <div className="field">
-              <span className="field-label">资产类型</span>
-              <div className="fx-segmented" role="radiogroup" aria-label="资产类型">
+              <span className="field-label">{t('setup.assetType.label')}</span>
+              <div className="fx-segmented" role="radiogroup" aria-label={t('setup.assetType.aria')}>
                 {ASSET_SLOTS.map((s) => (
                   <button
                     key={s}
@@ -218,54 +273,48 @@ export function SetupSidebar({
                     className={`fx-segmented-btn ${assetSlot === s ? 'is-selected' : ''}`}
                     onClick={() => setAssetSlot(s)}
                   >
-                    <span>{assetSlotMeta[s].label}</span>
+                    <span>{t(assetSlotMeta[s].label)}</span>
                   </button>
                 ))}
               </div>
-              <p className="step-note">
-                角色可后续绑骨 / 加动作；物件为静态道具 / 场景。决定存放槽位，不可在生成后切换。
-              </p>
+              <p className="step-note">{t('setup.assetType.hint')}</p>
             </div>
 
             <label className="field">
-              <span className="field-label">资产名称（可选）</span>
+              <span className="field-label">{t('setup.assetName.label')}</span>
               <input
                 className="fx-input"
                 type="text"
                 value={assetName}
-                placeholder="留空自动命名（如 views-meshy-3）"
+                placeholder={t('setup.assetName.placeholder')}
                 maxLength={60}
                 onChange={(e) => setAssetName(e.target.value)}
               />
-              <p className="step-note">
-                用作文件名与导出 .zip 名（仅保留字母/数字，会转小写）。留空则按 prompt / 模式自动命名。
-              </p>
+              <p className="step-note">{t('setup.assetName.hint')}</p>
             </label>
 
             {mode === 'text' && (
               <label className="field">
                 <span className="field-label">
-                  描述 Prompt <span className="field-count">{prompt.trim().length} 字</span>
+                  {t('setup.prompt.label')} <span className="field-count">{t('setup.prompt.count', { n: prompt.trim().length })}</span>
                 </span>
                 <textarea
                   className="fx-textarea fx-textarea--lg"
                   value={prompt}
                   rows={6}
-                  placeholder="描述你想生成的角色 / 物件，越具体越好。例：身披红色斗篷的卡通骑士，手持长剑，低多边形风格。"
+                  placeholder={t('setup.prompt.placeholder')}
                   onChange={(e) => setPrompt(e.target.value)}
                 />
               </label>
             )}
 
             {usesImageInput && (
-              <p className="step-note">
-                可在「角色编辑器」生成三视图 / 立绘后导入，或本地上传图片自动托管。
-              </p>
+              <p className="step-note">{t('setup.input.hint.views')}</p>
             )}
 
             {mode === 'image' && (
               <ImageInputField
-                label="图片 URL"
+                label={t('setup.input.imageUrl')}
                 value={imageUrl}
                 placeholder="https://…/character.png"
                 onChange={setImageUrl}
@@ -275,13 +324,13 @@ export function SetupSidebar({
             {mode === 'views' && (
               <>
                 <ImageInputField
-                  label="正视图 URL（必填）"
+                  label={t('setup.input.frontUrl')}
                   value={frontUrl}
                   placeholder="https://…/front.png"
                   onChange={setFrontUrl}
                 />
                 <ImageInputField
-                  label="背视图 URL（可选）"
+                  label={t('setup.input.backUrl')}
                   value={backUrl}
                   placeholder="https://…/back.png"
                   onChange={setBackUrl}
@@ -289,13 +338,13 @@ export function SetupSidebar({
                 {showMoreViews ? (
                   <>
                     <ImageInputField
-                      label="左视图 URL（可选）"
+                      label={t('setup.input.leftUrl')}
                       value={leftUrl}
                       placeholder="https://…/left.png"
                       onChange={setLeftUrl}
                     />
                     <ImageInputField
-                      label="右视图 URL（可选）"
+                      label={t('setup.input.rightUrl')}
                       value={rightUrl}
                       placeholder="https://…/right.png"
                       onChange={setRightUrl}
@@ -308,7 +357,7 @@ export function SetupSidebar({
                     onClick={() => setShowMoreViews(true)}
                   >
                     <Plus size={14} aria-hidden="true" />
-                    添加左/右视图
+                    {t('setup.input.addMoreViews')}
                   </button>
                 )}
               </>
@@ -317,41 +366,44 @@ export function SetupSidebar({
 
           <StepCard
             index={usesImageInput ? 4 : 3}
-            title="生成参数"
-            summary={`${polycountTierMeta[polycountTier].label}面数 · PBR ${enablePbr ? '开' : '关'}`}
+            title={t('setup.params.title')}
+            summary={t('setup.params.summary', {
+              tier: t(polycountTierMeta[polycountTier].label),
+              pbr: enablePbr ? t('common.on') : t('common.off'),
+            })}
             open={openStep === 'params'}
             onToggle={() => toggle('params')}
           >
             <div className="field">
               <span className="field-label">
-                目标面数{' '}
+                {t('setup.polycount.label')}{' '}
                 <span className="field-count">
-                  ≈ {tierToFaceCount(provider, polycountTier).toLocaleString()} 面
+                  {t('setup.polycount.approx', { n: tierToFaceCount(provider, polycountTier).toLocaleString() })}
                 </span>
               </span>
-              <div className="fx-segmented" role="radiogroup" aria-label="目标面数">
-                {POLYCOUNT_TIERS.map((t) => (
+              <div className="fx-segmented" role="radiogroup" aria-label={t('setup.polycount.aria')}>
+                {POLYCOUNT_TIERS.map((tt) => (
                   <button
-                    key={t}
+                    key={tt}
                     type="button"
                     role="radio"
-                    aria-checked={polycountTier === t}
-                    className={`fx-segmented-btn ${polycountTier === t ? 'is-selected' : ''}`}
-                    onClick={() => setPolycountTier(t)}
+                    aria-checked={polycountTier === tt}
+                    className={`fx-segmented-btn ${polycountTier === tt ? 'is-selected' : ''}`}
+                    onClick={() => setPolycountTier(tt)}
                   >
-                    <span>{polycountTierMeta[t].label}</span>
+                    <span>{t(polycountTierMeta[tt].label)}</span>
                   </button>
                 ))}
               </div>
             </div>
             <label className="fx-check">
               <input type="checkbox" checked={enablePbr} onChange={(e) => setEnablePbr(e.target.checked)} />
-              <span>启用 PBR 材质</span>
+              <span>{t('setup.pbr.label')}</span>
             </label>
             {visibleParamFields.length > 0 && (
               <details className="adv-params">
                 <summary className="adv-params-summary">
-                  <ParamsIcon size={13} /> 高级参数（{providerMeta[provider].label} 专属）
+                  <ParamsIcon size={13} /> {t('setup.advParams.summary', { provider: t(providerMeta[provider].label) })}
                 </summary>
                 <div className="adv-params-body">
                   {visibleParamFields.map((f) => (
@@ -370,24 +422,22 @@ export function SetupSidebar({
                     />
                   ))}
                 </div>
-                <p className="step-note">仅在该 provider 真机生成时生效；mock / 未配置时忽略。</p>
+                <p className="step-note">{t('setup.advParams.hint')}</p>
               </details>
             )}
             {provider === 'meshy' && mode === 'text' && (
-              <p className="step-note">
-                Meshy 文生先产出 preview 白模；生成后在结果卡片点「加贴图 (refine)」补纹理。
-              </p>
+              <p className="step-note">{t('setup.params.meshyHint')}</p>
             )}
-            <p className="step-note">未配置真实 provider 时自动回退确定性 mock，不消耗配额。</p>
+            <p className="step-note">{t('setup.params.mockFallback')}</p>
           </StepCard>
         </div>
       </div>
 
       <div className="gx-action-row">
-        {!gameActive && <span className="step-note step-note--warn">未选择游戏，无法生成</span>}
+        {!gameActive && <span className="step-note step-note--warn">{t('setup.action.noGame')}</span>}
         <button type="button" className="fx-btn fx-btn--primary" disabled={!canSubmit} onClick={submit}>
           <GenerateIcon size={15} aria-hidden="true" />
-          {busy ? '生成中…' : '生成 3D'}
+          {busy ? t('setup.action.busy') : t('setup.action.generate')}
         </button>
       </div>
 
@@ -422,7 +472,7 @@ function ProviderParamControl({
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         >
-          <option value="">（默认）</option>
+          <option value="">{t('setup.advParams.enumDefault')}</option>
           {(field.options ?? []).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -479,12 +529,12 @@ function PaneHeader({
   const mode = status ? (status.realProvidersEnabled ? 'real' : 'quota-safe') : '…';
   return (
     <header className="workbench-pane-header">
-      <span className="workbench-pane-title">3D 角色生成</span>
+      <span className="workbench-pane-title">{t('setup.header.title')}</span>
       <button
         type="button"
         className="workbench-pane-pill"
         onClick={onConfigureKeys}
-        title="配置 3D 供应商 API 密钥"
+        title={t('setup.header.pillTitle')}
       >
         <KeyRound size={11} aria-hidden="true" />
         <span>
@@ -501,9 +551,9 @@ function ProviderModeChip({ status, onConfigureKeys }: { status: ProviderStatus 
   if (!status) {
     const QuotaIcon = EDITOR_ICON_MAP.quota;
     return (
-      <button type="button" className="status-chip" onClick={onConfigureKeys} title="配置供应商密钥">
+      <button type="button" className="status-chip" onClick={onConfigureKeys} title={t('setup.chip.title')}>
         <QuotaIcon size={14} aria-hidden="true" />
-        <span>检测供应商状态…</span>
+        <span>{t('setup.chip.detecting')}</span>
         <KeyRound size={13} aria-hidden="true" className="status-chip-key" />
       </button>
     );
@@ -515,10 +565,10 @@ function ProviderModeChip({ status, onConfigureKeys }: { status: ProviderStatus 
       type="button"
       className={`status-chip ${real ? 'status-chip--warn' : 'status-chip--ok'}`}
       onClick={onConfigureKeys}
-      title="配置供应商密钥"
+      title={t('setup.chip.title')}
     >
       <Icon size={14} aria-hidden="true" />
-      <span>{real ? '真实 provider · 消耗配额' : '无配额安全 · mock 回退'}</span>
+      <span>{real ? t('setup.chip.real') : t('setup.chip.mock')}</span>
       <KeyRound size={13} aria-hidden="true" className="status-chip-key" />
     </button>
   );
@@ -564,17 +614,15 @@ function PosePreprocess({
 
   const previewUrl = result ? scratchPreviewUrl(result) : null;
   const feedUrl = result ? (result.sourceUrl ?? result.localUrl ?? previewUrl ?? '') : '';
-  const targetLabel = mode === 'image' ? '图生输入' : '正视图输入';
+  const targetLabel = mode === 'image' ? t('setup.pose.target.image') : t('setup.pose.target.front');
 
   useEffect(() => setPreviewFailed(false), [previewUrl]);
   const showPreview = previewUrl !== null && !previewFailed;
 
   return (
     <>
-      <p className="step-note">
-        把简单卡通全身图标准化为 A/T-pose 再用作生成输入。仅适合简单卡通全身图。
-      </p>
-      <ImageInputField label="源图 URL" value={srcUrl} placeholder="https://…/character.png" onChange={setSrcUrl} />
+      <p className="step-note">{t('setup.pose.hint')}</p>
+      <ImageInputField label={t('setup.pose.srcLabel')} value={srcUrl} placeholder="https://…/character.png" onChange={setSrcUrl} />
       <button
         type="button"
         className="fx-btn fx-btn--sm"
@@ -582,7 +630,7 @@ function PosePreprocess({
         onClick={standardize}
       >
         <PoseIcon size={14} aria-hidden="true" />
-        {busy ? '标准化中…' : '标准化姿态'}
+        {busy ? t('setup.pose.busy') : t('setup.pose.btn')}
       </button>
       {error && <p className="step-note step-note--warn">{error}</p>}
       {result && (
@@ -604,12 +652,10 @@ function PosePreprocess({
               {result.usedMock ? 'mock' : 'real'}
             </span>
             <button type="button" className="fx-btn fx-btn--sm" onClick={() => onUse(feedUrl)}>
-              用作{targetLabel} ↓
+              {t('setup.pose.useAs', { target: targetLabel })}
             </button>
             {!result.usedMock && !result.sourceUrl && (
-              <p className="step-note step-note--warn">
-                真实模式但缺 sourceUrl，已回退本地 URL（远端 provider 可能取不到）。
-              </p>
+              <p className="step-note step-note--warn">{t('setup.pose.fallbackWarn')}</p>
             )}
           </div>
         </div>

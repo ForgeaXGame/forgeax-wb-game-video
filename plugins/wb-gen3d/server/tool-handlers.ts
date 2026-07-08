@@ -245,24 +245,32 @@ function buildProviderParams(
 // cacheKey is computed by the caller (includes provider + assetSlot, excludes
 // assetName), so caches stay isolated per slot and a rename never re-burns
 // quota.
+// Provider inputs may be passed eagerly, or as a lazy async factory invoked
+// ONLY on a cache MISS and ONLY for the real-provider branch — so views-to-3d
+// can defer its studio-local→COS transfer until it's actually needed (never on a
+// cache hit, never on the mock path). See viewsTo3D.
+type GenInputs = { hunyuan: HunyuanGenerateInput; meshy: MeshyGenerateInput; rodin: RodinGenerateInput };
+
 async function runGeneration(
   provider: GenProvider,
   mode: GenerationMode,
   ctx: PersistInput,
-  inputs: { hunyuan: HunyuanGenerateInput; meshy: MeshyGenerateInput; rodin: RodinGenerateInput },
+  inputs: GenInputs | (() => Promise<GenInputs>),
   mockPrompt: string | null,
 ): Promise<GenerateResult> {
   let usedMock = false;
+  const resolveInputs = (): Promise<GenInputs> =>
+    typeof inputs === 'function' ? inputs() : Promise.resolve(inputs);
   const produce = async (): Promise<ProviderResult> => {
     if (provider === 'meshy') {
       const env = getMeshyEnv();
-      if (env) return new MeshyProvider({ env, slug: ctx.slug }).generate(inputs.meshy);
+      if (env) return new MeshyProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).meshy);
     } else if (provider === 'rodin') {
       const env = getRodinEnv();
-      if (env) return new RodinProvider({ env, slug: ctx.slug }).generate(inputs.rodin);
+      if (env) return new RodinProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).rodin);
     } else {
       const env = getHunyuanEnv();
-      if (env) return new HunyuanWorkflowProvider({ env, slug: ctx.slug }).generate(inputs.hunyuan);
+      if (env) return new HunyuanWorkflowProvider({ env, slug: ctx.slug }).generate((await resolveInputs()).hunyuan);
     }
     usedMock = true;
     return mockFallback(provider, mode, mockPrompt);
@@ -287,6 +295,7 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true, autoRefine: enablePbr } : {}),
     ...cacheBits,
   });
   return runGeneration(
@@ -318,6 +327,7 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true } : {}),
     ...cacheBits,
   });
   return runGeneration(
@@ -331,6 +341,93 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
     },
     null,
   );
+}
+
+// ── T1 (ADR-0008 D-B): studio-local view URLs → COS transfer ────────────────
+// character:generate-turnaround returns studio-local image URLs — a relative
+// /api/wb/character/asset?path=… or a loopback host — that a URL-fetching
+// provider (Meshy/Hunyuan/Rodin) cannot reach. When a REAL provider will run we
+// server-side fetch those bytes and re-host them on COS, then feed the public
+// URL. Forge passes the turnaround url straight into views-to-3d (no schema
+// change, no multi-MB base64 over the LLM). Public URLs and the mock path are
+// untouched.
+// URL#hostname yields the bracketed form '[::1]' for IPv6 loopback, so the bare
+// '::1' would be dead — only the bracketed form can ever match.
+const STUDIO_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0']);
+
+export function isStudioLocalImageUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return false;
+  // data:/blob: are self-contained (no host to fetch by path); protocol-relative
+  // '//host/…' and any other scheme are remote — none are studio-local.
+  if (/^(?:data|blob):/i.test(u) || u.startsWith('//')) return false;
+  // A relative path (no scheme) is the turnaround url's shape → studio-local.
+  if (!/^https?:\/\//i.test(u)) return true;
+  try {
+    return STUDIO_LOCAL_HOSTS.has(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Studio hosts plugin handlers in-process; resolve relative URLs against its own
+// loopback origin (FORGEAX_SERVER_PORT, default 18900 — packages/server/main.ts).
+export function studioBaseUrl(): string {
+  return `http://127.0.0.1:${process.env.FORGEAX_SERVER_PORT ?? '18900'}`;
+}
+
+export interface ImageTransferDeps {
+  baseUrl: string;
+  fetchImpl: typeof fetch;
+  upload: (data: Uint8Array, mimetype: string) => Promise<string>;
+}
+
+// Fetch a studio-local image and re-host it on COS, returning the public URL.
+// Deps are injected so the transfer is unit-testable with zero network.
+export async function transferStudioLocalImage(url: string, deps: ImageTransferDeps): Promise<string> {
+  const abs = /^https?:\/\//i.test(url) ? url : `${deps.baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  const res = await deps.fetchImpl(abs);
+  if (!res.ok) {
+    throw Object.assign(new Error(`failed to fetch studio-local image (${res.status}): ${url}`), {
+      code: 'studio_local_fetch_failed',
+    });
+  }
+  const data = new Uint8Array(await res.arrayBuffer());
+  if (data.byteLength === 0) {
+    throw Object.assign(new Error(`studio-local image is empty: ${url}`), {
+      code: 'studio_local_fetch_failed',
+    });
+  }
+  const mimetype = res.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
+  return deps.upload(data, mimetype);
+}
+
+// Re-host any studio-local URLs in a view map on COS so a real provider can
+// fetch them; public URLs pass through unchanged. Throws cos_not_configured when
+// a transfer is needed but COS is not set up (a real provider can't fetch a
+// loopback URL, so fail loud with an actionable message).
+async function transferStudioLocalViews(views: Record<string, string>): Promise<Record<string, string>> {
+  if (!Object.values(views).some(isStudioLocalImageUrl)) return views;
+  const cosEnv = getCosEnv();
+  if (!cosEnv) {
+    throw Object.assign(
+      new Error(
+        'views-to-3d received a studio-local image URL but COS is not configured to host it for the provider; configure COS or pass public image URLs',
+      ),
+      { code: 'cos_not_configured' },
+    );
+  }
+  const uploader = new CosUploader(cosEnv);
+  const deps: ImageTransferDeps = {
+    baseUrl: studioBaseUrl(),
+    fetchImpl: globalThis.fetch,
+    upload: (data, mimetype) => uploader.upload(data, mimetype).then((r) => r.url),
+  };
+  const out: Record<string, string> = {};
+  for (const [slot, url] of Object.entries(views)) {
+    out[slot] = isStudioLocalImageUrl(url) ? await transferStudioLocalImage(url, deps) : url;
+  }
+  return out;
 }
 
 async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
@@ -348,38 +445,51 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
   for (const [slot, url] of Object.entries(args.views)) {
     if (url && url.trim()) normalizedViews[slot] = url.trim();
   }
-  // Meshy multi-image takes an ordered URL array (front/back/left/right first),
-  // not Hunyuan's named view slots.
-  const meshyUrls = [
-    normalizedViews.front_image_url,
-    normalizedViews.back_image_url,
-    normalizedViews.left_image_url,
-    normalizedViews.right_image_url,
-  ].filter((u): u is string => Boolean(u));
+  // cacheKey keys off the STABLE studio-local URLs, never the ephemeral COS
+  // presigned URL (which carries an expiring signature) — so an identical
+  // request still hits the cache and never re-burns quota.
   const cacheKey = makeCacheKey(provider, 'views', {
     assetSlot,
     ...normalizedViews,
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true } : {}),
     ...buildProviderParams(provider, 'views', args.providerParams).cacheBits,
   });
-  const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
-  return runGeneration(
-    provider,
-    'views',
-    { slug, assetSlot, assetName: defaultName(args.assetName, `views-${provider}`), faceCount, cacheKey },
-    {
+  // D-B (lazy): inputs are built ONLY on a cache MISS for the real-provider
+  // branch (runGeneration invokes this just before a real generate()), so the
+  // studio-local→COS transfer never runs on a cache hit or the mock path — no
+  // redundant fetch/upload, and a cached success can't be re-broken by a moved
+  // source image or changed COS config.
+  const buildInputs = async (): Promise<GenInputs> => {
+    const providerViews = await transferStudioLocalViews(normalizedViews);
+    // Meshy multi-image takes an ordered URL array (front/back/left/right first),
+    // not Hunyuan's named view slots.
+    const meshyUrls = [
+      providerViews.front_image_url,
+      providerViews.back_image_url,
+      providerViews.left_image_url,
+      providerViews.right_image_url,
+    ].filter((u): u is string => Boolean(u));
+    const { filtered } = buildProviderParams(provider, 'views', args.providerParams);
+    return {
       hunyuan: {
         mode: 'views',
-        views: normalizedViews as Partial<Record<ViewSlot, string>>,
+        views: providerViews as Partial<Record<ViewSlot, string>>,
         faceCount,
         enablePbr,
         enableFbxUrl,
       },
       meshy: { mode: 'views', imageUrls: meshyUrls, targetPolycount: faceCount, enablePbr, params: filtered },
       rodin: { mode: 'views', imageUrls: meshyUrls, qualityOverride: faceCount, params: filtered },
-    },
+    };
+  };
+  return runGeneration(
+    provider,
+    'views',
+    { slug, assetSlot, assetName: defaultName(args.assetName, `views-${provider}`), faceCount, cacheKey },
+    buildInputs,
     null,
   );
 }
@@ -650,6 +760,30 @@ const HUMANOID_SKELETON = {
   animationInputReady: true,
 };
 
+// Meshy credit costs per paid call (ADR-0006): rig ~5, animation ~3.
+export const MESHY_RIG_COST = 5;
+export const MESHY_ANIM_COST = 3;
+
+// Proactive balance pre-check before a paid Meshy rig/animation call (ADR-0006 /
+// ADR-0008 D-E). Meshy also rejects 402 → provider_insufficient_credits
+// reactively, but pre-checking lets the agent get a clear quote (needed vs
+// available) BEFORE any spend instead of discovering it mid-dispatch.
+export async function assertMeshyBalance(
+  provider: { getBalance(): Promise<number | null> },
+  needed: number,
+  op: string,
+): Promise<void> {
+  const balance = await provider.getBalance();
+  // Gateway has no balance endpoint — skip pre-check; 402 is handled reactively.
+  if (balance === null) return;
+  if (balance < needed) {
+    throw Object.assign(
+      new Error(`${op} needs ~${needed} Meshy credits but the balance is ${balance}; top up or skip the motion step`),
+      { code: 'provider_insufficient_credits', needed, balance },
+    );
+  }
+}
+
 // Meshy auto-rig (public-beta default): share the source GLB to Meshy — prefer a
 // public COS model_url (PLAN §8-Q5), else the Meshy input_task_id fast path when
 // the source was itself Meshy-generated — rig it, then append the rigged GLB+FBX
@@ -718,7 +852,9 @@ async function autoRig(args: AutoRigArgs): Promise<RigMotionResult> {
 
   // Meshy public API is the public-beta default (ADR-0006 §8-Q4).
   if (meshyEnv) {
-    const manifest = await meshyRigAppend(slug, existing, new MeshyProvider({ env: meshyEnv, slug }));
+    const provider = new MeshyProvider({ env: meshyEnv, slug });
+    await assertMeshyBalance(provider, MESHY_RIG_COST, 'auto-rig');
+    const manifest = await meshyRigAppend(slug, existing, provider);
     return { ok: true, usedMock: false, assetPath, manifest };
   }
 
@@ -896,13 +1032,17 @@ async function applyMotion(args: ApplyMotionArgs): Promise<RigMotionResult> {
   // the caller decides (PLAN §8-Q3).
   const provider = new MeshyProvider({ env, slug });
   let asset = existing;
-  if (meshyRigStale(asset.rig)) {
-    if (!args.autoReRig) {
-      throw Object.assign(
-        new Error('Meshy rig task expired (~3 days); re-run gen3d:auto-rig or pass autoReRig:true'),
-        { code: 'rig_expired' },
-      );
-    }
+  const willReRig = meshyRigStale(asset.rig);
+  if (willReRig && !args.autoReRig) {
+    throw Object.assign(
+      new Error('Meshy rig task expired (~3 days); re-run gen3d:auto-rig or pass autoReRig:true'),
+      { code: 'rig_expired' },
+    );
+  }
+  // Pre-check the total spend before any paid call: a re-rig adds the rig cost on
+  // top of the animation (ADR-0006 / ADR-0008 D-E).
+  await assertMeshyBalance(provider, (willReRig ? MESHY_RIG_COST : 0) + MESHY_ANIM_COST, 'apply-motion');
+  if (willReRig) {
     asset = await meshyRigAppend(slug, asset, provider);
   }
   const rigTaskId = asset.rig?.rigTaskId;

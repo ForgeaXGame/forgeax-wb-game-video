@@ -5,7 +5,7 @@
   "properties": {
     "slug": {
       "type": "string",
-      "description": "Active game slug. Injected by the workbench host; required."
+      "description": "Active game slug. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
     },
     "assetSlot": {
       "type": "string",
@@ -28,6 +28,6 @@
     },
     "enablePbr": { "type": "boolean", "default": true }
   },
-  "required": ["previewTaskId"],
+  "required": ["slug", "previewTaskId"],
   "additionalProperties": false
 }

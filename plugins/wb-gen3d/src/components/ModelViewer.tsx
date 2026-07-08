@@ -21,6 +21,7 @@ import {
 import { createGroundShadow, type ShadowHandle } from '@/components/viewer/shadows';
 import { createWireframe, type WireframeHandle, type WireMode } from '@/components/viewer/wireframe';
 import { loadPrefs, savePrefs } from '@/lib/viewerPrefs';
+import { t } from '@/i18n';
 
 export interface ViewerClip {
   url: string;
@@ -85,7 +86,7 @@ export function ModelViewer({
   useEffect(() => { void loadHdrPresetManifest(); }, []);
 
   const clipList = useMemo<ViewerClip[]>(
-    () => (clips && clips.length > 0 ? clips : [{ url, label: '模型', key: '__single__' }]),
+    () => (clips && clips.length > 0 ? clips : [{ url, label: t('viewer.clip.single'), key: '__single__' }]),
     [clips, url],
   );
   const [activeKey, setActiveKey] = useState<string>(clipList[0]!.key);
@@ -278,18 +279,37 @@ export function ModelViewer({
 
   const fmt = (n: number) => n.toLocaleString();
 
+  const wireLabels: Record<WireMode, string> = {
+    solid: t('viewer.wire.solid'),
+    wireframe: t('viewer.wire.wireframe'),
+    'shaded-wireframe': t('viewer.wire.shaded'),
+  };
+  const bgLabels: Record<BackgroundMode, string> = {
+    gradient: t('viewer.bg.gradient'),
+    solid: t('viewer.bg.solid'),
+    hdr: 'HDR',
+  };
+  const viewLabels: Record<'front' | 'back' | 'left' | 'right' | 'top' | 'persp', string> = {
+    front: t('viewer.view.front'),
+    back: t('viewer.view.back'),
+    left: t('viewer.view.left'),
+    right: t('viewer.view.right'),
+    top: t('viewer.view.top'),
+    persp: t('viewer.view.persp'),
+  };
+
   return (
     <div className="model-viewer">
       <div ref={mountRef} className="model-viewer-canvas" />
-      {status === 'loading' && <div className="model-viewer-overlay">加载模型…</div>}
+      {status === 'loading' && <div className="model-viewer-overlay">{t('viewer.loading')}</div>}
       {status === 'error' && (
         <div className="model-viewer-overlay model-viewer-overlay--error" title={errMsg}>
-          模型加载失败
+          {t('viewer.loadError')}
         </div>
       )}
 
       {clipList.length > 1 && (
-        <div className="model-viewer-clips" role="group" aria-label="切换动作">
+        <div className="model-viewer-clips" role="group" aria-label={t('viewer.aria.clips')}>
           {clipList.map((c) => (
             <button
               key={c.key}
@@ -311,30 +331,30 @@ export function ModelViewer({
           aria-pressed={showGrid}
           onClick={() => setShowGrid((v) => !v)}
         >
-          网格
+          {t('viewer.toggle.grid')}
         </button>
         <button
           type="button"
           className={`mv-toggle ${showSkeleton ? 'is-on' : ''}`}
           aria-pressed={showSkeleton}
           disabled={!stats?.hasSkeleton}
-          title={stats?.hasSkeleton ? '' : '此模型无骨骼'}
+          title={stats?.hasSkeleton ? '' : t('viewer.skeleton.noSkeleton')}
           onClick={() => setShowSkeleton((v) => !v)}
         >
-          骨骼
+          {t('viewer.toggle.skeleton')}
         </button>
         {stats && stats.clipCount > 0 && (
           <button
             type="button"
             className={`mv-toggle ${playing ? 'is-on' : ''}`}
             aria-pressed={playing}
-            title="播放 / 暂停动画"
+            title={t('viewer.play.title')}
             onClick={() => setPlaying((v) => !v)}
           >
-            {playing ? '暂停' : '播放'}
+            {playing ? t('viewer.btn.pause') : t('viewer.btn.play')}
           </button>
         )}
-        <div className="mv-wire-seg" role="group" aria-label="线框模式">
+        <div className="mv-wire-seg" role="group" aria-label={t('viewer.aria.wire')}>
           {(['solid', 'wireframe', 'shaded-wireframe'] as const).map((m) => (
             <button
               key={m}
@@ -343,7 +363,7 @@ export function ModelViewer({
               aria-pressed={wireMode === m}
               onClick={() => setWireMode(m)}
             >
-              {{ solid: '实体', wireframe: '线框', 'shaded-wireframe': '着色线框' }[m]}
+              {wireLabels[m]}
             </button>
           ))}
         </div>
@@ -354,20 +374,20 @@ export function ModelViewer({
             onClick={() => setShowSettings((v) => !v)}
             aria-expanded={showSettings}
           >
-            ⚙ 渲染设置
+            ⚙ {t('viewer.btn.settings')}
           </button>
           {showSettings && (
             <div className="mv-popover">
               <label>
-                HDR 预设
+                {t('viewer.settings.hdr')}
                 <select value={presetId} onChange={(e) => setPresetId(e.target.value)}>
                   {HDR_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
+                    <option key={p.id} value={p.id}>{t(p.label)}</option>
                   ))}
                 </select>
               </label>
               <label>
-                曝光 ({exposure.toFixed(2)})
+                {t('viewer.settings.exposure', { value: exposure.toFixed(2) })}
                 <input
                   type="range"
                   min={0.2}
@@ -378,7 +398,7 @@ export function ModelViewer({
                 />
               </label>
               <label>
-                环境强度 ({envIntensity.toFixed(2)})
+                {t('viewer.settings.envIntensity', { value: envIntensity.toFixed(2) })}
                 <input
                   type="range"
                   min={0}
@@ -394,10 +414,10 @@ export function ModelViewer({
                   checked={showShadow}
                   onChange={(e) => setShowShadow(e.target.checked)}
                 />
-                <span>地面投影</span>
+                <span>{t('viewer.settings.shadow')}</span>
               </label>
               <label>
-                背景
+                {t('viewer.settings.background')}
                 <div className="mv-bg-seg" role="group">
                   {(['gradient', 'solid', 'hdr'] as const).map((m) => (
                     <button
@@ -408,7 +428,7 @@ export function ModelViewer({
                       onClick={() => setBackgroundMode(m)}
                       disabled={m === 'hdr' && presetId === 'builtin-neutral'}
                     >
-                      {{ gradient: '渐变', solid: '纯色', hdr: 'HDR' }[m]}
+                      {bgLabels[m]}
                     </button>
                   ))}
                 </div>
@@ -418,19 +438,19 @@ export function ModelViewer({
         </div>
       </div>
 
-      <div className="mv-view-row" role="group" aria-label="视角">
+      <div className="mv-view-row" role="group" aria-label={t('viewer.aria.view')}>
         {(['front', 'back', 'left', 'right', 'top', 'persp'] as const).map((d) => (
           <button key={d} type="button" className="mv-toggle" onClick={() => setView(d)}>
-            {{ front: '前', back: '后', left: '左', right: '右', top: '顶', persp: '透' }[d]}
+            {viewLabels[d]}
           </button>
         ))}
-        <button type="button" className="mv-toggle" onClick={resetView}>复位</button>
+        <button type="button" className="mv-toggle" onClick={resetView}>{t('viewer.btn.reset')}</button>
       </div>
 
       {stats && (
         <div className="model-viewer-info">
-          <span>{fmt(stats.faces)} 面</span>
-          <span>{fmt(stats.vertices)} 顶点</span>
+          <span>{t('viewer.stats.faces', { n: fmt(stats.faces) })}</span>
+          <span>{t('viewer.stats.vertices', { n: fmt(stats.vertices) })}</span>
           <span>
             {stats.size.x.toFixed(2)} × {stats.size.y.toFixed(2)} × {stats.size.z.toFixed(2)}
           </span>

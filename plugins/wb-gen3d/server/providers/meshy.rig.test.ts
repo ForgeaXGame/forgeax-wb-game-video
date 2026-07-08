@@ -1,6 +1,6 @@
-// Meshy rig/animate provider smoke (ADR-0006 / PLAN §9). Injected fetch +
-// download → zero network, zero credits. The fixtures mirror the real result
-// keys observed in PLAN §7 (committed here so the smoke never depends on /tmp).
+// Meshy rig/animate provider smoke — LiteLLM gateway edition.
+// Injected fetch + download → zero network, zero credits. Fixtures mirror the
+// gateway response format: data[] with {url, type, format} entries.
 
 import { test, expect } from 'bun:test';
 import { MeshyProvider, type MeshyAnimateResult, type MeshyRigResult } from './meshy';
@@ -8,50 +8,55 @@ import type { MeshyEnv } from '../env';
 import { MESHY_ACTION_BASE } from '../../shared/meshy-actions';
 
 const env: MeshyEnv = {
-  apiKey: 'msy_test_key',
-  baseUrl: 'https://api.meshy.ai',
+  apiKey: 'litellm_test_key',
+  baseUrl: 'https://llm-proxy.forgeax.com',
   defaultPolycount: 30000,
   pollIntervalMs: 0,
   pollTimeoutMs: 5000,
   rateLimitPerMin: 100,
 };
 
-// Real result keys (PLAN §2.3 / §7). expires_at ≈ created_at + 3 days.
-const RIG_TASK_ID = '019ee8f9-1c43-72ef-b148-c43b0e9258a4';
-const ANIM_TASK_ID = '019ee8f9-c01d-71f4-928c-aee0a8026c09';
-const RIG_POLL = {
+const GATEWAY_SUBMIT = '/v1/3d/generations';
+const GATEWAY_POLL = '/v1/3d/tasks';
+
+const RIG_TASK_ID = 'three_d_rig_task';
+const ANIM_TASK_ID = 'three_d_anim_task';
+
+// Gateway rig response mirrors the real Meshy auto-rig output: the rigged
+// Character_output + free walk/run clips, each as a full-mesh _withSkin GLB/FBX
+// AND a skeleton-only _armature GLB/FBX. The _armature entry is the LAST glb,
+// so the old extractGatewayUrls (out[format]=url, last-wins) overwrote
+// Character_output.glb with the 288-face armature proxy → mesh invisible.
+// extractRigUrls classifies by filename so Character_output.glb wins and the
+// _withSkin clips become basicAnimations; _armature variants are skipped.
+const RIG_RESP = {
   id: RIG_TASK_ID,
-  type: 'rig',
-  status: 'SUCCEEDED',
+  object: '3d.generation',
+  status: 'succeeded',
   progress: 100,
-  created_at: 1782025106841,
-  expires_at: 1782284329948,
-  task_error: null,
-  result: {
-    rigged_character_glb_url: 'https://cdn.meshy.ai/rig.glb',
-    rigged_character_fbx_url: 'https://cdn.meshy.ai/rig.fbx',
-    rig_type: 'style_02',
-    basic_animations: {
-      walking_glb_url: 'https://cdn.meshy.ai/walk.glb',
-      walking_fbx_url: 'https://cdn.meshy.ai/walk.fbx',
-      walking_armature_glb_url: 'https://cdn.meshy.ai/walk.armature.glb',
-      running_glb_url: 'https://cdn.meshy.ai/run.glb',
-      running_fbx_url: 'https://cdn.meshy.ai/run.fbx',
-      running_armature_glb_url: 'https://cdn.meshy.ai/run.armature.glb',
-    },
-  },
-  consumed_credits: 5,
+  data: [
+    { url: 'https://cdn.meshy.ai/Character_output.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Character_output.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Animation_Walking_withSkin_armature.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin.fbx', type: 'mesh', format: 'fbx' },
+    { url: 'https://cdn.meshy.ai/Animation_Running_withSkin_armature.glb', type: 'mesh', format: 'glb' },
+  ],
+  error: null,
 };
-const ANIM_POLL = {
+
+const ANIM_RESP = {
   id: ANIM_TASK_ID,
-  type: 'animate',
-  status: 'SUCCEEDED',
-  expires_at: 1782284329948,
-  task_error: null,
-  result: {
-    animation_glb_url: 'https://cdn.meshy.ai/anim.glb',
-    animation_fbx_url: 'https://cdn.meshy.ai/anim.fbx',
-  },
+  object: '3d.generation',
+  status: 'succeeded',
+  progress: 100,
+  data: [
+    { url: 'https://cdn.meshy.ai/anim.glb', type: 'mesh', format: 'glb' },
+    { url: 'https://cdn.meshy.ai/anim.fbx', type: 'mesh', format: 'fbx' },
+  ],
+  error: null,
 };
 
 interface Hit {
@@ -60,9 +65,7 @@ interface Hit {
   body: unknown;
 }
 
-// A scripted Meshy backend. Records every request and returns the fixtures by
-// (method, pathname). `status` lets a test force an HTTP error.
-function makeProvider(opts: { status?: number } = {}) {
+function makeProvider() {
   const hits: Hit[] = [];
   const downloads: string[] = [];
   const json = (body: unknown, status = 200) =>
@@ -73,13 +76,14 @@ function makeProvider(opts: { status?: number } = {}) {
     const path = new URL(url).pathname;
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     hits.push({ method, path, body });
-    if (opts.status && opts.status >= 400) return json({ error: { message: 'boom' } }, opts.status);
 
-    if (method === 'POST' && path === '/openapi/v1/rigging') return json({ result: RIG_TASK_ID });
-    if (method === 'GET' && path === `/openapi/v1/rigging/${RIG_TASK_ID}`) return json(RIG_POLL);
-    if (method === 'POST' && path === '/openapi/v1/animations') return json({ result: ANIM_TASK_ID });
-    if (method === 'GET' && path === `/openapi/v1/animations/${ANIM_TASK_ID}`) return json(ANIM_POLL);
-    if (method === 'GET' && path === '/openapi/v1/balance') return json({ balance: 686 });
+    if (method === 'POST' && path === '/v1/3d/generations') {
+      const model = (body as Record<string, unknown>)?.model;
+      const taskId = model === 'meshy-3d-animation' ? ANIM_TASK_ID : RIG_TASK_ID;
+      return json({ id: taskId, object: '3d.generation', status: 'processing' });
+    }
+    if (method === 'GET' && path.includes(RIG_TASK_ID)) return json(RIG_RESP);
+    if (method === 'GET' && path.includes(ANIM_TASK_ID)) return json(ANIM_RESP);
     return json({ error: { message: `unexpected ${method} ${path}` } }, 500);
   };
 
@@ -94,31 +98,41 @@ function makeProvider(opts: { status?: number } = {}) {
 
 const decode = (b: Uint8Array) => new TextDecoder().decode(b);
 
-test('rig(): submit→poll→download with the right path/payload + result keys (PLAN §7)', async () => {
+test('rig(): submit→poll→download via gateway with correct payload + result keys', async () => {
   const { provider, hits, downloads } = makeProvider();
   const rig: MeshyRigResult = await provider.rig({ modelUrl: 'https://cos.example/model.glb' });
 
-  const submits = hits.filter((h) => h.method === 'POST' && h.path === '/openapi/v1/rigging');
+  const submits = hits.filter((h) => h.method === 'POST' && h.path === '/v1/3d/generations');
   expect(submits.length).toBe(1);
-  expect(submits[0].body).toEqual({ model_url: 'https://cos.example/model.glb' });
+  expect(submits[0].body).toEqual({ model: 'meshy-3d-auto-rigging', model_url: 'https://cos.example/model.glb' });
+
+  const polls = hits.filter((h) => h.method === 'GET');
+  expect(polls.length).toBeGreaterThanOrEqual(1);
+  expect(polls[0].path).toBe(`${GATEWAY_POLL}/${RIG_TASK_ID}`);
 
   expect(rig.sourceJobId).toBe(RIG_TASK_ID);
-  expect(rig.rigType).toBe('style_02');
-  expect(rig.expiresAt).toBe(1782284329948);
-  expect(decode(rig.glb)).toBe('https://cdn.meshy.ai/rig.glb');
-  expect(rig.fbx && decode(rig.fbx)).toBe('https://cdn.meshy.ai/rig.fbx');
-
-  // Free walk + run, each glb + fbx (armature is intentionally not downloaded).
+  // Gateway does NOT return rig_type / expires_at.
+  expect(rig.rigType).toBeNull();
+  expect(rig.expiresAt).toBeNull();
+  // Character_output.glb is the rigged model, NOT the last _armature.glb.
+  expect(decode(rig.glb)).toBe('https://cdn.meshy.ai/Character_output.glb');
+  expect(rig.fbx && decode(rig.fbx)).toBe('https://cdn.meshy.ai/Character_output.fbx');
+  // Free walk/run _withSkin clips are returned as basicAnimations (full mesh+anim).
+  expect(rig.basicAnimations.length).toBe(2);
   expect(rig.basicAnimations.map((b) => b.category)).toEqual(['walking', 'running']);
-  expect(decode(rig.basicAnimations[0].glb)).toBe('https://cdn.meshy.ai/walk.glb');
-  expect(downloads).not.toContain('https://cdn.meshy.ai/walk.armature.glb');
+  expect(decode(rig.basicAnimations[0]!.glb)).toBe('https://cdn.meshy.ai/Animation_Walking_withSkin.glb');
+  expect(rig.basicAnimations[0]!.fbx && decode(rig.basicAnimations[0]!.fbx)).toBe('https://cdn.meshy.ai/Animation_Walking_withSkin.fbx');
+  expect(decode(rig.basicAnimations[1]!.glb)).toBe('https://cdn.meshy.ai/Animation_Running_withSkin.glb');
+  expect(rig.basicAnimations[1]!.fbx && decode(rig.basicAnimations[1]!.fbx)).toBe('https://cdn.meshy.ai/Animation_Running_withSkin.fbx');
+  // The skeleton-only _armature GLBs must NOT be downloaded.
+  expect(downloads.every((u) => !/_armature\./.test(u))).toBe(true);
 });
 
 test('rig(): inputTaskId fast path sends input_task_id, not model_url', async () => {
   const { provider, hits } = makeProvider();
   await provider.rig({ inputTaskId: 'mesh-task-9' });
-  const submit = hits.find((h) => h.method === 'POST' && h.path === '/openapi/v1/rigging');
-  expect(submit?.body).toEqual({ input_task_id: 'mesh-task-9' });
+  const submit = hits.find((h) => h.method === 'POST' && h.path === '/v1/3d/generations');
+  expect(submit?.body).toEqual({ model: 'meshy-3d-auto-rigging', input_task_id: 'mesh-task-9' });
 });
 
 test('rig(): rejects empty input before any network call', async () => {
@@ -130,53 +144,60 @@ test('rig(): rejects empty input before any network call', async () => {
 test('animate(): drives rig_task_id + action_id and extracts the animation glb', async () => {
   const { provider, hits } = makeProvider();
   const anim: MeshyAnimateResult = await provider.animate({ rigTaskId: RIG_TASK_ID, actionId: 28 });
-  const submit = hits.find((h) => h.method === 'POST' && h.path === '/openapi/v1/animations');
-  expect(submit?.body).toEqual({ rig_task_id: RIG_TASK_ID, action_id: 28 });
+  const submit = hits.find((h) => h.method === 'POST' && h.path === '/v1/3d/generations');
+  expect(submit?.body).toEqual({ model: 'meshy-3d-animation', rig_task_id: RIG_TASK_ID, action_id: 28 });
   expect(anim.sourceJobId).toBe(ANIM_TASK_ID);
+  const animPolls = hits.filter((h) => h.method === 'GET');
+  expect(animPolls.length).toBeGreaterThanOrEqual(1);
+  expect(animPolls[0].path).toBe(`${GATEWAY_POLL}/${ANIM_TASK_ID}`);
   expect(decode(anim.glb)).toBe('https://cdn.meshy.ai/anim.glb');
   expect(anim.fbx && decode(anim.fbx)).toBe('https://cdn.meshy.ai/anim.fbx');
 });
 
-test('full rig→animate chain runs with exactly two submits (one rig + one anim)', async () => {
+test('full rig→animate chain runs with exactly two submits', async () => {
   const { provider, hits } = makeProvider();
   const rig = await provider.rig({ modelUrl: 'https://cos.example/model.glb' });
   await provider.animate({ rigTaskId: rig.sourceJobId, actionId: 28 });
   const submits = hits.filter((h) => h.method === 'POST');
-  expect(submits.map((s) => s.path)).toEqual(['/openapi/v1/rigging', '/openapi/v1/animations']);
+  expect(submits.map((s) => s.path)).toEqual(['/v1/3d/generations', '/v1/3d/generations']);
 });
 
 test('listActions(): returns the vendored static catalog without a network call', async () => {
   const { provider, hits } = makeProvider();
   const pub = await provider.listActions();
-  // Faithful reflection of the vendored MESHY_ACTIONS table (scraped from the
-  // web animation-library; Meshy exposes no list endpoint). Every positive id
-  // is surfaced verbatim; the discovery layer filters to positive/applyable.
   expect(pub.length).toBeGreaterThan(600);
   expect(pub.every((a) => typeof a.id === 'number')).toBe(true);
   const bigWave = pub.find((a) => a.id === 28);
   expect(bigWave).toMatchObject({ id: 28, name: 'Big_Wave_Hello', category: 'DailyActions' });
   expect(bigWave?.previewGifUrl?.startsWith(MESHY_ACTION_BASE)).toBe(true);
-  // No HTTP call is issued for the catalog.
-  expect(hits.some((h) => h.path === '/web/public/animations/resources')).toBe(false);
   expect(hits.length).toBe(0);
 });
 
-test('getBalance() reads the numeric balance', async () => {
+test('getBalance() returns null (gateway has no balance endpoint)', async () => {
   const { provider } = makeProvider();
-  expect(await provider.getBalance()).toBe(686);
+  expect(await provider.getBalance()).toBeNull();
 });
 
-test('402 maps to provider_insufficient_credits (PLAN §6 error semantics)', async () => {
-  const { provider } = makeProvider({ status: 402 });
+test('402 maps to provider_insufficient_credits', async () => {
+  const { provider } = makeProvider();
+  // Override fetch to return 402 for the next POST
+  const orig = provider['fetchImpl'];
+  provider['fetchImpl'] = async (url: string, init: RequestInit) =>
+    new Response(JSON.stringify({ error: { message: 'boom' } }), { status: 402, headers: { 'Content-Type': 'application/json' } });
   await expect(provider.rig({ modelUrl: 'https://cos.example/m.glb' })).rejects.toMatchObject({
     code: 'provider_insufficient_credits',
     status: 402,
   });
+  provider['fetchImpl'] = orig;
 });
 
 test('429 maps to provider_rate_limited', async () => {
-  const { provider } = makeProvider({ status: 429 });
-  await expect(provider.animate({ rigTaskId: RIG_TASK_ID, actionId: 28 })).rejects.toMatchObject({
+  const { provider } = makeProvider();
+  const orig = provider['fetchImpl'];
+  provider['fetchImpl'] = async (url: string, init: RequestInit) =>
+    new Response(JSON.stringify({ error: { message: 'rate' } }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+  await expect(provider.animate({ rigTaskId: ANIM_TASK_ID, actionId: 28 })).rejects.toMatchObject({
     code: 'provider_rate_limited',
   });
+  provider['fetchImpl'] = orig;
 });

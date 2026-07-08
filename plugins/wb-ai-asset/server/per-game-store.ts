@@ -1,0 +1,672 @@
+// PerGameAssetStore — dev-time AssetStorage backed by the local filesystem,
+// per-game (ADR-0002 / 03-WORKSPACE-LAYOUT.md).
+//
+// Layout (active game's runtime asset library). wb-ai-asset lives under its own
+// assets/3d/props/ namespace, isolated from wb-gen3d's assets/3d/{characters|meshes}/
+// (T2 path isolation):
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.glb
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.glb.meta.json
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.png          (preview)
+//   <projectRoot>/.forgeax/games/<slug>/assets/3d/props/{characters|meshes}/<name>.texture.png  (external texture)
+//
+// Identity is the game-relative path of the main GLB. The on-disk sidecar uses
+// the v2 workspace contract (schemaVersion/producer/dependencies[]/custom{}).
+// gen3d-private fields live under `custom`. The runtime mechanism (kernel
+// writeAsset/_index.json/path-slots) is known debt, not built here — we align
+// the disk FORMAT only (ADR-0002 §"已知债务").
+//
+// OBJ source_mesh is dropped by default: only the GLB main mesh is kept.
+
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+
+import {
+  ASSET_SLOT_DIRS,
+  MESHY_FREE_RUN_ID,
+  MESHY_FREE_WALK_ID,
+  computeReadiness,
+  emptyQuality,
+  motionRefFromLegacy,
+  reportToScore,
+  type ExternalAssetMeta,
+  type AssetSlot,
+  type FileFormat,
+  type FileRole,
+  type Gen3DAssetManifest,
+  type ManifestFile,
+  type MotionRef,
+  type MotionType,
+  type QualityReport,
+  type SidecarDependency,
+  type SkeletonProfile,
+  type TextureKind,
+  type WbAssetMeta,
+} from '../shared/manifest';
+import type {
+  AppendDerivedFilesInput,
+  AssetFileInput,
+  AssetStorage,
+  PutScratchInput,
+  PutScratchResult,
+  WriteAssetInput,
+} from './asset-storage';
+import { cookExternalAssetFields } from './external-meta-cook';
+
+const PLUGIN_ID = 'wb-ai-asset';
+const PLUGIN_VERSION = '0.1.0';
+
+function projectRoot(): string {
+  // Match the marketplace convention (see node-editor runtime.ts).
+  return process.env.FORGEAX_PROJECT_ROOT ?? resolve(process.cwd(), '.forgeax-runtime');
+}
+
+// Reject path segments that would escape their parent. Mirrors the server's
+// PathManager.safeSegment so slug handling is consistent on both sides.
+function safeSlug(slug: string): string {
+  if (!slug || slug.includes('/') || slug.includes('\\') || slug === '..' || slug.includes('\0')) {
+    throw Object.assign(new Error(`unsafe slug ${JSON.stringify(slug)}`), { code: 'invalid_slug' });
+  }
+  return slug;
+}
+
+function gameRoot(slug: string): string {
+  return resolve(projectRoot(), '.forgeax', 'games', safeSlug(slug));
+}
+
+function slotDir(slug: string, slot: AssetSlot): string {
+  return resolve(gameRoot(slug), 'assets', '3d', ASSET_SLOT_DIRS[slot]);
+}
+
+// Game-relative path of a file in a slot (forward slashes; this is the asset id).
+function relPath(slot: AssetSlot, fileName: string): string {
+  return `assets/3d/${ASSET_SLOT_DIRS[slot]}/${fileName}`;
+}
+
+function sha256Hex(data: Uint8Array): string {
+  return createHash('sha256').update(data).digest('hex');
+}
+
+// Sanitize a user/AI base name into a safe lowercase file stem. Falls back to a
+// generic stem when the input has no usable characters.
+function sanitizeBaseName(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return cleaned || 'asset';
+}
+
+const LOCAL_URL_PREFIX = '/api/game-assets';
+const SCRATCH_URL_PREFIX = '/api/aiasset-scratch';
+
+// Process-local per-asset async lock. appendDerivedFiles / deleteAsset do a
+// read-modify-write on one asset's sidecar; concurrent appends to the same
+// character (e.g. several motions at once) would otherwise drop entries / leave
+// orphan files (ADR-0003). Keyed by `${slug}:${assetPath}`; unrelated assets
+// stay parallel.
+const assetLocks = new Map<string, Promise<unknown>>();
+
+async function withAssetLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = assetLocks.get(key) ?? Promise.resolve();
+  // Serialize: run after the previous holder settles (ignore its outcome).
+  const run = prev.then(fn, fn);
+  // Track this run as the tail so the next caller chains after it. Swallow
+  // rejection on the tracked promise so one failure can't reject the chain.
+  assetLocks.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
+function localUrlFor(slug: string, rel: string): string {
+  // rel is "assets/3d/props/<slot>/<file>"; the route mounts at .../assets/3d/, so
+  // strip only that prefix and let the props/ tail ride through (the game-assets
+  // route serves arbitrary depth under assets/3d/).
+  const tail = rel.replace(/^assets\/3d\//, '');
+  return `${LOCAL_URL_PREFIX}/${encodeURIComponent(slug)}/3d/${tail}`;
+}
+
+function scratchUrlFor(slug: string, sha256: string, format: FileFormat): string {
+  return `${SCRATCH_URL_PREFIX}/${encodeURIComponent(slug)}/${sha256}.${format}`;
+}
+
+// One generation may return several files. Keep exactly one main GLB
+// (source_mesh) as identity; OBJ source_mesh is dropped. The remaining files
+// become same-basename sidefiles: preview_image → <name>.<fmt> (png/jpg/webp),
+// texture → <name>.<textureKind>.png (one file per PBR map; legacy untagged
+// textures fall back to <name>.texture.png), any other → <name>.<role>.<ext>.
+interface PlannedFile {
+  input: AssetFileInput;
+  fileName: string;
+  isMain: boolean;
+}
+
+function planFiles(baseName: string, files: readonly AssetFileInput[]): PlannedFile[] {
+  const main = files.find((f) => f.role === 'source_mesh' && f.format === 'glb');
+  if (!main) {
+    throw Object.assign(new Error('no GLB source_mesh in generation result'), {
+      code: 'no_main_mesh',
+    });
+  }
+  const planned: PlannedFile[] = [{ input: main, fileName: `${baseName}.glb`, isMain: true }];
+  for (const f of files) {
+    if (f === main) continue;
+    // Drop OBJ/MTL source_mesh sidefiles: GLB only (ADR-0002).
+    if (f.role === 'source_mesh') continue;
+    let fileName: string;
+    if (f.role === 'preview_image') fileName = `${baseName}.${f.format}`;
+    else if (f.role === 'texture') fileName = `${baseName}.${f.textureKind ?? 'texture'}.${f.format}`;
+    else fileName = `${baseName}.${f.role}.${f.format}`;
+    planned.push({ input: f, fileName, isMain: false });
+  }
+  return planned;
+}
+
+export class PerGameAssetStore implements AssetStorage {
+  // Pick a non-colliding base name. Caller passes the desired name; on a name
+  // collision (a different request produced the same name) we suffix -2, -3, …
+  // rather than overwrite. Cache hits never reach here (the orchestrator returns
+  // the existing asset before writing).
+  private async resolveFreeName(slug: string, slot: AssetSlot, desired: string): Promise<string> {
+    const base = sanitizeBaseName(desired);
+    const dir = slotDir(slug, slot);
+    let existing: Set<string>;
+    try {
+      existing = new Set(await readdir(dir));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return base;
+      throw error;
+    }
+    if (!existing.has(`${base}.glb`)) return base;
+    for (let i = 2; i < 1000; i += 1) {
+      if (!existing.has(`${base}-${i}.glb`)) return `${base}-${i}`;
+    }
+    return `${base}-${Date.now()}`;
+  }
+
+  async writeAsset(input: WriteAssetInput): Promise<Gen3DAssetManifest> {
+    const { slug, assetSlot, meta } = input;
+    const baseName = await this.resolveFreeName(slug, assetSlot, input.assetName);
+    const dir = slotDir(slug, assetSlot);
+    await mkdir(dir, { recursive: true });
+
+    const planned = planFiles(baseName, input.files);
+    const now = new Date().toISOString();
+    const manifestFiles: ManifestFile[] = [];
+    const dependencies: SidecarDependency[] = [];
+    let mainRel = '';
+    let mainSha = '';
+    let mainBytes = 0;
+    let mainGlbBytes: Uint8Array | null = null;
+
+    for (const p of planned) {
+      const abs = resolve(dir, p.fileName);
+      await writeFile(abs, p.input.data);
+      const sha256 = sha256Hex(p.input.data);
+      const rel = relPath(assetSlot, p.fileName);
+      const bytes = p.input.data.byteLength;
+      const isRiggedFbx = p.input.role === 'rigged_model' && p.input.format === 'fbx';
+      manifestFiles.push({
+        fileId: rel,
+        role: p.input.role,
+        format: p.input.format,
+        ...(p.input.textureKind ? { textureKind: p.input.textureKind } : {}),
+        storageKey: rel,
+        bytes,
+        sha256,
+        localUrl: localUrlFor(slug, rel),
+        // Generation never produces a verified skeleton; only a verified rigging
+        // step in wb-3d-pipeline may set these (never inferred here).
+        hasSkeleton: false,
+        skeletonProfile: isRiggedFbx ? 'unknown' : 'unknown',
+        animationInputReady: false,
+      });
+      if (p.isMain) {
+        mainRel = rel;
+        mainSha = sha256;
+        mainBytes = bytes;
+        mainGlbBytes = p.input.data;
+      } else {
+        dependencies.push({
+          path: p.fileName,
+          hash: `sha256:${sha256}`,
+          kind: p.input.role,
+          ...(p.input.textureKind ? { textureKind: p.input.textureKind } : {}),
+        });
+      }
+    }
+
+    const readiness = computeReadiness(manifestFiles);
+    // wb private meta → <name>.glb.wb.json (separate from the engine meta).
+    // Split is required: engine meta.schema.json is additionalProperties:false,
+    // so merging these wb fields into .glb.meta.json makes the scanner reject
+    // the whole game's catalog (pack-malformed-meta → buildCatalog skips the
+    // game → every loadByGuid fails → runtime falls back to builtin cubes).
+    const wbMeta: WbAssetMeta = {
+      schemaVersion: 1,
+      producer: { plugin: PLUGIN_ID, pluginVersion: PLUGIN_VERSION },
+      createdAt: now,
+      contentHash: `sha256:${mainSha}`,
+      size: mainBytes,
+      type: assetSlot === 'characters' ? 'aiasset-character' : 'aiasset-mesh',
+      dependencies,
+      custom: {
+        provider: meta.provider,
+        providerMode: meta.providerMode,
+        mode: meta.mode,
+        assetSlot,
+        sourceJobId: meta.sourceJobId,
+        prompt: meta.prompt,
+        sourceInputAssetPaths: meta.sourceInputAssetPaths,
+        ...(meta.faceCount !== undefined ? { faceCount: meta.faceCount } : {}),
+        readiness,
+        ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
+      },
+    };
+    const wbAbs = resolve(dir, `${baseName}.glb.wb.json`);
+    await writeFile(wbAbs, `${JSON.stringify(wbMeta, null, 2)}\n`, 'utf8');
+
+    // Engine external-asset-package meta → <name>.glb.meta.json (conforms to
+    // engine meta.schema.json, additionalProperties:false). Null when the GLB
+    // can't be parsed (Draco etc.) → skip writing engine meta; buildCatalog
+    // simply skips runtime ingestion (known limitation, mirrored in geometry-check).
+    if (mainGlbBytes) {
+      const engineMeta = await cookExternalAssetFields(
+        mainGlbBytes,
+        `sha256:${mainSha}`,
+        `${baseName}.glb`,
+      );
+      if (engineMeta) {
+        const metaAbs = resolve(dir, `${baseName}.glb.meta.json`);
+        await writeFile(metaAbs, `${JSON.stringify(engineMeta, null, 2)}\n`, 'utf8');
+      }
+    }
+
+    return {
+      manifestVersion: 1,
+      assetPath: mainRel,
+      assetSlot,
+      kind: 'mesh',
+      provider: meta.provider,
+      providerMode: meta.providerMode,
+      mode: meta.mode,
+      sourceJobId: meta.sourceJobId,
+      sourceInputAssetPaths: meta.sourceInputAssetPaths,
+      prompt: meta.prompt,
+      files: manifestFiles,
+      readiness,
+      quality: emptyQuality(),
+      targetFaceCount: meta.faceCount ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  async getAsset(slug: string, assetPath: string): Promise<Gen3DAssetManifest | null> {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return null;
+    const dir = slotDir(slug, slot);
+    const wbMeta = await readWbMeta(dir, fileName);
+    if (!wbMeta) return null;
+    return sidecarToManifest(slug, slot, fileName, wbMeta);
+  }
+
+  async listAssets(slug: string, assetSlot?: AssetSlot): Promise<Gen3DAssetManifest[]> {
+    const slots: AssetSlot[] = assetSlot ? [assetSlot] : ['characters', 'meshes'];
+    const out: Gen3DAssetManifest[] = [];
+    const seen = new Set<string>();
+    for (const slot of slots) {
+      const dir = slotDir(slug, slot);
+      let entries: string[];
+      try {
+        entries = await readdir(dir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      // Collect candidate GLB base names from .glb.wb.json (new split format)
+      // and .glb.meta.json (legacy merged format). Engine-imported metas with
+      // no wb fields (monster/witch) are filtered out by getAsset→readWbMeta.
+      for (const name of entries) {
+        const m = /^(.+\.glb)\.(?:wb|meta)\.json$/.exec(name);
+        if (!m) continue;
+        const fileName = m[1];
+        if (seen.has(fileName)) continue;
+        seen.add(fileName);
+        const manifest = await this.getAsset(slug, relPath(slot, fileName));
+        if (manifest) out.push(manifest);
+      }
+    }
+    return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async deleteAsset(slug: string, assetPath: string): Promise<{ cacheKey: string | null }> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) return { cacheKey: null };
+      const dir = slotDir(slug, slot);
+
+      let cacheKey: string | null = null;
+      let deps: SidecarDependency[] = [];
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (wbMeta) {
+        cacheKey = wbMeta.custom?.cacheKey ?? null;
+        deps = wbMeta.dependencies ?? [];
+      }
+
+      // Remove main GLB + engine meta + wb meta + every same-basename sidefile.
+      await rm(resolve(dir, fileName), { force: true });
+      await rm(resolve(dir, `${fileName}.meta.json`), { force: true });
+      await rm(resolve(dir, `${fileName}.wb.json`), { force: true });
+      for (const dep of deps) {
+        await rm(resolve(dir, dep.path), { force: true });
+      }
+      return { cacheKey };
+    });
+  }
+
+  // ─── Append derived files (rig / motion) to an existing mesh asset ─────────
+  async appendDerivedFiles(input: AppendDerivedFilesInput): Promise<Gen3DAssetManifest> {
+    const { slug, assetPath } = input;
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+
+      const baseName = fileName.replace(/\.glb$/, '');
+      const deps = [...(wbMeta.dependencies ?? [])];
+
+      for (const f of input.files) {
+        // <base>.<role>[.motion-<system>-<id>].<format> as a same-basename
+        // sidefile. The motion variant is per-file so one append can land the
+        // rigged model AND its bundled free clips together (ADR-0006 §8-Q6).
+        const variant = f.motionRef ? `.motion-${motionVariantSlug(f.motionRef)}` : '';
+        const depFileName = `${baseName}.${f.role}${variant}.${f.format}`;
+        const abs = resolve(dir, depFileName);
+        await writeFile(abs, f.data);
+        const sha256 = sha256Hex(f.data);
+        // Replace any existing dep with the same on-disk path (idempotent re-run).
+        const idx = deps.findIndex((d) => d.path === depFileName);
+        const dep: SidecarDependency = {
+          path: depFileName,
+          hash: `sha256:${sha256}`,
+          kind: f.role,
+          ...(f.role === 'rigged_model' && input.skeleton
+            ? {
+                hasSkeleton: input.skeleton.hasSkeleton,
+                skeletonProfile: input.skeleton.skeletonProfile,
+                animationInputReady: input.skeleton.animationInputReady,
+              }
+            : {}),
+          ...(f.role === 'animated_model' && f.motionRef
+            ? {
+                motionRef: f.motionRef,
+                // Legacy mirror so pre-motionRef readers still see hunyuan_v1.
+                ...(f.motionRef.system === 'hunyuan_v1' ? { motionType: f.motionRef.id } : {}),
+              }
+            : {}),
+        };
+        if (idx >= 0) deps[idx] = dep;
+        else deps.push(dep);
+      }
+
+      const now = new Date().toISOString();
+      const updated: WbAssetMeta = {
+        ...wbMeta,
+        dependencies: deps,
+        custom: {
+          ...wbMeta.custom,
+          // Persist rig-chain identity so apply-motion can dispatch by system
+          // and read the Meshy rig_task_id (ADR-0006 §Decision 3).
+          ...(input.rigChain ? { rig: input.rigChain } : {}),
+        },
+      };
+      // Recompute readiness from the full file set (main + deps).
+      const manifest = sidecarToManifest(slug, slot, fileName, updated);
+      updated.custom = { ...updated.custom, readiness: manifest.readiness };
+      await writeWbMeta(dir, fileName, updated);
+      return { ...manifest, updatedAt: now };
+    });
+  }
+
+  // ─── User label (display name) ────────────────────────────────────────────
+  async updateAssetLabel(
+    slug: string,
+    assetPath: string,
+    label: string | null,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+      const trimmed = label?.trim() || null;
+      const updated: WbAssetMeta = {
+        ...wbMeta,
+        custom: { ...wbMeta.custom, userLabel: trimmed },
+      };
+      await writeWbMeta(dir, fileName, updated);
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
+  // ─── Lazy quality persistence (ADR-0004) ──────────────────────────────────
+  async updateAssetQuality(
+    slug: string,
+    assetPath: string,
+    report: QualityReport,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const wbMeta = await readWbMeta(dir, fileName);
+      if (!wbMeta) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+      const updated: WbAssetMeta = {
+        ...wbMeta,
+        custom: { ...wbMeta.custom, quality: report },
+      };
+      await writeWbMeta(dir, fileName, updated);
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
+  // Read one file in an asset by role (+ optional format), for COS-sharing it as
+  // a provider transfer URL. The main mesh is (source_mesh, glb); rig/anim files
+  // are same-basename sidefiles recorded in the sidecar dependencies.
+  async readAssetFile(
+    slug: string,
+    assetPath: string,
+    role: FileRole,
+    format?: FileFormat,
+  ): Promise<{ data: Uint8Array; format: FileFormat } | null> {
+    const manifest = await this.getAsset(slug, assetPath);
+    if (!manifest) return null;
+    const file = manifest.files.find(
+      (f) => f.role === role && (format ? f.format === format : true),
+    );
+    if (!file) return null;
+    // storageKey is "assets/3d/props/<slot>/<fileName>"; parseAssetPath yields the
+    // bare fileName (the dir is slotDir), so reuse it instead of a prefix regex.
+    const { slot, fileName } = parseAssetPath(file.storageKey);
+    if (!slot) return null;
+    const abs = resolve(slotDir(slug, slot), fileName);
+    try {
+      const data = await readFile(abs);
+      return { data: new Uint8Array(data), format: file.format };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  // ─── Scratch (transfer) artifacts — NOT assets ────────────────────────────
+  async putScratch(input: PutScratchInput): Promise<PutScratchResult> {
+    const sha256 = sha256Hex(input.data);
+    const rel = `.wb-ai-asset/tmp/${sha256}.${input.format}`;
+    const abs = resolve(gameRoot(input.slug), rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, input.data);
+    // Scratch lives under .gen3d/tmp/ (not assets/3d/**). Preview via /api/gen3d-scratch.
+    return {
+      storageKey: rel,
+      sha256,
+      bytes: input.data.byteLength,
+      localUrl: scratchUrlFor(input.slug, sha256, input.format),
+    };
+  }
+}
+
+// Stable, readable on-disk file-name variant for a motion clip. Free Meshy
+// walk/run get named variants (their ids are reserved negatives); real Meshy
+// actions use their action_id; Hunyuan uses hy1-/hy2- prefixes.
+function motionVariantSlug(ref: MotionRef): string {
+  if (ref.system === 'meshy') {
+    if (ref.id === MESHY_FREE_WALK_ID) return 'meshy-free-walk';
+    if (ref.id === MESHY_FREE_RUN_ID) return 'meshy-free-run';
+    return `meshy-${ref.id}`;
+  }
+  if (ref.system === 'hunyuan_v1') return `hy1-${ref.id}`;
+  return `hy2-${ref.id}`;
+}
+
+// "assets/3d/props/<slot>/<file>" → { slot, fileName }. Returns slot=null if the
+// path is not a recognized wb-ai-asset props slot path (T2 path isolation).
+function parseAssetPath(assetPath: string): { slot: AssetSlot | null; fileName: string } {
+  const m = /^assets\/3d\/props\/(characters|meshes)\/([^/]+)$/.exec(assetPath);
+  if (!m) return { slot: null, fileName: '' };
+  return { slot: m[1] as AssetSlot, fileName: m[2] };
+}
+
+function sidecarToManifest(
+  slug: string,
+  slot: AssetSlot,
+  fileName: string,
+  sidecar: WbAssetMeta,
+): Gen3DAssetManifest {
+  const c = sidecar.custom;
+  const mainRel = relPath(slot, fileName);
+  const baseName = fileName.replace(/\.glb$/, '');
+  const files: ManifestFile[] = [
+    {
+      fileId: mainRel,
+      role: 'source_mesh',
+      format: 'glb',
+      storageKey: mainRel,
+      bytes: sidecar.size,
+      sha256: sidecar.contentHash.replace(/^sha256:/, ''),
+      localUrl: localUrlFor(slug, mainRel),
+      hasSkeleton: false,
+      skeletonProfile: 'unknown',
+      animationInputReady: false,
+    },
+  ];
+  for (const dep of sidecar.dependencies ?? []) {
+    const rel = relPath(slot, dep.path);
+    const format = (dep.path.split('.').pop() ?? 'png') as FileFormat;
+    const role = (dep.kind as ManifestFile['role']) ?? 'preview_image';
+    // Prefer the generalized motionRef; upgrade a legacy bare motionType if
+    // that's all an older sidecar carries (back-compat, ADR-0006 §3).
+    const motionRef: MotionRef | undefined =
+      dep.motionRef ??
+      (dep.motionType !== undefined ? motionRefFromLegacy(dep.motionType as MotionType) : undefined);
+    files.push({
+      fileId: rel,
+      role,
+      format,
+      ...(role === 'texture' && dep.textureKind ? { textureKind: dep.textureKind as TextureKind } : {}),
+      storageKey: rel,
+      bytes: 0,
+      sha256: dep.hash.replace(/^sha256:/, ''),
+      localUrl: localUrlFor(slug, rel),
+      // Restore rig metadata from the sidecar dep (set only by a verified rig
+      // step); plain sidefiles (preview/texture) stay hasSkeleton:false.
+      hasSkeleton: dep.hasSkeleton ?? false,
+      skeletonProfile: (dep.skeletonProfile as SkeletonProfile) ?? 'unknown',
+      animationInputReady: dep.animationInputReady ?? false,
+      ...(motionRef ? { motionRef } : {}),
+      // Keep the legacy field populated for hunyuan_v1 so older UI still reads it.
+      ...(motionRef?.system === 'hunyuan_v1' ? { motionType: motionRef.id } : {}),
+    });
+  }
+  void baseName;
+  return {
+    manifestVersion: 1,
+    assetPath: mainRel,
+    assetSlot: slot,
+    kind: 'mesh',
+    provider: c.provider,
+    providerMode: c.providerMode,
+    mode: c.mode,
+    sourceJobId: c.sourceJobId,
+    sourceInputAssetPaths: c.sourceInputAssetPaths ?? [],
+    prompt: c.prompt,
+    userLabel: c.userLabel ?? null,
+    files,
+    // Always derive from the restored file set so appended rig/anim files are
+    // reflected even when the stored custom.readiness is stale.
+    readiness: computeReadiness(files),
+    ...(c.rig ? { rig: c.rig } : {}),
+    quality: c.quality ? reportToScore(c.quality) : emptyQuality(),
+    targetFaceCount: c.faceCount ?? null,
+    createdAt: sidecar.createdAt,
+    updatedAt: sidecar.createdAt,
+  };
+}
+
+// Read wb private meta from <name>.glb.wb.json. Backward compat: if the wb
+// file is absent, fall back to <name>.glb.meta.json's legacy wb fields (older
+// sidecars merged wb + external into one .glb.meta.json before the split —
+// the split-sidecar migration writes .glb.wb.json and strips wb fields from
+// .glb.meta.json, but unmigrated sidecars still need to read).
+async function readWbMeta(dir: string, glbFileName: string): Promise<WbAssetMeta | null> {
+  const wbAbs = resolve(dir, `${glbFileName}.wb.json`);
+  try {
+    return JSON.parse(await readFile(wbAbs, 'utf8')) as WbAssetMeta;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  // Backward compat: legacy .glb.meta.json had wb fields merged in.
+  const metaAbs = resolve(dir, `${glbFileName}.meta.json`);
+  try {
+    const raw = await readFile(metaAbs, 'utf8');
+    const legacy = JSON.parse(raw) as WbAssetMeta & { kind?: unknown; importer?: unknown };
+    if (legacy.producer && legacy.custom) return legacy;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return null;
+}
+
+async function writeWbMeta(dir: string, glbFileName: string, meta: WbAssetMeta): Promise<void> {
+  const wbAbs = resolve(dir, `${glbFileName}.wb.json`);
+  await writeFile(wbAbs, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+}

@@ -49,15 +49,15 @@ export const EDITOR_ICON_MAP = {
 } as const;
 
 export const modeMeta: Record<Mode, { toolId: string; label: string; icon: typeof Type }> = {
-  text: { toolId: 'gen3d:text-to-3d', label: '文生', icon: EDITOR_ICON_MAP.text },
-  image: { toolId: 'gen3d:image-to-3d', label: '图生', icon: EDITOR_ICON_MAP.image },
-  views: { toolId: 'gen3d:views-to-3d', label: '多视图', icon: EDITOR_ICON_MAP.views },
+  text: { toolId: 'gen3d:text-to-3d', label: 'mode.text', icon: EDITOR_ICON_MAP.text },
+  image: { toolId: 'gen3d:image-to-3d', label: 'mode.image', icon: EDITOR_ICON_MAP.image },
+  views: { toolId: 'gen3d:views-to-3d', label: 'mode.views', icon: EDITOR_ICON_MAP.views },
 };
 
 export const providerMeta: Record<GenProvider, { label: string }> = {
-  hunyuan_workflow: { label: '混元 Hunyuan' },
-  meshy: { label: 'Meshy' },
-  rodin: { label: 'Rodin' },
+  hunyuan_workflow: { label: 'provider.hunyuan' },
+  meshy: { label: 'provider.meshy' },
+  rodin: { label: 'provider.rodin' },
 };
 
 // Asset slot the generation writes into (assets/3d/<slot>/). characters can be
@@ -66,8 +66,8 @@ export const providerMeta: Record<GenProvider, { label: string }> = {
 export const ASSET_SLOTS: AssetSlot[] = ['characters', 'meshes'];
 
 export const assetSlotMeta: Record<AssetSlot, { label: string }> = {
-  characters: { label: '角色' },
-  meshes: { label: '物件' },
+  characters: { label: 'slot.characters' },
+  meshes: { label: 'slot.meshes' },
 };
 
 // Polycount is exposed as three discrete tiers (low/mid/high) instead of a
@@ -80,9 +80,9 @@ export type PolycountTier = 'low' | 'mid' | 'high';
 export const POLYCOUNT_TIERS: PolycountTier[] = ['low', 'mid', 'high'];
 
 export const polycountTierMeta: Record<PolycountTier, { label: string }> = {
-  low: { label: '低' },
-  mid: { label: '中' },
-  high: { label: '高' },
+  low: { label: 'tier.low' },
+  mid: { label: 'tier.mid' },
+  high: { label: 'tier.high' },
 };
 
 const TIER_FACE_COUNTS: Record<GenProvider, Record<PolycountTier, number>> = {
@@ -101,12 +101,12 @@ export function tierToFaceCount(provider: GenProvider, tier: PolycountTier): num
 export const MOTION_TYPES: readonly MotionType[] = [9, 10, 11, 12, 13, 14, 15, 16];
 
 export const motionMeta: Record<MotionType, { label: string; hint: string }> = {
-  9: { label: '跨步', hint: '战斗位移、闪避动作、战术移动' },
-  10: { label: '摔倒', hint: '死亡动画、受击倒地、失败反馈' },
-  11: { label: '跳跃', hint: '跳跃平台、翻越障碍、技能起跳' },
-  12: { label: '踢腿', hint: '格斗技能、踢击连段、交互动作' },
-  13: { label: '挥击', hint: '近战攻击、武器挥砍、打击动作' },
-  14: { label: '步行', hint: '日常巡逻、NPC 漫游、场景行走' },
-  15: { label: '跑步', hint: '追逐战斗、快速移动、冲刺动作' },
-  16: { label: '跳舞', hint: '胜利庆祝、皮肤展示、互动表演' },
+  9: { label: 'motion.9.label', hint: 'motion.9.hint' },
+  10: { label: 'motion.10.label', hint: 'motion.10.hint' },
+  11: { label: 'motion.11.label', hint: 'motion.11.hint' },
+  12: { label: 'motion.12.label', hint: 'motion.12.hint' },
+  13: { label: 'motion.13.label', hint: 'motion.13.hint' },
+  14: { label: 'motion.14.label', hint: 'motion.14.hint' },
+  15: { label: 'motion.15.label', hint: 'motion.15.hint' },
+  16: { label: 'motion.16.label', hint: 'motion.16.hint' },
 };
