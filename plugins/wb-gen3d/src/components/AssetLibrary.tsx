@@ -4,13 +4,14 @@ import { selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from '@/lib/blobUrl';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
+import { t } from '@/i18n';
 
 const LibraryIcon = EDITOR_ICON_MAP.library;
 const RefreshIcon = EDITOR_ICON_MAP.refresh;
 const DeleteIcon = EDITOR_ICON_MAP.delete;
 const ImgIcon = EDITOR_ICON_MAP.image;
 
-const slotLabel: Record<string, string> = { characters: '角色', meshes: '物件' };
+const slotLabel: Record<string, string> = { characters: 'slot.characters', meshes: 'slot.meshes' };
 
 // Right column, card 1: the persisted per-game asset library, rendered as a
 // dense thumbnail grid. Assets are the cross-pane source of truth, so selecting
@@ -33,22 +34,22 @@ export function AssetLibrary(props: {
     <section className="gx-card">
       <div className="gx-card-title">
         <LibraryIcon size={15} />
-        <span>资产库</span>
-        <button type="button" className="fx-icon-btn" onClick={onRefresh} aria-label="刷新资产库">
+        <span>{t('asset.title')}</span>
+        <button type="button" className="fx-icon-btn" onClick={onRefresh} aria-label={t('asset.aria.refresh')}>
           <RefreshIcon size={13} />
         </button>
       </div>
       {!gameActive ? (
         <div className="gx-state">
           <LibraryIcon size={24} />
-          <div className="gx-state-title">未选择游戏</div>
-          <p className="gx-state-copy">3D 资产按游戏存储。请先在 Studio 中打开一个游戏，再回到此工作台生成与管理资产。</p>
+          <div className="gx-state-title">{t('asset.noGame.title')}</div>
+          <p className="gx-state-copy">{t('asset.noGame.copy')}</p>
         </div>
       ) : assets.length === 0 ? (
         <div className="gx-state">
           <LibraryIcon size={24} />
-          <div className="gx-state-title">资产库为空</div>
-          <p className="gx-state-copy">生成的 3D 资产会持久化到当前游戏的资产库；生成后点刷新即可在此查看、选择与删除。</p>
+          <div className="gx-state-title">{t('asset.empty.title')}</div>
+          <p className="gx-state-copy">{t('asset.empty.copy')}</p>
         </div>
       ) : (
         <div className="lib-grid">
@@ -130,7 +131,7 @@ function LibCard({
   // slots to `meshes`). Trust readiness over the persisted slot for the label.
   const effectiveSlot =
     asset.readiness.rigged || asset.readiness.animated ? 'characters' : asset.assetSlot;
-  const slot = slotLabel[effectiveSlot] ?? effectiveSlot;
+  const slot = t(slotLabel[effectiveSlot] ?? 'slot.meshes');
   // A preview <img> can transiently fail (request raced the just-written file,
   // dev-proxy hiccup, or a missing/corrupt sidefile). Without this the tile
   // renders a broken-image glyph with the full prompt spilling out as alt text.
@@ -172,12 +173,12 @@ function LibCard({
                 if (e.key === 'Escape') cancelRename();
               }}
               maxLength={80}
-              placeholder="资产名称"
+              placeholder={t('asset.placeholder.rename')}
             />
-            <button type="button" className="fx-icon-btn" aria-label="确认" onClick={commitRename}>
+            <button type="button" className="fx-icon-btn" aria-label={t('asset.aria.confirm')} onClick={commitRename}>
               <Check size={12} />
             </button>
-            <button type="button" className="fx-icon-btn" aria-label="取消" onClick={cancelRename}>
+            <button type="button" className="fx-icon-btn" aria-label={t('asset.aria.cancel')} onClick={cancelRename}>
               <X size={12} />
             </button>
           </div>
@@ -187,9 +188,9 @@ function LibCard({
             <button
               type="button"
               className="fx-icon-btn lib-card-rename-btn"
-              aria-label="重命名"
+              aria-label={t('asset.aria.rename')}
               onClick={startRename}
-              title="重命名"
+              title={t('asset.title.rename')}
             >
               <Pencil size={10} />
             </button>
@@ -200,10 +201,10 @@ function LibCard({
         </small>
         {(asset.readiness.rigged || asset.readiness.animated) && (
           <div className="lib-card-readiness">
-            {asset.readiness.rigged && <span className="lib-readiness-tag">绑骨</span>}
+            {asset.readiness.rigged && <span className="lib-readiness-tag">{t('asset.tag.rigged')}</span>}
             {asset.readiness.animated && (
               <span className="lib-readiness-tag lib-readiness-tag--anim">
-                动作 ×{selectFiles(asset.files, 'animated_model', 'glb').length}
+                {t('asset.tag.motion', { n: selectFiles(asset.files, 'animated_model', 'glb').length })}
               </span>
             )}
           </div>
@@ -212,16 +213,16 @@ function LibCard({
 
       {confirming ? (
         <div className="lib-card-confirm">
-          <span>删除？</span>
+          <span>{t('asset.confirm.delete')}</span>
           <button type="button" className="fx-btn fx-btn--sm fx-btn--danger" onClick={onConfirmDelete}>
-            删除
+            {t('asset.btn.delete')}
           </button>
           <button type="button" className="fx-btn fx-btn--sm" onClick={onCancelDelete}>
-            取消
+            {t('asset.btn.cancel')}
           </button>
         </div>
       ) : (
-        <button type="button" className="fx-icon-btn lib-card-del" aria-label="删除资产" onClick={onAskDelete}>
+        <button type="button" className="fx-icon-btn lib-card-del" aria-label={t('asset.aria.delete')} onClick={onAskDelete}>
           <DeleteIcon size={13} />
         </button>
       )}

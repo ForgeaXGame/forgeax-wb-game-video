@@ -4,6 +4,7 @@ import { providerParamSpec } from '@shared/provider-params';
 import { callTool } from '@/lib/toolClient';
 import { StepCard } from '@/components/StepCard';
 import { PRIMARY_MODES, primaryModeMeta } from '@/ui-meta';
+import { t } from '@/i18n';
 import type { GenerateResult, ProviderStatus, PrimaryMode, UploadImageResult } from '@/types';
 
 // Advanced Meshy params shown under "高级"; model_type is promoted to its own
@@ -55,13 +56,13 @@ export function SetupSidebar({
   );
 
   const providerLine = (() => {
-    if (!status) return '检测中…';
-    if (!status.realProvidersEnabled) return 'Mock 模式（未启用真实调用，不消耗额度）';
-    if (!status.meshyConfigured) return 'Mock 模式（缺少 MESHY_API_KEY）';
-    const bal = status.balance == null ? '' : ` · 余额 ${status.balance}`;
-    return `真实 Meshy 调用已启用${bal}`;
+    if (!status) return t('status.detecting');
+    if (!status.realProvidersEnabled) return t('status.mockDisabled');
+    if (!status.litellmConfigured) return t('status.mockNoGateway');
+    const bal = status.balance == null ? '' : t('status.balance', { n: status.balance });
+    return t('status.realEnabled', { balance: bal });
   })();
-  const providerReal = !!status?.realProvidersEnabled && !!status?.meshyConfigured;
+  const providerReal = !!status?.realProvidersEnabled && !!status?.litellmConfigured;
 
   const uploadLocalImage = async (file: File, apply: (url: string) => void) => {
     setUploading(true);
@@ -74,7 +75,7 @@ export function SetupSidebar({
         return;
       }
       apply(r.result.url);
-      setNote('图片已上传，可访问 URL 已填入。');
+      setNote(t('note.uploaded'));
     } finally {
       setUploading(false);
     }
@@ -96,21 +97,21 @@ export function SetupSidebar({
     };
     if (mode === 'text') {
       if (!prompt.trim()) {
-        setError('请填写描述提示词。');
+        setError(t('error.needPrompt'));
         return null;
       }
       return { tool: primaryModeMeta.text.toolId, args: { prompt: prompt.trim(), ...shared } };
     }
     if (mode === 'image') {
       if (!imageUrl.trim()) {
-        setError('请填写参考图 URL，或上传本地图。');
+        setError(t('error.needImageUrl'));
         return null;
       }
       return { tool: primaryModeMeta.image.toolId, args: { imageUrl: imageUrl.trim(), ...shared } };
     }
     const urls = viewUrls.map((u) => u.trim()).filter(Boolean);
     if (urls.length === 0) {
-      setError('请至少填写一张视角图 URL。');
+      setError(t('error.needViewUrl'));
       return null;
     }
     return { tool: primaryModeMeta.views.toolId, args: { imageUrls: urls, ...shared } };
@@ -129,7 +130,13 @@ export function SetupSidebar({
       return;
     }
     const { manifest, usedMock, cacheHit } = r.result;
-    setNote(`${cacheHit ? '命中缓存' : '生成完成'}${usedMock ? '（mock）' : ''}：${manifest.assetPath}`);
+    setNote(
+      t('note.result', {
+        state: cacheHit ? t('note.cacheHit') : t('note.generated'),
+        mock: usedMock ? t('note.mockTag') : '',
+        path: manifest.assetPath,
+      }),
+    );
     onGenerated(manifest);
   };
 
@@ -139,11 +146,11 @@ export function SetupSidebar({
         <span className="aa-provider-dot" />
         <span className="aa-provider-text">{providerLine}</span>
         <button type="button" className="aa-btn aa-btn--ghost aa-provider-cfg" onClick={onOpenCredentials}>
-          凭证
+          {t('label.credentials')}
         </button>
       </div>
 
-      <StepCard title="生成方式" icon="✨">
+      <StepCard title={t('label.generateMode')} icon="✨">
         <div className="aa-modes">
           {PRIMARY_MODES.map((m) => {
             const meta = primaryModeMeta[m];
@@ -158,19 +165,17 @@ export function SetupSidebar({
                 }}
               >
                 <span className="aa-mode-icon">{meta.icon}</span>
-                <span className="aa-mode-label">{meta.label}</span>
+                <span className="aa-mode-label">{t(meta.label)}</span>
               </button>
             );
           })}
         </div>
-        <p className="aa-card-hint">{primaryModeMeta[mode].hint}</p>
-        <p className="aa-hint-small">
-          Meshy 对硬表面/机械道具效果最佳；有机/角色类成功率较低，建议多上传几张视角参考图。
-        </p>
+        <p className="aa-card-hint">{t(primaryModeMeta[mode].hint)}</p>
+        <p className="aa-hint-small">{t('hint.meshyTip')}</p>
 
         {mode === 'text' && (
           <label className="aa-field">
-            <span className="aa-field-label">描述</span>
+            <span className="aa-field-label">{t('label.description')}</span>
             <textarea
               rows={3}
               value={prompt}
@@ -183,11 +188,11 @@ export function SetupSidebar({
         {mode === 'image' && (
           <div className="aa-field-group">
             <label className="aa-field">
-              <span className="aa-field-label">参考图 URL</span>
+              <span className="aa-field-label">{t('label.refImageUrl')}</span>
               <input
                 type="text"
                 value={imageUrl}
-                placeholder="https://… 或上传本地图"
+                placeholder={t('placeholder.refImage')}
                 onChange={(e) => setImageUrl(e.target.value)}
               />
             </label>
@@ -202,7 +207,7 @@ export function SetupSidebar({
                   e.target.value = '';
                 }}
               />
-              <span>{uploading ? '上传中…' : '上传本地图'}</span>
+              <span>{uploading ? t('btn.uploading') : t('btn.uploadLocal')}</span>
             </label>
           </div>
         )}
@@ -212,11 +217,11 @@ export function SetupSidebar({
             {viewUrls.map((u, i) => (
               <div className="aa-field-group" key={i}>
                 <label className="aa-field">
-                  <span className="aa-field-label">视角 {i + 1}</span>
+                  <span className="aa-field-label">{t('label.viewN', { n: i + 1 })}</span>
                   <input
                     type="text"
                     value={u}
-                    placeholder={i === 0 ? '至少一张' : '可选'}
+                    placeholder={i === 0 ? t('placeholder.viewFirst') : t('placeholder.viewOptional')}
                     onChange={(e) =>
                       setViewUrls((prev) => prev.map((p, j) => (j === i ? e.target.value : p)))
                     }
@@ -233,7 +238,7 @@ export function SetupSidebar({
                       e.target.value = '';
                     }}
                   />
-                  <span>{uploading ? '…' : '上传'}</span>
+                  <span>{uploading ? '…' : t('btn.upload')}</span>
                 </label>
               </div>
             ))}
@@ -241,19 +246,19 @@ export function SetupSidebar({
         )}
       </StepCard>
 
-      <StepCard title="输出设置" icon="⚙️">
+      <StepCard title={t('label.outputSettings')} icon="⚙️">
         <label className="aa-field">
-          <span className="aa-field-label">资产名（可选）</span>
+          <span className="aa-field-label">{t('label.assetName')}</span>
           <input
             type="text"
             value={assetName}
-            placeholder="留空则用提示词/默认名"
+            placeholder={t('placeholder.assetName')}
             onChange={(e) => setAssetName(e.target.value)}
           />
         </label>
 
         <label className="aa-field">
-          <span className="aa-field-label">目标面数：{targetPolycount.toLocaleString()}（低面预算，&lt;2000 游戏就绪）</span>
+          <span className="aa-field-label">{t('label.targetPolyBudget', { count: targetPolycount.toLocaleString() })}</span>
           <input
             type="range"
             min={500}
@@ -266,22 +271,20 @@ export function SetupSidebar({
 
         <label className="aa-check">
           <input type="checkbox" checked={enablePbr} onChange={(e) => setEnablePbr(e.target.checked)} />
-          <span>生成 PBR 贴图</span>
+          <span>{t('label.generatePbr')}</span>
         </label>
 
         {advancedFields.length > 0 && (
           <div className="aa-advanced">
             <button type="button" className="aa-link" onClick={() => setShowAdvanced((v) => !v)}>
-              {showAdvanced ? '▾ 高级参数' : '▸ 高级参数'}
+              {`${showAdvanced ? '▾' : '▸'} ${t('label.advancedParams')}`}
             </button>
             {showAdvanced && (
               <div className="aa-advanced-body">
-                <p className="aa-hint-small">
-                  精控低面：standard 生成 → 减面到目标面数（三角面）→ 可选 PBR 重贴图，模型版本默认 meshy-6。
-                </p>
+                <p className="aa-hint-small">{t('hint.advancedExplain')}</p>
                 <label className="aa-check">
                   <input type="checkbox" checked={rawMode} onChange={(e) => setRawMode(e.target.checked)} />
-                  <span>原始单发（raw）：跳过自动减面/重贴图，直接用 Meshy 标准网格输出</span>
+                  <span>{t('hint.rawExplain')}</span>
                 </label>
                 {advancedFields.map((f) => (
                   <label className="aa-field" key={f.key}>
@@ -290,7 +293,7 @@ export function SetupSidebar({
                       value={advanced[f.key] ?? ''}
                       onChange={(e) => setAdvanced((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     >
-                      <option value="">默认</option>
+                      <option value="">{t('label.default')}</option>
                       {(f.options ?? []).map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
@@ -313,9 +316,9 @@ export function SetupSidebar({
         className="aa-btn aa-btn--primary aa-generate"
         onClick={generate}
         disabled={busy || !gameActive}
-        title={gameActive ? '' : '未选择游戏'}
+        title={gameActive ? '' : t('btn.noGame')}
       >
-        {busy ? '生成中…' : gameActive ? '生成低模' : '未选择游戏'}
+        {busy ? t('btn.generating') : gameActive ? t('btn.generate') : t('btn.noGame')}
       </button>
     </div>
   );

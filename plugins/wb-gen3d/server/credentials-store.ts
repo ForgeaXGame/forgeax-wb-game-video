@@ -1,12 +1,15 @@
 // Plugin-self-managed provider credentials store.
 //
-// Lets the UI fill the three 3D providers' keys (+ the master switch) without
-// hand-editing .env. Writes go to the plugin-local .env (gitignored) AND are
-// live-applied to process.env so server/env.ts read() — which reads process.env
-// — picks them up immediately, no server restart (mirrors the host's
-// PUT /api/settings/env live-apply). parseEnv/serializeEnv/maskKey are ported
-// verbatim from packages/server/src/api/settings.ts so the masked-render and
-// comment-preserving contracts match the rest of Studio.
+// Plugin-local .env holds only the master real/mock switch and COS upload keys.
+// LiteLLM gateway credentials come from Studio global .env (Settings → API Keys:
+// LITELLM_PROXY_* or ANTHROPIC_*) — never written here.
+//
+// Writes go to the plugin-local .env (gitignored) AND are live-applied to
+// process.env so server/env.ts read() — which reads process.env — picks them up
+// immediately, no server restart (mirrors the host's PUT /api/settings/env
+// live-apply). parseEnv/serializeEnv/maskKey are ported verbatim from
+// packages/server/src/api/settings.ts so the masked-render and comment-preserving
+// contracts match the rest of Studio.
 //
 // SECURITY: nothing here logs, and no thrown error ever carries a plaintext key
 // value — only field names / file paths.
@@ -14,43 +17,28 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickLitellmFromEnv } from './env';
 
-// Whitelist of keys this store is allowed to read/write. Anything outside this
-// set (e.g. the slug the workbench host auto-injects into every tool call, or a
-// hostile EVIL_KEY) is dropped before it can touch the .env.
+// Whitelist of keys this store is allowed to read/write. LiteLLM keys are
+// excluded — they live in Studio global .env only.
 export const CRED_KEYS = [
   'GEN3D_ENABLE_REAL_PROVIDERS',
-  'HUNYUAN_API_KEY',
-  'HUNYUAN_BASE_URL',
-  'MESHY_API_KEY',
-  'RODIN_API_KEY',
   'COS_SECRET_ID',
   'COS_SECRET_KEY',
   'COS_BUCKET',
   'COS_REGION',
 ] as const;
 
-// Keys whose value must be masked on read-back. HUNYUAN_BASE_URL / COS_BUCKET /
-// COS_REGION are addresses, not secrets (plaintext); GEN3D_ENABLE_REAL_PROVIDERS
-// is a switch surfaced via the realProvidersEnabled boolean. COS_SECRET_ID is a
-// credential (masked like the provider API keys); COS_SECRET_KEY is the secret
-// half of the COS key pair.
-export const SECRET_KEYS = [
-  'HUNYUAN_API_KEY',
-  'MESHY_API_KEY',
-  'RODIN_API_KEY',
-  'COS_SECRET_ID',
-  'COS_SECRET_KEY',
-] as const;
+export const SECRET_KEYS = ['COS_SECRET_ID', 'COS_SECRET_KEY'] as const;
 
 export interface CredentialsState {
   ok: true;
   realProvidersEnabled: boolean;
+  /** Read-only: derived from Studio global .env, never from plugin .env. */
+  litellmConfigured: boolean;
+  /** Masked gateway key from Studio settings, or null when unset. Read-only. */
+  litellmProxyKey: string | null;
   credentials: {
-    HUNYUAN_API_KEY: string | null; // masked or null
-    HUNYUAN_BASE_URL: string | null; // PLAINTEXT or null
-    MESHY_API_KEY: string | null; // masked or null
-    RODIN_API_KEY: string | null; // masked or null
     COS_SECRET_ID: string | null; // masked or null
     COS_SECRET_KEY: string | null; // masked or null
     COS_BUCKET: string | null; // PLAINTEXT or null
@@ -122,11 +110,17 @@ function effective(name: string, fileEnv: Record<string, string>): string | unde
   return raw && raw.trim() ? raw.trim() : undefined;
 }
 
+function readLitellmStatus(): { configured: boolean; maskedKey: string | null } {
+  const litellm = pickLitellmFromEnv(process.env);
+  return {
+    configured: litellm !== null,
+    maskedKey: litellm ? maskKey(litellm.apiKey) : null,
+  };
+}
+
 /**
- * Read the masked credential state. File is the persistence layer; process.env
- * is the live layer and takes precedence (matches env.ts "server env wins").
- * Secret keys are masked, the base URL is plaintext, the master switch is
- * surfaced as a boolean. Never returns a plaintext key.
+ * Read the masked credential state. Plugin .env holds COS + master switch only;
+ * LiteLLM status is read-only from Studio global .env. Never returns a plaintext key.
  */
 export function readCredentials(envPath: string = defaultEnvPath()): CredentialsState {
   let fileEnv: Record<string, string> = {};
@@ -137,14 +131,13 @@ export function readCredentials(envPath: string = defaultEnvPath()): Credentials
       fileEnv = {};
     }
   }
+  const litellm = readLitellmStatus();
   return {
     ok: true,
     realProvidersEnabled: effective('GEN3D_ENABLE_REAL_PROVIDERS', fileEnv) === '1',
+    litellmConfigured: litellm.configured,
+    litellmProxyKey: litellm.maskedKey,
     credentials: {
-      HUNYUAN_API_KEY: maskKey(effective('HUNYUAN_API_KEY', fileEnv)),
-      HUNYUAN_BASE_URL: effective('HUNYUAN_BASE_URL', fileEnv) ?? null,
-      MESHY_API_KEY: maskKey(effective('MESHY_API_KEY', fileEnv)),
-      RODIN_API_KEY: maskKey(effective('RODIN_API_KEY', fileEnv)),
       COS_SECRET_ID: maskKey(effective('COS_SECRET_ID', fileEnv)),
       COS_SECRET_KEY: maskKey(effective('COS_SECRET_KEY', fileEnv)),
       COS_BUCKET: effective('COS_BUCKET', fileEnv) ?? null,
@@ -155,16 +148,8 @@ export function readCredentials(envPath: string = defaultEnvPath()): Credentials
 
 /**
  * Write a credential patch to the plugin-local .env and live-apply to
- * process.env. Steps:
- *   1. Keep only CRED_KEYS; coerce string|number via String(); drop everything
- *      else (the injected slug, hostile keys, non-scalar values).
- *   2. Read current .env → parseEnv → apply patch (an empty string clears the
- *      field, written in place as `KEY=`, mirroring settings.ts which never
- *      deletes lines) → serializeEnv → atomic write (tmp + rename).
- *   3. Live-apply each patched key to process.env (non-empty sets, empty
- *      deletes) so env.ts read() reflects it without a restart.
- *   4. Return the fresh masked state.
- * A patch with no recognized keys is a no-op (no file is created/rewritten).
+ * process.env. LiteLLM keys in the patch are silently dropped (managed in
+ * Studio Settings only).
  */
 export function writeCredentials(
   patch: Record<string, unknown> = {},
@@ -184,8 +169,6 @@ export function writeCredentials(
       originalText = readFileSync(envPath, 'utf8');
       env = parseEnv(originalText);
     }
-    // Empty string clears in place (line becomes `KEY=`, reads back as null);
-    // matches settings.ts, which always assigns and never removes lines.
     for (const [k, v] of Object.entries(clean)) env[k] = v;
 
     const tmp = `${envPath}.tmp`;

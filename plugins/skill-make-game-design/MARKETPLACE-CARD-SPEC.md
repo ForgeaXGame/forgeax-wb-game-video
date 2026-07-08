@@ -38,6 +38,7 @@ git history. Ship this file to get a real, 100+character, multi-section listing.
 - **`summary` ≥ 100 characters** in each language; concrete, no marketing fluff.
 - **2–4 `sections`** — split the description into modules (e.g. overview / capabilities /
   pipeline / how-to-use). A `body` with `\n` renders as a bullet list.
-- **`history`** is curated and **must not contain internal names** (kubeela / 腾讯 /
-  tencent / org names / vendor churn). Derive it from real milestones, newest first.
+- **`history`** is curated and **must not contain internal org or vendor names**
+  (individual handles, company names, or vendor churn — see studio mirror scrub gate).
+  Derive it from real milestones, newest first.
 - Keep it bilingual (`zh` + `en`) and in the site's neutral, factual tone.

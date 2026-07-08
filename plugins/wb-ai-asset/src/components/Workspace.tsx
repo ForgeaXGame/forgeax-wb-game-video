@@ -5,6 +5,7 @@ import { blobUrl } from '@/lib/blobUrl';
 import { downloadBundle } from '@/lib/exportBundle';
 import { ModelViewer } from '@/components/ModelViewer';
 import { StepCard } from '@/components/StepCard';
+import { t } from '@/i18n';
 import type { GenerateResult } from '@/types';
 
 // Build the model-input args for a secondary stage. Prefer the upstream Meshy
@@ -37,7 +38,7 @@ export function Workspace({
       <div className="aa-workspace aa-workspace--empty">
         <div className="aa-empty-hero">
           <span className="aa-empty-emoji">📦</span>
-          <p>左侧生成或从资产库选择一个低模，在此预览并做二次加工（贴图 / 重拓扑 / 换肤）。</p>
+          <p>{t('ws.emptyHero')}</p>
         </div>
       </div>
     );
@@ -53,7 +54,7 @@ export function Workspace({
     setBusy('export');
     try {
       await downloadBundle(selected);
-      setNote('已打包下载 .zip（GLB + 纹理 + manifest）。');
+      setNote(t('note.exported'));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -72,7 +73,13 @@ export function Workspace({
       return;
     }
     const { manifest, usedMock, cacheHit } = r.result;
-    setNote(`${cacheHit ? '命中缓存' : '完成'}${usedMock ? '（mock）' : ''}：${manifest.assetPath}`);
+    setNote(
+      t('note.result', {
+        state: cacheHit ? t('note.cacheHit') : t('note.done'),
+        mock: usedMock ? t('note.mockTag') : '',
+        path: manifest.assetPath,
+      }),
+    );
     onGenerated(manifest);
   };
 
@@ -82,7 +89,7 @@ export function Workspace({
         {glbUrl ? (
           <ModelViewer url={glbUrl} />
         ) : (
-          <div className="aa-viewer aa-viewer--empty">无可预览的 GLB</div>
+          <div className="aa-viewer aa-viewer--empty">{t('ws.noGlb')}</div>
         )}
       </div>
 
@@ -91,10 +98,12 @@ export function Workspace({
         <div className="aa-stage-tags">
           <span className={`aa-tag aa-tag--${selected.providerMode}`}>{selected.providerMode}</span>
           <span className="aa-tag">{selected.mode}</span>
-          {selected.targetFaceCount ? <span className="aa-tag">{selected.targetFaceCount.toLocaleString()} 面</span> : null}
+          {selected.targetFaceCount ? (
+            <span className="aa-tag">{t('stat.faces', { count: selected.targetFaceCount.toLocaleString() })}</span>
+          ) : null}
         </div>
         <button type="button" className="aa-btn aa-btn--ghost" onClick={exportZip} disabled={busy !== null || !glbUrl}>
-          {busy === 'export' ? '打包中…' : '导出 .zip'}
+          {busy === 'export' ? t('btn.exporting') : t('btn.exportZip')}
         </button>
       </div>
 
@@ -102,9 +111,9 @@ export function Workspace({
       {note ? <p className="aa-note">{note}</p> : null}
 
       <div className="aa-stages">
-        <StepCard title="补贴图（refine）" icon="🎨" hint={canRefine ? '为该预览模型补 PBR 贴图。' : '仅文生预览（未贴图）可补贴图。'}>
+        <StepCard title={t('step.refine')} icon="🎨" hint={canRefine ? t('hint.refineCan') : t('hint.refineCannot')}>
           <label className="aa-field">
-            <span className="aa-field-label">贴图提示词（可选）</span>
+            <span className="aa-field-label">{t('label.texturePrompt')}</span>
             <input type="text" value={texturePrompt} placeholder="worn metal, painted wood…" onChange={(e) => setTexturePrompt(e.target.value)} />
           </label>
           <button
@@ -118,17 +127,17 @@ export function Workspace({
               })
             }
           >
-            {busy === 'refine' ? '处理中…' : '补贴图'}
+            {busy === 'refine' ? t('btn.processing') : t('btn.refine')}
           </button>
         </StepCard>
 
-        <StepCard title="换肤（retexture）" icon="🖌️" hint="用文字或图片风格为模型重新生成贴图，产出新资产。">
+        <StepCard title={t('step.retexture')} icon="🖌️" hint={t('hint.retexture')}>
           <label className="aa-field">
-            <span className="aa-field-label">风格提示词</span>
+            <span className="aa-field-label">{t('label.stylePrompt')}</span>
             <input type="text" value={stylePrompt} placeholder="rusty iron, fantasy gold…" onChange={(e) => setStylePrompt(e.target.value)} />
           </label>
           <label className="aa-field">
-            <span className="aa-field-label">或风格图 URL</span>
+            <span className="aa-field-label">{t('label.styleUrl')}</span>
             <input type="text" value={styleImageUrl} placeholder="https://…" onChange={(e) => setStyleImageUrl(e.target.value)} />
           </label>
           <button
@@ -142,20 +151,20 @@ export function Workspace({
               })
             }
           >
-            {busy === 'retexture' ? '处理中…' : '换肤'}
+            {busy === 'retexture' ? t('btn.processing') : t('btn.retexture')}
           </button>
         </StepCard>
 
-        <StepCard title="重拓扑（remesh）" icon="🔻" hint="把模型重新网格化到目标面数，做 LOD / 减面。">
+        <StepCard title={t('step.remesh')} icon="🔻" hint={t('hint.remesh')}>
           <label className="aa-field">
-            <span className="aa-field-label">目标面数：{remeshPoly.toLocaleString()}</span>
+            <span className="aa-field-label">{t('label.targetPoly', { count: remeshPoly.toLocaleString() })}</span>
             <input type="range" min={300} max={50000} step={100} value={remeshPoly} onChange={(e) => setRemeshPoly(Number(e.target.value))} />
           </label>
           <label className="aa-field">
-            <span className="aa-field-label">拓扑</span>
+            <span className="aa-field-label">{t('label.topology')}</span>
             <select value={remeshTopology} onChange={(e) => setRemeshTopology(e.target.value as 'triangle' | 'quad')}>
-              <option value="triangle">三角面</option>
-              <option value="quad">四边面</option>
+              <option value="triangle">{t('opt.triangle')}</option>
+              <option value="quad">{t('opt.quad')}</option>
             </select>
           </label>
           <button
@@ -164,7 +173,7 @@ export function Workspace({
             disabled={busy !== null}
             onClick={() => run('remesh', 'aiasset:remesh', { targetPolycount: remeshPoly, topology: remeshTopology })}
           >
-            {busy === 'remesh' ? '处理中…' : '重拓扑'}
+            {busy === 'remesh' ? t('btn.processing') : t('btn.remesh')}
           </button>
         </StepCard>
       </div>

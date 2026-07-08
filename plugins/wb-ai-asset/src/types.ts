@@ -16,7 +16,7 @@ export interface ProviderCapabilityView {
 export interface ProviderStatus {
   ok: true;
   realProvidersEnabled: boolean;
-  meshyConfigured: boolean;
+  litellmConfigured: boolean;
   cosConfigured: boolean;
   quotaSafe: boolean;
   balance: number | null;
@@ -41,9 +41,9 @@ export interface ListAssetsResult {
 export interface CredentialsState {
   ok: true;
   realProvidersEnabled: boolean;
+  litellmConfigured: boolean;
+  litellmProxyKey: string | null;
   credentials: {
-    MESHY_API_KEY: string | null;
-    MESHY_BASE_URL: string | null;
     COS_SECRET_ID: string | null;
     COS_SECRET_KEY: string | null;
     COS_BUCKET: string | null;

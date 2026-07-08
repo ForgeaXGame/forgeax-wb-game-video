@@ -1,36 +1,46 @@
-// MeshyProvider — real submit/poll client for the Meshy.ai public OpenAPI,
+// MeshyProvider — real submit/poll client for the LiteLLM 3D gateway,
 // scoped to wb-ai-asset's small low-poly props workflow.
 //
-// Decoupling: this talks to the remote API and returns a pure ProviderResult
-// with downloaded bytes. It knows nothing about cache, asset-store, or
-// manifests. Auth is plain `Authorization: Bearer <key>`; no signing.
+// Decoupling: this talks to the remote gateway API and returns a pure
+// ProviderResult with downloaded bytes. It knows nothing about cache, asset-store,
+// or manifests. Auth is plain `Authorization: Bearer <key>`; no signing.
 //
-// Capabilities (all async submit→poll, status UPPER-CASE):
+// Capabilities (all async submit→poll, status lower-case):
 //   - generate(): text/image/views/refine. text/image/views default to
 //     model_type=lowpoly (the plugin's purpose). text is two-stage (preview →
 //     refine); refine takes a preview_task_id.
 //   - remesh(): re-mesh an existing model to a target polycount + topology.
 //   - retexture(): re-skin an existing model from a text/image style (+PBR).
-//   - getBalance(): remaining credits for an optional pre-flight.
 //
-// All outputs come back as `model_urls` (dict), `texture_urls[]`, `thumbnail_url`
-// and are flattened by extractUrls() then downloaded to bytes.
+// All outputs come back as gateway `data[]` array (type+format tagged) and are
+// flattened by extractGatewayUrls() (shared SSOT) then downloaded to bytes.
+//
+// LiteLLM gateway endpoint:
+//   POST /v1/3d/generations  — submit (body includes `model`)
+//   GET  /v1/3d/tasks/{id}   — poll (task id encodes provider/model)
 
 import { clampTargetPolycount, type ProviderResult, type ProviderResultFile } from '../../shared/catalog';
 import type { FileFormat, FileRole, GenerationMode, TextureKind } from '../../shared/manifest';
 import type { MeshyEnv } from '../env';
 import { audit } from '../audit';
 import { RateGuard } from '../rate-guard';
+import { extractGatewayUrls } from './gateway-data';
 
-const PATH_TEXT = '/openapi/v2/text-to-3d';
-const PATH_IMAGE = '/openapi/v1/image-to-3d';
-const PATH_MULTI = '/openapi/v1/multi-image-to-3d';
-const PATH_REMESH = '/openapi/v1/remesh';
-const PATH_RETEXTURE = '/openapi/v1/retexture';
-const PATH_BALANCE = '/openapi/v1/balance';
+const GATEWAY_SUBMIT = '/v1/3d/generations';
+const GATEWAY_POLL = '/v1/3d/tasks';
 
-const SUCCESS = 'SUCCEEDED';
-const FAILURE = new Set(['FAILED', 'CANCELED']);
+// Gateway model id for each Meshy mode.
+const MODE_TO_MODEL: Record<string, string> = {
+  text: 'meshy-3d-text',
+  image: 'meshy-3d-image',
+  views: 'meshy-3d-multi-image',
+  refine: 'meshy-3d-text',     // refine is second stage of text
+  remesh: 'meshy-3d-remesh',
+  retexture: 'meshy-3d-retexture',
+};
+
+const SUCCESS = 'succeeded';
+const FAILURE = new Set(['failed', 'canceled']);
 
 export type MeshyMode = 'text' | 'image' | 'views' | 'refine';
 export type MeshyModelType = 'standard' | 'lowpoly';
@@ -88,13 +98,11 @@ export interface MeshyProviderDeps {
   sleep?: (ms: number) => Promise<void>;
 }
 
-// PBR maps Meshy returns inside texture_urls[0] (a per-material set). meshy-6
-// adds emission; absent keys are simply skipped. Captured in this order so the
-// full set lands on disk, not just base_color.
+// PBR maps Meshy returns inside data[] entries with type="texture".
 const TEXTURE_KINDS: readonly TextureKind[] = ['base_color', 'metallic', 'roughness', 'normal', 'emission'];
 
-// Map a Meshy model_urls key to a durable manifest file role+format.
-const MODEL_URL_TO_FILE: Record<string, { role: FileRole; format: FileFormat }> = {
+// Map a gateway data[] entry (type+format) to a durable manifest file role+format.
+const DATA_TYPE_TO_FILE: Record<string, { role: FileRole; format: FileFormat }> = {
   glb: { role: 'source_mesh', format: 'glb' },
   fbx: { role: 'source_mesh', format: 'fbx' },
   obj: { role: 'source_mesh', format: 'obj' },
@@ -121,20 +129,40 @@ export class MeshyProvider {
   }
 
   async generate(input: MeshyGenerateInput): Promise<ProviderResult> {
-    const submitPath = pathForMode(input.mode);
-    const payload = this.buildPayload(input);
+    const result = await this.submitAndDownload(input);
+    if (input.mode === 'text' && input.enablePbr !== false) {
+      const previewTaskId = result.sourceJobId;
+      if (!previewTaskId) {
+        throw Object.assign(new Error('meshy text preview returned no task id'), { code: 'provider_no_task' });
+      }
+      const refined = await this.submitAndDownload({
+        mode: 'refine',
+        previewTaskId,
+        texturePrompt: input.prompt,
+        enablePbr: input.enablePbr ?? true,
+        modelType: input.modelType,
+        aiModel: input.aiModel,
+      });
+      return { ...refined, mode: 'text', prompt: input.prompt ?? null };
+    }
+    return result;
+  }
+
+  private async submitAndDownload(input: MeshyGenerateInput): Promise<ProviderResult> {
+    const model = MODE_TO_MODEL[input.mode];
+    const payload = { model, ...this.buildPayload(input) };
 
     // Guard BEFORE the quotaed submit.
     this.rateGuard.check();
 
-    const submitResp = await this.post(submitPath, payload);
+    const submitResp = await this.post(payload);
     const sourceJobId = submitTaskId(submitResp);
     if (!sourceJobId) {
       throw Object.assign(new Error('meshy submit returned no task id'), { code: 'provider_no_task' });
     }
     await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode: input.mode, event: 'submit', sourceJobId });
 
-    const urls = await this.poll(submitPath, input.mode, sourceJobId);
+    const urls = await this.poll(input.mode, sourceJobId);
     const files = await this.downloadFiles(urls);
 
     return {
@@ -142,6 +170,7 @@ export class MeshyProvider {
       mode: input.mode as GenerationMode,
       providerMode: 'real',
       sourceJobId,
+      sourceModelUrl: primaryMeshUrl(urls),
       prompt: input.prompt ?? null,
       files,
     };
@@ -156,7 +185,7 @@ export class MeshyProvider {
         code: 'invalid_remesh_input',
       });
     }
-    const payload: Record<string, unknown> = { target_formats: ['glb'] };
+    const payload: Record<string, unknown> = { model: 'meshy-3d-remesh', target_formats: ['glb'] };
     if (input.inputTaskId) payload.input_task_id = input.inputTaskId;
     else if (input.modelUrl) payload.model_url = input.modelUrl;
     if (input.topology) payload.topology = input.topology;
@@ -165,16 +194,16 @@ export class MeshyProvider {
     }
 
     this.rateGuard.check();
-    const submitResp = await this.post(PATH_REMESH, payload);
+    const submitResp = await this.post(payload);
     const sourceJobId = submitTaskId(submitResp);
     if (!sourceJobId) {
       throw Object.assign(new Error('meshy remesh submit returned no task id'), { code: 'provider_no_task' });
     }
     await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode: 'remesh', event: 'submit', sourceJobId });
 
-    const urls = await this.poll(PATH_REMESH, 'remesh', sourceJobId);
+    const urls = await this.poll('remesh', sourceJobId);
     const files = await this.downloadFiles(urls);
-    return { provider: 'meshy', mode: 'remesh', providerMode: 'real', sourceJobId, prompt: null, files };
+    return { provider: 'meshy', mode: 'remesh', providerMode: 'real', sourceJobId, sourceModelUrl: primaryMeshUrl(urls), prompt: null, files };
   }
 
   // Retexture an existing model from a text or image style. Emits a NEW derived
@@ -190,7 +219,7 @@ export class MeshyProvider {
         code: 'invalid_retexture_style',
       });
     }
-    const payload: Record<string, unknown> = { target_formats: ['glb'] };
+    const payload: Record<string, unknown> = { model: 'meshy-3d-retexture', target_formats: ['glb'] };
     if (input.inputTaskId) payload.input_task_id = input.inputTaskId;
     else if (input.modelUrl) payload.model_url = input.modelUrl;
     if (input.imageStyleUrl) payload.image_style_url = input.imageStyleUrl;
@@ -199,40 +228,38 @@ export class MeshyProvider {
     if (input.aiModel) payload.ai_model = input.aiModel;
 
     this.rateGuard.check();
-    const submitResp = await this.post(PATH_RETEXTURE, payload);
+    const submitResp = await this.post(payload);
     const sourceJobId = submitTaskId(submitResp);
     if (!sourceJobId) {
       throw Object.assign(new Error('meshy retexture submit returned no task id'), { code: 'provider_no_task' });
     }
     await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode: 'retexture', event: 'submit', sourceJobId });
 
-    const urls = await this.poll(PATH_RETEXTURE, 'retexture', sourceJobId);
+    const urls = await this.poll('retexture', sourceJobId);
     const files = await this.downloadFiles(urls);
     return {
       provider: 'meshy',
       mode: 'retexture',
       providerMode: 'real',
       sourceJobId,
+      sourceModelUrl: primaryMeshUrl(urls),
       prompt: input.textStylePrompt ?? null,
       files,
     };
   }
 
-  // Remaining credit balance, for an optional pre-flight before a paid call.
-  async getBalance(): Promise<number> {
-    const resp = await this.get(PATH_BALANCE);
-    const raw = resp.balance ?? resp.credits ?? asRecord(resp.data).balance;
-    const n = typeof raw === 'number' ? raw : Number(raw);
-    return Number.isFinite(n) ? n : 0;
+  // Gateway has no balance endpoint — null means "unknown", not zero credits.
+  async getBalance(): Promise<number | null> {
+    return null;
   }
 
-  // Flatten the success url map into downloaded ProviderResultFiles. One file per
-  // (role,format); thumbnail → preview_image; each captured PBR map → a texture
-  // file tagged with its textureKind (base_color/metallic/roughness/normal/emission).
+  // Flatten the gateway data[] array into downloaded ProviderResultFiles.
+  // data[] entries have { url, type, format } — mesh files by format key,
+  // preview → preview_image, texture → texture file with textureKind.
   private async downloadFiles(urls: Record<string, string>): Promise<ProviderResultFile[]> {
     const files: ProviderResultFile[] = [];
     const seenRoles = new Set<string>();
-    for (const [key, mapping] of Object.entries(MODEL_URL_TO_FILE)) {
+    for (const [key, mapping] of Object.entries(DATA_TYPE_TO_FILE)) {
       const url = urls[key];
       if (!url) continue;
       const roleKey = `${mapping.role}:${mapping.format}`;
@@ -259,8 +286,6 @@ export class MeshyProvider {
 
     if (input.mode === 'text') {
       const payload: Record<string, unknown> = { mode: 'preview', prompt: input.prompt ?? '', model_type: modelType };
-      // ai_model/topology/target_polycount/should_remesh are ignored by Meshy
-      // under lowpoly, so only attach them for standard meshes.
       if (isStandard) {
         if (input.aiModel) payload.ai_model = input.aiModel;
         if (polycount) {
@@ -272,7 +297,6 @@ export class MeshyProvider {
       return payload;
     }
     if (input.mode === 'refine') {
-      // Refine inherits geometry from the preview task; model_type is not sent.
       const payload: Record<string, unknown> = { mode: 'refine', preview_task_id: input.previewTaskId };
       if (input.texturePrompt) payload.texture_prompt = input.texturePrompt;
       if (typeof input.enablePbr === 'boolean') payload.enable_pbr = input.enablePbr;
@@ -313,20 +337,30 @@ export class MeshyProvider {
   ): void {
     if (isStandard && input.aiModel) payload.ai_model = input.aiModel;
     if (typeof input.enablePbr === 'boolean') payload.enable_pbr = input.enablePbr;
+    else payload.enable_pbr = true;
     if (typeof input.shouldTexture === 'boolean') payload.should_texture = input.shouldTexture;
+    else payload.should_texture = true;
     if (polycount) payload.target_polycount = polycount;
   }
 
-  // Poll a task by id until terminal (status is UPPER-CASE). The poll path is
-  // the same base path as submit for every Meshy mode/stage here.
-  private async poll(path: string, mode: GenerationMode, taskId: string): Promise<Record<string, string>> {
+  // Poll a task by id until terminal (status is lower-case). Uses the gateway
+  // task endpoint. Tolerates transient non-JSON responses (gateway may return
+  // empty body for tasks not yet ready) by treating them as "still processing".
+  private async poll(mode: GenerationMode, taskId: string): Promise<Record<string, string>> {
     const deadline = Date.now() + this.env.pollTimeoutMs;
     while (Date.now() < deadline) {
-      const resp = await this.get(`${path}/${taskId}`);
-      const status = String(resp.status ?? '').toUpperCase();
+      let resp: Record<string, unknown>;
+      try {
+        resp = await this.get(`${GATEWAY_POLL}/${taskId}`);
+      } catch {
+        // Non-JSON / empty body from gateway — treat as still processing.
+        await this.sleep(this.env.pollIntervalMs);
+        continue;
+      }
+      const status = String(resp.status ?? '').toLowerCase();
       if (status === SUCCESS) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_succeeded', sourceJobId: taskId, detail: status });
-        return extractUrls(resp);
+        return extractGatewayUrls(resp);
       }
       if (FAILURE.has(status)) {
         await audit(this.slug, { ts: new Date().toISOString(), provider: 'meshy', mode, event: 'poll_failed', sourceJobId: taskId, detail: taskErrorMessage(resp) ?? status });
@@ -338,8 +372,8 @@ export class MeshyProvider {
     throw Object.assign(new Error('meshy poll timed out'), { code: 'provider_timeout' });
   }
 
-  private async post(path: string, body: unknown): Promise<Record<string, unknown>> {
-    const resp = await this.fetchImpl(`${this.env.baseUrl}${path}`, {
+  private async post(body: unknown): Promise<Record<string, unknown>> {
+    const resp = await this.fetchImpl(`${this.env.baseUrl}${GATEWAY_SUBMIT}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.env.apiKey}` },
       body: JSON.stringify(body),
@@ -358,7 +392,7 @@ export class MeshyProvider {
   }
 }
 
-// Map a non-2xx Meshy status to a stable error code. 402 = insufficient
+// Map a non-2xx gateway status to a stable error code. 402 = insufficient
 // credits, 404 = capability not enabled, 429 = rate limited; the `status` is
 // attached so the handler/UI can surface the exact HTTP code.
 function httpError(status: number): Error & { code: string; status: number } {
@@ -369,53 +403,23 @@ function httpError(status: number): Error & { code: string; status: number } {
     : status === 404 ? 'provider_not_enabled'
     : status === 429 ? 'provider_rate_limited'
     : 'provider_http_error';
-  return Object.assign(new Error(`meshy http ${status}`), { code, status });
+  return Object.assign(new Error(`gateway http ${status}`), { code, status });
 }
 
-// v2 text/refine + remesh/retexture return the task id in `result`; v1
-// image/multi in `id`.
+// Gateway returns task id in the `id` field of the submit response.
 function submitTaskId(resp: Record<string, unknown>): string | null {
-  return (resp.result as string) ?? (resp.id as string) ?? null;
+  return (resp.id as string) ?? null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-}
-
-function pathForMode(mode: MeshyMode): string {
-  if (mode === 'text' || mode === 'refine') return PATH_TEXT;
-  if (mode === 'image') return PATH_IMAGE;
-  if (mode === 'views') return PATH_MULTI;
-  throw Object.assign(new Error(`meshy unsupported mode: ${mode}`), { code: 'invalid_mode' });
+// Pick the primary mesh URL (GLB preferred) from a poll's flattened url map, to
+// chain into remesh/retexture as model_url. The gateway's remesh/retexture routes
+// require a public model_url, not a task id; the generate output's Meshy CDN url
+// is directly re-fetchable by the gateway, so no COS round-trip is needed.
+function primaryMeshUrl(urls: Record<string, string>): string | null {
+  return urls.glb ?? urls.fbx ?? urls.obj ?? urls.usdz ?? urls.stl ?? null;
 }
 
 function taskErrorMessage(resp: Record<string, unknown>): string | undefined {
-  const err = resp.task_error as Record<string, unknown> | undefined;
+  const err = resp.error as Record<string, unknown> | undefined;
   return err && typeof err.message === 'string' && err.message ? err.message : undefined;
-}
-
-// Flatten the Meshy success response into a single url map. model_urls keys map
-// to mesh files; thumbnail_url + every PBR map in texture_urls[0] are namespaced
-// with a `__` prefix so they never collide with model format keys. Only the
-// first material set is captured (small props are single-material).
-function extractUrls(resp: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {};
-  const mu = resp.model_urls;
-  if (mu && typeof mu === 'object') {
-    for (const [key, value] of Object.entries(mu as Record<string, unknown>)) {
-      if (typeof value === 'string' && value) out[key] = value;
-    }
-  }
-  if (typeof resp.thumbnail_url === 'string' && resp.thumbnail_url) {
-    out.__thumbnail = resp.thumbnail_url;
-  }
-  const tu = resp.texture_urls;
-  if (Array.isArray(tu) && tu[0] && typeof tu[0] === 'object') {
-    const set = tu[0] as Record<string, unknown>;
-    for (const kind of TEXTURE_KINDS) {
-      const url = set[kind];
-      if (typeof url === 'string' && url) out[`__texture_${kind}`] = url;
-    }
-  }
-  return out;
 }

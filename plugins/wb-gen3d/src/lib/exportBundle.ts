@@ -6,6 +6,7 @@
 import type { Gen3DAssetManifest } from '@shared/manifest';
 import { blobUrl } from './blobUrl';
 import { createZip, type ZipEntry } from './zip';
+import { t } from '@/i18n';
 
 export interface BundleFile {
   // Path inside the zip (under the asset's root dir).
@@ -56,7 +57,7 @@ export async function downloadBundle(manifest: Gen3DAssetManifest): Promise<void
   for (const file of plan.files) {
     const res = await fetch(file.url);
     if (!res.ok) {
-      throw new Error(`下载文件失败：${file.name}（HTTP ${res.status}）`);
+      throw new Error(t('error.downloadFail', { name: file.name, status: res.status }));
     }
     entries.push({ name: file.name, data: new Uint8Array(await res.arrayBuffer()) });
   }

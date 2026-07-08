@@ -3,6 +3,7 @@ import { motionRefFromLegacy, motionRefKey, selectFiles, type Gen3DAssetManifest
 import type { ApplyMotionInput, ListMotionsResult, MotionOption } from '@/types';
 import { callTool } from '@/lib/toolClient';
 import { EDITOR_ICON_MAP } from '@/ui-meta';
+import { t } from '@/i18n';
 
 const SearchIcon = EDITOR_ICON_MAP.search;
 const MotionIcon = EDITOR_ICON_MAP.motion;
@@ -72,7 +73,7 @@ export function MotionBrowser({
     [motions],
   );
   const rigTypes = useMemo(
-    () => Array.from(new Set(motions.map((m) => m.rigType).filter((t): t is string => !!t))).sort(),
+    () => Array.from(new Set(motions.map((m) => m.rigType).filter((tt): tt is string => !!tt))).sort(),
     [motions],
   );
 
@@ -87,12 +88,12 @@ export function MotionBrowser({
   );
 
   if (loading) {
-    return <small className="downstream-hint">动作目录加载中…</small>;
+    return <small className="downstream-hint">{t('motion.loading')}</small>;
   }
   if (loadError) {
     return (
       <small className="downstream-hint" role="alert">
-        动作目录加载失败：{loadError}
+        {t('motion.loadError', { error: loadError })}
       </small>
     );
   }
@@ -105,7 +106,7 @@ export function MotionBrowser({
           <input
             type="text"
             className="motion-search-input"
-            placeholder="搜索动作…"
+            placeholder={t('motion.placeholder.search')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -115,9 +116,9 @@ export function MotionBrowser({
             className="adv-select motion-filter-select"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            aria-label="按分类过滤"
+            aria-label={t('motion.aria.category')}
           >
-            <option value="">全部分类</option>
+            <option value="">{t('motion.category.all')}</option>
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -130,22 +131,22 @@ export function MotionBrowser({
             className="adv-select motion-filter-select"
             value={rigType}
             onChange={(e) => setRigType(e.target.value)}
-            aria-label="按骨架类型过滤"
+            aria-label={t('motion.aria.rig')}
           >
-            <option value="">全部骨架</option>
-            {rigTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            <option value="">{t('motion.rig.all')}</option>
+            {rigTypes.map((rt) => (
+              <option key={rt} value={rt}>
+                {rt}
               </option>
             ))}
           </select>
         )}
       </div>
 
-      {usedMock && <small className="motion-browser-note">示例目录（未配置 Meshy）</small>}
+      {usedMock && <small className="motion-browser-note">{t('motion.mockNote')}</small>}
 
       {filtered.length === 0 ? (
-        <small className="downstream-hint">没有匹配的动作。</small>
+        <small className="downstream-hint">{t('motion.noMatch')}</small>
       ) : (
         <div className="motion-list">
           {filtered.map((m) => {
@@ -179,7 +180,7 @@ export function MotionBrowser({
                 )}
                 <span className="motion-item-label">{m.label}</span>
                 <span className="motion-item-meta">
-                  {m.isFree && <span className="motion-free-badge">免费</span>}
+                  {m.isFree && <span className="motion-free-badge">{t('motion.free')}</span>}
                   {m.category && <span className="motion-item-cat">{m.category}</span>}
                   {applied && <span className="motion-item-applied">✓</span>}
                 </span>

@@ -5,14 +5,14 @@
   "properties": {
     "ok": { "const": true },
     "realProvidersEnabled": { "type": "boolean" },
-    "meshyConfigured": { "type": "boolean" },
+    "litellmConfigured": { "type": "boolean", "description": "True when Studio global .env has a 3D gateway key (priority FORGEAX_3D_GATEWAY_KEY > ANTHROPIC_API_KEY > LITELLM_PROXY_KEY)." },
     "cosConfigured": { "type": "boolean" },
     "quotaSafe": { "type": "boolean" },
-    "balance": { "type": ["number", "null"] },
+    "balance": { "type": ["number", "null"], "description": "Always null — the 3D gateway exposes no balance endpoint (getBalance returns null). Kept in the shape for compatibility." },
     "generatedAt": { "type": "string" },
     "rubric": { "type": "array", "items": { "type": "string" } },
     "capabilities": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
   },
-  "required": ["ok", "realProvidersEnabled", "meshyConfigured", "cosConfigured", "quotaSafe"],
+  "required": ["ok", "realProvidersEnabled", "litellmConfigured", "cosConfigured", "quotaSafe"],
   "additionalProperties": true
 }

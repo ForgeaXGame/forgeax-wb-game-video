@@ -1,5 +1,7 @@
 # Handoff - Gen3D Generation Workbench
 
+> **2026-06-29 — LiteLLM 3D 网关接入 + Rodin 暂禁 + 凭证统一（`#16` 系列）。** 3D 生成（Meshy / Hunyuan）改走 LiteLLM 3D 网关（`/v1/3d/generations`），凭证由 Studio「设置 → API Keys」统一管理（优先级 `FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`），插件本地 `.env` 只留 COS + 总开关。Rodin（Hyper3D）网关无对应 model，`getRodinEnv` 恒返回 null（`rodin.ts` 代码保留,manifest / catalog 标注「暂未接入网关」）。3D 网关 base URL 与 chat/image 的 `LITELLM_PROXY_*` 解耦（后者可能指向 Moonshot 等无 3D 端点的代理）——见 `server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`。`getBalance()` 恒为 null（网关无余额端点）,auto-rig / apply-motion 跳过余额预检直达付费端点。
+
 > **2026-06-25（其二）— 新审阅入口：2D→3D CLI / UI 分阶段体验修复方案，待其他 agent review。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-staged-character-gen3d-flow.md`](./docs/PLAN-2026-06-25-staged-character-gen3d-flow.md)，review handoff = [`docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md`](./docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md)。
 > - **用户实测问题**：CLI 自然语言会绕过 `wb-character` 的候选/选择流程，直接 `character:generate-turnaround` → `gen3d:views-to-3d` → `auto-rig/apply-motion`，中间不等用户确认；`wb-character` 当前也没有“生成 3D 四视图 / 送去 3D”的按钮。
 > - **新目标**：从“一条链跑完”改成 **2D 设定/选择 → 四视图 → 静态 3D → 可选动作** 四段，每段停下；`wb-character` final phase 补四视图按钮和 handoff；`auto-rig` / `apply-motion` 用真实 `requireConfirm` 硬门控。
@@ -59,7 +61,7 @@
 > 早前 6/14 落地的三批（已完成，勿重复）：视图器 P1+P2（`f5aa49c`）/ 五维评分 P3（`24143d7`）/ Provider 参数 P5（`608c365`）。
 > IMPL 文档（`docs/IMPL-2026-06-14-{A,B,C}-*.md`）为**已完成执行 SSOT**。
 
-Last updated: 2026-06-21 Asia/Hong_Kong
+Last updated: 2026-06-29 Asia/Hong_Kong
 
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
@@ -573,17 +575,23 @@ there is no separate "global → game" copy step.
 
 ## Real Provider Activation (quota-safe by default)
 
-Real Hunyuan calls require BOTH, set in a plugin-local `.env` (gitignored; copy
-`.env.example`):
+Real 3D generation goes through the LiteLLM 3D gateway. The gateway key is
+managed centrally in **Studio Settings → API Keys** (priority
+`FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`); the
+plugin-local `.env` **never** holds it. The plugin `.env` (gitignored; copy
+`.env.example`) holds only:
 
-- `GEN3D_ENABLE_REAL_PROVIDERS=1`
-- `HUNYUAN_API_KEY=<uuid>` and `HUNYUAN_BASE_URL=<your-hunyuan-openapi-host>`
+- `GEN3D_ENABLE_REAL_PROVIDERS=1` — master switch (real calls vs quota-safe mock)
+- `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` — object
+  storage for URL-fetching providers (image / views / pose standardization)
 
-Auth is plain `Authorization: Bearer <key>` (no request signing). Submit + poll
-share two endpoints (`/openapi/v1/workflow/invoke/async`,
-`/openapi/v1/workflow/detail`) differentiated by the `model` field. The
-`RateGuard` caps submits (default 3/min). With the switch unset/0 or no key,
-generation stays mock-only and never touches the network.
+The gateway forwards to Meshy / Hunyuan models (`meshy-3d-*` / `hunyuan-*`);
+**Rodin (Hyper3D) is not on the gateway** (`getRodinEnv` returns null; `rodin.ts`
+code retained, disabled until the gateway adds a Hyper3D model). With the switch
+unset/0 or no gateway key, generation stays mock-only and never touches the
+network. The 3D gateway base URL is decoupled from the chat/image
+`LITELLM_PROXY_*` vars (which may point at a different proxy); see
+`server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`.
 
 ## Verification So Far
 

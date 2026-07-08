@@ -1,10 +1,13 @@
-// Plugin-self-managed credentials store (Meshy + COS).
+// Plugin-self-managed credentials store (COS + master switch).
 //
-// Lets the UI fill the Meshy key + COS credentials (+ the master switch) without
-// hand-editing .env. Writes go to the plugin-local .env (gitignored) AND are
-// live-applied to process.env so server/env.ts read() picks them up immediately,
-// no server restart. parseEnv/serializeEnv/maskKey mirror the host's
-// PUT /api/settings/env contract (masked render, comment-preserving).
+// Plugin-local .env holds only the master real/mock switch and COS upload keys.
+// LiteLLM gateway credentials come from Studio global .env (Settings → API Keys:
+// LITELLM_PROXY_* or ANTHROPIC_*) — never written here.
+//
+// Writes go to the plugin-local .env (gitignored) AND are live-applied to
+// process.env so server/env.ts read() picks them up immediately, no server
+// restart. parseEnv/serializeEnv/maskKey mirror the host's PUT /api/settings/env
+// contract (masked render, comment-preserving).
 //
 // SECURITY: nothing here logs, and no thrown error ever carries a plaintext key
 // value — only field names / file paths.
@@ -12,35 +15,26 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickLitellmFromEnv } from './env';
 
-// Whitelist of keys this store may read/write. Anything outside this set (e.g.
-// the slug the workbench host auto-injects into every tool call, or a hostile
-// key) is dropped before it can touch the .env.
 export const CRED_KEYS = [
   'AIASSET_ENABLE_REAL_PROVIDERS',
-  'MESHY_API_KEY',
-  'MESHY_BASE_URL',
   'COS_SECRET_ID',
   'COS_SECRET_KEY',
   'COS_BUCKET',
   'COS_REGION',
 ] as const;
 
-// Keys whose value must be masked on read-back. MESHY_BASE_URL / COS_BUCKET /
-// COS_REGION are addresses, not secrets (plaintext); AIASSET_ENABLE_REAL_PROVIDERS
-// is a switch surfaced via the realProvidersEnabled boolean.
-export const SECRET_KEYS = [
-  'MESHY_API_KEY',
-  'COS_SECRET_ID',
-  'COS_SECRET_KEY',
-] as const;
+export const SECRET_KEYS = ['COS_SECRET_ID', 'COS_SECRET_KEY'] as const;
 
 export interface CredentialsState {
   ok: true;
   realProvidersEnabled: boolean;
+  /** Read-only: derived from Studio global .env, never from plugin .env. */
+  litellmConfigured: boolean;
+  /** Masked gateway key from Studio settings, or null when unset. Read-only. */
+  litellmProxyKey: string | null;
   credentials: {
-    MESHY_API_KEY: string | null; // masked or null
-    MESHY_BASE_URL: string | null; // PLAINTEXT or null
     COS_SECRET_ID: string | null; // masked or null
     COS_SECRET_KEY: string | null; // masked or null
     COS_BUCKET: string | null; // PLAINTEXT or null
@@ -60,8 +54,6 @@ export function maskKey(v?: string): string | null {
   return `${v.slice(0, 4)}...${v.slice(-4)}`;
 }
 
-// Minimal .env parser. Recognizes UPPER_SNAKE keys, strips matched surrounding
-// quotes; ignores comments / blank / unknown lines.
 function parseEnv(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of raw.split('\n')) {
@@ -76,8 +68,6 @@ function parseEnv(raw: string): Record<string, string> {
   return out;
 }
 
-// Serialize — preserves comments / unknown lines from the original, updates
-// recognized keys in place, appends new keys at the end.
 function serializeEnv(env: Record<string, string>, original?: string): string {
   const seen = new Set<string>();
   const lines: string[] = [];
@@ -98,25 +88,23 @@ function serializeEnv(env: Record<string, string>, original?: string): string {
   return lines.join('\n');
 }
 
-// Plugin-local .env path — IDENTICAL resolution to server/env.ts
-// loadPluginEnvOnce so both touch the same file (server/ → '..' → plugin root).
 export function defaultEnvPath(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env');
 }
 
-// Resolve one key's effective value the same way env.ts does: process.env wins
-// over the file, and an empty / whitespace value reads as "not set".
 function effective(name: string, fileEnv: Record<string, string>): string | undefined {
   const raw = name in process.env ? process.env[name] : fileEnv[name];
   return raw && raw.trim() ? raw.trim() : undefined;
 }
 
-/**
- * Read the masked credential state. File is the persistence layer; process.env
- * is the live layer and takes precedence (matches env.ts "server env wins").
- * Secret keys are masked, addresses are plaintext, the master switch is a
- * boolean. Never returns a plaintext key.
- */
+function readLitellmStatus(): { configured: boolean; maskedKey: string | null } {
+  const litellm = pickLitellmFromEnv(process.env);
+  return {
+    configured: litellm !== null,
+    maskedKey: litellm ? maskKey(litellm.apiKey) : null,
+  };
+}
+
 export function readCredentials(envPath: string = defaultEnvPath()): CredentialsState {
   let fileEnv: Record<string, string> = {};
   if (existsSync(envPath)) {
@@ -126,12 +114,13 @@ export function readCredentials(envPath: string = defaultEnvPath()): Credentials
       fileEnv = {};
     }
   }
+  const litellm = readLitellmStatus();
   return {
     ok: true,
     realProvidersEnabled: effective('AIASSET_ENABLE_REAL_PROVIDERS', fileEnv) === '1',
+    litellmConfigured: litellm.configured,
+    litellmProxyKey: litellm.maskedKey,
     credentials: {
-      MESHY_API_KEY: maskKey(effective('MESHY_API_KEY', fileEnv)),
-      MESHY_BASE_URL: effective('MESHY_BASE_URL', fileEnv) ?? null,
       COS_SECRET_ID: maskKey(effective('COS_SECRET_ID', fileEnv)),
       COS_SECRET_KEY: maskKey(effective('COS_SECRET_KEY', fileEnv)),
       COS_BUCKET: effective('COS_BUCKET', fileEnv) ?? null,
@@ -140,18 +129,6 @@ export function readCredentials(envPath: string = defaultEnvPath()): Credentials
   };
 }
 
-/**
- * Write a credential patch to the plugin-local .env and live-apply to
- * process.env. Steps:
- *   1. Keep only CRED_KEYS; coerce string|number via String(); drop everything
- *      else (the injected slug, hostile keys, non-scalar values).
- *   2. Read current .env → parseEnv → apply patch (an empty string clears the
- *      field, written in place as `KEY=`) → serializeEnv → atomic write.
- *   3. Live-apply each patched key to process.env (non-empty sets, empty
- *      deletes) so env.ts read() reflects it without a restart.
- *   4. Return the fresh masked state.
- * A patch with no recognized keys is a no-op (no file is created/rewritten).
- */
 export function writeCredentials(
   patch: Record<string, unknown> = {},
   envPath: string = defaultEnvPath(),

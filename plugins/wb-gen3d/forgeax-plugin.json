@@ -8,8 +8,8 @@
     "en": "3D Character Generation"
   },
   "description": {
-    "zh": "3D 角色生成工作台 · 接 Hunyuan3D / Meshy 等 provider:文本 / 图片 / 多视图生成 3D,网格精修与 retopo 低模,自动绑骨 + 套用动作,质量评分,产出可持久化的游戏可用 3D 资产 manifest。",
-    "en": "3D character generation workbench — drives providers like Hunyuan3D / Meshy: text/image/multi-view to 3D, mesh refine + lowpoly retopo, auto-rig + motion, and quality scoring, producing durable game-ready 3D asset manifests."
+    "zh": "3D 角色生成工作台 · 接 Hunyuan3D / Meshy（经 LiteLLM 网关；Rodin 暂未接入）:文本 / 图片 / 多视图生成 3D,网格精修与 retopo 低模,自动绑骨 + 套用动作,质量评分,产出可持久化的游戏可用 3D 资产 manifest。",
+    "en": "3D character generation workbench — drives providers like Hunyuan3D / Meshy (via the LiteLLM gateway; Rodin not yet wired): text/image/multi-view to 3D, mesh refine + lowpoly retopo, auto-rig + motion, and quality scoring, producing durable game-ready 3D asset manifests."
   },
   "author": {
     "name": "forgeax",
@@ -99,8 +99,8 @@
         "returns": "./schemas/text-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "文生 3D：选 provider（混元 workflow / Meshy / Rodin）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock，保持无配额安全。",
-          "en": "Text-to-3D via the chosen provider (Hunyuan workflow / Meshy / Rodin), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured (quota-safe)."
+          "zh": "文生 3D：选 provider（混元 workflow / Meshy；Rodin 暂未接入网关）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock，保持无配额安全。",
+          "en": "Text-to-3D via the chosen provider (Hunyuan workflow / Meshy; Rodin is not yet on the gateway), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured (quota-safe)."
         }
       },
       {
@@ -109,8 +109,8 @@
         "returns": "./schemas/image-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "图生 3D：选 provider（混元 workflow / Meshy / Rodin）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
-          "en": "Image-to-3D via the chosen provider (Hunyuan workflow / Meshy / Rodin), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+          "zh": "图生 3D：选 provider（混元 workflow / Meshy；Rodin 暂未接入网关）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Image-to-3D via the chosen provider (Hunyuan workflow / Meshy; Rodin is not yet on the gateway), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
         }
       },
       {
@@ -119,8 +119,8 @@
         "returns": "./schemas/views-to-3d.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "多视图生 3D：选 provider（Hunyuan workflow 命名视图槽 / Meshy 有序图数组 / Rodin concat 多图）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
-          "en": "Multi-view-to-3D via the chosen provider (Hunyuan workflow named view slots / Meshy ordered image array / Rodin concat multi-image), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
+          "zh": "多视图生 3D：选 provider（Hunyuan workflow 命名视图槽 / Meshy 有序图数组；Rodin 暂未接入网关）生成并落盘持久 manifest（cache-first）。未配置真实 provider 时回退确定性 mock。",
+          "en": "Multi-view-to-3D via the chosen provider (Hunyuan workflow named view slots / Meshy ordered image array; Rodin is not yet on the gateway), persisted as a durable manifest (cache-first). Falls back to a deterministic mock when no real provider is configured."
         }
       },
       {
@@ -164,8 +164,8 @@
           "en": "Auto-rig will consume about 5 Meshy credits. Continue?"
         },
         "description": {
-          "zh": "自动绑骨（ADR-0006，公测默认 Meshy 公网 API）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移）及随附的免费走/跑片段，并记录 rig-chain（rig_task_id/rigType/过期）、置位 readiness.rigged。Dispatch：Meshy 公网默认 → Hunyuan REST 内网兜底 → mock。仅人形角色；幂等。向 AI 开放但 opt-in：仅在用户显式要求「让角色动起来/走/跑」时触发；按次计费（Meshy rig ~5 credits）。付费执行前须过 handler 级余额预检护栏（getBalance，见 ADR-0008 / wb-gen3d T3）。",
-          "en": "Auto-rig (ADR-0006; public-beta default is the Meshy public API): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX plus any bundled free walk/run clips to the SAME asset, recording the rig-chain (rig_task_id/rigType/expiry) and flipping readiness.rigged. Dispatch: Meshy public default → Hunyuan REST internal fallback → mock. Humanoid only; idempotent. Exposed to the AI but opt-in: triggered only on an explicit user request to animate; billed per call (Meshy rig ~5 credits). A handler-level balance pre-check (getBalance) MUST gate paid execution (ADR-0008 / wb-gen3d T3)."
+          "zh": "自动绑骨（ADR-0006，公测默认 Meshy 公网 API）：把一个带贴图的高模角色 GLB 自动绑定人形骨架，向同一资产追加 rigged_model 的 GLB（自包含，保贴图）+ FBX（供动作迁移）及随附的免费走/跑片段，并记录 rig-chain（rig_task_id/rigType/过期）、置位 readiness.rigged。Dispatch：Meshy 公网默认 → Hunyuan REST 内网兜底 → mock。仅人形角色；幂等。向 AI 开放但 opt-in：仅在用户显式要求「让角色动起来/走/跑」时触发；按次计费（Meshy rig ~5 credits）。网关无余额端点，跳过余额预检直达付费端点（getBalance 恒为 null，见 ADR-0008 / wb-gen3d T3）。",
+          "en": "Auto-rig (ADR-0006; public-beta default is the Meshy public API): rig a textured high-poly character GLB with a humanoid skeleton, appending a rigged_model GLB (self-contained, textures preserved) + FBX plus any bundled free walk/run clips to the SAME asset, recording the rig-chain (rig_task_id/rigType/expiry) and flipping readiness.rigged. Dispatch: Meshy public default → Hunyuan REST internal fallback → mock. Humanoid only; idempotent. Exposed to the AI but opt-in: triggered only on an explicit user request to animate; billed per call (Meshy rig ~5 credits). The gateway exposes no balance endpoint, so the balance pre-check is skipped and paid execution goes straight through (getBalance is always null; ADR-0008 / wb-gen3d T3)."
         }
       },
       {
@@ -179,8 +179,8 @@
           "en": "Apply motion will consume about 3 Meshy credits. Continue?"
         },
         "description": {
-          "zh": "应用动作（ADR-0006）：对一个已绑骨资产应用一个动作，向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。按资产记录的绑骨系统分发：Meshy（公测默认）用 list-motions 选出的 actionId + 资产自己的 rig_task_id 驱动 /animations，rig 过期可选 autoReRig 重绑；Hunyuan（内网）用固定动作 motionType 9–16。需先 auto-rig；多动作并存，按动作幂等。向 AI 开放但 opt-in：仅在用户显式要求动作时触发；按次计费（Meshy anim ~3 credits）。付费执行前须过 handler 级余额预检护栏（getBalance，见 ADR-0008 / wb-gen3d T3）。",
-          "en": "Apply motion (ADR-0006): apply one motion to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Dispatched by the asset's recorded rig system: Meshy (public-beta default) uses an actionId picked from gen3d:list-motions + the asset's OWN rig_task_id to drive /animations (optional autoReRig re-rigs an expired task); Hunyuan (internal) uses fixed motionType 9–16. Requires prior auto-rig; multiple motions coexist, idempotent per motion. Exposed to the AI but opt-in: triggered only on an explicit user motion request; billed per call (Meshy anim ~3 credits). A handler-level balance pre-check (getBalance) MUST gate paid execution (ADR-0008 / wb-gen3d T3)."
+          "zh": "应用动作（ADR-0006）：对一个已绑骨资产应用一个动作，向同一资产追加 animated_model 的 GLB+FBX（保贴图），并置位 readiness.animated。按资产记录的绑骨系统分发：Meshy（公测默认）用 list-motions 选出的 actionId + 资产自己的 rig_task_id 驱动 /animations，rig 过期可选 autoReRig 重绑；Hunyuan（内网）用固定动作 motionType 9–16。需先 auto-rig；多动作并存，按动作幂等。向 AI 开放但 opt-in：仅在用户显式要求动作时触发；按次计费（Meshy anim ~3 credits）。网关无余额端点，跳过余额预检直达付费端点（getBalance 恒为 null，见 ADR-0008 / wb-gen3d T3）。",
+          "en": "Apply motion (ADR-0006): apply one motion to a rigged asset, appending an animated_model GLB+FBX (textures preserved) to the SAME asset and flipping readiness.animated. Dispatched by the asset's recorded rig system: Meshy (public-beta default) uses an actionId picked from gen3d:list-motions + the asset's OWN rig_task_id to drive /animations (optional autoReRig re-rigs an expired task); Hunyuan (internal) uses fixed motionType 9–16. Requires prior auto-rig; multiple motions coexist, idempotent per motion. Exposed to the AI but opt-in: triggered only on an explicit user motion request; billed per call (Meshy anim ~3 credits). The gateway exposes no balance endpoint, so the balance pre-check is skipped and paid execution goes straight through (getBalance is always null; ADR-0008 / wb-gen3d T3)."
         }
       },
       {
@@ -227,8 +227,8 @@
         "returns": "./schemas/get-credentials.returns.json",
         "exposedToAI": false,
         "description": {
-          "zh": "读取三家供应商凭证的掩码配置状态（不返回明文）。",
-          "en": "Read the masked configuration state of the three providers' credentials (never returns plaintext)."
+          "zh": "读取网关 + COS 凭证的掩码配置状态（网关 key 由 Studio 设置统一管理，不返回明文）。",
+          "en": "Read the masked state of the gateway + COS credentials (the gateway key is managed centrally in Studio Settings; never returns plaintext)."
         }
       },
       {
@@ -238,8 +238,8 @@
         "exposedToAI": false,
         "requireConfirm": "destructive",
         "description": {
-          "zh": "写入/更新供应商 key 与总开关到插件本地 .env 并即时生效（无需重启）。",
-          "en": "Write/update provider keys and the master switch to the plugin-local .env and apply them live (no server restart needed)."
+          "zh": "写入/更新 COS 凭证与总开关到插件本地 .env 并即时生效（无需重启）；网关 key 由 Studio 设置统一管理，此处不可写。",
+          "en": "Write/update COS credentials and the master switch to the plugin-local .env and apply them live (no server restart needed). The gateway key is managed centrally in Studio Settings and is not writable here."
         }
       }
     ],

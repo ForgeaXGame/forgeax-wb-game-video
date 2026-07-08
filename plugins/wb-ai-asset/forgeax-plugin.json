@@ -8,8 +8,8 @@
     "en": "AI Asset Lowpoly Generator"
   },
   "description": {
-    "zh": "基于 Meshy API 的 AI 小物件 3D 低模资产生成：文/图/多图 → lowpoly mesh → (可选 refine PBR 纹理) → (可选 remesh 降面) → glb → 落盘游戏可用资产。区别于 wb-3d-lowpoly（程序化 CAD）。",
-    "en": "Meshy-API-driven AI generator for small 3D lowpoly props: text/image/multi-image → lowpoly mesh → (optional refine PBR) → (optional remesh) → glb → durable game asset. Distinct from wb-3d-lowpoly (programmatic CAD)."
+    "zh": "经 LiteLLM 网关驱动 Meshy 的 AI 小物件 3D 低模资产生成：文/图/多图 → lowpoly mesh → (可选 refine PBR 纹理) → (可选 remesh 降面) → glb → 落盘游戏可用资产。区别于 wb-3d-lowpoly（程序化 CAD）。",
+    "en": "LiteLLM-gateway-driven Meshy generator for small 3D lowpoly props: text/image/multi-image → lowpoly mesh → (optional refine PBR) → (optional remesh) → glb → durable game asset. Distinct from wb-3d-lowpoly (programmatic CAD)."
   },
   "author": { "name": "forgeax", "email": "dev@forgeax.local" },
   "icon": "📦",
@@ -40,8 +40,8 @@
         "returns": "./schemas/provider-status.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "读取 Meshy 凭证/余额 + COS 配置状态；返回静态、无配额数据。",
-          "en": "Read Meshy credential/balance + COS config state. Static, no quota."
+          "zh": "读取 Meshy 网关配置 + COS 状态（网关无余额端点）；返回静态、无配额数据。",
+          "en": "Read Meshy gateway config + COS state (gateway has no balance endpoint). Static, no quota."
         }
       },
       {
@@ -130,8 +130,8 @@
         "returns": "./schemas/get-credentials.returns.json",
         "exposedToAI": false,
         "description": {
-          "zh": "读取 Meshy + COS 凭证掩码配置状态（不返回明文）。",
-          "en": "Read masked Meshy + COS credential config state (no plaintext)."
+          "zh": "读取网关 + COS 凭证掩码配置状态（网关 key 由 Studio 设置统一管理，不返回明文）。",
+          "en": "Read masked gateway + COS credential state (gateway key managed in Studio Settings; no plaintext)."
         }
       },
       {
@@ -141,8 +141,8 @@
         "exposedToAI": false,
         "requireConfirm": "destructive",
         "description": {
-          "zh": "写入/更新 Meshy key + COS 凭证 + 总开关到插件本地 .env 并即时生效。",
-          "en": "Write/update Meshy key + COS credentials + master switch to plugin-local .env, applied live."
+          "zh": "写入/更新 COS 凭证 + 总开关到插件本地 .env 并即时生效（Meshy 网关 key 由 Studio 设置统一管理，此处不可写）。",
+          "en": "Write/update COS credentials + master switch to plugin-local .env, applied live. The Meshy gateway key is managed in Studio Settings and is not writable here."
         }
       }
     ],

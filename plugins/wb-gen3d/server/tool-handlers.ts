@@ -295,6 +295,7 @@ async function textTo3D(args: TextTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true, autoRefine: enablePbr } : {}),
     ...cacheBits,
   });
   return runGeneration(
@@ -326,6 +327,7 @@ async function imageTo3D(args: ImageTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true } : {}),
     ...cacheBits,
   });
   return runGeneration(
@@ -452,6 +454,7 @@ async function viewsTo3D(args: ViewsTo3DArgs): Promise<GenerateResult> {
     faceCount,
     enablePbr,
     enableFbxUrl,
+    ...(provider === 'meshy' ? { shouldTexture: true } : {}),
     ...buildProviderParams(provider, 'views', args.providerParams).cacheBits,
   });
   // D-B (lazy): inputs are built ONLY on a cache MISS for the real-provider
@@ -766,11 +769,13 @@ export const MESHY_ANIM_COST = 3;
 // reactively, but pre-checking lets the agent get a clear quote (needed vs
 // available) BEFORE any spend instead of discovering it mid-dispatch.
 export async function assertMeshyBalance(
-  provider: { getBalance(): Promise<number> },
+  provider: { getBalance(): Promise<number | null> },
   needed: number,
   op: string,
 ): Promise<void> {
   const balance = await provider.getBalance();
+  // Gateway has no balance endpoint — skip pre-check; 402 is handled reactively.
+  if (balance === null) return;
   if (balance < needed) {
     throw Object.assign(
       new Error(`${op} needs ~${needed} Meshy credits but the balance is ${balance}; top up or skip the motion step`),

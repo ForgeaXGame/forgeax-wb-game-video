@@ -44,6 +44,10 @@ export interface ProviderResult {
   mode: GenerationMode;
   providerMode: 'mock' | 'real';
   sourceJobId: string | null;
+  // Public URL of the primary mesh output (the gateway's GLB CDN url). Used to
+  // chain remesh/retexture via model_url — the gateway's remesh/retexture routes
+  // require model_url, NOT a task id. Null for mocks / results with no mesh.
+  sourceModelUrl: string | null;
   prompt: string | null;
   files: ProviderResultFile[];
 }
@@ -163,6 +167,7 @@ export function generateMeshyTextMockResult(args: MeshyTextMockArgs): {
       mode: 'text',
       providerMode: 'mock',
       sourceJobId: `mock-${cacheKey}`,
+      sourceModelUrl: null,
       prompt,
       files: [
         { role: 'source_mesh', format: 'glb', data: mockGlbBytes(cacheKey) },

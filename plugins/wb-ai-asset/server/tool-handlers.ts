@@ -74,7 +74,7 @@ interface ProviderStatusArgs {
 interface ProviderStatusResult {
   ok: true;
   realProvidersEnabled: boolean;
-  meshyConfigured: boolean;
+  litellmConfigured: boolean;
   cosConfigured: boolean;
   quotaSafe: boolean;
   balance: number | null;
@@ -85,7 +85,7 @@ interface ProviderStatusResult {
 
 async function getProviderStatus(args: ProviderStatusArgs = {}): Promise<ProviderStatusResult> {
   const meshyEnv = getMeshyEnv();
-  const meshyConfigured = meshyEnv !== null;
+  const litellmConfigured = meshyEnv !== null;
   let balance: number | null = null;
   if (args.checkBalance && meshyEnv) {
     try {
@@ -97,9 +97,9 @@ async function getProviderStatus(args: ProviderStatusArgs = {}): Promise<Provide
   return {
     ok: true,
     realProvidersEnabled: realProvidersEnabled(),
-    meshyConfigured,
+    litellmConfigured,
     cosConfigured: getCosEnv() !== null,
-    quotaSafe: !meshyConfigured,
+    quotaSafe: !litellmConfigured,
     balance,
     generatedAt: new Date().toISOString(),
     rubric: QUALITY_RUBRIC,

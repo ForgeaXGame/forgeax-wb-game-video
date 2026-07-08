@@ -14,15 +14,10 @@ export interface ProviderStatus {
   generatedAt: string;
 }
 
-// gen3d:get-credentials / gen3d:set-credentials. Secret fields come back MASKED
-// (e.g. "abcd...wxyz") or null when unset; HUNYUAN_BASE_URL is plaintext. The UI
-// must NEVER echo a mask back as a real value (see CredentialsModal): only the
-// fields the user actually edits are placed into the set-credentials patch.
+// gen3d:get-credentials / gen3d:set-credentials. COS secret fields come back MASKED
+// (e.g. "abcd...wxyz") or null when unset. LiteLLM gateway key is read-only from
+// Studio Settings (litellmConfigured / litellmProxyKey on CredentialsState).
 export interface Gen3DCredentials {
-  HUNYUAN_API_KEY: string | null;
-  HUNYUAN_BASE_URL: string | null;
-  MESHY_API_KEY: string | null;
-  RODIN_API_KEY: string | null;
   COS_SECRET_ID: string | null;
   COS_SECRET_KEY: string | null;
   COS_BUCKET: string | null;
@@ -34,17 +29,15 @@ export interface Gen3DCredentials {
 export interface CredentialsState {
   ok: true;
   realProvidersEnabled: boolean;
+  litellmConfigured: boolean;
+  litellmProxyKey: string | null;
   credentials: Gen3DCredentials;
 }
 
-// set-credentials patch: only user-touched fields are present. '' clears a
-// field; GEN3D_ENABLE_REAL_PROVIDERS is sent on every save ('1' real / '0' mock).
+// set-credentials patch: only user-touched plugin-local fields. LiteLLM keys are
+// managed in Studio Settings and are silently ignored if sent.
 export interface CredentialsPatch {
   GEN3D_ENABLE_REAL_PROVIDERS?: '0' | '1';
-  HUNYUAN_API_KEY?: string;
-  HUNYUAN_BASE_URL?: string;
-  MESHY_API_KEY?: string;
-  RODIN_API_KEY?: string;
   COS_SECRET_ID?: string;
   COS_SECRET_KEY?: string;
   COS_BUCKET?: string;
