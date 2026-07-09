@@ -8,17 +8,20 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useGraphScenario } from '../persist/graphScenarioStore'
+import { useGraphScenario, useGraphHistory, graphUndo, graphRedo, graphHistoryClear } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { listVideoAssetInfos, resolveMediaSrc, type VideoAssetInfo } from './media'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import {
+  type AudioItem,
   type MaterialItem,
   materialClass,
   materialLabel,
 } from '../video/materialTimelineShared'
 import { computeVideoContentRect, pointerToVideoNorm, type VideoContentRect } from '../video/videoContentRect'
+import { registerFxKinds } from '../../runtime/registry/fx-kinds'
+import { FILTER_OPTIONS, FX_OPTIONS, fxNeedsColor, resolveVideoFxRender } from '../../runtime/fx/video-fx'
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
 import { injectStyleOnce } from '../../styles/injectStyle'
@@ -61,6 +64,9 @@ import {
 // 「重新生成 / 添加控件」分段控件 + 右列格子面板（与 gc-prompt 同槽切换）。
 // 复用视频 tab 的 --gc-* token；不改 CatalogTabs 的全局 CSS，样式自持。
 // 视频 tab 的基础栏目/预览台样式（gc-*）复用共享 CATALOG_CSS（原旧 forge/CatalogTabs 全局 CSS）。
+// 注册滤镜/特效 kind（registry 全局单例 → 校验 + 运行时可见）；幂等。
+registerFxKinds()
+
 injectStyleOnce('graph-catalog', CATALOG_CSS)
 injectStyleOnce(
   'graph-video-view',
@@ -80,6 +86,18 @@ injectStyleOnce(
 .gvv-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .gvv-time { color: var(--gc-faint); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gvv-controls .gvv-mute { margin-left: auto; }
+.gvv-head-actions { display: inline-flex; align-items: center; gap: 8px; }
+.gvv-history { display: inline-flex; border: 1px solid var(--gc-line-soft); border-radius: 8px; overflow: hidden; }
+.gvv-history button {
+  border: 0; background: var(--gc-panel2); color: var(--gc-text);
+  width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+.gvv-history button + button { border-left: 1px solid var(--gc-line-soft); }
+.gvv-history button:hover:not(:disabled) { background: var(--gc-accent-soft); color: var(--gc-text); }
+.gvv-history button:disabled { opacity: 0.36; cursor: default; }
+.gvv-fx-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.gvv-fx-layer > div { position: absolute; inset: 0; }
 `,
 )
 
@@ -121,6 +139,15 @@ export function GraphVideoView(): JSX.Element {
   const [isMuted, setIsMuted] = useState(true)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [overlayDragId, setOverlayDragId] = useState<string | null>(null)
+  // 时间轴模式：组件 / 音频（音频仅显示 + 拖动，不做实际音频编辑）。
+  const [timelineMode, setTimelineMode] = useState<'material' | 'audio'>('material')
+  // 音频条为本地展示态：换节点/换素材时按素材时长重建（不写回 graph）。
+  const [audioItems, setAudioItems] = useState<AudioItem[]>([])
+
+  // 撤销/重做历史深度（驱动按钮 disabled）。
+  const canUndo = useGraphHistory((s) => s.pastStates.length > 0)
+  const canRedo = useGraphHistory((s) => s.futureStates.length > 0)
+  const loadEpoch = useGraphScenario((s) => s.loadEpoch)
 
   const graph = useGraphScenario((s) => s.graph)
   const setGraph = useGraphScenario((s) => s.setGraph)
@@ -173,6 +200,11 @@ export function GraphVideoView(): JSX.Element {
     () => (node && editingBoundClip ? activePreviewOverlaysFromNode(node, playheadMs, maxMs) : []),
     [node, editingBoundClip, playheadMs, maxMs],
   )
+  // 滤镜/特效预览：按当前播放头解析出 filter / transform / 覆盖层，实时施加到预览视频。
+  const videoFx = useMemo(
+    () => (node && editingBoundClip ? resolveVideoFxRender(node, playheadMs, maxMs) : { overlays: [] }),
+    [node, editingBoundClip, playheadMs, maxMs],
+  )
   const selectedMaterial = materials.find((m) => m.key === selectedMaterialKey) ?? null
 
   // 换节点 → 左栏跟随该节点已绑定视频。
@@ -190,8 +222,35 @@ export function GraphVideoView(): JSX.Element {
     setContentRect(null)
   }, [timelineEntry?.id, selectedSceneId, editingBoundClip])
 
-  // 换节点 → 清选中 + 右列回到「添加控件」默认视图。
-  useEffect(() => { setSelectedMaterialKey(null); setTopPanel('library') }, [selectedSceneId])
+  // 换节点 → 清选中 + 右列回到「添加控件」默认视图 + 时间轴回「组件」模式。
+  useEffect(() => { setSelectedMaterialKey(null); setTopPanel('library'); setTimelineMode('material') }, [selectedSceneId])
+
+  // 载入新内容（boot / 切版本 / 重置）后清空撤销历史，避免撤销穿越到别的版本/空图。
+  useEffect(() => { graphHistoryClear() }, [loadEpoch])
+
+  // 音频条（仅显示）：编辑绑定 clip 时，用素材自带声道占满第 0 轨；否则清空。
+  useEffect(() => {
+    if (editingBoundClip && timelineEntry) {
+      setAudioItems([{ key: 'clip-audio', label: `素材音轨 · ${timelineEntry.label}`, startMs: 0, endMs: maxMs, layer: 0, builtin: true }])
+    } else {
+      setAudioItems([])
+    }
+  }, [editingBoundClip, timelineEntry?.id, selectedSceneId, maxMs])
+
+  // 键盘撤销/重做：Ctrl/⌘+Z 撤销，Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做；在输入框内不拦截（留给原生文本撤销）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); graphUndo() }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); graphRedo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     const v = videoRef.current
@@ -251,6 +310,17 @@ export function GraphVideoView(): JSX.Element {
     editGraph((g, n) => patchMaterialGraph(g, n, maxMs, item, patch))
   }
 
+  // 音频条拖动（仅本地展示态；不写回 graph）。
+  function patchAudio(item: AudioItem, patch: { startMs?: number; endMs?: number; layer?: number }): void {
+    setAudioItems((list) =>
+      list.map((a) =>
+        a.key === item.key
+          ? { ...a, startMs: patch.startMs ?? a.startMs, endMs: patch.endMs ?? a.endMs, layer: patch.layer ?? a.layer }
+          : a,
+      ),
+    )
+  }
+
   function deleteMaterial(item: MaterialItem): void {
     if (!node) return
     if (!confirmMaterialDelete(node, item)) return
@@ -272,7 +342,7 @@ export function GraphVideoView(): JSX.Element {
   // 从素材库把控件卡片拖进时间轴 → 在落点时刻/轨新增。
   function addMaterialAt(template: string, atMs: number, layer: number): void {
     if (!node) return
-    if (template !== 'subtitle' && template !== 'overlay' && template !== 'qte' && template !== 'option') return
+    if (template !== 'subtitle' && template !== 'overlay' && template !== 'qte' && template !== 'option' && template !== 'filter' && template !== 'fx') return
     if (template === 'option' ? optionDisabled : !hasEditableVideo) return
     const res = addMaterialGraph(graph, node, maxMs, template, entities, playheadMs, { ms: atMs, layer })
     setGraph(res.graph)
@@ -421,34 +491,40 @@ export function GraphVideoView(): JSX.Element {
                         : '素材预览 · 当前节点未绑定演出'}
                 </div>
               </div>
-              {editingBoundClip ? (
-                <div className="gvv-toolseg" role="group" aria-label="右栏内容切换">
-                  <button
-                    type="button"
-                    className={topPanel === 'library' ? 'is-on' : ''}
-                    aria-pressed={topPanel === 'library'}
-                    onClick={() => setTopPanel('library')}
-                  >
-                    添加控件
-                  </button>
-                  <button
-                    type="button"
-                    className={topPanel === 'prompt' ? 'is-on' : ''}
-                    aria-pressed={topPanel === 'prompt'}
-                    onClick={() => setTopPanel('prompt')}
-                  >
-                    重新生成
-                  </button>
+              <div className="gvv-head-actions">
+                <div className="gvv-history" role="group" aria-label="撤销 / 重做">
+                  <button type="button" disabled={!canUndo} onClick={graphUndo} title="撤销 (Ctrl+Z)" aria-label="撤销">↶</button>
+                  <button type="button" disabled={!canRedo} onClick={graphRedo} title="重做 (Ctrl+Shift+Z)" aria-label="重做">↷</button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  className="gc-action"
-                  onClick={() => { if (node && previewEntry) bindCurrent() }}
-                >
-                  {node ? '绑定到当前节点' : '选择节点后绑定'}
-                </button>
-              )}
+                {editingBoundClip ? (
+                  <div className="gvv-toolseg" role="group" aria-label="右栏内容切换">
+                    <button
+                      type="button"
+                      className={topPanel === 'library' ? 'is-on' : ''}
+                      aria-pressed={topPanel === 'library'}
+                      onClick={() => setTopPanel('library')}
+                    >
+                      添加控件
+                    </button>
+                    <button
+                      type="button"
+                      className={topPanel === 'prompt' ? 'is-on' : ''}
+                      aria-pressed={topPanel === 'prompt'}
+                      onClick={() => setTopPanel('prompt')}
+                    >
+                      重新生成
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="gc-action"
+                    onClick={() => { if (node && previewEntry) bindCurrent() }}
+                  >
+                    {node ? '绑定到当前节点' : '选择节点后绑定'}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="gc-video-top">
               <div className="gvv-video-col">
@@ -462,6 +538,7 @@ export function GraphVideoView(): JSX.Element {
                   ref={videoRef}
                   className="gc-video"
                   src={previewSrc}
+                  style={{ filter: videoFx.filter, transform: videoFx.transform }}
                   autoPlay
                   muted
                   playsInline
@@ -481,6 +558,13 @@ export function GraphVideoView(): JSX.Element {
                   onSeeked={(e) => setPlayheadMs(Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000))))}
                   onEnded={() => { setIsVideoPlaying(false); setPlayheadMs(maxMs) }}
                 />
+                {videoFx.overlays.length > 0 ? (
+                  <div className="gvv-fx-layer" aria-hidden>
+                    {videoFx.overlays.map((o) => (
+                      <div key={o.id} style={o.style as CSSProperties} />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="gc-content-anchor" style={previewContentStyle}>
                   <div className="gc-preview-overlays">
                     {previewOverlays.map((o) => {
@@ -555,6 +639,8 @@ export function GraphVideoView(): JSX.Element {
                       onClick={() => addMaterial('qte')}
                     />
                     <MaterialCard icon={ICON_OPTION} title="选项" template="option" desc="添加节点选项，可切换清单或画面热区。" disabledReason={optionDisabled} onClick={() => addMaterial('option')} />
+                    <MaterialCard icon={ICON_FILTER} title="滤镜" template="filter" desc="一段时间内给画面调色（黑白/怀旧/暖冷调/鲜艳/梦幻）。" disabledReason={addDisabled} onClick={() => addMaterial('filter')} />
+                    <MaterialCard icon={ICON_FX} title="特效" template="fx" desc="画面特效（闪白/染色/暗角/震屏/变焦冲击）。" disabledReason={addDisabled} onClick={() => addMaterial('fx')} />
                   </div>
                 </div>
               ) : (
@@ -577,6 +663,10 @@ export function GraphVideoView(): JSX.Element {
                 selectedMaterialKey={selectedMaterialKey}
                 isTimedQteNode={isTimedQteNode}
                 context="video"
+                mode={timelineMode}
+                onModeChange={setTimelineMode}
+                audioItems={audioItems}
+                onPatchAudio={patchAudio}
                 onSeek={seekTo}
                 onScrubStart={pauseForScrub}
                 onSelectMaterial={handleSelectMaterial}
@@ -796,6 +886,39 @@ function GraphMaterialInspector({
         </>
       )}
 
+      {item.kind === 'filter' && el && (
+        <>
+          <p className="gc-inspector-hint">在这段时间内给整帧画面调色，强度 0=原图、1=最强。效果在上方预览实时可见。</p>
+          <label className="gc-field"><span>滤镜</span>
+            <select value={str(params.filter) || 'warm'} onChange={(e) => onPatch({ filter: e.target.value })}>
+              {FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <label><span>强度 {num(params.intensity, 1).toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.05} value={num(params.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
+          </label>
+        </>
+      )}
+
+      {item.kind === 'fx' && el && (
+        <>
+          <p className="gc-inspector-hint">画面特效叠加在视频上，强度 0~1。效果在上方预览实时可见。</p>
+          <label className="gc-field"><span>特效</span>
+            <select value={str(params.fx) || 'flash'} onChange={(e) => onPatch({ fx: e.target.value })}>
+              {FX_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <label><span>强度 {num(params.intensity, 1).toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.05} value={num(params.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
+          </label>
+          {fxNeedsColor(str(params.fx) || 'flash') && (
+            <label className="gc-field"><span>颜色</span>
+              <input type="color" value={str(params.color) || '#ffffff'} onChange={(e) => onPatch({ color: e.target.value })} />
+            </label>
+          )}
+        </>
+      )}
+
       {item.kind === 'option' && el && (
         <>
           <label className="gc-field"><span>提示文案</span>
@@ -868,6 +991,20 @@ const ICON_OPTION = (
     <circle cx="18.6" cy="18.4" r="2.2" />
     <path d="M7.3 11 C 11.2 9.4, 13.2 7.4, 16.5 6.2" />
     <path d="M7.3 13 C 11.2 14.6, 13.2 16.6, 16.5 17.8" />
+  </svg>
+)
+
+const ICON_FILTER = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="9" cy="9" r="5" />
+    <circle cx="15" cy="15" r="5" />
+  </svg>
+)
+
+const ICON_FX = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 2.5 14 8.4 20 10 14.6 12.3 12 18 9.4 12.3 4 10 10 8.4 Z" />
+    <path d="M18.5 3 v3 M20 4.5 h-3 M5 16 v2.6 M6.3 17.3 H3.7" />
   </svg>
 )
 

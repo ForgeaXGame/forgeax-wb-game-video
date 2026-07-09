@@ -22,6 +22,7 @@ import type {
   TimelineElement,
 } from '../../runtime/schema/graph-schema'
 import type { ChoiceOption, QteCue } from '../../runtime/registry/core-kinds'
+import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
 import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import { elementStartMs } from '../../graph/canvas/timeline-geometry'
@@ -72,6 +73,12 @@ function cuesOf(el: TimelineElement | undefined): QteCue[] {
 }
 function optionsOf(el: TimelineElement | undefined): ChoiceOption[] {
   return el && Array.isArray(el.params.options) ? (el.params.options as ChoiceOption[]) : []
+}
+function filterLabel(id: unknown): string {
+  return FILTER_PRESETS.find((p) => p.id === id)?.label ?? '滤镜'
+}
+function fxLabel(id: unknown): string {
+  return FX_PRESETS.find((p) => p.id === id)?.label ?? '特效'
 }
 
 function firstEntityId(entities: Record<string, EntitySpec> | undefined, kind: 'boss' | 'player'): string {
@@ -181,6 +188,26 @@ export function collectMaterialsFromNode(node: GameNode | undefined, maxMs: numb
         startMs: el.window?.startMs ?? 0,
         endMs: el.window?.endMs ?? maxMs,
         layer: normalizeLayer(el.layer, 3),
+      })
+    } else if (el.kind === 'filter') {
+      out.push({
+        key: `filter:${el.id}`,
+        id: el.id,
+        kind: 'filter',
+        label: filterLabel(el.params.filter),
+        startMs: el.window?.startMs ?? 0,
+        endMs: el.window?.endMs ?? maxMs,
+        layer: normalizeLayer(el.layer, 4),
+      })
+    } else if (el.kind === 'fx') {
+      out.push({
+        key: `fx:${el.id}`,
+        id: el.id,
+        kind: 'fx',
+        label: fxLabel(el.params.fx),
+        startMs: el.window?.startMs ?? 0,
+        endMs: el.window?.endMs ?? maxMs,
+        layer: normalizeLayer(el.layer, 5),
       })
     } else if (el.kind === 'qte') {
       for (const c of cuesOf(el)) {
@@ -299,6 +326,8 @@ export function patchMaterialGraph(
   switch (item.kind) {
     case 'subtitle':
     case 'overlay':
+    case 'filter':
+    case 'fx':
       return patchTimelineElement(graph, node.id, item.id, {
         window: { startMs: start, endMs: end },
         trigger: { when: 'at', ms: start },
@@ -388,6 +417,8 @@ export function confirmMaterialDelete(node: GameNode, item: MaterialItem): boole
 export function deleteMaterialGraph(graph: GameGraph, node: GameNode, item: MaterialItem): GameGraph {
   switch (item.kind) {
     case 'subtitle':
+    case 'filter':
+    case 'fx':
       return removeTimelineElement(graph, node.id, item.id)
     case 'overlay': {
       const g = removeTimelineElement(graph, node.id, item.id)
@@ -410,7 +441,7 @@ export function deleteMaterialGraph(graph: GameGraph, node: GameNode, item: Mate
 }
 
 // ── 写映射：新增材料 ──────────────────────────────────────────────────────────
-export type MaterialTemplate = 'subtitle' | 'overlay' | 'qte' | 'option'
+export type MaterialTemplate = 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx'
 
 export interface AddResult {
   graph: GameGraph
@@ -473,6 +504,19 @@ export function addMaterialGraph(
     }
     const g = addTimelineElement(addTimelineElement(graph, node.id, float), node.id, settle)
     return { graph: g, selectKey: `overlay:${id}` }
+  }
+  if (template === 'filter' || template === 'fx') {
+    const id = newElementId()
+    const el: TimelineElement = {
+      id,
+      role: 'presentation',
+      kind: template,
+      trigger: { when: 'at', ms: startMs },
+      window: { startMs, endMs },
+      layer: at ? at.layer : template === 'filter' ? 4 : 5,
+      params: template === 'filter' ? { filter: 'warm', intensity: 1 } : { fx: 'flash', intensity: 1 },
+    }
+    return { graph: addTimelineElement(graph, node.id, el), selectKey: `${template}:${id}` }
   }
   if (template === 'qte') {
     return addQteCueGraph(graph, node, maxMs, at ? at.ms : playheadMs)
@@ -575,7 +619,7 @@ export function patchSelectedGraph(
   item: MaterialItem,
   patch: Record<string, unknown>,
 ): GameGraph {
-  if (item.kind === 'subtitle') {
+  if (item.kind === 'subtitle' || item.kind === 'filter' || item.kind === 'fx') {
     const el = findElement(node, item.id)
     if (!el) return graph
     return patchTimelineElement(graph, node.id, el.id, { params: mergeParams(el, patch) })
