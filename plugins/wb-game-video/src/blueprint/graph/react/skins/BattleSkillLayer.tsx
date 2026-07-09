@@ -15,11 +15,11 @@ export function BattleSkillLayer({ interaction, submit }: InteractionProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()
-  const options = (interaction.params as unknown as ChoiceParams).options ?? []
+  const options = ((interaction.params as unknown as ChoiceParams).options ?? []) as Array<{ key: string; label?: string; _locked?: boolean }>
   const [picked, setPicked] = useState<string | null>(null)
 
-  function pick(key: string): void {
-    if (picked) return
+  function pick(key: string, locked: boolean): void {
+    if (picked || locked) return
     setPicked(key)
     submit(key)
   }
@@ -32,7 +32,7 @@ export function BattleSkillLayer({ interaction, submit }: InteractionProps) {
       const opt = options[index]
       if (!opt) return
       e.preventDefault()
-      pick(opt.key)
+      pick(opt.key, !!opt._locked)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
@@ -44,13 +44,14 @@ export function BattleSkillLayer({ interaction, submit }: InteractionProps) {
       {options.map((opt, index) => {
         const key = SKILL_KEYS[index] ?? String(index + 1)
         const isUlt = opt.key.includes('ult')
+        const locked = !!opt._locked
         return (
           <button
             key={opt.key}
             type="button"
-            className={`pvb-skill ${isUlt ? 'ult' : ''} ${picked === opt.key ? 'sel' : ''}`}
-            onClick={() => pick(opt.key)}
-            disabled={!!picked}
+            className={`pvb-skill ${isUlt ? 'ult' : ''} ${picked === opt.key ? 'sel' : ''} ${locked ? 'dis' : ''}`}
+            onClick={() => pick(opt.key, locked)}
+            disabled={!!picked || locked}
           >
             <span className="pvb-sk-key">{key}</span>
             <span className="pvb-sk-nm">{opt.label ?? opt.key}</span>

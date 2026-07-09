@@ -11,7 +11,7 @@
  *  - qte(interaction)   三档判定：pass/good/fail 出口。
  *  - hotspot(interaction) 热点：每热点一个 hs:<id> 出口。
  */
-import type { GraphEffect, GraphTextStyle } from './graph-schema'
+import type { GraphCondition, GraphEffect, GraphTextStyle } from './graph-schema'
 import type { FormField, KindPlugin } from './kind-registry'
 import { registerKind } from './kind-registry'
 import { evalExpr } from './expr'
@@ -94,6 +94,8 @@ export interface ChoiceOption {
   key: string
   label?: string
   effects?: GraphEffect[]
+  /** 逐项门控：条件不成立则该选项被锁定（皮肤灰置禁选）。如「灭世需 qi≥5」。 */
+  condition?: GraphCondition
 }
 /** 选项呈现形态：列表 / 画面热区。 */
 export type ChoicePresentation = 'list' | 'hotspot'
