@@ -113,6 +113,8 @@ export interface ChoiceParams {
   fireAt?: ChoiceFireAt
   /** 热区（presentation='hotspot' 时按 key 对应画面区域）。 */
   hotspots?: HotspotItem[]
+  /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
+  component?: string
 }
 const CHOICE_FORM: FormField[] = [
   { t: 'text', key: 'prompt', label: '提示' },
@@ -186,6 +188,10 @@ export interface QteParams {
   /** UI 皮肤 id。 */
   ui?: string
   outcomeLabels?: Record<string, string>
+  /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
+  component?: string
+  /** 皮肤自管时限 ms（如叩击/防反的收圈时长；缺省各皮肤自带）。 */
+  durationMs?: number
 }
 export const qteKind: KindPlugin<QteParams> = {
   kind: 'qte',
