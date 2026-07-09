@@ -20,6 +20,9 @@ import {
   materialDisplayLabel,
 } from './materialTimelineShared'
 
+/** 素材库卡片 → 时间轴拖放时携带的模板类型 MIME。 */
+export const MATERIAL_DND_MIME = 'application/x-fx-material'
+
 /**
  * 视频 tab 与剧情树抽屉共享的「材料时间轴」——
  *   · layer 堆叠的材料条（字幕 / 结算 / QTE / 选项 / QTE 窗口）
@@ -53,6 +56,8 @@ export interface MaterialTimelineProps {
   ) => void
   /** 提供时，选中可删材料后按 Delete/Backspace 或点击控件上的 × 即删除。 */
   onDeleteMaterial?: (item: MaterialItem) => void
+  /** 提供时，从素材库把控件卡片拖入时间轴 → 在落点时刻 atMs / 轨 layer 新增该模板。 */
+  onDropTemplate?: (template: string, atMs: number, layer: number) => void
 }
 
 interface DragState {
@@ -77,6 +82,7 @@ export function MaterialTimeline({
   onSelectMaterial,
   onPatchMaterial,
   onDeleteMaterial,
+  onDropTemplate,
 }: MaterialTimelineProps) {
   injectStyleOnce('material-timeline', MATERIAL_TIMELINE_CSS)
   const timelineRef = useRef<HTMLDivElement | null>(null)
@@ -84,6 +90,7 @@ export function MaterialTimeline({
   const [zoom, setZoom] = useState(1)
   const [viewportW, setViewportW] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
+  const [dropHint, setDropHint] = useState<{ ms: number; layer: number } | null>(null)
 
   // 无限轨：可见轨数由数据里最大 layer 派生，并永远多留一条空轨用于「拖到新轨=新增一轨」。
   const dataMaxLayer = materials.reduce((mx, it) => Math.max(mx, it.layer), 0)
@@ -222,6 +229,33 @@ export function MaterialTimeline({
     beginSeek(e)
   }
 
+  // 素材库卡片拖入：x → 时刻（吸附 100ms）、y → 轨。
+  function dropPosFromEvent(e: React.DragEvent): { ms: number; layer: number } {
+    const rect = timelineRef.current?.getBoundingClientRect()
+    if (!rect || rect.width <= 0) return { ms: 0, layer: 0 }
+    const ratio = (e.clientX - rect.left) / rect.width
+    const ms = clampMs(snapMs(ratio * maxMs, 100), 0, maxMs)
+    const layer = layerFromPointerY(e.clientY, rect, trackCount - 1)
+    return { ms, layer }
+  }
+
+  function onCanvasDragOver(e: React.DragEvent): void {
+    if (!onDropTemplate || !e.dataTransfer.types.includes(MATERIAL_DND_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDropHint(dropPosFromEvent(e))
+  }
+
+  function onCanvasDrop(e: React.DragEvent): void {
+    if (!onDropTemplate) return
+    const template = e.dataTransfer.getData(MATERIAL_DND_MIME)
+    setDropHint(null)
+    if (!template) return
+    e.preventDefault()
+    const { ms, layer } = dropPosFromEvent(e)
+    onDropTemplate(template, ms, layer)
+  }
+
   return (
     <div className="mtl-root">
       <div className="gc-materialbar">
@@ -269,6 +303,9 @@ export function MaterialTimeline({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onLostPointerCapture={onPointerUp}
+          onDragOver={onDropTemplate ? onCanvasDragOver : undefined}
+          onDrop={onDropTemplate ? onCanvasDrop : undefined}
+          onDragLeave={onDropTemplate ? () => setDropHint(null) : undefined}
         >
           <div
             className={`gc-mtimeline-ruler${onSeek ? ' is-seekable' : ''}`}
@@ -290,6 +327,15 @@ export function MaterialTimeline({
             />
           ))}
           <div className="gc-playhead" style={{ left: `${playheadMs * pxPerMs}px` }} aria-hidden />
+          {dropHint ? (
+            <div
+              className="gc-mdrop"
+              style={{ left: `${dropHint.ms * pxPerMs}px`, top: `${layerTop(dropHint.layer)}px` }}
+              aria-hidden
+            >
+              <span className="gc-mdrop-time">{fmtDur(dropHint.ms)}</span>
+            </div>
+          ) : null}
           {materials.map((m) => {
             const left = m.startMs * pxPerMs
             const width = Math.max(6, (m.endMs - m.startMs) * pxPerMs)
@@ -448,6 +494,46 @@ const MATERIAL_TIMELINE_CSS = `
   border-radius: 50%;
   background: var(--gc-accent);
   box-shadow: 0 0 8px rgba(240,136,64,.85);
+}
+.mtl-root .gc-mdrop {
+  position: absolute;
+  width: 3px;
+  height: 32px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--gc-accent);
+  box-shadow: 0 0 10px rgba(240,136,64,.85);
+  z-index: 9;
+  pointer-events: none;
+}
+.mtl-root .gc-mdrop::before {
+  content: "＋";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  line-height: 15px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--gc-accent);
+  color: #1b1206;
+  font-size: 12px;
+  font-weight: 700;
+}
+.mtl-root .gc-mdrop-time {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(20,16,12,0.94);
+  color: var(--gc-accent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .mtl-root .gc-mempty {
   position: absolute;

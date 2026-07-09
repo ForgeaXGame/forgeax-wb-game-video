@@ -421,6 +421,12 @@ function firstOtherNodeId(graph: GameGraph, nodeId: string): string {
   return graph.nodes.find((n) => n.id !== nodeId)?.id ?? nodeId
 }
 
+/** 从素材库拖入时间轴的落点：ms = 落点时刻，layer = 落点所在轨。 */
+export interface DropAt {
+  ms: number
+  layer: number
+}
+
 export function addMaterialGraph(
   graph: GameGraph,
   node: GameNode,
@@ -428,8 +434,12 @@ export function addMaterialGraph(
   template: MaterialTemplate,
   entities: Record<string, EntitySpec> | undefined,
   playheadMs: number,
+  at?: DropAt,
 ): AddResult {
-  const endMs = clampMs(2500, 100, maxMs)
+  const dur = clampMs(2500, 100, maxMs)
+  // at 存在 = 从素材库拖入的精确落点；缺省（点击添加）落在 0ms / 语义默认轨。
+  const startMs = at ? clampMs(at.ms, 0, Math.max(0, maxMs - 100)) : 0
+  const endMs = clampMs(startMs + dur, startMs + 100, maxMs)
   if (template === 'subtitle') {
     const id = newElementId()
     const el: TimelineElement = {
@@ -437,8 +447,8 @@ export function addMaterialGraph(
       role: 'presentation',
       kind: 'dialogue',
       trigger: { when: 'enter' },
-      window: { startMs: 0, endMs },
-      layer: 0,
+      window: { startMs, endMs },
+      layer: at ? at.layer : 0,
       params: { text: '新字幕' },
     }
     return { graph: addTimelineElement(graph, node.id, el), selectKey: `subtitle:${id}` }
@@ -450,8 +460,8 @@ export function addMaterialGraph(
       role: 'presentation',
       kind: 'floatText',
       trigger: { when: 'enter' },
-      window: { startMs: 0, endMs },
-      layer: 1,
+      window: { startMs, endMs },
+      layer: at ? at.layer : 1,
       params: { text: '-100', x: OVERLAY_XY.x, y: 0.45 },
     }
     const settle: TimelineElement = {
@@ -465,7 +475,7 @@ export function addMaterialGraph(
     return { graph: g, selectKey: `overlay:${id}` }
   }
   if (template === 'qte') {
-    return addQteCueGraph(graph, node, maxMs, playheadMs)
+    return addQteCueGraph(graph, node, maxMs, at ? at.ms : playheadMs)
   }
   // option
   const existing = choiceElement(node)
@@ -478,7 +488,7 @@ export function addMaterialGraph(
     role: 'interaction',
     kind: 'choice',
     trigger: { when: 'enter' },
-    window: { startMs: 0, endMs },
+    window: { startMs: 0, endMs: dur },
     layer: 3,
     params: { options: [{ key, label: '选项一' }], prompt: '请选择', presentation: 'list' },
   }

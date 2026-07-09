@@ -12,7 +12,7 @@ import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { listVideoAssetInfos, resolveMediaSrc, type VideoAssetInfo } from './media'
-import { MaterialTimeline } from '../video/MaterialTimeline'
+import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import {
   type MaterialItem,
   materialClass,
@@ -264,6 +264,17 @@ export function GraphVideoView(): JSX.Element {
   function addMaterial(template: MaterialTemplate): void {
     if (!node) return
     const res = addMaterialGraph(graph, node, maxMs, template, entities, playheadMs)
+    setGraph(res.graph)
+    if (res.selectKey) setSelectedMaterialKey(res.selectKey)
+    setTopPanel('inspector')
+  }
+
+  // 从素材库把控件卡片拖进时间轴 → 在落点时刻/轨新增。
+  function addMaterialAt(template: string, atMs: number, layer: number): void {
+    if (!node) return
+    if (template !== 'subtitle' && template !== 'overlay' && template !== 'qte' && template !== 'option') return
+    if (template === 'option' ? optionDisabled : !hasEditableVideo) return
+    const res = addMaterialGraph(graph, node, maxMs, template, entities, playheadMs, { ms: atMs, layer })
     setGraph(res.graph)
     if (res.selectKey) setSelectedMaterialKey(res.selectKey)
     setTopPanel('inspector')
@@ -533,15 +544,17 @@ export function GraphVideoView(): JSX.Element {
                 <div className="gvv-toolpanel">
                   <span className="gvv-toolpanel-head">添加控件</span>
                   <div className="gc-lib-grid">
-                    <MaterialCard title="字幕" desc="底栏对白/旁白字幕，可拖动显示时段。" disabledReason={addDisabled} onClick={() => addMaterial('subtitle')} />
-                    <MaterialCard title="飘字" desc="画面上的文字/数值飘字，可选到点结算扣血。" disabledReason={addDisabled} onClick={() => addMaterial('overlay')} />
+                    <MaterialCard icon={ICON_SUBTITLE} title="字幕" template="subtitle" desc="底栏对白/旁白字幕，可拖动显示时段。" disabledReason={addDisabled} onClick={() => addMaterial('subtitle')} />
+                    <MaterialCard icon={ICON_OVERLAY} title="飘字" template="overlay" desc="画面上的文字/数值飘字，可选到点结算扣血。" disabledReason={addDisabled} onClick={() => addMaterial('overlay')} />
                     <MaterialCard
+                      icon={ICON_QTE}
                       title="QTE 按键点"
+                      template="qte"
                       desc="限时按键点，写入当前节点 QTE 轨；同节点多个按键点自动归入这一段 QTE（一次结算）。"
                       disabledReason={addDisabled}
                       onClick={() => addMaterial('qte')}
                     />
-                    <MaterialCard title="选项" desc="添加节点选项，可切换清单或画面热区。" disabledReason={optionDisabled} onClick={() => addMaterial('option')} />
+                    <MaterialCard icon={ICON_OPTION} title="选项" template="option" desc="添加节点选项，可切换清单或画面热区。" disabledReason={optionDisabled} onClick={() => addMaterial('option')} />
                   </div>
                 </div>
               ) : (
@@ -569,6 +582,7 @@ export function GraphVideoView(): JSX.Element {
                 onSelectMaterial={handleSelectMaterial}
                 onPatchMaterial={patchMaterial}
                 onDeleteMaterial={deleteMaterial}
+                onDropTemplate={addMaterialAt}
               />
             ) : (
               <div className="gc-readonly-note">这是素材预览。绑定到当前节点后可编辑时间轴控件。</div>
@@ -824,17 +838,74 @@ function GraphMaterialInspector({
   )
 }
 
-function MaterialCard({ title, desc, disabledReason, onClick }: { title: string; desc: string; disabledReason?: string; onClick: () => void }): JSX.Element {
+const ICON_SUBTITLE = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="M6.5 11.5 h3 M11.5 11.5 h6 M6.5 14.5 h6.5 M15 14.5 h2.5" />
+  </svg>
+)
+
+const ICON_OVERLAY = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 3.6 13.7 9 19.1 10.7 13.7 12.4 12 17.8 10.3 12.4 4.9 10.7 10.3 9 Z" />
+    <circle cx="18.7" cy="5.3" r="1.05" />
+    <circle cx="5.4" cy="17" r="1.05" />
+  </svg>
+)
+
+const ICON_QTE = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="12" r="7.4" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 1.8 v2.6 M12 19.6 v2.6 M1.8 12 h2.6 M19.6 12 h2.6" />
+  </svg>
+)
+
+const ICON_OPTION = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="5.2" cy="12" r="2.2" />
+    <circle cx="18.6" cy="5.6" r="2.2" />
+    <circle cx="18.6" cy="18.4" r="2.2" />
+    <path d="M7.3 11 C 11.2 9.4, 13.2 7.4, 16.5 6.2" />
+    <path d="M7.3 13 C 11.2 14.6, 13.2 16.6, 16.5 17.8" />
+  </svg>
+)
+
+function MaterialCard({
+  icon,
+  title,
+  desc,
+  template,
+  disabledReason,
+  onClick,
+}: {
+  icon: JSX.Element
+  title: string
+  desc: string
+  template: MaterialTemplate
+  disabledReason?: string
+  onClick: () => void
+}): JSX.Element {
+  const enabled = !disabledReason
   return (
     <button
       type="button"
       className={`gc-lib-item${disabledReason ? ' is-disabled' : ''}`}
-      disabled={!!disabledReason}
-      title={disabledReason}
-      onClick={disabledReason ? undefined : onClick}
+      disabled={!enabled}
+      title={disabledReason ?? `${desc}（点击添加，或按住拖入时间轴落点）`}
+      draggable={enabled}
+      onClick={enabled ? onClick : undefined}
+      onDragStart={
+        enabled
+          ? (e) => {
+              e.dataTransfer.setData(MATERIAL_DND_MIME, template)
+              e.dataTransfer.effectAllowed = 'copy'
+            }
+          : undefined
+      }
     >
+      <span className="gc-lib-ico">{icon}</span>
       <strong>{title}</strong>
-      <span>{disabledReason ?? desc}</span>
     </button>
   )
 }
