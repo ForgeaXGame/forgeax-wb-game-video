@@ -9,7 +9,7 @@ import { GraphStudio } from '../blueprint/graph/react/GraphStudio'
 import { GraphConfigView } from '../blueprint/graph/react/GraphConfigView'
 import { GraphVideoView } from '../blueprint/graph/react/GraphVideoView'
 import { GraphPlaySurface } from '../blueprint/graph/react/GraphPlaySurface'
-import { useGraphSeed } from '../blueprint/graph/useGraphSeed'
+import { NODIA_DEMO } from '../blueprint/graph/demo'
 import { injectStyleOnce } from '../styles/injectStyle'
 
 /**
@@ -33,7 +33,6 @@ import { injectStyleOnce } from '../styles/injectStyle'
 export function ForgeTab() {
   const forgeView = useShellStore((s) => s.forgeView)
   const chatVisible = useShellStore((s) => s.chatVisible)
-  const graphSeed = useGraphSeed()
 
   return (
     <div className={`ks-forge-tab${chatVisible ? '' : ' is-chat-hidden'}`}>
@@ -90,13 +89,13 @@ export function ForgeTab() {
           </div>
           {/* 新引擎（graph）并行入口，对齐旧 蓝图/视频/界面/规则/试玩。共用同一份场景数据，与旧视图并存。 */}
           <div className="ks-forge-tab-pane" data-pane="graph" hidden={forgeView !== 'graph'}>
-            {forgeView === 'graph' && <GraphStudio scenario={graphSeed} />}
+            {forgeView === 'graph' && <GraphStudio scenario={NODIA_DEMO} />}
           </div>
           <div className="ks-forge-tab-pane" data-pane="graphvideo" hidden={forgeView !== 'graphvideo'}>
             {forgeView === 'graphvideo' && <GraphVideoView />}
           </div>
           <div className="ks-forge-tab-pane" data-pane="graphui" hidden={forgeView !== 'graphui'}>
-            {forgeView === 'graphui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'hud', label: '全局 HUD' }]} scenario={graphSeed} />}
+            {forgeView === 'graphui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'hud', label: '全局 HUD' }]} scenario={NODIA_DEMO} />}
           </div>
           <div className="ks-forge-tab-pane" data-pane="graphrule" hidden={forgeView !== 'graphrule'}>
             {forgeView === 'graphrule' && (
@@ -109,12 +108,12 @@ export function ForgeTab() {
                   { section: 'scene', label: '场景设置' },
                   { section: 'rules', label: '反应规则' },
                 ]}
-                scenario={graphSeed}
+                scenario={NODIA_DEMO}
               />
             )}
           </div>
           <div className="ks-forge-tab-pane" data-pane="graphplay" hidden={forgeView !== 'graphplay'}>
-            {forgeView === 'graphplay' && <GraphPlaySurface scenario={graphSeed} />}
+            {forgeView === 'graphplay' && <GraphPlaySurface scenario={NODIA_DEMO} />}
           </div>
         </div>
         {chatVisible && (
