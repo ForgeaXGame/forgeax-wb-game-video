@@ -2,7 +2,6 @@ import { useShellStore } from '../shell/shellStore'
 import { ForgeWizard } from './ForgeWizard'
 import { ForgeChatPanel } from './ForgeChatPanel'
 import { StoryTreeTab } from '../storytree/StoryTreeTab'
-import { BlueprintTab } from './BlueprintTab'
 import { VideoCatalogTab, UiCatalogTab, RuleCatalogTab } from './CatalogTabs'
 import { AssetsTab } from './AssetsTab'
 import { ForgeStudio } from './studio/ForgeStudio'
@@ -60,13 +59,6 @@ export function ForgeTab() {
             hidden={forgeView !== 'tree'}
           >
             <StoryTreeTab />
-          </div>
-          <div
-            className="ks-forge-tab-pane"
-            data-pane="blueprint"
-            hidden={forgeView !== 'blueprint'}
-          >
-            <BlueprintTab />
           </div>
           <div
             className="ks-forge-tab-pane"
