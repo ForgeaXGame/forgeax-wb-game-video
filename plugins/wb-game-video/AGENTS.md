@@ -15,7 +15,7 @@ JSON；纯 TS 状态机引擎直接吃这张图确定性回放，视频上叠血
 代码已按三分模块落地：
 - **`src/runtime/`** — schema / 引擎 / Kind·Skin 注册 / 校验（可独立单测；**不** import editor/assets）
 - **`src/graph/`** — 蓝图画布 + 图编辑纯函数
-- **`src/editor/`** — 工坊壳（Studio / persist / demo / video）+ **`editor/assets/`**（视频/字体/海报）
+- **`src/editor/`** — 工坊壳（Studio / persist / demo / video）+ **`editor/assets/`**（视频/字体）
 
 唯一入口 `src/main.tsx → GraphApp`。皮肤字体由 `editor/init.ts` → `bootEditorSkins()` 注入 runtime（`setBrushFontUrl`）。
 
@@ -113,7 +113,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | 蓝图画布 / 图编辑 / 派生视图 | `src/graph/canvas/` / `src/graph/edit/` |
 | 试玩 / Studio / 节点面板（工坊壳） | `src/editor/shell/` |
 | demo / 持久化 / store | `src/editor/demo/` / `src/editor/persist/` |
-| 内容素材（视频/字体/海报） | `src/editor/assets/` |
+| 内容素材（视频/字体） | `src/editor/assets/` |
 | 应用外壳 / 视图路由 | `src/GraphApp.tsx` / `src/editor/persist/graphViewStore.ts` |
 | AI 工具后端 | `server/tool-handlers.ts` + `schemas/*.json` |
 
@@ -127,9 +127,31 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 
 ## 已知缺口 / Backlog
 
-- **AI 不能生成新视频**：本引擎的演出视频只来自内置库（`src/editor/assets/zhandou/*.mp4`，`gvid:list-videos` 列出）。
-  随 2026-07-09 FMV 拆除，Seedance/图生视频/关键帧那条生产链路已删除，AI/Nodia 只能**编排/绑定**已有片段，
-  不能产新素材。若日后要恢复「AI 生成新视频」，需另引一条独立的视频生成链路（不复活整套 FMV）。
+> living list（2026-07-09）。已完成项不列；优先级：契约债 > 文档债 > 产品能力 > 低优暂缓。
+
+### P1 · 契约债（影响扩展）
+- **QTE 出口可自定义**：现写死 `pass/good/fail`；应像 choice 的 `opt:*`，由皮肤 / `outputs(params)` 派生。
+- **`qteKind` 降级**：`parry|timing|mash|sequence|sweep` 是产品枚举，不是引擎一级类型；`parry≈timing`（同为打点，差在皮肤）。中期改为 `component` + 资源预设。
+- **三分法依赖纪律二次收紧**：目录已拆 `runtime/graph/editor`，边界未钉死——skins 是否应迁出 runtime 核心、NodeInspector 业务字段是否全归 editor、player 薄层是否独立成章。
+
+### P2 · 文档债
+- **`SEEDANCE-PARITY.md` 改写成 graph 对照表**：能力矩阵仍指向已删 FMV 路径；应译成 `TimelineElement.kind` / edge / hud / subflow。
+- **07-06 spec 状态段对齐现行持久化**：草稿 localStorage + 磁盘权威（`/__graph__`），与文中过期「零 localStorage」说法统一。
+
+### P3 · 产品能力
+- **三轨时间轴可视化（polish）**：视频轨编辑有一部分，完整三轨视图未齐。
+- **AI 生成新视频**：只能绑 `editor/assets/zhandou/*.mp4`（`gvid:list-videos`）；Seedance 链路已删。若要恢复，另引独立生视频链路，**不复活整套 FMV**。
+- **多段攻击多段漂字**：现多只结第一击。
+
+### P4 · 低优暂缓（07-06 spec 已标）
+- **`edge.showAtMs` 选项渐显**：schema 有字段；await 期无 tick，未真正跑通。
+- **Boss 回合结构化**：现靠 cycle / 条件边，无独立 Boss 回合模型。
+
+### 刻意不做
+- 复活 FMV 双路径 / `Scene.kind` 第二套状态机 / `.gamevideo-scenarios` 回退。
+
+### 近期已清（备忘）
+- 我方/敌方回合 subflow；画布 chrome（自适应/加节点右下角）；拖节点误 fitView；下钻徽标裁切；删 `.gamevideo-*` 与 `posters/`；demo 节点 dagre 坐标写入 json（重置不再叠成一团）。
 
 ## 深入文档
 
