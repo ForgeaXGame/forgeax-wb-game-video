@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import { injectStyleOnce } from '../../../../styles/injectStyle'
 import { resolveSnapGridMs, snapMs } from './timelineMath'
@@ -49,7 +49,7 @@ export interface MaterialTimelineProps {
   onSelectMaterial: (key: string) => void
   onPatchMaterial: (
     item: MaterialItem,
-    patch: { startMs?: number; endMs?: number; layer?: number },
+    patch: { startMs?: number; endMs?: number; layer?: number; markerMs?: number },
   ) => void
   /** 提供时，选中可删材料后按 Delete/Backspace 或点击控件上的 × 即删除。 */
   onDeleteMaterial?: (item: MaterialItem) => void
@@ -57,7 +57,7 @@ export interface MaterialTimelineProps {
 
 interface DragState {
   key: string
-  mode: 'move' | 'start' | 'end'
+  mode: 'move' | 'start' | 'end' | 'marker'
   pointerX: number
   startMs: number
   endMs: number
@@ -136,7 +136,7 @@ export function MaterialTimeline({
     return () => vp.removeEventListener('wheel', onWheel)
   }, [canvasPx, viewportW])
 
-  function onPointerDown(e: React.PointerEvent, item: MaterialItem, mode: 'move' | 'start' | 'end'): void {
+  function onPointerDown(e: React.PointerEvent, item: MaterialItem, mode: 'move' | 'start' | 'end' | 'marker'): void {
     e.preventDefault()
     e.stopPropagation()
     onSelectMaterial(item.key)
@@ -144,7 +144,8 @@ export function MaterialTimeline({
     timelineViewportRef.current?.focus({ preventScroll: true })
     if (!editable) return
     timelineRef.current?.setPointerCapture(e.pointerId)
-    setDrag({ key: item.key, mode, pointerX: e.clientX, startMs: item.startMs, endMs: item.endMs, layer: item.layer })
+    const anchorMs = mode === 'marker' ? (item.markerMs ?? item.startMs) : item.startMs
+    setDrag({ key: item.key, mode, pointerX: e.clientX, startMs: anchorMs, endMs: item.endMs, layer: item.layer })
   }
 
   // 选中可删材料后，按 Delete/Backspace 删除（焦点在时间轴视口内时生效）。
@@ -171,6 +172,11 @@ export function MaterialTimeline({
     const nextLayer = drag.mode === 'move' ? layerFromPointerY(e.clientY, rect, trackCount - 1) : drag.layer
     // 吸附：默认 100ms 网格；Shift=10ms 精细，Alt=500ms 粗粒度（复用 A 的 snap 语义）。
     const grid = resolveSnapGridMs({ shift: e.shiftKey, alt: e.altKey })
+    if (drag.mode === 'marker') {
+      // 段内命中判定点（菱形）：只改 markerMs，宿主夹回 [出现, 消失] 内。
+      onPatchMaterial(item, { markerMs: clampMs(snapMs(drag.startMs + deltaMs, grid), 0, maxMs) })
+      return
+    }
     const span = drag.endMs - drag.startMs
     if (drag.mode === 'move') {
       const start = clampMs(snapMs(drag.startMs + deltaMs, grid), 0, Math.max(0, maxMs - span))
@@ -222,7 +228,7 @@ export function MaterialTimeline({
         <span className="gc-materialbar-meta">时间轴 · {fmtDur(maxMs)}</span>
         {isTimedQteNode ? (
           <span className="gc-materialbar-hint">
-            蓝实线 = QTE 按键点 · 青虚线 = QTE 窗口（整段限时，非选项）
+            QTE 按键点：左缘 = 出现 · 右缘 = 消失 · 菱形 = 命中判定点（计分锚点）
           </span>
         ) : null}
         <span className="gc-zoombar">
@@ -289,8 +295,8 @@ export function MaterialTimeline({
             const width = Math.max(6, (m.endMs - m.startMs) * pxPerMs)
             const selected = selectedMaterialKey === m.key
             return (
+              <Fragment key={m.key}>
               <div
-                key={m.key}
                 className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}`}
                 style={{ left: `${left}px`, width: `${width}px`, top: `${layerTop(m.layer)}px` }}
                 onPointerDown={(e) => onPointerDown(e, m, 'move')}
@@ -322,6 +328,17 @@ export function MaterialTimeline({
                   <button className="gc-mhandle is-right" onPointerDown={(e) => onPointerDown(e, m, 'end')} aria-label="调整终点" />
                 ) : null}
               </div>
+              {m.markerMs != null ? (
+                <button
+                  type="button"
+                  className={`gc-mmarker${selected ? ' is-selected' : ''}`}
+                  style={{ left: `${m.markerMs * pxPerMs}px`, top: `${layerTop(m.layer) + 16}px` }}
+                  title={`命中判定点（计分锚点）· ${fmtDur(m.markerMs)}`}
+                  aria-label="命中判定点"
+                  onPointerDown={(e) => (editable ? onPointerDown(e, m, 'marker') : onSelectMaterial(m.key))}
+                />
+              ) : null}
+              </Fragment>
             )
           })}
           {materials.length === 0 && <div className="gc-mempty">{emptyHint}</div>}
@@ -475,13 +492,22 @@ const MATERIAL_TIMELINE_CSS = `
 .mtl-root .gc-mclip.is-overlay::before { background: var(--gc-accent); }
 .mtl-root .gc-mclip.is-qte { border-color: rgba(95,163,247,.58); color: #cfe4ff; }
 .mtl-root .gc-mclip.is-qte::before { background: #5fa3f7; }
-.mtl-root .gc-mclip.is-qte-window {
-  border-color: rgba(56, 189, 186, 0.62);
-  border-style: dashed;
-  color: #b8f0ee;
-  background: rgba(8, 28, 30, 0.72);
+.mtl-root .gc-mmarker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  margin-top: -6px;
+  padding: 0;
+  transform: rotate(45deg);
+  background: #ffd54a;
+  border: 1px solid rgba(0,0,0,0.45);
+  box-shadow: 0 0 8px rgba(255,213,74,0.75);
+  cursor: ew-resize;
+  z-index: 7;
 }
-.mtl-root .gc-mclip.is-qte-window::before { background: #38bdba; opacity: 0.85; }
+.mtl-root .gc-mmarker:hover,
+.mtl-root .gc-mmarker.is-selected { background: #fff08a; box-shadow: 0 0 10px rgba(255,213,74,0.95); }
 .mtl-root .gc-mclip.is-option { border-color: rgba(199,155,242,.58); color: #eadbff; }
 .mtl-root .gc-mclip.is-option::before { background: #c79bf2; }
 .mtl-root .gc-mhandle {

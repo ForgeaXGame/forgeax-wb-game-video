@@ -10,7 +10,7 @@
  * 旧 → 新 kind 映射：
  *   字幕 dialogue[]     → kind 'dialogue'   （MaterialItem 'subtitle'）
  *   飘字 overlays[]      → kind 'floatText'  （'overlay'）+ 结算联动 kind 'settle'（id `${floatId}-settle`）
- *   QTE  qte.cues[]      → kind 'qte'（params.cues[]）→ 每 cue 一个 'qte' 项 + 一个 'qte_window' 项
+ *   QTE  qte.cues[]      → kind 'qte'（params.cues[]）→ 每 cue 一个 'qte' 项（整段 QTE 跨度由 cues 派生，不再单列 'qte_window' 轨）
  *   选项 choice+branches → kind 'choice'（params.options[]）+ 分支跳转 = 出边 `opt:<key>`
  */
 import type {
@@ -72,11 +72,6 @@ function cuesOf(el: TimelineElement | undefined): QteCue[] {
 }
 function optionsOf(el: TimelineElement | undefined): ChoiceOption[] {
   return el && Array.isArray(el.params.options) ? (el.params.options as ChoiceOption[]) : []
-}
-type QteWindow = { startMs?: number; endMs?: number; timeoutMs?: number }
-function qteWindowParam(el: TimelineElement): QteWindow {
-  const w = el.params.window
-  return w && typeof w === 'object' ? (w as QteWindow) : {}
 }
 
 function firstEntityId(entities: Record<string, EntitySpec> | undefined, kind: 'boss' | 'player'): string {
@@ -149,16 +144,6 @@ function timedStart(el: TimelineElement): number {
   const s = elementStartMs(el)
   return s < 0 ? 0 : s
 }
-function qteWindowEnd(el: TimelineElement, cues: QteCue[], maxMs: number): number {
-  const pw = qteWindowParam(el)
-  if (pw.endMs != null) return pw.endMs
-  if (cues.length) {
-    const tail = Math.max(...cues.map((c) => (c.targetAt ?? 0) + QTE_GOOD_WINDOW))
-    return Math.min(maxMs, tail)
-  }
-  const start = pw.startMs ?? 0
-  return pw.timeoutMs != null ? start + pw.timeoutMs : maxMs
-}
 
 // ── 读投影：node → MaterialItem[] ─────────────────────────────────────────────
 export function collectMaterialsFromNode(node: GameNode | undefined, maxMs: number): MaterialItem[] {
@@ -198,29 +183,22 @@ export function collectMaterialsFromNode(node: GameNode | undefined, maxMs: numb
         layer: normalizeLayer(el.layer, 3),
       })
     } else if (el.kind === 'qte') {
-      const cues = cuesOf(el)
-      for (const c of cues) {
+      for (const c of cuesOf(el)) {
+        // 左缘=出现(appearAt) 右缘=消失(endAt) 菱形=命中判定(targetAt，计分锚点)。
         const s = c.appearAt ?? 0
+        const target = c.targetAt ?? s
+        const end = c.endAt ?? Math.max(target + 300, s + (c.durationMs ?? 500))
         out.push({
           key: `qte:${el.id}:${c.id}`,
           id: c.id,
           kind: 'qte',
           label: c.label || 'QTE',
           startMs: s,
-          endMs: Math.max(c.targetAt ?? s, s + (c.durationMs ?? 500)),
+          endMs: end,
+          markerMs: Math.min(Math.max(target, s), end),
           layer: normalizeLayer(c.layer, 2),
         })
       }
-      const pw = qteWindowParam(el)
-      out.push({
-        key: `qtewin:${el.id}`,
-        id: el.id,
-        kind: 'qte_window',
-        label: '整段限时',
-        startMs: pw.startMs ?? 0,
-        endMs: qteWindowEnd(el, cues, maxMs),
-        layer: 3,
-      })
     }
   }
   return out
@@ -313,7 +291,7 @@ export function patchMaterialGraph(
   node: GameNode,
   maxMs: number,
   item: MaterialItem,
-  patch: { startMs?: number; endMs?: number; layer?: number },
+  patch: { startMs?: number; endMs?: number; layer?: number; markerMs?: number },
 ): GameGraph {
   const start = clampMs(patch.startMs ?? item.startMs, 0, Math.max(0, maxMs - 100))
   const end = clampMs(patch.endMs ?? item.endMs, start + 100, maxMs)
@@ -331,24 +309,38 @@ export function patchMaterialGraph(
         window: { startMs: start, endMs: end },
         layer,
       })
-    case 'qte_window': {
-      const el = findElement(node, item.id)
-      if (!el) return graph
-      const pw = qteWindowParam(el)
-      return patchTimelineElement(graph, node.id, item.id, {
-        params: { ...el.params, window: { ...pw, startMs: start, endMs: end } },
-      })
-    }
     case 'qte': {
       const el = qteElementOfCue(node, item.id)
       if (!el) return graph
-      const cues = cuesOf(el).map((c) =>
-        c.id === item.id ? { ...c, appearAt: start, targetAt: end, layer } : c,
-      )
-      const pw = qteWindowParam(el)
-      const tail = cues.length ? Math.max(...cues.map((c) => (c.targetAt ?? 0) + QTE_GOOD_WINDOW)) : pw.endMs
+      const isMove = patch.layer != null && patch.startMs != null && patch.endMs != null
+      const cues = cuesOf(el).map((c) => {
+        if (c.id !== item.id) return c
+        const next: QteCue = { ...c }
+        if (patch.markerMs != null) {
+          // 拖菱形：只改命中判定点，夹在 [出现, 消失] 内。
+          const lo = c.appearAt ?? 0
+          const hi = c.endAt ?? Math.max(lo, c.targetAt ?? lo)
+          next.targetAt = clampMs(patch.markerMs, lo, Math.max(lo, hi))
+          return next
+        }
+        if (isMove) {
+          // 整体平移：出现/命中/消失同步移，保持相对间距。
+          const shift = start - (c.appearAt ?? 0)
+          next.appearAt = start
+          next.endAt = end
+          if (c.targetAt != null) next.targetAt = clampMs(c.targetAt + shift, start, end)
+          next.layer = layer
+          return next
+        }
+        // 拖边缘：左缘→出现(appearAt)，右缘→消失(endAt)；命中点夹回窗内。
+        next.appearAt = start
+        next.endAt = end
+        if (c.targetAt != null) next.targetAt = clampMs(c.targetAt, start, end)
+        next.layer = layer
+        return next
+      })
       return patchTimelineElement(graph, node.id, el.id, {
-        params: { ...el.params, cues, window: { ...pw, endMs: tail } },
+        params: { ...el.params, cues },
       })
     }
     default:
@@ -380,7 +372,7 @@ export function patchOverlayPositionGraph(
 
 // ── 写映射：删除 + 二次确认 ────────────────────────────────────────────────────
 function isWholeInteractionDelete(node: GameNode, item: MaterialItem): boolean {
-  if (item.kind === 'option' || item.kind === 'qte_window') return true
+  if (item.kind === 'option') return true
   if (item.kind === 'qte') return cuesOf(qteElementOfCue(node, item.id)).length <= 1
   return false
 }
@@ -410,8 +402,6 @@ export function deleteMaterialGraph(graph: GameGraph, node: GameNode, item: Mate
       const cues = cuesOf(el).filter((c) => c.id !== item.id)
       return patchTimelineElement(graph, node.id, el.id, { params: { ...el.params, cues } })
     }
-    case 'qte_window':
-      return teardownInteraction(graph, node.id, { kind: 'qte', handlePrefixes: QTE_HANDLES, continueHandle: 'pass' })
     case 'option':
       return teardownInteraction(graph, node.id, { kind: 'choice', handlePrefixes: [CHOICE_HANDLE] })
     default:
@@ -508,8 +498,9 @@ export function addQteCueGraph(
   const el = qteElement(node)
   const cues = cuesOf(el)
   const base = afterCueId ? cues.find((c) => c.id === afterCueId) : cues[cues.length - 1]
-  const start = clampMs((base?.targetAt ?? playheadMs) + 500, 0, Math.max(0, maxMs - 100))
-  const end = clampMs(start + 800, start + 100, maxMs)
+  const appear = clampMs((base?.targetAt ?? playheadMs) + 500, 0, Math.max(0, maxMs - 200))
+  const target = clampMs(appear + 300, appear + 100, Math.max(appear + 100, maxMs - 100))
+  const end = clampMs(target + 400, target + 100, maxMs)
   const cueId = `q-${Date.now().toString(36)}`
   const cue: QteCue = {
     id: cueId,
@@ -517,17 +508,15 @@ export function addQteCueGraph(
     triggerKey: base?.triggerKey,
     x: base?.x ?? 0.5,
     y: base?.y ?? 0.55,
-    appearAt: start,
-    targetAt: end,
+    appearAt: appear,
+    targetAt: target,
+    endAt: end,
     label: `QTE ${cues.length + 1}`,
     layer: base?.layer ?? 2,
   }
   if (el) {
-    const nextCues = [...cues, cue]
-    const pw = qteWindowParam(el)
-    const tail = Math.max(...nextCues.map((c) => (c.targetAt ?? 0) + QTE_GOOD_WINDOW))
     const g = patchTimelineElement(graph, node.id, el.id, {
-      params: { ...el.params, cues: nextCues, window: { ...pw, endMs: tail } },
+      params: { ...el.params, cues: [...cues, cue] },
     })
     return { graph: g, selectKey: `qte:${el.id}:${cueId}` }
   }
@@ -543,7 +532,6 @@ export function addQteCueGraph(
       qteKind: 'parry',
       passingHits: 1,
       cues: [cue],
-      window: { startMs: 0, endMs: (cue.targetAt ?? 0) + QTE_GOOD_WINDOW },
     },
   }
   return { graph: addTimelineElement(g0, node.id, newEl), selectKey: `qte:${id}:${cueId}` }
@@ -570,7 +558,7 @@ function mergeParams(el: TimelineElement, patch: Record<string, unknown>): Recor
   return next
 }
 
-/** 字幕/QTE-cue/QTE-window/选项的通用 params 编辑（飘字见 patchOverlayGraph）。 */
+/** 字幕/QTE-cue/选项的通用 params 编辑（飘字见 patchOverlayGraph）。 */
 export function patchSelectedGraph(
   graph: GameGraph,
   node: GameNode,
@@ -587,18 +575,6 @@ export function patchSelectedGraph(
     if (!el) return graph
     const cues = cuesOf(el).map((c) => (c.id === item.id ? { ...c, ...patch } : c))
     return patchTimelineElement(graph, node.id, el.id, { params: { ...el.params, cues } })
-  }
-  if (item.kind === 'qte_window') {
-    const el = findElement(node, item.id)
-    if (!el) return graph
-    const pw = qteWindowParam(el)
-    const nextWindow: QteWindow = { ...pw }
-    if (Object.prototype.hasOwnProperty.call(patch, 'timeoutMs')) {
-      const t = patch.timeoutMs as number | undefined
-      if (t == null) delete nextWindow.timeoutMs
-      else nextWindow.timeoutMs = t
-    }
-    return patchTimelineElement(graph, node.id, el.id, { params: { ...el.params, window: nextWindow } })
   }
   if (item.kind === 'option') {
     const el = findElement(node, item.id)

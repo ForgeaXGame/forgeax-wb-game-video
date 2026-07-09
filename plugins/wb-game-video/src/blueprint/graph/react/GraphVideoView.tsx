@@ -280,8 +280,8 @@ export function GraphVideoView(): JSX.Element {
     if (!node) return
     const whole = (qteElementOfCue(node, cueId)?.params.cues as QteCue[] | undefined)?.length ?? 0
     if (whole <= 1) {
-      const winItem = materials.find((m) => m.kind === 'qte_window')
-      if (winItem && !confirmMaterialDelete(node, winItem)) return
+      const cueItem = materials.find((m) => m.kind === 'qte' && m.id === cueId)
+      if (cueItem && !confirmMaterialDelete(node, cueItem)) return
       editGraph((g, n) => removeQteCueGraph(g, n, cueId))
       setSelectedMaterialKey(null)
       setTopPanel('library')
@@ -537,18 +537,11 @@ export function GraphVideoView(): JSX.Element {
                     <MaterialCard title="飘字" desc="画面上的文字/数值飘字，可选到点结算扣血。" disabledReason={addDisabled} onClick={() => addMaterial('overlay')} />
                     <MaterialCard
                       title="QTE 按键点"
-                      desc={isTimedQteNode ? '单个按键的时刻与坐标；整段限时在「QTE 窗口」轨编辑。' : '限时按键点，写入当前节点 QTE 轨。'}
+                      desc="限时按键点，写入当前节点 QTE 轨；同节点多个按键点自动归入这一段 QTE（一次结算）。"
                       disabledReason={addDisabled}
                       onClick={() => addMaterial('qte')}
                     />
-                    {isTimedQteNode ? (
-                      <MaterialCard title="QTE 窗口" desc="整段 QTE 何时生效、超时多久；时间轴已自动生成该轨。" onClick={() => {
-                        const el = qteElement(node)
-                        if (el) { setSelectedMaterialKey(`qtewin:${el.id}`); setTopPanel('inspector') }
-                      }} />
-                    ) : (
-                      <MaterialCard title="选项" desc="添加节点选项，可切换清单或画面热区。" disabledReason={optionDisabled} onClick={() => addMaterial('option')} />
-                    )}
+                    <MaterialCard title="选项" desc="添加节点选项，可切换清单或画面热区。" disabledReason={optionDisabled} onClick={() => addMaterial('option')} />
                   </div>
                 </div>
               ) : (
@@ -736,6 +729,21 @@ function GraphMaterialInspector({
           <label className="gc-field"><span>标签</span>
             <input value={cue.label ?? ''} onChange={(e) => onPatch({ label: e.target.value || undefined })} />
           </label>
+          <p className="gc-inspector-hint">出现=提示出现（左缘）· 命中=最佳判定时刻（计分锚点，菱形）· 消失=提示撤离（右缘）。三者也可在时间轴上直接拖。</p>
+          <div className="gc-field-row">
+            <label><span>出现 ms</span>
+              <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
+                onChange={(e) => onPatch({ appearAt: Math.max(0, Number(e.target.value) || 0) })} />
+            </label>
+            <label><span>命中 ms</span>
+              <input type="number" min={0} step={100} value={cue.targetAt ?? ''} placeholder="命中锚点"
+                onChange={(e) => onPatch({ targetAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
+            </label>
+            <label><span>消失 ms</span>
+              <input type="number" min={0} step={100} value={cue.endAt ?? ''} placeholder="自动"
+                onChange={(e) => onPatch({ endAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
+            </label>
+          </div>
           <label className="gc-field"><span>触发键</span>
             <select value={cue.triggerKey ?? ''} onChange={(e) => onPatch({ triggerKey: e.target.value || undefined })}>
               <option value="">默认（空格 / Enter / 点击）</option>
@@ -771,21 +779,6 @@ function GraphMaterialInspector({
             </label>
           )}
           <button type="button" className="gc-mini-danger" onClick={() => onRemoveQteCue(cue.id)}>删除当前按键点</button>
-        </>
-      )}
-
-      {item.kind === 'qte_window' && el && (
-        <>
-          <p className="gc-inspector-hint">整段 QTE 何时生效、何时整段超时。「QTE 按键点」轨上的圆点是各次按键时刻。</p>
-          <label className="gc-field"><span>整段限时 ms</span>
-            <input
-              type="number"
-              min={500}
-              step={500}
-              value={((params.window as { timeoutMs?: number } | undefined)?.timeoutMs) ?? ''}
-              onChange={(e) => onPatch({ timeoutMs: e.target.value ? Number(e.target.value) : undefined })}
-            />
-          </label>
         </>
       )}
 

@@ -160,6 +160,8 @@ export interface QteCue {
   /** 提示环出现 / 判定命中时刻（相对演出 ms）。 */
   appearAt?: number
   targetAt?: number
+  /** 单个按键的结束 / 消失时刻（相对演出 ms）；缺省由 targetAt/durationMs 派生。 */
+  endAt?: number
   /** hold 时长 / sweep 划动窗口 ms。 */
   durationMs?: number
   /** sweep 方向。 */
@@ -185,8 +187,6 @@ export interface QteParams {
   passingScore?: number
   /** sequence 型的按键序列。 */
   sequence?: string[]
-  /** 整段限时窗口（覆盖 windowMs 的精细控制）。 */
-  window?: { startMs?: number; endMs?: number; timeoutMs?: number }
   /** UI 皮肤 id。 */
   ui?: string
   outcomeLabels?: Record<string, string>

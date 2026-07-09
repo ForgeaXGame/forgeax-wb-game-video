@@ -8,7 +8,7 @@
  */
 
 /** 时间轴上一段可编辑材料的种类。 */
-export type MaterialKind = 'subtitle' | 'overlay' | 'qte' | 'qte_window' | 'option'
+export type MaterialKind = 'subtitle' | 'overlay' | 'qte' | 'option'
 
 /** 时间轴上的一段材料（由 scene 派生，见 CatalogTabs.collectMaterials）。 */
 export interface MaterialItem {
@@ -19,6 +19,8 @@ export interface MaterialItem {
   startMs: number
   endMs: number
   layer: number
+  /** 段内的一个「判定点」标记（当前仅 QTE 用：= cue.targetAt 计分锚点）；缺省无标记。 */
+  markerMs?: number
 }
 
 export const TIMELINE_RULER_H = 24
@@ -95,8 +97,6 @@ export function materialLabel(kind: MaterialKind): string {
       return '飘字'
     case 'qte':
       return 'QTE 按键点'
-    case 'qte_window':
-      return 'QTE 窗口'
     case 'option':
       return '选项'
   }
@@ -111,16 +111,15 @@ export function materialDisplayLabel(item: Pick<MaterialItem, 'kind' | 'key'>): 
  * 可删：字幕 / 结算飘字 / QTE 按键点（各自是独立子项）。
  * 选项：删「整条选项交互」= 抹掉 scene.choice + choice 分支，节点回落为叙事并自动续连到
  *   第一个选项原本的目标（applyMaterialDelete 处理）；因是破坏式改连接，删除前需二次确认。
- * QTE 窗口（qte_window）：删「整段 QTE 交互」= 抹掉 scene.qte + qte_pass/qte_fail 分支，
- *   节点回落为叙事并自动续连到「通过 QTE」原目标（同上，破坏式改连接需二次确认）。
- *   删最后一个 QTE 按键点也等同于删整段（在 applyMaterialDelete / confirmMaterialDelete 里判定）。
+ * QTE：删最后一个 QTE 按键点 = 删「整段 QTE 交互」（抹掉 scene.qte + qte_pass/qte_fail 分支，
+ *   节点回落为叙事并自动续连到「通过 QTE」原目标，破坏式改连接需二次确认，
+ *   在 applyMaterialDelete / confirmMaterialDelete 里判定）。
  */
 export function canDeleteMaterial(kind: MaterialKind): boolean {
   return (
     kind === 'subtitle' ||
     kind === 'overlay' ||
     kind === 'qte' ||
-    kind === 'qte_window' ||
     kind === 'option'
   )
 }
@@ -133,8 +132,6 @@ export function materialClass(kind: MaterialKind): string {
       return 'is-overlay'
     case 'qte':
       return 'is-qte'
-    case 'qte_window':
-      return 'is-qte-window'
     case 'option':
       return 'is-option'
   }
