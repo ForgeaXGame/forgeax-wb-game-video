@@ -213,9 +213,10 @@ export interface Gen3DAssetManifest {
 
 // ─── v2 workspace-contract sidecar (03-WORKSPACE-LAYOUT.md) ──────────────────
 //
-// On disk every asset file gets a `<name>.glb.meta.json` sidecar in the v2
-// contract shape. gen3d-private fields (provider/mode/job/cacheKey/readiness…)
-// live under `custom`. Same-basename sidefiles go in `dependencies[]`.
+// On disk every asset file gets a `<name>.glb.gen3d-meta.json` sidecar in the
+// v2 contract shape (NOT engine pack `*.meta.json`). gen3d-private fields
+// (provider/mode/job/cacheKey/readiness…) live under `custom`. Same-basename
+// sidefiles go in `dependencies[]`.
 
 export interface SidecarDependency {
   // Path relative to the sidecar's directory (e.g. hero.png, hero.texture.png).

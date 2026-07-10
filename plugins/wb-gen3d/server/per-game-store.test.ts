@@ -1,5 +1,5 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { PerGameAssetStore } from './per-game-store';
@@ -57,6 +57,42 @@ test('writeAsset uses .glb.gen3d-meta.json sidecar (not engine pack .meta.json)'
   const legacySidecar = resolve(dir, `${fileName}.meta.json`);
   const raw = await readFile(newSidecar, 'utf8');
   expect(raw).toContain('"schemaVersion"');
+  await expect(readFile(legacySidecar, 'utf8')).rejects.toThrow();
+});
+
+test('listAssets migrates legacy .glb.meta.json off pack-scanner path', async () => {
+  const dir = resolve(root, '.forgeax', 'games', SLUG, 'assets', '3d', 'characters');
+  await mkdir(dir, { recursive: true });
+  const glbName = 'legacy-hero.glb';
+  await writeFile(resolve(dir, glbName), GLB);
+  const legacySidecar = resolve(dir, `${glbName}.meta.json`);
+  const newSidecar = resolve(dir, `${glbName}.gen3d-meta.json`);
+  const sidecarBody = {
+    schemaVersion: 1,
+    producer: { plugin: 'wb-gen3d', pluginVersion: '0.1.0' },
+    createdAt: '2026-06-01T00:00:00.000Z',
+    contentHash: 'sha256:abc',
+    size: GLB.byteLength,
+    type: 'gen3d-character',
+    dependencies: [],
+    custom: {
+      provider: 'meshy',
+      providerMode: 'mock',
+      mode: 'text',
+      assetSlot: 'characters',
+      sourceJobId: null,
+      prompt: 'legacy',
+      sourceInputAssetPaths: [],
+      readiness: { hasSourceMesh: true, rigged: false, animated: false },
+    },
+  };
+  await writeFile(legacySidecar, `${JSON.stringify(sidecarBody, null, 2)}\n`, 'utf8');
+
+  const listed = await store.listAssets(SLUG, 'characters');
+  expect(listed.some((a) => a.assetPath.endsWith(glbName))).toBe(true);
+
+  const migrated = await readFile(newSidecar, 'utf8');
+  expect(migrated).toContain('"schemaVersion"');
   await expect(readFile(legacySidecar, 'utf8')).rejects.toThrow();
 });
 

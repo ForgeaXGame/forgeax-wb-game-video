@@ -166,9 +166,9 @@ Per-game runtime asset library。生成时必须归属一个 game；资产直接
 ```
 .forgeax/games/<slug>/assets/3d/
   characters/<name>.glb
-  characters/<name>.glb.meta.json
+  characters/<name>.glb.gen3d-meta.json
   meshes/<name>.glb
-  meshes/<name>.glb.meta.json
+  meshes/<name>.glb.gen3d-meta.json
 ```
 
 不再维护 gen3d 专属的全局 staging 资产库作为主模型。跨 game 复用需要显式复制

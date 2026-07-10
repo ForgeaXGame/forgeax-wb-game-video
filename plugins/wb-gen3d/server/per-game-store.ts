@@ -54,10 +54,6 @@ const PLUGIN_VERSION = '0.1.0';
 /** Gen3d provenance sidecar — NOT engine pack `*.meta.json` (pack scanner collision). */
 export const GEN3D_SIDECAR_SUFFIX = '.glb.gen3d-meta.json';
 
-function sidecarAbsForBaseName(dir: string, baseName: string): string {
-  return resolve(dir, `${baseName}${GEN3D_SIDECAR_SUFFIX}`);
-}
-
 function sidecarAbsForGlbFile(dir: string, glbFileName: string): string {
   return resolve(dir, `${glbFileName}.gen3d-meta.json`);
 }
@@ -66,18 +62,45 @@ function legacySidecarAbsForGlbFile(dir: string, glbFileName: string): string {
   return resolve(dir, `${glbFileName}.meta.json`);
 }
 
+/**
+ * Resolve the on-disk sidecar, migrating legacy `*.glb.meta.json` →
+ * `*.glb.gen3d-meta.json` when found. Legacy names collide with the engine
+ * pack scanner (`endsWith('.meta.json')` → pack-malformed-meta → whole-pack
+ * fail → demo-scene fallback), so migration must run on read/list, not only
+ * on the next write.
+ */
 async function resolveExistingSidecarAbs(dir: string, glbFileName: string): Promise<string | null> {
-  for (const abs of [
-    sidecarAbsForGlbFile(dir, glbFileName),
-    legacySidecarAbsForGlbFile(dir, glbFileName),
-  ]) {
-    try {
-      await access(abs);
-      return abs;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
+  const newAbs = sidecarAbsForGlbFile(dir, glbFileName);
+  const legacyAbs = legacySidecarAbsForGlbFile(dir, glbFileName);
+
+  let hasNew = false;
+  try {
+    await access(newAbs);
+    hasNew = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+
+  let hasLegacy = false;
+  try {
+    await access(legacyAbs);
+    hasLegacy = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  if (hasNew) {
+    if (hasLegacy) await rm(legacyAbs, { force: true });
+    return newAbs;
+  }
+
+  if (hasLegacy) {
+    const raw = await readFile(legacyAbs, 'utf8');
+    await writeFile(newAbs, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
+    await rm(legacyAbs, { force: true });
+    return newAbs;
+  }
+
   return null;
 }
 
@@ -289,8 +312,7 @@ export class PerGameAssetStore implements AssetStorage {
         ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
       },
     };
-    const sidecarAbs = sidecarAbsForBaseName(dir, baseName);
-    await writeFile(sidecarAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+    await writeSidecarJson(dir, `${baseName}.glb`, sidecar);
 
     return {
       manifestVersion: 1,
