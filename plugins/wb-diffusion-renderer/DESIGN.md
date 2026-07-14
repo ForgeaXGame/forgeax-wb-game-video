@@ -119,7 +119,7 @@ Why this reaches ~10 fps without stalling the engine:
 
 ## Uplink / downlink framing (from FluxRT API)
 
-- Uplink: `[4B meta_len LE][meta JSON][JPEG]`, meta `{seq, ts, prompt?, seed?, steps?, interp?, lora?}` — send params only when they change.
+- Uplink: `[4B meta_len LE][meta JSON][JPEG]`, meta `{seq, ts, prompt?, seed?, steps?, interp?, reset_cache?}`. The stream sends the current effective render params with each captured frame because FluxRT reports `stateful:false`; `reset_cache` is a one-shot flag for large global prompt changes.
 - Downlink: `[4B header_len LE][header JSON][JPEG...]`, split trailing bytes by `header.sizes[]` into `n` frames → push to display buffer.
 - Control text msgs: `unauthorized` (fix key), `drop` (metrics only), `busy` (retry/backoff), `error` (log).
 
@@ -148,11 +148,19 @@ calls `startStream`, `stopStream`, and `updateParams`, and receives status throu
 stream callback. No frame or control message crosses an iframe boundary. The standard
 marketplace iframe entry remains only as a compatibility landing page.
 
+Phase 1 game integration (ADR 0005) publishes `window.forgeaxDiffusion` while the
+inline panel is mounted. Game code may set a **prompt fragment** from runtime state;
+the host stream composes it with the panel's base prompt (`base + gameFragment`) and
+the panel exposes a reclaim control to clear the game override. Game-author usage lives
+in `GAME-DEVELOPER.md`.
+
 ## v1 param surface (decided)
 
 Primary panel UI: **prompt**, **steps** (1–4, default 2), **Smooth** (`off / 2x / 4x`,
 default 4x), **Go Live / Stop**, metrics, and the preview image. The panel fixes
-`lora=sim-to-real` and `seed=42` for the low-poly to photorealistic live path.
+`seed=42` for the low-poly to photorealistic live path (constant seed → temporal
+coherence). The prompt is the only per-frame style knob now that FluxRT dropped
+the `lora` parameter (see the 2026-07-08 API update).
 
 ## Session / health / errors
 

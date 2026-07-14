@@ -28,7 +28,9 @@ Keep one **server-side diffusion renderer module**:
   only extract a registry/adapter interface when the second backend makes that depth real.
 - **Capability-driven UI**: the inline DockShell panel fetches `capabilities()` (via
   `/api/wb/diffusion-renderer/backends` + `/health`) and renders knobs dynamically — hide `interp`
-  if unsupported, populate `lora` presets per backend, show output resolution.
+  if unsupported, show output resolution. (The `lora` preset dropdown was removed
+  2026-07-08 when FluxRT dropped the `lora` parameter; `prompt` is now the only
+  style knob.)
 - Async-batch backends (e.g. Seedance `task_id` polling) remain a different offline
   feature, gated OUT of this plugin's realtime path.
 
