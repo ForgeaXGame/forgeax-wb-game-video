@@ -69,6 +69,16 @@ const EN: Record<string, string> = {
   'btn.save': 'Save & apply immediately',
   'btn.refresh': 'Refresh',
 
+  'btn.importToGame': 'Import to Game',
+  'btn.reimportToGame': 'Re-import to Game',
+  'btn.importing': 'Importing…',
+  'btn.retryImport': 'Retry Import to Game',
+  'import.checking': 'Checking import status…',
+  'import.needsDraco': 'Model generated; Import to Game needs manual confirm (includes format conversion).',
+  'import.alreadyDone': 'Imported to game Edit asset catalog.',
+  'import.successNote': 'Imported to Edit asset catalog. This does not auto-replace the game protagonist or modify gameplay code.',
+  'import.failed': 'Import to Game failed: {message}',
+
   'step.refine': 'Refine textures',
   'step.retexture': 'Retexture',
   'step.remesh': 'Remesh',
@@ -179,6 +189,16 @@ const ZH: Record<string, string> = {
   'btn.saving': '保存中…',
   'btn.save': '保存并即时生效',
   'btn.refresh': '刷新',
+
+  'btn.importToGame': '导入到游戏',
+  'btn.reimportToGame': '重新导入到游戏',
+  'btn.importing': '导入中…',
+  'btn.retryImport': '重试导入到游戏',
+  'import.checking': '检查导入状态…',
+  'import.needsDraco': '模型已生成，导入到游戏需手动确认（含格式转换）。',
+  'import.alreadyDone': '已导入到游戏 Edit 资产目录。',
+  'import.successNote': '已进入 Edit 资产目录，但不会自动替换游戏主角或修改玩法代码。',
+  'import.failed': '导入到游戏失败：{message}',
 
   'step.refine': '补贴图（refine）',
   'step.retexture': '换肤（retexture）',

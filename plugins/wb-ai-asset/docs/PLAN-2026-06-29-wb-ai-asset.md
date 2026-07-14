@@ -1,7 +1,9 @@
 # PLAN — wb-ai-asset（Meshy AI 小物件低模资产生成插件）
 
-> 状态：🟢 SPEC · 2026-06-29（grill-with-docs 核验后修订）· 作者：laurenceelu
-> 分支：`laurenceelu/feat-20260629-wb-ai-asset`（studio + marketplace 同名，base `origin/main`）
+> 状态：🟢 SPEC（主体已落地）· 2026-06-29（grill-with-docs 核验后修订）· 作者：laurenceelu  
+> ⚠️ **2026-07-13 读前须知**：落盘路径已改为隔离的 `assets/3d/props/...`（非本文早期写的与 gen3d 共用 `meshes/`）；默认管线是 precise-lowpoly。生成时已会 cook 引擎 `*.glb.meta.json`。  
+> **进行中方案**（Import UI / 与 gen3d 对齐）：见 [`../wb-gen3d/docs/PLAN-2026-07-13-import-to-engine.md`](../wb-gen3d/docs/PLAN-2026-07-13-import-to-engine.md) + 本插件 [`../HANDOFF.md`](../HANDOFF.md)。  
+> 分支（历史）：`laurenceelu/feat-20260629-wb-ai-asset`  
 > 蓝本：`wb-gen3d`（六模块自包含 workbench 插件范式）
 >
 > **方案 B 知情重申**：文档核验确认 wb-gen3d 的 `meshy.ts`（484 行）已含成熟

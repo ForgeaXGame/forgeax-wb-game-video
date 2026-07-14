@@ -6,6 +6,8 @@
 // are dependencies. Downstream modules reference assets by assetPath, never by
 // provider URL.
 
+import type { CharacterMotionOverride, MotionMappingDraft } from './playable-profile';
+
 export type ProviderId = 'meshy' | 'hunyuan_workflow' | 'hunyuan_rest' | 'rodin';
 
 export type GenerationMode = 'text' | 'image' | 'views' | 'refine';
@@ -213,9 +215,10 @@ export interface Gen3DAssetManifest {
 
 // ─── v2 workspace-contract sidecar (03-WORKSPACE-LAYOUT.md) ──────────────────
 //
-// On disk every asset file gets a `<name>.glb.meta.json` sidecar in the v2
-// contract shape. gen3d-private fields (provider/mode/job/cacheKey/readiness…)
-// live under `custom`. Same-basename sidefiles go in `dependencies[]`.
+// On disk every asset file gets a `<name>.glb.gen3d-meta.json` sidecar in the
+// v2 contract shape (NOT engine pack `*.meta.json`). gen3d-private fields
+// (provider/mode/job/cacheKey/readiness…) live under `custom`. Same-basename
+// sidefiles go in `dependencies[]`.
 
 export interface SidecarDependency {
   // Path relative to the sidecar's directory (e.g. hero.png, hero.texture.png).
@@ -252,6 +255,17 @@ export interface RigChain {
   rigExpiresAt: number | null;
 }
 
+export interface PlayableDeliverySnapshot {
+  modelPath: string;
+  playablePath: string;
+  profileId: string;
+  profileVersion: number;
+  clipSlotIds?: string[];
+  slotGuidRegistry: Record<string, string>;
+  mappingFingerprint: string;
+  exportedAt: string;
+}
+
 export interface AssetSidecar {
   schemaVersion: 1;
   producer: {
@@ -284,6 +298,13 @@ export interface AssetSidecar {
     // Rig-chain identity (ADR-0006), set by a verified rig step. apply-motion
     // dispatches by custom.rig.rigProvider and reads rig.rigTaskId (Meshy).
     rig?: RigChain;
+    // Playable-character layer (PLAN-2026-07-13 §4.1, ADR-0008). Only ever set
+    // on characters slot assets. Absent = this character uses the game default
+    // profile unmodified with no motion mapping drafted yet.
+    playableOverride?: CharacterMotionOverride;
+    motionMapping?: MotionMappingDraft;
+    // Last successful playable delivery snapshot (PLAN §5.6 / UX1 one-click update).
+    playableDelivery?: PlayableDeliverySnapshot;
   };
 }
 

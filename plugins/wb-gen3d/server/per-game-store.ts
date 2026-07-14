@@ -35,6 +35,7 @@ import {
   type ManifestFile,
   type MotionRef,
   type MotionType,
+  type PlayableDeliverySnapshot,
   type QualityReport,
   type SidecarDependency,
   type SkeletonProfile,
@@ -47,16 +48,13 @@ import type {
   PutScratchResult,
   WriteAssetInput,
 } from './asset-storage';
+import type { CharacterMotionOverride, GameMotionProfile, MotionMappingDraft } from '../shared/playable-profile';
 
 const PLUGIN_ID = 'wb-gen3d';
 const PLUGIN_VERSION = '0.1.0';
 
 /** Gen3d provenance sidecar — NOT engine pack `*.meta.json` (pack scanner collision). */
 export const GEN3D_SIDECAR_SUFFIX = '.glb.gen3d-meta.json';
-
-function sidecarAbsForBaseName(dir: string, baseName: string): string {
-  return resolve(dir, `${baseName}${GEN3D_SIDECAR_SUFFIX}`);
-}
 
 function sidecarAbsForGlbFile(dir: string, glbFileName: string): string {
   return resolve(dir, `${glbFileName}.gen3d-meta.json`);
@@ -66,18 +64,83 @@ function legacySidecarAbsForGlbFile(dir: string, glbFileName: string): string {
   return resolve(dir, `${glbFileName}.meta.json`);
 }
 
-async function resolveExistingSidecarAbs(dir: string, glbFileName: string): Promise<string | null> {
-  for (const abs of [
-    sidecarAbsForGlbFile(dir, glbFileName),
-    legacySidecarAbsForGlbFile(dir, glbFileName),
-  ]) {
-    try {
-      await access(abs);
-      return abs;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
+/**
+ * True gen3d private sidecar (producer/custom provenance). Clean engine
+ * `external-asset-package` meta must NEVER be treated as gen3d private
+ * (PLAN §5.4 — dual-sidecar coexistence).
+ */
+function isGen3dPrivateSidecar(parsed: unknown): boolean {
+  if (parsed === null || typeof parsed !== 'object') return false;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.kind === 'external-asset-package') return false;
+  const producer = obj.producer;
+  if (
+    producer !== null &&
+    typeof producer === 'object' &&
+    (producer as { plugin?: unknown }).plugin === 'wb-gen3d'
+  ) {
+    return true;
   }
+  const custom = obj.custom;
+  if (
+    custom !== null &&
+    typeof custom === 'object' &&
+    'assetSlot' in (custom as object) &&
+    'provider' in (custom as object)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Resolve the on-disk gen3d sidecar. Migrates legacy `*.glb.meta.json` →
+ * `*.glb.gen3d-meta.json` ONLY when the legacy file is confirmed gen3d private.
+ * Co-located clean engine `*.glb.meta.json` is left untouched.
+ */
+async function resolveExistingSidecarAbs(dir: string, glbFileName: string): Promise<string | null> {
+  const newAbs = sidecarAbsForGlbFile(dir, glbFileName);
+  const legacyAbs = legacySidecarAbsForGlbFile(dir, glbFileName);
+
+  let hasNew = false;
+  try {
+    await access(newAbs);
+    hasNew = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  let hasLegacy = false;
+  try {
+    await access(legacyAbs);
+    hasLegacy = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  if (hasNew) {
+    // Keep co-located engine meta (do not delete legacyAbs).
+    return newAbs;
+  }
+
+  if (hasLegacy) {
+    const raw = await readFile(legacyAbs, 'utf8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Unreadable legacy file — leave it for humans; not a gen3d sidecar.
+      return null;
+    }
+    if (!isGen3dPrivateSidecar(parsed)) {
+      // Clean engine meta (or unknown) — not ours to migrate/delete.
+      return null;
+    }
+    await writeFile(newAbs, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
+    await rm(legacyAbs, { force: true });
+    return newAbs;
+  }
+
   return null;
 }
 
@@ -88,7 +151,7 @@ async function writeSidecarJson(
 ): Promise<void> {
   const newAbs = sidecarAbsForGlbFile(dir, glbFileName);
   await writeFile(newAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
-  await rm(legacySidecarAbsForGlbFile(dir, glbFileName), { force: true });
+  // Do NOT delete co-located engine `*.glb.meta.json` (PLAN §5.4).
 }
 
 function projectRoot(): string {
@@ -289,8 +352,7 @@ export class PerGameAssetStore implements AssetStorage {
         ...(meta.cacheKey ? { cacheKey: meta.cacheKey } : {}),
       },
     };
-    const sidecarAbs = sidecarAbsForBaseName(dir, baseName);
-    await writeFile(sidecarAbs, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+    await writeSidecarJson(dir, `${baseName}.glb`, sidecar);
 
     return {
       manifestVersion: 1,
@@ -347,7 +409,12 @@ export class PerGameAssetStore implements AssetStorage {
         if (name.endsWith('.glb.gen3d-meta.json')) {
           fileName = name.replace(/\.gen3d-meta\.json$/, '');
         } else if (name.endsWith('.glb.meta.json')) {
-          fileName = name.replace(/\.meta\.json$/, '');
+          // One-time migration probe for true legacy gen3d sidecars only.
+          // Clean engine meta → resolve returns null → skip (not an asset candidate).
+          const candidate = name.replace(/\.meta\.json$/, '');
+          const migrated = await resolveExistingSidecarAbs(dir, candidate);
+          if (!migrated) continue;
+          fileName = candidate;
         } else {
           continue;
         }
@@ -544,6 +611,142 @@ export class PerGameAssetStore implements AssetStorage {
     });
   }
 
+  // ─── Game-level playable-character motion profile (R7, PLAN §4.1) ─────────
+  // NOT per-asset: one file per game, sibling to the per-game .gen3d/tmp/ scratch
+  // tree. Character override + motion mapping live in the character's OWN
+  // sidecar instead (see below) — never here (SSOT: this file only answers
+  // "what does this game default to").
+  gameMotionProfilePath(slug: string): string {
+    return resolve(gameRoot(slug), '.gen3d', 'playable-character-profile.json');
+  }
+
+  async getGameMotionProfile(slug: string): Promise<GameMotionProfile | null> {
+    try {
+      const raw = await readFile(this.gameMotionProfilePath(slug), 'utf8');
+      return JSON.parse(raw) as GameMotionProfile;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  // Atomic read-compute-write: updateFn sees the CURRENT stored profile (or null
+  // if none saved yet) and returns the next one. Read + write both happen inside
+  // the same lock so two concurrent saveAsGameDefault calls can't both read the
+  // same profileVersion and silently clobber each other (lost-update).
+  async setGameMotionProfile(
+    slug: string,
+    updateFn: (existing: GameMotionProfile | null) => GameMotionProfile,
+  ): Promise<GameMotionProfile> {
+    return withAssetLock(`profile:${slug}`, async () => {
+      const existing = await this.getGameMotionProfile(slug);
+      const next = updateFn(existing);
+      const abs = this.gameMotionProfilePath(slug);
+      await mkdir(dirname(abs), { recursive: true });
+      await writeFile(abs, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+      return next;
+    });
+  }
+
+  // ─── Character playable override + motion mapping (R7) ────────────────────
+  // Both live in the source character's own gen3d sidecar under custom
+  // (PLAN §4.1 storage table) — never the engine meta, never the game profile
+  // file above.
+  async getCharacterPlayableState(
+    slug: string,
+    assetPath: string,
+  ): Promise<{
+    override: CharacterMotionOverride | null;
+    mapping: MotionMappingDraft | null;
+    delivery: PlayableDeliverySnapshot | null;
+  } | null> {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return null;
+    const dir = slotDir(slug, slot);
+    const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+    if (!sidecarAbs) return null;
+    let sidecar: AssetSidecar;
+    try {
+      sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    return {
+      override: sidecar.custom.playableOverride ?? null,
+      mapping: sidecar.custom.motionMapping ?? null,
+      delivery: sidecar.custom.playableDelivery ?? null,
+    };
+  }
+
+  async setCharacterPlayableOverride(
+    slug: string,
+    assetPath: string,
+    override: CharacterMotionOverride | null,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+      const updated: AssetSidecar = { ...sidecar, custom: { ...sidecar.custom } };
+      if (override) updated.custom.playableOverride = override;
+      else delete updated.custom.playableOverride;
+      await writeSidecarJson(dir, fileName, updated);
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
+  async setCharacterMotionMapping(
+    slug: string,
+    assetPath: string,
+    mapping: MotionMappingDraft | null,
+  ): Promise<Gen3DAssetManifest> {
+    return withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+      let sidecar: AssetSidecar;
+      try {
+        sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+        }
+        throw error;
+      }
+      const updated: AssetSidecar = { ...sidecar, custom: { ...sidecar.custom } };
+      if (mapping) updated.custom.motionMapping = mapping;
+      else delete updated.custom.motionMapping;
+      await writeSidecarJson(dir, fileName, updated);
+      return sidecarToManifest(slug, slot, fileName, updated);
+    });
+  }
+
   // Read one file in an asset by role (+ optional format), for COS-sharing it as
   // a provider transfer URL. The main mesh is (source_mesh, glb); rig/anim files
   // are same-basename sidefiles recorded in the sidecar dependencies.
@@ -586,6 +789,55 @@ export class PerGameAssetStore implements AssetStorage {
       sha256,
       bytes: input.data.byteLength,
       localUrl: scratchUrlFor(input.slug, sha256, input.format),
+    };
+  }
+
+
+  /** Absolute path under the game root for a game-relative path (e.g. assets/characters/x.glb). */
+  resolveGameRelPath(slug: string, relPath: string): string {
+    return resolve(gameRoot(slug), relPath);
+  }
+
+  async updatePlayableDeliverySnapshot(
+    slug: string,
+    assetPath: string,
+    snapshot: PlayableDeliverySnapshot,
+  ): Promise<void> {
+    await withAssetLock(`${slug}:${assetPath}`, async () => {
+      const { slot, fileName } = parseAssetPath(assetPath);
+      if (!slot) {
+        throw Object.assign(new Error(`unrecognized assetPath ${JSON.stringify(assetPath)}`), {
+          code: 'invalid_asset_path',
+        });
+      }
+      const dir = slotDir(slug, slot);
+      const sidecarAbs = await resolveExistingSidecarAbs(dir, fileName);
+      if (!sidecarAbs) {
+        throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+      }
+      const sidecar = JSON.parse(await readFile(sidecarAbs, 'utf8')) as AssetSidecar;
+      const updated: AssetSidecar = {
+        ...sidecar,
+        custom: { ...sidecar.custom, playableDelivery: snapshot },
+      };
+      await writeSidecarJson(dir, fileName, updated);
+    });
+  }
+
+  /** Resolve on-disk paths for a durable asset (used by Import to Game). */
+  resolveAssetFiles(
+    slug: string,
+    assetPath: string,
+  ): { glbAbs: string; metaAbs: string; sidecarAbs: string; glbFileName: string; slot: AssetSlot } | null {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return null;
+    const dir = slotDir(slug, slot);
+    return {
+      slot,
+      glbFileName: fileName,
+      glbAbs: resolve(dir, fileName),
+      metaAbs: legacySidecarAbsForGlbFile(dir, fileName),
+      sidecarAbs: sidecarAbsForGlbFile(dir, fileName),
     };
   }
 }

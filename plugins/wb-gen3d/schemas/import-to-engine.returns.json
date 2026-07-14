@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:import-to-engine returns",
+  "type": "object",
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "firstImport": {
+      "type": "boolean"
+    },
+    "normalizedDraco": {
+      "type": "boolean"
+    },
+    "reusedGuidCount": {
+      "type": "integer"
+    },
+    "engineMetaPath": {
+      "type": "string"
+    },
+    "assetPath": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "retryable": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

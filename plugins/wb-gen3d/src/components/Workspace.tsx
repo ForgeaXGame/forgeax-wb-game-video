@@ -1,12 +1,14 @@
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { Box, AlertTriangle as AlertIcon } from 'lucide-react';
 import { motionRefKey, selectFile, selectFiles } from '@shared/manifest';
 import type { Gen3DAssetManifest, ManifestFile } from '@shared/manifest';
-import type { ApplyMotionInput, GenerateResult } from '@/types';
+import type { ApplyMotionInput, EngineImportResult, EngineImportStatus, GenerateResult } from '@/types';
 import { blobUrl } from '@/lib/blobUrl';
 import { downloadBundle } from '@/lib/exportBundle';
+import { callTool } from '@/lib/toolClient';
 import { ModelViewer } from '@/components/ModelViewer';
 import { MotionBrowser } from '@/components/MotionBrowser';
+import { PlayableExportPanel } from '@/components/PlayableExportPanel';
 import { EDITOR_ICON_MAP, motionMeta } from '@/ui-meta';
 import { t } from '@/i18n';
 
@@ -20,6 +22,7 @@ const MotionIcon = EDITOR_ICON_MAP.motion;
 const LowpolyIcon = EDITOR_ICON_MAP.lowpoly;
 const ImgIcon = EDITOR_ICON_MAP.image;
 const HandoffIcon = EDITOR_ICON_MAP.handoff;
+const ImportIcon = EDITOR_ICON_MAP.importGame;
 
 // Center pane: header + transient error/loading banners + the result workspace.
 // Selection from the asset library takes precedence over the latest generation;
@@ -250,6 +253,7 @@ function ResultCard({
           </button>
         )}
         <ExportBundleButton manifest={manifest} />
+        {manifest.assetSlot !== 'characters' && <ImportToGameButton manifest={manifest} />}
       </div>
 
       <DownstreamPanel
@@ -259,6 +263,7 @@ function ResultCard({
         onApplyMotion={onApplyMotion}
         onRetopoLowpoly={onRetopoLowpoly}
       />
+      {manifest.assetSlot === 'characters' && <PlayableExportPanel manifest={manifest} busy={busy} />}
     </article>
   );
 }
@@ -381,6 +386,90 @@ function ExportBundleButton({ manifest }: { manifest: Gen3DAssetManifest }): JSX
       {error && (
         <small className="downstream-hint" role="alert" style={{ flexBasis: '100%' }}>
           {t('ws.export.fail', { error })}
+        </small>
+      )}
+    </>
+  );
+}
+
+
+// Import to Game (props/mesh only — ROLE1 hides this button for characters,
+// gated by the caller on manifest.assetSlot). Cooks/re-cooks the engine
+// identity meta (*.glb.meta.json) so the Edit asset panel recognizes the GLB;
+// normalizes Draco if needed. Local state only, mirrors ExportBundleButton's
+// self-contained pattern but also polls status on mount since import can have
+// already happened in a prior session.
+function ImportToGameButton({ manifest }: { manifest: Gen3DAssetManifest }): JSX.Element {
+  const assetPath = manifest.assetPath;
+  const [status, setStatus] = useState<EngineImportStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus(null);
+    setError(null);
+    setNote(null);
+    void (async () => {
+      const r = await callTool<EngineImportStatus>('gen3d:engine-import-status', { assetPath });
+      if (cancelled) return;
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setStatus(r.result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetPath]);
+
+  const onImport = async () => {
+    setImporting(true);
+    setError(null);
+    setNote(null);
+    const r = await callTool<EngineImportResult>('gen3d:import-to-engine', { assetPath });
+    setImporting(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    if (!r.result.ok) {
+      setError(t('ws.import.failed', { message: r.result.message }));
+      return;
+    }
+    setNote(t('ws.import.successNote'));
+    const refreshed = await callTool<EngineImportStatus>('gen3d:engine-import-status', { assetPath });
+    if (refreshed.ok) setStatus(refreshed.result);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="fx-btn fx-btn--sm"
+        disabled={importing || status === null}
+        title={status?.needsDracoNormalize ? t('ws.import.needsDraco') : undefined}
+        onClick={onImport}
+      >
+        <ImportIcon size={14} />{' '}
+        {importing
+          ? t('ws.import.busy')
+          : error
+            ? t('ws.import.retryBtn')
+            : status?.imported
+              ? t('ws.import.reimportBtn')
+              : t('ws.import.btn')}
+      </button>
+      {note && !error && (
+        <small className="downstream-ok" style={{ flexBasis: '100%' }}>
+          {note}
+        </small>
+      )}
+      {error && (
+        <small className="downstream-hint" role="alert" style={{ flexBasis: '100%' }}>
+          {error}
         </small>
       )}
     </>

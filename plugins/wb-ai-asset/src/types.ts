@@ -58,3 +58,33 @@ export interface UploadImageResult {
   sha256: string;
   expiresInSec: number;
 }
+
+export interface EngineImportStatus {
+  ok: true;
+  imported: boolean;
+  needsManualImport: boolean;
+  needsDracoNormalize: boolean;
+  engineMetaPath: string | null;
+  sourceHash: string | null;
+  importedAt: string | null;
+  message: string;
+  retryable: boolean;
+}
+
+export type EngineImportResult =
+  | {
+      ok: true;
+      firstImport: boolean;
+      normalizedDraco: boolean;
+      reusedGuidCount: number;
+      engineMetaPath: string;
+      assetPath: string;
+      message: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      retryable: boolean;
+    };
+

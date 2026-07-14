@@ -127,3 +127,135 @@ export interface ApplyMotionInput {
   id: number;
   label: string;
 }
+
+// gen3d:engine-import-status / gen3d:import-to-engine (props/mesh only; ROLE1
+// rejects character assets — see server/engine-import.ts).
+export interface EngineImportStatus {
+  ok: true;
+  imported: boolean;
+  needsManualImport: boolean;
+  needsDracoNormalize: boolean;
+  engineMetaPath: string | null;
+  sourceHash: string | null;
+  importedAt: string | null;
+  message: string;
+  retryable: boolean;
+}
+
+export type EngineImportResult =
+  | {
+      ok: true;
+      firstImport: boolean;
+      normalizedDraco: boolean;
+      reusedGuidCount: number;
+      engineMetaPath: string;
+      assetPath: string;
+      message: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      retryable: boolean;
+    };
+
+export type ExportPlayableResult =
+  | {
+      ok: true;
+      firstExport: boolean;
+      modelPath: string;
+      metaPath: string;
+      playablePath: string;
+      localUrl: string;
+      clipCount: number;
+      reusedGuidCount: number;
+      message: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      missingSlots?: string[];
+      retryable: boolean;
+    };
+
+export interface PlayableMotionSlot {
+  slotId: string;
+  displayName: string;
+  required: boolean;
+  playbackMode: 'loop' | 'once' | 'freeze_frame';
+  speed: number;
+  matchKeywords: string[];
+  rootMotion: 'preserve' | 'remove_xz' | 'remove_xyz';
+}
+
+export interface PlayableProfilePreset {
+  profileId: string;
+  displayName: string;
+  slots: PlayableMotionSlot[];
+}
+
+export interface PlayableDeliverySnapshot {
+  modelPath: string;
+  playablePath: string;
+  profileId: string;
+  profileVersion: number;
+  clipSlotIds?: string[];
+  slotGuidRegistry: Record<string, string>;
+  mappingFingerprint: string;
+  exportedAt: string;
+  localUrl: string;
+}
+
+export interface AdoptClipInfo {
+  name: string;
+  guid: string;
+  sourceIndex: number;
+}
+
+export interface AdoptCandidate {
+  modelPath: string;
+  metaPath: string;
+  playablePath: string;
+  localUrl: string;
+  clips: AdoptClipInfo[];
+}
+
+export type AdoptPlayableResult =
+  | {
+      ok: true;
+      modelPath: string;
+      playablePath: string;
+      localUrl: string;
+      reusedGuidCount: number;
+      clipCount: number;
+      message: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      retryable: boolean;
+    };
+
+export interface PlayableProfileResult {
+  ok: true;
+  presets: PlayableProfilePreset[];
+  gameProfile: {
+    profileId: string;
+    profileVersion: number;
+    displayName: string;
+    slots: PlayableMotionSlot[];
+  } | null;
+  effectiveSlots: PlayableMotionSlot[];
+  override: {
+    slots: PlayableMotionSlot[];
+    basedOnProfileId: string;
+    basedOnProfileVersion: number;
+  } | null;
+  mapping: { schemaVersion: 1; mappings: Array<{ slotId: string; motionRefKey: string | null; autoMatched: boolean }>; confirmed: boolean; updatedAt: string } | null;
+  delivery: PlayableDeliverySnapshot | null;
+  oneClickReady: boolean;
+  migrationNeeded: boolean;
+  adoptCandidate: AdoptCandidate | null;
+}

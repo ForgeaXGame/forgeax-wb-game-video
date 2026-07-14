@@ -274,6 +274,9 @@ textarea { font: inherit; color: inherit; }
 
 .aa-generate { width: 100%; padding: 11px; font-size: 13.5px; margin-top: 2px; }
 
+.aa-spin { animation: aa-spin-rotate 0.9s linear infinite; }
+@keyframes aa-spin-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* ── messages ────────────────────────────────────────────────────────────── */
 .aa-error,
 .aa-note {
