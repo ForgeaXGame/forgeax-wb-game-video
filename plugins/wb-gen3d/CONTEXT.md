@@ -58,9 +58,10 @@ _Avoid_: 对新 manifest 继续使用 `assetId` 表示路径。
 | **`hero.glb.meta.json`** | 引擎 pack scanner | 仅干净 `external-asset-package`（`kind`/`importer`/`subAssets`） |
 
 gen3d **生成时只写** `.glb.gen3d-meta.json`（避免私有字段撞引擎 `additionalProperties:false`）。  
-引擎证需用户「导入到游戏 / 导出可玩角色」再办——方案见
-`docs/PLAN-2026-07-13-import-to-engine.md`（🟡 Review 2 重写后仍待 Owner 勾选可执行，未编码）。  
-身份只认主 `hero.glb`。OBJ 默认丢弃。删除即删 `hero.*` 全家桶 + 两套 sidecar。
+引擎证需用户「导入到游戏 / 导出可玩角色」再办——已落地，见
+`docs/PLAN-2026-07-13-import-to-engine.md`（🟢 DONE · 2026-07-14 合 main）。  
+Edit 资产面板按 **subAsset** 列（如 mesh 内部名 `char1`），不是一张 `*-merged` 包卡；可玩预览 URL 用引擎 `/preview/...`。  
+身份只认主 `hero.glb`。OBJ 默认丢弃。删除即删 `hero.*` 全家桶 + 两套 sidecar（可玩交付物默认保留，见 LIFE1）。
 
 ### Asset Name
 
@@ -229,13 +230,13 @@ Per-game runtime asset library。生成时必须归属一个 game；资产直接
   meshes/<name>.glb.gen3d-meta.json
   meshes/<name>.glb.meta.json            # 同上
 
-# 角色可玩合并产物（规划中，P1；不在 3d/ 源目录）
+# 角色可玩合并产物（已落地 P1；不在 3d/ 源目录）
 .forgeax/games/<slug>/assets/characters/
   <name>-merged.glb
   <name>-merged.glb.meta.json
   <name>-merged.glb.playable.json
 
-# 游戏默认动作档案（规划中；插件私有，不进引擎 scanner）
+# 游戏默认动作档案（已落地；插件私有，不进引擎 scanner）
 .forgeax/games/<slug>/.gen3d/playable-character-profile.json
 ```
 
