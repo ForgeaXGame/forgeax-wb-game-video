@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 import {
   cookExternalAssetMeta,
   type ExternalAssetMeta,
-} from '@forgeax-plugin/external-asset-meta';
+} from '@forgeax-extension/external-asset-meta';
 import {
   effectiveSlots,
   gameProfileFromPreset,

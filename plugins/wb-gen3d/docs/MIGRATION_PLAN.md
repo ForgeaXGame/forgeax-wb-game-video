@@ -19,7 +19,7 @@ generated outputs, or the Flask/Python app structure.
 ## Chosen Shape
 
 - Plugin id: `wb-gen3d`
-- Marketplace package id: `@forgeax-plugin/wb-gen3d`
+- Marketplace package id: `@forgeax-extension/wb-gen3d`
 - Product role: 3D generation entrypoint for game assets, with benchmark/comparison as supporting evidence
 - Initial implementation boundary: `packages/marketplace/plugins/wb-gen3d/`
 - Provider order: Hunyuan first, Meshy second, Rodin third after key/API details arrive
@@ -78,7 +78,7 @@ Goal: make the workbench discoverable without real provider execution.
 
 Deliverables:
 
-- `forgeax-plugin.json` with `kind: "workbench"`.
+- `forgeax-extension.json` with `kind: "workbench"`.
 - Minimal frontend shell for provider capability status, result queue, and
   rubric display.
 - Placeholder tool schemas for provider status and result listing.

@@ -74,7 +74,7 @@ export function SetupSidebar({
   // consume payloads addressed to us so a wb-anim handoff isn't swallowed.
   useEffect(() => {
     const HANDOFF_KEY = 'forgeax:anim-handoff';
-    const SELF_PLUGIN_ID = '@forgeax-plugin/wb-gen3d';
+    const SELF_PLUGIN_ID = '@forgeax-extension/wb-gen3d';
     function applyHandoff() {
       let raw: string | null = null;
       try {

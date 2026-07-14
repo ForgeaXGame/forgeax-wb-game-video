@@ -99,7 +99,7 @@ flowchart LR
 - 新 `server/providers/rodin.ts`：`POST https://api.hyper3d.com/api/v2/rodin`(multipart, Bearer)；poll `/api/v2/status`(task uuid)；下载 `/api/v2/download`。text(prompt)/image(单图)/views(多图 `condition_mode=concat`)；`tier=Regular`、`material=PBR`、`quality_override`、`geometry_file_format=glb`。注入式 `fetchImpl/downloadImpl`(quota-safe 冒烟)。
 - `server/env.ts` 加 `getRodinEnv()`：`RODIN_API_KEY`(+ `RODIN_BASE_URL` 默认 `https://api.hyper3d.com`)，受 `GEN3D_ENABLE_REAL_PROVIDERS` 总闸控制。
 - provider enum 扩展：`shared/manifest.ts`/`catalog.ts`(CAPABILITIES 加 Rodin 行)、`src/types.ts`(`GenProvider` 加 `rodin`)、`src/ui-meta.ts`(label「Rodin」+ 图标)、`tool-handlers.ts`(`resolveProvider`/`runGeneration` 分支)。
-- `forgeax-plugin.json`：tool 描述补 Rodin；不新增 tool(provider 是参数)。
+- `forgeax-extension.json`：tool 描述补 Rodin；不新增 tool(provider 是参数)。
 - 验证：注入 fetch 冒烟(一次 submit、正确 multipart、poll→download)；拿 key 后实测一条转正(更新 CAPABILITY_MATRIX)。
 
 ### M12 — UI 升级（需求 #3/#4/#5/#6）

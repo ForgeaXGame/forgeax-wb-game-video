@@ -80,7 +80,7 @@ flowchart TD
   - `生成 3D 四视图`
   - `送去 3D 生成`
 - `生成 3D 四视图` 调用新 helper，生成后在当前 preview 区展示 front/back/left/right 缩略图。
-- `送去 3D 生成` 只在四视图存在时启用，点击后写 handoff payload 并 `postMessage` 到 `@forgeax-plugin/wb-gen3d`。
+- `送去 3D 生成` 只在四视图存在时启用，点击后写 handoff payload 并 `postMessage` 到 `@forgeax-extension/wb-gen3d`。
 - 不自动调用 `gen3d:views-to-3d`，只预填 `wb-gen3d` 的 views mode，让用户在 3D 工坊确认生成。
 
 接收方已存在，可复用：
@@ -90,7 +90,7 @@ flowchart TD
   // writes the view URLs to a shared same-origin localStorage key ...
   useEffect(() => {
     const HANDOFF_KEY = 'forgeax:anim-handoff';
-    const SELF_PLUGIN_ID = '@forgeax-plugin/wb-gen3d';
+    const SELF_PLUGIN_ID = '@forgeax-extension/wb-gen3d';
     // ...
       setMode('views');
       setAssetSlot('characters');
@@ -143,7 +143,7 @@ flowchart TD
 落点：
 
 - `packages/interface/src/components/Confirm/ConfirmDialog.tsx`
-- `packages/marketplace/plugins/wb-gen3d/forgeax-plugin.json`
+- `packages/marketplace/plugins/wb-gen3d/forgeax-extension.json`
 
 当前前端使用 `confirmId`：
 
@@ -167,7 +167,7 @@ interface ConfirmRequiredEnv {
 - POST `/api/tools/confirm` body 改为 `{ token, decision, reason }`。
 - `gen3d:auto-rig` 增加 `requireConfirm: "always"` 和中文/英文 `confirmMessage`，说明 Meshy 约 5 credits。
 - `gen3d:apply-motion` 增加 `requireConfirm: "always"` 和中文/英文 `confirmMessage`，说明 Meshy 约 3 credits。
-- `gen3d:set-credentials` / `gen3d:delete-asset` 将无效 `confirm: true` 改为 `requireConfirm: "destructive"`。⚠ **v3**：二者 `exposedToAI:false`（`forgeax-plugin.json:60,209`），requireConfirm 只 gate AI caller、UI 用户绕过——此改仅清理非法字段，**不构成确认门**。
+- `gen3d:set-credentials` / `gen3d:delete-asset` 将无效 `confirm: true` 改为 `requireConfirm: "destructive"`。⚠ **v3**：二者 `exposedToAI:false`（`forgeax-extension.json:60,209`），requireConfirm 只 gate AI caller、UI 用户绕过——此改仅清理非法字段，**不构成确认门**。
 - 更新 manifest 描述，删掉“requireConfirm 当前无消费”的过时说明。
 
 ## 4 · 分批执行建议
@@ -264,7 +264,7 @@ interface ConfirmRequiredEnv {
 
 `requireConfirm` 闸只在 `registry.callTool`、且只对 `caller.kind==='ai'`（`cli/src/tools/registry.ts:249`）。gen3d 工具走 sidecar → `forgeax-core-adapter.hostBridge` → `makeInProcessExecuteTool`（`cli/src/kernel/host-tool-bridge.ts:29-84`）→ `checkKernelTool` → `executeTool`，而 `executeTool` **不查 requireConfirm**（`cli/src/kits/tool/tool-executor.ts:54-55`）。
 
-gen3d manifest 自己（2026-06-23）写明：“confirm/requireConfirm 字段当前在 server/interface/cli 均无消费，不能当作实际护栏”（`wb-gen3d/forgeax-plugin.json:143`）。
+gen3d manifest 自己（2026-06-23）写明：“confirm/requireConfirm 字段当前在 server/interface/cli 均无消费，不能当作实际护栏”（`wb-gen3d/forgeax-extension.json:143`）。
 
 是否触发取决于 AI 调用是否落到 host_tool_bridge KIT 的桥接包装（其 `.execute` 再进 `callTool(caller:'ai')` → 闸触发，`cli/builtin/kits/host-tools/plugins/host_tool_bridge.ts:99-103`），还是直接走 `executeTool`/handler（绕过）。**仓库内矛盾、未解决。** 并存第二套审批：`makeInProcessExecuteTool` 先跑 `checkKernelTool` + `requestToolApproval`（权限卡，`host-tool-bridge.ts:54-66`），计划未提，有"权限卡 + 确认弹窗"双弹风险。
 
@@ -277,7 +277,7 @@ gen3d manifest 自己（2026-06-23）写明：“confirm/requireConfirm 字段�
 - **DR1 · handoff views 需形状转换**：`SetupSidebar` 期望 `views.front/back/left/right` 是**字符串 URL**（`SetupSidebar.tsx:87,100-103`，`!views.front` 直接 return），handler 返回 `{path,url}` 对象（`types.ts:231`、`handlers.ts:393`）。§3.A 必须 `{path,url}→url` 再写 handoff，且保证 front 存在。
 - **DR2 · returns.json 是错的不是"不一致"**：现 schema `required:["charId","slug","manifest"]`（`wb-character/schemas/generate-turnaround.returns.json:4`）要求 handler **从不返回**的 `manifest` 字段。修法 = 严格对齐 `GenerateTurnaroundResult`（`charId/slug/views.{path,url}/manifestPath/model/costEstimate`），删除假的 `manifest`。
 - **DR3 · §3.C prompt 定位偏了**：opt-in/默认静态/确认配额已存在（`80-workbench-agents.md:43-45`）；真正缺的是 turnaround→views-to-3d 之间的停顿（现文 `:39-41` 叫 Forge"顺序调两个"）。
-- **DR4 · set-credentials/delete-asset 改 requireConfirm 仅清理、无护栏收益**：二者 `exposedToAI:false`（`forgeax-plugin.json:60,209`），UI 用户 caller 绕过门控。
+- **DR4 · set-credentials/delete-asset 改 requireConfirm 仅清理、无护栏收益**：二者 `exposedToAI:false`（`forgeax-extension.json:60,209`），UI 用户 caller 绕过门控。
 
 ### 7.3 · Missing Tests
 

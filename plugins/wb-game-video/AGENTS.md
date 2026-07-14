@@ -8,7 +8,7 @@
 
 ## 它是什么
 
-`@forgeax-plugin/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 把一张
+`@forgeax-extension/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 把一张
 **声明式图（GameGraph）**——演出节点(视频) + 条件/效果出边——拼成可序列化的 `GameScenario`
 JSON；纯 TS 状态机引擎直接吃这张图确定性回放，视频上叠血条/QTE/选择等可插拔组件。
 
@@ -163,4 +163,4 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | **QTE / 数值填表 Schema + 扩展协议**（🟢 SPEC） | `<repo>/docs/superpowers/specs/2026-07-09-wb-game-video-plugin-extension-protocol-design.md` §7 |
 | **模块划分 + 实施清单**（`runtime` / `graph` / `editor`） | 同上文档 §12 / §10；素材在 `editor/assets` |
 | 包定位 / 媒体三态 / AI 调用指南 | `README.md` / `SKILL.md`（trigger `/gamevideo`） |
-| 插件声明（surface / tool / port / permissions） | `forgeax-plugin.json` |
+| 插件声明（surface / tool / port / permissions） | `forgeax-extension.json` |

@@ -1,5 +1,5 @@
 {
-  "name": "@forgeax-plugin/wb-gen3d",
+  "name": "@forgeax-extension/wb-gen3d",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.184.0",
-    "@forgeax-plugin/external-asset-meta": "file:../_shared/external-asset-meta",
+    "@forgeax-extension/external-asset-meta": "file:../_shared/external-asset-meta",
     "@gltf-transform/core": "^4.4.0",
     "@gltf-transform/extensions": "^4.4.0",
     "@gltf-transform/functions": "^4.4.0",

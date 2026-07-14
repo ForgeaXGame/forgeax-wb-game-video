@@ -1,6 +1,6 @@
 # DESIGN — wb-diffusion-renderer (real-time viewport diffusion renderer)
 
-Status: **built.** Plugin id `@forgeax-plugin/wb-diffusion-renderer`. See CONTEXT.md
+Status: **built.** Plugin id `@forgeax-extension/wb-diffusion-renderer`. See CONTEXT.md
 (glossary) and docs/adr/0001–0004 for the locked decisions.
 
 ## One-line
@@ -35,7 +35,7 @@ that starts/stops the stream.
 
 ## Components
 
-1. **Inline plugin panel** — the `@forgeax-plugin/wb-diffusion-renderer` DockShell plugin panel.
+1. **Inline plugin panel** — the `@forgeax-extension/wb-diffusion-renderer` DockShell plugin panel.
    UI: prompt, steps, interp, Start/Stop, live metrics, and the preview image. It is
    injected by Studio as an inline workbench panel so the frame sink stays in the
    parent window and frames never cross an iframe boundary.
@@ -126,7 +126,7 @@ Why this reaches ~10 fps without stalling the engine:
 ## Display / single plugin panel (decided)
 
 Enhanced frames render into the same DockShell plugin panel that owns the Start/Stop
-controls (`wb:@forgeax-plugin/wb-diffusion-renderer`), not into a layer above `canvas#app` and not
+controls (`wb:@forgeax-extension/wb-diffusion-renderer`), not into a layer above `canvas#app` and not
 into a separate `diffusion-renderer-output` panel. The original game viewport remains visible and
 interactive while the plugin panel letterboxes the service's fixed 576×320 frames
 (`object-fit: contain`). Phase 2 plays the display buffer at ~30 fps. The old iframe
@@ -178,7 +178,7 @@ the `lora` parameter (see the 2026-07-08 API update).
   (`/api/wb/diffusion-renderer/predict`, key injected) → FluxRT inference → letterboxed output in the
   plugin panel. Verified in real WebGPU Chrome (old host shim booted, plugin served, round trip ok,
   output painted). Files: server `game/wb-diffusion-renderer.ts` + main.ts wiring;
-  plugin `forgeax-plugin.json` + `index.html`;
+  plugin `forgeax-extension.json` + `index.html`;
   a now-retired Studio boot hook. The server `/predict` capability remains; the client-side
   single-frame path was removed after the realtime panel became the only production entry.
   Original phrasing below.
@@ -200,7 +200,7 @@ the `lora` parameter (see the 2026-07-08 API update).
 
 ## Remaining implementation notes (not blocking)
 
-- Exact `forgeax-plugin.json` manifest fields (id, workbench position/panelSize, entry,
+- Exact `forgeax-extension.json` manifest fields (id, workbench position/panelSize, entry,
   `requestedEnv`) — fill at build time following `wb-observatory` (UI-only) + `wb-character`
   (backend) as templates.
 - How the inline panel discovers the active viewport canvas across game switches

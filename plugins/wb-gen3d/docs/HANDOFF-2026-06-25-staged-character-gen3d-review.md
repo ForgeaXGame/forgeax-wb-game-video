@@ -17,7 +17,7 @@
 3. `packages/marketplace/plugins/wb-character/src/lib/api-client.ts`
 4. `packages/marketplace/plugins/wb-gen3d/src/components/SetupSidebar.tsx`
 5. `packages/interface/src/components/Confirm/ConfirmDialog.tsx`
-6. `packages/marketplace/plugins/wb-gen3d/forgeax-plugin.json`
+6. `packages/marketplace/plugins/wb-gen3d/forgeax-extension.json`
 7. `packages/marketplace/src/system-prompt/80-workbench-agents.md`
 
 ## 2 · Review 目标
@@ -51,14 +51,14 @@
 
 ### `wb-gen3d` 端已能接收 handoff
 
-`SetupSidebar` 已读取 `forgeax:anim-handoff`，目标为 `@forgeax-plugin/wb-gen3d` 时会切到 views mode 并预填四视图：
+`SetupSidebar` 已读取 `forgeax:anim-handoff`，目标为 `@forgeax-extension/wb-gen3d` 时会切到 views mode 并预填四视图：
 
 ```67:105:packages/marketplace/plugins/wb-gen3d/src/components/SetupSidebar.tsx
   // Cross-workbench handoff from wb-character「送去生成 3D 模型」: the Studio host
   // writes the view URLs to a shared same-origin localStorage key ...
   useEffect(() => {
     const HANDOFF_KEY = 'forgeax:anim-handoff';
-    const SELF_PLUGIN_ID = '@forgeax-plugin/wb-gen3d';
+    const SELF_PLUGIN_ID = '@forgeax-extension/wb-gen3d';
     // ...
       setMode('views');
       setAssetSlot('characters');

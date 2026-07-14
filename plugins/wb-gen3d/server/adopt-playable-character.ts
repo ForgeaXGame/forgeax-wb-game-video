@@ -2,7 +2,7 @@
 // yet bound to this gen3d source asset (PLAN §4.4 / §5.3).
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { ExternalAssetMeta } from '@forgeax-plugin/external-asset-meta';
+import type { ExternalAssetMeta } from '@forgeax-extension/external-asset-meta';
 import {
   effectiveSlots,
   gameProfileFromPreset,

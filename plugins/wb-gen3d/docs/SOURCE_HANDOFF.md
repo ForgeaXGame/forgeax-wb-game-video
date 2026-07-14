@@ -10,7 +10,7 @@ This file is the target-side pointer for future `forgeax-studio` migration work.
 
 ## Target
 
-- Target plugin: `@forgeax-plugin/wb-gen3d`
+- Target plugin: `@forgeax-extension/wb-gen3d`
 - Path: `/Users/laurenceelu/dev/ForgeaXGame/forgeax-studio/packages/marketplace/plugins/wb-gen3d/`
 - Product role: production 3D generation entrypoint for game assets, with benchmark/comparison as a supporting view.
 - Provider order: Hunyuan first, Meshy second, Rodin third after key/API details arrive.
@@ -77,7 +77,7 @@ Before implementing real provider calls, read the full source handoff and then u
 
 1. `docs/MIGRATION_PLAN.md`
 2. `docs/CAPABILITY_MATRIX.md`
-3. `forgeax-plugin.json`
+3. `forgeax-extension.json`
 4. `schemas/*.json`
 5. `server/tool-handlers.ts`
 6. `shared/catalog.ts`

@@ -1,6 +1,6 @@
 # 图像视图重构设计 · 视频制作基准库
 
-> 范围：`@forgeax-plugin/wb-reel` 的「图像」视图（`forgeView='image'`）。
+> 范围：`@forgeax-extension/wb-reel` 的「图像」视图（`forgeView='image'`）。
 > 剧情树视图本轮不动（另有智能体优化）。
 
 ## 一、北极星原则

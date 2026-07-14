@@ -53,7 +53,7 @@
 
 ```mermaid
 flowchart TD
-  manifest["forgeax-plugin.json provides.agent.tools:[gen3d:*]"]
+  manifest["forgeax-extension.json provides.agent.tools:[gen3d:*]"]
   sessions["forgeax-cli/src/api/sessions.ts kits.config[host-tools].allow"]
   bridge["forgeax-cli/builtin/kits/host-tools/.../host_tool_bridge.ts filter exposedToAI+hasHandler+glob, register hosttool:*"]
   conscious["forgeax-cli/src/core/conscious-agent.ts getToolsFn"]

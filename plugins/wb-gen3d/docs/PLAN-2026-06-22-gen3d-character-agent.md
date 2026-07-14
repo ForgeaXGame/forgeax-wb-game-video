@@ -39,10 +39,10 @@
 ## 3 · 本轮已落地（this session，2026-06-22）
 
 - **A1 — 新建 `packages/marketplace/plugins/agent-gen3d/`**：
-  - `forgeax-plugin.json`（`kind:"agent"`，`provides.agent.tools: ["gen3d:*"]`，照抄 `agent-reel-storyboard`）。
+  - `forgeax-extension.json`（`kind:"agent"`，`provides.agent.tools: ["gen3d:*"]`，照抄 `agent-reel-storyboard`）。
   - `persona/zh.md`（已按 **D2 静态优先**写：生成静态→评分→命名→交付→主动提示可动→仅按需绑骨/动作）。
   - `memory/lessons.md`（占位）。
-- **A2（一半）— `wb-gen3d/forgeax-plugin.json`**：`gen3d:score-quality`、`gen3d:rename-asset` 的 `exposedToAI` 翻 `true`（纯本地、无配额）。其余工具描述本就齐全。
+- **A2（一半）— `wb-gen3d/forgeax-extension.json`**：`gen3d:score-quality`、`gen3d:rename-asset` 的 `exposedToAI` 翻 `true`（纯本地、无配额）。其余工具描述本就齐全。
 - **校验**：`bun packages/types/test/validate-manifests.ts` → **57/57 ok**（`agent-gen3d` 识别为合法 `agent`；`wb-gen3d` 翻 flag 后仍合法）。
 - **当前 AI 可见的 `gen3d:*` 工具（10 个）**：`provider-status` `list-assets` `generate-meshy-text-mock` `text-to-3d` `image-to-3d` `views-to-3d` `refine-mesh` `pose-standardization` `score-quality` `rename-asset`。
   - ⇒ 「**生成 + 评分 + 命名**」半条产线已 **agent-ready**（一旦 server 扫描到 `agent-gen3d`，桥即把这 10 个注入它的对话清单）。
@@ -56,7 +56,7 @@
 |---|---|---|---|
 | **T1** | **A0 动态确认**（桥真的注入了工具） | 起 stack（`claude-code` provider）→ 在 Studio 里让 `agent-gen3d` 真调一次 `gen3d:list-assets`，确认它进了对话清单。**零配额**。 | — |
 | **T2** | persona 措辞校核 | 复核 `agent-gen3d/persona/zh.md` 是否准确体现 D2（本轮已改，review 把关）。 | `agent-gen3d/persona/zh.md` |
-| **T3** | **A4 — 翻"会动"那半套** | 把 `auto-rig`/`apply-motion`/`list-motions` 翻 `exposedToAI:true`，同步 `catalog`/`CAPABILITY_MATRIX`。**前置闸门**：①真机目视签字（PLAN-2026-06-21 §7 已有真机 ModelViewer 播放，待 operator 认可）；②花钱护栏（见 Q-cost）。 | `wb-gen3d/forgeax-plugin.json` · `shared/catalog.ts` · `docs/CAPABILITY_MATRIX.md` |
+| **T3** | **A4 — 翻"会动"那半套** | 把 `auto-rig`/`apply-motion`/`list-motions` 翻 `exposedToAI:true`，同步 `catalog`/`CAPABILITY_MATRIX`。**前置闸门**：①真机目视签字（PLAN-2026-06-21 §7 已有真机 ModelViewer 播放，待 operator 认可）；②花钱护栏（见 Q-cost）。 | `wb-gen3d/forgeax-extension.json` · `shared/catalog.ts` · `docs/CAPABILITY_MATRIX.md` |
 | **T4** | A3 自动评分回填（可选） | 生成成功后把客观五维 `qualityScore` 自动写进 sidecar，agent 无需再显式评分。 | `wb-gen3d/server/tool-handlers.ts` · `server/per-game-store.ts` |
 | **T5** | A5 引擎端到端（跨边界，需授权） | 让游戏引擎真的加载 gen3d 角色并 ▶Play 跑动画。**超出插件边界，单独立项**。 | engine / game-template（插件外） |
 
