@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:delete-asset args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Injected by the workbench host; required."
+    },
+    "assetPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Game-relative path of the asset to delete (e.g. assets/3d/characters/hero.glb). Destructive: removes the main GLB, its sidecar, and same-basename sidefiles, and tombstones the cacheKey so it never resurrects from a cache hit."
+    }
+  },
+  "required": ["assetPath"],
+  "additionalProperties": false
+}

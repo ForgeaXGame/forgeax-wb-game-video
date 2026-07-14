@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "zh": "道具 / 图标工作台 · 管理 items.json 与 48×48 图标，批量规范化源图，并按视觉风格生成变体计划（接 Gemini / 像素管线）。",
+    "en": "Items & icons workbench — manage items.json and 48×48 icons, batch-normalize source art, and plan multi-style generation (Gemini / pixel pipeline hooks)."
+  },
+  "sections": [
+    {
+      "title": { "zh": "能力", "en": "Capabilities" },
+      "body": {
+        "zh": "items.json 编辑 · 48px 规范化 · 风格计划 · 图标网格预览",
+        "en": "items.json editing · 48px normalize · style plans · icon grid preview"
+      }
+    },
+    {
+      "title": { "zh": "工具", "en": "Tools" },
+      "body": {
+        "zh": "items:list · items:normalize-sources · items:generate-style-plan",
+        "en": "items:list · items:normalize-sources · items:generate-style-plan"
+      }
+    }
+  ],
+  "history": [
+    {
+      "version": "0.1.0",
+      "date": "2026-07-06",
+      "notes": {
+        "zh": "首版:React 工作台 + 规范化管线 + 风格计划",
+        "en": "First release: React workbench + normalize pipeline + style plans"
+      }
+    }
+  ]
+}

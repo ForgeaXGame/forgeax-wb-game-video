@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:views-to-3d returns",
+  "type": "object",
+  "properties": {
+    "ok": { "const": true },
+    "cacheKey": { "type": "string" },
+    "cacheHit": { "type": "boolean" },
+    "usedMock": {
+      "type": "boolean",
+      "description": "True when the real provider was not configured and a deterministic mock was used (quota-safe fallback)."
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "manifestVersion": { "const": 1 },
+        "assetId": { "type": "string" },
+        "kind": { "enum": ["mesh", "animation"] },
+        "provider": { "enum": ["meshy", "hunyuan_workflow", "hunyuan_rest", "rodin"] },
+        "providerMode": { "enum": ["mock", "real"] },
+        "mode": { "enum": ["text", "image", "views", "refine"] },
+        "sourceJobId": { "type": ["string", "null"] },
+        "sourceInputAssetIds": { "type": "array", "items": { "type": "string" } },
+        "prompt": { "type": ["string", "null"] },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": { "type": "string" },
+              "role": {
+                "enum": [
+                  "source_mesh",
+                  "rigged_model",
+                  "preview_image",
+                  "texture",
+                  "animation_clip",
+                  "animated_model"
+                ]
+              },
+              "format": {
+                "enum": ["glb", "fbx", "obj", "mtl", "usdz", "stl", "png", "jpg", "mp4"]
+              },
+              "storageKey": { "type": "string" },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string" },
+              "localUrl": { "type": ["string", "null"] },
+              "hasSkeleton": { "type": "boolean" },
+              "skeletonProfile": { "enum": ["humanoid", "unknown"] },
+              "animationInputReady": { "type": "boolean" },
+              "motionType": {
+                "type": "integer",
+                "minimum": 9,
+                "maximum": 16,
+                "description": "Present only on role=animated_model files: the motion_retarget v1 motion this clip is (9 跨步 / 10 摔倒 / 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞). Structural so multiple motions coexist per asset. Absent for non-animated roles."
+              }
+            },
+            "required": [
+              "fileId",
+              "role",
+              "format",
+              "storageKey",
+              "bytes",
+              "sha256",
+              "localUrl",
+              "hasSkeleton",
+              "skeletonProfile",
+              "animationInputReady"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readiness": {
+          "type": "object",
+          "properties": {
+            "hasSourceMesh": { "type": "boolean" },
+            "rigged": { "type": "boolean" },
+            "animated": { "type": "boolean" }
+          },
+          "required": ["hasSourceMesh", "rigged", "animated"],
+          "additionalProperties": false
+        },
+        "quality": {
+          "type": "object",
+          "properties": {
+            "geometry": { "type": ["number", "null"] },
+            "topology": { "type": ["number", "null"] },
+            "texture": { "type": ["number", "null"] },
+            "pbr": { "type": ["number", "null"] },
+            "prompt_fidelity": { "type": ["number", "null"] },
+            "total": { "type": ["number", "null"] }
+          },
+          "required": ["geometry", "topology", "texture", "pbr", "prompt_fidelity", "total"],
+          "additionalProperties": false
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": [
+        "manifestVersion",
+        "assetId",
+        "kind",
+        "provider",
+        "providerMode",
+        "mode",
+        "sourceJobId",
+        "sourceInputAssetIds",
+        "prompt",
+        "files",
+        "readiness",
+        "quality",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["ok", "cacheKey", "cacheHit", "usedMock", "manifest"],
+  "additionalProperties": false
+}

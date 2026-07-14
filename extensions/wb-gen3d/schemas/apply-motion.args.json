@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:apply-motion args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Injected by the workbench host; required."
+    },
+    "assetPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Game-relative path of a RIGGED asset (from gen3d:auto-rig). The animated GLB+FBX for this motion are appended to THIS asset. Dispatch is by the asset's recorded rig system (Meshy public default, Hunyuan dev fallback)."
+    },
+    "actionId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Meshy path (public-beta default): a positive action_id chosen from gen3d:list-motions. Drives Meshy /animations via the asset's OWN rig_task_id. Idempotent per motion; required when the asset was Meshy-rigged."
+    },
+    "label": {
+      "type": "string",
+      "description": "Optional display label for the chosen motion (the UI passes the action name it showed). Stored on the clip; the catalog is not re-queried. Defaults to \"动作 <id>\"."
+    },
+    "autoReRig": {
+      "type": "boolean",
+      "description": "Meshy only: when the rig task has expired (~3 days), re-rig first (+credits) instead of failing with rig_expired. Default false."
+    },
+    "motionType": {
+      "type": "integer",
+      "minimum": 9,
+      "maximum": 16,
+      "description": "Hunyuan dev path only: v1 fixed motion 9 跨步 / 10 摔倒 / 11 跳跃 / 12 踢腿 / 13 挥击 / 14 步行 / 15 跑步 / 16 跳舞. Used (and required) when the asset was rigged via Hunyuan. Idempotent per motion."
+    }
+  },
+  "required": ["assetPath"],
+  "additionalProperties": false
+}
