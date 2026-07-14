@@ -1,5 +1,0 @@
-# M13 Gate 0/1 probe is an out-of-tree operator tool (PLAN §M13-0: "不进仓").
-# Keep the probe script and its real-machine inputs/outputs out of git.
-m13-gate-probe.ts
-.probe-in/
-.probe-out/
