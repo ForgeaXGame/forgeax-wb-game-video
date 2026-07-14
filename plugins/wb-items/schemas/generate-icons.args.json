@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "slug": { "type": "string" },
-    "batchId": { "type": "string" },
-    "items": { "type": "array" }
-  },
-  "required": ["batchId", "items"]
-}

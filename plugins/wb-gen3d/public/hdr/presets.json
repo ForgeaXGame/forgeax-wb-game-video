@@ -1,8 +1,0 @@
-{
-  "_note": "把 .hdr 放进本目录后，在 custom[] 加一条 { id, label, file, blurriness?, intensity? }。builtin[] 无需文件（three RoomEnvironment）。详见 README.md。",
-  "_example": { "id": "studio-soft", "label": "柔光影棚", "file": "studio-soft.hdr", "blurriness": 0.25, "intensity": 1 },
-  "builtin": [
-    { "id": "builtin-neutral", "label": "中性影棚（内置）", "kind": "room-environment" }
-  ],
-  "custom": []
-}
