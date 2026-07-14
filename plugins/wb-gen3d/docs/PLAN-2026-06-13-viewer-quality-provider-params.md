@@ -199,7 +199,7 @@ P5 参数），三条独立便于 review。P2 的 `.hdr` 缺失时以 builtin Ro
 - 入参：`{ slug, assetPath, objective?: ObjectiveMetrics, images?: string[], aiPass?: boolean, manual?: Partial<QualityReport> }`。
 - 行为：合并客观/AI/人工三来源 → 写 sidecar `custom.quality` + 同步 `manifest.quality` 数值字段 → 返回更新后的 manifest。
 - `exposedToAI: false`（初期），`confirm:false`；AI 环节 mock-first。
-- schema：新增 `schemas/score-quality.args.json` / `.returns.json`，注册进 `forgeax-plugin.json`。
+- schema：新增 `schemas/score-quality.args.json` / `.returns.json`，注册进 `forgeax-extension.json`。
 
 ---
 
@@ -287,7 +287,7 @@ interface QualityReport {
 | 区 | 新增 | 修改 |
 |---|---|---|
 | A 视图器 | `src/components/viewer/{scene,environment,shadows,wireframe,capture}.ts`、`public/hdr/*`(operator) | `src/components/ModelViewer.tsx`、`src/styles.css` |
-| B 评分 | `shared/quality/heuristics.ts`、`src/components/QualityInspector.tsx`、`schemas/score-quality.{args,returns}.json` | `shared/manifest.ts`、`src/components/AssetLibrary.tsx`(移除 InspectorReserved)、`src/App.tsx`、`src/types.ts`、`server/tool-handlers.ts`、`server/per-game-store.ts`(sidecar quality)、`forgeax-plugin.json` |
+| B 评分 | `shared/quality/heuristics.ts`、`src/components/QualityInspector.tsx`、`schemas/score-quality.{args,returns}.json` | `shared/manifest.ts`、`src/components/AssetLibrary.tsx`(移除 InspectorReserved)、`src/App.tsx`、`src/types.ts`、`server/tool-handlers.ts`、`server/per-game-store.ts`(sidecar quality)、`forgeax-extension.json` |
 | C 参数 | `docs/PROVIDER_PARAMS.md`、`shared/provider-params.ts` | `src/ui-meta.ts`、`src/components/SetupSidebar.tsx`、`src/types.ts`、`server/tool-handlers.ts`、`server/providers/*.ts`、`schemas/{text,image,views}-to-3d.args.json`、`docs/CAPABILITY_MATRIX.md` |
 | 文档 | `docs/adr/0004-on-demand-hybrid-quality-scoring.md` | `HANDOFF.md`、`CONTEXT.md`（术语：QualityReport / 渲染设置） |
 | 边界 | — | `packages/server/src/main.ts`（§8，需授权） |

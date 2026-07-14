@@ -20,7 +20,7 @@
 - **B 并行异步 = v2 48 动作库（M14）**：关键路径在上游回应（@raineejiang），**不阻塞主轴**；现在就把上游问询 + 探测脚本发出去/备好，等回应再做增量集成。
 - **C 附属 = 打磨**：HDR / 视图器 / 评分 UI，**只做 A 需要的**，其余按需。
 
-**Tech Stack:** TypeScript（插件前端 React + 后端 bun handlers）/ 混元 REST + Meshy + Rodin provider / forgeax ECS 引擎（skinned GLB via `loadByGuid` + `Skin` + `AnimationPlayer`）/ forgeax plugin manifest（`forgeax-plugin.json` tool/agent 契约）。
+**Tech Stack:** TypeScript（插件前端 React + 后端 bun handlers）/ 混元 REST + Meshy + Rodin provider / forgeax ECS 引擎（skinned GLB via `loadByGuid` + `Skin` + `AnimationPlayer`）/ forgeax plugin manifest（`forgeax-extension.json` tool/agent 契约）。
 
 **本轮边界（沿用工作区硬规则）:** 默认只动 `packages/marketplace/plugins/wb-gen3d/` + 新增 `agent-gen3d` 插件目录。**A5（引擎加载）和任何 `packages/server`/`packages/engine` 改动跨插件边界，必须先拿 operator 授权**（见 §0.2 / §2.A5）。
 
@@ -47,7 +47,7 @@ agent 真正能调用一个 `gen3d:*` 工具，需要三件事**同时成立**�
 **核实结论：桥早已存在且在用（2026-05-30 落地，commit `8b86459`）。** 完整链路（均已读码确认）：
 
 ```
-forgeax-plugin.json  provides.agent.tools: ["gen3d:*"]
+forgeax-extension.json  provides.agent.tools: ["gen3d:*"]
   └─→ ensureAgentPersonaKitOverrides()   core/session.ts:182 · api/sessions.ts:313 → agents/host-tools-overrides.ts:42
         写入 agent.json  kits.config['host-tools'].allow
   └─→ host_tool_bridge.ts   builtin/kits/host-tools/plugins/
@@ -58,7 +58,7 @@ forgeax-plugin.json  provides.agent.tools: ["gen3d:*"]
 ```
 另有 CLI provider 并行路：`GET /api/tools?agent=`（`api/tools.ts:42`）→ 同一 allow 解析 → MCP 暴露给 Claude Code/Codex。
 
-**现成可抄的工作先例**：`agent-reel-storyboard/forgeax-plugin.json:26` 声明 `provides.agent.tools:["reel:*"]`；
+**现成可抄的工作先例**：`agent-reel-storyboard/forgeax-extension.json:26` 声明 `provides.agent.tools:["reel:*"]`；
 `agent-kotone` / `agent-reia` / narrative / character-forge 同模式在用。
 
 ⇒ **A0 不再是"de-risk 桥是否存在 / 可能要授权改 server 实现桥"，而降级为"照抄 reel-storyboard 配一下 + 跑一轮对话确认"
@@ -134,7 +134,7 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 **目的：** 用一笔零配额对话确认"声明 `provides.agent.tools` 白名单 + `exposedToAI:true` ⇒ 工具真进 agent 的 LLM 清单"。
 
 **Files（只读参考，不改）:**
-- `packages/marketplace/plugins/agent-reel-storyboard/forgeax-plugin.json:26`（`provides.agent.tools` 模板，A1 直接抄）
+- `packages/marketplace/plugins/agent-reel-storyboard/forgeax-extension.json:26`（`provides.agent.tools` 模板，A1 直接抄）
 - `packages/server/builtin/kits/host-tools/plugins/host_tool_bridge.ts:149-151,175`（桥实现，了解即可）
 
 - [ ] **Step 1（动态确认，零配额）**：给一个测试 agent（或临时给 `agent-lowpoly`）加 `provides.agent.tools:["gen3d:*"]`，`bash start.sh`，在 Studio 里跟它对话让它调 `gen3d:list-assets`（已 `exposedToAI:true`、纯本地、零配额）。
@@ -151,17 +151,17 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 **目的：** 给 gen3d 一个"会用这套工具"的 agent 人格（首选模板 = `agent-reel-storyboard`，它的 `provides.agent.tools` 白名单已被 §0.1 的桥验证可用）。
 
 **Files:**
-- Create: `packages/marketplace/plugins/agent-gen3d/forgeax-plugin.json`
+- Create: `packages/marketplace/plugins/agent-gen3d/forgeax-extension.json`
 - Create: `packages/marketplace/plugins/agent-gen3d/persona/zh.md`
 - Create: `packages/marketplace/plugins/agent-gen3d/memory/`（空目录占位，放 `.gitkeep`）
-- Reference: `packages/marketplace/plugins/agent-reel-storyboard/forgeax-plugin.json`（**首选模板**，`provides.agent.tools` 桥白名单工作先例）；`agent-lowpoly/forgeax-plugin.json`（次选）
+- Reference: `packages/marketplace/plugins/agent-reel-storyboard/forgeax-extension.json`（**首选模板**，`provides.agent.tools` 桥白名单工作先例）；`agent-lowpoly/forgeax-extension.json`（次选）
 
 - [ ] **Step 1：写 manifest**（命名/avatar/color 可按团队风格调，下面是具体起步值）：
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "@forgeax-plugin/agent-gen3d",
+  "id": "@forgeax-extension/agent-gen3d",
   "version": "0.1.0",
   "kind": "agent",
   "displayName": { "zh": "Gen3D · 3D 角色生成师", "en": "Gen3D · 3D Character Artist" },
@@ -188,7 +188,7 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 ```
 
 - [ ] **Step 2：写 `persona/zh.md`**。内容覆盖：①工作台定位（wb-gen3d）；②标准产线顺序（generate → 选中资产 → auto-rig（仅 characters）→ apply-motion（v1 8 动作）→ score-quality → rename/export）；③硬约束（贴图必须存活；rig/motion 仅人形 characters 槽；一次一个 motion，别一键全量烧配额）；④失败回退语义（非人形 auto-rig 会软门控拒绝并回显 reason；命中 cache 复用旧资产并忽略新名字）；⑤工具入参要点（`slug` 由 host 注入、`assetPath` 走结构化字段不解析文件名）。参考 `agent-lowpoly/persona/zh.md` 的体例。
-- [ ] **Step 3：校验 manifest**。`ManifestSchema` 在 `packages/types/src/manifest.ts`；跑插件扫描（`bash start.sh` 看 server 日志有没有 scan 到 `@forgeax-plugin/agent-gen3d`，无 schema 报错）。
+- [ ] **Step 3：校验 manifest**。`ManifestSchema` 在 `packages/types/src/manifest.ts`；跑插件扫描（`bash start.sh` 看 server 日志有没有 scan 到 `@forgeax-extension/agent-gen3d`，无 schema 报错）。
 
 **Exit criteria:** 新 agent 出现在 Studio 的 agent roster；（依赖 A0 结论）`gen3d:*` 中已 `exposedToAI:true` 的工具能被该 agent 调用。
 
@@ -199,12 +199,12 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 **目的：** 让 agent 看得懂每个工具干啥、何时用；把两个纯本地、无配额、无真机门的工具先开放。
 
 **Files:**
-- Modify: `packages/marketplace/plugins/wb-gen3d/forgeax-plugin.json`
+- Modify: `packages/marketplace/plugins/wb-gen3d/forgeax-extension.json`
 
 - [ ] **Step 1：翻两个 boolean**（这俩纯本地：`score-quality` 是启发式只读评分，`rename-asset` 只改 `userLabel` 显示名、不动磁盘文件）：
   - `gen3d:score-quality` `exposedToAI: false → true`
   - `gen3d:rename-asset` `exposedToAI: false → true`
-- [ ] **Step 2：给缺描述的工具补 `description{zh,en}`**（auto-rig/apply-motion/retopo-lowpoly 已有；补 text-to-3d / image-to-3d / views-to-3d / pose-standardization / score-quality / rename-asset / provider-status / list-assets）。每条写清"做什么 + 何时用 + 关键入参语义"，体例对齐已有的 auto-rig 描述（`forgeax-plugin.json:142-145`）。
+- [ ] **Step 2：给缺描述的工具补 `description{zh,en}`**（auto-rig/apply-motion/retopo-lowpoly 已有；补 text-to-3d / image-to-3d / views-to-3d / pose-standardization / score-quality / rename-asset / provider-status / list-assets）。每条写清"做什么 + 何时用 + 关键入参语义"，体例对齐已有的 auto-rig 描述（`forgeax-extension.json:142-145`）。
 - [ ] **Step 3：保持 `delete-asset` / `upload-image` `exposedToAI:false`**（前者破坏性、后者辅助中转），不在本步动。
 - [ ] **Step 4：校验**。manifest 过 `ManifestSchema`；启动后 BusAdminPanel（`exposedToAI=true` 标记）显示这两个工具已 AI 可见。
 
@@ -219,7 +219,7 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 **Files:**
 - Modify: `packages/marketplace/plugins/wb-gen3d/server/tool-handlers.ts`（generate 成功落盘后调用）
 - Modify: `packages/marketplace/plugins/wb-gen3d/server/per-game-store.ts`（sidecar `custom` 合并写 `qualityScore`）
-- Reference: `gen3d:score-quality` 现有客观评分实现（**复用、不重写**——先读它的 handler 找到 objective 评分函数；入口在 `forgeax-plugin.json` 的 `gen3d:score-quality` → `schemas/score-quality.*` → `tool-handlers.ts`）
+- Reference: `gen3d:score-quality` 现有客观评分实现（**复用、不重写**——先读它的 handler 找到 objective 评分函数；入口在 `forgeax-extension.json` 的 `gen3d:score-quality` → `schemas/score-quality.*` → `tool-handlers.ts`）
 
 - [ ] **Step 1：定位现有客观评分函数**（service 五维启发式 `geometry/topology/texture/pbr/prompt_fidelity` 的 `source:'auto'` 计算），确认其入参（manifest/asset 路径）与出参（`QualityReport`/`QualityScore`）。
 - [ ] **Step 2：在 generate handler 落盘成功后调用它**，把 `QualityScore`（纯数值快照，跨插件兼容字段，见 CONTEXT.md「QualityReport」）merge-only 写进 sidecar `custom.qualityScore`。**只在生成时算 objective**，不触发 ai 维度（ai 卡 server 多模态，见 §5）。
@@ -235,7 +235,7 @@ A5 引擎加载端到端  ⟵ 跨边界，需授权 / 单独立项
 **目的：** M13 真机验收最后一步——把绑骨/动作/低模开放给 agent。
 
 **Files:**
-- Modify: `packages/marketplace/plugins/wb-gen3d/forgeax-plugin.json`
+- Modify: `packages/marketplace/plugins/wb-gen3d/forgeax-extension.json`
 - Modify: `packages/marketplace/plugins/wb-gen3d/shared/catalog.ts`
 - Modify: `packages/marketplace/plugins/wb-gen3d/docs/CAPABILITY_MATRIX.md`
 

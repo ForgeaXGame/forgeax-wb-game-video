@@ -8,4 +8,4 @@ export {
   type ExternalAssetMeta,
   type ExternalAssetSubAsset,
   type NormalizeResult,
-} from '@forgeax-plugin/external-asset-meta';
+} from '@forgeax-extension/external-asset-meta';

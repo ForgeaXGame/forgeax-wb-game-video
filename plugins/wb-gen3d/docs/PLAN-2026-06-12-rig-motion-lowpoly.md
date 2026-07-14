@@ -310,7 +310,7 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
   LOD）；删除由用户在资产库手动操作，工具不自动删、不提示删。
 - **mock 回退**：无真机时复用确定性 mock GLB 字节，落一个 `-lowpoly` 派生资产（标
   `providerMode:'mock'`），保证全链路无配额可跑。
-- **schema**：`schemas/retopo-lowpoly.args.json` / `.returns.json`；`forgeax-plugin.json`
+- **schema**：`schemas/retopo-lowpoly.args.json` / `.returns.json`；`forgeax-extension.json`
   加 tool（`exposedToAI:true`）。
 - 验证：mock 下高模→低模派生资产落盘、cache 命中复用、list 扫出；typecheck+build。
 
@@ -327,7 +327,7 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 - **幂等**：调用前查目标资产是否已有 `rigged_model` FBX（readiness.rigged）；有则直接
   返回，不再扣配额（cache 以 inputHash 为键也可）。
 - **mock 回退**：无真机时写一个占位 FBX 字节（标 mock）以跑通 append 路径。
-- **schema** + `forgeax-plugin.json` tool（`exposedToAI:true`，**描述注明"仅双足人形角色"**）。
+- **schema** + `forgeax-extension.json` tool（`exposedToAI:true`，**描述注明"仅双足人形角色"**）。
 - **人形门控（2026-06-12 拍板）**：绑骨/动作只对 `assetSlot=characters` 暴露/启用，`meshes` 槽不显示；
   不做绑骨前人形检测（混元自会拒），失败（422 等）回显"可能非人形/结构不清"。
 - **UI 解锁**：右侧 inspector 里预留的"下游绑骨/动画 handoff"卡（现 disabled 占位）
@@ -443,5 +443,5 @@ out-of-tree 脚本（不进仓）跑，验证通过再正式落工具。**
 - Meshy / Rodin 绑骨动画现状：Meshy 官方 `docs.meshy.ai/api/{rigging,animation}`、
   Hyper3D `developer.hyper3d.ai`（2026-06 查）。
 - 现有代码集成点：`server/{tool-handlers,generate,per-game-store,asset-storage,cos-uploader,env}.ts`、
-  `shared/{manifest,catalog}.ts`、`forgeax-plugin.json`、`docs/PLAN-2026-06-11-rodin-cos-pergame.md`、
+  `shared/{manifest,catalog}.ts`、`forgeax-extension.json`、`docs/PLAN-2026-06-11-rodin-cos-pergame.md`、
   `docs/adr/0002-per-game-file-asset-storage.md`。

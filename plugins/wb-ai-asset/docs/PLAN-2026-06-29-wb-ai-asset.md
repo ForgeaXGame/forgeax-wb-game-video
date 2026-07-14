@@ -93,7 +93,7 @@
 
 ```
 wb-ai-asset/
-├── forgeax-plugin.json     # manifest SSOT
+├── forgeax-extension.json     # manifest SSOT
 ├── package.json / vite.config.ts / tsconfig.json / index.html
 ├── .env.example            # MESHY_API_KEY + AIASSET_ENABLE_REAL_PROVIDERS + COS_*
 ├── src/                    # React 19 + Vite

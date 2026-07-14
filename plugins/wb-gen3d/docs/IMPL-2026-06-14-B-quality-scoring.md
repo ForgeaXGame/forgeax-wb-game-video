@@ -29,7 +29,7 @@
 | `server/tool-handlers.ts` | Mod | add `gen3d:score-quality` handler (merge 3 sources → `updateAssetQuality`) |
 | `schemas/score-quality.args.json` | **New** | tool args schema |
 | `schemas/score-quality.returns.json` | **New** | tool returns schema |
-| `forgeax-plugin.json` | Mod | register `gen3d:score-quality` (`exposedToAI:false`) |
+| `forgeax-extension.json` | Mod | register `gen3d:score-quality` (`exposedToAI:false`) |
 | `src/lib/objectiveMetrics.ts` | **New** | three traversal: `gltf.scene` → `ObjectiveMetrics` |
 | `src/components/QualityInspector.tsx` | **New** | five-dim UI (display/manual/notes/AI-disabled), drives `gen3d:score-quality` |
 | `src/components/AssetLibrary.tsx` | Mod | remove `InspectorReserved` (+ now-unused imports) |
@@ -621,7 +621,7 @@ git commit -m "feat(wb-gen3d): updateAssetQuality + sidecar quality/faceCount su
 
 **Files:**
 - Create: `schemas/score-quality.args.json`, `schemas/score-quality.returns.json`
-- Modify: `server/tool-handlers.ts`, `forgeax-plugin.json`
+- Modify: `server/tool-handlers.ts`, `forgeax-extension.json`
 
 - [ ] **Step 1: Create the schemas**
 
@@ -797,7 +797,7 @@ Register in the `tools` object (`:821-836`):
   'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
 ```
 
-- [ ] **Step 3: Register the tool in `forgeax-plugin.json`**
+- [ ] **Step 3: Register the tool in `forgeax-extension.json`**
 
 Add after the `gen3d:retopo-lowpoly` entry (`:166`), inside `tools`:
 ```json
@@ -824,7 +824,7 @@ Expected: 0 errors; build OK.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add schemas/score-quality.args.json schemas/score-quality.returns.json server/tool-handlers.ts forgeax-plugin.json
+git add schemas/score-quality.args.json schemas/score-quality.returns.json server/tool-handlers.ts forgeax-extension.json
 git commit -m "feat(wb-gen3d): gen3d:score-quality tool (merge objective/manual, persist) (P3)"
 ```
 

@@ -162,33 +162,33 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
 
 | ID | 中文 | icon | id (workbench.id) | position | panelSize |
 |---|---|---|---|---|---|
-| `@forgeax-plugin/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
-| `@forgeax-plugin/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
-| `@forgeax-plugin/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
-| `@forgeax-plugin/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
-| `@forgeax-plugin/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
-| `@forgeax-plugin/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
-| `@forgeax-plugin/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
-| `@forgeax-plugin/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
-| `@forgeax-plugin/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
-| `@forgeax-plugin/wb-code` | 代码 Code | 💻 | code | 200 | lg |
+| `@forgeax-extension/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
+| `@forgeax-extension/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
+| `@forgeax-extension/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
+| `@forgeax-extension/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
+| `@forgeax-extension/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
+| `@forgeax-extension/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
+| `@forgeax-extension/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
+| `@forgeax-extension/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
+| `@forgeax-extension/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
+| `@forgeax-extension/wb-code` | 代码 Code | 💻 | code | 200 | lg |
 | (admin) | 面板管理 | ⚙ | admin | 999 | md |
 
 ### CLI Provider (4)
 
 | ID | 桥接到 |
 |---|---|
-| `@forgeax-plugin/cli-claude-code` | `ClaudeCodeProvider` |
-| `@forgeax-plugin/cli-codex` | `CodexProvider` |
-| `@forgeax-plugin/cli-cursor-agent` | `CursorAgentProvider` |
-| `@forgeax-plugin/cli-forgeax` | `ForgeaXCliProvider`（default boot） |
+| `@forgeax-extension/cli-claude-code` | `ClaudeCodeProvider` |
+| `@forgeax-extension/cli-codex` | `CodexProvider` |
+| `@forgeax-extension/cli-cursor-agent` | `CursorAgentProvider` |
+| `@forgeax-extension/cli-forgeax` | `ForgeaXCliProvider`（default boot） |
 
 ### Agent (1) · Skill (1) · Tool (1) · Model-binding (1)
 
-- `@forgeax-plugin/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
-- `@forgeax-plugin/skill-make-game-design` — SKILL.md placeholder
-- `@forgeax-plugin/tool-balance-resim` — JSON Schema placeholder
-- `@forgeax-plugin/model-anthropic-text` — text model-binding placeholder
+- `@forgeax-extension/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
+- `@forgeax-extension/skill-make-game-design` — SKILL.md placeholder
+- `@forgeax-extension/tool-balance-resim` — JSON Schema placeholder
+- `@forgeax-extension/model-anthropic-text` — text model-binding placeholder
 
 ### Placeholder 文件约定
 
@@ -196,7 +196,7 @@ Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
 
 ```
 plugins/<id>/
-├── forgeax-plugin.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
+├── forgeax-extension.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
 ├── src/
 │   ├── server.ts          # 占位：throw "[Phase 6+ shim] 未实现"（cli-* 用）
 │   └── panel.tsx          # 占位：throw "[Phase 6+ shim] React render 未实现"（wb-* 用）

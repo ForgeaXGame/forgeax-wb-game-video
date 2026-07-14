@@ -586,7 +586,7 @@ async function doImportToEngine(args: EngineImportArgs): Promise<EngineImportRes
   return importToEngine(perGameStore, slug, assetPath);
 }
 
-// ─── tools map (matches forgeax-plugin.json ids) ─────────────────────────────
+// ─── tools map (matches forgeax-extension.json ids) ─────────────────────────────
 
 export const tools = {
   'aiasset:provider-status': async (args: ProviderStatusArgs = {}) => getProviderStatus(args),

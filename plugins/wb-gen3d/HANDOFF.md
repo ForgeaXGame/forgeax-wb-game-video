@@ -30,7 +30,7 @@
 
 > **2026-06-22 — agent 化收敛：「3D 角色生成助手」(`agent-gen3d`) 雏形落地 + 「静态优先」决策定案（待其他 agent review）。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-22-gen3d-character-agent.md`](./docs/PLAN-2026-06-22-gen3d-character-agent.md)。
 > - **分支现状**：上一条线 `feat-20260617-gen3d-agentify-roadmap`（Meshy 公网绑骨/动画 P0–P3 + 插件内密钥 + agent 化路线图）**已合并入 main**（studio `7a5f739` / marketplace `8499d04`；main 之后又推进了公开镜像 / website / README 等与 gen3d 无关的提交）。本轮新分支 = **`laurenceelu/feat-20260622-gen3d-agent-persona`**（studio + marketplace 同名）。
-> - **本轮已落地**：**A1** 新增 `plugins/agent-gen3d/`（`forgeax-plugin.json` 声明 `provides.agent.tools:["gen3d:*"]` + `persona/zh.md`（已按静态优先写）+ `memory/lessons.md`）；**A2 一半** 把 `wb-gen3d` 的 `gen3d:score-quality` / `gen3d:rename-asset` 翻 `exposedToAI:true`。`bun packages/types/test/validate-manifests.ts` → **57/57 ok**。⇒「生成 + 评分 + 命名」半条产线已 agent-ready（10 个 `gen3d:*` 工具对 AI 可见）。
+> - **本轮已落地**：**A1** 新增 `plugins/agent-gen3d/`（`forgeax-extension.json` 声明 `provides.agent.tools:["gen3d:*"]` + `persona/zh.md`（已按静态优先写）+ `memory/lessons.md`）；**A2 一半** 把 `wb-gen3d` 的 `gen3d:score-quality` / `gen3d:rename-asset` 翻 `exposedToAI:true`。`bun packages/types/test/validate-manifests.ts` → **57/57 ok**。⇒「生成 + 评分 + 命名」半条产线已 agent-ready（10 个 `gen3d:*` 工具对 AI 可见）。
 > - **已锁产品决策**（勿 re-litigate）：① **只做角色（人物）**，不做道具 / 场景 / 建筑；② **静态优先**——默认只交付静态角色 + 交付时主动提示可动，**仅用户明确要会动**才绑骨 / 套动作（省真实配额）。
 > - **下一步（reviewer 执行，见 PLAN §4/§5）**：T1 起 stack 做 A0 动态确认（让 `agent-gen3d` 真调一次 `gen3d:list-assets`，零配额）；T3 翻「会动」半套（`auto-rig`/`apply-motion`/`list-motions` → `exposedToAI:true`），**卡 operator 真机目视签字 + 花钱护栏**。
 > - **⚠️ 文档失真提醒**：本文件下方 `2026-06-21` 各条仍写 `PROPOSAL / 未开始编码` —— 实则 Meshy 绑骨/动画 P0–P3 已实现并入 main（见 `c74b9a9` 等提交）。**以 2026-06-25 顶块 + PLAN-2026-06-22/23/25 为准**；`.workbuddy/CURSOR_HANDOFF.md` 已于 2026-06-25 对齐。
@@ -43,7 +43,7 @@
 > - **审阅入口（reviewing agent 从这两份开始）**：
 >   [`docs/PLAN-2026-06-21-meshy-public-rig-anim.md`](./docs/PLAN-2026-06-21-meshy-public-rig-anim.md)（契约 + GAP file:line + P0–P3 + 真机证据 + 开放决策）
 >   + [`docs/adr/0006-meshy-public-api-rig-anim-for-beta.md`](./docs/adr/0006-meshy-public-api-rig-anim-for-beta.md)（🟡 Proposed，部分取代 ADR-0003 §Decision 1/2）。
-> - **已实现（P0–P3，本批提交）**：`server/providers/meshy.ts` 加 `rig()`/`animate()`/`listActions()`/`getBalance()` + HTTP 错误映射（402/404/429）；`shared/manifest.ts` 加 `MotionRef`（`system` 判别联合）/`motionRefKey`/`RigChain`，保留旧 `motionType` 兼容；存储按 `(system,id)` 命名 motion 变体 + 持久化/还原 `rigChain`（`asset-storage.ts`/`per-game-store.ts`）；`server/tool-handlers.ts` 三档分发（Meshy 公网默认 → Hunyuan REST 内网兜底 → mock）+ `rig_expired`/`autoReRig` + 新工具 `gen3d:list-motions`（新 `server/motion-catalog.ts` 统一目录层）；schema（`apply-motion` v2 + `list-motions` args/returns）+ `forgeax-plugin.json` 注册并更新描述；UI 把固定 8 按钮网格换成消费 `gen3d:list-motions` 的可搜索动作浏览器（新 `src/components/MotionBrowser.tsx`，viewer 片段/已应用集合从 `motionType` 泛化到 `motionRef`）。
+> - **已实现（P0–P3，本批提交）**：`server/providers/meshy.ts` 加 `rig()`/`animate()`/`listActions()`/`getBalance()` + HTTP 错误映射（402/404/429）；`shared/manifest.ts` 加 `MotionRef`（`system` 判别联合）/`motionRefKey`/`RigChain`，保留旧 `motionType` 兼容；存储按 `(system,id)` 命名 motion 变体 + 持久化/还原 `rigChain`（`asset-storage.ts`/`per-game-store.ts`）；`server/tool-handlers.ts` 三档分发（Meshy 公网默认 → Hunyuan REST 内网兜底 → mock）+ `rig_expired`/`autoReRig` + 新工具 `gen3d:list-motions`（新 `server/motion-catalog.ts` 统一目录层）；schema（`apply-motion` v2 + `list-motions` args/returns）+ `forgeax-extension.json` 注册并更新描述；UI 把固定 8 按钮网格换成消费 `gen3d:list-motions` 的可搜索动作浏览器（新 `src/components/MotionBrowser.tsx`，viewer 片段/已应用集合从 `motionType` 泛化到 `motionRef`）。
 > - **验证**：新增 16 个注入式/mock smoke（`server/providers/meshy.rig.test.ts` 9 + `server/tool-handlers.rig.test.ts` 7，含混元 9–16 非回归 round-trip）；`bun test` 42/42、`tsc --noEmit` 干净、`bun run build` 通过并重建 `dist`。**零网络、零配额。**
 > - **真机已预跑通**（2026-06-21，共 8 积分：rig 5 + anim 3）：`/rigging`(input_task_id)→`/animations`(rig_task_id+action_id=28)，
 >   产物在本插件真实 `ModelViewer`（three.js + AnimationMixer）真机播放确认（挥手 + 免费 walk）。证据见 PLAN §7。
@@ -74,7 +74,7 @@ Last updated: 2026-06-29 Asia/Hong_Kong
 ## ⚠️ 改完前端源码必须 rebuild dist（2026-06-13 踩坑）
 
 Studio 的 Workbench iframe 加载的是 **构建产物 `dist/index.html`**（见
-`forgeax-plugin.json`），**不是** `src/`。`dist/` 是 gitignored 的本地产物——所以
+`forgeax-extension.json`），**不是** `src/`。`dist/` 是 gitignored 的本地产物——所以
 即使源码改动已 commit，**不重新 `bun run build`，浏览器仍跑旧 bundle**。
 
 实例：`39da1e9`「预览器脚底贴地锚定」修复后用户仍看到动作模型上漂，排查发现
@@ -390,7 +390,7 @@ Created files:
 
 - `.gitignore`
 - `.env.example` (var names only; real `.env` is gitignored)
-- `forgeax-plugin.json`
+- `forgeax-extension.json`
 - `index.html`
 - `package.json`
 - `tsconfig.json`
@@ -675,7 +675,7 @@ embedded in Studio, both panes load from same-origin `/plugins/wb-gen3d/`
 **UI refactor landed (2026-06-11, commit `af986ce`):** Workbench tool-editor
 pattern — vendored tokens, staged left sidebar (`SetupSidebar`/`StepCard`),
 center workspace + asset library right column (embedded center pane; no separate
-right iframe in `forgeax-plugin.json`). Old teal theme removed. Tool contracts
+right iframe in `forgeax-extension.json`). Old teal theme removed. Tool contracts
 unchanged. typecheck + build pass; visual validation across standalone/left/center
 panes done.
 
@@ -789,7 +789,7 @@ Files (all inside the plugin): new `src/styles/tokens.css` (vendored); rewrite
 `src/styles.css` + `src/App.tsx` (split into PaneHeader / SetupSidebar / StepCard
 / Workspace / AssetLibrary / InspectorReserved); `ModelViewer.tsx` class/container
 only — no three.js logic change. Do NOT touch `server/**`, `schemas/**`,
-`shared/**`, `toolClient.ts`, `blobUrl.ts`, or `forgeax-plugin.json` (ask first if
+`shared/**`, `toolClient.ts`, `blobUrl.ts`, or `forgeax-extension.json` (ask first if
 `panelSize`/`panes` need a tweak).
 
 Phases (all complete 2026-06-11): ① tokens + pane-header → ② staged left panel
@@ -797,7 +797,7 @@ Phases (all complete 2026-06-11): ① tokens + pane-header → ② staged left p
 inspector in center right column → ⑤ typecheck/build/visual + §10 checklist.
 
 **Note:** asset library lives in the center pane right column because
-`forgeax-plugin.json` only declares `left` + `center` panes (no separate right
+`forgeax-extension.json` only declares `left` + `center` panes (no separate right
 iframe). Standalone dev: `npm run dev` on `:15175`.
 
 Submodule pointer in forgeax-studio parent repo may still show `M packages/marketplace`

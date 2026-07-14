@@ -183,7 +183,7 @@ async listActions(rigTaskId): Promise<MeshyAction[]>   // P2
 | **P1** | rig_task_id 过期处理（§6.3） | `tool-handlers.ts` | 模拟 404/过期 → 自动 re-rig 重试 | §8-Q3 |
 | **P2** | 动作库拉取 + 缓存 + 公测精选集（§8-Q1） | catalog 模块 + schema | 一次真机 `GET resources`，无积分 | §8-Q1 |
 | **P2** | `apply-motion` schema/UI：action_id + rigType 过滤 + 免费/付费徽标 + 预览 GIF | `schemas/apply-motion.*` + UI | 视觉 | §8-Q1 |
-| **P3** | 错误/积分护栏（§6）、`exposedToAI` 翻 true、`forgeax-plugin.json` 文案改 Meshy | plugin.json | **一次真机全链**（已预跑，见 §7） | operator 拍板 |
+| **P3** | 错误/积分护栏（§6）、`exposedToAI` 翻 true、`forgeax-extension.json` 文案改 Meshy | plugin.json | **一次真机全链**（已预跑，见 §7） | operator 拍板 |
 
 > 与既有 mock-first 一致：无 `GEN3D_ENABLE_REAL_PROVIDERS=1` + key 时全部回退 mock，零积分零网络。
 

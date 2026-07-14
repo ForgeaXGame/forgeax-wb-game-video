@@ -7,7 +7,7 @@ import {
   cookExternalAssetMeta,
   normalizeGlbForEngine,
   type ExternalAssetMeta,
-} from '@forgeax-plugin/external-asset-meta';
+} from '@forgeax-extension/external-asset-meta';
 import type { AssetSidecar } from '../shared/manifest';
 import type { PerGameAssetStore } from './per-game-store';
 

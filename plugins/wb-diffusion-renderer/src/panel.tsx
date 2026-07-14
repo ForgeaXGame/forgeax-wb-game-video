@@ -20,7 +20,7 @@ import {
   type DiffusionRendererOutputSnapshot,
 } from './host/output-store';
 
-export const WB_DIFFUSION_RENDERER_PLUGIN_ID = '@forgeax-plugin/wb-diffusion-renderer';
+export const WB_DIFFUSION_RENDERER_PLUGIN_ID = '@forgeax-extension/wb-diffusion-renderer';
 
 const DEFAULT_PROMPT = 'high quality stylized 3D game render, preserve original geometry and camera composition, upgraded game assets, detailed PBR materials, soft lighting, crisp detail';
 const STYLE_PRESETS = [

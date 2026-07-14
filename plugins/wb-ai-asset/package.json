@@ -1,5 +1,5 @@
 {
-  "name": "@forgeax-plugin/wb-ai-asset",
+  "name": "@forgeax-extension/wb-ai-asset",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.184.0",
-    "@forgeax-plugin/external-asset-meta": "file:../_shared/external-asset-meta"
+    "@forgeax-extension/external-asset-meta": "file:../_shared/external-asset-meta"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

@@ -55,7 +55,7 @@
 | **UI handoff 端到端验证** | **未做** | 无 Studio 跑通留证（= T1） |
 | **CLI Forge 直接编排** | **未做** | 派单表 `80-workbench-agents.md:28/32` 仅单点路由，无 Forge 两步配方（= T2） |
 | **views-to-3d 内部转存** | **未做** | `views-to-3d` 现只收 public URL，未处理 studio-local URL 转存（= T1 代码项） |
-| `gen3d:upload-image` | **保持 UI-only** | `forgeax-plugin.json` `exposedToAI:false`（设计如此，D-B 不动） |
+| `gen3d:upload-image` | **保持 UI-only** | `forgeax-extension.json` `exposedToAI:false`（设计如此，D-B 不动） |
 | **rig/motion 余额护栏** | **未接** | `meshy.getBalance()` 存在（`server/providers/meshy.ts:282`）但**未接进** auto-rig/apply-motion handler；`confirm`/`requireConfirm` 全仓无消费（= T3） |
 | agent persona 交接描述 | 技术债 | `agent-character-designer-2d` 缺 `provides.agent.tools` + persona 漂移（"三视图/不碰 3D"）；方案 A 下不阻塞（= T5） |
 
@@ -113,7 +113,7 @@ flowchart TD
 
 ## 6 · Land 准备 + 改动边界 + 烧钱敞口
 
-- **改动边界（reviewer 把关）**：本线落在 wb-gen3d（`forgeax-plugin.json` + `views-to-3d`/rig/motion handler）+ **`marketplace/src/system-prompt/80-workbench-agents.md`（公共派单表，非插件目录 → 需 owner 授权）** + wb-character（仅 T1.3 边角，主体已提交）。server `character-forge` 已 commit，本线不改。
+- **改动边界（reviewer 把关）**：本线落在 wb-gen3d（`forgeax-extension.json` + `views-to-3d`/rig/motion handler）+ **`marketplace/src/system-prompt/80-workbench-agents.md`（公共派单表，非插件目录 → 需 owner 授权）** + wb-character（仅 T1.3 边角，主体已提交）。server `character-forge` 已 commit，本线不改。
 - **Land 拓扑**：studio →（server, interface, marketplace），且 **marketplace → wb-character / wb-gen3d 为嵌套子模块**。多数已提交/pin；剩 wb-gen3d（T1/T3）+ 派单表（T2）+ pointer bump。
 - **🔴 烧钱敞口（唯一"现在就在漏"的坑）**：`auto-rig`/`apply-motion` 已 `exposedToAI:true` 且 **T3 余额护栏未接** → Forge 误调即可能扣 Meshy credits。**T3 落地前若需对外/真 key，临时把这两个工具 `exposedToAI:false` 止血**（list-motions 零配额可留）。描述已修正去除 `exposedToAI=false` 假声明。
 - **LuZhouheng claude 启动超时 8000ms 本地补丁**（server `327a5b2`）按 workspace 规则**不 push 上游**，land 时拣出。
