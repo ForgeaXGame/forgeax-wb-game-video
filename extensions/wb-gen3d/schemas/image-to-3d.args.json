@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:image-to-3d args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes",
+      "description": "3D asset slot (subdir under assets/3d/)."
+    },
+    "assetName": {
+      "type": "string",
+      "description": "Desired base file name (without extension). Sanitized + de-duplicated by the store."
+    },
+    "imageUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source image URL (reachable by the provider) for image-to-3D."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["hunyuan_workflow", "meshy", "rodin"],
+      "default": "hunyuan_workflow",
+      "description": "Generation provider. Defaults to hunyuan_workflow. Rodin (Hyper3D) downloads the image URL to bytes and attaches it as a multipart file; mock-first until its key is supplied."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "enableFbxUrl": { "type": "boolean", "default": false },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 30000
+    },
+    "providerParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Provider-specific native params (validated server-side against shared/provider-params.ts; unverified/inapplicable fields are dropped). See docs/PROVIDER_PARAMS.md."
+    }
+  },
+  "required": ["slug", "imageUrl"],
+  "additionalProperties": false
+}

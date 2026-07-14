@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:views-to-3d args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. Assets are stored per game under .forgeax/games/<slug>/assets/3d/. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes",
+      "description": "3D asset slot (subdir under assets/3d/)."
+    },
+    "assetName": {
+      "type": "string",
+      "description": "Desired base file name (without extension). Sanitized + de-duplicated by the store."
+    },
+    "views": {
+      "type": "object",
+      "description": "Named view-slot image URLs. front_image_url is required; others optional.",
+      "properties": {
+        "front_image_url": { "type": "string", "minLength": 1 },
+        "back_image_url": { "type": "string" },
+        "left_image_url": { "type": "string" },
+        "right_image_url": { "type": "string" },
+        "top_image_url": { "type": "string" },
+        "bottom_image_url": { "type": "string" },
+        "front_left_image_url": { "type": "string" },
+        "front_right_image_url": { "type": "string" }
+      },
+      "required": ["front_image_url"],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["hunyuan_workflow", "meshy", "rodin"],
+      "default": "hunyuan_workflow",
+      "description": "Generation provider. Defaults to hunyuan_workflow. Meshy uses an ordered image array (front/back/left/right). Rodin attaches images with condition_mode=concat; mock-first until its key is supplied."
+    },
+    "enablePbr": { "type": "boolean", "default": true },
+    "enableFbxUrl": { "type": "boolean", "default": false },
+    "targetPolycount": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 300000,
+      "default": 30000
+    },
+    "providerParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Provider-specific native params (validated server-side against shared/provider-params.ts; unverified/inapplicable fields are dropped). See docs/PROVIDER_PARAMS.md."
+    }
+  },
+  "required": ["slug", "views"],
+  "additionalProperties": false
+}

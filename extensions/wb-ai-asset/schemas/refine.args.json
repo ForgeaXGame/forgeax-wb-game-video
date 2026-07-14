@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aiasset:refine args",
+  "type": "object",
+  "properties": {
+    "slug": { "type": "string", "description": "Active game slug. Required." },
+    "previewTaskId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The Meshy preview task id (sourceJobId of a prior aiasset:text-to-3d result) to texture."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "default": "meshes"
+    },
+    "assetName": { "type": "string" },
+    "texturePrompt": {
+      "type": "string",
+      "description": "Optional text guiding the texture style (e.g. 'weathered iron, rust')."
+    },
+    "enablePbr": { "type": "boolean", "default": true }
+  },
+  "required": ["slug", "previewTaskId"],
+  "additionalProperties": false
+}

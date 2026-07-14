@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:list-assets args",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Active game slug. The workbench UI fills this automatically for manual use; an AI/agent caller MUST pass the active game's slug (e.g. 'mini-gta'). Required."
+    },
+    "assetSlot": {
+      "type": "string",
+      "enum": ["characters", "meshes"],
+      "description": "Optional slot filter (subdir under assets/3d/). Omit to list all slots."
+    },
+    "provider": {
+      "enum": ["all", "meshy", "hunyuan_workflow", "hunyuan_rest", "rodin"],
+      "default": "all"
+    }
+  },
+  "required": ["slug"],
+  "additionalProperties": false
+}
