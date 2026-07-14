@@ -27,6 +27,8 @@ export interface ViewerClip {
   url: string;
   label: string;
   key: string;
+  /** When set, switch clips inside the same GLB by AnimationClip.name (PREV1). */
+  animationName?: string;
 }
 
 interface ModelStats {
@@ -49,6 +51,8 @@ export function ModelViewer({
   const skeletonRef = useRef<THREE.SkeletonHelper | null>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionRef = useRef<THREE.AnimationAction | null>(null);
+  const animsRef = useRef<THREE.AnimationClip[]>([]);
+  const modelRootRef = useRef<THREE.Object3D | null>(null);
   const coreRef = useRef<ViewerCore | null>(null);
   const envRef = useRef<EnvironmentHandle | null>(null);
   const shadowRef = useRef<ShadowHandle | null>(null);
@@ -93,8 +97,8 @@ export function ModelViewer({
   useEffect(() => {
     if (!clipList.some((c) => c.key === activeKey)) setActiveKey(clipList[0]!.key);
   }, [clipList, activeKey]);
-  const activeUrl = (clipList.find((c) => c.key === activeKey) ?? clipList[0]!).url;
-  const clipsKey = useMemo(() => clipList.map((c) => c.key).join('|'), [clipList]);
+  const activeClip = clipList.find((c) => c.key === activeKey) ?? clipList[0]!;
+  const activeUrl = activeClip.url;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -109,6 +113,8 @@ export function ModelViewer({
     skeletonRef.current = null;
     mixerRef.current = null;
     actionRef.current = null;
+    animsRef.current = [];
+    modelRootRef.current = null;
 
     const core = createViewerCore(mount);
     coreRef.current = core;
@@ -132,6 +138,7 @@ export function ModelViewer({
       (gltf) => {
         if (disposed) return;
         model = gltf.scene;
+        modelRootRef.current = model;
         const { sphere, size } = placeAndMeasure(model);
         scene.add(model);
 
@@ -149,12 +156,12 @@ export function ModelViewer({
         });
 
         const cached = frameRef.current;
-        if (cached && cached.key === clipsKey) {
+        if (cached && cached.key === activeUrl) {
           applyFrame(camera, controls, cached as unknown as FrameSpec);
         } else {
           const f = computeFrame(camera, sphere, size);
           applyFrame(camera, controls, f);
-          frameRef.current = { key: clipsKey, ...f };
+          frameRef.current = { key: activeUrl, ...f };
           lastFrameRef.current = f;
         }
 
@@ -181,12 +188,10 @@ export function ModelViewer({
         }
 
         const anims = gltf.animations ?? [];
+        animsRef.current = anims;
         if (anims.length > 0) {
           const mixer = new THREE.AnimationMixer(model);
-          const action = mixer.clipAction(anims[0]!);
-          action.play();
           mixerRef.current = mixer;
-          actionRef.current = action;
           controls.autoRotate = false;
         }
 
@@ -232,6 +237,8 @@ export function ModelViewer({
         mixerRef.current = null;
       }
       actionRef.current = null;
+      animsRef.current = [];
+      modelRootRef.current = null;
       viewHelperRef.current?.dispose();
       viewHelperRef.current = null;
       if (model) disposeModel(model);
@@ -240,8 +247,36 @@ export function ModelViewer({
       coreRef.current = null;
       core.dispose();
     };
+    // Reload only when the GLB URL changes — same-URL multi-clip switches
+    // happen in the animationName effect below (PREV1).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeUrl, clipsKey]);
+  }, [activeUrl]);
+
+  // PREV1: switch AnimationClip inside an already-loaded merged GLB by name.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const mixer = mixerRef.current;
+    const anims = animsRef.current;
+    if (!mixer || anims.length === 0) return;
+
+    const want = activeClip.animationName?.trim();
+    const clip =
+      (want ? anims.find((a) => a.name === want) : null) ??
+      (want ? anims.find((a) => a.name.toLowerCase() === want.toLowerCase()) : null) ??
+      anims[0]!;
+
+    if (actionRef.current) {
+      actionRef.current.stop();
+      actionRef.current = null;
+    }
+    const action = mixer.clipAction(clip);
+    action.reset();
+    action.play();
+    action.paused = !playing;
+    actionRef.current = action;
+    // intentionally omit `playing` — pause toggles are handled below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, activeKey, activeClip.animationName]);
 
   useEffect(() => { if (gridRef.current) gridRef.current.visible = showGrid; }, [showGrid]);
   useEffect(() => { if (skeletonRef.current) skeletonRef.current.visible = showSkeleton; }, [showSkeleton]);

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gen3d:set-playable-motion-mapping args",
+  "type": "object",
+  "properties": {
+    "slug": { "type": "string" },
+    "assetPath": { "type": "string" },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slotId": { "type": "string" },
+          "motionRefKey": { "type": ["string", "null"] },
+          "autoMatched": { "type": "boolean" }
+        },
+        "required": ["slotId", "motionRefKey", "autoMatched"],
+        "additionalProperties": false
+      }
+    },
+    "confirmed": { "type": "boolean" }
+  },
+  "required": ["slug", "assetPath", "mappings"],
+  "additionalProperties": false
+}

@@ -34,12 +34,19 @@ import { getCosEnv, getMeshyEnv, realProvidersEnabled } from './env';
 import { readCredentials, writeCredentials } from './credentials-store';
 import { CosUploader, mimeForModelFormat } from './cos-uploader';
 import { MeshyProvider } from './providers/meshy';
+import {
+  engineImportStatus,
+  importToEngine,
+  type EngineImportResult,
+  type EngineImportStatus,
+} from './engine-import';
 
 // Per-game storage adapter. Assets live under the active game's
 // .forgeax/games/<slug>/assets/3d/meshes/ tree; identity is the game-relative
 // assetPath. Same-origin preview URLs mirror the Studio server's read-only
 // /api/game-assets/:slug/* route.
-const storage: AssetStorage = new PerGameAssetStore();
+const perGameStore = new PerGameAssetStore();
+const storage: AssetStorage = perGameStore;
 
 // Every store-touching tool needs an active game. The host iframe injects
 // ?slug=<gameSlug>; the frontend threads it into each call.
@@ -558,6 +565,27 @@ async function listAssets(args: ListAssetsArgs = {}): Promise<ListAssetsResult> 
   return { ok: true, assets: mine };
 }
 
+// ─── engine-import-status / import-to-engine (PLAN §5.3, AI1/AI2/DRACO1) ────
+
+interface EngineImportArgs {
+  slug?: string;
+  assetPath: string;
+}
+
+async function getEngineImportStatus(args: EngineImportArgs): Promise<EngineImportStatus> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  return engineImportStatus(perGameStore, slug, assetPath);
+}
+
+async function doImportToEngine(args: EngineImportArgs): Promise<EngineImportResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  return importToEngine(perGameStore, slug, assetPath);
+}
+
 // ─── tools map (matches forgeax-plugin.json ids) ─────────────────────────────
 
 export const tools = {
@@ -570,6 +598,8 @@ export const tools = {
   'aiasset:remesh': async (args: RemeshArgs) => remesh(args),
   'aiasset:upload-image': async (args: UploadImageArgs) => uploadImage(args),
   'aiasset:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
+  'aiasset:engine-import-status': async (args: EngineImportArgs) => getEngineImportStatus(args),
+  'aiasset:import-to-engine': async (args: EngineImportArgs) => doImportToEngine(args),
   'aiasset:get-credentials': async () => readCredentials(),
   'aiasset:set-credentials': async (args: Record<string, unknown> = {}) => writeCredentials(args),
 };

@@ -130,3 +130,105 @@ test('updateAssetQuality on a missing asset throws asset_not_found', async () =>
     store.updateAssetQuality(SLUG, 'assets/3d/meshes/nope.glb', emptyQualityReport()),
   ).rejects.toThrow(/not found/i);
 });
+
+test('co-located engine meta survives writeAsset / quality update', async () => {
+  const m = await store.writeAsset({
+    slug: SLUG,
+    assetSlot: 'meshes',
+    assetName: 'engine-meta-keep',
+    files: [{ data: GLB, format: 'glb', role: 'source_mesh' }],
+    meta: {
+      provider: 'meshy',
+      providerMode: 'mock',
+      mode: 'text',
+      sourceJobId: null,
+      prompt: 'keep engine meta',
+      sourceInputAssetPaths: [],
+    },
+  });
+  const fileName = m.assetPath.replace(/^assets\/3d\/meshes\//, '');
+  const dir = resolve(root, '.forgeax', 'games', SLUG, 'assets', '3d', 'meshes');
+  const engineMeta = resolve(dir, `${fileName}.meta.json`);
+  const engineBody = {
+    schemaVersion: 1,
+    kind: 'external-asset-package',
+    importer: 'gltf',
+    source: fileName,
+    importSettings: { defaultSceneIndex: 0 },
+    subAssets: [{ guid: '11111111-1111-1111-1111-111111111111', sourceIndex: 0, kind: 'mesh' }],
+  };
+  await writeFile(engineMeta, `${JSON.stringify(engineBody, null, 2)}\n`, 'utf8');
+
+  // Touch sidecar again via quality update — must not delete engine meta.
+  await store.updateAssetQuality(SLUG, m.assetPath, {
+    ...emptyQualityReport(),
+    geometry: { value: 50, source: 'auto' as const },
+    total: 50,
+    method: 'auto' as const,
+    scoredAt: new Date().toISOString(),
+  });
+  const kept = JSON.parse(await readFile(engineMeta, 'utf8')) as { kind: string };
+  expect(kept.kind).toBe('external-asset-package');
+});
+
+test('listAssets ignores clean engine meta without gen3d sidecar', async () => {
+  const dir = resolve(root, '.forgeax', 'games', SLUG, 'assets', '3d', 'meshes');
+  await mkdir(dir, { recursive: true });
+  const glbName = 'engine-only.glb';
+  await writeFile(resolve(dir, glbName), GLB);
+  await writeFile(
+    resolve(dir, `${glbName}.meta.json`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      kind: 'external-asset-package',
+      importer: 'gltf',
+      source: glbName,
+      importSettings: { defaultSceneIndex: 0 },
+      subAssets: [],
+    }, null, 2)}\n`,
+    'utf8',
+  );
+  const listed = await store.listAssets(SLUG, 'meshes');
+  expect(listed.some((a) => a.assetPath.endsWith(glbName))).toBe(false);
+  // Engine meta still on disk.
+  const raw = await readFile(resolve(dir, `${glbName}.meta.json`), 'utf8');
+  expect(raw).toContain('external-asset-package');
+});
+
+test('suffix boundary: gen3d-meta and playable are not engine .meta.json', () => {
+  expect('.glb.gen3d-meta.json'.endsWith('.meta.json')).toBe(false);
+  expect('hero-merged.glb.playable.json'.endsWith('.meta.json')).toBe(false);
+  expect('hero.glb.meta.json'.endsWith('.meta.json')).toBe(true);
+});
+
+test('character playable state includes the last delivery snapshot', async () => {
+  const manifest = await store.writeAsset({
+    slug: SLUG,
+    assetSlot: 'characters',
+    assetName: 'delivered-hero',
+    files: [{ data: GLB, format: 'glb', role: 'source_mesh' }],
+    meta: {
+      provider: 'meshy',
+      providerMode: 'mock',
+      mode: 'text',
+      sourceJobId: null,
+      prompt: 'delivered hero',
+      sourceInputAssetPaths: [],
+    },
+  });
+  const snapshot = {
+    modelPath: 'assets/characters/delivered-hero-merged.glb',
+    playablePath: 'assets/characters/delivered-hero-merged.glb.playable.json',
+    profileId: 'basic-character-v1',
+    profileVersion: 1,
+    slotGuidRegistry: { idle: '11111111-1111-1111-1111-111111111111' },
+    mappingFingerprint: 'fingerprint',
+    exportedAt: '2026-07-14T00:00:00.000Z',
+  };
+
+  await store.updatePlayableDeliverySnapshot(SLUG, manifest.assetPath, snapshot);
+
+  const state = await store.getCharacterPlayableState(SLUG, manifest.assetPath);
+  expect(state?.delivery).toEqual(snapshot);
+});
+

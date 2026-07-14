@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, PackageCheck, RefreshCw } from 'lucide-react';
 import { type Gen3DAssetManifest, selectFile } from '@shared/manifest';
 import { callTool } from '@/lib/toolClient';
 import { blobUrl } from '@/lib/blobUrl';
@@ -6,7 +7,7 @@ import { downloadBundle } from '@/lib/exportBundle';
 import { ModelViewer } from '@/components/ModelViewer';
 import { StepCard } from '@/components/StepCard';
 import { t } from '@/i18n';
-import type { GenerateResult } from '@/types';
+import type { EngineImportResult, EngineImportStatus, GenerateResult } from '@/types';
 
 // Build the model-input args for a secondary stage. Prefer the upstream Meshy
 // task id (no COS needed); fall back to the stored asset path (COS-shared by the
@@ -32,6 +33,50 @@ export function Workspace({
   const [styleImageUrl, setStyleImageUrl] = useState('');
   const [remeshPoly, setRemeshPoly] = useState(4000);
   const [remeshTopology, setRemeshTopology] = useState<'triangle' | 'quad'>('triangle');
+
+  const [importStatus, setImportStatus] = useState<EngineImportStatus | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const assetPathForImport = selected?.assetPath ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setImportStatus(null);
+    setImportError(null);
+    if (!assetPathForImport) return;
+    void (async () => {
+      const r = await callTool<EngineImportStatus>('aiasset:engine-import-status', { assetPath: assetPathForImport });
+      if (cancelled) return;
+      if (!r.ok) {
+        setImportError(r.error);
+        return;
+      }
+      setImportStatus(r.result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetPathForImport]);
+
+  const importToGame = async () => {
+    if (!assetPathForImport) return;
+    setImporting(true);
+    setImportError(null);
+    const r = await callTool<EngineImportResult>('aiasset:import-to-engine', { assetPath: assetPathForImport });
+    setImporting(false);
+    if (!r.ok) {
+      setImportError(r.error);
+      return;
+    }
+    if (!r.result.ok) {
+      setImportError(t('import.failed', { message: r.result.message }));
+      return;
+    }
+    setNote(t('import.successNote'));
+    const refreshed = await callTool<EngineImportStatus>('aiasset:engine-import-status', { assetPath: assetPathForImport });
+    if (refreshed.ok) setImportStatus(refreshed.result);
+  };
 
   if (!selected) {
     return (
@@ -105,10 +150,40 @@ export function Workspace({
         <button type="button" className="aa-btn aa-btn--ghost" onClick={exportZip} disabled={busy !== null || !glbUrl}>
           {busy === 'export' ? t('btn.exporting') : t('btn.exportZip')}
         </button>
+        <button
+          type="button"
+          className="aa-btn aa-btn--ghost"
+          onClick={importToGame}
+          disabled={importing || !glbUrl || importStatus === null}
+          title={importStatus?.needsDracoNormalize ? t('import.needsDraco') : undefined}
+        >
+          {importing ? (
+            <>
+              <RefreshCw size={13} className="aa-spin" /> {t('btn.importing')}
+            </>
+          ) : importError ? (
+            <>
+              <AlertTriangle size={13} /> {t('btn.retryImport')}
+            </>
+          ) : importStatus?.imported ? (
+            <>
+              <RefreshCw size={13} /> {t('btn.reimportToGame')}
+            </>
+          ) : importStatus?.needsDracoNormalize ? (
+            <>
+              <AlertTriangle size={13} /> {t('btn.importToGame')}
+            </>
+          ) : (
+            <>
+              <PackageCheck size={13} /> {t('btn.importToGame')}
+            </>
+          )}
+        </button>
       </div>
 
       {error ? <p className="aa-error">{error}</p> : null}
       {note ? <p className="aa-note">{note}</p> : null}
+      {importError ? <p className="aa-error">{importError}</p> : null}
 
       <div className="aa-stages">
         <StepCard title={t('step.refine')} icon="🎨" hint={canRefine ? t('hint.refineCan') : t('hint.refineCannot')}>

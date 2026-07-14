@@ -125,6 +125,26 @@
         }
       },
       {
+        "id": "aiasset:engine-import-status",
+        "args": "./schemas/engine-import-status.args.json",
+        "returns": "./schemas/engine-import-status.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "只读：查询该资产的引擎身份证是否存在且对应当前 GLB 内容。",
+          "en": "Read-only: check whether the engine identity meta exists and matches the current GLB content."
+        }
+      },
+      {
+        "id": "aiasset:import-to-engine",
+        "args": "./schemas/import-to-engine.args.json",
+        "returns": "./schemas/import-to-engine.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "导入到游戏：必要时规范化 Draco → 办/重办引擎身份证，使 Edit 资产面板认得出。",
+          "en": "Import to Game: normalize Draco if needed → cook/re-cook engine identity meta so the Edit asset panel recognizes it."
+        }
+      },
+      {
         "id": "aiasset:get-credentials",
         "args": "./schemas/get-credentials.args.json",
         "returns": "./schemas/get-credentials.returns.json",

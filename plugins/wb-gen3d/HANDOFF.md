@@ -1,7 +1,16 @@
 # Handoff - Gen3D Generation Workbench
 
-> **2026-06-29 — LiteLLM 3D 网关接入 + Rodin 暂禁 + 凭证统一（`#16` 系列）。** 3D 生成（Meshy / Hunyuan）改走 LiteLLM 3D 网关（`/v1/3d/generations`），凭证由 Studio「设置 → API Keys」统一管理（优先级 `FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`），插件本地 `.env` 只留 COS + 总开关。Rodin（Hyper3D）网关无对应 model，`getRodinEnv` 恒返回 null（`rodin.ts` 代码保留,manifest / catalog 标注「暂未接入网关」）。3D 网关 base URL 与 chat/image 的 `LITELLM_PROXY_*` 解耦（后者可能指向 Moonshot 等无 3D 端点的代理）——见 `server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`。`getBalance()` 恒为 null（网关无余额端点）,auto-rig / apply-motion 跳过余额预检直达付费端点。
+> **2026-07-13 — Import to Game / 导出可玩角色（🟡 Review 2 文档已重写，未编码）。**  
+> 执行 / 审阅 SSOT = [`docs/PLAN-2026-07-13-import-to-engine.md`](./docs/PLAN-2026-07-13-import-to-engine.md)  
+> review handoff = [`docs/HANDOFF-2026-07-13-import-to-engine-review.md`](./docs/HANDOFF-2026-07-13-import-to-engine-review.md)  
+> ADR = [`docs/adr/0008-game-default-motion-profile-and-playable-wiring.md`](./docs/adr/0008-game-default-motion-profile-and-playable-wiring.md)  
+> - **目标**：点按钮把资产登记进游戏 Edit；角色按游戏默认动作档案（可覆盖）导出可玩三件套（merged GLB + 引擎 meta + `*.playable.json`），并可反复覆盖。  
+> - **已拍板**：见 PLAN §1（四预设 · 游戏默认+角色覆盖 · 向导/一键 · Draco 手动转换 · 接线清单等）。旧「固定五槽 / 导入引擎 / ANIM1」已替换。  
+> - **本插件主缺口**：现在只有 `*.glb.gen3d-meta.json`；写台账还会误删 `*.meta.json`——导入前必须先修 list/write。  
+> - **姊妹插件**：`wb-ai-asset`（生成时多半已 cook；缺「导入到游戏」UI；Draco 仅手动导入时转换）。见 `plugins/wb-ai-asset/HANDOFF.md`。  
+> - **未勾选 review handoff「可执行」前不要写代码。**
 
+> **2026-06-29 — LiteLLM 3D 网关接入 + Rodin 暂禁 + 凭证统一（`#16` 系列）。** 3D 生成（Meshy / Hunyuan）改走 LiteLLM 3D 网关（`/v1/3d/generations`），凭证由 Studio「设置 → API Keys」统一管理（优先级 `FORGEAX_3D_GATEWAY_KEY` > `ANTHROPIC_API_KEY` > `LITELLM_PROXY_KEY`），插件本地 `.env` 只留 COS + 总开关。Rodin（Hyper3D）网关无对应 model，`getRodinEnv` 恒返回 null（`rodin.ts` 代码保留,manifest / catalog 标注「暂未接入网关」）。3D 网关 base URL 与 chat/image 的 `LITELLM_PROXY_*` 解耦（后者可能指向 Moonshot 等无 3D 端点的代理）——见 `server/env.ts` `pickLitellmFromEnv` / `resolveGatewayBaseUrl`。`getBalance()` 恒为 null（网关无余额端点）,auto-rig / apply-motion 跳过余额预检直达付费端点。
 > **2026-06-25（其二）— 新审阅入口：2D→3D CLI / UI 分阶段体验修复方案，待其他 agent review。** 执行 / 审阅 SSOT = [`docs/PLAN-2026-06-25-staged-character-gen3d-flow.md`](./docs/PLAN-2026-06-25-staged-character-gen3d-flow.md)，review handoff = [`docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md`](./docs/HANDOFF-2026-06-25-staged-character-gen3d-review.md)。
 > - **用户实测问题**：CLI 自然语言会绕过 `wb-character` 的候选/选择流程，直接 `character:generate-turnaround` → `gen3d:views-to-3d` → `auto-rig/apply-motion`，中间不等用户确认；`wb-character` 当前也没有“生成 3D 四视图 / 送去 3D”的按钮。
 > - **新目标**：从“一条链跑完”改成 **2D 设定/选择 → 四视图 → 静态 3D → 可选动作** 四段，每段停下；`wb-character` final phase 补四视图按钮和 handoff；`auto-rig` / `apply-motion` 用真实 `requireConfirm` 硬门控。

@@ -48,11 +48,19 @@ Asset 的稳定身份字段，值是 game 内相对路径，例如 `assets/3d/ch
 _Avoid_: 对新 manifest 继续使用 `assetId` 表示路径。
 
 一次生成的**多个文件共享同一基名**：`hero.glb` 是身份主文件，`hero.png`（预览）、
-`hero.texture.png`（外部单独贴图）是同基名副文件。sidecar 文件名是
-**`hero.glb.meta.json`**（保留完整文件名再加 `.meta.json`），字段对齐 v2 工作区契约
-schema（`schemaVersion/producer{}/createdAt/contentHash/size/type/dependencies[]/custom{}`），
-副文件进 `dependencies[]`、gen3d 私有字段进 `custom{}`，身份只认主 `hero.glb`。
-OBJ 默认丢弃，只留 GLB。删除即删 `hero.*` 全家桶 + sidecar。
+`hero.texture.png`（外部单独贴图）是同基名副文件。
+
+**两套 sidecar，勿混用（2026-07-07 / 2026-07-13）：**
+
+| 文件 | 谁读 | 内容 |
+|---|---|---|
+| **`hero.glb.gen3d-meta.json`** | wb-gen3d 台账 | producer / contentHash / dependencies / custom（插件私有） |
+| **`hero.glb.meta.json`** | 引擎 pack scanner | 仅干净 `external-asset-package`（`kind`/`importer`/`subAssets`） |
+
+gen3d **生成时只写** `.glb.gen3d-meta.json`（避免私有字段撞引擎 `additionalProperties:false`）。  
+引擎证需用户「导入到游戏 / 导出可玩角色」再办——方案见
+`docs/PLAN-2026-07-13-import-to-engine.md`（🟡 Review 2 重写后仍待 Owner 勾选可执行，未编码）。  
+身份只认主 `hero.glb`。OBJ 默认丢弃。删除即删 `hero.*` 全家桶 + 两套 sidecar。
 
 ### Asset Name
 
@@ -97,6 +105,55 @@ _Avoid_: 把 FBX 当 rig/anim 资产的主体或预览格式。
 硬约束（2026-06-12）：最终动画产物必须保留原模型材质/贴图。保证手段 = 走 GLB 内嵌链路（带贴图
 高模直绑），**不在绑骨前减面**（`low_poly` 纯几何、不保贴图、quad 换 UV）。"减面低模 + 带贴图"需
 retopo 后重烘焙贴图（混元不提供，超范围），列为后续。
+
+### 导入到游戏（Import to Game）
+
+为一个资产建立或更新引擎可识别的身份，使它进入 Edit 的资产目录并可被引用。
+导入到游戏**不等于**把资产放进场景，也不等于修改游戏玩法代码。
+_Avoid_: 把产品按钮继续叫「导入引擎」（那是旧文案）。
+
+### 可玩角色交付物（Playable Character Delivery）
+
+一个自包含的蒙皮角色模型，带一套共享骨架和一组由动作档案定义的语义动作。
+它是从 gen3d 工作资产交付到游戏资产目录的独立产物；
+更新动作时仍视为同一个角色交付物。它的身份来自唯一的 gen3d 源资产；
+显示名变化不改变身份，另一个源资产不能冒充并覆盖它。交付后它可以独立于工作资产存活；
+删除源工作资产不表示应破坏游戏中可能仍被引用的交付物。
+产物通常是三件套：merged GLB、引擎 `*.meta.json`、可玩接线清单。
+
+### 动作预设（Motion Preset）
+
+系统内置的起点模板。v1 四个：基础角色、动作冒险、平台跳跃、空白自定义。
+预设本身不属于某个游戏；用户可基于它保存成游戏默认动作档案。
+
+### 游戏默认动作档案（Game Motion Profile）
+
+当前游戏共用的默认动作槽契约（含稳定槽 ID、是否必需、播放模式、速度、匹配关键词、root motion 策略）。
+每个游戏一份，存在该游戏的 `.gen3d/` 私有目录。
+_Avoid_: 说「模板只属于角色、不属于游戏」。
+
+### 角色动作覆盖（Character Motion Override）
+
+某个角色相对游戏默认动作档案的差异。默认编辑只影响当前角色；
+只有明确「保存为游戏默认」才会改游戏档案。
+
+### 动作映射（Motion Mapping）
+
+把当前角色已有的生成动作指定到各个语义槽。系统可以提出推荐，用户确认后保存。
+同一源动作可以填多个槽（会警告）；导出时复制成多条独立 clip。
+它是角色工作资产的持久配置。档案的必需槽不完整时，不构成可玩角色交付物。
+_Avoid_: 「同一动作绝对不能占两个槽」。
+
+### 可玩接线清单（Playable Wiring Manifest）
+
+可玩角色交付物旁的 `*.playable.json`。记录槽 ID → clip GUID、循环/速度、root motion 策略等。
+它是给游戏 Agent 或人工接线的说明书，不是引擎身份证，也不会自动修改游戏代码。
+
+### Root Motion
+
+动画 clip 自带的角色平移。导出可玩角色时，按每个动作槽的策略在合并阶段处理
+（保留 / 去掉水平位移 / 去掉全部位移）。接线清单也会记录该策略，供后续游戏接线对照。
+_Avoid_: 「插件永远不改 root motion，一律留给运行时」。
 
 ## 产品定位
 
@@ -166,13 +223,26 @@ Per-game runtime asset library。生成时必须归属一个 game；资产直接
 ```
 .forgeax/games/<slug>/assets/3d/
   characters/<name>.glb
-  characters/<name>.glb.gen3d-meta.json
+  characters/<name>.glb.gen3d-meta.json   # 插件台账（必有）
+  characters/<name>.glb.meta.json        # 引擎证（导入后才有；可与台账并存）
   meshes/<name>.glb
   meshes/<name>.glb.gen3d-meta.json
+  meshes/<name>.glb.meta.json            # 同上
+
+# 角色可玩合并产物（规划中，P1；不在 3d/ 源目录）
+.forgeax/games/<slug>/assets/characters/
+  <name>-merged.glb
+  <name>-merged.glb.meta.json
+  <name>-merged.glb.playable.json
+
+# 游戏默认动作档案（规划中；插件私有，不进引擎 scanner）
+.forgeax/games/<slug>/.gen3d/playable-character-profile.json
 ```
 
 不再维护 gen3d 专属的全局 staging 资产库作为主模型。跨 game 复用需要显式复制
-或导入，而不是共享同一个全局 assetId。
+或导入，而不是共享同一个全局 assetId。  
+姊妹插件 wb-ai-asset 落在 `assets/3d/props/{meshes|characters}/`，台账为
+`*.glb.wb.json`，生成时通常已写引擎 `*.glb.meta.json`。
 
 ### ProviderResult
 

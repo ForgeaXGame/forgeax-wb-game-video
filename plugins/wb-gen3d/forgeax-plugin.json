@@ -222,6 +222,76 @@
         }
       },
       {
+        "id": "gen3d:engine-import-status",
+        "args": "./schemas/engine-import-status.args.json",
+        "returns": "./schemas/engine-import-status.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "只读：查询该资产（限道具/mesh）的引擎身份证是否存在且对应当前 GLB 内容；角色资产返回明确拒绝说明。",
+          "en": "Read-only: check whether the engine identity meta exists and matches the current GLB content (props/mesh only). Character assets return a clear rejection message."
+        }
+      },
+      {
+        "id": "gen3d:import-to-engine",
+        "args": "./schemas/import-to-engine.args.json",
+        "returns": "./schemas/import-to-engine.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "导入到游戏（限道具/mesh）：必要时规范化 Draco → 办/重办引擎身份证，使 Edit 资产面板认得出。角色资产拒绝（ROLE1，走可玩角色导出）。",
+          "en": "Import to Game (props/mesh only): normalize Draco if needed → cook/re-cook engine identity meta so the Edit asset panel recognizes it. Character assets are rejected (ROLE1 — use Export Playable Character instead)."
+        }
+      },
+      {
+        "id": "gen3d:get-playable-profile",
+        "args": "./schemas/get-playable-profile.args.json",
+        "returns": "./schemas/get-playable-profile.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "只读：内置预设 + 游戏默认动作档案 +（可选）角色覆盖/映射草稿/上次交付快照 + 一键更新是否可用 + 是否需迁移审阅 + 是否可接管已有 merged 产物。",
+          "en": "Read-only: built-in presets + game default motion profile + (optional) character override/mapping draft/last delivery snapshot + one-click readiness + migration-review needed + adoptable orphan merged delivery."
+        }
+      },
+      {
+        "id": "gen3d:set-playable-profile",
+        "args": "./schemas/set-playable-profile.args.json",
+        "returns": "./schemas/set-playable-profile.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "写入某个角色的动作槽配置（角色覆盖，PROF6 默认只影响这一个角色）；传 `saveAsGameDefault:true` 才会同时更新这个游戏的默认动作档案。",
+          "en": "Write a character's motion-slot configuration (a character override — PROF6: this affects only this one character by default). Pass `saveAsGameDefault:true` to also update this game's default motion profile."
+        }
+      },
+      {
+        "id": "gen3d:set-playable-motion-mapping",
+        "args": "./schemas/set-playable-motion-mapping.args.json",
+        "returns": "./schemas/set-playable-motion-mapping.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "保存某个角色每个动作槽对应的源生成动作草稿（用户确认/改选自动推荐结果后调用）。",
+          "en": "Save the draft mapping from each of a character's motion slots to a source generated motion clip (called after the user confirms/adjusts the auto-suggested mapping)."
+        }
+      },
+      {
+        "id": "gen3d:export-playable-character",
+        "args": "./schemas/export-playable-character.args.json",
+        "returns": "./schemas/export-playable-character.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "导出/更新可玩角色：按有效动作档案合并绑骨+已映射动作 → 写 assets/characters/<stem>-merged.glb 三件套（GLB + 引擎 meta + playable.json）。不改游戏玩法代码。",
+          "en": "Export/update playable character: merge rig + mapped motions per effective profile → write assets/characters/<stem>-merged.glb delivery trio (GLB + engine meta + playable.json). Does not modify gameplay code."
+        }
+      },
+      {
+        "id": "gen3d:adopt-playable-character",
+        "args": "./schemas/adopt-playable-character.args.json",
+        "returns": "./schemas/adopt-playable-character.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "接管已有手工 merged 可玩产物（ADOPT1）：目标路径已有 merged.glb + 引擎 meta、但当前源无导出快照时，确认槽→clip 映射后写出 playable.json 并绑定到本源资产。尽量复用旧 GUID。不改玩法代码。",
+          "en": "Adopt an existing hand-made merged playable delivery (ADOPT1): when merged.glb + engine meta already exist but this source has no delivery snapshot, confirm slot→clip mappings, write playable.json, and bind to this source. Prefer reusing old GUIDs. Does not modify gameplay code."
+        }
+      },
+      {
         "id": "gen3d:get-credentials",
         "args": "./schemas/get-credentials.args.json",
         "returns": "./schemas/get-credentials.returns.json",

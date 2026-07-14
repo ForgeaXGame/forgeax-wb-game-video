@@ -20,6 +20,7 @@ import {
   type MotionRef,
   type MotionSystem,
   type MotionType,
+  type PlayableDeliverySnapshot,
   type ProviderId,
   type QualityDim,
   type QualityReport,
@@ -27,9 +28,36 @@ import {
 } from '../shared/manifest';
 import { DEFAULT_WEIGHTS, weightedTotal } from '../shared/quality/heuristics';
 import { filterProviderParams } from '../shared/provider-params';
+import {
+  BUILTIN_PROFILE_PRESETS,
+  effectiveSlots,
+  findPreset,
+  gameProfileFromPreset,
+  type CharacterMotionOverride,
+  type GameMotionProfile,
+  type MotionMappingDraft,
+  type MotionMappingEntry,
+  type MotionSlotDef,
+  type PlaybackMode,
+  type RootMotionStrategy,
+} from '../shared/playable-profile';
+import { playableDeliveryLocalUrl } from '../shared/playable-preview-url';
 import { filterMotions, getMeshyCatalog, hunyuanV1Catalog, type MotionOption } from './motion-catalog';
 import type { AssetStorage, DerivedFileInput } from './asset-storage';
 import { PerGameAssetStore } from './per-game-store';
+import { engineImportStatus, importToEngine, type EngineImportResult, type EngineImportStatus } from './engine-import';
+import {
+  exportPlayableCharacter,
+  mappingFingerprint,
+  type ExportPlayableResult,
+} from './export-playable-character';
+import {
+  adoptPlayableCharacter,
+  inspectAdoptCandidate,
+  type AdoptCandidate,
+  type AdoptPlayableResult,
+  type AdoptSlotMapping,
+} from './adopt-playable-character';
 import { generateCacheFirst, persistGeneration, type PersistInput } from './generate';
 import * as cache from './cache';
 import { getCosEnv, getHunyuanEnv, getMeshyEnv, getRodinEnv } from './env';
@@ -48,7 +76,8 @@ import { HunyuanRestProvider, type ModelFileOut } from './providers/hunyuan-rest
 // .forgeax/games/<slug>/assets/3d/{characters|meshes}/ tree; identity is the
 // game-relative assetPath. Same-origin preview URLs mirror the Studio server's
 // read-only /api/game-assets/:slug/* route (packages/server/src/main.ts).
-const storage: AssetStorage = new PerGameAssetStore();
+const perGameStore = new PerGameAssetStore();
+const storage: AssetStorage = perGameStore;
 
 // Every store-touching tool needs an active game. The host iframe injects
 // ?slug=<gameSlug>; the frontend threads it into each call. Reject early with a
@@ -1280,6 +1309,287 @@ async function renameAsset(args: RenameAssetArgs): Promise<{ ok: true; manifest:
   return { ok: true, manifest };
 }
 
+// ─── Playable-character motion profile (R7, PLAN §4.1/§5.3) ─────────────────
+// Four-layer model: built-in preset → game default profile → character
+// override → motion mapping. Game profile is one file per game; override +
+// mapping live in the character's own gen3d sidecar (never the engine meta).
+
+async function requireCharacterAsset(slug: string, assetPath: string): Promise<Gen3DAssetManifest> {
+  const asset = await storage.getAsset(slug, assetPath);
+  if (!asset) {
+    throw Object.assign(new Error(`asset not found: ${assetPath}`), { code: 'asset_not_found' });
+  }
+  if (asset.assetSlot !== 'characters') {
+    throw Object.assign(new Error('this tool only applies to character assets'), {
+      code: 'not_a_character',
+    });
+  }
+  return asset;
+}
+
+interface GetPlayableProfileArgs {
+  slug?: string;
+  assetPath?: string;
+}
+
+interface GetPlayableProfileResult {
+  ok: true;
+  presets: typeof BUILTIN_PROFILE_PRESETS;
+  gameProfile: GameMotionProfile | null;
+  effectiveSlots: MotionSlotDef[];
+  override: CharacterMotionOverride | null;
+  mapping: MotionMappingDraft | null;
+  delivery: (PlayableDeliverySnapshot & { localUrl: string }) | null;
+  oneClickReady: boolean;
+  /** PROF3: game default drifted past what this character/delivery was based on. */
+  migrationNeeded: boolean;
+  /** ADOPT1: orphan merged.glb+meta exist and this source has no delivery yet. */
+  adoptCandidate: AdoptCandidate | null;
+}
+
+async function getPlayableProfile(args: GetPlayableProfileArgs): Promise<GetPlayableProfileResult> {
+  const slug = requireSlug(args.slug);
+  const gameProfile = await perGameStore.getGameMotionProfile(slug);
+  const assetPath = args.assetPath?.trim();
+
+  let override: CharacterMotionOverride | null = null;
+  let mapping: MotionMappingDraft | null = null;
+  let delivery: PlayableDeliverySnapshot | null = null;
+  let adoptCandidate: AdoptCandidate | null = null;
+  if (assetPath) {
+    await requireCharacterAsset(slug, assetPath);
+    const state = await perGameStore.getCharacterPlayableState(slug, assetPath);
+    override = state?.override ?? null;
+    mapping = state?.mapping ?? null;
+    delivery = state?.delivery ?? null;
+    adoptCandidate = await inspectAdoptCandidate(perGameStore, slug, assetPath);
+  }
+
+  const baseGameProfile = gameProfile ?? gameProfileFromPreset('basic-character-v1', new Date(0).toISOString());
+  const slots = effectiveSlots(baseGameProfile, override);
+  const profileId = override?.basedOnProfileId ?? baseGameProfile.profileId;
+  const profileVersion = override?.basedOnProfileVersion ?? baseGameProfile.profileVersion;
+  // PROF3: only a *persisted* game profile can drift. Virtual preset anchors
+  // always report v1 and must not alone trigger migration review.
+  const migrationNeeded = Boolean(
+    delivery &&
+      gameProfile &&
+      (override
+        ? override.basedOnProfileId !== gameProfile.profileId ||
+          override.basedOnProfileVersion !== gameProfile.profileVersion
+        : delivery.profileId !== gameProfile.profileId ||
+          delivery.profileVersion !== gameProfile.profileVersion),
+  );
+  const currentFingerprint =
+    mapping?.confirmed
+      ? mappingFingerprint(slots, mapping.mappings, profileId, profileVersion)
+      : null;
+  const deliveryResult = delivery
+    ? {
+        ...delivery,
+        localUrl: playableDeliveryLocalUrl(slug, delivery.modelPath),
+      }
+    : null;
+  return {
+    ok: true,
+    // Cloned, not the live module singleton — callers must not be able to
+    // mutate BUILTIN_PROFILE_PRESETS through the returned object. Slot arrays
+    // (matchKeywords) are cloned too, not just the slot objects themselves.
+    presets: BUILTIN_PROFILE_PRESETS.map((p) => ({
+      ...p,
+      slots: p.slots.map((s) => ({ ...s, matchKeywords: [...s.matchKeywords] })),
+    })),
+    gameProfile,
+    effectiveSlots: slots,
+    override,
+    mapping,
+    delivery: deliveryResult,
+    oneClickReady: Boolean(
+      delivery &&
+        !migrationNeeded &&
+        currentFingerprint &&
+        delivery.mappingFingerprint === currentFingerprint,
+    ),
+    migrationNeeded,
+    adoptCandidate,
+  };
+}
+
+interface SetPlayableProfileArgs {
+  slug?: string;
+  assetPath: string;
+  slots: MotionSlotDef[];
+  profileId?: string;
+  displayName?: string;
+  saveAsGameDefault?: boolean;
+}
+
+interface SetPlayableProfileResult {
+  ok: true;
+  gameProfile: GameMotionProfile;
+  override: CharacterMotionOverride;
+}
+
+const VALID_PLAYBACK_MODES: readonly PlaybackMode[] = ['loop', 'once', 'freeze_frame'];
+const VALID_ROOT_MOTIONS: readonly RootMotionStrategy[] = ['preserve', 'remove_xz', 'remove_xyz'];
+
+// The args schema declares speed/playbackMode/rootMotion constraints, but
+// nothing upstream enforces JSON-Schema constraints at runtime (no validator
+// lib in this pipeline). Mirrors the asMotionType/asActionId hand-validator
+// convention above.
+function validateMotionSlots(slots: unknown): MotionSlotDef[] {
+  if (!Array.isArray(slots) || slots.length === 0) {
+    throw Object.assign(new Error('slots must be a non-empty array'), { code: 'invalid_slots' });
+  }
+  for (const s of slots as MotionSlotDef[]) {
+    if (typeof s.speed !== 'number' || !(s.speed > 0)) {
+      throw Object.assign(new Error(`slot ${s.slotId}: speed must be > 0, got ${s.speed}`), {
+        code: 'invalid_slots',
+      });
+    }
+    if (!VALID_PLAYBACK_MODES.includes(s.playbackMode)) {
+      throw Object.assign(new Error(`slot ${s.slotId}: invalid playbackMode ${s.playbackMode}`), {
+        code: 'invalid_slots',
+      });
+    }
+    if (!VALID_ROOT_MOTIONS.includes(s.rootMotion)) {
+      throw Object.assign(new Error(`slot ${s.slotId}: invalid rootMotion ${s.rootMotion}`), {
+        code: 'invalid_slots',
+      });
+    }
+  }
+  return slots as MotionSlotDef[];
+}
+
+// PROF6: writing a character's slots ALWAYS records a character override (the
+// per-character source of truth). saveAsGameDefault is the opt-in extra step
+// that also bumps the shared game default profile — plain override saves never
+// touch it (PROF1: "单角色默认只改自己的覆盖"). PROF3 (migration review on
+// game-default drift) is enforced later, at export time (R9/R10) by comparing
+// basedOnProfileVersion, not here.
+async function setPlayableProfile(args: SetPlayableProfileArgs): Promise<SetPlayableProfileResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  validateMotionSlots(args.slots);
+  await requireCharacterAsset(slug, assetPath);
+
+  const now = new Date().toISOString();
+
+  let gameProfile: GameMotionProfile;
+  if (args.saveAsGameDefault) {
+    // Read-compute-write inside one lock acquisition: setGameMotionProfile's
+    // updateFn sees the CURRENT stored profile atomically, so two concurrent
+    // saveAsGameDefault calls can't both read the same profileVersion and
+    // silently clobber each other (lost-update).
+    gameProfile = await perGameStore.setGameMotionProfile(slug, (existing) => {
+      const presetFallback = findPreset(args.profileId ?? existing?.profileId ?? 'basic-character-v1');
+      return {
+        schemaVersion: 1,
+        profileId: args.profileId ?? existing?.profileId ?? 'basic-character-v1',
+        // Bump only when a stored profile already existed; the very first real
+        // save stays at version 1.
+        profileVersion: existing ? existing.profileVersion + 1 : 1,
+        displayName: args.displayName ?? existing?.displayName ?? presetFallback?.displayName ?? 'Custom',
+        slots: args.slots,
+        updatedAt: now,
+      };
+    });
+  } else {
+    // No saveAsGameDefault: the shared game default file must stay untouched
+    // (PROF1/PROF6). If nothing has ever been saved for real, fall back to an
+    // in-memory-only anchor (never persisted) purely so the override still has
+    // a basedOnProfileId/Version to record. NOTE for R10/PROF3: this virtual
+    // anchor always reports version 1 (same as a real first save would), so
+    // migration-review must not treat basedOnProfileVersion:1 alone as proof
+    // the override was based on an actually-persisted profile — compare
+    // basedOnProfileId too.
+    gameProfile =
+      (await perGameStore.getGameMotionProfile(slug)) ??
+      gameProfileFromPreset(args.profileId ?? 'basic-character-v1', now);
+  }
+
+  const override: CharacterMotionOverride = {
+    schemaVersion: 1,
+    slots: args.slots,
+    basedOnProfileId: gameProfile.profileId,
+    basedOnProfileVersion: gameProfile.profileVersion,
+    updatedAt: now,
+  };
+  await perGameStore.setCharacterPlayableOverride(slug, assetPath, override);
+
+  return { ok: true, gameProfile, override };
+}
+
+interface SetPlayableMotionMappingArgs {
+  slug?: string;
+  assetPath: string;
+  mappings: MotionMappingEntry[];
+  confirmed?: boolean;
+}
+
+interface SetPlayableMotionMappingResult {
+  ok: true;
+  mapping: MotionMappingDraft;
+}
+
+async function setPlayableMotionMapping(
+  args: SetPlayableMotionMappingArgs,
+): Promise<SetPlayableMotionMappingResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  if (!Array.isArray(args.mappings)) {
+    throw Object.assign(new Error('mappings must be an array'), { code: 'invalid_mappings' });
+  }
+  await requireCharacterAsset(slug, assetPath);
+
+  const mapping: MotionMappingDraft = {
+    schemaVersion: 1,
+    mappings: args.mappings,
+    confirmed: args.confirmed ?? false,
+    updatedAt: new Date().toISOString(),
+  };
+  await perGameStore.setCharacterMotionMapping(slug, assetPath, mapping);
+  return { ok: true, mapping };
+}
+
+interface EngineImportArgs {
+  slug?: string;
+  assetPath: string;
+}
+
+async function getEngineImportStatus(args: EngineImportArgs): Promise<EngineImportStatus> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  return engineImportStatus(perGameStore, slug, assetPath);
+}
+
+async function doImportToEngine(args: EngineImportArgs): Promise<EngineImportResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  return importToEngine(perGameStore, slug, assetPath);
+}
+
+
+async function doExportPlayableCharacter(args: {
+  slug?: string;
+  assetPath: string;
+  forceWizardConfirm?: boolean;
+}): Promise<ExportPlayableResult> {
+  const slug = requireSlug(args.slug);
+  const assetPath = args.assetPath?.trim();
+  if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+  await requireCharacterAsset(slug, assetPath);
+  return exportPlayableCharacter(perGameStore, {
+    slug,
+    assetPath,
+    forceWizardConfirm: args.forceWizardConfirm,
+  });
+}
+
 export const tools = {
   'gen3d:provider-status': async () => getProviderStatus(),
   'gen3d:list-assets': async (args: ListAssetsArgs = {}) => listAssets(args),
@@ -1298,6 +1608,34 @@ export const tools = {
   'gen3d:retopo-lowpoly': async (args: RetopoLowpolyArgs) => retopoLowpoly(args),
   'gen3d:score-quality': async (args: ScoreQualityArgs) => scoreQuality(args),
   'gen3d:rename-asset': async (args: RenameAssetArgs) => renameAsset(args),
+  'gen3d:engine-import-status': async (args: EngineImportArgs) => getEngineImportStatus(args),
+  'gen3d:import-to-engine': async (args: EngineImportArgs) => doImportToEngine(args),
+  'gen3d:get-playable-profile': async (args: GetPlayableProfileArgs = {}) => getPlayableProfile(args),
+  'gen3d:set-playable-profile': async (args: SetPlayableProfileArgs) => setPlayableProfile(args),
+  'gen3d:set-playable-motion-mapping': async (args: SetPlayableMotionMappingArgs) =>
+    setPlayableMotionMapping(args),
+  'gen3d:export-playable-character': async (args: {
+    slug?: string;
+    assetPath: string;
+    forceWizardConfirm?: boolean;
+  }) => doExportPlayableCharacter(args),
+  'gen3d:adopt-playable-character': async (args: {
+    slug?: string;
+    assetPath: string;
+    slotMappings: AdoptSlotMapping[];
+    confirmed?: boolean;
+  }): Promise<AdoptPlayableResult> => {
+    const slug = requireSlug(args.slug);
+    const assetPath = args.assetPath?.trim();
+    if (!assetPath) throw Object.assign(new Error('assetPath is required'), { code: 'invalid_asset_path' });
+    await requireCharacterAsset(slug, assetPath);
+    return adoptPlayableCharacter(perGameStore, {
+      slug,
+      assetPath,
+      slotMappings: args.slotMappings ?? [],
+      confirmed: args.confirmed,
+    });
+  },
   'gen3d:get-credentials': async () => readCredentials(),
   'gen3d:set-credentials': async (args: Record<string, unknown> = {}) => writeCredentials(args),
 };

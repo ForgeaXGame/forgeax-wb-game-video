@@ -543,6 +543,23 @@ export class PerGameAssetStore implements AssetStorage {
       localUrl: scratchUrlFor(input.slug, sha256, input.format),
     };
   }
+
+  /** Resolve on-disk paths for a durable asset (used by Import to Game). */
+  resolveAssetFiles(
+    slug: string,
+    assetPath: string,
+  ): { glbAbs: string; metaAbs: string; wbAbs: string; glbFileName: string; slot: AssetSlot } | null {
+    const { slot, fileName } = parseAssetPath(assetPath);
+    if (!slot) return null;
+    const dir = slotDir(slug, slot);
+    return {
+      slot,
+      glbFileName: fileName,
+      glbAbs: resolve(dir, fileName),
+      metaAbs: resolve(dir, `${fileName}.meta.json`),
+      wbAbs: resolve(dir, `${fileName}.wb.json`),
+    };
+  }
 }
 
 // Stable, readable on-disk file-name variant for a motion clip. Free Meshy

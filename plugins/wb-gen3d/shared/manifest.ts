@@ -6,6 +6,8 @@
 // are dependencies. Downstream modules reference assets by assetPath, never by
 // provider URL.
 
+import type { CharacterMotionOverride, MotionMappingDraft } from './playable-profile';
+
 export type ProviderId = 'meshy' | 'hunyuan_workflow' | 'hunyuan_rest' | 'rodin';
 
 export type GenerationMode = 'text' | 'image' | 'views' | 'refine';
@@ -253,6 +255,17 @@ export interface RigChain {
   rigExpiresAt: number | null;
 }
 
+export interface PlayableDeliverySnapshot {
+  modelPath: string;
+  playablePath: string;
+  profileId: string;
+  profileVersion: number;
+  clipSlotIds?: string[];
+  slotGuidRegistry: Record<string, string>;
+  mappingFingerprint: string;
+  exportedAt: string;
+}
+
 export interface AssetSidecar {
   schemaVersion: 1;
   producer: {
@@ -285,6 +298,13 @@ export interface AssetSidecar {
     // Rig-chain identity (ADR-0006), set by a verified rig step. apply-motion
     // dispatches by custom.rig.rigProvider and reads rig.rigTaskId (Meshy).
     rig?: RigChain;
+    // Playable-character layer (PLAN-2026-07-13 §4.1, ADR-0008). Only ever set
+    // on characters slot assets. Absent = this character uses the game default
+    // profile unmodified with no motion mapping drafted yet.
+    playableOverride?: CharacterMotionOverride;
+    motionMapping?: MotionMappingDraft;
+    // Last successful playable delivery snapshot (PLAN §5.6 / UX1 one-click update).
+    playableDelivery?: PlayableDeliverySnapshot;
   };
 }
 
