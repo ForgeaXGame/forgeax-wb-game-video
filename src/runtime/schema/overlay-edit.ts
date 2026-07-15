@@ -1,12 +1,19 @@
 /**
  * scenario 级 overlay 编辑 —— children 住在 ui.overlays，节点挂 overlayNodes[]。
  */
-import type { GameScenario, OverlayChild, OverlayNode } from '../schema/graph-schema'
+import type { GameGraph, GameScenario, OverlayChild, OverlayNode } from '../schema/graph-schema'
 import { overlayMountId } from '../schema/node-config-schema'
-import { patchNodeData, setOverlayNodes } from '../../graph/edit/graph-edit'
 
 export function nodeOverlayId(nodeId: string): string {
   return `node:${nodeId}`
+}
+
+/** 设节点的 overlayNodes（本层内联，避免 runtime→graph 反向依赖）。 */
+function setNodeOverlayNodes(graph: GameGraph, nodeId: string, overlayNodes: OverlayNode[]): GameGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, overlayNodes } } : n)),
+  }
 }
 
 /** 节点素材编辑用的主挂载：优先 `node:<id>`，否则第一份。 */
@@ -32,9 +39,9 @@ export function ensureNodeOverlay(scenario: GameScenario, nodeId: string): GameS
   const idx = mounts.findIndex((m) => m.overlay === overlayId)
   if (idx < 0) {
     mounts.push({ overlay: overlayId })
-    graph = setOverlayNodes(graph, nodeId, mounts)
+    graph = setNodeOverlayNodes(graph, nodeId, mounts)
   } else if (!node.data.overlayNodes) {
-    graph = setOverlayNodes(graph, nodeId, mounts)
+    graph = setNodeOverlayNodes(graph, nodeId, mounts)
   }
   return {
     ...scenario,
@@ -126,15 +133,6 @@ export function patchOverlayChildParams(
   return patchOverlayChild(scenario, nodeId, childId, { params: { ...child.params, ...params } })
 }
 
-/** 仅改图上的节点 data（不碰 overlays）。 */
-export function patchScenarioNodeData(
-  scenario: GameScenario,
-  nodeId: string,
-  patch: Parameters<typeof patchNodeData>[2],
-): GameScenario {
-  return { ...scenario, graph: patchNodeData(scenario.graph, nodeId, patch) }
-}
-
 /** 改 ui.overlays 目录里的 child（界面 tab / 共享 overlay，不经节点挂载路由）。 */
 export function patchOverlayCatalogChild(
   scenario: GameScenario,
@@ -179,5 +177,5 @@ export function patchOverlayMount(
   const mounts = (node.data.overlayNodes ?? []).map((m) =>
     overlayMountId(m) === mountId ? { ...m, ...patch } : m,
   )
-  return { ...scenario, graph: setOverlayNodes(scenario.graph, nodeId, mounts) }
+  return { ...scenario, graph: setNodeOverlayNodes(scenario.graph, nodeId, mounts) }
 }
