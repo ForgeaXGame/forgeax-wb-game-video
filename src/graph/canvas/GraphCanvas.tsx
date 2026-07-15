@@ -624,7 +624,6 @@ function GraphCanvasInner({
         selectionKeyCode="Shift"
         multiSelectionKeyCode={null}
         selectionMode={SelectionMode.Partial}
-        autoPanOnSelection={false}
         deleteKeyCode={['Delete', 'Backspace']}
         proOptions={{ hideAttribution: true }}
       >

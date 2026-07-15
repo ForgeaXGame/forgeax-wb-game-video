@@ -26,19 +26,37 @@ import type {
   Reaction,
   Trigger,
 } from '../../runtime/schema/graph-schema'
-import type { ChoiceOption, QteCue } from '../../runtime/registry/core-kinds'
+import type { ChoiceOption, FloatTextParams, QteCue } from '../../runtime/registry/core-kinds'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
+import { initState } from '../../runtime/engine/engine-init'
+import type { InteractionSnap } from '../../runtime/engine/session'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
 import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import {
-  connect,
+  type PreviewEvalContext,
+  type QteOutcomePreview,
+  resolveChoicePreviewDetail,
+  resolveFloatTextPreviewLabel,
+  resolveQteCuePreviewLabel,
+  resolveQteOutcomesPreviewDetail,
+} from './previewResolve'
+import {
   disconnect,
   newElementId,
   teardownInteraction,
   updateNodeData,
   upsertBranchEdge,
 } from '../../graph/edit/graph-edit'
-import { addOverlayChild, ensureNodeOverlay, patchOverlayChild, removeOverlayChild } from '../../graph/edit/overlay-edit'
+import {
+  addOverlayChild,
+  ensureNodeOverlay,
+  forkSchemeForEdit,
+  patchOverlayChild,
+  patchOverlayMount,
+  primaryOverlayMount,
+  removeOverlayChild,
+} from '../../graph/edit/overlay-edit'
+import { overlayMountId } from '../../runtime/schema/node-config-schema'
 
 // ── overlay children 读取小工具（本节点专属 overlay 的 children） ────────────────
 function overlayIdOf(node: GameNode | undefined): string | undefined {
@@ -48,6 +66,17 @@ function childrenOf(scenario: GameScenario, node: GameNode | undefined): Overlay
   const id = overlayIdOf(node)
   if (!id) return []
   return scenario.ui?.overlays?.[id]?.children ?? []
+}
+
+/** 节点所有挂载 overlay 的 children（共享方案 + 节点专属）；交互元素检索用。 */
+function mountedChildrenOf(scenario: GameScenario, node: GameNode | undefined): OverlayChild[] {
+  if (!node) return []
+  const out: OverlayChild[] = []
+  for (const mount of node.data.overlayNodes ?? []) {
+    const ov = scenario.ui?.overlays?.[mount.overlay]
+    if (ov) out.push(...ov.children)
+  }
+  return out.length ? out : childrenOf(scenario, node)
 }
 /** 拆掉一整段交互：先摘掉承载它的 overlay child，再删占用的出边（`teardownInteraction` 只管边）。 */
 function teardownInteractionScenario(
@@ -70,6 +99,8 @@ export interface PreviewOverlay {
   materialKey: string
   kind: MaterialKind
   label: string
+  /** 求值后的效果摘要（选项各分支 / QTE 各档改数值），多行；预览副标题展示。 */
+  detail?: string
   x: number
   y: number
   zIndex: number
@@ -83,6 +114,8 @@ export const OVERLAY_XY = { x: 0.5, y: 0.42 }
 const OPTION_XY = { x: 0.5, y: 0.72 }
 const QTE_GOOD_WINDOW = 480
 const QTE_HANDLES = ['pass', 'good', 'fail']
+/** QTE 元素级参数键（落 el.params，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分。 */
+const QTE_ELEMENT_PARAM_KEYS = new Set(['component', 'perfectMs', 'passingHits', 'score', 'passingScore', 'tolerance'])
 const CHOICE_HANDLE = 'opt:'
 
 // ── 元素读取小工具 ────────────────────────────────────────────────────────────
@@ -105,6 +138,202 @@ function filterLabel(id: unknown): string {
 }
 function fxLabel(id: unknown): string {
   return FX_PRESETS.find((p) => p.id === id)?.label ?? '特效'
+}
+
+/** 预览求值上下文：以场景 meta 初始态求所有公式（与试玩首帧一致）。 */
+function previewCtxFor(scenario: GameScenario): { ctx: PreviewEvalContext; state: ReturnType<typeof initState> } {
+  const state = initState(scenario)
+  return {
+    state,
+    ctx: {
+      evalCtx: { vars: state.vars, entities: state.entities, flags: state.flags, score: state.score, rng: state.rng },
+      entities: scenario.entities,
+      variables: scenario.variables,
+    },
+  }
+}
+
+// ── QTE 结算（pass/good/fail：跳转=边，改数值=mount/node event reactions）────────
+export type QteOutcomeHandle = 'pass' | 'good' | 'fail'
+export interface QteOutcomeView {
+  handle: QteOutcomeHandle
+  label: string
+  targetId: string | undefined
+  edgeId: string | undefined
+  effects: GraphEffect[]
+  /** 优秀未单独配置时，运行时会按成功结算 —— UI 提示用。 */
+  fallsBackToPass?: boolean
+}
+const QTE_OUTCOME_LABELS: Record<QteOutcomeHandle, string> = {
+  pass: '成功',
+  good: '优秀',
+  fail: '失败',
+}
+const QTE_OUTCOME_ORDER: QteOutcomeHandle[] = ['pass', 'good', 'fail']
+
+function qteOutcomeEdge(scenario: GameScenario, nodeId: string, handle: QteOutcomeHandle) {
+  return scenario.graph.edges.find((e) => e.source === nodeId && e.sourceHandle === handle)
+}
+
+function qteReactionMountId(scenario: GameScenario, node: GameNode): string | undefined {
+  for (const mount of node.data.overlayNodes ?? []) {
+    const ov = scenario.ui?.overlays?.[mount.overlay]
+    if (ov?.children.some((c) => c.component === 'qte')) return overlayMountId(mount)
+  }
+  const pm = primaryOverlayMount(node)
+  return pm ? overlayMountId(pm) : undefined
+}
+
+function mountReactionsOf(scenario: GameScenario, node: GameNode, mountId: string): Reaction[] {
+  const mount = (node.data.overlayNodes ?? []).find((m) => overlayMountId(m) === mountId)
+  return mount?.reactions ?? []
+}
+
+function allQteOutcomeReactions(scenario: GameScenario, node: GameNode): Reaction[] {
+  const mountId = qteReactionMountId(scenario, node)
+  const mountRx = mountId ? mountReactionsOf(scenario, node, mountId) : []
+  return [...(node.data.reactions ?? []), ...mountRx]
+}
+
+function reactionEffectsForHandle(reactions: Reaction[], handle: QteOutcomeHandle): GraphEffect[] {
+  const out: GraphEffect[] = []
+  for (const r of reactions) {
+    if (r.when.type !== 'event' || r.when.id !== handle) continue
+    out.push(...r.do.flatMap((a) => (a.kind === 'effect' ? a.effects : [])))
+  }
+  return out
+}
+
+function hasOutcomeReaction(reactions: Reaction[], handle: QteOutcomeHandle): boolean {
+  return reactions.some((r) => r.when.type === 'event' && r.when.id === handle)
+}
+
+function isQteOutcomeConfigured(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): boolean {
+  if (qteOutcomeEdge(scenario, node.id, handle)) return true
+  const rx = allQteOutcomeReactions(scenario, node)
+  if (hasOutcomeReaction(rx, handle)) return true
+  return reactionEffectsForHandle(rx, handle).length > 0
+}
+
+function outcomeView(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): QteOutcomeView {
+  const edge = qteOutcomeEdge(scenario, node.id, handle)
+  const rx = allQteOutcomeReactions(scenario, node)
+  return {
+    handle,
+    label: QTE_OUTCOME_LABELS[handle],
+    targetId: edge?.target,
+    edgeId: edge?.id,
+    effects: reactionEffectsForHandle(rx, handle),
+    fallsBackToPass: handle === 'pass' && !isQteOutcomeConfigured(scenario, node, 'good'),
+  }
+}
+
+/** 检视器：已配置的 QTE 结算档；无任何配置时默认展示一张「成功」（可不跳转）。 */
+export function listQteOutcomeViews(scenario: GameScenario, node: GameNode): QteOutcomeView[] {
+  if (!qteElement(scenario, node)) return []
+  const configured = QTE_OUTCOME_ORDER.filter((h) => isQteOutcomeConfigured(scenario, node, h))
+  if (configured.length === 0) return [outcomeView(scenario, node, 'pass')]
+  return configured.map((h) => outcomeView(scenario, node, h))
+}
+
+/** 还可添加的 QTE 结算档。 */
+export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomeHandle[] {
+  const used = new Set(listQteOutcomeViews(scenario, node).map((o) => o.handle))
+  return QTE_OUTCOME_ORDER.filter((h) => !used.has(h))
+}
+
+function ensureQteReactionMount(scenario: GameScenario, node: GameNode): { scenario: GameScenario; mountId: string } {
+  let s = forkSchemeForEdit(scenario, node.id)
+  const n = s.graph.nodes.find((x) => x.id === node.id)!
+  let mountId = qteReactionMountId(s, n)
+  if (!mountId) {
+    const pm = primaryOverlayMount(n)!
+    mountId = overlayMountId(pm)
+  }
+  return { scenario: s, mountId }
+}
+
+function patchMountEventReaction(
+  scenario: GameScenario,
+  node: GameNode,
+  mountId: string,
+  handle: QteOutcomeHandle,
+  effects: GraphEffect[] | undefined,
+  remove = false,
+): GameScenario {
+  const kept = mountReactionsOf(scenario, node, mountId).filter(
+    (r) => !(r.when.type === 'event' && r.when.id === handle),
+  )
+  if (!remove) {
+    kept.push({ when: { type: 'event', id: handle }, do: [{ kind: 'effect', effects: effects ?? [] }] })
+  }
+  return patchOverlayMount(scenario, node.id, mountId, { reactions: kept.length ? kept : undefined })
+}
+
+export function addQteOutcomeGraph(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): GameScenario {
+  if (isQteOutcomeConfigured(scenario, node, handle)) return scenario
+  let s = scenario
+  if (listQteOutcomeViews(s, node).length === 1 && !isQteOutcomeConfigured(s, node, 'pass') && handle !== 'pass') {
+    s = ensureQtePassOutcomeGraph(s, node)
+  }
+  return setQteOutcomeEffectsGraph(s, node, handle, [])
+}
+
+export function ensureQtePassOutcomeGraph(scenario: GameScenario, node: GameNode): GameScenario {
+  if (isQteOutcomeConfigured(scenario, node, 'pass')) return scenario
+  return setQteOutcomeEffectsGraph(scenario, node, 'pass', [])
+}
+
+export function removeQteOutcomeGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  handle: QteOutcomeHandle,
+): GameScenario {
+  const cards = listQteOutcomeViews(scenario, node)
+  if (cards.length <= 1) return scenario
+  let s = scenario
+  const edge = qteOutcomeEdge(s, node.id, handle)
+  if (edge) s = { ...s, graph: disconnect(s.graph, edge.id) }
+  const mountId = qteReactionMountId(s, s.graph.nodes.find((n) => n.id === node.id)!)
+  if (mountId) {
+    s = patchMountEventReaction(s, s.graph.nodes.find((n) => n.id === node.id)!, mountId, handle, undefined, true)
+  }
+  return s
+}
+
+export function setQteOutcomeTargetGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  handle: QteOutcomeHandle,
+  targetId: string,
+): GameScenario {
+  let s = scenario
+  if (!targetId) {
+    const edge = qteOutcomeEdge(s, node.id, handle)
+    return edge ? { ...s, graph: disconnect(s.graph, edge.id) } : s
+  }
+  if (!isQteOutcomeConfigured(s, node, handle)) {
+    s = setQteOutcomeEffectsGraph(s, node, handle, [])
+  }
+  return { ...s, graph: upsertBranchEdge(s.graph, { source: node.id, sourceHandle: handle, target: targetId }) }
+}
+
+export function setQteOutcomeEffectsGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  handle: QteOutcomeHandle,
+  effects: GraphEffect[],
+): GameScenario {
+  const { scenario: s0, mountId } = ensureQteReactionMount(scenario, node)
+  const n = s0.graph.nodes.find((x) => x.id === node.id)!
+  return patchMountEventReaction(s0, n, mountId, handle, effects)
+}
+
+/** 预览摘要：各档改数值（读 mount/node reactions）。 */
+function listQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomePreview[] {
+  return listQteOutcomeViews(scenario, node)
+    .filter((o) => o.effects.length > 0)
+    .map((o) => ({ handle: o.handle, effects: o.effects, fallsBackToPass: o.fallsBackToPass }))
 }
 
 function firstEntityId(entities: Record<string, Entity> | undefined, kind: 'boss' | 'player'): string {
@@ -211,13 +440,34 @@ export function findElement(scenario: GameScenario, node: GameNode | undefined, 
   return childrenOf(scenario, node).find((e) => e.id === elId)
 }
 export function qteElementOfCue(scenario: GameScenario, node: GameNode | undefined, cueId: string): OverlayChild | undefined {
-  return childrenOf(scenario, node).find((e) => e.component === 'qte' && cuesOf(e).some((c) => c.id === cueId))
+  return mountedChildrenOf(scenario, node).find((e) => e.component === 'qte' && cuesOf(e).some((c) => c.id === cueId))
 }
 export function qteElement(scenario: GameScenario, node: GameNode | undefined): OverlayChild | undefined {
-  return childrenOf(scenario, node).find((e) => e.component === 'qte')
+  return mountedChildrenOf(scenario, node).find((e) => e.component === 'qte')
 }
+
+/** 编辑器预览：当前节点 QTE 使用 inkKou 皮肤时，供 GraphVideoView 渲染真实交互皮。 */
+export function qteSkinPreviewInteraction(
+  scenario: GameScenario,
+  node: GameNode | undefined,
+): InteractionSnap | null {
+  const el = qteElement(scenario, node)
+  if (!el) return null
+  const params = paramsOf(el)
+  if (params.component !== 'inkKou') return null
+  const cues = cuesOf(el)
+  if (!cues.length) return null
+  return {
+    elementId: el.id,
+    component: 'qte',
+    params: { ...params, cues },
+    handles: QTE_HANDLES,
+    timeoutMs: typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined,
+  }
+}
+
 export function choiceElement(scenario: GameScenario, node: GameNode | undefined): OverlayChild | undefined {
-  return childrenOf(scenario, node).find((e) => e.component === 'choice')
+  return mountedChildrenOf(scenario, node).find((e) => e.component === 'choice')
 }
 
 /** 起点：window.startMs 优先；否则 trigger='at' 用 ms；其余（含缺省 trigger）落 0。 */
@@ -315,6 +565,8 @@ export function activePreviewOverlaysFromNode(
 ): PreviewOverlay[] {
   if (!node) return []
   const out: PreviewOverlay[] = []
+  const { ctx: previewCtx, state: previewState } = previewCtxFor(scenario)
+  let qteOutcomeDetail: string | undefined
   for (const el of childrenOf(scenario, node)) {
     const params = paramsOf(el)
     if (el.component === 'dialogue') {
@@ -339,13 +591,13 @@ export function activePreviewOverlaysFromNode(
       const start = timedStart(el)
       const end = el.window?.endMs ?? Math.min(maxMs, start + 1200)
       if (ms < start || ms > end) continue
-      const text = (str(params.text) ?? '').trim()
-      if (!text) continue
+      const label = resolveFloatTextPreviewLabel(params as FloatTextParams, previewCtx)
+      if (!label) continue
       out.push({
         id: `overlay:${el.id}`,
         materialKey: `overlay:${el.id}`,
         kind: 'overlay',
-        label: text,
+        label,
         x: (params.x as number) ?? OVERLAY_XY.x,
         y: (params.y as number) ?? OVERLAY_XY.y,
         zIndex: normalizeLayer(el.layout?.zIndex, 1),
@@ -354,14 +606,19 @@ export function activePreviewOverlaysFromNode(
         target: { kind: 'element', elementId: el.id },
       })
     } else if (el.component === 'qte') {
+      if (qteOutcomeDetail === undefined) {
+        qteOutcomeDetail = resolveQteOutcomesPreviewDetail(listQteOutcomes(scenario, node), previewState, previewCtx)
+      }
       for (const c of cuesOf(el)) {
         const s = c.appearAt ?? 0
-        if (ms < s || ms > (c.targetAt ?? s) + QTE_GOOD_WINDOW) continue
+        const end = c.endAt ?? s + QTE_GOOD_WINDOW
+        if (ms < s || ms > end) continue
         out.push({
           id: `qte:${c.id}`,
           materialKey: `qte:${el.id}:${c.id}`,
           kind: 'qte',
-          label: c.label ?? (c.shape ?? 'tap').toUpperCase(),
+          label: resolveQteCuePreviewLabel(c),
+          detail: qteOutcomeDetail || undefined,
           x: c.x ?? 0.5,
           y: c.y ?? 0.55,
           zIndex: normalizeLayer(c.zIndex, 2),
@@ -378,6 +635,7 @@ export function activePreviewOverlaysFromNode(
         materialKey: `option:${el.id}`,
         kind: 'option',
         label: str(params.prompt) ?? '请选择',
+        detail: resolveChoicePreviewDetail(optionsOf(el), previewCtx, previewState) || undefined,
         x: OPTION_XY.x,
         y: OPTION_XY.y,
         zIndex: normalizeLayer(el.layout?.zIndex, 3),
@@ -533,10 +791,6 @@ export interface AddResult {
   selectKey: string | null
 }
 
-function firstOtherNodeId(graph: GameScenario['graph'], nodeId: string): string {
-  return graph.nodes.find((n) => n.id !== nodeId)?.id ?? nodeId
-}
-
 /** 从素材库拖入时间轴的落点：ms = 落点时刻，zIndex = 落点所在轨。 */
 export interface DropAt {
   ms: number
@@ -614,7 +868,6 @@ export function addMaterialGraph(
     params: { options: [{ key, label: '选项一' }], prompt: '请选择', presentation: 'list' },
   }
   let s = addOverlayChild(s0, node.id, el)
-  s = { ...s, graph: connect(s.graph, { source: node.id, sourceHandle: `${CHOICE_HANDLE}${key}`, target: firstOtherNodeId(s.graph, node.id) }) }
   return { scenario: s, selectKey: `option:${id}` }
 }
 
@@ -665,7 +918,10 @@ export function addQteCueGraph(
       cues: [cue],
     },
   }
-  return { scenario: addOverlayChild(s0, node.id, newEl), selectKey: `qte:${id}:${cueId}` }
+  let s = addOverlayChild(s0, node.id, newEl)
+  const n = findNode(s.graph, node.id) ?? node
+  s = ensureQtePassOutcomeGraph(s, n)
+  return { scenario: s, selectKey: `qte:${id}:${cueId}` }
 }
 
 /** 删一个 QTE 按键点（删到最后一个 = 拆整段 QTE）。 */
@@ -709,8 +965,15 @@ export function patchSelectedGraph(
   if (item.kind === 'qte') {
     const el = qteElementOfCue(scenario, node, item.id)
     if (!el) return scenario
-    const cues = cuesOf(el).map((c) => (c.id === item.id ? { ...c, ...patch } : c))
-    return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, cues } })
+    // 元素级 QTE 参数（如完美半窗 perfectMs）落 el.params；其余按 cue 级 patch 进当前拍点。
+    const elemPatch: Record<string, unknown> = {}
+    const cuePatch: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(patch)) {
+      if (QTE_ELEMENT_PARAM_KEYS.has(k)) elemPatch[k] = v
+      else cuePatch[k] = v
+    }
+    const cues = cuesOf(el).map((c) => (c.id === item.id ? { ...c, ...cuePatch } : c))
+    return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, ...elemPatch, cues } })
   }
   if (item.kind === 'option') {
     const el = findElement(scenario, node, item.id)
@@ -765,19 +1028,26 @@ export function patchOverlayGraph(
   return s
 }
 
-// ── 写映射：选项分支（= 出边 opt:<key>）───────────────────────────────────────
+// ── 写映射：选项分支（= 出边 opt:<key> + option.effects）──────────────────────
 export interface OptionBranchView {
   key: string
   label: string
   targetId: string | undefined
   edgeId: string | undefined
+  effects: GraphEffect[]
 }
 export function listOptionBranches(scenario: GameScenario, node: GameNode): OptionBranchView[] {
   const el = choiceElement(scenario, node)
   if (!el) return []
   return optionsOf(el).map((o) => {
     const edge = scenario.graph.edges.find((e) => e.source === node.id && e.sourceHandle === `${CHOICE_HANDLE}${o.key}`)
-    return { key: o.key, label: o.label ?? o.key, targetId: edge?.target, edgeId: edge?.id }
+    return {
+      key: o.key,
+      label: o.label ?? o.key,
+      targetId: edge?.target,
+      edgeId: edge?.id,
+      effects: o.effects ?? [],
+    }
   })
 }
 export function addOptionBranchGraph(scenario: GameScenario, node: GameNode): GameScenario {
@@ -786,11 +1056,9 @@ export function addOptionBranchGraph(scenario: GameScenario, node: GameNode): Ga
   const options = optionsOf(el)
   const key = `opt${options.length}-${Date.now().toString(36).slice(-3)}`
   const label = `选项 ${options.length + 1}`
-  let s = patchOverlayChild(scenario, node.id, el.id, {
+  return patchOverlayChild(scenario, node.id, el.id, {
     params: { ...el.params, options: [...options, { key, label }] },
   })
-  s = { ...s, graph: connect(s.graph, { source: node.id, sourceHandle: `${CHOICE_HANDLE}${key}`, target: firstOtherNodeId(s.graph, node.id) }) }
-  return s
 }
 export function updateOptionLabelGraph(scenario: GameScenario, node: GameNode, key: string, label: string): GameScenario {
   const el = choiceElement(scenario, node)
@@ -799,7 +1067,26 @@ export function updateOptionLabelGraph(scenario: GameScenario, node: GameNode, k
   return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, options } })
 }
 export function setOptionTargetGraph(scenario: GameScenario, node: GameNode, key: string, targetId: string): GameScenario {
-  return { ...scenario, graph: upsertBranchEdge(scenario.graph, { source: node.id, sourceHandle: `${CHOICE_HANDLE}${key}`, target: targetId }) }
+  const handle = `${CHOICE_HANDLE}${key}`
+  if (!targetId) {
+    const edge = scenario.graph.edges.find((e) => e.source === node.id && e.sourceHandle === handle)
+    if (!edge) return scenario
+    return { ...scenario, graph: disconnect(scenario.graph, edge.id) }
+  }
+  return { ...scenario, graph: upsertBranchEdge(scenario.graph, { source: node.id, sourceHandle: handle, target: targetId }) }
+}
+export function setOptionBranchEffectsGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  key: string,
+  effects: GraphEffect[],
+): GameScenario {
+  const el = choiceElement(scenario, node)
+  if (!el) return scenario
+  const options = optionsOf(el).map((o) =>
+    o.key === key ? { ...o, effects: effects.length ? effects : undefined } : o,
+  )
+  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, options } })
 }
 export function removeOptionBranchGraph(scenario: GameScenario, node: GameNode, key: string): GameScenario {
   const el = choiceElement(scenario, node)

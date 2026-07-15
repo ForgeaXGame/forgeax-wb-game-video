@@ -45,6 +45,9 @@ export interface InteractionProps {
   interaction: InteractionSnap
   submit: (input: unknown) => void
   ctx?: SkinCtx
+  /** 编辑器预览：由 previewTimeMs 驱动显隐/动画冻结，不吃键、不 submit。 */
+  preview?: boolean
+  previewTimeMs?: number
 }
 export interface HudProps {
   element: HudElementView
@@ -170,14 +173,20 @@ export class SkinRegistry {
     )
   }
 
-  renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx): ReactNode {
+  renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx, preview?: { timeMs?: number }): ReactNode {
     const paramComponent = (interaction.params as { component?: string }).component
     const Skin = this.interaction.get(paramComponent ?? interaction.component)
     const Default = this.interaction.get(interaction.component)
     const C = Skin ?? Default
     if (!C) return null
     const name = paramComponent ?? interaction.component
-    const props: InteractionProps = { interaction, submit: safe(name, submit), ctx }
+    const props: InteractionProps = {
+      interaction,
+      submit: safe(name, submit),
+      ctx,
+      preview: !!preview,
+      previewTimeMs: preview?.timeMs,
+    }
     const fallback = Skin && Default && Default !== Skin ? <Default {...props} /> : undefined
     return (
       <SkinErrorBoundary key={`${interaction.elementId}:${name}`} name={name} fallback={fallback}>
@@ -237,8 +246,13 @@ export function registerInteractionRenderer(kind: string, c: InteractionComponen
 export function registerInteractionSkin(id: string, c: InteractionComponent): void {
   defaultSkinRegistry.registerInteractionSkin(id, c)
 }
-export function renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx): ReactNode {
-  return defaultSkinRegistry.renderInteraction(interaction, submit, ctx)
+export function renderInteraction(
+  interaction: InteractionSnap,
+  submit: (input: unknown) => void,
+  ctx?: SkinCtx,
+  preview?: { timeMs?: number },
+): ReactNode {
+  return defaultSkinRegistry.renderInteraction(interaction, submit, ctx, preview)
 }
 export function registerHudRenderer(id: string, c: HudComponent): void {
   defaultSkinRegistry.registerHudRenderer(id, c)

@@ -69,11 +69,15 @@ function LifecycleReactionsEditor({
   reactions,
   nodeIds,
   pickers,
+  entities,
+  variables,
   onChange,
 }: {
   reactions: Reaction[] | undefined
   nodeIds: string[]
   pickers?: EditorPickerCtx
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   const life = (reactions ?? []).filter(isLifecycle)
@@ -119,6 +123,8 @@ function LifecycleReactionsEditor({
                   value={r.when.if}
                   nodeIds={nodeIds}
                   pickers={pickers}
+                  entities={entities}
+                  variables={variables}
                   onChange={(condition) =>
                     patchAt(i, { ...r, when: { type: 'complete', ...(condition ? { if: condition as GraphCondition } : {}) } })
                   }
@@ -129,6 +135,8 @@ function LifecycleReactionsEditor({
             <EffectsEditor
               value={effects?.effects}
               pickers={pickers}
+              entities={entities}
+              variables={variables}
               onChange={(effs) => patchAt(i, { ...r, do: effs?.length ? [{ kind: 'effect', effects: effs }] : [] })}
             />
           </div>
@@ -163,6 +171,8 @@ function OverlayReactionsEditor({
   spawnOptions,
   overlays,
   pickers,
+  entities,
+  variables,
   onChange,
 }: {
   events: OverlayEventRef[]
@@ -171,8 +181,11 @@ function OverlayReactionsEditor({
   spawnOptions: OptItem[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
+  const catalog = pickers ?? { entities, variables }
   if (!events.length) {
     return (
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
@@ -198,7 +211,7 @@ function OverlayReactionsEditor({
               nodeIds={nodeIds}
               spawnOptions={spawnOptions}
               overlays={overlays}
-              pickers={pickers}
+              pickers={catalog}
               onChange={(doActions) => onChange(upsertEventReaction(reactions, ev, doActions))}
             />
           </div>
@@ -514,6 +527,7 @@ export function NodeInspector({
   variables,
   onChange,
   onPacksChange,
+  onDropOverlayIfOrphan,
   onJump,
 }: {
   graph: GameGraph
@@ -522,11 +536,16 @@ export function NodeInspector({
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
   overlays?: Record<string, Overlay>
-  /** 场景实体/变量：驱动 watch 字段级联下拉。 */
+  /** 场景实体 / 变量目录（供 effects / condition 下拉、选取式公式与 watch 字段级联下拉）。 */
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
+  /**
+   * 卸载某挂载后，请上层用完整 scenario（主图 + 所有子蓝图包）判断该 overlay 是否已无人引用，
+   * 无引用则清理孤儿副本。本组件只看得到 canvasGraph，无法自行判断跨图引用，故上抛。
+   */
+  onDropOverlayIfOrphan?: (overlayId: string) => void
   onJump?: (id: string) => void
 }): JSX.Element {
   const node = graph.nodes.find((n) => n.id === nodeId)
@@ -772,8 +791,11 @@ export function NodeInspector({
                     type="button"
                     style={{ color: '#ff6b6b', fontSize: 11 }}
                     onClick={() => {
+                      const removed = mount.overlay
                       const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
                       patchData({ overlayNodes: next.length ? next : undefined })
+                      // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
+                      if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
                     }}
                   >
                     移除
@@ -786,6 +808,8 @@ export function NodeInspector({
                   spawnOptions={spawnOptions}
                   overlays={overlays}
                   pickers={pickers}
+                  entities={entities}
+                  variables={variables}
                   onChange={(reactions) => {
                     const next = (d.overlayNodes ?? []).map((m, j) => (j === i ? { ...m, reactions } : m))
                     patchData({ overlayNodes: next })
@@ -807,6 +831,8 @@ export function NodeInspector({
           reactions={d.reactions}
           nodeIds={nodeIds}
           pickers={pickers}
+          entities={entities}
+          variables={variables}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
@@ -866,6 +892,8 @@ export function NodeInspector({
               value={e.data?.condition}
               nodeIds={nodeIds}
               pickers={pickers}
+              entities={entities}
+              variables={variables}
               onChange={(condition) => onChange(updateEdgeData(graph, e.id, { condition: condition as GraphCondition }))}
             />
             <button style={{ color: '#ff6b6b', marginTop: 4 }} onClick={() => onChange(disconnect(graph, e.id))}>🗑 删除边</button>

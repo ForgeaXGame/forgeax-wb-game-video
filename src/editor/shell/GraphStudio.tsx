@@ -16,6 +16,7 @@ import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { listVideoAssetInfos, resolveMediaSrc } from './media'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode, insertSubFlowPackAfter, makeEmptySubFlowPack, makeSubFlowPackContainer } from '../../graph/edit/graph-edit'
@@ -493,6 +494,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               variables={variables}
               onChange={setCanvasGraph}
               onPacksChange={setPacks}
+              onDropOverlayIfOrphan={(oid) => {
+                // 卸载已同步写入 store；用最新完整 scenario（主图 + 所有 packs）判断是否孤儿再清。
+                const st = useGraphScenario.getState()
+                const scn = st.scn()
+                const cleaned = dropOverlayIfUnreferenced(scn, oid)
+                if (cleaned !== scn) st.setScenario(cleaned)
+              }}
               onJump={jump}
             />
           </div>

@@ -1,12 +1,20 @@
 /**
  * scenario 级 overlay 编辑 —— children 住在 ui.overlays，节点挂 overlayNodes[]。
  */
-import type { GameScenario, OverlayChild, OverlayNode } from '../../runtime/schema/graph-schema'
+import type { GameScenario, OverlayChild, OverlayNode, GameGraph } from '../../runtime/schema/graph-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { patchNodeData, setOverlayNodes } from './graph-edit'
 
 export function nodeOverlayId(nodeId: string): string {
   return `node:${nodeId}`
+}
+
+/** 设节点的 overlayNodes（本层内联，避免 runtime→graph 反向依赖）。 */
+function setNodeOverlayNodes(graph: GameGraph, nodeId: string, overlayNodes: OverlayNode[]): GameGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, overlayNodes } } : n)),
+  }
 }
 
 /** 节点素材编辑用的主挂载：优先 `node:<id>`，否则第一份。 */
@@ -18,36 +26,83 @@ export function primaryOverlayMount(
   return mounts.find((m) => m.overlay === nodeOverlayId(node.id)) ?? mounts[0]
 }
 
-/** 确保节点有专属 overlay（`node:<id>`）并挂在 overlayNodes 中。 */
-export function ensureNodeOverlay(scenario: GameScenario, nodeId: string): GameScenario {
+/**
+ * 写时复制（copy-on-write）：编辑节点内容前，确保其「内容 overlay」是节点专属副本 `node:<id>`。
+ *
+ * - 无任何挂载 → 建空 `node:<id>` 并挂上（供空节点新增素材）。
+ * - 内容 mount 已是 `node:<id>` → 幂等，不重复 fork。
+ * - 内容 mount 指向共享方案 → 深拷贝其 children 到 `node:<id>`，把该 mount 切到 `node:<id>`
+ *   （保留 reactions 等挂载字段），其余挂载（HUD 等）原样保留、继续共享。
+ *
+ * 内容 mount = 时间轴读取源（优先 `node:<id>`，否则第一份），与 graphMaterialOps.overlayIdOf 一致，
+ * 保证「编辑谁就 fork 谁」。
+ */
+export function forkSchemeForEdit(scenario: GameScenario, nodeId: string): GameScenario {
   const node = scenario.graph.nodes.find((n) => n.id === nodeId)
   if (!node) return scenario
   const overlayId = nodeOverlayId(nodeId)
   const overlays = { ...(scenario.ui?.overlays ?? {}) }
-  if (!overlays[overlayId]) {
-    overlays[overlayId] = { id: overlayId, children: [] }
-  }
-  let graph = scenario.graph
   const mounts = [...(node.data.overlayNodes ?? [])]
-  const idx = mounts.findIndex((m) => m.overlay === overlayId)
-  if (idx < 0) {
-    mounts.push({ overlay: overlayId })
-    graph = setOverlayNodes(graph, nodeId, mounts)
-  } else if (!node.data.overlayNodes) {
-    graph = setOverlayNodes(graph, nodeId, mounts)
+
+  // 空节点：建空副本并挂上（旧 ensureNodeOverlay 语义）。
+  if (!mounts.length) {
+    if (!overlays[overlayId]) overlays[overlayId] = { id: overlayId, children: [] }
+    return {
+      ...scenario,
+      ui: { ...scenario.ui, overlays },
+      graph: setNodeOverlayNodes(scenario.graph, nodeId, [{ overlay: overlayId }]),
+    }
   }
+
+  const preferIdx = mounts.findIndex((m) => m.overlay === overlayId)
+  const contentIdx = preferIdx >= 0 ? preferIdx : 0
+  const contentMount = mounts[contentIdx]!
+
+  // 已是节点专属副本：幂等，仅在目录缺失时补空壳。
+  if (contentMount.overlay === overlayId) {
+    if (overlays[overlayId]) return scenario
+    overlays[overlayId] = { id: overlayId, children: [] }
+    return { ...scenario, ui: { ...scenario.ui, overlays } }
+  }
+
+  // 共享方案 → 深拷贝成节点专属副本，并把该挂载切到副本。
+  const scheme = overlays[contentMount.overlay]
+  overlays[overlayId] = scheme ? { ...structuredClone(scheme), id: overlayId } : { id: overlayId, children: [] }
+  mounts[contentIdx] = { ...contentMount, overlay: overlayId }
   return {
     ...scenario,
     ui: { ...scenario.ui, overlays },
-    graph,
+    graph: setNodeOverlayNodes(scenario.graph, nodeId, mounts),
   }
 }
 
+/** 语义并入 forkSchemeForEdit；保留名字供既有调用点（新增素材前确保节点已 fork 为专属副本）。 */
+export function ensureNodeOverlay(scenario: GameScenario, nodeId: string): GameScenario {
+  return forkSchemeForEdit(scenario, nodeId)
+}
+
+/** 某 overlay 是否被 scenario 中任一图（主图 + 子蓝图包）的节点挂载引用。 */
+export function isOverlayReferenced(scenario: GameScenario, overlayId: string): boolean {
+  const inGraph = (g: GameGraph): boolean =>
+    g.nodes.some((n) => (n.data.overlayNodes ?? []).some((m) => m.overlay === overlayId))
+  if (inGraph(scenario.graph)) return true
+  return (scenario.packs ?? []).some((p) => inGraph(p.graph))
+}
+
+/** 从目录移除无人引用的节点专属副本（仅 `node:` 前缀，避免误删共享方案）。 */
+export function dropOverlayIfUnreferenced(scenario: GameScenario, overlayId: string): GameScenario {
+  if (!overlayId.startsWith('node:')) return scenario
+  if (!scenario.ui?.overlays?.[overlayId]) return scenario
+  if (isOverlayReferenced(scenario, overlayId)) return scenario
+  const { [overlayId]: _drop, ...rest } = scenario.ui.overlays
+  return { ...scenario, ui: { ...scenario.ui, overlays: rest } }
+}
+
 export function addOverlayChild(scenario: GameScenario, nodeId: string, child: OverlayChild): GameScenario {
-  const scn = ensureNodeOverlay(scenario, nodeId)
-  const node = scn.graph.nodes.find((n) => n.id === nodeId)!
-  const overlayId = primaryOverlayMount(node)?.overlay ?? nodeOverlayId(nodeId)
-  const ov = scn.ui!.overlays![overlayId]!
+  const scn = forkSchemeForEdit(scenario, nodeId)
+  const overlayId = nodeOverlayId(nodeId)
+  const ov = scn.ui?.overlays?.[overlayId]
+  if (!ov) return scn
   return {
     ...scn,
     ui: {
@@ -61,16 +116,16 @@ export function addOverlayChild(scenario: GameScenario, nodeId: string, child: O
 }
 
 export function removeOverlayChild(scenario: GameScenario, nodeId: string, childId: string): GameScenario {
-  const node = scenario.graph.nodes.find((n) => n.id === nodeId)
-  const overlayId = primaryOverlayMount(node)?.overlay
-  if (!overlayId || !scenario.ui?.overlays?.[overlayId]) return scenario
-  const ov = scenario.ui.overlays[overlayId]!
+  const scn = forkSchemeForEdit(scenario, nodeId)
+  const overlayId = nodeOverlayId(nodeId)
+  const ov = scn.ui?.overlays?.[overlayId]
+  if (!ov) return scn
   return {
-    ...scenario,
+    ...scn,
     ui: {
-      ...scenario.ui,
+      ...scn.ui,
       overlays: {
-        ...scenario.ui.overlays,
+        ...scn.ui!.overlays,
         [overlayId]: { ...ov, children: ov.children.filter((c) => c.id !== childId) },
       },
     },
@@ -83,26 +138,26 @@ export function patchOverlayChild(
   childId: string,
   patch: Partial<OverlayChild>,
 ): GameScenario {
-  const node = scenario.graph.nodes.find((n) => n.id === nodeId)
-  const overlayId = primaryOverlayMount(node)?.overlay
-  if (!overlayId || !scenario.ui?.overlays?.[overlayId]) return scenario
-  const ov = scenario.ui.overlays[overlayId]!
+  const scn = forkSchemeForEdit(scenario, nodeId)
+  const overlayId = nodeOverlayId(nodeId)
+  const ov = scn.ui?.overlays?.[overlayId]
+  if (!ov) return scn
   return {
-    ...scenario,
+    ...scn,
     ui: {
-      ...scenario.ui,
+      ...scn.ui,
       overlays: {
-        ...scenario.ui.overlays,
+        ...scn.ui!.overlays,
         [overlayId]: {
           ...ov,
           children: ov.children.map((c) =>
             c.id === childId
               ? {
-                  ...c,
-                  ...patch,
-                  params: patch.params ? { ...c.params, ...patch.params } : c.params,
-                  layout: patch.layout ? { ...c.layout, ...patch.layout } : c.layout,
-                }
+                ...c,
+                ...patch,
+                params: patch.params ? { ...c.params, ...patch.params } : c.params,
+                layout: patch.layout ? { ...c.layout, ...patch.layout } : c.layout,
+              }
               : c,
           ),
         },
@@ -117,22 +172,44 @@ export function patchOverlayChildParams(
   childId: string,
   params: Record<string, unknown>,
 ): GameScenario {
-  const node = scenario.graph.nodes.find((n) => n.id === nodeId)
-  const overlayId = primaryOverlayMount(node)?.overlay
-  if (!overlayId || !scenario.ui?.overlays?.[overlayId]) return scenario
-  const ov = scenario.ui.overlays[overlayId]!
-  const child = ov.children.find((c) => c.id === childId)
-  if (!child) return scenario
-  return patchOverlayChild(scenario, nodeId, childId, { params: { ...child.params, ...params } })
+  const scn = forkSchemeForEdit(scenario, nodeId)
+  const overlayId = nodeOverlayId(nodeId)
+  const child = scn.ui?.overlays?.[overlayId]?.children.find((c) => c.id === childId)
+  if (!child) return scn
+  return patchOverlayChild(scn, nodeId, childId, { params: { ...child.params, ...params } })
 }
 
-/** 仅改图上的节点 data（不碰 overlays）。 */
-export function patchScenarioNodeData(
+/** 改 ui.overlays 目录里的 child（界面 tab / 共享 overlay，不经节点挂载路由）。 */
+export function patchOverlayCatalogChild(
   scenario: GameScenario,
-  nodeId: string,
-  patch: Parameters<typeof patchNodeData>[2],
+  overlayId: string,
+  childId: string,
+  patch: Partial<OverlayChild>,
 ): GameScenario {
-  return { ...scenario, graph: patchNodeData(scenario.graph, nodeId, patch) }
+  const ov = scenario.ui?.overlays?.[overlayId]
+  if (!ov) return scenario
+  return {
+    ...scenario,
+    ui: {
+      ...scenario.ui,
+      overlays: {
+        ...scenario.ui!.overlays,
+        [overlayId]: {
+          ...ov,
+          children: ov.children.map((c) =>
+            c.id === childId
+              ? {
+                ...c,
+                ...patch,
+                params: patch.params ? { ...c.params, ...patch.params } : c.params,
+                layout: patch.layout ? { ...c.layout, ...patch.layout } : c.layout,
+              }
+              : c,
+          ),
+        },
+      },
+    },
+  }
 }
 
 export function patchOverlayMount(
@@ -146,5 +223,5 @@ export function patchOverlayMount(
   const mounts = (node.data.overlayNodes ?? []).map((m) =>
     overlayMountId(m) === mountId ? { ...m, ...patch } : m,
   )
-  return { ...scenario, graph: setOverlayNodes(scenario.graph, nodeId, mounts) }
+  return { ...scenario, graph: setNodeOverlayNodes(scenario.graph, nodeId, mounts) }
 }

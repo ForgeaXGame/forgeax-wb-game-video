@@ -181,7 +181,13 @@ export interface QteParams {
   passingHits?: number
   /** 结构化拍点。 */
   cues?: QteCue[]
-  /** 判定容差 ms。 */
+  /**
+   * 完美判定半窗 ms：|玩家按下时刻 − 拍点「命中(targetAt)」时刻| ≤ 此值 → pass（完美）。
+   * 「成功(good)」不需要独立参数——命中落在拍点显示窗 [appearAt, endAt] 内即成功、窗外/超时=fail。
+   * 缺省=窗内命中即完美。运行时由 inkKou 等皮肤消费。
+   */
+  perfectMs?: number
+  /** @deprecated 由 perfectMs 取代（成功=命中于拍点显示窗内，无需独立半窗）；保留仅为旧数据兼容。 */
   tolerance?: number
   /** 满分。 */
   score?: number
