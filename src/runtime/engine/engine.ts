@@ -26,13 +26,14 @@ import type {
 import { getSubFlowPack, getSubFlow, isSubflowContainerData } from '../schema/graph-schema'
 import { nodeOverlayChildren, nodeOverlayMounts } from '../schema/expand-overlay'
 import { resolveEventReactions, completeReactions } from '../schema/overlay-events'
-import type { NodeAction, OverlayInstanceChild, Reaction } from '../schema/node-config-schema'
+import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../schema/node-config-schema'
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
 import { initState } from './engine-init'
 import { defaultKindRegistry, isContinueResult, type KindRegistry, type RuntimeCtx } from '../registry/kind-registry'
 import type { RuntimeDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
+import { evalExpr, type EvalCtx } from './expr'
 
 export type GraphPhase = 'idle' | 'playing' | 'awaitInteraction' | 'ended'
 
@@ -87,6 +88,15 @@ export class GraphRuntime {
   private redirect: { goto: string; resetGlobals?: boolean } | null = null
   private inExit = false // 跑 exit 元素期间抑制规则消费，避免退出时自跳环
   private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subFlow 下钻、直接续 out
+
+  // 响应式：watch 上次采样值（key = 反应作用域#下标）；每个写屏障重采样比对。
+  private watchPrev = new Map<string, number>()
+  // 组件生命周期：本次节点访问内已 shown / 已 hidden 的运行态 child id。
+  private shownChildren = new Set<string>()
+  private hiddenFired = new Set<string>()
+  // spawn 出的瞬态叠层：到 removeAtMs（本节点 elapsedMs）即发 removeOverlay。
+  private pendingSpawns: Array<{ elementId: string; nodeId: string; removeAtMs: number }> = []
+  private spawnSeq = 0
 
   /** 本局 Kind / Plugin 表（多局隔离；缺省用模块默认表以兼容旧单测）。 */
   readonly kinds: KindRegistry
@@ -271,6 +281,11 @@ export class GraphRuntime {
     this.windowShown = new Set()
     this.windowRemoved = new Set()
     this.pending = null
+    // 组件生命周期 / spawn 游标随节点重置；watch 基线按当前态重建（本节点内的变化才 fire）。
+    this.shownChildren = new Set()
+    this.hiddenFired = new Set()
+    this.pendingSpawns = []
+    this.seedWatch()
 
     // 先发 playClip（换片会清空上一节点的叠层/交互）；随后 enter 元素产生的 overlay/interaction
     // 才不会被 playClip 反向清掉。
@@ -319,6 +334,7 @@ export class GraphRuntime {
     // at 相位 reactions 的副作用（到点施加）。
     if (this.state.phase === 'playing' && !this.redirect) this.applyAtReactionEffects(node, elapsedMs)
     this.tickWindows(node, elapsedMs)
+    this.reapSpawns(elapsedMs)
     this.consumeRedirect()
     return this.drain()
   }
@@ -337,6 +353,11 @@ export class GraphRuntime {
         this.windowRemoved.add(el.id)
         if (this.windowShown.has(el.id)) {
           this.emit({ type: 'removeOverlay', nodeId: node.id, elementId: el.id })
+          // 组件消失（unmount）→ 触发 hidden 生命周期反应（每节点访问首次）。
+          if (this.shownChildren.has(el.id) && !this.hiddenFired.has(el.id)) {
+            this.hiddenFired.add(el.id)
+            this.fireLifecycle('hidden', el)
+          }
         }
       }
     }
@@ -437,6 +458,12 @@ export class GraphRuntime {
     const plugin = this.getComponent(el.component)
     const role = plugin?.role ?? 'presentation'
     this.fired.add(el.id)
+    // 组件出现（mount）→ 触发 shown 生命周期反应（每节点访问首次）。
+    if (!this.shownChildren.has(el.id)) {
+      this.shownChildren.add(el.id)
+      this.fireLifecycle('shown', el)
+      if (this.state.phase === 'awaitInteraction' || this.redirect) return
+    }
     const ctx = { ...this.ctx(), elementId: el.id }
     const params = el.params.component == null ? { ...el.params, component: el.component } : el.params
     if (role === 'presentation') {
@@ -491,10 +518,17 @@ export class GraphRuntime {
     return changed ? { ...params, options: mapped } : params
   }
 
-  /** 离开节点前跑 exit 相位 reactions（副作用）；UI 槽不再用 Trigger.exit。 */
+  /** 离开节点前跑 exit 相位 reactions（副作用）+ 仍可见组件的 hidden 生命周期。 */
   private runExit(node: GameNode): void {
     this.inExit = true
     this.applyPhaseReactionEffects(node, 'exit')
+    // 离场：本节点仍显示、未触发 hidden 的组件，统一 unmount → 触发 hidden。
+    for (const el of this.childrenOf(node)) {
+      if (this.shownChildren.has(el.id) && !this.hiddenFired.has(el.id)) {
+        this.hiddenFired.add(el.id)
+        this.fireLifecycle('hidden', el)
+      }
+    }
     this.inExit = false
   }
 
@@ -536,6 +570,210 @@ export class GraphRuntime {
     applyEffects(this.state, effects)
     this.emit({ type: 'stateChanged' })
     this.checkRules()
+    if (!this.redirect) this.checkWatch()
+  }
+
+  // ── 响应式 watch（pull-diff 于写屏障）────────────────────────────────────────
+  private evalCtx(locals?: Record<string, number>): EvalCtx {
+    return {
+      vars: this.state.vars,
+      entities: this.state.entities,
+      flags: this.state.flags,
+      score: this.state.score,
+      rng: this.state.rng,
+      ...(locals ? { locals } : {}),
+    }
+  }
+
+  private safeEval(expr: string, locals?: Record<string, number>): number {
+    try {
+      return evalExpr(expr, this.evalCtx(locals))
+    } catch {
+      return 0
+    }
+  }
+
+  /**
+   * 当前作用域内的 watch 反应，带稳定 key：
+   * scenario 全局 + 当前节点 + 各挂载 + **调用栈上的子流程容器节点**（容器级 watch 覆盖整段子流程，
+   * 如「我方回合」容器上的 watch 在其技能子节点执行期间仍生效）。
+   */
+  private activeWatchReactions(): Array<{ key: string; r: Reaction }> {
+    const out: Array<{ key: string; r: Reaction }> = []
+    this.reactions.forEach((r, i) => {
+      if (r.when.type === 'watch') out.push({ key: `s#${i}`, r })
+    })
+    const node = this.node(this.state.currentNodeId)
+    if (node) {
+      ;(node.data.reactions ?? []).forEach((r, i) => {
+        if (r.when.type === 'watch') out.push({ key: `n:${node.id}#${i}`, r })
+      })
+      nodeOverlayMounts(node).forEach((m) => {
+        const mid = overlayMountId(m)
+        ;(m.reactions ?? []).forEach((r, i) => {
+          if (r.when.type === 'watch') out.push({ key: `m:${node.id}:${mid}#${i}`, r })
+        })
+      })
+    }
+    // 调用栈上的容器（我方回合/敌方回合/子蓝图）：其 watch 在整段子流程内生效。
+    this.state.callStack.forEach((frame, d) => {
+      const container = frame.returnGraph.nodes.find((n) => n.id === frame.callerNodeId)
+      ;(container?.data.reactions ?? []).forEach((r, i) => {
+        if (r.when.type === 'watch') out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r })
+      })
+    })
+    return out
+  }
+
+  /** 进入节点时对活跃 watch 建立基线（不触发），使本节点内的后续变化才 fire。 */
+  private seedWatch(): void {
+    for (const { key, r } of this.activeWatchReactions()) {
+      if (r.when.type !== 'watch') continue
+      this.watchPrev.set(key, this.safeEval(r.when.of))
+    }
+  }
+
+  /** 写屏障后重采样：对每个 watch 反应比对 prev/next，按 on 命中即跑 do（注入 prev/next/delta）。 */
+  private checkWatch(): void {
+    if (this.inExit || this.state.phase === 'ended') return
+    for (const { key, r } of this.activeWatchReactions()) {
+      if (r.when.type !== 'watch') continue
+      const next = this.safeEval(r.when.of)
+      if (!this.watchPrev.has(key)) {
+        this.watchPrev.set(key, next)
+        continue
+      }
+      const prev = this.watchPrev.get(key)!
+      if (next === prev) continue
+      const on = r.when.on ?? 'change'
+      const fire = on === 'inc' ? next > prev : on === 'dec' ? next < prev : true
+      // 先更新基线再跑 do，避免 do 内改状态导致自触发。
+      this.watchPrev.set(key, next)
+      if (!fire) continue
+      this.runReactiveActions(r.do, { prev, next, delta: next - prev })
+      if (this.redirect) return
+    }
+  }
+
+  /** watch / shown / hidden 类反应的 do：effect / spawn / goto 均生效（goto → 硬打断 redirect）。 */
+  private runReactiveActions(actions: NodeAction[], locals?: Record<string, number>): void {
+    for (const a of actions) {
+      if (a.kind === 'effect') {
+        if (a.effects.length) this.applyAndReact(a.effects)
+      } else if (a.kind === 'spawn') {
+        this.doSpawn(a, locals)
+      } else if (a.kind === 'goto') {
+        // exit 期不接受 goto（避免与正在进行的 consumeRedirect 自跳环）。
+        if (!this.redirect && !this.inExit) this.redirect = { goto: a.targetNodeId }
+      }
+      if (this.redirect) return
+    }
+  }
+
+  private resolveBind(value: unknown, locals?: Record<string, number>): unknown {
+    if (value && typeof value === 'object') {
+      const o = value as Record<string, unknown>
+      // 数值绑定：`{ expr }`（走 expr 求值，返回数字）。
+      if (typeof o.expr === 'string') return this.safeEval(o.expr, locals)
+      // 标识/字符串绑定：`{ ref }`（如 entity.<id>.name，随实体改名动态取；不写死）。
+      if (typeof o.ref === 'string') return this.resolveRef(o.ref)
+    }
+    return value
+  }
+
+  /**
+   * 解析非数值引用（字符串场景，如实体名）。名字取自 scenario.entities（作者可改），非落盘写死。
+   * 支持：entity.<id>.name / entity.<id>.attr.<a>(数字) / var.<id> / score。
+   */
+  private resolveRef(ref: string): unknown {
+    const p = ref.split('.')
+    if (p[0] === 'entity') {
+      const id = p[1] ?? ''
+      if (p[2] === 'name') return this.scenario.entities?.[id]?.name ?? id
+      if (p[2] === 'attr' && p[3]) return this.state.entities[id]?.attrs[p[3]] ?? 0
+      return id
+    }
+    if (p[0] === 'var') return this.state.vars[p.slice(1).join('.')] ?? 0
+    if (p[0] === 'score') return this.state.score
+    return ref
+  }
+
+  /** 主动刷出一个 overlay 组件模板实例（瞬态；ttl 到点自动移除）。 */
+  private doSpawn(action: Extract<NodeAction, { kind: 'spawn' }>, locals?: Record<string, number>): void {
+    const nodeId = this.state.currentNodeId
+    if (!nodeId) return
+    const slash = action.from.indexOf('/')
+    const overlayId = slash >= 0 ? action.from.slice(0, slash) : action.from
+    const childId = slash >= 0 ? action.from.slice(slash + 1) : ''
+    const tpl = this.scenario.ui?.overlays?.[overlayId]?.children.find((c) => c.id === childId)
+    // 模板默认 + spawn 覆盖，合并后统一 resolveBind：{expr}(数值) / {ref}(实体名等) 均在此就地求值成具体值。
+    const merged: Record<string, unknown> = { ...(tpl?.params ?? {}), ...(action.params ?? {}) }
+    const params: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(merged)) params[k] = this.resolveBind(v, locals)
+    const component = tpl?.component ?? overlayId
+    if (params.component == null) params.component = component
+    const layout: Layout | undefined = action.layout ?? tpl?.layout
+    const elementId = `spawn:${++this.spawnSeq}`
+    this.emit({
+      type: 'renderOverlay',
+      nodeId,
+      elementId,
+      component,
+      params,
+      ...(layout?.zIndex != null ? { zIndex: layout.zIndex } : {}),
+    })
+    if (action.ttlMs && action.ttlMs > 0) {
+      this.pendingSpawns.push({ elementId, nodeId, removeAtMs: this.state.elapsedMs + action.ttlMs })
+    }
+  }
+
+  /** 到点回收 ttl 到期的 spawn 叠层。 */
+  private reapSpawns(elapsedMs: number): void {
+    if (!this.pendingSpawns.length) return
+    const nodeId = this.state.currentNodeId
+    const keep: typeof this.pendingSpawns = []
+    for (const s of this.pendingSpawns) {
+      if (s.nodeId === nodeId && elapsedMs >= s.removeAtMs) {
+        this.emit({ type: 'removeOverlay', nodeId: s.nodeId, elementId: s.elementId })
+      } else {
+        keep.push(s)
+      }
+    }
+    this.pendingSpawns = keep
+  }
+
+  // ── 组件生命周期（shown / hidden）─────────────────────────────────────────────
+  /** `of` 是否指向该运行态 child（支持 childId / mountId-overlayId/childId / 运行态全 id）。 */
+  private matchOf(of: string, el: OverlayInstanceChild): boolean {
+    const s = el.source
+    return (
+      of === s.childId ||
+      of === el.id ||
+      of === `${s.mountId}/${s.childId}` ||
+      of === `${s.overlayId}/${s.childId}`
+    )
+  }
+
+  private lifecycleReactions(node: GameNode, kind: 'shown' | 'hidden', el: OverlayInstanceChild): Reaction[] {
+    const out: Reaction[] = []
+    for (const r of node.data.reactions ?? []) {
+      if (r.when.type === kind && this.matchOf(r.when.of, el)) out.push(r)
+    }
+    for (const m of nodeOverlayMounts(node)) {
+      for (const r of m.reactions ?? []) {
+        if (r.when.type === kind && this.matchOf(r.when.of, el)) out.push(r)
+      }
+    }
+    return out
+  }
+
+  private fireLifecycle(kind: 'shown' | 'hidden', el: OverlayInstanceChild): void {
+    const node = this.node(this.state.currentNodeId)
+    if (!node) return
+    for (const r of this.lifecycleReactions(node, kind, el)) {
+      this.runReactiveActions(r.do)
+      if (this.redirect) return
+    }
   }
 
   // ── 出口选择 / 边遍历 ───────────────────────────────────────────────────────

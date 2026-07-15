@@ -10,13 +10,14 @@ import type { GameGraph, GameScenario, SubFlowPackDef } from '../../runtime/sche
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
-import { NodeInspector } from './NodeInspector'
+import { NodeInspector, type VideoOption } from './NodeInspector'
 import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { listVideoAssets, resolveMediaSrc } from './media'
+import { listVideoAssetInfos, resolveMediaSrc } from './media'
+import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode, insertSubFlowPackAfter, makeEmptySubFlowPack, makeSubFlowPackContainer } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
@@ -94,10 +95,36 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const selected = useGraphScenario((s) => s.selectedNodeId)
   const setSelected = useGraphScenario((s) => s.setSelectedNode)
   const [playOpen, setPlayOpen] = useState(false)
-  const [videoOptions, setVideoOptions] = useState<string[]>([])
+  const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
-  useEffect(() => { void listVideoAssets(game).then(setVideoOptions) }, [game])
+  // 视频下拉 = 视频 tab 同源：内置 zhandou 包 + 共享素材层 registry。
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      const bundled: VideoOption[] = Object.keys(ZHANDOU_VIDEOS)
+        .sort((a, b) => a.localeCompare(b))
+        .map((id) => ({
+          id,
+          label: id.startsWith('narr-') ? `叙事 · ${id}` : `战斗 · ${id}`,
+        }))
+      const registry = await listVideoAssetInfos(game)
+      if (!alive) return
+      const seen = new Set(bundled.map((v) => v.id))
+      const fromReg: VideoOption[] = []
+      for (const a of registry) {
+        if (seen.has(a.id)) continue
+        seen.add(a.id)
+        const name = a.label?.trim()
+        fromReg.push({
+          id: a.id,
+          label: name && name !== a.id ? `素材 · ${name} (${a.id})` : `素材 · ${a.id}`,
+        })
+      }
+      setVideoOptions([...bundled, ...fromReg])
+    })()
+    return () => { alive = false }
+  }, [game])
 
   const setPacks = useCallback((next: SubFlowPackDef[]) => {
     setMeta((m) => ({ ...m, packs: next }))

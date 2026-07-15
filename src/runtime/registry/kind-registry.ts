@@ -7,7 +7,7 @@
  * 多局并行：每个 GraphRuntime / GraphSession 持有自己的实例；
  * 模块级 `registerKind` / `getKind` / `getComponent` 仍指向默认表。
  */
-import type { ComponentEvent, ComponentManifest, Overlay } from '../schema/node-config-schema'
+import type { ComponentEvent, ComponentInput, ComponentManifest, Overlay } from '../schema/node-config-schema'
 import type { ElementRole, GameNode, GraphEffect, NodeHandle } from '../schema/graph-schema'
 import type { OverlayInstanceChild } from '../schema/node-config-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
@@ -42,6 +42,35 @@ export type FormField =
   | { t: 'qteCues'; key: string; label: string }
   | { t: 'hotspots'; key: string; label: string }
 
+/** FormField.t → ComponentInput.valueType（复合控件归 'json'）。 */
+function formTypeToValueType(t: FormField['t']): ComponentInput['valueType'] {
+  switch (t) {
+    case 'number':
+      return 'number'
+    case 'checkbox':
+      return 'boolean'
+    case 'color':
+      return 'color'
+    case 'text':
+    case 'select':
+      return 'string'
+    default:
+      return 'json' // textStyle / effects / options / qteCues / hotspots
+  }
+}
+
+/** 向后兼容：无显式 inputs 时，从 form + defaults 派生 ComponentInput[]（契约投影）。 */
+function deriveInputsFromForm(form: FormField[] | undefined, defaults: Record<string, unknown>): ComponentInput[] {
+  if (!form?.length) return []
+  return form.map((f): ComponentInput => {
+    const base: ComponentInput = { key: f.key, label: f.label, valueType: formTypeToValueType(f.t) }
+    if (f.t === 'select') base.options = f.options
+    const dv = defaults[f.key]
+    if (typeof dv === 'string' || typeof dv === 'number' || typeof dv === 'boolean') base.default = dv
+    return base
+  })
+}
+
 export interface KindPlugin<P = Record<string, unknown>> {
   /** 组件 id（= OverlayChild.component / 注册键）。 */
   kind: string
@@ -57,7 +86,16 @@ export interface KindPlugin<P = Record<string, unknown>> {
   label?: string
   /** 新建该组件时的默认 params。 */
   defaults?(): P
-  /** 声明式检视器表单字段（NodeInspector 据此渲染）；缺省回退 JSON 框。 */
+  /**
+   * **输入契约（In · SSOT）**：组件接收哪些 params 及其语义类型。
+   * 进 `ComponentManifest.inputs`；编辑器据此自动渲染配置控件。
+   * 缺省时由 `form` 派生（向后兼容）。
+   */
+  inputs?: ComponentInput[]
+  /**
+   * 编辑器控件覆盖（可选）：仅当某输入需要**复合控件**（effects/textStyle/qteCues…）时声明；
+   * 标量输入无需 form——由 `inputs` 的 valueType 自动出控件。
+   */
   form?: FormField[]
   /** 返回问题描述数组，空数组 = 合法。 */
   validate(params: P): string[]
@@ -116,15 +154,17 @@ export class KindRegistry {
     return out
   }
 
-  /** 组件导出清单（manifest）；无 events 时从 params 默认值折 exits。 */
+  /** 组件导出清单（manifest）：inputs（契约）+ events（无则从 params 默认值折 exits）。 */
   getManifest(componentId: string): ComponentManifest | undefined {
     const p = this.getComponent(componentId)
     if (!p) return undefined
     const defaults = (p.defaults?.() ?? {}) as Record<string, unknown>
     const events = p.events?.length ? p.events : eventsFromParams(defaults)
+    const inputs = p.inputs ?? deriveInputsFromForm(p.form, defaults)
     return {
       id: componentId,
       label: p.label,
+      ...(inputs.length ? { inputs } : {}),
       events,
     }
   }

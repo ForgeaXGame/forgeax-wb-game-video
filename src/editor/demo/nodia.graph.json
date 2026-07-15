@@ -629,6 +629,28 @@
             }
           }
         ]
+      },
+      "hitCheer": {
+        "id": "hitCheer",
+        "title": "受击加油横幅（右上角，点击追加英雄名）",
+        "children": [
+          {
+            "id": "banner",
+            "component": "bossHitCheer",
+            "layout": {
+              "right": 0,
+              "top": 0
+            },
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {
+              "heroName": {
+                "ref": "entity.ent-player.name"
+              }
+            }
+          }
+        ]
       }
     }
   },
@@ -1150,7 +1172,34 @@
         "data": {
           "name": "我方回合",
           "durationMs": 0,
-          "subFlow": "wait"
+          "subFlow": "wait",
+          "reactions": [
+            {
+              "when": {
+                "type": "watch",
+                "of": "entity.ent-boss.attr.hp",
+                "on": "dec"
+              },
+              "do": [
+                {
+                  "kind": "spawn",
+                  "from": "hitCheer/banner",
+                  "params": {
+                    "dmg": {
+                      "expr": "abs(delta)"
+                    },
+                    "remain": {
+                      "expr": "entity.ent-boss.attr.hp"
+                    },
+                    "heroName": {
+                      "ref": "entity.ent-player.name"
+                    }
+                  },
+                  "ttlMs": 3000
+                }
+              ]
+            }
+          ]
         }
       },
       {
