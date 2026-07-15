@@ -50,6 +50,7 @@ import {
 import {
   addOverlayChild,
   ensureNodeOverlay,
+  forkSchemeForEdit,
   patchOverlayChild,
   patchOverlayMount,
   primaryOverlayMount,
@@ -242,7 +243,7 @@ export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode)
 }
 
 function ensureQteReactionMount(scenario: GameScenario, node: GameNode): { scenario: GameScenario; mountId: string } {
-  let s = ensureNodeOverlay(scenario, node.id)
+  let s = forkSchemeForEdit(scenario, node.id)
   const n = s.graph.nodes.find((x) => x.id === node.id)!
   let mountId = qteReactionMountId(s, n)
   if (!mountId) {

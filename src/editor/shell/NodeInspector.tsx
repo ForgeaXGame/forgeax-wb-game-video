@@ -497,6 +497,7 @@ export function NodeInspector({
   variables,
   onChange,
   onPacksChange,
+  onDropOverlayIfOrphan,
   onJump,
 }: {
   graph: GameGraph
@@ -510,6 +511,11 @@ export function NodeInspector({
   variables?: Record<string, Variable>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
+  /**
+   * 卸载某挂载后，请上层用完整 scenario（主图 + 所有子蓝图包）判断该 overlay 是否已无人引用，
+   * 无引用则清理孤儿副本。本组件只看得到 canvasGraph，无法自行判断跨图引用，故上抛。
+   */
+  onDropOverlayIfOrphan?: (overlayId: string) => void
   onJump?: (id: string) => void
 }): JSX.Element {
   const node = graph.nodes.find((n) => n.id === nodeId)
@@ -748,8 +754,11 @@ export function NodeInspector({
                     type="button"
                     style={{ color: '#ff6b6b', fontSize: 11 }}
                     onClick={() => {
+                      const removed = mount.overlay
                       const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
                       patchData({ overlayNodes: next.length ? next : undefined })
+                      // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
+                      if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
                     }}
                   >
                     移除
