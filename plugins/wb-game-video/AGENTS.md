@@ -52,10 +52,11 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 ## 硬性规则（改动前必读，不要违反）
 
 ### R1 · Schema（`src/runtime/schema/graph-schema.ts` 是 SSOT 形态；）
-- **一张图 = `GameScenario`**：`{ schemaVersion, variables, entities, ui, rng, rules?, graph:{nodes,edges} }`。
+- **一张图 = `GameScenario`**：`{ schemaVersion, variables, entities, ui:{overlays}, rng, reactions?, graph:{nodes,edges} }`。
 - **只有一种节点类型「演出节点」(`type:'perf'`)**：每个节点**都绑视频**(`data.media`)。**判断（出手/血量/回合/胜负/变招…）
   绝不做成独立网关节点**——一律折进演出节点的**条件/加权出边**（handle `cond:N`/`else`/`opt:*`/`pass|good|fail`/`out`，边带 `weight` 即加权随机）。
   需要跨节点记忆（如先手）用变量 + 条件边表达（见 nodia 的 `mineFirst`）。
+- **心智三层**：`edges` = 路由；`reactions` = 副作用（effect；局级 `state` 可 goto 硬打断）；`ui.overlays` + `overlayNodes` = UI。
 - **一切逻辑声明式、可序列化、无函数入库**：条件 `GraphCondition`(`var/flag/attr/attrRatio/attrCompare/score/hasItem/visited`)、
   副作用 `GraphEffect`(`attr/var/flag/item`，`value` 可为常量或 `{expr}` 表达式，见 `expr.ts`)。**不准把函数/代码塞进数据。**
 - **实体无 hp 特权**：`entities[id].attrs` 是开放数值袋，`hp` 只是"名为 hp、attrMeta 带 max/initial 的一个 attr"的约定；
@@ -69,7 +70,7 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 - **`resolve` 可 `continue:true`**：多步会话保持 `awaitInteraction`；中途 `effects` 仍走 `applyAndReact`（rules 可 redirect）。结束才返回 `outcome`。
 - **`requiredPlugins`**：scenario 头声明依赖；`registerPlugin` + `validateScenario` / ctor fail-loud。
 - **RNG 必须走 `state.rng`（seed+step，`rng.ts`）**，同 seed 同输入必同结果（回放/测试依赖）；不准 `Math.random`。
-- 加新玩法 = 注册一个 **KindPlugin**（`src/runtime/registry/kind-registry.ts`，`role: presentation|logic|interaction` + validate/outputs/run|render|present|resolve），核心/引擎/Player 都不改。
+- 加新玩法 = 注册一个 **KindPlugin**（`src/runtime/registry/kind-registry.ts`，`role: presentation|interaction` + validate/outputs/run|render|present|resolve），核心/引擎/Player 都不改。
 - **依赖铁律**：`runtime` 不得 import `graph/` 或工坊壳（Studio/persist/demo）。
 
 ### R3 · 持久化 / demo（v4，2026-07-09）
@@ -82,7 +83,7 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 ### R4 · 盖在视频上的组件（皮肤：QTE/选择/血条/漂字/转场/对话）
 - 都是 **`src/runtime/skins/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
   `src/runtime/skins/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
-- **配置只记组件名**：交互元素 `params.component`、HUD `ui.hud[i].component`（+ `pos` 定位）。契约见
+- **配置只记组件名**：交互元素 `params.component`、HUD 用 overlay child（`surface:'hud'`，如 `battleHpBar`）。契约见
   `src/runtime/skins/components/CONTRACT.md`（只 import `react` + `./skinRuntime`，样式/滤镜/字体自注入）。
 
 ---
@@ -91,8 +92,9 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 
 ```
 demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版本覆盖其上）
-  graph.nodes[] 全是「演出节点」(media + timeline[]: role/kind/trigger/params)
-  graph.edges[]  条件/加权/效果出边（判断折在这里，无网关节点）
+  ui.overlays{} + node.overlayNodes[]        ← UI（HUD/QTE/字幕…）
+  node.data.reactions / mount.reactions      ← 副作用
+  graph.edges[]  条件/加权出边                ← 路由（判断折在这里，无网关节点）
         ▼  src/runtime  GraphRuntime → directive → GraphSession → SessionSnapshot
         ▼  src/graph    GraphCanvas（编辑/可视化）
   src/editor/shell GraphPlaySurface / GraphStudio（工坊壳）订阅 snapshot 渲染
@@ -135,7 +137,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 - **三分法依赖纪律二次收紧**：目录已拆 `runtime/graph/editor`，边界未钉死——skins 是否应迁出 runtime 核心、NodeInspector 业务字段是否全归 editor、player 薄层是否独立成章。
 
 ### P2 · 文档债
-- **`SEEDANCE-PARITY.md` 改写成 graph 对照表**：能力矩阵仍指向已删 FMV 路径；应译成 `TimelineElement.kind` / edge / hud / subflow。
+- **`SEEDANCE-PARITY.md` 已译成 graph + Overlay 对照**（2026-07-14）；旧 FMV 字段表已清。
 - **07-06 spec 状态段对齐现行持久化**：草稿 localStorage + 磁盘权威（`/__graph__`），与文中过期「零 localStorage」说法统一。
 
 ### P3 · 产品能力
