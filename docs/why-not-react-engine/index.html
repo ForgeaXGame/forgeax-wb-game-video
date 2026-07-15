@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wb-game-video · 为什么渲染引擎不能用 React 当权威层</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #161b22;
+      --panel-2: #1c2330;
+      --line: #2a3344;
+      --text: #e7ecf3;
+      --muted: #9aa7b8;
+      --accent: #5b9fd4;
+      --ok: #3dba7a;
+      --bad: #e06c75;
+      --warn: #d4a017;
+      --code: #c8d1dc;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a2a3d 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #1e2430 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 28px;
+      margin-bottom: 36px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    h1 {
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 12px;
+      line-height: 1.25;
+    }
+    .lede {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 720px;
+      margin: 0;
+    }
+    .verdict {
+      margin-top: 22px;
+      padding: 16px 18px;
+      background: linear-gradient(135deg, #14301f 0%, #162033 100%);
+      border: 1px solid #2a4a38;
+      border-radius: 10px;
+      font-size: 0.98rem;
+    }
+    .verdict strong { color: #8fe0b0; }
+    nav.toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 28px 0 8px;
+    }
+    nav.toc a {
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      text-decoration: none;
+    }
+    nav.toc a:hover { color: var(--text); border-color: #3d4d66; }
+    section {
+      margin-top: 48px;
+      scroll-margin-top: 24px;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin: 0 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    h3 {
+      font-size: 1.05rem;
+      margin: 28px 0 10px;
+      color: #c5d0de;
+    }
+    p { margin: 0 0 12px; color: #d5dde8; }
+    .muted { color: var(--muted); }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .card h3 { margin-top: 0; }
+    .card.ok { border-color: #2a5a40; }
+    .card.bad { border-color: #5a2a32; }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .tag.ok { background: #1e3a2a; color: var(--ok); }
+    .tag.bad { background: #3a1e24; color: var(--bad); }
+    .tag.warn { background: #3a3010; color: var(--warn); }
+    .tag.neutral { background: #243044; color: var(--accent); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: var(--panel-2);
+      color: #b8c4d4;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    td.cap { color: #f0f4fa; font-weight: 600; white-space: nowrap; width: 18%; }
+    td.engine { color: #cfe8d8; }
+    td.react { color: #f0c8cc; }
+    code, .mono {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      color: var(--code);
+    }
+    pre {
+      margin: 12px 0;
+      padding: 14px 16px;
+      background: #0a0d12;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: #c9d4e0;
+    }
+    .flow {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px 20px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre;
+      overflow-x: auto;
+      color: #c5d2e0;
+    }
+    ul.compact { margin: 8px 0 0; padding-left: 1.2em; }
+    ul.compact li { margin: 4px 0; }
+    footer {
+      margin-top: 64px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    .pill {
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">wb-game-video · architecture note · 2026-07-15</p>
+      <h1>为什么渲染引擎不能把 React 当「权威层」</h1>
+      <p class="lede">
+        基于 Overlay demo 契约、节点响应规则（watch / spawn）、以及蓝图「选节点开播」等能力，
+        逐条对比：<em>纯 TS 引擎 + React 视图</em> vs <em>整机 React 当游戏引擎</em>。
+      </p>
+      <div class="verdict">
+        <strong>结论：</strong>
+        React 的「响应式心智」要对；React 的运行时<strong>不能</strong>当玩法权威层。
+        正确边界是：JSON → 纯引擎求值（RNG / effects / 边 / tick / watch）→ directive → React Skin 只画画面。
+      </div>
+      <nav class="toc">
+        <a href="#caps">要支撑的能力</a>
+        <a href="#matrix">逐能力对照</a>
+        <a href="#proscons">优缺点</a>
+        <a href="#boundary">推荐边界</a>
+        <a href="#flow">数据流</a>
+        <a href="#demo">demo 实例</a>
+      </nav>
+    </header>
+
+    <!-- 1 -->
+    <section id="caps">
+      <h2>1. 我们真正要支撑的能力</h2>
+      <p class="muted">这些不是抽象理想，而是当前 demo / schema / 节点配置已经在要求的东西。</p>
+      <div class="pill-row">
+        <span class="pill">Overlay 包（视频上只认 overlay）</span>
+        <span class="pill">OverlayNode 挂到演出节点</span>
+        <span class="pill">蓝图选节点 jumpToNode 开播</span>
+        <span class="pill">watch 数值变化</span>
+        <span class="pill">spawn 瞬态组件 + ttl</span>
+        <span class="pill">submit → resolve → 边</span>
+        <span class="pill">组件事件可配（manifest）</span>
+        <span class="pill">无头单测（纯 Node vitest）</span>
+      </div>
+      <div class="grid-2" style="margin-top:16px">
+        <div class="card">
+          <h3>配置平面（作者）</h3>
+          <ul class="compact">
+            <li><code>ui.overlays[id]</code>：界面包 + <code>children</code></li>
+            <li><code>node.overlayNodes[]</code>：挂哪张、贴视频哪</li>
+            <li><code>node.reactions[]</code>：watch / shown / hidden → effect / spawn / goto</li>
+            <li><code>edges[].sourceHandle</code>：对齐 exits / submit key</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>运行平面（引擎）</h3>
+          <ul class="compact">
+            <li>视频时钟 → <code>tick(ms)</code></li>
+            <li>写屏障 → pull-diff <code>watch</code></li>
+            <li><code>spawn</code> 实例化模板，到期 <code>removeOverlay</code></li>
+            <li>产 directive；Player / Skin 消费</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="matrix">
+      <h2>2. 逐能力对照：引擎 vs 整机 React</h2>
+      <p class="muted">「整机 React」= 把 JSON 编译成 React 树，用 useState / useEffect / 组件生命周期承载玩法权威。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>能力</th>
+            <th>纯引擎（现状方向）</th>
+            <th>若整机用 React 当引擎</th>
+            <th>卡点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cap">Overlay 只上视频</td>
+            <td class="engine">expand(overlay ⊕ OverlayNode) → OverlayInstance → directive</td>
+            <td class="react">JSON → 一棵 React 树条件渲染</td>
+            <td>表面都能做；权威若进组件，配置与副作用缠在一起</td>
+          </tr>
+          <tr>
+            <td class="cap">蓝图选节点开播</td>
+            <td class="engine"><code>jumpToNode(id)</code>：重置游标、保留全局态、立刻 enter</td>
+            <td class="react">卸载旧树 / 重挂新树 / 对齐 video.currentTime</td>
+            <td>StrictMode 双挂、effect 竞态、时钟与 fiber 不同步</td>
+          </tr>
+          <tr>
+            <td class="cap">视频时钟驱动</td>
+            <td class="engine"><code>onTimeUpdate</code> → <code>session.tick(ms)</code> 离散推进</td>
+            <td class="react">每帧 setState 或 effect 跟视频</td>
+            <td>批处理/并发下难保证「第 N ms 必触发」；seek 回放更难</td>
+          </tr>
+          <tr>
+            <td class="cap">watch 掉血→表现</td>
+            <td class="engine">写屏障 pull-diff：重读 <code>of</code>，比 prev，带 <code>delta</code></td>
+            <td class="react"><code>useEffect(() =&gt; …, [hp])</code></td>
+            <td>level vs edge、多伤害源叠加、无头无 DOM 时 effect 不跑</td>
+          </tr>
+          <tr>
+            <td class="cap">spawn + ttl</td>
+            <td class="engine">引擎发 <code>renderOverlay</code>，ttl 到期 <code>removeOverlay</code></td>
+            <td class="react">setTimeout + 条件渲染列表</td>
+            <td>切节点 / seek / pause 时 timer 与视频时钟脱节</td>
+          </tr>
+          <tr>
+            <td class="cap">交互出边</td>
+            <td class="engine">Skin <code>submit(key)</code> → Kind.resolve → handle → edge</td>
+            <td class="react">onClick 里直接改血 / navigate</td>
+            <td>玩法绑死在组件；换皮、复用 overlay、图边 SSOT 全崩</td>
+          </tr>
+          <tr>
+            <td class="cap">组件事件可配</td>
+            <td class="engine">manifest.events + params；节点配 reactions / 边</td>
+            <td class="react">组件 export 回调 / Context</td>
+            <td>第二套 SSOT；编辑器下拉对不齐 JSON</td>
+          </tr>
+          <tr>
+            <td class="cap">无头单测</td>
+            <td class="engine">Node 里 <code>new GraphRuntime</code> + tick，无需 jsdom</td>
+            <td class="react">必须挂 React + 模拟时钟 + act()</td>
+            <td>115+ 测会变慢、脆、难断言确定性</td>
+          </tr>
+          <tr>
+            <td class="cap">确定性 / RNG</td>
+            <td class="engine">seeded RNG 在纯引擎内</td>
+            <td class="react">effect 顺序、重渲染次数影响「何时 roll」</td>
+            <td>回放 / 复现 bug 不稳定</td>
+          </tr>
+          <tr>
+            <td class="cap">品类扩展<br/>(hp→score/kills)</td>
+            <td class="engine">实体 = 开放 attrs；watch.of / bind 换字段即可</td>
+            <td class="react">「写个新组件就行」看起来简单</td>
+            <td>简单感来自把逻辑塞组件；图编排与测试成本转移到 JSX</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3 -->
+    <section id="proscons">
+      <h2>3. 优缺点对照</h2>
+      <div class="grid-2">
+        <div class="card bad">
+          <h3><span class="tag bad">方案 B</span> 整机 React 当引擎</h3>
+          <p><strong>优点</strong></p>
+          <ul class="compact">
+            <li>心智熟悉：deps / mount / unmount 人人会</li>
+            <li>Studio 里本来就有 React，看似「少一层」</li>
+            <li>临时 UI 特效用 hooks 写得很快</li>
+            <li>新人容易误以为「监听数据变化=useEffect」就够了</li>
+          </ul>
+          <p style="margin-top:14px"><strong>缺点（致命）</strong></p>
+          <ul class="compact">
+            <li>权威态进 fiber：血量、RNG、边路由跟着渲染生命周期走</li>
+            <li>蓝图 seek / 选节点播：时钟与 effect 难对齐</li>
+            <li>watch 变成 level-triggered 或依赖重渲染次数</li>
+            <li>无头测、回放、确定性变差</li>
+            <li>JSON 不再是可独立求值的玩法 SSOT</li>
+            <li>Skin 换皮会带走玩法（副作用写在组件里）</li>
+          </ul>
+        </div>
+        <div class="card ok">
+          <h3><span class="tag ok">方案 A（推荐）</span> 引擎权威 + React 视图</h3>
+          <p><strong>优点</strong></p>
+          <ul class="compact">
+            <li>玩法纯、可测、可 jumpToNode / 回放</li>
+            <li>watch = 写屏障 pull-diff，与「谁改的」无关</li>
+            <li>spawn/ttl 跟节点时钟同一套游标</li>
+            <li>Skin 仍是 React：好看、可换皮、可崩隔离</li>
+            <li>编辑器与运行时共享同一份 JSON 契约</li>
+            <li>attrs 开放：竞技 / 格斗只换字段与 overlay，不改引擎假设</li>
+          </ul>
+          <p style="margin-top:14px"><strong>缺点（可接受）</strong></p>
+          <ul class="compact">
+            <li>要手写一小段「响应式」原语（watch/spawn），不能直接套 React API</li>
+            <li>作者要学 reactions 字段，而不是只写 JSX</li>
+            <li>视图层仍要一层 Player 把 directive 映成组件</li>
+            <li>调试要分清「引擎日志」vs「React DevTools」</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>容易混淆的一点</h3>
+      <p>
+        <span class="tag warn">不是</span>
+        「项目里不许用 React」。
+        <span class="tag ok">而是</span>
+        React <strong>只许</strong>出现在呈现层（GraphPlayer / Skin / 编辑器），
+        <strong>不许</strong>成为「谁扣血、走哪条边、第几毫秒开火」的权威实现。
+      </p>
+    </section>
+
+    <!-- 4 -->
+    <section id="boundary">
+      <h2>4. 推荐边界（谁干什么）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>层</th>
+            <th>技术</th>
+            <th>负责</th>
+            <th>禁止</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cap">权威模拟</td>
+            <td><code>GraphRuntime</code>（纯 TS）</td>
+            <td>tick、effects、RNG、边、watch、spawn、jumpToNode</td>
+            <td>import react；读写 DOM；在组件里藏玩法</td>
+          </tr>
+          <tr>
+            <td class="cap">会话壳</td>
+            <td><code>GraphSession</code></td>
+            <td>把 directive 收成 snapshot；回灌 submit</td>
+            <td>自己 invent 玩法规则</td>
+          </tr>
+          <tr>
+            <td class="cap">Play 视图</td>
+            <td>React <code>GraphPlayer</code></td>
+            <td>视频元素、订阅 snapshot、把 overlay 指令画出来</td>
+            <td>在 useEffect 里改实体 attrs / 跳边</td>
+          </tr>
+          <tr>
+            <td class="cap">Skin</td>
+            <td>React 组件（如 <code>BossHitCheer</code>）</td>
+            <td>长相、本地 UI 态、按 params 画、submit(event)</td>
+            <td>扣血、goto、读全局 store 改世界</td>
+          </tr>
+          <tr>
+            <td class="cap">蓝图编辑</td>
+            <td>React Flow + Inspector</td>
+            <td>编 JSON；响应规则下拉引用 <code>overlayId/childId</code></td>
+            <td>把运行时逻辑写进画布组件</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 5 -->
+    <section id="flow">
+      <h2>5. 数据流（一眼看懂为什么 React 接不住权威）</h2>
+      <div class="flow">scenarios.graph.json
+  │
+  ├─ ui.overlays.*          ← 界面包（children / layout / 默认 params）
+  ├─ nodes[].overlayNodes   ← 挂到视频上
+  ├─ nodes[].reactions      ← watch / shown / hidden / event …
+  └─ edges                  ← sourceHandle ↔ exits / submit
+        │
+        ▼
+   GraphRuntime（纯 TS，无 React）
+        │  enter / tick(ms) / applyEffects
+        │  写屏障 → checkWatch（pull-diff）
+        │  spawn → renderOverlay(+ttl) / removeOverlay
+        │  submit → resolve → 选边 → jump/enter
+        ▼
+   RuntimeDirective[]
+        │
+        ▼
+   GraphSession.snapshot  ──订阅──►  GraphPlayer（React）
+                                        │
+                                        ▼
+                                   Skin 组件树（React）
+                                   只读 params / ctx.hud
+                                   只出 submit(key)</div>
+      <p class="muted" style="margin-top:12px">
+        若把中间「GraphRuntime」整段换成 React 树，箭头会变成：
+        JSON → fiber mount → useEffect 改世界 → 再渲染。
+        那时 <em>视频时钟、seek、无头测、边 SSOT</em> 全部要重新发明一遍——而且往往发明得比现在更差。
+      </p>
+    </section>
+
+    <!-- 6 -->
+    <section id="demo">
+      <h2>6. 用当前 demo 形状说明（bossHitCheer）</h2>
+      <p>
+        目标能力：小怪掉血时，右上角刷出「加油，boss 扣了 X，还剩 Y」，显示 3s；
+        「加油」可点，点后追加传入的英雄名。组件进 overlay 目录，节点用 watch + spawn 引用。
+      </p>
+      <pre>// 1) 界面包（ui.overlays.hitCheer）—— 组件在目录里，节点才能选到
+{
+  "id": "hitCheer",
+  "children": [{
+    "id": "banner",
+    "component": "bossHitCheer",
+    "params": { "heroName": "空藏" }
+  }]
+}
+
+// 2) 节点响应规则（node.data.reactions）—— 编排平面，不写在 React 里
+{
+  "when": { "type": "watch", "of": "entity.ent-boss.attr.hp", "on": "dec" },
+  "do": [{
+    "kind": "spawn",
+    "from": "hitCheer/banner",
+    "ttlMs": 3000,
+    "params": {
+      "dmg":    { "expr": "abs(delta)" },
+      "remain": { "expr": "entity.ent-boss.attr.hp" },
+      "heroName": "空藏"
+    }
+  }]
+}
+
+// 3) Skin（React）—— 只负责画 + 本地点击态；不扣血、不 watch
+// BossHitCheer：读 params.dmg/remain/heroName；「加油」onClick 只改本地 cheered</pre>
+      <div class="grid-2">
+        <div class="card ok">
+          <h3>为什么这样对</h3>
+          <ul class="compact">
+            <li>掉血无论来自哪条 effect，watch 都能抓到</li>
+            <li>ttl / 切节点由引擎统一收</li>
+            <li>换一张皮不影响「何时刷、刷多久」</li>
+            <li>同一规则可在无头测试里 <code>tick</code> 断言</li>
+          </ul>
+        </div>
+        <div class="card bad">
+          <h3>若写成 React 引擎会怎样</h3>
+          <ul class="compact">
+            <li><code>useEffect([bossHp])</code> 里 setFloats —— 多源伤害难叠</li>
+            <li>3s 用 setTimeout —— seek 回节点会漏清/重刷</li>
+            <li>点击「加油」若直接改全局态 —— 玩法泄漏进 Skin</li>
+            <li>蓝图点别的节点开播 —— 旧 effect 与 timer 残留</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>一句话带走</h2>
+      <div class="verdict">
+        <strong>用 React 的语法糖讲故事可以；用 React 的运行时当游戏核心不行。</strong>
+        我们要的是「声明式响应」（watch / shown / spawn），不是「把 GameRuntime 嵌进 fiber」。
+        视图继续 React；权威继续纯 TS。
+      </div>
+    </section>
+
+    <footer>
+      路径：<code>packages/marketplace/extensions/wb-game-video/docs/why-not-react-engine/index.html</code>
+      · 对照代码：<code>runtime/engine/engine.ts</code>、<code>schema/node-config-schema.ts</code>、
+      <code>skins/components/BossHitCheer.tsx</code>、<code>editor/shell/GraphPlayer.tsx</code>
+      · 本地打开本文件即可阅读，无需构建。
+    </footer>
+  </div>
+</body>
+</html>

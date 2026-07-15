@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wb-game-video · Runtime 生命周期</title>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        primaryColor: '#2a2118',
+        primaryTextColor: '#f2e8dc',
+        primaryBorderColor: '#f08840',
+        lineColor: '#9a8570',
+        secondaryColor: '#1c1712',
+        tertiaryColor: '#241e18',
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      },
+      flowchart: { curve: 'basis', htmlLabels: true, padding: 12 },
+    })
+  </script>
+  <style>
+    :root {
+      --bg: #12100e;
+      --panel: #1a1612;
+      --panel2: #221c17;
+      --line: #3a3028;
+      --text: #f2e8dc;
+      --muted: #a89888;
+      --faint: #7a6a5a;
+      --accent: #f08840;
+      --accent-soft: rgba(240, 136, 64, 0.16);
+      --ok: #6bcf8e;
+      --info: #6ba3cf;
+      --warn: #e0b060;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(240,136,64,.08), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(107,163,207,.06), transparent 50%),
+        var(--bg);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
+    header {
+      display: grid;
+      gap: 12px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+    }
+    header .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    header h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    header p { margin: 0; color: var(--muted); max-width: 62ch; }
+    nav.toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    nav.toc a {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    nav.toc a:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+    section {
+      margin: 40px 0;
+      scroll-margin-top: 24px;
+    }
+    section h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+    }
+    section .lead { margin: 0 0 18px; color: var(--muted); max-width: 70ch; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 8px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+    .card h3 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: var(--faint);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .mermaid { margin: 0 0 8px; }
+    .grid-2 {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .kv {
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .kv h4 { margin: 0 0 6px; font-size: 15px; color: var(--accent); }
+    .kv p, .kv li { margin: 0; color: var(--muted); font-size: 13.5px; }
+    .kv ul { margin: 6px 0 0; padding-left: 1.1em; }
+    .kv code, p code, li code, td code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      background: rgba(0,0,0,.35);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #ffd2a8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { color: var(--faint); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .pill.idle { background: #333; color: #bbb; }
+    .pill.playing { background: rgba(107,163,207,.22); color: var(--info); }
+    .pill.await { background: rgba(224,176,96,.22); color: var(--warn); }
+    .pill.ended { background: rgba(107,207,142,.18); color: var(--ok); }
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 12px 14px;
+      border-radius: 0 10px 10px 0;
+      color: var(--muted);
+      font-size: 14px;
+      margin: 14px 0;
+    }
+    .callout strong { color: var(--text); }
+    footer {
+      margin-top: 48px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 12px;
+    }
+    .layers {
+      display: grid;
+      gap: 8px;
+    }
+    .layer {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 12px;
+      align-items: start;
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .layer .name {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    .layer .desc { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">wb-game-video · runtime</div>
+      <h1>给一份 GameScenario JSON 之后，Runtime 在做什么</h1>
+      <p>
+        从 JSON 进场 → <code>GraphSession</code> / <code>GraphRuntime</code> 状态机 →
+        Overlay 展开与渲染 → 交互提交 / 边路由 / Reaction 副作用 → 下一节点，直到 <code>ended</code>。
+        对应源码：<code>src/runtime/engine/*</code>、<code>schema/expand-overlay*</code>、<code>editor/shell/GraphPlaySurface</code>。
+      </p>
+      <nav class="toc">
+        <a href="#layers">分层</a>
+        <a href="#boot">启动</a>
+        <a href="#phases">相位</a>
+        <a href="#node">进节点</a>
+        <a href="#overlay">Overlay</a>
+        <a href="#tick">时钟 / Tick</a>
+        <a href="#submit">交互与事件</a>
+        <a href="#route">路由 vs 效果</a>
+        <a href="#directives">指令表</a>
+        <a href="#life">全生命周期</a>
+      </nav>
+    </header>
+
+    <section id="layers">
+      <h2>1. 分层：谁管什么</h2>
+      <p class="lead">引擎只发<strong>指令</strong>；Session 合成<strong>快照</strong>；Player 负责媒体时钟与皮肤渲染。</p>
+      <div class="layers">
+        <div class="layer">
+          <div class="name">JSON / Store</div>
+          <div class="desc"><code>GameScenario</code>：<code>graph</code> + <code>ui.overlays</code> + <code>variables/entities</code> + <code>reactions</code> + <code>packs</code>。编辑器用 <code>graphScenarioStore.scn()</code> 合出。</div>
+        </div>
+        <div class="layer">
+          <div class="name">GraphRuntime</div>
+          <div class="desc">纯状态机。读 scenario、推进 phase、展开 overlay children、resolve 交互、选边、施加 effects。输出 <code>RuntimeDirective[]</code>。</div>
+        </div>
+        <div class="layer">
+          <div class="name">GraphSession</div>
+          <div class="desc"><code>apply(directives)</code> → <code>SessionSnapshot</code>（clip / overlays / interaction / hud / banner / log）。</div>
+        </div>
+        <div class="layer">
+          <div class="name">PlaySurface / Player</div>
+          <div class="desc">播视频；<code>onTimeUpdate → tick</code>；<code>onEnded → performanceEnd</code>；皮肤 <code>submit(input)</code>；HUD 从节点 overlay 里筛 <code>surface:'hud'</code>。</div>
+        </div>
+        <div class="layer">
+          <div class="name">Kind / Skin</div>
+          <div class="desc"><code>KindRegistry</code>：role + resolve 出 outcome；<code>SkinRegistry</code>：React 呈现（parry / kou / choice / hpBar…）。</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>架构总览</h3>
+        <pre class="mermaid">
+flowchart LR
+  JSON["GameScenario JSON"] --> Store["graphScenarioStore / 入参"]
+  Store --> Session["GraphSession"]
+  Session --> RT["GraphRuntime"]
+  RT -->|"RuntimeDirective[]"| Session
+  Session -->|"SessionSnapshot"| UI["PlaySurface / Player"]
+  UI -->|"tick / performanceEnd / submit"| Session
+  UI --> Skins["SkinRegistry"]
+  RT --> Expand["expand-overlay"]
+  Expand --> Catalog["ui.overlays ⊕ overlayNodes"]
+  RT --> FX["applyEffects + condition + expr"]
+  RT --> Route["selectHandleEdge / selectAutoEdge"]
+        </pre>
+      </div>
+    </section>
+
+    <section id="boot">
+      <h2>2. 启动：JSON → Session.start()</h2>
+      <p class="lead">试玩页与独立播放器共用同一条启动链。</p>
+      <div class="card">
+        <h3>Boot 调用序</h3>
+        <pre class="mermaid">
+sequenceDiagram
+  participant App as GraphApp / GraphPlayer
+  participant Store as graphScenarioStore
+  participant S as GraphSession
+  participant RT as GraphRuntime
+  participant Init as initState
+
+  App->>App: bootEditorSkins()
+  App->>Store: ensureBoot(game, demo)（试玩）
+  Store-->>App: scn() → GameScenario
+  App->>S: new GraphSession(scenario)
+  S->>S: createCoreKindRegistry / SkinRegistry
+  S->>RT: new GraphRuntime(graph, scenario, kinds, packs)
+  RT->>Init: initState(scenario)
+  Note over Init: vars / entities / flags / score / items / rng
+  RT-->>S: phase = idle
+  App->>S: start()
+  S->>RT: start()
+  RT->>RT: enterNode(nodes[0])
+  RT-->>S: directives…
+  S-->>App: SessionSnapshot（clip + overlays…）
+        </pre>
+      </div>
+      <div class="callout">
+        <strong>校验：</strong>编辑器保存走 <code>validateGraph</code>；完整 scenario 校验是 <code>validateScenario</code>（含 overlays / requiredPlugins）。Runtime 构造时会检查 <code>requiredPlugins</code>。
+      </div>
+    </section>
+
+    <section id="phases">
+      <h2>3. 相位状态机</h2>
+      <p class="lead"><code>GraphPhase</code>：<span class="pill idle">idle</span> → <span class="pill playing">playing</span> → <span class="pill await">awaitInteraction</span> → <span class="pill ended">ended</span></p>
+      <div class="card">
+        <h3>Phase 转移</h3>
+        <pre class="mermaid">
+stateDiagram-v2
+  [*] --> idle: ctor
+  idle --> playing: start / enterNode → playClip
+  playing --> awaitInteraction: runElement(interaction)
+  awaitInteraction --> playing: submit → outcome（清 pending）
+  playing --> playing: tick / traverse → enterNode
+  playing --> ended: 无自动边 & 栈空 / finishEnd
+  awaitInteraction --> ended: redirect / 链终止（少见）
+  ended --> [*]
+        </pre>
+      </div>
+      <div class="grid-2">
+        <div class="kv">
+          <h4>playing</h4>
+          <p>媒体时钟前进；触发 <code>at</code> / window / spawn；等视频结束或 duration 到点后 <code>advanceAuto</code>。</p>
+        </div>
+        <div class="kv">
+          <h4>awaitInteraction</h4>
+          <p>已 <code>openInteraction</code>；等皮肤 <code>submit</code> 或 timeout（Player 侧 <code>submit(undefined)</code>）。</p>
+        </div>
+        <div class="kv">
+          <h4>ended</h4>
+          <p><code>finishEnd</code> → <code>banner</code>；本局结束。</p>
+        </div>
+        <div class="kv">
+          <h4>redirect</h4>
+          <p>scenario <code>state</code> reaction 的 <code>goto</code> 可硬打断当前节点（如 HP≤0），清空 callStack 后跳转。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="node">
+      <h2>4. 进入节点 enterNode</h2>
+      <p class="lead">每次换节点的固定顺序（简化自 <code>engine.ts</code>）。</p>
+      <div class="card">
+        <h3>enterNode 流水线</h3>
+        <pre class="mermaid">
+flowchart TD
+  A["enterNode(id)"] --> B{"SubFlowPack / SubFlow?"}
+  B -->|是且非返回| C["压 callStack → 切图/入口 → 递归 enterNode"]
+  B -->|否| D["重置 fired / windows / pending / spawns / watch"]
+  D --> E["emit playClip<br/>Session 清空 overlays + interaction"]
+  E --> F["phase = playing"]
+  F --> G["跑 trigger.when=enter 且无 window 的 children → runElement"]
+  G --> H{"开了交互?"}
+  H -->|是| I["phase = awaitInteraction · return"]
+  H -->|否| J["applyPhaseReactionEffects(enter)"]
+  J --> K{"consumeRedirect?"}
+  K -->|是| L["跳转目标节点"]
+  K -->|否| M{"无 duration 且无 interaction?"}
+  M -->|是| N["advanceAuto → 选边 traverse"]
+  M -->|否| O["等 tick / performanceEnd"]
+        </pre>
+      </div>
+    </section>
+
+    <section id="overlay">
+      <h2>5. Overlay：JSON 如何变成画面上的层</h2>
+      <p class="lead">权威数据：目录在 <code>scenario.ui.overlays</code>，节点只挂 <code>overlayNodes[]</code>。Runtime 展开成 <code>OverlayInstanceChild</code>（id = <code>mountId/childId</code>）。</p>
+      <div class="card">
+        <h3>展开路径</h3>
+        <pre class="mermaid">
+flowchart LR
+  O["ui.overlays[id]<br/>Overlay 模板 + children"] --> E["expandOverlayMount"]
+  M["node.data.overlayNodes[]<br/>{ overlay, layout?, reactions? }"] --> E
+  E --> C["OverlayInstanceChild<br/>component / trigger / window / params / source"]
+  C --> R["runElement by role"]
+  R -->|presentation| RO["emit renderOverlay"]
+  R -->|interaction| OI["emit openInteraction"]
+  RO --> Snap["snapshot.overlays"]
+  OI --> Inter["snapshot.interaction"]
+  Snap --> Skin["skins.renderOverlay(component)"]
+  Inter --> Skin2["skins.renderInteraction(...)"]
+        </pre>
+      </div>
+      <div class="grid-2">
+        <div class="kv">
+          <h4>何时挂上</h4>
+          <ul>
+            <li><code>enter</code> 触发（无 window）→ 立刻 <code>runElement</code></li>
+            <li><code>at.ms</code> → <code>tick</code> 到点</li>
+            <li><code>window.startMs..endMs</code> → 窗口内显示，结束 <code>removeOverlay</code></li>
+            <li>spawn action → 动态叠层 + ttl 回收</li>
+          </ul>
+        </div>
+        <div class="kv">
+          <h4>何时卸下</h4>
+          <ul>
+            <li>下一节点 <code>playClip</code>：Session <strong>整表清空</strong> overlays / interaction</li>
+            <li>window 结束 / spawn ttl → <code>removeOverlay</code></li>
+            <li>unmount 时再 fire <code>hidden</code> lifecycle reaction</li>
+          </ul>
+        </div>
+        <div class="kv">
+          <h4>HUD 特例</h4>
+          <p>血条等 <code>surface:'hud'</code> 不走 session.overlays 列表；PlaySurface 对当前节点再 expand 一次，用 <code>renderHudElement</code> 画。数值来自 <code>snapshot.hud</code>（entities.attrs.hp 等）。</p>
+        </div>
+        <div class="kv">
+          <h4>编辑侧对称</h4>
+          <p>视频轨编辑经 <code>overlay-edit</code> 写回同一套 <code>ui.overlays</code> + <code>overlayNodes</code>，与 runtime 同一 SSOT。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="tick">
+      <h2>6. 时钟：tick 与演出结束</h2>
+      <div class="card">
+        <h3>Playing 时钟</h3>
+        <pre class="mermaid">
+flowchart TD
+  V["&lt;video&gt; onTimeUpdate"] --> T["session.tick(ms)"]
+  T --> AT["到点 at children → runElement"]
+  T --> AR["applyAtReactionEffects"]
+  T --> W["tickWindows：start 显示 / end 移除"]
+  T --> SP["reapSpawns"]
+  T --> RD["consumeRedirect"]
+  VE["video onEnded / duration 到点"] --> PE["session.performanceEnd()"]
+  PE --> AA["advanceAuto"]
+  AA --> CR["applyCompleteReactionEffects（仅效果）"]
+  AA --> SE["selectAutoEdge（cond / else / out + weight）"]
+  SE -->|有边| TR["traverse → runExit → enterNode"]
+  SE -->|无边且栈空| END["finishEnd → banner"]
+  SE -->|无边有栈| RET["弹栈返回容器 out"]
+        </pre>
+      </div>
+    </section>
+
+    <section id="submit">
+      <h2>7. 交互提交与事件响应</h2>
+      <p class="lead">QTE / 选项 / 热点：皮肤收集输入 → Session.submit → Runtime.submitInteraction。</p>
+      <div class="card">
+        <h3>submitInteraction</h3>
+        <pre class="mermaid">
+sequenceDiagram
+  participant Skin as Skin（Parry / Kou / Choice…）
+  participant UI as PlaySurface
+  participant S as GraphSession
+  participant RT as GraphRuntime
+  participant Kind as KindPlugin.resolve
+
+  Skin->>UI: submit(input)
+  UI->>S: submit(input)
+  S->>RT: submitInteraction(elementId, input)
+  RT->>Kind: resolve(ctx, params, input)
+  alt continue:true
+    Kind-->>RT: 可选 effects，保持 awaitInteraction
+  else outcome
+    Kind-->>RT: { outcome, effects? }
+    RT->>RT: applyAndReact(effects)
+    RT->>RT: resolveEventReactions(mount.reactions, outcome)
+    Note over RT: reaction.do 只跑 effect，忽略 goto
+    RT->>RT: selectHandleEdge(outcome) 或 advanceAuto
+    RT->>RT: traverse → enterNode(next)
+  end
+  RT-->>S: directives
+  S-->>UI: 新 snapshot
+        </pre>
+      </div>
+      <div class="callout">
+        <strong>Event key 优先级：</strong>
+        <code>outcome</code> → <code>childId:outcome</code> → <code>mountId:outcome</code> → <code>mountId:childId:outcome</code>
+        （见 <code>overlay-events.ts</code>）。
+      </div>
+      <div class="card">
+        <h3>Reaction 触发面一览</h3>
+        <table>
+          <thead>
+            <tr><th>when.type</th><th>挂在哪</th><th>何时跑</th><th>能不能改走向</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>enter</code> / <code>at</code> / <code>exit</code></td><td>节点 <code>data.reactions</code></td><td>进节点 / tick / 离节点</td><td>仅 effect</td></tr>
+            <tr><td><code>complete</code></td><td>节点</td><td>advanceAuto 前</td><td>仅 effect（首个 if 命中）</td></tr>
+            <tr><td><code>event</code></td><td>mount <code>overlayNodes[].reactions</code></td><td>submit 出 outcome 后</td><td>仅 effect；走向看边</td></tr>
+            <tr><td><code>shown</code> / <code>hidden</code></td><td>节点 / mount</td><td>组件挂载 / 卸载</td><td>仅 effect</td></tr>
+            <tr><td><code>state</code></td><td><code>scenario.reactions</code></td><td>每次 applyAndReact 后 checkRules</td><td><strong>goto → redirect</strong></td></tr>
+            <tr><td><code>watch</code></td><td>scenario / 节点 / mount</td><td>写屏障后 pull-diff</td><td>effect（可配）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="route">
+      <h2>8. 铁律：边 = 路由，Reaction = 效果</h2>
+      <div class="grid-2">
+        <div class="kv">
+          <h4>Edges（走向）</h4>
+          <ul>
+            <li>交互：<code>sourceHandle</code> 对齐 outcome（如 <code>opt:a</code> / <code>pass</code>）</li>
+            <li>自动：<code>cond:*</code> → <code>else</code> → <code>out</code>；可带 weight RNG</li>
+            <li>条件：<code>evaluateCondition</code>（var / attr / attrRatio / flag…）</li>
+          </ul>
+        </div>
+        <div class="kv">
+          <h4>Reactions（效果）</h4>
+          <ul>
+            <li><code>do: [{ kind:'effect', effects:[…] }]</code></li>
+            <li><code>applyEffects</code>：var / attr / flag / item；值可 <code>{expr}</code></li>
+            <li>写后 <code>checkRules</code> + <code>checkWatch</code></li>
+            <li>编辑器可从 reaction.goto <em>派生</em>边，但 runtime 仍只信图上的边</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>效果写屏障</h3>
+        <pre class="mermaid">
+flowchart LR
+  E["effects"] --> A["applyEffects(state)"]
+  A --> SC["emit stateChanged"]
+  SC --> R["checkRules · state reactions"]
+  R -->|goto| RD["redirect 硬跳"]
+  R --> W["checkWatch · pull-diff"]
+  W --> D["更多 effects / 指令"]
+        </pre>
+      </div>
+    </section>
+
+    <section id="directives">
+      <h2>9. RuntimeDirective → SessionSnapshot</h2>
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>指令</th><th>Session 做什么</th><th>UI 响应</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>playClip</code></td><td>换 clip；<strong>清空</strong> overlays / interaction</td><td>换视频 src；叠层重置</td></tr>
+            <tr><td><code>renderOverlay</code></td><td>push 到 <code>snapshot.overlays</code></td><td>皮肤画 presentation</td></tr>
+            <tr><td><code>removeOverlay</code></td><td>按 elementId 过滤</td><td>卸层</td></tr>
+            <tr><td><code>openInteraction</code></td><td>设 <code>snapshot.interaction</code></td><td>交互皮肤 + 可选 timeout</td></tr>
+            <tr><td><code>routeInfo</code></td><td>暂存为下一节点 <code>entryReason</code></td><td>调试/日志展示</td></tr>
+            <tr><td><code>stateChanged</code></td><td>刷新 <code>hud</code></td><td>血条 / 变量 HUD</td></tr>
+            <tr><td><code>banner</code></td><td>结束文案</td><td>结局 UI</td></tr>
+            <tr><td><code>log</code></td><td>追加 log</td><td>调试面板</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="life">
+      <h2>10. 一条完整生命周期（快乐路径）</h2>
+      <div class="card">
+        <h3>从 JSON 到 ended</h3>
+        <pre class="mermaid">
+flowchart TD
+  J["① 装入 GameScenario JSON"] --> B["② GraphSession + GraphRuntime + initState"]
+  B --> S["③ start → enterNode(入口)"]
+  S --> P["④ playClip → 播媒体"]
+  P --> E["⑤ enter overlays / enter reactions"]
+  E --> Q{"⑥ 有交互?"}
+  Q -->|有| W["awaitInteraction<br/>皮肤 submit / timeout"]
+  W --> X["resolve → event effects → 边 outcome"]
+  Q -->|无| T["tick：at / window / spawn"]
+  T --> F["performanceEnd"]
+  F --> C["complete effects + selectAutoEdge"]
+  X --> N["traverse → enterNode(下一节点)"]
+  C --> N
+  N --> P
+  N --> Z["无边 & 栈空 → finishEnd → ended"]
+        </pre>
+      </div>
+      <div class="callout">
+        <strong>心智模型一句话：</strong>
+        JSON 描述图与 overlay 目录；Runtime 按节点时钟展开 children、用 Kind 解析交互、用边走路、用 reaction 改数值；
+        Session 把指令折成快照；Player 只负责播片和画皮肤。
+      </div>
+    </section>
+
+    <footer>
+      生成自 wb-game-video runtime 源码梳理 · 打开本文件即可查看（需联网加载 Mermaid CDN）。
+      路径：<code>docs/runtime-lifecycle/index.html</code>
+    </footer>
+  </div>
+</body>
+</html>

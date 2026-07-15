@@ -66,19 +66,29 @@ export interface ComponentManifest {
 // 2. Reaction（作者 SSOT：when → do；瘦形态，无 scope/preempt）
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 闭合动作原语（改状态 / 跳转）。表现走 overlay 组件，不进动作袋。 */
+/**
+ * 闭合动作原语（改状态 / 跳转 / 刷出瞬态组件）。
+ * - effect：施加副作用（改 attr/var/flag/item）
+ * - goto：跳转（仅 state/watch/shown/hidden 类反应生效；event/complete 的走向由边负责）
+ * - spawn：由反应**主动实例化**一个 overlay 组件模板（瞬态表现，如伤害飘字）；
+ *   `from` = `overlayId/childId` 引用目录模板，`params` 可含 `{expr}` 读 watch 局部量（prev/next/delta）。
+ */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
   | { kind: 'goto'; targetNodeId: string }
+  | { kind: 'spawn'; from: string; params?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
 
 /**
- * 触发面（闭合）——节点生命周期 + 事件 + 状态。effect 一律挂 reactions，按 `when` 绑到生命周期相位。
+ * 触发面（闭合）——节点生命周期 + 事件 + 数据/状态 + 组件生命周期。effect 一律挂 reactions。
  * - enter：进入节点（演出开始）
  * - at(ms)：演出播到第 ms 毫秒
  * - exit：离开节点前
  * - complete：节点收尾自动推进（`if` 缺省 = 无条件）
  * - event：组件事件（挂 mount.reactions；do 仅 effect，走向由边）
  * - state：仅挂 scenario.reactions（硬打断 goto）；节点级不求值
+ * - watch：观察某表达式(`of`)的值变化（`on` change/inc/dec）→ do（effect/spawn/goto）；
+ *   在每个写屏障处重采样比对（pull-diff）。局部量 prev/next/delta 供 do 内 `{expr}` 使用。
+ * - shown / hidden：某 overlay 组件实例**出现 / 消失**时触发（`of` = childId / mountId/childId / overlayId/childId）。
  */
 export type ReactionTrigger =
   | { type: 'enter' }
@@ -87,6 +97,9 @@ export type ReactionTrigger =
   | { type: 'complete'; if?: GraphCondition }
   | { type: 'event'; id: string }
   | { type: 'state'; condition: GraphCondition }
+  | { type: 'watch'; of: string; on?: 'change' | 'inc' | 'dec' }
+  | { type: 'shown'; of: string }
+  | { type: 'hidden'; of: string }
 
 /**
  * 瘦 Reaction：when + do。作用域由挂载位置决定。

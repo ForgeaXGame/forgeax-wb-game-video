@@ -9,7 +9,7 @@ import type { GameNode, GameScenario, SubFlowPackDef } from '../schema/graph-sch
 import { GraphRuntime } from './engine'
 import { createCoreKindRegistry } from '../registry/core-kinds'
 import type { KindRegistry } from '../registry/kind-registry'
-import { createCoreSkinRegistry } from '../skins/components'
+import { createCoreSkinRegistry, installComponentKinds } from '../skins/components'
 import type { SkinRegistry } from '../skins/rendererRegistry'
 import type { RuntimeDirective } from './directives'
 
@@ -95,6 +95,7 @@ export class GraphSession {
 
   constructor(scenario: GameScenario, opts: GraphSessionOptions = {}) {
     const kinds = opts.kinds ?? createCoreKindRegistry()
+    if (!opts.kinds) installComponentKinds(kinds) // 组件包自带 Kind（与渲染同文件）注入本局表
     this.skins = opts.skins ?? createCoreSkinRegistry()
     const packs = opts.packs ?? scenario.packs ?? []
     this.runtime = new GraphRuntime(scenario.graph, scenario, kinds, packs)

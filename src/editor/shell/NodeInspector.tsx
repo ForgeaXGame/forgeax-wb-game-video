@@ -2,8 +2,8 @@
  * NodeInspector —— 节点配置面板。选中画布节点后编辑其 `node.data`、overlay reactions 与出边。
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；边可由 goto 派生。
  */
-import type { ReactNode } from 'react'
-import type { GameGraph, GraphCondition, Overlay, SubFlowPackDef } from '../../runtime/schema/graph-schema'
+import { useState, type ReactNode } from 'react'
+import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import type { NodeAction, Reaction } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
@@ -127,6 +127,21 @@ function LifecycleReactionsEditor({
   )
 }
 
+/** 事件展示：中文名优先，括号里保留机器 id（对齐「出边 › 目标」的 `名称 (id)`）。 */
+function overlayEventLabel(ev: {
+  eventId: string
+  localEventId: string
+  label?: string
+  componentId: string
+  childId: string
+}): string {
+  const comp = getComponentManifest(ev.componentId)?.label?.trim()
+  const local = ev.label?.trim()
+  const head = [comp, local].filter(Boolean).join(' · ')
+  if (head && head !== ev.eventId) return `${head} (${ev.eventId})`
+  return ev.eventId
+}
+
 function OverlayReactionsEditor({
   events,
   reactions,
@@ -145,14 +160,15 @@ function OverlayReactionsEditor({
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-      <div style={{ fontSize: 11, opacity: 0.6 }}>事件触发时施加的效果；走向请在下方「出边」按事件出口连线。</div>
+      <div style={{ fontSize: 11, opacity: 0.6 }}>
+        事件来自挂载 overlay 内交互组件的 <code>exits</code> / manifest.events；触发时施加效果，走向请在下方「出边」按同名出口连线。
+      </div>
       {events.map((ev) => {
         const effects = eventEffects(reactions, ev.eventId)
         return (
           <div key={ev.eventId} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
-            <div style={{ fontSize: 12, marginBottom: 4 }}>
-              <b>{ev.label ?? ev.eventId}</b>
-              <span style={{ opacity: 0.55, marginLeft: 6 }}>{ev.eventId}</span>
+            <div style={{ fontSize: 12, marginBottom: 4 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
+              <b>{overlayEventLabel(ev)}</b>
             </div>
             <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>effects</div>
             <EffectsEditor
@@ -166,22 +182,318 @@ function OverlayReactionsEditor({
   )
 }
 
+// ── watch 字段级联选择（对象 → 字段 → …，最多 5 层）+ 手动输入 ────────────────────
+/** 字段树节点：seg 拼进 expr 路径；有 children 则可继续下钻，叶子即完整路径。 */
+export interface FieldNode {
+  seg: string
+  label: string
+  children?: FieldNode[]
+}
+
+/** 由 scenario 的实体/变量派生可监听字段树：entity.<id>.attr.<name> / var.<id> / score。 */
+function buildFieldTree(
+  entities: Record<string, Entity> | undefined,
+  variables: Record<string, Variable> | undefined,
+): FieldNode[] {
+  const ents: FieldNode[] = Object.values(entities ?? {}).map((e) => ({
+    seg: e.id,
+    label: e.name && e.name !== e.id ? `${e.name} (${e.id})` : e.id,
+    children: [
+      {
+        seg: 'attr',
+        label: '属性',
+        children: Object.keys(e.attrs ?? {}).map((a) => ({
+          seg: a,
+          label: e.attrMeta?.[a]?.label ? `${e.attrMeta[a]!.label} (${a})` : a,
+        })),
+      },
+    ],
+  }))
+  const vars: FieldNode[] = Object.values(variables ?? {}).map((v) => ({
+    seg: v.id,
+    label: v.name && v.name !== v.id ? `${v.name} (${v.id})` : v.id,
+  }))
+  return [
+    { seg: 'entity', label: '实体', children: ents },
+    { seg: 'var', label: '变量', children: vars },
+    { seg: 'score', label: '分数' },
+  ]
+}
+
+/** 路径 segs 是否能在字段树中逐级命中（决定默认走级联还是手动）。 */
+function pathInTree(tree: FieldNode[], path: string): boolean {
+  if (!path) return true
+  let opts: FieldNode[] | undefined = tree
+  for (const seg of path.split('.')) {
+    const hit: FieldNode | undefined = opts?.find((o) => o.seg === seg)
+    if (!hit) return false
+    opts = hit.children
+  }
+  return true
+}
+
+const MAX_FIELD_LEVELS = 5
+
+/** watch.of 编辑：级联下拉（选对象→选字段…）+ 手动输入兜底。 */
+function WatchFieldEditor({
+  tree,
+  value,
+  onChange,
+}: {
+  tree: FieldNode[]
+  value: string
+  onChange: (path: string) => void
+}): JSX.Element {
+  const [manual, setManual] = useState<boolean>(!!value && !pathInTree(tree, value))
+  const segs = value ? value.split('.') : []
+  // 逐层收集可选项：level0=根；选中且有 children 才展开下一层。
+  const levels: Array<{ opts: FieldNode[]; cur: string }> = []
+  let opts: FieldNode[] | undefined = tree
+  let depth = 0
+  while (opts && opts.length && depth < MAX_FIELD_LEVELS) {
+    const cur = segs[depth] ?? ''
+    levels.push({ opts, cur })
+    const hit: FieldNode | undefined = opts.find((o) => o.seg === cur)
+    if (!hit) break
+    opts = hit.children
+    depth++
+  }
+  const pick = (level: number, seg: string) => {
+    const next = seg ? [...segs.slice(0, level), seg] : segs.slice(0, level)
+    onChange(next.join('.'))
+  }
+  return (
+    <>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
+        <span style={{ width: 76, opacity: 0.7, flexShrink: 0 }}>字段</span>
+        <label style={{ fontSize: 11, opacity: 0.7, display: 'flex', gap: 3, alignItems: 'center' }}>
+          <input type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)} /> 手动
+        </label>
+      </label>
+      {manual ? (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="entity.ent-boss.attr.hp"
+          style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {levels.map((lv, k) => (
+            <select
+              key={k}
+              value={lv.cur}
+              onChange={(e) => pick(k, e.target.value)}
+              style={{ fontSize: 12, maxWidth: 150 }}
+            >
+              <option value="">{k === 0 ? '（选对象）' : '（选字段）'}</option>
+              {lv.opts.map((o) => <option key={o.seg} value={o.seg}>{o.label}</option>)}
+            </select>
+          ))}
+          <span style={{ fontSize: 11, opacity: 0.5, alignSelf: 'center', fontFamily: 'monospace' }}>{value || '—'}</span>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── 响应规则（数值变化 / 组件生命周期）——node.data.reactions 的 watch/shown/hidden 子集 ──
+/** 下拉项：value 落盘、label 展示（组件中文名等）。 */
+interface OptItem {
+  value: string
+  label: string
+}
+type ReactiveType = 'watch' | 'shown' | 'hidden'
+const REACTIVE_LABEL: Record<ReactiveType, string> = {
+  watch: '数值变化',
+  shown: '组件出现',
+  hidden: '组件消失',
+}
+function isReactive(r: Reaction): boolean {
+  return r.when.type === 'watch' || r.when.type === 'shown' || r.when.type === 'hidden'
+}
+
+/** node.data.reactions 内 do 动作编辑：effect / spawn / goto。 */
+function NodeActionsEditor({
+  actions,
+  nodeIds,
+  spawnOptions,
+  onChange,
+}: {
+  actions: NodeAction[]
+  nodeIds: string[]
+  spawnOptions: OptItem[]
+  onChange: (next: NodeAction[]) => void
+}): JSX.Element {
+  const patchAt = (i: number, a: NodeAction) => onChange(actions.map((c, j) => (j === i ? a : c)))
+  const removeAt = (i: number) => onChange(actions.filter((_, j) => j !== i))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {actions.map((a, i) => (
+        <div key={i} style={{ border: '1px solid #242424', borderRadius: 6, padding: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 11, opacity: 0.7 }}>
+              {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '跳转'}
+            </span>
+            <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
+          </div>
+          {a.kind === 'effect' ? (
+            <EffectsEditor value={a.effects} onChange={(effs) => patchAt(i, { kind: 'effect', effects: effs ?? [] })} />
+          ) : null}
+          {a.kind === 'spawn' ? (
+            <>
+              {row('模板', (
+                <select value={a.from} onChange={(e) => patchAt(i, { ...a, from: e.target.value })} style={{ flex: 1 }}>
+                  <option value="">（选组件模板）</option>
+                  {spawnOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ))}
+              {row('存活ms', (
+                <input type="number" value={a.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} title="0=常驻直到离场" />
+              ))}
+              <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>params（JSON；可用 {'{'}"expr":"abs(delta)"{'}'}）</div>
+              <textarea
+                defaultValue={a.params ? JSON.stringify(a.params, null, 0) : ''}
+                onBlur={(e) => {
+                  const t = e.target.value.trim()
+                  if (!t) return patchAt(i, { ...a, params: undefined })
+                  try { patchAt(i, { ...a, params: JSON.parse(t) as Record<string, unknown> }) } catch { /* 保留原值 */ }
+                }}
+                placeholder='{"amount":{"expr":"abs(delta)"}}'
+                style={{ width: '100%', minHeight: 40, fontFamily: 'monospace', fontSize: 11 }}
+              />
+            </>
+          ) : null}
+          {a.kind === 'goto' ? row('目标', (
+            <select value={a.targetNodeId} onChange={(e) => patchAt(i, { kind: 'goto', targetNodeId: e.target.value })} style={{ flex: 1 }}>
+              {nodeIds.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select>
+          )) : null}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" onClick={() => onChange([...actions, { kind: 'effect', effects: [] }])}>＋ 效果</button>
+        <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
+        <button type="button" onClick={() => onChange([...actions, { kind: 'goto', targetNodeId: nodeIds[0] ?? '' }])}>＋ 跳转</button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 响应规则编辑：node.data.reactions 中 watch/shown/hidden 子集（保留其它类型不动）。
+ * - watch：观察表达式 of（如 entity.ent-player.attr.hp）+ 方向 on → do
+ * - shown/hidden：组件 of（childId）出现/消失 → do
+ */
+function ReactiveRulesEditor({
+  reactions,
+  nodeIds,
+  componentOptions,
+  spawnOptions,
+  fieldTree,
+  onChange,
+}: {
+  reactions: Reaction[] | undefined
+  nodeIds: string[]
+  componentOptions: OptItem[]
+  spawnOptions: OptItem[]
+  fieldTree: FieldNode[]
+  onChange: (next: Reaction[] | undefined) => void
+}): JSX.Element {
+  const rules = (reactions ?? []).filter(isReactive)
+  const rest = (reactions ?? []).filter((r) => !isReactive(r))
+  const commit = (next: Reaction[]) => {
+    const merged = [...rest, ...next]
+    onChange(merged.length ? merged : undefined)
+  }
+  const patchAt = (i: number, r: Reaction) => commit(rules.map((c, j) => (j === i ? r : c)))
+  const setType = (i: number, type: ReactiveType) => {
+    const when: Reaction['when'] =
+      type === 'watch'
+        ? { type: 'watch', of: '', on: 'change' }
+        : { type, of: componentOptions[0]?.value ?? '' }
+    patchAt(i, { ...rules[i]!, when })
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+      {rules.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6 }}>无响应规则</div> : null}
+      {rules.map((r, i) => {
+        const w = r.when as Extract<Reaction['when'], { type: 'watch' } | { type: 'shown' } | { type: 'hidden' }>
+        return (
+          <div key={i} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+              <select value={w.type} onChange={(e) => setType(i, e.target.value as ReactiveType)} style={{ fontSize: 12 }}>
+                {(['watch', 'shown', 'hidden'] as ReactiveType[]).map((t) => <option key={t} value={t}>{REACTIVE_LABEL[t]}</option>)}
+              </select>
+              <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => commit(rules.filter((_, j) => j !== i))}>移除</button>
+            </div>
+            {w.type === 'watch' ? (
+              <>
+                <WatchFieldEditor
+                  tree={fieldTree}
+                  value={w.of}
+                  onChange={(of) => patchAt(i, { ...r, when: { ...w, of } })}
+                />
+                {row('方向', (
+                  <select value={w.on ?? 'change'} onChange={(e) => patchAt(i, { ...r, when: { ...w, on: e.target.value as 'change' | 'inc' | 'dec' } })} style={{ flex: 1 }}>
+                    <option value="change">变化</option>
+                    <option value="inc">增加</option>
+                    <option value="dec">减少</option>
+                  </select>
+                ))}
+              </>
+            ) : (
+              row('组件', (
+                <select value={w.of} onChange={(e) => patchAt(i, { ...r, when: { type: w.type, of: e.target.value } })} style={{ flex: 1 }}>
+                  <option value="">（选组件）</option>
+                  {componentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ))
+            )}
+            <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>动作 do</div>
+            <NodeActionsEditor
+              actions={r.do}
+              nodeIds={nodeIds}
+              spawnOptions={spawnOptions}
+              onChange={(acts) => patchAt(i, { ...r, do: acts })}
+            />
+          </div>
+        )
+      })}
+      <button type="button" onClick={() => commit([...rules, { when: { type: 'watch', of: '', on: 'change' }, do: [] }])}>
+        ＋ 响应规则
+      </button>
+    </div>
+  )
+}
+
+/** 节点「视频」下拉项：id 写入 media.ref；label 仅展示。 */
+export interface VideoOption {
+  id: string
+  label: string
+}
+
 export function NodeInspector({
   graph,
   nodeId,
   videoOptions = [],
   packs = [],
   overlays,
+  entities,
+  variables,
   onChange,
   onPacksChange,
   onJump,
 }: {
   graph: GameGraph
   nodeId: string | null
-  videoOptions?: string[]
+  videoOptions?: VideoOption[]
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
   overlays?: Record<string, Overlay>
+  /** 场景实体/变量：驱动 watch 字段级联下拉。 */
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   onJump?: (id: string) => void
@@ -197,9 +509,18 @@ export function NodeInspector({
     if (!name || name === id) return id
     return `${name} (${id})`
   }
+  const overlayLabel = (id: string) => {
+    const title = overlays?.[id]?.title?.trim()
+    if (!title || title === id) return id
+    return `${title} (${id})`
+  }
   const mediaRef = d.media?.ref ?? ''
   // 当前引用若不在资产清单里也要能显示（避免选中项丢失）。
-  const videoChoices = mediaRef && !videoOptions.includes(mediaRef) ? [mediaRef, ...videoOptions] : videoOptions
+  const videoChoices: VideoOption[] = (() => {
+    if (!mediaRef) return videoOptions
+    if (videoOptions.some((v) => v.id === mediaRef)) return videoOptions
+    return [{ id: mediaRef, label: mediaRef }, ...videoOptions]
+  })()
 
   const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
@@ -212,6 +533,16 @@ export function NodeInspector({
     const key = `${p.id}@${p.version}`
     return title && title !== p.id ? `${title} (${key})` : key
   }
+
+  // 响应规则选项（带组件中文名 label）：shown/hidden 的组件 = 本节点各挂载 overlay 的 children；spawn 模板 = 全目录。
+  const compLabel = (component: string) => getComponentManifest(component)?.label ?? component
+  const componentOptions: OptItem[] = (d.overlayNodes ?? []).flatMap((m) =>
+    (overlays?.[m.overlay]?.children ?? []).map((c) => ({ value: c.id, label: `${compLabel(c.component)}（${c.id}）` })),
+  )
+  const spawnOptions: OptItem[] = Object.values(overlays ?? {}).flatMap((o) =>
+    o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
+  )
+  const fieldTree = buildFieldTree(entities, variables)
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
   const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
@@ -270,10 +601,12 @@ export function NodeInspector({
           value={mediaRef}
           onChange={(e) => patchData({ media: e.target.value ? { kind: 'VIDEO', ref: e.target.value } : undefined })}
           style={{ flex: 1 }}
-          title="选择该演出节点播放的视频（来自现有资产）"
+          title="选择该演出节点播放的视频（内置战斗/叙事包 + 共享素材层，对齐视频 tab）"
         >
           <option value="">（无演出）</option>
-          {videoChoices.map((id) => <option key={id} value={id}>{id}</option>)}
+          {videoChoices.map((v) => (
+            <option key={v.id} value={v.id}>{v.label}</option>
+          ))}
         </select>
       ))}
       {row('时长ms', <input type="number" value={d.durationMs ?? 0} onChange={(e) => patchData({ durationMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} />)}
@@ -373,7 +706,7 @@ export function NodeInspector({
           >
             <option value="">＋ 挂载…</option>
             {Object.keys(overlays ?? {}).map((id) => (
-              <option key={id} value={id}>{id}</option>
+              <option key={id} value={id}>{overlayLabel(id)}</option>
             ))}
           </select>
         </div>
@@ -387,11 +720,12 @@ export function NodeInspector({
               mountId: mid,
               prefixMount: multi,
             })
+            const mountTitle = overlays?.[mount.overlay]?.title?.trim()
             return (
               <div key={`${mid}-${i}`} style={{ marginTop: 8, border: '1px solid #333', borderRadius: 6, padding: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
                   <span style={{ fontSize: 12 }}>
-                    <b>{mid}</b>
+                    <b>{mountTitle && mountTitle !== mid ? `${mountTitle} (${mid})` : mid}</b>
                     {mount.id && mount.id !== mount.overlay ? (
                       <span style={{ opacity: 0.55, marginLeft: 6 }}>→ {mount.overlay}</span>
                     ) : null}
@@ -430,6 +764,22 @@ export function NodeInspector({
         <LifecycleReactionsEditor
           reactions={d.reactions}
           nodeIds={nodeIds}
+          onChange={(reactions) => patchData({ reactions })}
+        />
+      </div>
+
+      {/* 响应规则：数值变化(watch) / 组件出现·消失(shown/hidden) → effect/spawn/goto */}
+      <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
+        <b>响应规则</b>
+        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
+          数值变化 / 组件出现·消失时触发；可施加效果、生成瞬态组件（如伤害飘字）或跳转。
+        </div>
+        <ReactiveRulesEditor
+          reactions={d.reactions}
+          nodeIds={nodeIds}
+          componentOptions={componentOptions}
+          spawnOptions={spawnOptions}
+          fieldTree={fieldTree}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
