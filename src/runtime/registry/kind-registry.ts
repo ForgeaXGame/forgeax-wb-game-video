@@ -78,6 +78,11 @@ export interface KindPlugin<P = Record<string, unknown>> {
   role: ElementRole
   /** HUD 呈现面（GraphPlaySurface 等据此分流）。 */
   surface?: 'hud'
+  /**
+   * 组件内部用 %/inset 相对父框定位；挂载未配 layout 时，父框需铺满视频舞台。
+   * （如 floatText / dialogue / transition）
+   */
+  stageRelative?: boolean
   /** 同行为的其它 component id（如 battleParry → qte）。 */
   aliases?: string[]
   /** 导出事件（无则回退 params.exits）。 */

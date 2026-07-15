@@ -11,6 +11,7 @@ describe('directives', () => {
     const overlay: RuntimeDirective = {
       type: 'renderOverlay',
       nodeId: 'n1',
+      mountId: 'hpPanel',
       elementId: 'e1',
       component: 'floatText',
       params: { text: '+30' },
@@ -40,6 +41,7 @@ describe('directives', () => {
     const overlay: RuntimeDirective = {
       type: 'renderOverlay',
       nodeId: 'n',
+      mountId: 'm1',
       elementId: 'e',
       component: 'x',
       params: {},

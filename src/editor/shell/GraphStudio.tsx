@@ -378,6 +378,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
         <GraphCanvas
           graph={canvasGraph}
           onChange={setCanvasGraph}
+          overlays={overlays}
           activeNodeId={snap.currentNodeId}
           traversedEdgeIds={traversed}
           visibleNodeIds={visibleNodeIds}
@@ -431,8 +432,10 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 </div>
               )}
               <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                {snap.overlays.map((o, i) => (
-                  <span key={`${o.elementId}-${i}`} style={{ display: 'contents' }}>{session.skins.renderOverlay(o)}</span>
+                {snap.overlayMounts.map((m) => (
+                  <span key={m.mountId} style={{ display: 'contents' }}>
+                    {session.skins.renderOverlayMount(m, (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)))}
+                  </span>
                 ))}
               </div>
               {snap.banner && (

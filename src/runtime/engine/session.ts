@@ -6,6 +6,7 @@
  * React Player 只需订阅 snapshot 渲染 + 把玩家输入回灌 submit()——UI 与引擎彻底解耦。
  */
 import type { GameNode, GameScenario, SubFlowPackDef } from '../schema/graph-schema'
+import type { Layout } from '../schema/node-config-schema'
 import { GraphRuntime } from './engine'
 import { createCoreKindRegistry } from '../registry/core-kinds'
 import type { KindRegistry } from '../registry/kind-registry'
@@ -54,7 +55,24 @@ export interface OverlaySnap {
   elementId: string
   component: string
   params: Record<string, unknown>
-  zIndex?: number
+}
+
+export interface OverlayChildSnap {
+  elementId: string
+  component: string
+  params: Record<string, unknown>
+  /** 子组件级排版（相对挂载盒）。 */
+  childLayout?: Layout
+  /** 组件自定位（内部 %/inset 摆放）：子盒需铺满挂载盒且点击穿透。 */
+  selfPositioned?: boolean
+}
+
+/** 一份 overlay 挂载的运行态视图（挂载盒 + 其内可见子组件）。 */
+export interface OverlayMountSnap {
+  mountId: string
+  /** 挂载级排版（相对视频舞台；节点 overlayNodes[].layout）。 */
+  mountLayout?: Layout
+  children: OverlayChildSnap[]
 }
 export interface InteractionSnap {
   elementId: string
@@ -74,7 +92,7 @@ export interface SessionSnapshot {
   phase: string
   currentNodeId: string | null
   clip?: ClipSnap
-  overlays: OverlaySnap[]
+  overlayMounts: OverlayMountSnap[]
   interaction?: InteractionSnap
   banner?: { kind: 'ending'; title: string }
   hud: HudSnap
@@ -107,7 +125,7 @@ export class GraphSession {
     return {
       phase: this.runtime.state.phase,
       currentNodeId: this.runtime.state.currentNodeId,
-      overlays: [],
+      overlayMounts: [],
       hud: this.readHud(),
       visited: [],
       traversedEdgeIds: [],
@@ -141,6 +159,10 @@ export class GraphSession {
     if (!inter) return this.snapshot
     return this.apply(this.runtime.submitInteraction(inter.elementId, input))
   }
+  /** 展示组件的非阻塞事件（如 HUD 按钮点击）→ 跑其挂载的 event 反应，不打断主交互。 */
+  emitEvent(elementId: string, key: string): SessionSnapshot {
+    return this.apply(this.runtime.emitComponentEvent(elementId, key))
+  }
   /** 点击运行时蓝图节点 → 跳转执行。 */
   jump(nodeId: string, opts?: { resetGlobals?: boolean }): SessionSnapshot {
     return this.apply(this.runtime.jumpToNode(nodeId, opts))
@@ -164,21 +186,37 @@ export class GraphSession {
             loop: d.loop,
             durationMs: d.durationMs,
           }
-          this.snapshot.overlays = []
+          this.snapshot.overlayMounts = []
           this.snapshot.interaction = undefined
           this.snapshot.entryReason = this.pendingEntryReason
           this.pendingEntryReason = undefined
           break
-        case 'renderOverlay':
-          this.snapshot.overlays.push({
+        case 'renderOverlay': {
+          const mountId = d.mountId ?? d.elementId
+          let mount = this.snapshot.overlayMounts.find((m) => m.mountId === mountId)
+          if (!mount) {
+            mount = { mountId, mountLayout: d.mountLayout, children: [] }
+            this.snapshot.overlayMounts.push(mount)
+          } else if (d.mountLayout) {
+            mount.mountLayout = d.mountLayout
+          }
+          const child: OverlayChildSnap = {
             elementId: d.elementId,
             component: d.component,
             params: d.params,
-            zIndex: d.zIndex,
-          })
+            childLayout: d.childLayout,
+            selfPositioned: d.selfPositioned,
+          }
+          const idx = mount.children.findIndex((c) => c.elementId === d.elementId)
+          if (idx >= 0) mount.children[idx] = child
+          else mount.children.push(child)
           break
+        }
         case 'removeOverlay':
-          this.snapshot.overlays = this.snapshot.overlays.filter((o) => o.elementId !== d.elementId)
+          for (const mount of this.snapshot.overlayMounts) {
+            mount.children = mount.children.filter((c) => c.elementId !== d.elementId)
+          }
+          this.snapshot.overlayMounts = this.snapshot.overlayMounts.filter((m) => m.children.length > 0)
           break
         case 'openInteraction':
           this.snapshot.interaction = {
@@ -219,7 +257,10 @@ export class GraphSession {
     const s = this.snapshot
     return {
       ...s,
-      overlays: [...s.overlays],
+      overlayMounts: s.overlayMounts.map((m) => ({
+        ...m,
+        children: [...m.children],
+      })),
       visited: [...s.visited],
       traversedEdgeIds: [...s.traversedEdgeIds],
       log: [...s.log],

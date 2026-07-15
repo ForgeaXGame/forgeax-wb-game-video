@@ -2,15 +2,17 @@
  * NodeInspector —— 节点配置面板。选中画布节点后编辑其 `node.data`、overlay reactions 与出边。
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；边可由 goto 派生。
  */
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
-import type { NodeAction, Reaction } from '../../runtime/schema/node-config-schema'
+import type { NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
-import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
-import { getComponentManifest } from '../../runtime/registry/kind-registry'
+import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
+import { deriveOutputs, getComponentManifest } from '../../runtime/registry/kind-registry'
 import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
-import { ConditionEditor, EffectsEditor } from './editors'
+import { mergeFlowHandles } from '../../graph/flow-handle-labels'
+import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
+import { SpawnParamsEditor } from './spawn-params-editor'
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -21,21 +23,28 @@ function row(label: string, node: ReactNode): JSX.Element {
   )
 }
 
-type Effs = Extract<NodeAction, { kind: 'effect' }>['effects']
-
-function eventEffects(reactions: Reaction[] | undefined, eventId: string): Effs | undefined {
-  const acts = reactions?.find((r) => r.when.type === 'event' && r.when.id === eventId)?.do
-  return acts?.find((a): a is Extract<NodeAction, { kind: 'effect' }> => a.kind === 'effect')?.effects
+/** 与引擎 resolveEventReactions 同序查找挂载 event 反应的 do（兼容 A / panelA:A 等写法）。 */
+function eventReactionDo(reactions: Reaction[] | undefined, ev: OverlayEventRef): NodeAction[] {
+  return resolveEventReactionDo(reactions, ev.localEventId, ev.childId, ev.mountId) ?? []
 }
 
-/** 事件 reaction 只承载效果（走向由边负责）。 */
-function upsertEventEffects(
+/** eventKeys 全集：替换某事件反应时移除所有别名，写入规范 eventId。 */
+function eventKeySet(ev: OverlayEventRef): Set<string> {
+  const keys = new Set<string>([ev.localEventId, ev.eventId])
+  keys.add(`${ev.childId}:${ev.localEventId}`)
+  keys.add(`${ev.mountId}:${ev.localEventId}`)
+  keys.add(`${ev.mountId}:${ev.childId}:${ev.localEventId}`)
+  return keys
+}
+
+function upsertEventReaction(
   reactions: Reaction[] | undefined,
-  eventId: string,
-  effects: Effs | undefined,
+  ev: OverlayEventRef,
+  doActions: NodeAction[],
 ): Reaction[] | undefined {
-  const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && r.when.id === eventId))
-  if (effects?.length) rest.push({ when: { type: 'event', id: eventId }, do: [{ kind: 'effect', effects }] })
+  const keys = eventKeySet(ev)
+  const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
+  if (doActions.length) rest.push({ when: { type: 'event', id: ev.eventId }, do: doActions })
   return rest.length ? rest : undefined
 }
 
@@ -47,6 +56,7 @@ const PHASE_LABEL: Record<LifecyclePhase, string> = {
   exit: '离开前',
   complete: '收尾/推进',
 }
+
 function isLifecycle(r: Reaction): boolean {
   return r.when.type === 'enter' || r.when.type === 'at' || r.when.type === 'exit' || r.when.type === 'complete'
 }
@@ -58,10 +68,12 @@ function isLifecycle(r: Reaction): boolean {
 function LifecycleReactionsEditor({
   reactions,
   nodeIds,
+  pickers,
   onChange,
 }: {
   reactions: Reaction[] | undefined
   nodeIds: string[]
+  pickers?: EditorPickerCtx
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   const life = (reactions ?? []).filter(isLifecycle)
@@ -106,6 +118,7 @@ function LifecycleReactionsEditor({
                 <ConditionEditor
                   value={r.when.if}
                   nodeIds={nodeIds}
+                  pickers={pickers}
                   onChange={(condition) =>
                     patchAt(i, { ...r, when: { type: 'complete', ...(condition ? { if: condition as GraphCondition } : {}) } })
                   }
@@ -115,6 +128,7 @@ function LifecycleReactionsEditor({
             <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>effects</div>
             <EffectsEditor
               value={effects?.effects}
+              pickers={pickers}
               onChange={(effs) => patchAt(i, { ...r, do: effs?.length ? [{ kind: 'effect', effects: effs }] : [] })}
             />
           </div>
@@ -145,10 +159,18 @@ function overlayEventLabel(ev: {
 function OverlayReactionsEditor({
   events,
   reactions,
+  nodeIds,
+  spawnOptions,
+  overlays,
+  pickers,
   onChange,
 }: {
-  events: ReturnType<typeof aggregateOverlayEvents>
+  events: OverlayEventRef[]
   reactions: Reaction[] | undefined
+  nodeIds: string[]
+  spawnOptions: OptItem[]
+  overlays?: Record<string, Overlay>
+  pickers?: EditorPickerCtx
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   if (!events.length) {
@@ -161,19 +183,23 @@ function OverlayReactionsEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
       <div style={{ fontSize: 11, opacity: 0.6 }}>
-        事件来自挂载 overlay 内交互组件的 <code>exits</code> / manifest.events；触发时施加效果，走向请在下方「出边」按同名出口连线。
+        组件点击/交互时在此配置响应（效果 / 生成组件 / 跳转）；与引擎 event 反应同源。
       </div>
       {events.map((ev) => {
-        const effects = eventEffects(reactions, ev.eventId)
+        const actions = eventReactionDo(reactions, ev)
         return (
           <div key={ev.eventId} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
             <div style={{ fontSize: 12, marginBottom: 4 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
               <b>{overlayEventLabel(ev)}</b>
             </div>
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>effects</div>
-            <EffectsEditor
-              value={effects}
-              onChange={(effs) => onChange(upsertEventEffects(reactions, ev.eventId, effs))}
+            <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>触发时 do</div>
+            <NodeActionsEditor
+              actions={actions}
+              nodeIds={nodeIds}
+              spawnOptions={spawnOptions}
+              overlays={overlays}
+              pickers={pickers}
+              onChange={(doActions) => onChange(upsertEventReaction(reactions, ev, doActions))}
             />
           </div>
         )
@@ -318,11 +344,15 @@ function NodeActionsEditor({
   actions,
   nodeIds,
   spawnOptions,
+  overlays,
+  pickers,
   onChange,
 }: {
   actions: NodeAction[]
   nodeIds: string[]
   spawnOptions: OptItem[]
+  overlays?: Record<string, Overlay>
+  pickers?: EditorPickerCtx
   onChange: (next: NodeAction[]) => void
 }): JSX.Element {
   const patchAt = (i: number, a: NodeAction) => onChange(actions.map((c, j) => (j === i ? a : c)))
@@ -338,7 +368,7 @@ function NodeActionsEditor({
             <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
           </div>
           {a.kind === 'effect' ? (
-            <EffectsEditor value={a.effects} onChange={(effs) => patchAt(i, { kind: 'effect', effects: effs ?? [] })} />
+            <EffectsEditor value={a.effects} pickers={pickers} onChange={(effs) => patchAt(i, { kind: 'effect', effects: effs ?? [] })} />
           ) : null}
           {a.kind === 'spawn' ? (
             <>
@@ -351,22 +381,17 @@ function NodeActionsEditor({
               {row('存活ms', (
                 <input type="number" value={a.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} title="0=常驻直到离场" />
               ))}
-              <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>params（JSON；可用 {'{'}"expr":"abs(delta)"{'}'}）</div>
-              <textarea
-                defaultValue={a.params ? JSON.stringify(a.params, null, 0) : ''}
-                onBlur={(e) => {
-                  const t = e.target.value.trim()
-                  if (!t) return patchAt(i, { ...a, params: undefined })
-                  try { patchAt(i, { ...a, params: JSON.parse(t) as Record<string, unknown> }) } catch { /* 保留原值 */ }
-                }}
-                placeholder='{"amount":{"expr":"abs(delta)"}}'
-                style={{ width: '100%', minHeight: 40, fontFamily: 'monospace', fontSize: 11 }}
+              <SpawnParamsEditor
+                from={a.from}
+                params={a.params}
+                overlays={overlays}
+                onChange={(params) => patchAt(i, { ...a, params })}
               />
             </>
           ) : null}
           {a.kind === 'goto' ? row('目标', (
             <select value={a.targetNodeId} onChange={(e) => patchAt(i, { kind: 'goto', targetNodeId: e.target.value })} style={{ flex: 1 }}>
-              {nodeIds.map((id) => <option key={id} value={id}>{id}</option>)}
+              {nodeIds.map((id) => <option key={id} value={id}>{pickers?.nodeLabel?.(id) ?? id}</option>)}
             </select>
           )) : null}
         </div>
@@ -390,14 +415,18 @@ function ReactiveRulesEditor({
   nodeIds,
   componentOptions,
   spawnOptions,
+  overlays,
   fieldTree,
+  pickers,
   onChange,
 }: {
   reactions: Reaction[] | undefined
   nodeIds: string[]
   componentOptions: OptItem[]
   spawnOptions: OptItem[]
+  overlays?: Record<string, Overlay>
   fieldTree: FieldNode[]
+  pickers?: EditorPickerCtx
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   const rules = (reactions ?? []).filter(isReactive)
@@ -455,6 +484,8 @@ function ReactiveRulesEditor({
               actions={r.do}
               nodeIds={nodeIds}
               spawnOptions={spawnOptions}
+              overlays={overlays}
+              pickers={pickers}
               onChange={(acts) => patchAt(i, { ...r, do: acts })}
             />
           </div>
@@ -543,6 +574,13 @@ export function NodeInspector({
     o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
   )
   const fieldTree = buildFieldTree(entities, variables)
+  const pickers: EditorPickerCtx = { entities, variables, nodeLabel }
+  const flowHandleOptions = useMemo(() => {
+    const extra = graph.edges
+      .filter((e) => e.source === node.id)
+      .map((e) => e.sourceHandle ?? 'out')
+    return mergeFlowHandles(deriveOutputs(node, overlays), extra)
+  }, [node, overlays, graph.edges])
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
   const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
@@ -744,6 +782,10 @@ export function NodeInspector({
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}
+                  nodeIds={nodeIds}
+                  spawnOptions={spawnOptions}
+                  overlays={overlays}
+                  pickers={pickers}
                   onChange={(reactions) => {
                     const next = (d.overlayNodes ?? []).map((m, j) => (j === i ? { ...m, reactions } : m))
                     patchData({ overlayNodes: next })
@@ -764,6 +806,7 @@ export function NodeInspector({
         <LifecycleReactionsEditor
           reactions={d.reactions}
           nodeIds={nodeIds}
+          pickers={pickers}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
@@ -779,36 +822,56 @@ export function NodeInspector({
           nodeIds={nodeIds}
           componentOptions={componentOptions}
           spawnOptions={spawnOptions}
+          overlays={overlays}
           fieldTree={fieldTree}
+          pickers={pickers}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
 
       {/* 出边（走向 SSOT）：target + condition + weight；副作用请用上方 reactions */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <b>出边（走向）</b>
           <button onClick={() => onChange(connect(graph, { source: node.id, sourceHandle: 'out', target: nodeIds.find((x) => x !== node.id) ?? node.id }))}>+ 边</button>
         </div>
-        {graph.edges.filter((e) => e.source === node.id).map((e) => (
+        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+          选「何时走」+ 目标节点；条件/权重即规则。与画布右侧引脚一致，也可拖线连线。
+        </div>
+        {graph.edges.filter((e) => e.source === node.id).map((e) => {
+          const handleVal = e.sourceHandle ?? 'out'
+          return (
           <div key={e.id} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6, marginTop: 6 }}>
-            {row('出口', <input value={e.sourceHandle ?? 'out'} onChange={(ev) => onChange(reconnect(graph, e.id, { sourceHandle: ev.target.value }))} style={{ flex: 1 }} />)}
+            {row('何时走', (
+              <select
+                value={handleVal}
+                onChange={(ev) => onChange(reconnect(graph, e.id, { sourceHandle: ev.target.value }))}
+                style={{ flex: 1 }}
+                title={handleVal}
+              >
+                {flowHandleOptions.map((h) => (
+                  <option key={h.value} value={h.value}>{h.label}</option>
+                ))}
+              </select>
+            ))}
             {row('目标', (
-              <select value={e.target} onChange={(ev) => onChange(reconnect(graph, e.id, { target: ev.target.value }))}>
+              <select value={e.target} onChange={(ev) => onChange(reconnect(graph, e.id, { target: ev.target.value }))} style={{ flex: 1 }}>
                 {nodeIds.map((id) => <option key={id} value={id}>{nodeLabel(id)}</option>)}
               </select>
             ))}
-            {row('label', <input value={e.data?.label ?? ''} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { label: ev.target.value }))} style={{ flex: 1 }} />)}
-            {row('weight', <input type="number" value={e.data?.weight ?? 0} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { weight: Number(ev.target.value) || undefined }))} style={{ flex: 1 }} />)}
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>condition（AND 全部成立）</div>
+            {row('备注', <input value={e.data?.label ?? ''} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { label: ev.target.value }))} style={{ flex: 1 }} placeholder="画布连线上的说明（可选）" />)}
+            {row('权重', <input type="number" value={e.data?.weight ?? 0} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { weight: Number(ev.target.value) || undefined }))} style={{ flex: 1 }} title="多条候选边时按权重随机" />)}
+            <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>条件（全部成立才走这条边）</div>
             <ConditionEditor
               value={e.data?.condition}
               nodeIds={nodeIds}
+              pickers={pickers}
               onChange={(condition) => onChange(updateEdgeData(graph, e.id, { condition: condition as GraphCondition }))}
             />
             <button style={{ color: '#ff6b6b', marginTop: 4 }} onClick={() => onChange(disconnect(graph, e.id))}>🗑 删除边</button>
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

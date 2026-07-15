@@ -166,6 +166,81 @@ describe('container watch spans subflow (我方回合 场景)', () => {
   })
 })
 
+describe('non-blocking component events (回合按钮面板)', () => {
+  it('container-mounted panel: click routes to mount event reaction (spawn / effect), 不阻塞', () => {
+    const panel: Overlay = {
+      id: 'hpPanel',
+      children: [
+        { id: 'panelA', component: 'floatT', trigger: { when: 'enter' }, params: {} },
+        { id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, params: {} },
+      ],
+    }
+    const readouts: Overlay = {
+      id: 'readouts',
+      children: [{ id: 'bossHp', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+    }
+    const graph: GameGraph = {
+      nodes: [
+        node('turn', {
+          subFlow: 'atk',
+          overlayNodes: [{
+            overlay: 'hpPanel',
+            reactions: [
+              { when: { type: 'event', id: 'A' }, do: [{ kind: 'spawn', from: 'readouts/bossHp', params: { text: { expr: 'entity.ent-boss.attr.hp' } }, ttlMs: 1500 }] },
+              { when: { type: 'event', id: 'B2' }, do: [{ kind: 'effect', effects: [{ id: 'q', kind: 'var', varId: 'qi', op: 'add', value: 2 }] }] },
+            ],
+          }],
+        }),
+        node('atk', { durationMs: 5000 }),
+      ],
+      edges: [],
+    }
+    const scn = scnOf(graph, { ui: { overlays: { hpPanel: panel, readouts } } })
+    const rt = new GraphRuntime(scn.graph, scn)
+    rt.start()
+    expect(rt.state.currentNodeId).toBe('atk') // 下钻进技能节点，turn 在调用栈
+
+    // 面板由容器挂载 → 在子流程节点内可见（childrenOf 继承容器 children）
+    expect(rt['childrenOf'](rt['node']('atk')).some((c: { id: string }) => c.id === 'hpPanel/panelA')).toBe(true)
+
+    // 点击 A → 非阻塞事件 → spawn boss 血量读数
+    const dirsA = rt.emitComponentEvent('hpPanel/panelA', 'A')
+    const spawn = dirsA.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
+    expect(spawn).toBeTruthy()
+    expect(spawn!.params.text).toBe(700) // 小怪当前血量
+    expect(rt.state.phase).toBe('playing') // 未阻塞
+
+    // 点击 B2 → 英雄气力 +2
+    rt.emitComponentEvent('hpPanel/panelB', 'B2')
+    expect(rt.state.vars.qi).toBe(2)
+  })
+
+  it('panel button with goto: click jumps to target node (硬跳转)', () => {
+    const panel: Overlay = {
+      id: 'hpPanel',
+      children: [{ id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+    }
+    const graph: GameGraph = {
+      nodes: [
+        node('turn', {
+          subFlow: 'atk',
+          overlayNodes: [{ overlay: 'hpPanel', reactions: [{ when: { type: 'event', id: 'B3' }, do: [{ kind: 'goto', targetNodeId: 'drink' }] }] }],
+        }),
+        node('atk', { durationMs: 5000 }),
+        node('drink', {}),
+      ],
+      edges: [],
+    }
+    const scn = scnOf(graph, { ui: { overlays: { hpPanel: panel } } })
+    const rt = new GraphRuntime(scn.graph, scn)
+    rt.start()
+    expect(rt.state.currentNodeId).toBe('atk')
+    rt.emitComponentEvent('hpPanel/panelB', 'B3') // → goto drink
+    expect(rt.state.currentNodeId).toBe('drink')
+    expect(rt.state.callStack).toEqual([]) // 硬跳转清栈
+  })
+})
+
 describe('lifecycle reactions (shown / hidden)', () => {
   it('fires shown on mount and hidden on node exit', () => {
     const overlay: Overlay = {

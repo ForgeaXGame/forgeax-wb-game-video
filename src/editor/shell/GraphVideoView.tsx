@@ -57,6 +57,7 @@ import { FILTER_OPTIONS, FX_OPTIONS, fxNeedsColor, resolveVideoFxForNode } from 
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
 import { injectStyleOnce } from '../../styles/injectStyle'
+import { flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { CATALOG_CSS } from './catalogCss'
 import type { Entity, GameNode, GameScenario, GraphTextStyle } from '../../runtime/schema/graph-schema'
 import type { QteCue } from '../../runtime/registry/core-kinds'
@@ -1198,8 +1199,11 @@ function GraphMaterialInspector({
             <span className="gc-inspector-subhint">{branches.length} 条 · 文案 / 目标（改这里会同步蓝图连接）</span>
           </div>
           {branches.map((b) => (
-            <div key={b.key} className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-              <input style={{ flex: 1 }} value={b.label} onChange={(e) => onSetBranchLabel(b.key, e.target.value)} placeholder="选项文案" />
+            <div key={b.key} className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+              <span className="gc-branch-handle" style={{ fontSize: 11, opacity: 0.65, minWidth: 88 }} title={`opt:${b.key}`}>
+                {flowHandleDisplay(`opt:${b.key}`, b.label)}
+              </span>
+              <input style={{ flex: 1, minWidth: 100 }} value={b.label} onChange={(e) => onSetBranchLabel(b.key, e.target.value)} placeholder="选项文案" />
               <select value={b.targetId ?? ''} onChange={(e) => onSetBranchTarget(b.key, e.target.value)}>
                 <option value="" disabled>跳转到…</option>
                 {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.data.name || n.id}</option>)}

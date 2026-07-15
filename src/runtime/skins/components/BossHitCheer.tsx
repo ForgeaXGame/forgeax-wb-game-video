@@ -49,10 +49,7 @@ export function BossHitCheer({ overlay }: OverlayProps): JSX.Element {
   return (
     <div
       style={{
-        position: 'absolute',
-        top: 16,
-        right: 16,
-        maxWidth: '42%',
+        maxWidth: '100%',
         padding: '10px 14px',
         borderRadius: 10,
         background: 'rgba(12,14,18,0.86)',
@@ -60,7 +57,6 @@ export function BossHitCheer({ overlay }: OverlayProps): JSX.Element {
         color: '#efe7d6',
         fontSize: 15,
         lineHeight: 1.5,
-        pointerEvents: 'auto',
         boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
         whiteSpace: 'nowrap',
       }}

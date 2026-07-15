@@ -149,7 +149,7 @@ export interface Layout {
 /**
  * Overlay 内一个 **组件实例**。
  * - `component`：唯一类型键（行为 + 皮均由此查注册表）
- * - layout：overlay 内排版与叠层（含 zIndex）
+ * - layout：overlay 内组件相对**挂载盒**的排版（含 zIndex）；挂载有显式尺寸时缺省 = 左上角
  * - trigger / window：出现时机
  * - params：玩法 / 表现入参（不含摆放）
  */
@@ -191,7 +191,7 @@ export interface GameScenarioUi {
  * **OverlayNode** — 演出节点上的一份 overlay **挂载**（`NodeData.overlayNodes[]` 之一）。
  * - `id`：挂载键（多挂载时事件命名空间用）；缺省 = `overlay`
  * - `overlay`：引用哪张可复用 Overlay
- * - `layout`：整块相对视频画面（与组件 `layout` 同型 `Layout`；缺省铺满）
+ * - `layout`：整块相对视频画面；**无显式宽高时自适应内容**（单组件 overlay = 组件大小）
  * - `reactions`：本挂载 when→do（多为 event；边可由 goto 派生）
  *
  * 子组件内容（时机 / params）只改目录模板；挂载侧不补丁 child。
@@ -204,7 +204,7 @@ export interface OverlayNode {
   id?: string
   /** `scenario.ui.overlays` 中的 overlay id。 */
   overlay: string
-  /** 整块相对本节点视频；缺省 = 铺满 `{ left:0, top:0, width:1, height:1 }`。 */
+  /** 整块相对本节点视频；无显式尺寸 → 自适应子组件内容。 */
   layout?: Layout
   reactions?: Reaction[]
 }

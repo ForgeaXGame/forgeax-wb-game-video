@@ -31,9 +31,13 @@ import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
 import { initState } from './engine-init'
 import { defaultKindRegistry, isContinueResult, type KindRegistry, type RuntimeCtx } from '../registry/kind-registry'
-import type { RuntimeDirective } from './directives'
+import type { RuntimeDirective, RenderOverlayDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
 import { evalExpr, type EvalCtx } from './expr'
+import { layoutIsEffectivelyEmpty } from '../schema/layout'
+
+const STAGE_FILL: Layout = { left: 0, top: 0, width: 1, height: 1 }
+
 
 export type GraphPhase = 'idle' | 'playing' | 'awaitInteraction' | 'ended'
 
@@ -163,10 +167,47 @@ export class GraphRuntime {
     return this.kinds.getComponent(componentId)
   }
 
-  /** 本节点展开后的 overlay children（无挂载则 []）。 */
+  /**
+   * 本节点可调度的 overlay children：**调用栈容器（我方/敌方回合等）挂载的 overlay 覆盖整段子流程** +
+   * 本节点自身挂载。容器 children 排在前（先渲染，避免被本节点交互中断枚举）。
+   */
   private childrenOf(node: GameNode | null | undefined): OverlayInstanceChild[] {
     if (!node) return []
-    return nodeOverlayChildren(this.scenario, node)
+    const inherited = this.state.callStack.flatMap((f) => {
+      const c = f.returnGraph.nodes.find((n) => n.id === f.callerNodeId)
+      return c ? nodeOverlayChildren(this.scenario, c) : []
+    })
+    return [...inherited, ...nodeOverlayChildren(this.scenario, node)]
+  }
+
+  /** 找 el 所属挂载的 reactions（本节点或调用栈容器上）。 */
+  private mountReactionsFor(el: OverlayInstanceChild): Reaction[] | undefined {
+    const find = (n: GameNode | undefined) =>
+      n ? nodeOverlayMounts(n).find((m) => overlayMountId(m) === el.source.mountId)?.reactions : undefined
+    const own = find(this.node(this.state.currentNodeId))
+    if (own) return own
+    for (const f of this.state.callStack) {
+      const c = f.returnGraph.nodes.find((n) => n.id === f.callerNodeId)
+      const r = find(c)
+      if (r) return r
+    }
+    return undefined
+  }
+
+  /**
+   * 组件**非阻塞**事件：点击某展示组件的按钮 → 跑其所属挂载的 event 反应（effect/spawn/goto）。
+   * 不进 awaitInteraction、不占 pending——与主交互（技能/QTE）并存。
+   */
+  emitComponentEvent(elementId: string, key: string): RuntimeDirective[] {
+    const el = this.childrenOf(this.node(this.state.currentNodeId)).find((e) => e.id === elementId)
+    if (!el) return this.drain()
+    const evs = resolveEventReactions(this.mountReactionsFor(el), key, el.source.childId, el.source.mountId)
+    for (const r of evs) {
+      this.runReactiveActions(r.do)
+      if (this.redirect) break
+    }
+    this.consumeRedirect()
+    return this.drain()
   }
 
   // ── 指令队列 ────────────────────────────────────────────────────────────────
@@ -453,6 +494,26 @@ export class GraphRuntime {
     if (chosen) this.runEffectActions(chosen.do)
   }
 
+  private mountLayoutFor(el: OverlayInstanceChild): Layout | undefined {
+    const node = this.nodes.get(el.source.nodeId)
+    const mount = nodeOverlayMounts(node).find((m) => overlayMountId(m) === el.source.mountId)
+    if (mount?.layout && !layoutIsEffectivelyEmpty(mount.layout)) return mount.layout
+    const plugin = this.getComponent(el.component)
+    if (plugin?.stageRelative) return STAGE_FILL
+    return undefined
+  }
+
+  private emitRenderOverlay(d: RenderOverlayDirective, el: OverlayInstanceChild): void {
+    const plugin = this.getComponent(el.component)
+    this.emit({
+      ...d,
+      mountId: d.mountId ?? el.source.mountId,
+      mountLayout: d.mountLayout ?? this.mountLayoutFor(el),
+      childLayout: d.childLayout ?? el.layout,
+      selfPositioned: d.selfPositioned ?? plugin?.stageRelative,
+    } as RenderOverlayDirective & { mountId: string })
+  }
+
   // ── 元素派发 ────────────────────────────────────────────────────────────────
   private runElement(el: OverlayInstanceChild): void {
     const plugin = this.getComponent(el.component)
@@ -468,16 +529,18 @@ export class GraphRuntime {
     const params = el.params.component == null ? { ...el.params, component: el.component } : el.params
     if (role === 'presentation') {
       if (plugin?.render) {
-        for (const d of plugin.render(ctx, params)) this.emit(d)
+        for (const d of plugin.render(ctx, params)) {
+          if (d.type === 'renderOverlay') this.emitRenderOverlay(d, el)
+          else this.emit(d)
+        }
       } else {
-        this.emit({
+        this.emitRenderOverlay({
           type: 'renderOverlay',
           nodeId: this.state.currentNodeId ?? '',
           elementId: el.id,
           component: el.component,
           params,
-          zIndex: el.layout?.zIndex,
-        })
+        }, el)
       }
     } else if (role === 'interaction') {
       if (!plugin) return
@@ -712,15 +775,19 @@ export class GraphRuntime {
     for (const [k, v] of Object.entries(merged)) params[k] = this.resolveBind(v, locals)
     const component = tpl?.component ?? overlayId
     if (params.component == null) params.component = component
-    const layout: Layout | undefined = action.layout ?? tpl?.layout
+    const layout: Layout | undefined = action.layout ?? (tpl?.layout && !layoutIsEffectivelyEmpty(tpl.layout) ? tpl.layout : undefined)
+    const plugin = this.getComponent(component)
+    const mountLayout = layout ?? (plugin?.stageRelative ? STAGE_FILL : undefined)
     const elementId = `spawn:${++this.spawnSeq}`
     this.emit({
       type: 'renderOverlay',
       nodeId,
+      mountId: elementId,
+      mountLayout,
       elementId,
       component,
       params,
-      ...(layout?.zIndex != null ? { zIndex: layout.zIndex } : {}),
+      selfPositioned: plugin?.stageRelative,
     })
     if (action.ttlMs && action.ttlMs > 0) {
       this.pendingSpawns.push({ elementId, nodeId, removeAtMs: this.state.elapsedMs + action.ttlMs })

@@ -14,12 +14,17 @@ import { InkYingMoLayer } from './InkYingMoLayer'
 import { BattleSkillLayer } from './BattleSkillLayer'
 import { BattleHpBar } from './BattleHpBar'
 import { BossHitCheer, bossHitCheerKind } from './BossHitCheer'
+import { PanelA, PanelB, panelAKind, panelBKind } from './TurnPanels'
 
 /**
  * 组件包自带的 Kind 契约（与渲染实现同文件导出）。
  * 通过 `installComponentKinds` 注入每局 KindRegistry；`registerCoreSkins` 注入默认表（编辑器/校验）。
  */
-export const COMPONENT_KINDS: KindPlugin[] = [bossHitCheerKind as unknown as KindPlugin]
+export const COMPONENT_KINDS: KindPlugin[] = [
+  bossHitCheerKind as unknown as KindPlugin,
+  panelAKind,
+  panelBKind,
+]
 
 /** 把组件包的 Kind 注入某个隔离 KindRegistry（多局 Session 用）。 */
 export function installComponentKinds(reg: KindRegistry): void {
@@ -43,6 +48,8 @@ function installCoreSkins(reg: SkinRegistry): void {
   reg.registerInteractionSkin('battleSkillBar', BattleSkillLayer)
   reg.registerHudRenderer('battleHpBar', BattleHpBar)
   reg.registerOverlayRenderer('bossHitCheer', BossHitCheer)
+  reg.registerOverlayRenderer('panelA', PanelA)
+  reg.registerOverlayRenderer('panelB', PanelB)
 }
 
 let _registered = false
@@ -57,6 +64,8 @@ export function registerCoreSkins(): void {
   registerInteractionSkin('battleSkillBar', BattleSkillLayer)
   registerHudRenderer('battleHpBar', BattleHpBar)
   registerOverlayRenderer('bossHitCheer', BossHitCheer)
+  registerOverlayRenderer('panelA', PanelA)
+  registerOverlayRenderer('panelB', PanelB)
 }
 
 /** 新建一份已装核心渲染器 + 战斗/水墨皮肤的隔离表（多局 Session 各持一份）。 */

@@ -41,6 +41,7 @@ function signed(v: number): string {
 export const floatTextKind: KindPlugin<FloatTextParams> = {
   kind: 'floatText',
   role: 'presentation',
+  stageRelative: true,
   label: '花字/飘字',
   defaults: () => ({ text: '', x: 0.5, y: 0.45 }),
   form: [
@@ -265,6 +266,7 @@ export interface DialogueParams {
 export const dialogueKind: KindPlugin<DialogueParams> = {
   kind: 'dialogue',
   role: 'presentation',
+  stageRelative: true,
   label: '字幕/对白',
   defaults: () => ({ text: '', speaker: '' }),
   form: [
@@ -288,6 +290,7 @@ export interface TransitionParams {
 export const transitionKind: KindPlugin<TransitionParams> = {
   kind: 'transition',
   role: 'presentation',
+  stageRelative: true,
   label: '转场',
   defaults: () => ({ durationMs: 600, style: 'fade' }),
   form: [

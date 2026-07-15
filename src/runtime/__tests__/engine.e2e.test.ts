@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
 import { registerCoreKinds } from '../registry/core-kinds'
+import { registerCoreSkins } from '../skins/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
 import { validateScenario } from '../validate/validate'
 import type { BannerDirective, RenderOverlayDirective } from '../engine/directives'
@@ -9,7 +10,8 @@ import { getSubFlow } from '../schema/graph-schema'
 
 const callers = (rt: GraphRuntime) => rt.state.callStack.map((f) => f.callerNodeId)
 
-beforeAll(() => registerCoreKinds())
+// registerCoreSkins 一并注册组件包自带 Kind（panelA/panelB/bossHitCheer），供校验/派发识别。
+beforeAll(() => { registerCoreKinds(); registerCoreSkins() })
 
 describe('nodia graph e2e (runs on GraphRuntime)', () => {
   it('authored graph passes the validator', () => {

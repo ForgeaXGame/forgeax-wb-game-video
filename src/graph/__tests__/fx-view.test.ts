@@ -28,6 +28,17 @@ describe('toFXView', () => {
     expect(e.targetHandle).toBe('target:in')
   })
 
+  it('output handles carry Chinese display labels', () => {
+    const fx = toFXView(NODIA_DEMO.graph)
+    const wait = fx.nodes.find((n) => n.id === 'wait')!
+    const light = wait.outputs.find((h) => h.data?.flowId === 'opt:light')!
+    expect(light.label).toBe('选项 · light')
+    expect(light.data?.displayLabel).toBe('选项 · light')
+    const enter = fx.nodes.find((n) => n.id === 'enter')!
+    const cond0 = enter.outputs.find((h) => h.data?.flowId === 'cond:0')!
+    expect(cond0.label).toBe('条件分支 1')
+  })
+
   it('leaf / container badges from overlayNode / subFlow*', () => {
     const fx = toFXView(NODIA_DEMO.graph)
     expect(fx.nodes.find((n) => n.id === 'win')!.type).toBe('default')

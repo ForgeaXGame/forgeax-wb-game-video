@@ -4,7 +4,9 @@
  * 不可变写回。不认识的 kind/字段仍回退到 JSON（见 NodeInspector 的 jsonArea）。
  */
 import type { CSSProperties, JSX } from 'react'
-import type { CmpOp, GraphClause, GraphCondition, GraphEffect, NumOrExpr } from '../../runtime/schema/graph-schema'
+import type { CmpOp, Entity, GraphClause, GraphCondition, GraphEffect, NumOrExpr, Variable } from '../../runtime/schema/graph-schema'
+import { AttrPicker, EntityPicker, VariablePicker } from './scenario-pickers'
+import { flowHandleDisplay } from '../../graph/flow-handle-labels'
 
 /** choice/skill 选项形态（与 core-kinds ChoiceOption 同构；就地声明避免逻辑↔UI 耦合）。 */
 export interface ChoiceOptionLike {
@@ -80,7 +82,14 @@ function defaultEffect(kind: EffectKind): GraphEffect {
   }
 }
 
-function EffectRow({ eff, onChange, onDelete }: { eff: GraphEffect; onChange: (e: GraphEffect) => void; onDelete: () => void }): JSX.Element {
+export interface EditorPickerCtx {
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
+  /** 节点下拉展示；缺省用 id。 */
+  nodeLabel?: (id: string) => string
+}
+
+function EffectRow({ eff, pickers, onChange, onDelete }: { eff: GraphEffect; pickers?: EditorPickerCtx; onChange: (e: GraphEffect) => void; onDelete: () => void }): JSX.Element {
   return (
     <div style={box}>
       <div style={rowStyle}>
@@ -93,8 +102,8 @@ function EffectRow({ eff, onChange, onDelete }: { eff: GraphEffect; onChange: (e
       </div>
       {eff.kind === 'attr' && (
         <>
-          {field('实体', <input value={eff.entityId} onChange={(e) => onChange({ ...eff, entityId: e.target.value })} placeholder="ent-boss" style={{ flex: 1 }} />)}
-          {field('attr', <input value={eff.attr} onChange={(e) => onChange({ ...eff, attr: e.target.value })} placeholder="hp" style={{ flex: 1 }} />)}
+          {field('实体', <EntityPicker value={eff.entityId} entities={pickers?.entities} onChange={(entityId) => onChange({ ...eff, entityId })} />)}
+          {field('属性', <AttrPicker entityId={eff.entityId} value={eff.attr} entities={pickers?.entities} onChange={(attr) => onChange({ ...eff, attr })} />)}
           {field('op', (
             <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'add' | 'set' })}>
               <option value="add">{OP_LABEL.add}</option>
@@ -106,7 +115,7 @@ function EffectRow({ eff, onChange, onDelete }: { eff: GraphEffect; onChange: (e
       )}
       {eff.kind === 'var' && (
         <>
-          {field('变量', <input value={eff.varId} onChange={(e) => onChange({ ...eff, varId: e.target.value })} placeholder="qi" style={{ flex: 1 }} />)}
+          {field('变量', <VariablePicker value={eff.varId} variables={pickers?.variables} onChange={(varId) => onChange({ ...eff, varId })} />)}
           {field('op', (
             <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'add' | 'set' })}>
               <option value="add">{OP_LABEL.add}</option>
@@ -118,7 +127,7 @@ function EffectRow({ eff, onChange, onDelete }: { eff: GraphEffect; onChange: (e
       )}
       {eff.kind === 'flag' && (
         <>
-          {field('flag', <input value={eff.varId} onChange={(e) => onChange({ ...eff, varId: e.target.value })} style={{ flex: 1 }} />)}
+          {field('标记', <VariablePicker value={eff.varId} variables={pickers?.variables} onChange={(varId) => onChange({ ...eff, varId })} placeholder="flagId" />)}
           {field('值', (
             <select value={String(eff.value)} onChange={(e) => onChange({ ...eff, value: e.target.value === 'true' })}>
               <option value="true">是</option>
@@ -143,7 +152,15 @@ function EffectRow({ eff, onChange, onDelete }: { eff: GraphEffect; onChange: (e
   )
 }
 
-export function EffectsEditor({ value, onChange }: { value: GraphEffect[] | undefined; onChange: (v: GraphEffect[]) => void }): JSX.Element {
+export function EffectsEditor({
+  value,
+  onChange,
+  pickers,
+}: {
+  value: GraphEffect[] | undefined
+  onChange: (v: GraphEffect[]) => void
+  pickers?: EditorPickerCtx
+}): JSX.Element {
   const list = value ?? []
   return (
     <div>
@@ -151,11 +168,12 @@ export function EffectsEditor({ value, onChange }: { value: GraphEffect[] | unde
         <EffectRow
           key={i}
           eff={eff}
+          pickers={pickers}
           onChange={(next) => onChange(list.map((e, idx) => (idx === i ? next : e)))}
           onDelete={() => onChange(list.filter((_, idx) => idx !== i))}
         />
       ))}
-      <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr')])}>+ effect</button>
+      <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr')])}>+ 效果</button>
     </div>
   )
 }
@@ -193,7 +211,19 @@ const opSelect = (op: CmpOp, onChange: (op: CmpOp) => void): JSX.Element => (
   </select>
 )
 
-function ClauseRow({ clause, nodeIds, onChange, onDelete }: { clause: GraphClause; nodeIds: string[]; onChange: (c: GraphClause) => void; onDelete: () => void }): JSX.Element {
+function ClauseRow({
+  clause,
+  nodeIds,
+  pickers,
+  onChange,
+  onDelete,
+}: {
+  clause: GraphClause
+  nodeIds: string[]
+  pickers?: EditorPickerCtx
+  onChange: (c: GraphClause) => void
+  onDelete: () => void
+}): JSX.Element {
   return (
     <div style={box}>
       <div style={rowStyle}>
@@ -206,30 +236,30 @@ function ClauseRow({ clause, nodeIds, onChange, onDelete }: { clause: GraphClaus
       </div>
       {(clause.type === 'attr' || clause.type === 'attrRatio') && (
         <>
-          {field('实体', <input value={clause.entityId} onChange={(e) => onChange({ ...clause, entityId: e.target.value })} placeholder="ent-boss" style={{ flex: 1 }} />)}
-          {field('attr', <input value={clause.attr} onChange={(e) => onChange({ ...clause, attr: e.target.value })} placeholder="hp" style={{ flex: 1 }} />)}
+          {field('实体', <EntityPicker value={clause.entityId} entities={pickers?.entities} onChange={(entityId) => onChange({ ...clause, entityId })} />)}
+          {field('属性', <AttrPicker entityId={clause.entityId} value={clause.attr} entities={pickers?.entities} onChange={(attr) => onChange({ ...clause, attr })} />)}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
           {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'attrCompare' && (
         <>
-          {field('左', <input value={clause.left} onChange={(e) => onChange({ ...clause, left: e.target.value })} placeholder="ent-player" style={{ flex: 1 }} />)}
-          {field('右', <input value={clause.right} onChange={(e) => onChange({ ...clause, right: e.target.value })} placeholder="ent-boss" style={{ flex: 1 }} />)}
-          {field('attr', <input value={clause.attr} onChange={(e) => onChange({ ...clause, attr: e.target.value })} placeholder="speed" style={{ flex: 1 }} />)}
+          {field('左实体', <EntityPicker value={clause.left} entities={pickers?.entities} onChange={(left) => onChange({ ...clause, left })} allowEmpty />)}
+          {field('右实体', <EntityPicker value={clause.right} entities={pickers?.entities} onChange={(right) => onChange({ ...clause, right })} allowEmpty />)}
+          {field('属性', <AttrPicker entityId={clause.left || clause.right} value={clause.attr} entities={pickers?.entities} onChange={(attr) => onChange({ ...clause, attr })} />)}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
         </>
       )}
       {clause.type === 'var' && (
         <>
-          {field('变量', <input value={clause.varId} onChange={(e) => onChange({ ...clause, varId: e.target.value })} style={{ flex: 1 }} />)}
+          {field('变量', <VariablePicker value={clause.varId} variables={pickers?.variables} onChange={(varId) => onChange({ ...clause, varId })} />)}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
           {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'flag' && (
         <>
-          {field('flag', <input value={clause.varId} onChange={(e) => onChange({ ...clause, varId: e.target.value })} style={{ flex: 1 }} />)}
+          {field('标记', <VariablePicker value={clause.varId} variables={pickers?.variables} onChange={(varId) => onChange({ ...clause, varId })} placeholder="flagId" />)}
           {field('等于', (
             <select value={String(clause.equals)} onChange={(e) => onChange({ ...clause, equals: e.target.value === 'true' })}>
               <option value="true">是</option>
@@ -242,7 +272,7 @@ function ClauseRow({ clause, nodeIds, onChange, onDelete }: { clause: GraphClaus
         <select value={clause.nodeId} onChange={(e) => onChange({ ...clause, nodeId: e.target.value })} style={{ flex: 1 }}>
           <option value="">（选节点）</option>
           {nodeIds.map((id) => (
-            <option key={id} value={id}>{id}</option>
+            <option key={id} value={id}>{pickers?.nodeLabel?.(id) ?? id}</option>
           ))}
         </select>
       ))}
@@ -262,7 +292,17 @@ function ClauseRow({ clause, nodeIds, onChange, onDelete }: { clause: GraphClaus
   )
 }
 
-export function ConditionEditor({ value, nodeIds, onChange }: { value: GraphCondition | undefined; nodeIds: string[]; onChange: (v: GraphCondition | undefined) => void }): JSX.Element {
+export function ConditionEditor({
+  value,
+  nodeIds,
+  onChange,
+  pickers,
+}: {
+  value: GraphCondition | undefined
+  nodeIds: string[]
+  onChange: (v: GraphCondition | undefined) => void
+  pickers?: EditorPickerCtx
+}): JSX.Element {
   const all = value?.all ?? []
   const set = (next: GraphClause[]) => onChange(next.length ? { all: next } : undefined)
   return (
@@ -273,6 +313,7 @@ export function ConditionEditor({ value, nodeIds, onChange }: { value: GraphCond
           key={i}
           clause={c}
           nodeIds={nodeIds}
+          pickers={pickers}
           onChange={(next) => set(all.map((x, idx) => (idx === i ? next : x)))}
           onDelete={() => set(all.filter((_, idx) => idx !== i))}
         />
@@ -283,21 +324,61 @@ export function ConditionEditor({ value, nodeIds, onChange }: { value: GraphCond
 }
 
 // ── 选项（choice/skill 的 options: {key,label,effects}）────────────────────────
-export function OptionsEditor({ value, onChange }: { value: ChoiceOptionLike[] | undefined; onChange: (v: ChoiceOptionLike[]) => void }): JSX.Element {
+function allocOptionKey(list: ChoiceOptionLike[]): string {
+  let i = list.length
+  let key = `opt${i}`
+  const used = new Set(list.map((o) => o.key))
+  while (used.has(key)) {
+    i += 1
+    key = `opt${i}`
+  }
+  return key
+}
+
+export function OptionsEditor({
+  value,
+  onChange,
+  pickers,
+}: {
+  value: ChoiceOptionLike[] | undefined
+  onChange: (v: ChoiceOptionLike[]) => void
+  pickers?: EditorPickerCtx
+}): JSX.Element {
   const list = value ?? []
   const patch = (i: number, p: Partial<ChoiceOptionLike>) => onChange(list.map((o, idx) => (idx === i ? { ...o, ...p } : o)))
   return (
     <div>
+      <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 4 }}>
+        每项对应蓝图出口 <code>opt:&lt;标识&gt;</code>；连线「何时走」请选同名出口。
+      </div>
       {list.map((o, i) => (
-        <div key={i} style={box}>
-          {field('key', <input value={o.key} onChange={(e) => patch(i, { key: e.target.value })} style={{ flex: 1 }} />)}
-          {field('label', <input value={o.label ?? ''} onChange={(e) => patch(i, { label: e.target.value })} style={{ flex: 1 }} />)}
-          <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>effects</div>
-          <EffectsEditor value={o.effects} onChange={(effects) => patch(i, { effects })} />
+        <div key={`${o.key}-${i}`} style={box}>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }} title={`opt:${o.key}`}>
+            出口 · {flowHandleDisplay(`opt:${o.key}`, o.label)}
+          </div>
+          {field('标识', (
+            <input
+              value={o.key}
+              onChange={(e) => patch(i, { key: e.target.value })}
+              style={{ flex: 1, fontFamily: 'monospace', fontSize: 11 }}
+              title="落盘 key；出边 sourceHandle = opt:此标识"
+            />
+          ))}
+          {field('显示文案', <input value={o.label ?? ''} onChange={(e) => patch(i, { label: e.target.value })} style={{ flex: 1 }} />)}
+          <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>选中时效果</div>
+          <EffectsEditor value={o.effects} onChange={(effects) => patch(i, { effects })} pickers={pickers} />
           <button style={{ ...del, marginTop: 4 }} onClick={() => onChange(list.filter((_, idx) => idx !== i))}>删除选项</button>
         </div>
       ))}
-      <button style={{ marginTop: 4 }} onClick={() => onChange([...list, { key: `opt${list.length}`, label: '', effects: [] }])}>+ 选项</button>
+      <button
+        style={{ marginTop: 4 }}
+        onClick={() => {
+          const key = allocOptionKey(list)
+          onChange([...list, { key, label: `选项 ${list.length + 1}`, effects: [] }])
+        }}
+      >
+        + 选项
+      </button>
     </div>
   )
 }

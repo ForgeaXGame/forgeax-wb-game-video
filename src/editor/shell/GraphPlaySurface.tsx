@@ -7,7 +7,7 @@
  * 实时高亮当前节点/已走边，点节点=jump 执行，只读（不改图、不出节点配置）。
  * 数据来自共享 graphScenario store（与蓝图/视频/界面/规则同源）。
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { GameScenario } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
@@ -15,7 +15,8 @@ import { PlayerRootContext, type HudElementView, type SkinCtx } from '../../runt
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc } from './media'
-import { computeVideoContentRect, type VideoContentRect } from '../video/videoContentRect'
+import { VideoOverlayStage } from '../video/VideoOverlayStage'
+import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
 import { getKind } from '../../runtime/registry/kind-registry'
@@ -88,23 +89,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     return () => releasePlayerFocus(el)
   }, [])
 
-  // 视频 object-fit:contain 后的实际画面矩形——HUD/QTE/交互等 overlay 都锚在这块
-  // 视频显示区上（而非整个内容区），视频缩小/换比例时血条等跟着视频走。
   const videoElRef = useRef<HTMLVideoElement | null>(null)
-  const [contentRect, setContentRect] = useState<VideoContentRect | null>(null)
-  const recomputeRect = useCallback(() => {
-    const v = videoElRef.current
-    setContentRect(v ? computeVideoContentRect(v) : null)
-  }, [])
-  useEffect(() => {
-    const v = videoElRef.current
-    if (!v) return
-    const parent = v.parentElement
-    if (!parent || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => recomputeRect())
-    ro.observe(parent)
-    return () => ro.disconnect()
-  }, [recomputeRect, snap?.clip?.nodeId])
+  const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap?.clip?.nodeId])
 
   useEffect(() => {
     if (!ready) return
@@ -168,12 +154,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   })
 
   // 游戏 overlay 舞台 = 视频实际显示矩形（有黑边时锚在视频那块，不铺满容器）。
-  // 无 contentRect（未加载/无视频）时回退到铺满容器。层内自身 pointerEvents 不变，
-  // 舞台设 none 让空白处点击穿透，交互层单独开 auto。
-  const stageStyle: CSSProperties = contentRect
-    ? { position: 'absolute', left: contentRect.left, top: contentRect.top, width: contentRect.width, height: contentRect.height, pointerEvents: 'none' }
-    : { position: 'absolute', inset: 0, pointerEvents: 'none' }
-
   return (
     <PlayerRootContext.Provider value={rootEl}>
     <div
@@ -209,11 +189,13 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
 
       {/* 游戏 overlay 舞台：锚定视频实际显示矩形（object-fit:contain 后带黑边的那块）。
           HUD / QTE / 交互 / 结局横幅都相对这块定位，视频缩放/换比例时跟着视频走。 */}
-      <div style={stageStyle}>
+      <VideoOverlayStage contentRect={contentRect}>
       {/* 表现叠层 */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {(snap?.overlays ?? []).map((o, i) => (
-          <span key={`${o.elementId}-${i}`} style={{ display: 'contents' }}>{skins?.renderOverlay(o)}</span>
+        {(snap?.overlayMounts ?? []).map((m) => (
+          <span key={m.mountId} style={{ display: 'contents' }}>
+            {skins?.renderOverlayMount(m, (elementId, key) => { const s = sessionRef.current; if (s) setSnap(s.emitEvent(elementId, key)) })}
+          </span>
         ))}
       </div>
 
@@ -256,7 +238,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {snap?.interaction && skins && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>{skins.renderInteraction(snap.interaction, submit, skinCtx)}</div>
       )}
-      </div>
+      </VideoOverlayStage>
 
       {/* 控制条：右上角悬浮 */}
       <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', gap: 6, alignItems: 'center', padding: 4, borderRadius: 10, background: 'rgba(27,23,19,0.7)' }}>
@@ -269,7 +251,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {/* 蓝图浮层：可拖拽 + 可缩放，复用 GraphCanvas */}
       {showBlueprint && (
         <DraggablePanel title="蓝图状态机 · 点节点跳转执行" initial={{ x: 40, y: 56, w: 540, h: 420 }} onClose={() => setShowBlueprint(false)}>
-          <GraphCanvas graph={graph} onChange={() => {}} activeNodeId={snap?.currentNodeId} traversedEdgeIds={traversed} onJump={doJump} />
+          <GraphCanvas graph={graph} onChange={() => {}} overlays={overlays} activeNodeId={snap?.currentNodeId} traversedEdgeIds={traversed} onJump={doJump} />
         </DraggablePanel>
       )}
 

@@ -17,14 +17,26 @@ export interface PlayClipDirective {
   durationMs?: number
 }
 
+import type { Layout } from '../schema/node-config-schema'
+
 /** 表现层元素（漂字/贴纸/字幕/转场…）→ 由 renderer registry 按 component 渲染。 */
 export interface RenderOverlayDirective {
   type: 'renderOverlay'
   nodeId: string
+  /** 挂载键（节点 overlayNodes 或 spawn 瞬态 id）；kind.render 可省略，由引擎补齐。 */
+  mountId?: string
+  /** 挂载级排版：相对视频舞台；无显式尺寸 → 自适应内容。 */
+  mountLayout?: Layout
   elementId: string
   component: string
   params: Record<string, unknown>
-  zIndex?: number
+  /** 子组件级排版：相对挂载盒；挂载有尺寸时缺省 = 左上角。 */
+  childLayout?: Layout
+  /**
+   * 组件自定位：内部用 %/inset 相对父框摆放（如 floatText 用 x/y）。
+   * 为真时子盒需铺满挂载盒且点击穿透，否则组件的百分比会相对零尺寸盒塌成左上角。
+   */
+  selfPositioned?: boolean
 }
 
 /** 交互层元素（qte/choice/skill/hotspot…）→ 呈现并等待玩家输入；handles = 可产出的出口。 */

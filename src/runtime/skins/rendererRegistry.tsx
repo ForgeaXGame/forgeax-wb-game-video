@@ -5,9 +5,9 @@
  * 仍指向 `defaultSkinRegistry`（编辑器兼容）。
  */
 import { Component, createContext, useContext, type ComponentType, type CSSProperties, type ErrorInfo, type ReactNode } from 'react'
-import type { OverlaySnap, InteractionSnap, HudSnap } from '../engine/session'
+import type { OverlaySnap, OverlayMountSnap, InteractionSnap, HudSnap } from '../engine/session'
 import type { Layout } from '../schema/node-config-schema'
-import { layoutToCss } from '../schema/layout'
+import { childWrapStyle, layoutHasExplicitSize, layoutToCss, mountWrapStyle } from '../schema/layout'
 import type { ChoiceParams, HotspotParams } from '../registry/core-kinds'
 import { isPlayerFocused } from '../input/playerFocus'
 
@@ -38,6 +38,8 @@ export interface HudElementView {
 // ── 组件 props 契约（每类渲染组件的统一入参）──────────────────────────────────────
 export interface OverlayProps {
   overlay: OverlaySnap
+  /** 展示组件的非阻塞事件回调（按钮点击等）；由试玩面注入，路由到 session.emitEvent。 */
+  emit?: (key: string) => void
 }
 export interface InteractionProps {
   interaction: InteractionSnap
@@ -125,12 +127,45 @@ export class SkinRegistry {
     this.hud.set(id, c)
   }
 
-  renderOverlay(overlay: OverlaySnap): ReactNode {
+  renderOverlayMount(
+    mount: OverlayMountSnap,
+    emit?: (elementId: string, key: string) => void,
+  ): ReactNode {
+    const mountHasSize = layoutHasExplicitSize(mount.mountLayout)
+    return (
+      <div key={mount.mountId} style={mountWrapStyle(mount.mountLayout)}>
+        {mount.children.map((child) => {
+          const C = this.overlay.get(child.component)
+          if (!C) return null
+          const snap: OverlaySnap = {
+            elementId: child.elementId,
+            component: child.component,
+            params: child.params,
+          }
+          // 自定位组件（floatText 等用 x/y）：子盒铺满挂载盒且点击穿透，
+          // 让组件内部的百分比相对完整父框解析（否则会塌成左上角、被裁切）。
+          const wrapStyle: CSSProperties = child.selfPositioned
+            ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
+            : childWrapStyle(child.childLayout, mountHasSize)
+          return (
+            <div key={child.elementId} style={wrapStyle}>
+              <SkinErrorBoundary name={child.component}>
+                <C overlay={snap} emit={(key) => emit?.(child.elementId, key)} />
+              </SkinErrorBoundary>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  /** @deprecated 用 renderOverlayMount */
+  renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void): ReactNode {
     const C = this.overlay.get(overlay.component)
     if (!C) return null
     return (
       <SkinErrorBoundary key={overlay.elementId} name={overlay.component}>
-        <C overlay={overlay} />
+        <C overlay={overlay} emit={emit} />
       </SkinErrorBoundary>
     )
   }
@@ -160,8 +195,6 @@ export class SkinRegistry {
       </SkinErrorBoundary>
     )
     if (!element.layout) return body
-    // 无宽高时视为「整舞台锚点」：水墨血条等皮肤内部用 absolute 自定位，
-    // 若包在 left/top=0 的零尺寸盒里会全部飞出可视区。
     const hasBox = element.layout.width != null || element.layout.height != null
       || (element.layout.left != null && element.layout.right != null)
       || (element.layout.top != null && element.layout.bottom != null)
@@ -192,8 +225,11 @@ export const defaultSkinRegistry = new SkinRegistry()
 export function registerOverlayRenderer(kind: string, c: OverlayComponent): void {
   defaultSkinRegistry.registerOverlayRenderer(kind, c)
 }
-export function renderOverlay(overlay: OverlaySnap): ReactNode {
-  return defaultSkinRegistry.renderOverlay(overlay)
+export function renderOverlayMount(mount: OverlayMountSnap, emit?: (elementId: string, key: string) => void): ReactNode {
+  return defaultSkinRegistry.renderOverlayMount(mount, emit)
+}
+export function renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void): ReactNode {
+  return defaultSkinRegistry.renderOverlay(overlay, emit)
 }
 export function registerInteractionRenderer(kind: string, c: InteractionComponent): void {
   defaultSkinRegistry.registerInteractionRenderer(kind, c)

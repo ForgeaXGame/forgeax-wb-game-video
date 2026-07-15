@@ -651,6 +651,66 @@
             }
           }
         ]
+      },
+      "hpPanel": {
+        "id": "hpPanel",
+        "title": "回合按钮面板（A / B1 / B2）",
+        "children": [
+          {
+            "id": "panelA",
+            "component": "panelA",
+            "layout": {
+              "left": 0,
+              "top": 0
+            },
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {}
+          },
+          {
+            "id": "panelB",
+            "component": "panelB",
+            "layout": {
+              "right": 0,
+              "top": 0
+            },
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {}
+          }
+        ]
+      },
+      "readouts": {
+        "id": "readouts",
+        "title": "血量读数（spawn 模板）",
+        "children": [
+          {
+            "id": "bossHp",
+            "component": "floatText",
+            "layout": {},
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {
+              "x": 0.08,
+              "y": 0.16
+            }
+          },
+          {
+            "id": "heroHp",
+            "component": "floatText",
+            "layout": {},
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {
+              "x": 0.92,
+              "y": 0.16
+            }
+          }
+        ]
       }
     }
   },
@@ -1199,6 +1259,85 @@
                 }
               ]
             }
+          ],
+          "overlayNodes": [
+            {
+              "overlay": "hpPanel",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1
+              },
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "A"
+                  },
+                  "do": [
+                    {
+                      "kind": "spawn",
+                      "from": "readouts/bossHp",
+                      "params": {
+                        "text": {
+                          "expr": "entity.ent-boss.attr.hp"
+                        }
+                      },
+                      "ttlMs": 1500
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B1"
+                  },
+                  "do": [
+                    {
+                      "kind": "spawn",
+                      "from": "readouts/heroHp",
+                      "params": {
+                        "text": {
+                          "expr": "entity.ent-player.attr.hp"
+                        }
+                      },
+                      "ttlMs": 1500
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B2"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "add",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B3"
+                  },
+                  "do": [
+                    {
+                      "kind": "goto",
+                      "targetNodeId": "n_drink"
+                    }
+                  ]
+                }
+              ]
+            }
           ]
         }
       },
@@ -1214,7 +1353,86 @@
         "data": {
           "name": "敌方回合",
           "durationMs": 0,
-          "subFlow": "tele"
+          "subFlow": "tele",
+          "overlayNodes": [
+            {
+              "overlay": "hpPanel",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1
+              },
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "A"
+                  },
+                  "do": [
+                    {
+                      "kind": "spawn",
+                      "from": "readouts/bossHp",
+                      "params": {
+                        "text": {
+                          "expr": "entity.ent-boss.attr.hp"
+                        }
+                      },
+                      "ttlMs": 1500
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B1"
+                  },
+                  "do": [
+                    {
+                      "kind": "spawn",
+                      "from": "readouts/heroHp",
+                      "params": {
+                        "text": {
+                          "expr": "entity.ent-player.attr.hp"
+                        }
+                      },
+                      "ttlMs": 1500
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B2"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "add",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "B3"
+                  },
+                  "do": [
+                    {
+                      "kind": "goto",
+                      "targetNodeId": "n_drink"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       },
       {

@@ -11,6 +11,8 @@ import { PlayerRootContext, type HudElementView, type SkinCtx } from '../../runt
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc } from './media'
+import { VideoOverlayStage } from '../video/VideoOverlayStage'
+import { useVideoContentRect } from '../video/useVideoContentRect'
 import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
 import { getKind } from '../../runtime/registry/kind-registry'
 
@@ -21,8 +23,10 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const sessionRef = useRef(session)
   sessionRef.current = session
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null)
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
+  const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
   const overlays = scenario.ui?.overlays
   const currentNode = useMemo(
@@ -83,52 +87,58 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
         onFocus={() => claimPlayerFocus(rootRef.current)}
         style={{ position: 'relative', width: '100%', height: '100%', background: '#000', color: '#fff', outline: 'none' }}
       >
-        <div className="gv-stage" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {videoSrc ? (
-            <video
-              key={snap.clip?.nodeId}
-              src={videoSrc}
-              autoPlay
-              muted
-              playsInline
-              loop={!!snap.clip?.loop}
-              onEnded={() => {
-                if (snap.clip?.loop) return
-                setSnap(sessionRef.current.performanceEnd())
-              }}
-              onTimeUpdate={(e) => setSnap(sessionRef.current.tick(Math.floor(e.currentTarget.currentTime * 1000)))}
-              style={{ maxWidth: '100%', maxHeight: '100%' }}
-            />
-          ) : (
-            <div className="gv-placeholder" style={{ opacity: 0.7 }}>{snap.clip?.name ?? '（无演出）'}</div>
+        {videoSrc ? (
+          <video
+            key={snap.clip?.nodeId}
+            ref={videoElRef}
+            src={videoSrc}
+            autoPlay
+            muted
+            playsInline
+            loop={!!snap.clip?.loop}
+            onLoadedMetadata={recomputeRect}
+            onEnded={() => {
+              if (snap.clip?.loop) return
+              setSnap(sessionRef.current.performanceEnd())
+            }}
+            onTimeUpdate={(e) => setSnap(sessionRef.current.tick(Math.floor(e.currentTarget.currentTime * 1000)))}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        ) : (
+          <div className="gv-placeholder" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7 }}>
+            {snap.clip?.name ?? '（无演出）'}
+          </div>
+        )}
+
+        <VideoOverlayStage contentRect={contentRect}>
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            {snap.overlayMounts.map((m) => (
+              <span key={m.mountId} style={{ display: 'contents' }}>
+                {skins.renderOverlayMount(m, (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)))}
+              </span>
+            ))}
+          </div>
+
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+            {hudComp.size > 0 && Object.keys(snap.hud.entities).map((id) => {
+              const el = hudComp.get(id)
+              if (el?.component) return <span key={id}>{skins.renderHudElement(el, skinCtx)}</span>
+              return null
+            })}
+          </div>
+
+          {snap.interaction && (
+            <div className="gv-interaction" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              {skins.renderInteraction(snap.interaction, submit, skinCtx)}
+            </div>
           )}
-        </div>
 
-        <div className="gv-overlays" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          {snap.overlays.map((o, i) => (
-            <span key={`${o.elementId}-${i}`} style={{ display: 'contents' }}>{skins.renderOverlay(o)}</span>
-          ))}
-        </div>
-
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
-          {hudComp.size > 0 && Object.keys(snap.hud.entities).map((id) => {
-            const el = hudComp.get(id)
-            if (el?.component) return <span key={id}>{skins.renderHudElement(el, skinCtx)}</span>
-            return null
-          })}
-        </div>
-
-        {snap.interaction && (
-          <div className="gv-interaction" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-            {skins.renderInteraction(snap.interaction, submit, skinCtx)}
-          </div>
-        )}
-
-        {snap.banner && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, background: 'rgba(0,0,0,0.55)' }}>
-            结束{snap.banner.title ? ` · ${snap.banner.title}` : ''}
-          </div>
-        )}
+          {snap.banner && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, background: 'rgba(0,0,0,0.55)' }}>
+              结束{snap.banner.title ? ` · ${snap.banner.title}` : ''}
+            </div>
+          )}
+        </VideoOverlayStage>
       </div>
     </PlayerRootContext.Provider>
   )

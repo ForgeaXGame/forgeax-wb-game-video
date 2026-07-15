@@ -1,9 +1,9 @@
 /**
  * scenario 级 overlay 编辑 —— children 住在 ui.overlays，节点挂 overlayNodes[]。
  */
-import type { GameScenario, OverlayChild, OverlayNode } from '../schema/graph-schema'
-import { overlayMountId } from '../schema/node-config-schema'
-import { patchNodeData, setOverlayNodes } from '../../graph/edit/graph-edit'
+import type { GameScenario, OverlayChild, OverlayNode } from '../../runtime/schema/graph-schema'
+import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { patchNodeData, setOverlayNodes } from './graph-edit'
 
 export function nodeOverlayId(nodeId: string): string {
   return `node:${nodeId}`

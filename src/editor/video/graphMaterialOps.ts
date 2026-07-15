@@ -38,7 +38,7 @@ import {
   updateNodeData,
   upsertBranchEdge,
 } from '../../graph/edit/graph-edit'
-import { addOverlayChild, ensureNodeOverlay, patchOverlayChild, removeOverlayChild } from '../../runtime/schema/overlay-edit'
+import { addOverlayChild, ensureNodeOverlay, patchOverlayChild, removeOverlayChild } from '../../graph/edit/overlay-edit'
 
 // ── overlay children 读取小工具（本节点专属 overlay 的 children） ────────────────
 function overlayIdOf(node: GameNode | undefined): string | undefined {
