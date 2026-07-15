@@ -1,6 +1,6 @@
 # AGENTS.md — wb-game-video（视频游戏工坊）给 AI 看的入口
 
-> 你（AI agent）被丢进 `packages/marketplace/extensions/workbench/wb-game-video/` 时，先读这份。
+> 你（AI agent）被丢进 `packages/marketplace/extensions/wb-game-video/` 时，先读这份。
 > 比 `README.md` / `SKILL.md` 浓缩，按你查信息的优先级排版。深入细节再翻那两份。
 > 最后更新：2026-07-09（旧蓝图引擎已退役，全面转向 graph 引擎）。
 
@@ -41,7 +41,7 @@ AI/agent 与工坊沟通的唯一契约 = **直接读/改 GameGraph**，只有�
 ## 1 分钟跑起来
 
 ```bash
-cd packages/marketplace/extensions/workbench/wb-game-video
+cd packages/marketplace/extensions/wb-game-video
 npm run dev            # vite dev，端口 15185
 npx vitest run         # 单测（vitest + happy-dom）
 npx tsc --noEmit       # 类型检查（当前全绿）

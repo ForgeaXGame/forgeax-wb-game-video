@@ -24,7 +24,7 @@
 ## 1 分钟跑起来
 
 ```bash
-cd packages/marketplace/extensions/workbench/wb-game-video
+cd packages/marketplace/extensions/wb-game-video
 npm run dev            # vite dev，端口 15185
 npx vitest run         # 单测（vitest + happy-dom）
 npx tsc --noEmit       # 类型检查（当前全绿）
