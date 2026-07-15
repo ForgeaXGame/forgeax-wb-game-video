@@ -3,7 +3,7 @@
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；边可由 goto 派生。
  */
 import type { ReactNode } from 'react'
-import type { GameGraph, GraphCondition, Overlay, SubFlowPackDef } from '../../runtime/schema/graph-schema'
+import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import type { NodeAction, Reaction } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
@@ -58,10 +58,14 @@ function isLifecycle(r: Reaction): boolean {
 function LifecycleReactionsEditor({
   reactions,
   nodeIds,
+  entities,
+  variables,
   onChange,
 }: {
   reactions: Reaction[] | undefined
   nodeIds: string[]
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   const life = (reactions ?? []).filter(isLifecycle)
@@ -106,6 +110,8 @@ function LifecycleReactionsEditor({
                 <ConditionEditor
                   value={r.when.if}
                   nodeIds={nodeIds}
+                  entities={entities}
+                  variables={variables}
                   onChange={(condition) =>
                     patchAt(i, { ...r, when: { type: 'complete', ...(condition ? { if: condition as GraphCondition } : {}) } })
                   }
@@ -115,6 +121,8 @@ function LifecycleReactionsEditor({
             <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>effects</div>
             <EffectsEditor
               value={effects?.effects}
+              entities={entities}
+              variables={variables}
               onChange={(effs) => patchAt(i, { ...r, do: effs?.length ? [{ kind: 'effect', effects: effs }] : [] })}
             />
           </div>
@@ -130,10 +138,14 @@ function LifecycleReactionsEditor({
 function OverlayReactionsEditor({
   events,
   reactions,
+  entities,
+  variables,
   onChange,
 }: {
   events: ReturnType<typeof aggregateOverlayEvents>
   reactions: Reaction[] | undefined
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   if (!events.length) {
@@ -157,6 +169,8 @@ function OverlayReactionsEditor({
             <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>effects</div>
             <EffectsEditor
               value={effects}
+              entities={entities}
+              variables={variables}
               onChange={(effs) => onChange(upsertEventEffects(reactions, ev.eventId, effs))}
             />
           </div>
@@ -172,6 +186,8 @@ export function NodeInspector({
   videoOptions = [],
   packs = [],
   overlays,
+  entities,
+  variables,
   onChange,
   onPacksChange,
   onJump,
@@ -182,6 +198,9 @@ export function NodeInspector({
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
   overlays?: Record<string, Overlay>
+  /** 场景实体 / 变量目录（供 effects / condition 下拉与选取式公式）。 */
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   onJump?: (id: string) => void
@@ -410,6 +429,8 @@ export function NodeInspector({
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}
+                  entities={entities}
+                  variables={variables}
                   onChange={(reactions) => {
                     const next = (d.overlayNodes ?? []).map((m, j) => (j === i ? { ...m, reactions } : m))
                     patchData({ overlayNodes: next })
@@ -430,6 +451,8 @@ export function NodeInspector({
         <LifecycleReactionsEditor
           reactions={d.reactions}
           nodeIds={nodeIds}
+          entities={entities}
+          variables={variables}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
@@ -454,6 +477,8 @@ export function NodeInspector({
             <ConditionEditor
               value={e.data?.condition}
               nodeIds={nodeIds}
+              entities={entities}
+              variables={variables}
               onChange={(condition) => onChange(updateEdgeData(graph, e.id, { condition: condition as GraphCondition }))}
             />
             <button style={{ color: '#ff6b6b', marginTop: 4 }} onClick={() => onChange(disconnect(graph, e.id))}>🗑 删除边</button>

@@ -14,6 +14,12 @@ import { loadStore, saveScenario, saveDraft, clearDraft, loadVersion, loadDraft,
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
 import { normalizeSubFlowFields } from '../../graph/edit/graph-edit'
 import { validateGraph } from '../../runtime/validate/validate'
+import { ensureBuiltinSchemes } from '../demo/builtin-schemes'
+
+/** 载入任意 scenario 时保证内置「通用样式」方案存在（缺失才补）。 */
+function withBuiltinSchemes(s: GameScenario): GameScenario {
+  return { ...s, ui: { ...s.ui, overlays: ensureBuiltinSchemes(s.ui?.overlays) } }
+}
 
 export type ScenarioMetaFields = Pick<GameScenario, 'variables' | 'entities' | 'ui' | 'rng' | 'reactions' | 'textStylePresets' | 'packs'>
 
@@ -144,14 +150,14 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       void loadStore(game).then((s) => {
         // 进入优先级：未保存草稿(localStorage) > 磁盘最新已保存版本 > demo（出厂只读原始）。
         if (s.draft?.graph) {
-          const laid = layoutIfUnset(s.draft)
+          const laid = withBuiltinSchemes(layoutIfUnset(s.draft))
           set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: true, versions: s.versions, currentVersionId: s.versions[0]?.id ?? null, loadEpoch: st.loadEpoch + 1 }))
         } else if (s.scenario?.graph) {
-          const laid = layoutIfUnset(s.scenario)
+          const laid = withBuiltinSchemes(layoutIfUnset(s.scenario))
           set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: false, versions: s.versions, currentVersionId: s.versions[0]?.id ?? null, loadEpoch: st.loadEpoch + 1 }))
         } else {
           // 首次（无草稿、磁盘也没有）→ 用 demo 打底，并把它作为第一个版本落盘。
-          const laid = layoutIfUnset(structuredClone(demo))
+          const laid = withBuiltinSchemes(layoutIfUnset(structuredClone(demo)))
           set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: false, versions: [], currentVersionId: null, loadEpoch: st.loadEpoch + 1 }))
           void saveScenario(laid, game).then((vs) => set({ versions: vs, currentVersionId: vs[0]?.id ?? null }))
         }
@@ -214,7 +220,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       const apply = (s: GameScenario | null) => {
         if (!s?.graph) return
         clearDraftTimer()
-        const laid = layoutIfUnset(s)
+        const laid = withBuiltinSchemes(layoutIfUnset(s))
         // 载入已保存版本 → 非草稿 + 记为当前版本；载入草稿 → 仍是草稿。
         set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: value === '__draft__', loadEpoch: st.loadEpoch + 1, ...(value !== '__draft__' ? { currentVersionId: value } : {}) }))
       }
@@ -226,7 +232,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     reset: () => {
       const demo = get().demo
       if (!demo) return
-      const d = layoutIfUnset(structuredClone(demo))
+      const d = withBuiltinSchemes(layoutIfUnset(structuredClone(demo)))
       clearDraftTimer()
       clearDraft(get().game)
       set((st) => ({ graph: d.graph, meta: pickMeta(d), isDraft: false, currentVersionId: null, savedTip: '已重置为 demo', fitSignal: st.fitSignal + 1, runKey: st.runKey + 1, loadEpoch: st.loadEpoch + 1 }))

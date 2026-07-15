@@ -56,7 +56,11 @@ import { registerFxKinds } from '../../runtime/registry/fx-kinds'
 import { FILTER_OPTIONS, FX_OPTIONS, fxNeedsColor, resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
+import { EffectsEditor } from './editors'
+import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
+import { INTERACTION_SKINS } from '../../runtime/skins/components'
+import { renderInteraction } from '../../runtime/skins/rendererRegistry'
 import { CATALOG_CSS } from './catalogCss'
 import type { Entity, GameNode, GameScenario, GraphTextStyle } from '../../runtime/schema/graph-schema'
 import type { QteCue } from '../../runtime/registry/core-kinds'
@@ -67,6 +71,7 @@ import {
   addMaterialGraph,
   addOptionBranchGraph,
   addQteCueGraph,
+  addQteOutcomeGraph,
   bindVideoGraph,
   choiceElement,
   collectMaterialsFromNode,
@@ -74,7 +79,9 @@ import {
   deleteMaterialGraph,
   findElement,
   findNode,
+  listAvailableQteOutcomes,
   listOptionBranches,
+  listQteOutcomeViews,
   parseDamageFromContent,
   patchMaterialGraph,
   patchOverlayGraph,
@@ -84,13 +91,19 @@ import {
   qteElementOfCue,
   removeOptionBranchGraph,
   removeQteCueGraph,
+  removeQteOutcomeGraph,
+  setOptionBranchEffectsGraph,
   setOptionTargetGraph,
+  setQteOutcomeEffectsGraph,
+  setQteOutcomeTargetGraph,
   settleDamage,
   settleElementFor,
   settleTargetKind,
   setNodePromptGraph,
   updateOptionLabelGraph,
   activePreviewOverlaysFromNode,
+  qteSkinPreviewInteraction,
+  type QteOutcomeHandle,
 } from '../video/graphMaterialOps'
 
 // 「添加控件」/「重新生成」右列与检视器同槽切换（对齐 main 生成面板）。
@@ -98,6 +111,7 @@ import {
 // 视频 tab 的基础栏目/预览台样式（gc-*）复用共享 CATALOG_CSS（原旧 forge/CatalogTabs 全局 CSS）。
 // 注册滤镜/特效 kind（registry 全局单例 → 校验 + 运行时可见）；幂等。
 registerFxKinds()
+bootEditorSkins()
 
 injectStyleOnce('graph-catalog', CATALOG_CSS)
 injectStyleOnce(
@@ -232,6 +246,7 @@ export function GraphVideoView(): JSX.Element {
   const overlays = useGraphScenario((s) => s.meta.ui?.overlays)
   const setScenario = useGraphScenario((s) => s.setScenario)
   const entities = useGraphScenario((s) => s.meta.entities)
+  const variables = useGraphScenario((s) => s.meta.variables)
   // 选中节点来自 graph 共享 store（不再依赖旧 scenarioStore）；无选中则落到首个节点。
   const selectedNodeId = useGraphScenario((s) => s.selectedNodeId)
   const selectedSceneId = selectedNodeId ?? graph.nodes[0]?.id ?? ''
@@ -323,10 +338,15 @@ export function GraphVideoView(): JSX.Element {
   const isTimedQteNode = Boolean(qteElement(scenario, node))
 
   const materials = useMemo(() => collectMaterialsFromNode(scenario, node, maxMs), [scenario, node, maxMs])
-  const previewOverlays = useMemo(
-    () => (node && editingBoundClip ? activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs) : []),
-    [scenario, node, editingBoundClip, playheadMs, maxMs],
+  const qteSkinPreview = useMemo(
+    () => (node && editingBoundClip ? qteSkinPreviewInteraction(scenario, node) : null),
+    [scenario, node, editingBoundClip],
   )
+  const previewOverlays = useMemo(() => {
+    if (!node || !editingBoundClip) return []
+    const all = activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs)
+    return qteSkinPreview ? all.filter((o) => o.kind !== 'qte') : all
+  }, [scenario, node, editingBoundClip, playheadMs, maxMs, qteSkinPreview])
   // 滤镜/特效预览：按当前播放头解析出 filter / transform / 覆盖层，实时施加到预览视频。
   const videoFx = useMemo(
     () => (node && editingBoundClip ? resolveVideoFxForNode(node, overlays, playheadMs, maxMs) : { overlays: [] }),
@@ -358,11 +378,11 @@ export function GraphVideoView(): JSX.Element {
   // 音频条（仅显示）：编辑绑定 clip 时，用素材自带声道占满第 0 轨；否则清空。
   useEffect(() => {
     if (editingBoundClip && timelineEntry) {
-      setAudioItems([{ key: 'clip-audio', label: `素材音轨 · ${timelineEntry.label}`, startMs: 0, endMs: maxMs, zIndex: 0, builtin: true }])
+      setAudioItems([{ key: 'clip-audio', label: `素材音轨 · ${timelineEntry.label}`, startMs: 0, endMs: maxMs, zIndex: 0, src: previewSrc, builtin: true }])
     } else {
       setAudioItems([])
     }
-  }, [editingBoundClip, timelineEntry?.id, selectedSceneId, maxMs])
+  }, [editingBoundClip, timelineEntry?.id, selectedSceneId, maxMs, previewSrc])
 
   // 键盘撤销/重做：Ctrl/⌘+Z 撤销，Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做；在输入框内不拦截（留给原生文本撤销）。
   useEffect(() => {
@@ -768,6 +788,11 @@ export function GraphVideoView(): JSX.Element {
                   ) : null}
                   <div className="gc-content-anchor" style={previewContentStyle}>
                     <div className="gc-preview-overlays">
+                      {qteSkinPreview ? (
+                        <div className="gc-preview-skin-layer" aria-hidden>
+                          {renderInteraction(qteSkinPreview, () => {}, undefined, { timeMs: playheadMs })}
+                        </div>
+                      ) : null}
                       {previewOverlays.map((o) => {
                         const selected = selectedMaterialKey === o.materialKey
                         return (
@@ -790,6 +815,7 @@ export function GraphVideoView(): JSX.Element {
                             >
                               {o.label}
                             </span>
+                            {o.detail ? <span className="gc-preview-detail">{o.detail}</span> : null}
                           </div>
                         )
                       })}
@@ -814,15 +840,19 @@ export function GraphVideoView(): JSX.Element {
                     node={node}
                     item={selectedMaterial}
                     entities={entities}
+                    variables={variables}
                     onPatch={patchSelected}
                     onTiming={(item, start, end) => patchMaterial(item, { startMs: start, endMs: end })}
-                    onAddQteCue={addQteCue}
                     onRemoveQteCue={removeQteCue}
-                    onSelectQteCue={(cueId) => { const el = qteElement(scenario, node); if (el) setSelectedMaterialKey(`qte:${el.id}:${cueId}`) }}
                     onAddBranch={() => editScenario((s, n) => addOptionBranchGraph(s, n))}
                     onSetBranchLabel={(key, label) => editScenario((s, n) => updateOptionLabelGraph(s, n, key, label))}
                     onSetBranchTarget={(key, target) => editScenario((s, n) => setOptionTargetGraph(s, n, key, target))}
+                    onSetBranchEffects={(key, effects) => editScenario((s, n) => setOptionBranchEffectsGraph(s, n, key, effects))}
                     onRemoveBranch={(key) => editScenario((s, n) => removeOptionBranchGraph(s, n, key))}
+                    onSetQteOutcomeTarget={(handle, target) => editScenario((s, n) => setQteOutcomeTargetGraph(s, n, handle, target))}
+                    onSetQteOutcomeEffects={(handle, effects) => editScenario((s, n) => setQteOutcomeEffectsGraph(s, n, handle, effects))}
+                    onAddQteOutcome={(handle) => editScenario((s, n) => addQteOutcomeGraph(s, n, handle))}
+                    onRemoveQteOutcome={(handle) => editScenario((s, n) => removeQteOutcomeGraph(s, n, handle))}
                   />
                 </div>
               ) : editingBoundClip && topPanel === 'library' ? (
@@ -951,29 +981,37 @@ function GraphMaterialInspector({
   node,
   item,
   entities,
+  variables,
   onPatch,
   onTiming,
-  onAddQteCue,
   onRemoveQteCue,
-  onSelectQteCue,
   onAddBranch,
   onSetBranchLabel,
   onSetBranchTarget,
+  onSetBranchEffects,
   onRemoveBranch,
+  onSetQteOutcomeTarget,
+  onSetQteOutcomeEffects,
+  onAddQteOutcome,
+  onRemoveQteOutcome,
 }: {
   scenario: GameScenario
   node: GameNode | undefined
   item: MaterialItem | null
   entities: Record<string, Entity> | undefined
+  variables: GameScenario['variables']
   onPatch: (patch: Record<string, unknown>) => void
   onTiming: (item: MaterialItem, startMs: number, endMs: number) => void
-  onAddQteCue: (afterCueId?: string) => void
   onRemoveQteCue: (cueId: string) => void
-  onSelectQteCue: (cueId: string) => void
   onAddBranch: () => void
   onSetBranchLabel: (key: string, label: string) => void
   onSetBranchTarget: (key: string, target: string) => void
+  onSetBranchEffects: (key: string, effects: import('../../runtime/schema/graph-schema').GraphEffect[]) => void
   onRemoveBranch: (key: string) => void
+  onSetQteOutcomeTarget: (handle: QteOutcomeHandle, target: string) => void
+  onSetQteOutcomeEffects: (handle: QteOutcomeHandle, effects: import('../../runtime/schema/graph-schema').GraphEffect[]) => void
+  onAddQteOutcome: (handle: QteOutcomeHandle) => void
+  onRemoveQteOutcome: (handle: QteOutcomeHandle) => void
 }): JSX.Element {
   if (!node || !item) {
     return <div className="gc-inspector-empty"><span>选择时间轴上的素材以编辑属性</span></div>
@@ -982,8 +1020,9 @@ function GraphMaterialInspector({
   const params = (el?.params ?? {}) as Record<string, unknown>
   const cue = item.kind === 'qte' ? cuesOfEl(el)?.find((c) => c.id === item.id) : undefined
   const settle = item.kind === 'overlay' ? settleElementFor(scenario, node, item.id) : undefined
-  const cues = item.kind === 'qte' ? (cuesOfEl(el) ?? []) : []
   const branches = item.kind === 'option' ? listOptionBranches(scenario, node) : []
+  const qteOutcomes = item.kind === 'qte' ? listQteOutcomeViews(scenario, node) : []
+  const qteAvailable = item.kind === 'qte' ? listAvailableQteOutcomes(scenario, node) : []
   const nodeOptions = scenario.graph.nodes.filter((n) => n.id !== node.id)
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const str = (v: unknown): string => (typeof v === 'string' ? v : '')
@@ -991,16 +1030,18 @@ function GraphMaterialInspector({
   return (
     <div className="gc-inspector-card">
       <div className="gc-inspector-title">{materialLabel(item.kind)}</div>
-      <div className="gc-field-row">
-        <label>
-          <span>开始</span>
-          <input type="number" value={item.startMs} onChange={(e) => onTiming(item, Number(e.target.value), item.endMs)} />
-        </label>
-        <label>
-          <span>结束</span>
-          <input type="number" value={item.endMs} onChange={(e) => onTiming(item, item.startMs, Number(e.target.value))} />
-        </label>
-      </div>
+      {item.kind !== 'qte' ? (
+        <div className="gc-field-row">
+          <label>
+            <span>开始</span>
+            <input type="number" value={item.startMs} onChange={(e) => onTiming(item, Number(e.target.value), item.endMs)} />
+          </label>
+          <label>
+            <span>结束</span>
+            <input type="number" value={item.endMs} onChange={(e) => onTiming(item, item.startMs, Number(e.target.value))} />
+          </label>
+        </div>
+      ) : null}
 
       {item.kind === 'subtitle' && el && (
         <>
@@ -1071,27 +1112,80 @@ function GraphMaterialInspector({
 
       {item.kind === 'qte' && cue && el && (
         <>
-          <div className="gc-qte-cues-head">
-            <span>按键点 · {cues.length}</span>
-            <button type="button" className="gc-mini-action" onClick={() => onAddQteCue(cue.id)}>+ 添加按键点</button>
-          </div>
-          <div className="gc-qte-cue-list">
-            {cues.map((c, i) => (
-              <button
-                key={c.id}
-                type="button"
-                className={`gc-qte-cue-chip${c.id === cue.id ? ' is-on' : ''}`}
-                onClick={() => onSelectQteCue(c.id)}
-                onDoubleClick={() => onRemoveQteCue(c.id)}
-                title="双击删除该按键点"
-              >
-                {i + 1}. {c.triggerKey || c.label || c.shape}
-              </button>
-            ))}
-          </div>
+          <label className="gc-field"><span>交互皮肤</span>
+            <select value={str(params.component)} onChange={(e) => onPatch({ component: e.target.value || undefined })}>
+              <option value="">（默认按钮）</option>
+              {INTERACTION_SKINS.filter((s) => s.target === 'qte').map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="gc-field"><span>标签</span>
             <input value={cue.label ?? ''} onChange={(e) => onPatch({ label: e.target.value || undefined })} />
           </label>
+          <label className="gc-field"><span>完美判定 ±ms</span>
+            <input type="number" min={0} step={10} value={num(params.perfectMs, NaN) >= 0 ? (params.perfectMs as number) : ''} placeholder="留空=皮肤内置手感"
+              onChange={(e) => onPatch({ perfectMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })} />
+          </label>
+          <p className="gc-inspector-hint">完美判定：以命中锚点为中心 ±此毫秒内按下=pass（完美）；命中落在显示窗内=good（成功），窗外/超时=fail。</p>
+          <div className="gc-inspector-subhead">
+            <span>结算</span>
+            <span className="gc-inspector-subhint">默认可配「成功」且不跳转；未配「优秀」时优秀按成功结算</span>
+          </div>
+          {qteOutcomes.map((o) => (
+            <div key={o.handle} className="gc-branch-block" style={{ border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6, marginBottom: 8 }}>
+              <div className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ width: 40, flexShrink: 0, fontWeight: 600 }}>{o.label}</span>
+                <select
+                  style={{ flex: 1 }}
+                  value={o.targetId ?? ''}
+                  onChange={(e) => onSetQteOutcomeTarget(o.handle, e.target.value)}
+                >
+                  <option value="">不跳转（继续推进）</option>
+                  {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.data.name || n.id}</option>)}
+                </select>
+                <button
+                  type="button"
+                  className="gc-mini-danger"
+                  disabled={qteOutcomes.length <= 1}
+                  title={qteOutcomes.length <= 1 ? '至少保留一项成功结算' : `删除「${o.label}」结算`}
+                  onClick={() => onRemoveQteOutcome(o.handle)}
+                >
+                  删除
+                </button>
+              </div>
+              {o.fallsBackToPass ? (
+                <p className="gc-inspector-hint" style={{ margin: '0 0 6px' }}>未单独配置「优秀」时，优秀结果也会按「成功」结算。</p>
+              ) : null}
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>改数值</div>
+              <EffectsEditor
+                value={o.effects}
+                entities={entities}
+                variables={variables}
+                onChange={(effects) => onSetQteOutcomeEffects(o.handle, effects)}
+              />
+            </div>
+          ))}
+          {qteAvailable.length > 0 ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10 }}>
+              <select
+                id="gvv-add-qte-outcome"
+                defaultValue=""
+                onChange={(e) => {
+                  const h = e.target.value as QteOutcomeHandle
+                  if (!h) return
+                  onAddQteOutcome(h)
+                  e.target.value = ''
+                }}
+                style={{ flex: 1 }}
+              >
+                <option value="" disabled>＋ 添加结算…</option>
+                {qteAvailable.map((h) => (
+                  <option key={h} value={h}>{h === 'pass' ? '成功' : h === 'good' ? '优秀' : '失败'}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <p className="gc-inspector-hint">出现=提示出现（左缘）· 命中=最佳判定时刻（计分锚点，菱形）· 消失=提示撤离（右缘）。三者也可在时间轴上直接拖。</p>
           <div className="gc-field-row">
             <label><span>出现 ms</span>
@@ -1180,6 +1274,14 @@ function GraphMaterialInspector({
 
       {item.kind === 'option' && el && (
         <>
+          <label className="gc-field"><span>选项皮肤</span>
+            <select value={str(params.component)} onChange={(e) => onPatch({ component: e.target.value || undefined })}>
+              <option value="">（默认清单）</option>
+              {INTERACTION_SKINS.filter((s) => s.target === 'choice').map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="gc-field"><span>提示文案</span>
             <input value={str(params.prompt)} onChange={(e) => onPatch({ prompt: e.target.value || undefined })} />
           </label>
@@ -1194,17 +1296,34 @@ function GraphMaterialInspector({
               onChange={(e) => onPatch({ timeoutMs: e.target.value === '' ? undefined : Number(e.target.value) })} />
           </label>
           <div className="gc-inspector-subhead">
-            <span>选项分支</span>
-            <span className="gc-inspector-subhint">{branches.length} 条 · 文案 / 目标（改这里会同步蓝图连接）</span>
+            <span>结算</span>
+            <span className="gc-inspector-subhint">{branches.length} 条 · 每条选项可独立跳转 / 改数值；默认不跳转</span>
           </div>
           {branches.map((b) => (
-            <div key={b.key} className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-              <input style={{ flex: 1 }} value={b.label} onChange={(e) => onSetBranchLabel(b.key, e.target.value)} placeholder="选项文案" />
-              <select value={b.targetId ?? ''} onChange={(e) => onSetBranchTarget(b.key, e.target.value)}>
-                <option value="" disabled>跳转到…</option>
-                {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.data.name || n.id}</option>)}
-              </select>
-              <button type="button" className="gc-mini-danger" onClick={() => onRemoveBranch(b.key)}>×</button>
+            <div key={b.key} className="gc-branch-block" style={{ border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6, marginBottom: 8 }}>
+              <div className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                <input style={{ flex: 1 }} value={b.label} onChange={(e) => onSetBranchLabel(b.key, e.target.value)} placeholder="选项文案" />
+                <select style={{ flex: 1 }} value={b.targetId ?? ''} onChange={(e) => onSetBranchTarget(b.key, e.target.value)}>
+                  <option value="">不跳转（继续推进）</option>
+                  {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.data.name || n.id}</option>)}
+                </select>
+                <button
+                  type="button"
+                  className="gc-mini-danger"
+                  disabled={branches.length <= 1}
+                  title={branches.length <= 1 ? '至少保留一个选项' : `删除「${b.label}」`}
+                  onClick={() => onRemoveBranch(b.key)}
+                >
+                  删除
+                </button>
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>改数值</div>
+              <EffectsEditor
+                value={b.effects}
+                entities={entities}
+                variables={variables}
+                onChange={(effects) => onSetBranchEffects(b.key, effects)}
+              />
             </div>
           ))}
           <button type="button" className="gc-add-branch-btn" onClick={onAddBranch}>＋ 添加选项</button>

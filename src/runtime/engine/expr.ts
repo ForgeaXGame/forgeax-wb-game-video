@@ -288,6 +288,16 @@ export function evalExpr(src: string, ctx: EvalCtx): number {
   return evalNode(parseExpr(src), ctx)
 }
 
+/** 预览/摘要用：求值失败或非有限数返回 null，不抛错。 */
+export function tryEvalExpr(src: string, ctx: EvalCtx): number | null {
+  try {
+    const v = evalExpr(src, ctx)
+    return Number.isFinite(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
 // ── 静态引用采集（validator 用）────────────────────────────────────────────────
 export interface ExprRefs {
   vars: string[]

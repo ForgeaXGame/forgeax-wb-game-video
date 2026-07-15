@@ -33,6 +33,8 @@ export interface AudioItem {
   startMs: number
   endMs: number
   zIndex: number
+  /** 音源 URL（用于时间轴波形解码）；缺省则只画底纹条。 */
+  src?: string
   /** 素材自带音轨（视频内嵌声道）；仅显示用途，暂不可删。 */
   builtin?: boolean
 }
@@ -47,11 +49,25 @@ export const TIMELINE_MIN_TRACKS = 5
 export const ZOOM_MIN = 1
 export const ZOOM_MAX = 20
 
+/** 前端时间输入分度：0.01 秒（底层仍存毫秒）。 */
+export const TIME_STEP_SEC = 0.01
+
+export function msToSec(ms: number): number {
+  return Math.round(ms) / 1000
+}
+
+/** 秒 → 毫秒（四舍五入到整数 ms）。 */
+export function secToMs(sec: number): number {
+  if (!Number.isFinite(sec)) return 0
+  return Math.round(sec * 1000)
+}
+
+/** m:ss.cc（秒保留两位小数）。 */
 export function fmtDur(ms: number): string {
-  const total = Math.round(ms / 1000)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+  const totalSec = Math.max(0, ms) / 1000
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec - m * 60
+  return `${m}:${s.toFixed(2).padStart(5, '0')}`
 }
 
 export function clampMs(v: number, min: number, max: number): number {

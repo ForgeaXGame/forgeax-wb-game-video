@@ -135,6 +135,39 @@ export function patchScenarioNodeData(
   return { ...scenario, graph: patchNodeData(scenario.graph, nodeId, patch) }
 }
 
+/** 改 ui.overlays 目录里的 child（界面 tab / 共享 overlay，不经节点挂载路由）。 */
+export function patchOverlayCatalogChild(
+  scenario: GameScenario,
+  overlayId: string,
+  childId: string,
+  patch: Partial<OverlayChild>,
+): GameScenario {
+  const ov = scenario.ui?.overlays?.[overlayId]
+  if (!ov) return scenario
+  return {
+    ...scenario,
+    ui: {
+      ...scenario.ui,
+      overlays: {
+        ...scenario.ui!.overlays,
+        [overlayId]: {
+          ...ov,
+          children: ov.children.map((c) =>
+            c.id === childId
+              ? {
+                  ...c,
+                  ...patch,
+                  params: patch.params ? { ...c.params, ...patch.params } : c.params,
+                  layout: patch.layout ? { ...c.layout, ...patch.layout } : c.layout,
+                }
+              : c,
+          ),
+        },
+      },
+    },
+  }
+}
+
 export function patchOverlayMount(
   scenario: GameScenario,
   nodeId: string,

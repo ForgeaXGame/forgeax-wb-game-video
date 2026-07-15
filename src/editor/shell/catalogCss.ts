@@ -156,8 +156,10 @@ export const CATALOG_CSS = `
   position: absolute;
   transform: translate(-50%, -50%);
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   min-width: 0;
   max-width: 78%;
   color: var(--gc-text);
@@ -213,6 +215,24 @@ export const CATALOG_CSS = `
 .gc-preview-overlay.is-qte .gc-preview-label {
   color: #cfe4ff;
   border-color: rgba(95,163,247,.48);
+}
+.gc-preview-detail {
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(0,0,0,.66);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.9);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-line;
+  text-align: left;
+}
+.gc-preview-skin-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
 }
 .gc-preview-ring {
   position: absolute;

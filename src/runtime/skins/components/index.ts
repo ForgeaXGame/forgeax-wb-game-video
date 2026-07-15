@@ -13,13 +13,40 @@ import { InkYingMoLayer } from './InkYingMoLayer'
 import { BattleSkillLayer } from './BattleSkillLayer'
 import { BattleHpBar } from './BattleHpBar'
 
-/** 可选交互皮肤（供编辑器下拉）。 */
-export const INTERACTION_SKINS: Array<{ id: string; label: string }> = [
-  { id: 'battleParry', label: '防反 QTE（A/B 收圈）' },
-  { id: 'inkKou', label: '叩击 QTE（单点）' },
-  { id: 'inkYingMo', label: '應/默 抉择' },
-  { id: 'battleSkillBar', label: '战斗技能条' },
+/**
+ * 皮肤定位类型：
+ *  - 'point'：单点皮肤，位置由作者的锚点/cue 坐标决定（可拖，创作=皮肤=试玩三处一致）。
+ *  - 'fixed'：组合/固定布局皮肤（防反 A/B、底部按钮条），位置由皮肤自身固定，作者拖拽无意义。
+ */
+export type SkinPositioning = 'point' | 'fixed'
+
+/**
+ * 可选交互皮肤（供编辑器下拉）。`target` 区分它天然是 QTE 皮肤还是选项皮肤；
+ * `defaultAnchor` 仅 point 皮肤有意义（新建拍点的初始归一化位置）。
+ */
+export const INTERACTION_SKINS: Array<{
+  id: string
+  label: string
+  target: 'choice' | 'qte'
+  positioning: SkinPositioning
+  defaultAnchor?: { x: number; y: number }
+}> = [
+  { id: 'battleParry', label: '防反 QTE（A/B 收圈）', target: 'qte', positioning: 'fixed' },
+  { id: 'inkKou', label: '叩击 QTE（单点）', target: 'qte', positioning: 'point', defaultAnchor: { x: 0.58, y: 0.39 } },
+  { id: 'inkYingMo', label: '應/默 抉择', target: 'choice', positioning: 'fixed' },
+  { id: 'battleSkillBar', label: '战斗技能条', target: 'choice', positioning: 'fixed' },
 ]
+
+/** 皮肤定位类型查询；未知/未选皮肤（默认按钮条）按 'fixed'（底部居中）处理。 */
+export function skinPositioning(id: string | undefined): SkinPositioning {
+  return INTERACTION_SKINS.find((s) => s.id === id)?.positioning ?? 'fixed'
+}
+
+/** point 皮肤的默认锚点（新建拍点初始位置）；无则 undefined（走通用兜底 0.5/0.55）。 */
+export function skinDefaultAnchor(id: string | undefined): { x: number; y: number } | undefined {
+  return INTERACTION_SKINS.find((s) => s.id === id)?.defaultAnchor
+}
+
 /** 可选 HUD 皮肤（供编辑器下拉）。 */
 export const HUD_SKINS: Array<{ id: string; label: string }> = [{ id: 'battleHpBar', label: '水墨血条' }]
 

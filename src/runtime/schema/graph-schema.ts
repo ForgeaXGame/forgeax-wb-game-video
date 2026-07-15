@@ -58,8 +58,25 @@ export {
   completeReactions,
 } from './overlay-events'
 
-/** 常量或声明式表达式（见 expr.ts）。 */
-export type NumOrExpr = number | { expr: string }
+/**
+ * 数值 = 常量或表达式字符串。求值语法只此一套，见 expr.ts —— `pick` 不是第二套表达式。
+ * `pick` 是编辑器专属 sidecar：记录「用下拉选取式拼出该 expr」时的选择结构，供重开时复原
+ * 下拉；由编辑器编译进 `expr`。引擎只读 `expr`，从不读 `pick`。
+ */
+export type NumOrExpr = number | { expr: string; pick?: ValuePick }
+/** `pick` 的选取式结构（运行时忽略）：常量，或一条左结合的 ±×÷ 条款链。 */
+export type ValuePick =
+  | { mode: 'const'; const: number }
+  | { mode: 'pick'; terms: ValueTerm[] }
+export type ValueTermOp = '+' | '-' | '*' | '/'
+/** 一项：与前项做 op（首项仅 ±）；取值按 source —— entity.<refId>.attr.<attr> / var.<refId> / const。 */
+export type ValueTerm = {
+  op?: ValueTermOp
+  source: 'entity' | 'var' | 'const'
+  refId: string
+  attr?: string
+  constValue?: number
+}
 export type CmpOp = 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'neq'
 
 // ── 副作用（图原生，通用）────────────────────────────────────────────────────

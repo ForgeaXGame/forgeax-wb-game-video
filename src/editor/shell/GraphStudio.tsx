@@ -82,6 +82,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const setMeta = useGraphScenario((s) => s.setMeta)
   const packs = useGraphScenario((s) => s.meta.packs ?? EMPTY_PACKS)
   const overlays = useGraphScenario((s) => s.meta.ui?.overlays)
+  const entities = useGraphScenario((s) => s.meta.entities)
+  const variables = useGraphScenario((s) => s.meta.variables)
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   const doSave = useGraphScenario((s) => s.save)
   const reset = useGraphScenario((s) => s.reset)
@@ -457,6 +459,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               videoOptions={videoOptions}
               packs={packs}
               overlays={overlays}
+              entities={entities}
+              variables={variables}
               onChange={setCanvasGraph}
               onPacksChange={setPacks}
               onJump={jump}
