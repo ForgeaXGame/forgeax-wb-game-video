@@ -1,21 +1,21 @@
 [submodule "plugins/wb-character"]
-	path = plugins/wb-character
+	path = extensions/workbench/wb-character
 	url = ../forgeax-wb-character.git
 [submodule "plugins/wb-narrative"]
-	path = plugins/wb-narrative
+	path = extensions/workbench/wb-narrative
 	url = ../forgeax-wb-narrative.git
 [submodule "plugins/wb-ui"]
-	path = plugins/wb-ui
+	path = extensions/workbench/wb-ui
 	url = ../forgeax-wb-ui.git
 [submodule "plugins/wb-lowpoly-obj"]
-	path = plugins/wb-lowpoly-obj
+	path = extensions/workbench/wb-lowpoly-obj
 	url = ../forgeax-wb-lowpoly-obj.git
 [submodule "plugins/wb-observatory"]
-	path = plugins/wb-observatory
+	path = extensions/workbench/wb-observatory
 	url = ../forgeax-wb-observatory.git
 [submodule "plugins/wb-reel"]
-	path = plugins/wb-reel
+	path = extensions/workbench/wb-reel
 	url = ../forgeax-wb-reel.git
 [submodule "plugins/node-editor"]
-	path = plugins/node-editor
+	path = vendor/node-editor
 	url = ../forgeax-wb-node-editor.git
