@@ -1,244 +1,204 @@
 # forgeax-marketplace
 
-Markdown-fragment marketplace consumed by `forgeax-cli` at agent boot.
-Holds everything you'd want to inject into agents besides code: **named-agent
-personas, system-prompt fragments, skills, long-term memory templates**.
+L0 extension distribution for ForgeaX Studio. An **extension** (still often called a plugin in prose) is the installable unit:
+one directory with a `forgeax-extension.json` that the CLI scanner loads, merges
+across layers, and exposes to Studio / Server / agents.
 
-The core idea: **「人格层兼职能层」** — each peer agent is one file that fuses
-personality (warmth, voice, identity) with function (input → output → boundary
-contract). When the Workbench UI shows the left-side panel, each card is a
-peer that owns a portion of the project's files.
+> [!IMPORTANT]
+> `forgeax-extension.json#kind` is the only classification authority.
+> Prefixes such as `agent-`, `wb-`, and `cli-` are naming conventions, not types.
 
-```
-┌─ Workbench (left panel) ─┐
-│ 🅰 Forge · 主线制作人      │ ← writes: forgeax/games/<slug>/src/**
-│   • main.ts              │
-│   • level.ts             │
-│   • player.ts            │
-│                          │
-│ 🅸 Iori · 核心玩法师      │ ← writes: <doc_dir>/<slug>_pillar.md
-│   • <slug>_pillar.md     │
-│                          │
-│ 🆂 Suzu · 体验设计师      │ ← writes: <doc_dir>/<slug>_<module>_design.md
-│   • combat_design.md     │
-│   • meta_progression_…   │
-└──────────────────────────┘
-```
+This repository also keeps non-plugin content next to plugins:
 
-## The team
+| Area | Role |
+|:--|:--|
+| `extensions/` | Installable extensions only (six kind buckets) |
+| `shared/` | Shared libraries consumed by plugins (not scanned as extensions) |
+| `vendor/` | Upstream source trees without an extension manifest (e.g. `node-editor`) |
+| `src/` | Legacy marketplace prompt / skill / memory fragments still loaded by some CLI paths |
+| `manifest.json` | Marketplace-level metadata (compat / roster), not an extension inventory |
 
-| Card | id | Role | Status | Outputs |
-|---|---|---|---|---|
-| 主线制作人 | `forge` | orchestrator | ✅ active | `forgeax/games/<slug>/src/**` |
-| 核心玩法师 | `iori` | pillar peer | ✅ active | `<doc_dir>/<slug>_pillar.md` |
-| 体验设计师 | `suzu` | design peer | ✅ active | `<doc_dir>/<slug>_<module>_design.md` × N |
-| 剧情师 | `kotone` | narrative peer | 🟡 placeholder | `<doc_dir>/<slug>_narrative.md`, `dialog/*.md` |
-| 美术师 | `iro` | art peer | 🟡 placeholder | `<doc_dir>/assets/<category>/<id>.<ext>` |
-| 工程师 | `tsumugi` | coding peer | 🟡 placeholder | `<active_game>.dir/**` |
+Contributor guardrails: [`AGENTS.md`](./AGENTS.md). Design SSOT lives in the
+parent Studio repo at
+`docs/superpowers/specs/2026-07-14-marketplace-plugin-kind-layout-design.md`
+(path relative to the forgeax-studio checkout; not published on `main` until
+that PR merges).
 
-Each peer has a Japanese-soft name (Forge / Iori / Suzu / Kotone / Iro /
-Tsumugi) chosen to feel like a small studio's roster — not a stack of
-faceless role literals. The full roster lives in `manifest.json#agents` and
-the canonical user-facing description is `src/system-prompt/80-workbench-agents.md`.
+## Six kinds
 
-> ForgeaX 范式参考：`forgeax-studio/packages/marketplace/src/system-prompt/workbench/`
-> 用 `pillar` / `design` / `production` / `coding` 作为 role literal，无人名。
-> ForgeaX 选择 **named-agent**，让 UI 卡片有性格、产物归属可视化更清晰。
+| `kind` | Typical leaf names | What it ships |
+|:--|:--|:--|
+| `agent` | `agent-iori`, `agent-nodia`, … | Persona + agent pack |
+| `workbench` | `wb-character`, `_template`, `admin`, … | Studio workbench UI / tools |
+| `skill` | `skill-author-plugin`, `skill-make-game-design` | Authoring / slash skills |
+| `tool` | `tool-balance-resim`, `wb-team-forge` | Headless / shared tools (`wb-team-forge` is `kind: "tool"`) |
+| `cli-provider` | `cli-forgeax`, `cli-claude-code`, … | CLI backend drivers |
+| `model-binding` | `model-anthropic-text` | Model route bindings |
 
-## Structure
+## Canonical directory tree
 
-```
-forgeax-marketplace/
-├── manifest.json                ← metadata + agents roster + compat matrix
-├── README.md                    ← this file
-└── src/
-    ├── system-prompt/
-    │   ├── 00-persona.zh.md             ← Forge 主人设（中）
-    │   ├── 00-persona.en.md             ← Forge 主人设（英）
-    │   ├── 01-platform-constraints.md   ← ForgeaX 运行时硬约束（HMR / 零 build）
-    │   ├── 30-pillar-design-flow.md     ← Forge 派 iori / suzu 的流程
-    │   ├── 50-question-tool.md          ← ask_user_question 用法（仅 Phase 0）
-    │   ├── 60-workflow.md               ← active / future 流水线总览
-    │   ├── 80-workbench-agents.md       ← roster 表 + 派单约定
-    │   ├── peers/                       ← 每个 peer 一份 self-contained 文件
-    │   │   ├── iori-pillar.md           ← Iori 人设 + pillar 契约
-    │   │   ├── suzu-design.md           ← Suzu 人设 + design 契约
-    │   │   ├── kotone-narrative.md      ← Kotone 人设 + (占位)契约
-    │   │   ├── iro-art.md               ← Iro 人设 + (占位)契约
-    │   │   └── tsumugi-coding.md        ← Tsumugi 人设 + (占位)契约
-    │   └── shared/
-    │       └── 01-language-policy.md    ← reply / doc / code 语言策略 + Forge 身份保护
-    ├── skills/
-    │   └── make-game-design/SKILL.md    ← `/make-game-design` 入口
-    └── memory/
-        └── README.md                    ← long-term memory 模板用法（占位）
+```text
+packages/marketplace/
+├── extensions/
+│   ├── agent/<slug>/forgeax-extension.json
+│   ├── workbench/<slug>/forgeax-extension.json
+│   ├── skill/<slug>/forgeax-extension.json
+│   ├── tool/<slug>/forgeax-extension.json
+│   ├── cli-provider/<slug>/forgeax-extension.json
+│   └── model-binding/<slug>/forgeax-extension.json
+├── shared/                         ← not an extension root
+│   └── external-asset-meta/
+├── vendor/                         ← not an extension root
+│   └── node-editor/                ← gitlink; apps linked under extensions/workbench/
+├── src/                            ← legacy fragment tree
+├── manifest.json
+├── README.md
+└── AGENTS.md
 ```
 
-## How agents see this content
+Bucket directory names are the literal `ManifestKind` values. Leaf directory
+names and manifest `id` values do not change when a extension moves into a bucket.
 
-Two distinct prompts, two distinct concat rules:
+## L0 / L1 / L2 and legacy reads
 
-### Orchestrator (Forge) prompt
+Each layer has one extension root:
 
-Concat of numbered files in `src/system-prompt/*.md` + shared/:
+| Layer | Root | Priority |
+|:--|:--|--:|
+| L0 | this repo's `extensions/` | 0 (lowest) |
+| L1 | `~/.forgeax/extensions/` | 1 |
+| L2 | `{projectRoot}/.forgeax/extensions/` | 2 (highest) |
 
-```
-00-persona.<lang>.md         ← Forge's character
-01-platform-constraints.md   ← ForgeaX HMR / filesystem boundaries
-30-pillar-design-flow.md     ← Phase 0 + iori / suzu dispatch
-50-question-tool.md          ← ask_user_question scoping
-60-workflow.md               ← active / future pipeline
-80-workbench-agents.md       ← team roster
-shared/01-language-policy.md ← language + identity
-```
+Resolution is **L2 > L1 > L0**. Same `id` across layers keeps the highest layer;
+lower entries remain in `shadowedBy` metadata.
 
-### Peer prompt (per peer)
+The scanner checks exactly two shapes (no recursive rediscovery):
 
-Single self-contained file + shared/:
-
-```
-peers/<agent-id>-<role>.md   ← that peer's persona + function contract
-shared/01-language-policy.md ← appended (same as orchestrator)
+```text
+<root>/<slug>/forgeax-extension.json         # legacy flat (still readable)
+<root>/<kind>/<slug>/forgeax-extension.json  # canonical (required for new writes)
 ```
 
-### CLI loader (Phase 2 — separate PR)
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ marketplace_loader (cli capability, Phase 2)                            │
-│                                                                          │
-│   at instance start:                                                     │
-│     1. read manifest.json#agents                                         │
-│     2. resolve FORGEAX_LANG → pick Forge persona variant                  │
-│     3. for each agent in agents[]:                                       │
-│          - if role == 'orchestrator':                                    │
-│              concat orchestratorSystemPromptOrder → SOUL.md              │
-│          - else (peer):                                                  │
-│              concat peerFile + shared/* → SOUL.md                        │
-│          - write to team/agents/<id>/SOUL.md                             │
-│          - register <id> in team/manifest.json with `produces` glob      │
-│     4. load skills/* into agent's capability table                       │
-│     5. inject memory/*.md as initial-context fragments                   │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+  root["Layer extension root"] --> legacy["Legacy depth-1 candidates"]
+  root --> buckets["Six kind buckets"]
+  buckets --> canon["Canonical depth-2 candidates"]
+  legacy --> merge["Same-layer merge: canonical wins over legacy"]
+  canon --> kindOk{"Bucket equals manifest.kind?"}
+  kindOk -->|yes| merge
+  kindOk -->|no| err["Scan error; skip"]
+  merge --> layers["Merge L2 over L1 over L0"]
+  layers --> registry["Registry snapshot + origin metadata"]
 ```
 
-Not yet wired — agents currently inherit their SOUL from `cli/templates/act/`.
-Phase 2 (cli capability `marketplace_loader/`) will make this dynamic.
+- Same layer, same `id`, both layouts → canonical wins + compatibility warning.
+- Two canonical or two legacy candidates with the same `id` in one layer →
+  conflict; neither loads.
+- Canonical candidate whose bucket ≠ `manifest.kind` → rejected.
 
-## Add a new agent
+## IDs, paths, and public URLs
 
-1. Drop your peer file under `src/system-prompt/peers/<agent-id>-<role>.md`.
-   Each file starts with a "我是 <Name>" persona intro (3-6 lines), then the
-   function contract (`## 输入` / `## 输出` / hard constraints).
-2. Add an entry to `manifest.json#agents` with `id`, `role`, `cardName`,
-   `color`, `avatar`, `peerFile`, `produces` (glob list), `status`.
-3. Commit + push. Bump parent `forgeax-studio` submodule pointer.
+These stay path-independent:
 
-## Add a new skill
+| Contract | Stable value |
+|:--|:--|
+| Manifest / dependency / Bus plugin ID | e.g. `@forgeax-extension/wb-character` |
+| HTTP static URL | `/extensions/{id}/` (not the filesystem kind path) |
+| `.fxpack` archive body | flat payload; importer places into `<kind>/<slug>/` |
 
-1. `mkdir src/skills/<skill-id>/`
-2. `src/skills/<skill-id>/SKILL.md` — front-matter must include `name`,
-   `description`, `disable-model-invocation`.
-3. Add to `manifest.json#skills`.
+Filesystem origin for new installs is canonical:
+`<root>/<kind>/<slug>/`. Runtime consumers use scanner origin metadata (or a
+kind-aware helper from `@forgeax/types/plugin-layout` /
+`scripts/lib/marketplace-plugins.ts`). Do not reconstruct
+`extensions/<id>/` from an ID.
 
-## Versioning
+Browser-facing source descriptors expose `layer`, `layout`,
+`relativeManifestPath`, and canonical `bucketKind`. They never expose absolute
+home or project paths. `/api/extensions/manifests` agents expose `personaFile` +
+`source` (not absolute `personaPath`). Browser pack APIs recursively sanitize
+POSIX, Windows-drive, and UNC paths from diagnostics and ledger data:
+`/api/packs/export` returns `fileName` rather than its host-only output path,
+and `/api/packs/install` `renamed` maps original scoped id → new scoped id.
 
-`manifest.json#version` follows semver. Bump on:
+## Add / install / validate
 
-- breaking change to agent / skill schema → major
-- new agent or skill → minor
-- content tweaks → patch
+### Author a new plugin (L2)
 
-`forgeax-cli` pins the compatible marketplace version range via
-`manifest.json#compatibleWith.forgeax-cli`.
+1. Prefer `/author-plugin` in Studio chat, or copy
+   `extensions/workbench/_template/` as a starting point.
+2. Set `forgeax-extension.json#kind` correctly, then write under
+   `{project}/.forgeax/extensions/<kind>/<slug>/`.
+3. Reload extensions (`POST /api/extensions/reload`) and confirm tools / UI appear.
+4. Export `.fxpack` when sharing; import always lands in the canonical kind
+   bucket derived from the pack's manifest.
 
----
+Authoring skill:
+[`extensions/skill/skill-author-plugin/SKILL.md`](./extensions/skill/skill-author-plugin/SKILL.md).
 
-## 2026-05-16 · 插件 placeholder 矩阵（v1 全插件化主线）
+### Install into L1 or contribute to L0
 
-跟 `forgeax-dev-diary/2026-05-15/00-GOALS.md` v1 全插件化方向对齐，本周 daemon 落了 17 个 placeholder plugin 在 `plugins/`：
+- L1: same canonical path under `~/.forgeax/extensions/<kind>/<slug>/`.
+- L0: place under `extensions/<kind>/<slug>/` in this repo. If the plugin is its
+  own git repository, add/update the gitlink path in `.gitmodules` to the kind
+  bucket path.
 
-### Workbench (11) — 对应 GOALS §五 11 类
+Legacy flat installs already present under L1/L2 remain discoverable and
+editable via registered origin metadata. New writes must not recreate flat
+paths.
 
-| ID | 中文 | icon | id (workbench.id) | position | panelSize |
-|---|---|---|---|---|---|
-| `@forgeax-extension/wb-character` | 角色叙事 | 👤 | character | 110 | lg |
-| `@forgeax-extension/wb-look` | 色彩 / Look | 🎨 | look | 120 | md |
-| `@forgeax-extension/wb-ui` | UI 工坊 | 🪟 | ui | 130 | md |
-| `@forgeax-extension/wb-skill` | 技能 VFX | ⚡ | skill | 140 | lg |
-| `@forgeax-extension/wb-items` | 道具 图标 | 🎒 | items | 150 | md |
-| `@forgeax-extension/wb-anim` | 动画 | 🎬 | anim | 160 | lg |
-| `@forgeax-extension/wb-bgm` | 音乐 BGM | 🎵 | bgm | 170 | md |
-| `@forgeax-extension/wb-scene` | 场景 世界 | 🗺️ | scene | 180 | lg |
-| `@forgeax-extension/wb-balance` | 平衡 数值 | 📐 | balance | 190 | md |
-| `@forgeax-extension/wb-code` | 代码 Code | 💻 | code | 200 | lg |
-| (admin) | 面板管理 | ⚙ | admin | 999 | md |
+### Validate
 
-### CLI Provider (4)
+From the studio parent checkout:
 
-| ID | 桥接到 |
-|---|---|
-| `@forgeax-extension/cli-claude-code` | `ClaudeCodeProvider` |
-| `@forgeax-extension/cli-codex` | `CodexProvider` |
-| `@forgeax-extension/cli-cursor-agent` | `CursorAgentProvider` |
-| `@forgeax-extension/cli-forgeax` | `ForgeaXCliProvider`（default boot） |
-
-### Agent (1) · Skill (1) · Tool (1) · Model-binding (1)
-
-- `@forgeax-extension/agent-cc-coder` — Claude Code 工程师 placeholder（persona/zh.md + memory/AGENTS.md）
-- `@forgeax-extension/skill-make-game-design` — SKILL.md placeholder
-- `@forgeax-extension/tool-balance-resim` — JSON Schema placeholder
-- `@forgeax-extension/model-anthropic-text` — text model-binding placeholder
-
-### Placeholder 文件约定
-
-每个 wb-* / cli-* 目录:
-
-```
-plugins/<id>/
-├── forgeax-extension.json    # 完整 manifest（GOALS modules/02-plugin-manifest.md spec）
-├── src/
-│   ├── server.ts          # 占位：throw "[Phase 6+ shim] 未实现"（cli-* 用）
-│   └── panel.tsx          # 占位：throw "[Phase 6+ shim] React render 未实现"（wb-* 用）
+```bash
+(cd packages/contracts/types && bun ./test/validate-manifests.ts)
+(cd packages/cli && bun test test/plugins-scanner-merger.test.ts)
+bun scripts/build-plugins.ts --force
+bun test scripts/check-boundaries.spec.ts
+bun fx check
 ```
 
-panel.tsx 的 throw 是有意为之 ——
-manifest schema 强制 `entry.frontend` 文件存在但 v1 不真渲染。**P8 阶段** (见 `forgeax-dev-diary/2026-05-16/UI-FRAMEWORK-PROPOSAL.md` §四 P8) `<WorkbenchIframeHost>` 落地后，panel.tsx 才从 throw 升级成真 React 组件。
+The 2026-07-14 migration gate compares the exact sorted bundled `(id, kind)`
+set against
+`packages/contracts/types/test/fixtures/marketplace-plugin-kind-layout-baseline.json`
+(67 unique manifests at migration time). That fixture is an identity lock for
+the layout move, not a living census of future plugins.
 
-### 路线图
+## `shared/` vs `vendor/` vs plugin front doors
 
-- **P8.5** wb-character 从 throw stub → 真 React（读 `games/<slug>/characters/*.json` + form + SVG preview）= 整个 v1 plugin 架构端到端首次验证
-- **P8.6** Bus tool `character.create` 让 claude-code 也能调（玩家点表单 = AI 调 tool）
-- **P8.8** 剩 10 个 wb-* 同模式落地
+- **`shared/`** — libraries that plugins import. Never put a
+  `forgeax-extension.json` here; scanners do not treat `shared/` as a plugin root.
+- **`vendor/`** — third-party / multi-app source trees that are not themselves
+  plugins. `vendor/node-editor` is the gitlink for the node-editor monorepo.
+- **Plugin front doors** — installable Workbench plugins that symlink into
+  vendor apps so discovery still sees a canonical
+  `extensions/workbench/<slug>/forgeax-extension.json`:
 
-### 相关文档
+  | Front door | Target |
+  |:--|:--|
+  | `extensions/workbench/wb-3d-lowpoly` | `vendor/node-editor/apps/wb-3d-lowpoly` |
+  | `extensions/workbench/wb-scene-generator` | `vendor/node-editor/apps/wb-scene-generator` |
+  | `extensions/workbench/wb-2d-scene-asset-generator` | `vendor/node-editor/apps/wb-2d-scene-asset-generator` |
 
-- `forgeax-dev-diary/2026-05-15/00-GOALS.md` §五 11 类 workbench / §七 三合一
-- `forgeax-dev-diary/2026-05-15/modules/02-plugin-manifest.md`（manifest schema）
-- `forgeax-dev-diary/2026-05-15/modules/04-permissions-sandbox.md`（perms scope）
-- `forgeax-dev-diary/2026-05-16/STRATEGY-PLAN-v3.md`（OSS / Desktop / Cloud · plugin 是 OSS 主要扩展点）
-- `forgeax-dev-diary/2026-05-16/DUAL-MODALITY-UI.md`（plugin 自动 AI-ready · `provides.surfaces[]` 字段预定）
+Lexical `manifestPath` keeps the Marketplace front-door identity; file reads
+and containment use the resolved realpath of the symlink target.
 
----
+## Runtime loading (stable model)
 
-## 2026-05-17 update · `wb-character-forge` 落地 + 模板化
+1. Scanner enumerates each layer root at exact legacy + canonical depths.
+2. Manifests parse through the shared Zod schema; scan errors skip bad
+   candidates without aborting the whole layer.
+3. Merger applies L2 > L1 > L0 and records `shadowedBy` / layout warnings.
+4. Registry publishes the snapshot; Server serves static assets at
+   `/extensions/{id}/`; Studio / Bus / CLI consume IDs and origin metadata.
+5. Builds (`scripts/build-plugins.ts`) discover Workbench plugins by
+   `kind: "workbench"`, not by a `wb-` prefix.
 
-`wb-character-forge/` 是**第一个 end-to-end 落地**的 wb-* 插件 —— 角色生图 + 游乐场 + panel.tsx surface 化。后续 wb-* 全部参考它的接线模式:`manifest.json` + `entry.frontend` + `panel.tsx` + 多模态 fallback chain。
+## See also
 
-primary/fallback chain(`DESIGN.md` 详细记录):
-
-```
-Seedream (ARK_IMAGE_KEY)  →  Gemini nano-banana (GEMINI_API_KEY)  →  Azure GPT-Image (AZURE_GPT_IMAGE_*)
-立绘 主路径                  sprite 主路径 / 立绘 备                  sprite 备 / 立绘 备
-```
-
-**厂商坑**(已踩):
-- Seedream `size` 必须**小写** `2k/3k/4k` 或 `WIDTHxHEIGHT`;最小总像素 3,686,400(≈1920²),小于则 400
-- Gemini key 走 query `?key=` 不走 header,必须设 `responseModalities:["IMAGE"]`
-- Azure header 是 `api-key`(不是 Bearer),size 只接受 1024×1024 / 1024×1536 / 1536×1024
-
-**插件 metadata** 0.0.1 → 0.1.0 bump,其他 10 个 wb-* / 4 个 cli-* / agent-cc-coder 已 placeholder ref-files。
-
-**警惕**:`bun run build` / `tsc` 会落 `.js` 到 `src/`,vite 优先服 `.js` 屏蔽 `.tsx`(2026-05-17 wb-character-forge 复发,interface 已加 `noEmit`,marketplace 插件需自查 `tsconfig.json` 是否 `noEmit:true`)。
-
-完整数据:[`../../forgeax-dev-diary/2026-05-18/SUMMARY.html`](../../forgeax-dev-diary/2026-05-18/SUMMARY.html)
+- [`AGENTS.md`](./AGENTS.md) — contributor rules and mandatory gates
+- [ADR 0009](https://github.com/ForgeaXGame/forgeax-studio/blob/main/docs/decisions/0009-three-layer-plugin-resolution-l0-l1-l2.md)
+  (parent Studio) — L0/L1/L2 resolution
+- [03-AGENT-SKILL-PLUGIN-TRINITY](https://github.com/ForgeaXGame/forgeax-studio/blob/main/docs/v2-vision/architecture-evolution/03-AGENT-SKILL-PLUGIN-TRINITY.md)
+  (parent Studio)
