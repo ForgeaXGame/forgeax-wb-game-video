@@ -248,9 +248,9 @@ describe('graph-level reactive rules (instant defeat/victory)', () => {
     const rt = new GraphRuntime(scn.graph, scn)
     rt.start()
     expect(rt.state.currentNodeId).toBe('a')
-    const dirs = rt.tick(600) // at:500 reaction fires → boss dead → instant jump to win
+    rt.tick(600) // at:500 reaction fires → boss dead → instant jump to win
     expect(rt.state.currentNodeId).toBe('win')
-    expect(dirs.some((d) => d.type === 'banner' && d.kind === 'ending')).toBe(true)
+    expect(rt.state.phase).toBe('ended') // win 无出边 & 栈空 → 本局结束（不强制结局文案）
   })
 
   it('does not jump when the rule condition is not met', () => {

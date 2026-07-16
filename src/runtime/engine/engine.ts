@@ -350,11 +350,13 @@ export class GraphRuntime {
     if (this.state.phase === 'awaitInteraction') return
     if (this.consumeRedirect()) return
 
-    // 瞬时节点（无演出时长 且 无交互元素）→ 立即推进，形成逻辑穿链。
+    // 瞬时节点（无视频、无演出时长、无交互）→ 立即推进，形成逻辑穿链。
+    // 有视频时按素材播完（Player onEnded）推进，不看 durationMs。
+    const hasMedia = !!node.data.media?.ref
     const hasInteraction = this.childrenOf(node).some(
       (el) => this.getComponent(el.component)?.role === 'interaction',
     )
-    if (!node.data.durationMs && !hasInteraction) {
+    if (!hasMedia && !node.data.durationMs && !hasInteraction) {
       if (this.consumeRedirect()) return
       if (this.state.phase === 'playing') this.advanceAuto()
     }
@@ -859,6 +861,7 @@ export class GraphRuntime {
         e.sourceHandle.startsWith('cond:'),
     )
     edges.sort((a, b) => this.autoPriority(a.sourceHandle) - this.autoPriority(b.sourceHandle))
+    // 无条件（或条件为空）→ evaluateCondition 恒真；多条无条件时取第一条（或按权重随机）。
     const passing = edges.filter((e) => evaluateCondition(e.data?.condition, this.condTarget()))
     if (passing.length === 0) return undefined
     if (passing.length > 1 && passing.every((e) => e.data?.weight !== undefined)) {
@@ -927,11 +930,10 @@ export class GraphRuntime {
     this.enterNode(edge.target)
   }
 
-  private finishEnd(nodeId: string): void {
+  private finishEnd(_nodeId: string): void {
+    // 无出边且调用栈空 → 本局结束。引擎只负责把相位切到 ended，不强制任何结局文案；
+    // 胜负/结局表现完全交给节点 overlay 与图规则（reactions），配了什么才演什么。
     this.setPhase('ended')
-    const node = this.nodes.get(nodeId)
-    // 结局横幅不靠节点 end 标记；无出边即结束。胜负表现走 overlay / 图规则。
-    this.emit({ type: 'banner', kind: 'ending', nodeId, title: node?.data.name ?? '' })
   }
 }
 

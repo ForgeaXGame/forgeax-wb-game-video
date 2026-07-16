@@ -1153,12 +1153,11 @@
         "outputs": [],
         "data": {
           "name": "进战待机",
-          "durationMs": 2000,
           "media": {
             "kind": "VIDEO",
             "ref": "idle01"
           },
-          "mediaPlayMode": "loop",
+          "mediaPlayMode": "once",
           "overlayNodes": [
             {
               "overlay": "battleHud"

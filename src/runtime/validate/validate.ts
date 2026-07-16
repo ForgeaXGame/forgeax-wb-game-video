@@ -96,14 +96,15 @@ function walkRefs(value: unknown, ctx: RefCtx, at: string, issues: Issue[]): voi
   for (const v of Object.values(o)) walkRefs(v, ctx, at, issues)
 }
 
-/** 纯瞬时环告警：环内全是「无演出时长 + 无交互 child」的节点、且构成环的边都无 condition → 可能同步空转。 */
+/** 纯瞬时环告警：环内全是「无视频 + 无演出时长 + 无交互 child」的节点、且构成环的边都无 condition → 可能同步空转。 */
 function checkInstantCycle(graph: GameGraph, overlays: Record<string, Overlay> | undefined, issues: Issue[]): void {
   const instant = new Set(
     graph.nodes
       .filter((n) => {
         const children = expandNodeOverlays(overlays, n).flatMap((i) => i.children)
+        const hasMedia = !!n.data.media?.ref
         const hasInteraction = children.some((el) => getKind(el.component)?.role === 'interaction')
-        return !n.data.durationMs && !hasInteraction
+        return !hasMedia && !n.data.durationMs && !hasInteraction
       })
       .map((n) => n.id),
   )

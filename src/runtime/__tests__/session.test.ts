@@ -20,8 +20,7 @@ describe('GraphSession (playable view model)', () => {
     expect(snap.hud.entities['ent-boss']!.hp).toBeLessThanOrEqual(0)
     expect(snap.currentNodeId).toBe('win')
 
-    snap = session.performanceEnd() // win 演出结束 → 胜利横幅
-    expect(snap.banner?.kind).toBe('ending')
+    snap = session.performanceEnd() // win 演出结束 → 无出边 & 栈空 → 本局结束
     expect(snap.phase).toBe('ended')
   })
 

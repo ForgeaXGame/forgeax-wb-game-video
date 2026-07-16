@@ -513,6 +513,102 @@ function ReactiveRulesEditor({
   )
 }
 
+/** 单条出边编辑：目标优先 → 条件可选 → 交互出口可选（默认可默认推进）。 */
+function EdgeRouteEditor({
+  edge,
+  nodeIds,
+  nodeLabel,
+  flowHandleOptions,
+  pickers,
+  entities,
+  variables,
+  onReconnect,
+  onPatchData,
+  onDelete,
+}: {
+  edge: import('../../runtime/schema/graph-schema').GameEdge
+  nodeIds: string[]
+  nodeLabel: (id: string) => string
+  flowHandleOptions: Array<{ value: string; label: string }>
+  pickers?: EditorPickerCtx
+  entities?: Record<string, Entity>
+  variables?: Record<string, Variable>
+  onReconnect: (patch: { target?: string; sourceHandle?: string }) => void
+  onPatchData: (data: import('../../runtime/schema/graph-schema').EdgeRouting) => void
+  onDelete: () => void
+}): JSX.Element {
+  const handleVal = edge.sourceHandle ?? 'out'
+  const inList = flowHandleOptions.some((h) => h.value === handleVal)
+  const [customMode, setCustomMode] = useState(!inList)
+
+  return (
+    <div style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6, marginTop: 6 }}>
+      {row('目标', (
+        <select value={edge.target} onChange={(ev) => onReconnect({ target: ev.target.value })} style={{ flex: 1 }}>
+          {nodeIds.map((id) => <option key={id} value={id}>{nodeLabel(id)}</option>)}
+        </select>
+      ))}
+      <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>条件（可选；空 = 恒真，自动推进时可用）</div>
+      <ConditionEditor
+        value={edge.data?.condition}
+        nodeIds={nodeIds}
+        pickers={pickers}
+        entities={entities}
+        variables={variables}
+        onChange={(condition) => onPatchData({ condition: condition as GraphCondition })}
+      />
+      {row('交互出口', (
+        <select
+          value={customMode ? '__custom__' : handleVal}
+          onChange={(ev) => {
+            const v = ev.target.value
+            if (v === '__custom__') {
+              setCustomMode(true)
+              return
+            }
+            setCustomMode(false)
+            onReconnect({ sourceHandle: v })
+          }}
+          style={{ flex: 1 }}
+          title="默认推进即可连线跑通；选项/QTE 结果分支再改"
+        >
+          {flowHandleOptions.map((h) => (
+            <option key={h.value} value={h.value}>{h.label}</option>
+          ))}
+          <option value="__custom__">自定义…</option>
+        </select>
+      ))}
+      {customMode ? row('出口 id', (
+        <input
+          value={handleVal}
+          onChange={(ev) => onReconnect({ sourceHandle: ev.target.value.trim() || 'out' })}
+          style={{ flex: 1, fontFamily: 'monospace', fontSize: 11 }}
+          placeholder="out / opt:ying / pass …"
+          title="与交互 outcome 同名才会被点选命中；否则播完仍走默认推进边"
+        />
+      )) : null}
+      {row('备注', (
+        <input
+          value={edge.data?.label ?? ''}
+          onChange={(ev) => onPatchData({ label: ev.target.value })}
+          style={{ flex: 1 }}
+          placeholder="画布连线上的说明（可选）"
+        />
+      ))}
+      {row('权重', (
+        <input
+          type="number"
+          value={edge.data?.weight ?? 0}
+          onChange={(ev) => onPatchData({ weight: Number(ev.target.value) || undefined })}
+          style={{ flex: 1 }}
+          title="多条无条件默认推进边时按权重随机；0=未设"
+        />
+      ))}
+      <button type="button" style={{ color: '#ff6b6b', marginTop: 4 }} onClick={onDelete}>🗑 删除边</button>
+    </div>
+  )
+}
+
 /** 节点「视频」下拉项：id 写入 media.ref；label 仅展示。 */
 export interface VideoOption {
   id: string
@@ -642,7 +738,12 @@ export function NodeInspector({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
         <b style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>节点 {node.id}</b>
         <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button onClick={() => onJump?.(node.id)}>▶ 从此跑</button>
+          <button
+            onClick={() => onJump?.(node.id)}
+            title="调试：从这个节点开始试玩（沿用当前血量/变量等状态，不改图、不设为起点）"
+          >
+            ▶ 从此试玩
+          </button>
           <button
             style={{ color: '#ff6b6b' }}
             onClick={() => {
@@ -668,7 +769,6 @@ export function NodeInspector({
           ))}
         </select>
       ))}
-      {row('时长ms', <input type="number" value={d.durationMs ?? 0} onChange={(e) => patchData({ durationMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} />)}
       {row('播放', (
         <select value={d.mediaPlayMode ?? 'once'} onChange={(e) => patchData({ mediaPlayMode: e.target.value as 'once' | 'loop' })}>
           <option value="once">播放一次</option>
@@ -896,51 +996,45 @@ export function NodeInspector({
         />
       </div>
 
-      {/* 出边（走向 SSOT）：target + condition + weight；副作用请用上方 reactions */}
+      {/* 出边：先连目标；条件可选；交互出口仅选项/QTE 等需要时再改 */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <b>出边（走向）</b>
-          <button onClick={() => onChange(connect(graph, { source: node.id, sourceHandle: 'out', target: nodeIds.find((x) => x !== node.id) ?? node.id }))}>+ 边</button>
+          <button
+            type="button"
+            onClick={() =>
+              onChange(
+                connect(graph, {
+                  source: node.id,
+                  sourceHandle: 'out',
+                  target: nodeIds.find((x) => x !== node.id) ?? node.id,
+                }),
+              )
+            }
+            title="新增一条默认推进边，之后再补条件或改交互出口"
+          >
+            + 边
+          </button>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-          选「何时走」+ 目标节点；条件/权重即规则。与画布右侧引脚一致，也可拖线连线。
+        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, lineHeight: 1.45 }}>
+          先连到目标即可跑通：不设条件时，播完会走<strong>第一条</strong>「默认推进」边（多条无条件时可调权重）。
+          「交互出口」只在选项 / QTE 结果分支时再改；画布拖线默认也是默认推进。
         </div>
-        {graph.edges.filter((e) => e.source === node.id).map((e) => {
-          const handleVal = e.sourceHandle ?? 'out'
-          return (
-          <div key={e.id} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6, marginTop: 6 }}>
-            {row('何时走', (
-              <select
-                value={handleVal}
-                onChange={(ev) => onChange(reconnect(graph, e.id, { sourceHandle: ev.target.value }))}
-                style={{ flex: 1 }}
-                title={handleVal}
-              >
-                {flowHandleOptions.map((h) => (
-                  <option key={h.value} value={h.value}>{h.label}</option>
-                ))}
-              </select>
-            ))}
-            {row('目标', (
-              <select value={e.target} onChange={(ev) => onChange(reconnect(graph, e.id, { target: ev.target.value }))} style={{ flex: 1 }}>
-                {nodeIds.map((id) => <option key={id} value={id}>{nodeLabel(id)}</option>)}
-              </select>
-            ))}
-            {row('备注', <input value={e.data?.label ?? ''} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { label: ev.target.value }))} style={{ flex: 1 }} placeholder="画布连线上的说明（可选）" />)}
-            {row('权重', <input type="number" value={e.data?.weight ?? 0} onChange={(ev) => onChange(updateEdgeData(graph, e.id, { weight: Number(ev.target.value) || undefined }))} style={{ flex: 1 }} title="多条候选边时按权重随机" />)}
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>条件（全部成立才走这条边）</div>
-            <ConditionEditor
-              value={e.data?.condition}
-              nodeIds={nodeIds}
-              pickers={pickers}
-              entities={entities}
-              variables={variables}
-              onChange={(condition) => onChange(updateEdgeData(graph, e.id, { condition: condition as GraphCondition }))}
-            />
-            <button style={{ color: '#ff6b6b', marginTop: 4 }} onClick={() => onChange(disconnect(graph, e.id))}>🗑 删除边</button>
-          </div>
-          )
-        })}
+        {graph.edges.filter((e) => e.source === node.id).map((e) => (
+          <EdgeRouteEditor
+            key={e.id}
+            edge={e}
+            nodeIds={nodeIds}
+            nodeLabel={nodeLabel}
+            flowHandleOptions={flowHandleOptions}
+            pickers={pickers}
+            entities={entities}
+            variables={variables}
+            onReconnect={(patch) => onChange(reconnect(graph, e.id, patch))}
+            onPatchData={(data) => onChange(updateEdgeData(graph, e.id, data))}
+            onDelete={() => onChange(disconnect(graph, e.id))}
+          />
+        ))}
       </div>
     </div>
   )

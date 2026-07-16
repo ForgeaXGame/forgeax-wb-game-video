@@ -62,10 +62,11 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [])
 
   useEffect(() => {
-    if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs) return
+    // 有视频：按素材播完（onEnded）推进；无视频才用 durationMs 定时器。
+    if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs])
+  }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
 
   useEffect(() => {
     const inter = snap.interaction
@@ -130,12 +131,6 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
           {snap.interaction && (
             <div className="gv-interaction" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
               {skins.renderInteraction(snap.interaction, submit, skinCtx)}
-            </div>
-          )}
-
-          {snap.banner && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, background: 'rgba(0,0,0,0.55)' }}>
-              结束{snap.banner.title ? ` · ${snap.banner.title}` : ''}
             </div>
           )}
         </VideoOverlayStage>
