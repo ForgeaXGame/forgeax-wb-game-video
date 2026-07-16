@@ -64,7 +64,9 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 - **handle 派生**：`node.inputs/outputs` 不手写、由各 kind 的 `outputs(params)` 依 `node.data` 算出；`position` 才存 json。
 
 ### R2 · Runtime（`src/runtime/engine/engine.ts` = 纯 TS 状态机，零 DOM）
-- 引擎 `GraphRuntime` 吃 `GameGraph+GameScenario` → 产**泛型 directive**（playClip/openInteraction/renderOverlay/hudUpdate/banner/…）；
+- 引擎 `GraphRuntime` 吃 `GameGraph+GameScenario` → 产**泛型 directive**（playClip/openInteraction/renderOverlay/hudUpdate/…）；
+  **无出边且调用栈空 → 相位切 `ended`，不强制任何结局文案**（胜负/结局表现完全走节点 overlay 与图规则，配了才演）；
+  **有视频节点按素材播完推进**（Player `onEnded`；`once`=播完走 / `loop`=循环到交互或规则改道）；`durationMs` 不面向作者配置、不截断视频。
   **引擎绝不碰 DOM/React**。`GraphSession`(视图模型) 消费 directive 成 `SessionSnapshot`；工坊 `GraphPlaySurface` 只订阅 snapshot 渲染。
 - 入口：`start()`（从 `nodes[0]`）/ `onPerformanceEnd()` / `tick(ms)` / `submitInteraction(elId,input)` / `jumpToNode(id)`。
 - **`resolve` 可 `continue:true`**：多步会话保持 `awaitInteraction`；中途 `effects` 仍走 `applyAndReact`（rules 可 redirect）。结束才返回 `outcome`。

@@ -77,14 +77,6 @@ export interface RouteInfoDirective {
   reason: string
 }
 
-/** 结局横幅（无出边且调用栈空时发出；胜负表现走 overlay / 图规则，不靠节点 end 标记）。 */
-export interface BannerDirective {
-  type: 'banner'
-  kind: 'ending'
-  nodeId: string
-  title: string
-}
-
 /** 日志（调试 / 可视化事件流）。 */
 export interface LogDirective {
   type: 'log'
@@ -99,7 +91,6 @@ export type RuntimeDirective =
   | HudUpdateDirective
   | StateChangedDirective
   | RouteInfoDirective
-  | BannerDirective
   | LogDirective
 
 export function isOpenInteraction(d: RuntimeDirective): d is OpenInteractionDirective {

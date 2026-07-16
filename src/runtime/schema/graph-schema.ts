@@ -212,6 +212,10 @@ export interface NodeData {
   name: string
   media?: NodeMedia
   mediaPlayMode?: 'once' | 'loop'
+  /**
+   * 可选内部节拍（无视频节点的停留 / 时间轴标尺）。有视频时播放以素材为准（onEnded），
+   * 不面向作者配置、不截断视频。
+   */
   durationMs?: number
   /** 本节点上的 overlay 挂载列表；纯过场可省略。 */
   overlayNodes?: OverlayNode[]

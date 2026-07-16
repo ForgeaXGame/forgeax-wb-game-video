@@ -230,11 +230,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
   useEffect(() => {
-    // 演出时长 durationMs 到点推进（视频作为视觉，到时被切；video onEnded 也会推进，取先到者）。
-    if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs) return
+    // 有视频：按素材播完（onEnded）推进，不看 durationMs。
+    // 无视频：durationMs 到点推进（兼容旧图/逻辑节拍节点）。
+    if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs])
+  }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
 
   useEffect(() => {
     // 限时交互 timeoutMs：到点自动 submit(undefined) → 走 defaultKey / 缺省出口。
@@ -439,11 +440,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   </span>
                 ))}
               </div>
-              {snap.banner && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, background: 'rgba(0,0,0,0.6)' }}>
-                  结束{snap.banner.title ? ` · ${snap.banner.title}` : ''}
-                </div>
-              )}
               {snap.interaction && (
                 <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0 }}>{session.skins.renderInteraction(snap.interaction, submit, { hud: snap.hud })}</div>
               )}

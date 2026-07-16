@@ -35,8 +35,6 @@ function logLine(d: RuntimeDirective): string | undefined {
       return `✦ ${d.component}`
     case 'routeInfo':
       return `↳ 走「${d.via}」→ ${d.target}：${d.reason}`
-    case 'banner':
-      return `🏁 结束${d.title ? ` · ${d.title}` : ''}`
     case 'log':
       return d.message
     default:
@@ -94,7 +92,6 @@ export interface SessionSnapshot {
   clip?: ClipSnap
   overlayMounts: OverlayMountSnap[]
   interaction?: InteractionSnap
-  banner?: { kind: 'ending'; title: string }
   hud: HudSnap
   /** 进入当前节点所走的边 + 命中条件（含实时值）；起始节点为 undefined。 */
   entryReason?: string
@@ -226,9 +223,6 @@ export class GraphSession {
             handles: d.handles,
             timeoutMs: d.timeoutMs,
           }
-          break
-        case 'banner':
-          this.snapshot.banner = { kind: d.kind, title: d.title }
           break
         case 'log':
           this.snapshot.log.push(d.message)

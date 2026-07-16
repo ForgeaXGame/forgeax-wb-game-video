@@ -103,10 +103,11 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const videoSrc = resolveMediaSrc(snap?.clip?.mediaId, game)
 
   useEffect(() => {
-    if (!snap || snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs) return
+    // 有视频：按素材播完（onEnded）推进；无视频才用 durationMs 定时器。
+    if (!snap || snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current!.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap?.clip?.nodeId, snap?.interaction, snap?.phase, snap?.clip?.durationMs])
+  }, [snap?.clip?.nodeId, snap?.interaction, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId])
 
   useEffect(() => {
     if (!snap?.interaction?.timeoutMs) return
@@ -225,13 +226,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
           )
         })}
       </div>
-
-      {/* 结局横幅 */}
-      {snap?.banner && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 44, color: '#fff', background: 'rgba(0,0,0,0.6)' }}>
-          结束{snap.banner.title ? ` · ${snap.banner.title}` : ''}
-        </div>
-      )}
 
       {/* 交互层：铺满舞台=视频显示区。皮肤（防反/技能条）与默认按钮行各自绝对定位到
           自己的位置（防反=右侧居中、技能条/默认=底部），故这里只做全区容器、点击穿透。 */}

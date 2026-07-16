@@ -4,7 +4,7 @@ import { registerCoreKinds } from '../registry/core-kinds'
 import { registerCoreSkins } from '../skins/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
 import { validateScenario } from '../validate/validate'
-import type { BannerDirective, RenderOverlayDirective } from '../engine/directives'
+import type { RenderOverlayDirective } from '../engine/directives'
 import { isRenderOverlay } from '../engine/directives'
 import { getSubFlow } from '../schema/graph-schema'
 
@@ -28,7 +28,7 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
     expect(getSubFlow(bAi!.data)).toBe('tele')
   })
 
-  it('quick win: light skill kills a low-hp boss → victory banner', () => {
+  it('quick win: light skill kills a low-hp boss → flow ends (no forced banner)', () => {
     const scn = makeNodiaDemo({ bossHp: 60 })
     const rt = new GraphRuntime(scn.graph, scn)
 
@@ -48,10 +48,8 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
     expect(rt.state.entities['ent-boss']!.attrs.hp).toBeLessThanOrEqual(0)
     expect(rt.state.currentNodeId).toBe('win')
 
-    const dirs = rt.onPerformanceEnd() // win 演出结束 → 胜利横幅
+    rt.onPerformanceEnd() // win 演出结束 → 无出边 & 栈空 → 本局结束（不强制结局文案）
     expect(rt.state.phase).toBe('ended')
-    const banner = dirs.find((d): d is BannerDirective => d.type === 'banner')
-    expect(banner?.kind).toBe('ending')
   })
 
   it('scenario.reactions provide win/lose fallback', () => {
