@@ -1,12 +1,11 @@
 /**
  * 流程出口 handle 的人类可读标签（画布引脚 / 节点配置「出边」下拉共用）。
- * 落盘仍用机器 id（out / opt:ying / cond:0 …）；UI 只展示中文或组件提供的 label。
+ * 落盘用机器 id（default / ying / pass …）；UI 只展示中文或组件提供的 label。
  */
 import type { NodeHandle } from '../runtime/schema/graph-schema'
 
 const BUILTIN: Record<string, string> = {
-  out: '默认推进',
-  else: '否则',
+  default: '默认推进',
   pass: '成功',
   fail: '失败',
   good: '良好',
@@ -15,16 +14,10 @@ const BUILTIN: Record<string, string> = {
   B: '按键 B',
 }
 
-/** 将 sourceHandle 转成展示文案。 */
+/** 将 sourceHandle（= 出口 event id）转成展示文案。 */
 export function flowHandleDisplay(id: string, label?: string): string {
   if (label && label !== id) return label
   if (BUILTIN[id]) return BUILTIN[id]
-  if (id.startsWith('cond:')) {
-    const n = Number(id.slice(5))
-    return Number.isFinite(n) ? `条件分支 ${n + 1}` : `条件 · ${id.slice(5)}`
-  }
-  if (id.startsWith('opt:')) return `选项 · ${id.slice(4)}`
-  if (id.startsWith('hs:')) return `热点 · ${id.slice(3)}`
   return id
 }
 

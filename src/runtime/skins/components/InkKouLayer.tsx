@@ -45,10 +45,11 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     perfectMs?: number
     cues?: KouCueParam[]
     passingHits?: number
-    outcomeLabels?: Record<string, string>
+    events?: Array<{ id: string; label?: string }>
   }
   const glyph = p.glyph ?? '叩'
-  const passHint = p.outcomeLabels?.pass ?? `${glyph}，空格键或点击确认`
+  const passLabel = p.events?.find((e) => e.id === 'pass')?.label
+  const passHint = passLabel ?? `${glyph}，空格键或点击确认`
   const hasCues = Array.isArray(p.cues) && p.cues.length > 0
   const perfectMs = typeof p.perfectMs === 'number' && p.perfectMs > 0 ? p.perfectMs : undefined
 

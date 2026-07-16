@@ -1,6 +1,6 @@
 /**
  * NodeInspector —— 节点配置面板。选中画布节点后编辑其 `node.data`、overlay reactions 与出边。
- * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；边可由 goto 派生。
+ * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
@@ -10,7 +10,7 @@ import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/kind-registry'
 import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
-import { mergeFlowHandles } from '../../graph/flow-handle-labels'
+import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
 import { SpawnParamsEditor } from './spawn-params-editor'
 
@@ -167,7 +167,8 @@ function overlayEventLabel(ev: {
 function OverlayReactionsEditor({
   events,
   reactions,
-  nodeIds,
+  edgeOptions,
+  routeHints,
   spawnOptions,
   overlays,
   pickers,
@@ -177,7 +178,9 @@ function OverlayReactionsEditor({
 }: {
   events: OverlayEventRef[]
   reactions: Reaction[] | undefined
-  nodeIds: string[]
+  edgeOptions: OptItem[]
+  /** eventId → 出边目标摘要（有 advance 或默认推进时都能看见去哪）。 */
+  routeHints?: Record<string, string>
   spawnOptions: OptItem[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
@@ -189,26 +192,35 @@ function OverlayReactionsEditor({
   if (!events.length) {
     return (
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-        无导出事件（交互组件需有 exits / manifest.events）
+        无导出事件（交互组件需有 params.events / manifest.events）
       </div>
     )
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
       <div style={{ fontSize: 11, opacity: 0.6 }}>
-        组件点击/交互时在此配置响应（效果 / 生成组件 / 跳转）；与引擎 event 反应同源。
+        组件点击/交互时在此配置响应（效果 / 生成组件 / 沿边推进）；走向必须能看出目标节点。
       </div>
       {events.map((ev) => {
         const actions = eventReactionDo(reactions, ev)
+        const hint = routeHints?.[ev.eventId] ?? routeHints?.[ev.localEventId]
+        const hasAdvance = actions.some((a) => a.kind === 'advance')
         return (
           <div key={ev.eventId} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
             <div style={{ fontSize: 12, marginBottom: 4 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
               <b>{overlayEventLabel(ev)}</b>
             </div>
+            {hint ? (
+              <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 4, color: hasAdvance ? '#9cdcfe' : '#ce9178' }}>
+                {hasAdvance ? '沿边推进' : '默认推进'} {hint}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>无出边 · 只做副作用、不换节点</div>
+            )}
             <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>触发时 do</div>
             <NodeActionsEditor
               actions={actions}
-              nodeIds={nodeIds}
+              edgeOptions={edgeOptions}
               spawnOptions={spawnOptions}
               overlays={overlays}
               pickers={catalog}
@@ -352,17 +364,17 @@ function isReactive(r: Reaction): boolean {
   return r.when.type === 'watch' || r.when.type === 'shown' || r.when.type === 'hidden'
 }
 
-/** node.data.reactions 内 do 动作编辑：effect / spawn / goto。 */
+/** node.data.reactions 内 do 动作编辑：effect / spawn / advance（沿边推进）。 */
 function NodeActionsEditor({
   actions,
-  nodeIds,
+  edgeOptions,
   spawnOptions,
   overlays,
   pickers,
   onChange,
 }: {
   actions: NodeAction[]
-  nodeIds: string[]
+  edgeOptions: OptItem[]
   spawnOptions: OptItem[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
@@ -376,7 +388,7 @@ function NodeActionsEditor({
         <div key={i} style={{ border: '1px solid #242424', borderRadius: 6, padding: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={{ fontSize: 11, opacity: 0.7 }}>
-              {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '跳转'}
+              {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '沿边推进'}
             </span>
             <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
           </div>
@@ -402,17 +414,27 @@ function NodeActionsEditor({
               />
             </>
           ) : null}
-          {a.kind === 'goto' ? row('目标', (
-            <select value={a.targetNodeId} onChange={(e) => patchAt(i, { kind: 'goto', targetNodeId: e.target.value })} style={{ flex: 1 }}>
-              {nodeIds.map((id) => <option key={id} value={id}>{pickers?.nodeLabel?.(id) ?? id}</option>)}
-            </select>
-          )) : null}
+          {a.kind === 'advance' ? (
+            <>
+              {row('走边', (
+                <select value={a.edgeId} onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })} style={{ flex: 1 }}>
+                  <option value="">（选出边）</option>
+                  {edgeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ))}
+              {a.edgeId ? (
+                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+                  {edgeOptions.find((o) => o.value === a.edgeId)?.label ?? `边 ${a.edgeId}（未找到）`}
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6 }}>
         <button type="button" onClick={() => onChange([...actions, { kind: 'effect', effects: [] }])}>＋ 效果</button>
         <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'goto', targetNodeId: nodeIds[0] ?? '' }])}>＋ 跳转</button>
+        <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button>
       </div>
     </div>
   )
@@ -425,7 +447,7 @@ function NodeActionsEditor({
  */
 function ReactiveRulesEditor({
   reactions,
-  nodeIds,
+  edgeOptions,
   componentOptions,
   spawnOptions,
   overlays,
@@ -434,7 +456,7 @@ function ReactiveRulesEditor({
   onChange,
 }: {
   reactions: Reaction[] | undefined
-  nodeIds: string[]
+  edgeOptions: OptItem[]
   componentOptions: OptItem[]
   spawnOptions: OptItem[]
   overlays?: Record<string, Overlay>
@@ -495,7 +517,7 @@ function ReactiveRulesEditor({
             <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>动作 do</div>
             <NodeActionsEditor
               actions={r.do}
-              nodeIds={nodeIds}
+              edgeOptions={edgeOptions}
               spawnOptions={spawnOptions}
               overlays={overlays}
               pickers={pickers}
@@ -535,7 +557,7 @@ function EdgeRouteEditor({
   onPatchData: (data: import('../../runtime/schema/graph-schema').EdgeRouting) => void
   onDelete: () => void
 }): JSX.Element {
-  const handleVal = edge.sourceHandle ?? 'out'
+  const handleVal = edge.sourceHandle ?? 'default'
   const inList = flowHandleOptions.some((h) => h.value === handleVal)
   const [customMode, setCustomMode] = useState(!inList)
 
@@ -579,9 +601,9 @@ function EdgeRouteEditor({
       {customMode ? row('出口 id', (
         <input
           value={handleVal}
-          onChange={(ev) => onReconnect({ sourceHandle: ev.target.value.trim() || 'out' })}
+          onChange={(ev) => onReconnect({ sourceHandle: ev.target.value.trim() || 'default' })}
           style={{ flex: 1, fontFamily: 'monospace', fontSize: 11 }}
-          placeholder="out / opt:ying / pass …"
+          placeholder="default / ying / pass …"
           title="与交互 outcome 同名才会被点选命中；否则播完仍走默认推进边"
         />
       )) : null}
@@ -693,9 +715,36 @@ export function NodeInspector({
   const flowHandleOptions = useMemo(() => {
     const extra = graph.edges
       .filter((e) => e.source === node.id)
-      .map((e) => e.sourceHandle ?? 'out')
+      .map((e) => e.sourceHandle ?? 'default')
     return mergeFlowHandles(deriveOutputs(node, overlays), extra)
   }, [node, overlays, graph.edges])
+  const edgeOptions = useMemo<OptItem[]>(
+    () =>
+      graph.edges
+        .filter((e) => e.source === node.id)
+        .map((e) => ({
+          value: e.id,
+          label: `${flowHandleDisplay(e.sourceHandle ?? 'default', e.data?.label)} → ${nodeLabel(e.target)}`,
+        })),
+    [graph.edges, node.id, nodeLabel],
+  )
+  /** 每个交互出口 → 目标节点摘要（单边 `→ X`，多边 `→ A | B`）。 */
+  const routeHints = useMemo(() => {
+    const byHandle = new Map<string, string[]>()
+    for (const e of graph.edges) {
+      if (e.source !== node.id) continue
+      const h = e.sourceHandle ?? 'default'
+      const list = byHandle.get(h) ?? []
+      list.push(nodeLabel(e.target))
+      byHandle.set(h, list)
+    }
+    const out: Record<string, string> = {}
+    for (const [h, labels] of byHandle) {
+      if (h === 'default') continue
+      out[h] = labels.length === 1 ? `→ ${labels[0]}` : `→ ${labels.join(' | ')}（边池）`
+    }
+    return out
+  }, [graph.edges, node.id, nodeLabel])
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
   const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
@@ -904,7 +953,8 @@ export function NodeInspector({
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}
-                  nodeIds={nodeIds}
+                  edgeOptions={edgeOptions}
+                  routeHints={routeHints}
                   spawnOptions={spawnOptions}
                   overlays={overlays}
                   pickers={pickers}
@@ -937,7 +987,7 @@ export function NodeInspector({
         />
       </div>
 
-      {/* 响应规则：数值变化(watch) / 组件出现·消失(shown/hidden) → effect/spawn/goto */}
+      {/* 响应规则：数值变化(watch) / 组件出现·消失(shown/hidden) → effect/spawn/advance */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
         <b>响应规则</b>
         <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
@@ -945,7 +995,7 @@ export function NodeInspector({
         </div>
         <ReactiveRulesEditor
           reactions={d.reactions}
-          nodeIds={nodeIds}
+          edgeOptions={edgeOptions}
           componentOptions={componentOptions}
           spawnOptions={spawnOptions}
           overlays={overlays}
@@ -965,7 +1015,7 @@ export function NodeInspector({
               onChange(
                 connect(graph, {
                   source: node.id,
-                  sourceHandle: 'out',
+                  sourceHandle: 'default',
                   target: nodeIds.find((x) => x !== node.id) ?? node.id,
                 }),
               )

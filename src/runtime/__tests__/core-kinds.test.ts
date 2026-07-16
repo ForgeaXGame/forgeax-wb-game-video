@@ -15,19 +15,18 @@ describe('core-kinds', () => {
     expect(floatTextKind.outputs({ text: 'x' })).toEqual([])
   })
 
-  it('choice: outputs per option; resolve maps key → opt:key + effects', () => {
+  it('choice: outputs per event id; resolve maps input → event id (无前缀/无 effects)', () => {
     const params = {
-      options: [
-        { key: 's1', label: '轻击', effects: [{ id: 'q', kind: 'var' as const, varId: 'qi', op: 'add' as const, value: 2 }] },
-        { key: 's2', label: '重击' },
+      events: [
+        { id: 's1', label: '轻击' },
+        { id: 's2', label: '重击' },
       ],
     }
-    expect(choiceKind.outputs(params).map((h) => h.id)).toEqual(['opt:s1', 'opt:s2'])
+    expect(choiceKind.outputs(params).map((h) => h.id)).toEqual(['s1', 's2'])
     const r = choiceKind.resolve!(ctx, params, 's1')
-    expect(r.outcome).toBe('opt:s1')
-    expect(r.effects).toHaveLength(1)
-    // 缺省 input → defaultKey/首项
-    expect(choiceKind.resolve!(ctx, params, undefined).outcome).toBe('opt:s1')
+    expect(r.outcome).toBe('s1')
+    // 缺省 input → defaultEvent/首项
+    expect(choiceKind.resolve!(ctx, params, undefined).outcome).toBe('s1')
   })
 
   it('qte: three outcomes; resolve by string or hits', () => {
@@ -37,9 +36,9 @@ describe('core-kinds', () => {
     expect(qteKind.resolve!(ctx, { passingHits: 3 }, { hits: 1 }).outcome).toBe('fail')
   })
 
-  it('hotspot: outputs hs:id; resolve id → hs:id', () => {
-    const params = { hotspots: [{ id: 'door', target: 'sub1' }] }
-    expect(hotspotKind.outputs(params).map((h) => h.id)).toEqual(['hs:door'])
-    expect(hotspotKind.resolve!(ctx, params, 'door').outcome).toBe('hs:door')
+  it('hotspot: outputs event id; resolve id → id', () => {
+    const params = { events: [{ id: 'door' }] }
+    expect(hotspotKind.outputs(params).map((h) => h.id)).toEqual(['door'])
+    expect(hotspotKind.resolve!(ctx, params, 'door').outcome).toBe('door')
   })
 })

@@ -7,10 +7,12 @@
  *
  * 关键机制：
  *  - 触发时机 Trigger：enter / at(ms)。
- *  - 出口=handle：语义在 sourceHandle（out、cond:N、else、pass、opt:N …），edge 只管连接 + 条件/权重。
- *  - 条件网关：cond:N 按序求值，else/out 兜底；加权随机：多条候选带 weight → rng 加权。
- *  - 交互：openInteraction 挂起 → submitInteraction(resolve) → outcome→handle→edge。
- *  - 副作用：reactions / option.effects（边不带 effects）。
+ *  - 出口=handle：sourceHandle === 出口 event id（default = 保留字/默认推进），edge 只管连接 + 条件/权重。
+ *  - 条件网关：同 handle 多边，有条件者按序求值、无条件兜底；加权随机：候选皆带 weight → rng 加权。
+ *  - 交互：openInteraction 挂起 → submitInteraction(resolve) → outcome=event id → reactions.do（effect/spawn/advance）
+ *    → 有边则默认 advance（无匹配边则只做副作用、不换节点）。
+ *  - 副作用：一律走 reactions（边与 resolve 都不带 effects）。
+ *  - 换节点：只经边；reactions.do 的 advance(edgeId) 或引擎默认推进。
  *  - jumpToNode：seek 到任意节点（默认保留全局态）。
  */
 import type {
@@ -195,8 +197,8 @@ export class GraphRuntime {
   }
 
   /**
-   * 组件**非阻塞**事件：点击某展示组件的按钮 → 跑其所属挂载的 event 反应（effect/spawn/goto）。
-   * 不进 awaitInteraction、不占 pending——与主交互（技能/QTE）并存。
+   * 组件**非阻塞**事件：点击某展示组件的按钮 → 跑其所属挂载的 event 反应（effect/spawn/advance）。
+   * 不进 awaitInteraction、不占 pending——与主交互（技能/QTE）并存；advance = 硬打断到边 target。
    */
   emitComponentEvent(elementId: string, key: string): RuntimeDirective[] {
     const el = this.childrenOf(this.node(this.state.currentNodeId)).find((e) => e.id === elementId)
@@ -431,35 +433,62 @@ export class GraphRuntime {
     if (!plugin?.resolve) return this.drain()
     const result = plugin.resolve(this.ctx(), el.params, input)
     if (isContinueResult(result)) {
+      // 连打/累积等未定局的中间态：仅引擎内部累积副作用（无 outcome 可挂 reaction），保持挂起。
       if (result.effects?.length) this.applyAndReact(result.effects as GraphEffect[])
       if (this.consumeRedirect()) return this.drain()
       return this.drain()
     }
-    if (result.effects?.length) this.applyAndReact(result.effects as GraphEffect[])
     this.pending = null
     this.setPhase('playing')
     this.chain = 0
     if (this.consumeRedirect()) return this.drain()
 
-    // reactions = 效果（不含走向）：命中 outcome 的 event reaction 先施加副作用，再由**边**决定去向。
+    // 命中 outcome 的 event reaction：do 同级跑 effect/spawn/advance（副作用一律在此，不在 resolve）。
     const mountReactions =
       nodeOverlayMounts(node).find((m) => overlayMountId(m) === el.source.mountId)?.reactions
       ?? nodeOverlayMounts(node)[0]?.reactions
     const evReactions = resolveEventReactions(mountReactions, result.outcome, el.source.childId, el.source.mountId)
-    for (const r of evReactions) this.runEffectActions(r.do)
+    let advanced = false
+    for (const r of evReactions) {
+      if (this.runEventActions(r.do)) {
+        advanced = true
+        break
+      }
+      if (this.redirect) break
+    }
     if (this.consumeRedirect()) return this.drain()
+    if (advanced) return this.drain()
 
+    // 无显式 advance：有匹配出边则默认推进；无匹配边 → 只做副作用、不换节点（演出续播/收尾时再默认推进）。
     const edge = this.selectHandleEdge(node.id, result.outcome)
     if (edge) this.traverse(edge)
-    else this.advanceAuto()
     return this.drain()
   }
 
-  /** 施加 reaction.do 中的 effect（忽略 goto——走向属于边）。 */
+  /** 施加 reaction.do 中的 effect（生命周期相位：enter/at/exit/complete，只改状态、不换节点）。 */
   private runEffectActions(actions: NodeAction[]): void {
     for (const a of actions) {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
     }
+  }
+
+  /** 交互事件 do：effect/spawn/advance；advance = 沿当前图的边软推进。返回是否已换节点。 */
+  private runEventActions(actions: NodeAction[]): boolean {
+    for (const a of actions) {
+      if (a.kind === 'effect') {
+        if (a.effects.length) this.applyAndReact(a.effects)
+      } else if (a.kind === 'spawn') {
+        this.doSpawn(a)
+      } else if (a.kind === 'advance') {
+        const edge = this.edgeById(a.edgeId)
+        if (edge && edge.source === this.state.currentNodeId) {
+          this.traverse(edge)
+          return true
+        }
+      }
+      if (this.redirect) return false
+    }
+    return false
   }
 
   /** 施加节点某生命周期相位（enter/exit）reactions 的副作用。 */
@@ -553,13 +582,13 @@ export class GraphRuntime {
         ?? (typeof params.windowMs === 'number' ? params.windowMs : undefined)
         ?? (typeof params.durationMs === 'number' ? params.durationMs : undefined)
       const timeoutMs = typeof timeoutRaw === 'number' && timeoutRaw > 0 ? timeoutRaw : undefined
-      const lockedParams = this.withOptionLocks(params)
+      // 选项门控由皮肤用 params.events[].condition + SkinCtx 时时求值（不注入 _locked）。
       this.emit({
         type: 'openInteraction',
         nodeId: this.state.currentNodeId ?? '',
         elementId: el.id,
         component: el.component,
-        params: lockedParams,
+        params,
         handles: plugin.outputs(params).map((h) => h.id),
         ...(timeoutMs ? { timeoutMs } : {}),
       })
@@ -567,20 +596,6 @@ export class GraphRuntime {
       this.pending = el.id
       return
     }
-  }
-
-  /** 给 choice/skill 的选项按 condition 算出 `_locked`（当前态不满足即锁定）；无 condition 原样返回。 */
-  private withOptionLocks(params: Record<string, unknown>): Record<string, unknown> {
-    const opts = params.options
-    if (!Array.isArray(opts)) return params
-    let changed = false
-    const mapped = (opts as Array<Record<string, unknown>>).map((o) => {
-      const cond = o.condition as GraphCondition | undefined
-      const locked = cond ? !evaluateCondition(cond, this.condTarget()) : false
-      if (locked) changed = true
-      return locked ? { ...o, _locked: true } : o
-    })
-    return changed ? { ...params, options: mapped } : params
   }
 
   /** 离开节点前跑 exit 相位 reactions（副作用）+ 仍可见组件的 hidden 生命周期。 */
@@ -597,7 +612,7 @@ export class GraphRuntime {
     this.inExit = false
   }
 
-  /** 局级 state reactions：状态变化后求值，首个命中且含 goto 的设 redirect。 */
+  /** 局级 state reactions：状态变化后求值，首个命中且含显式 advance 的设 redirect（硬打断到边 target）。 */
   private checkRules(): void {
     if (this.inExit || this.redirect || this.state.phase === 'ended') return
     for (let i = 0; i < this.reactions.length; i++) {
@@ -605,10 +620,12 @@ export class GraphRuntime {
       if (r.when.type !== 'state') continue
       if (this.firedStateReactions.has(i)) continue
       if (!evaluateCondition(r.when.condition, this.condTarget())) continue
-      const goto = r.do.find((a): a is Extract<NodeAction, { kind: 'goto' }> => a.kind === 'goto')
-      if (!goto) continue
+      const adv = r.do.find((a): a is Extract<NodeAction, { kind: 'advance' }> => a.kind === 'advance')
+      if (!adv) continue
+      const edge = this.edgeById(adv.edgeId)
+      if (!edge) continue
       this.firedStateReactions.add(i)
-      this.redirect = { goto: goto.targetNodeId }
+      this.redirect = { goto: edge.target }
       return
     }
   }
@@ -720,16 +737,19 @@ export class GraphRuntime {
     }
   }
 
-  /** watch / shown / hidden 类反应的 do：effect / spawn / goto 均生效（goto → 硬打断 redirect）。 */
+  /** watch / shown / hidden / 非阻塞 emit 的 do：effect / spawn / advance；advance → 硬打断（redirect 到边 target）。 */
   private runReactiveActions(actions: NodeAction[], locals?: Record<string, number>): void {
     for (const a of actions) {
       if (a.kind === 'effect') {
         if (a.effects.length) this.applyAndReact(a.effects)
       } else if (a.kind === 'spawn') {
         this.doSpawn(a, locals)
-      } else if (a.kind === 'goto') {
-        // exit 期不接受 goto（避免与正在进行的 consumeRedirect 自跳环）。
-        if (!this.redirect && !this.inExit) this.redirect = { goto: a.targetNodeId }
+      } else if (a.kind === 'advance') {
+        // exit 期不接受 advance（避免与正在进行的 consumeRedirect 自跳环）。
+        if (!this.redirect && !this.inExit) {
+          const edge = this.edgeById(a.edgeId)
+          if (edge) this.redirect = { goto: edge.target }
+        }
       }
       if (this.redirect) return
     }
@@ -846,37 +866,33 @@ export class GraphRuntime {
   }
 
   // ── 出口选择 / 边遍历 ───────────────────────────────────────────────────────
-  private autoPriority(handle: string | undefined): number {
-    if (handle?.startsWith('cond:')) return Number(handle.slice(5)) || 0
-    if (handle === 'else') return 1e6
-    return 1e7 // 'out' / undefined 最后
+  /** 按 id 找当前图（或主图）里的边——供 reactions.do 的 advance(edgeId) 使用。 */
+  private edgeById(id: string): GameEdge | undefined {
+    return this.activeGraph.edges.find((e) => e.id === id) ?? this.rootGraph.edges.find((e) => e.id === id)
   }
 
-  private selectAutoEdge(nodeId: string): GameEdge | undefined {
-    const edges = (this.outgoing.get(nodeId) ?? []).filter(
-      (e) =>
-        e.sourceHandle === undefined ||
-        e.sourceHandle === 'out' ||
-        e.sourceHandle === 'else' ||
-        e.sourceHandle.startsWith('cond:'),
-    )
-    edges.sort((a, b) => this.autoPriority(a.sourceHandle) - this.autoPriority(b.sourceHandle))
-    // 无条件（或条件为空）→ evaluateCondition 恒真；多条无条件时取第一条（或按权重随机）。
-    const passing = edges.filter((e) => evaluateCondition(e.data?.condition, this.condTarget()))
-    if (passing.length === 0) return undefined
-    if (passing.length > 1 && passing.every((e) => e.data?.weight !== undefined)) {
-      return this.pickWeighted(passing)
-    }
-    return passing[0]
-  }
-
-  private selectHandleEdge(nodeId: string, handle: string): GameEdge | undefined {
-    const edges = (this.outgoing.get(nodeId) ?? []).filter((e) => e.sourceHandle === handle)
-    const passing = edges.filter((e) => evaluateCondition(e.data?.condition, this.condTarget()))
-    const pool = passing.length > 0 ? passing : edges
+  /** 从候选边里选一条：有条件者按序求值，命中优先；否则无条件兜底；多条候选皆带 weight 则加权随机。 */
+  private pickEdge(edges: GameEdge[]): GameEdge | undefined {
+    if (edges.length === 0) return undefined
+    const conditioned = edges.filter((e) => e.data?.condition)
+    const uncond = edges.filter((e) => !e.data?.condition)
+    const passing = conditioned.filter((e) => evaluateCondition(e.data?.condition, this.condTarget()))
+    const pool = passing.length > 0 ? passing : uncond
     if (pool.length === 0) return undefined
     if (pool.length > 1 && pool.every((e) => e.data?.weight !== undefined)) return this.pickWeighted(pool)
     return pool[0]
+  }
+
+  /** 自动推进：默认出口（sourceHandle === 'default' 或缺省）。 */
+  private selectAutoEdge(nodeId: string): GameEdge | undefined {
+    return this.pickEdge(
+      (this.outgoing.get(nodeId) ?? []).filter((e) => e.sourceHandle === undefined || e.sourceHandle === 'default'),
+    )
+  }
+
+  /** 交互出口：sourceHandle === 事件 id。 */
+  private selectHandleEdge(nodeId: string, handle: string): GameEdge | undefined {
+    return this.pickEdge((this.outgoing.get(nodeId) ?? []).filter((e) => (e.sourceHandle ?? 'default') === handle))
   }
 
   private pickWeighted(edges: GameEdge[]): GameEdge {
@@ -920,7 +936,7 @@ export class GraphRuntime {
     // 记录"为什么进入下一节点"：命中的边 + 条件（含求值时实时值），在应用边副作用前取值。
     this.emit({
       type: 'routeInfo',
-      via: edge.sourceHandle ?? 'out',
+      via: edge.sourceHandle ?? 'default',
       target: edge.target,
       reason: describeCondition(edge.data?.condition, this.condTarget()),
     })

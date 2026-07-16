@@ -52,14 +52,15 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
     expect(rt.state.phase).toBe('ended')
   })
 
-  it('scenario.reactions provide win/lose fallback', () => {
+  it('scenario.reactions provide win/lose fallback (advance → 边 target)', () => {
     const scn = makeNodiaDemo()
-    const gotos = scn.reactions
+    const edgeTarget = (id: string) => scn.graph.edges.find((e) => e.id === id)?.target
+    const targets = scn.reactions
       ?.flatMap((r) => r.do)
-      .filter((a): a is { kind: 'goto'; targetNodeId: string } => a.kind === 'goto')
-      .map((a) => a.targetNodeId)
+      .filter((a): a is { kind: 'advance'; edgeId: string } => a.kind === 'advance')
+      .map((a) => edgeTarget(a.edgeId))
       .sort()
-    expect(gotos).toEqual(['lose', 'win'])
+    expect(targets).toEqual(['lose', 'win'])
   })
 
   it('turn loop: 我方先手一整回合(我方攻击→敌方回合)存活 → 回到进战待机(enter) (回合循环成立)', () => {

@@ -88,13 +88,19 @@
             "params": {
               "qteKind": "parry",
               "windowMs": 200,
-              "outcomeLabels": {
-                "pass": "叩中",
-                "fail": "错过"
-              },
               "component": "inkKou",
               "glyph": "叩",
-              "timeoutMs": 200
+              "timeoutMs": 200,
+              "events": [
+                {
+                  "id": "pass",
+                  "label": "叩中"
+                },
+                {
+                  "id": "fail",
+                  "label": "错过"
+                }
+              ]
             },
             "component": "qte"
           }
@@ -128,18 +134,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -156,18 +162,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -184,18 +190,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -212,18 +218,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -240,18 +246,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -268,18 +274,18 @@
             "params": {
               "prompt": "應 / 默",
               "timeoutMs": 8000,
-              "defaultKey": "mo",
-              "options": [
+              "component": "inkYingMo",
+              "events": [
                 {
-                  "key": "ying",
+                  "id": "ying",
                   "label": "應"
                 },
                 {
-                  "key": "mo",
+                  "id": "mo",
                   "label": "默"
                 }
               ],
-              "component": "inkYingMo"
+              "defaultEvent": "mo"
             },
             "component": "choice"
           }
@@ -313,32 +319,14 @@
             "params": {
               "prompt": "选择技能",
               "component": "battleSkillBar",
-              "options": [
+              "events": [
                 {
-                  "key": "light",
-                  "label": "轻攻击",
-                  "effects": [
-                    {
-                      "id": "sk-light-qi",
-                      "kind": "var",
-                      "varId": "qi",
-                      "op": "add",
-                      "value": 2
-                    }
-                  ]
+                  "id": "light",
+                  "label": "轻攻击"
                 },
                 {
-                  "key": "heavy",
-                  "label": "重攻击",
-                  "effects": [
-                    {
-                      "id": "sk-heavy-qi",
-                      "kind": "var",
-                      "varId": "qi",
-                      "op": "add",
-                      "value": -2
-                    }
-                  ],
+                  "id": "heavy",
+                  "label": "重攻击（气≥2）",
                   "condition": {
                     "all": [
                       {
@@ -351,21 +339,12 @@
                   }
                 },
                 {
-                  "key": "medit",
+                  "id": "medit",
                   "label": "冥想"
                 },
                 {
-                  "key": "ult",
-                  "label": "灭世",
-                  "effects": [
-                    {
-                      "id": "sk-ult-qi",
-                      "kind": "var",
-                      "varId": "qi",
-                      "op": "set",
-                      "value": 0
-                    }
-                  ],
+                  "id": "ult",
+                  "label": "灭世（气≥5·理智≥4）",
                   "condition": {
                     "all": [
                       {
@@ -520,23 +499,21 @@
               "qteKind": "parry",
               "component": "battleParry",
               "durationMs": 2600,
-              "outcomeLabels": {
-                "pass": "受击防反",
-                "good": "受击闪避",
-                "fail": "受击"
-              },
-              "exits": [
+              "events": [
                 {
-                  "key": "pass"
+                  "id": "pass",
+                  "label": "受击防反"
                 },
                 {
-                  "key": "good"
+                  "id": "good",
+                  "label": "受击闪避"
                 },
                 {
-                  "key": "fail"
+                  "id": "fail",
+                  "label": "受击"
                 }
               ],
-              "defaultKey": "fail"
+              "defaultEvent": "fail"
             },
             "component": "qte"
           }
@@ -711,6 +688,28 @@
             }
           }
         ]
+      },
+      "ov-breathe": {
+        "id": "ov-breathe",
+        "title": "调息（方案B：非阻塞改气力）",
+        "children": [
+          {
+            "id": "breathe",
+            "component": "panelA",
+            "layout": {
+              "left": "4%",
+              "bottom": "22%",
+              "width": "120px",
+              "height": "40px"
+            },
+            "trigger": {
+              "when": "enter"
+            },
+            "params": {
+              "label": "调息 +2气"
+            }
+          }
+        ]
       }
     }
   },
@@ -734,7 +733,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-open"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -755,7 +755,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_door"
+              "overlay": "ov-n_door",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "pass"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-door-pass"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "fail"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-door-fail"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -801,7 +827,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_river"
+              "overlay": "ov-n_river",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-river-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-river-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -821,7 +873,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-child"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -842,7 +895,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_land"
+              "overlay": "ov-n_land",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-land-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-land-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -862,7 +941,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-mask"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -880,7 +960,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-mengpo"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -901,7 +982,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_tea"
+              "overlay": "ov-n_tea",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-tea-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-tea-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -949,7 +1056,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "overlayNodes": []
         }
       },
       {
@@ -970,7 +1078,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_nodrink"
+              "overlay": "ov-n_nodrink",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-nodrink-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-nodrink-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -993,7 +1127,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_follow"
+              "overlay": "ov-n_follow",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-follow-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-follow-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -1013,7 +1173,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-getlight"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -1031,7 +1192,8 @@
           "media": {
             "kind": "VIDEO",
             "ref": "narr-nolight"
-          }
+          },
+          "overlayNodes": []
         }
       },
       {
@@ -1052,7 +1214,33 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_nofollow"
+              "overlay": "ov-n_nofollow",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ying"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-nofollow-ying"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "mo"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-nofollow-mo"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -1100,7 +1288,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "overlayNodes": []
         }
       },
       {
@@ -1139,7 +1328,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "overlayNodes": []
         }
       },
       {
@@ -1330,8 +1520,8 @@
                   },
                   "do": [
                     {
-                      "kind": "goto",
-                      "targetNodeId": "n_drink"
+                      "kind": "advance",
+                      "edgeId": "e-adv-a_my-n_drink-0"
                     }
                   ]
                 }
@@ -1424,8 +1614,8 @@
                   },
                   "do": [
                     {
-                      "kind": "goto",
-                      "targetNodeId": "n_drink"
+                      "kind": "advance",
+                      "edgeId": "e-adv-b_ai-n_drink-1"
                     }
                   ]
                 }
@@ -1456,7 +1646,110 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-wait"
+              "overlay": "ov-wait",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "light"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "id": "sk-light-qi",
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "add",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "heavy"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "id": "sk-heavy-qi",
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "add",
+                          "value": -2
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "medit"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-sk-medit"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "ult"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "id": "sk-ult-qi",
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "set",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-sk-ult"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "overlay": "ov-breathe",
+              "reactions": [
+                {
+                  "when": {
+                    "type": "event",
+                    "id": "A"
+                  },
+                  "do": [
+                    {
+                      "kind": "effect",
+                      "effects": [
+                        {
+                          "id": "breathe-qi",
+                          "kind": "var",
+                          "varId": "qi",
+                          "op": "add",
+                          "value": 2
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -1798,6 +2091,18 @@
                 {
                   "when": {
                     "type": "event",
+                    "id": "pass"
+                  },
+                  "do": [
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-tele-pass"
+                    }
+                  ]
+                },
+                {
+                  "when": {
+                    "type": "event",
                     "id": "good"
                   },
                   "do": [
@@ -1812,6 +2117,10 @@
                           "value": -1
                         }
                       ]
+                    },
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-tele-good"
                     }
                   ]
                 },
@@ -1832,6 +2141,10 @@
                           "value": 1
                         }
                       ]
+                    },
+                    {
+                      "kind": "advance",
+                      "edgeId": "e-tele-fail"
                     }
                   ]
                 }
@@ -2045,7 +2358,7 @@
         "id": "e-open",
         "source": "n_open",
         "target": "n_door",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
@@ -2066,154 +2379,154 @@
         "id": "e-soul",
         "source": "n_soul",
         "target": "n_river",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-river-ying",
         "source": "n_river",
         "target": "n_child",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-river-mo",
         "source": "n_river",
         "target": "n_land",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-child",
         "source": "n_child",
         "target": "n_land",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-land-ying",
         "source": "n_land",
         "target": "n_mask",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-land-mo",
         "source": "n_land",
         "target": "n_mengpo",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-mask",
         "source": "n_mask",
         "target": "n_mengpo",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-mengpo",
         "source": "n_mengpo",
         "target": "n_tea",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-tea-ying",
         "source": "n_tea",
         "target": "n_drink",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-tea-mo",
         "source": "n_tea",
         "target": "n_nodrink",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-drink",
         "source": "n_drink",
         "target": "n_follow",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nodrink-ying",
         "source": "n_nodrink",
         "target": "n_follow",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-nodrink-mo",
         "source": "n_nodrink",
         "target": "n_nofollow",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-follow-ying",
         "source": "n_follow",
         "target": "n_getlight",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-follow-mo",
         "source": "n_follow",
         "target": "n_nolight",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-getlight",
         "source": "n_getlight",
         "target": "enter",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nolight",
         "source": "n_nolight",
         "target": "enter",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nofollow-ying",
         "source": "n_nofollow",
         "target": "n_lotus",
-        "sourceHandle": "opt:ying",
+        "sourceHandle": "ying",
         "targetHandle": "in"
       },
       {
         "id": "e-nofollow-mo",
         "source": "n_nofollow",
         "target": "n_nolotus",
-        "sourceHandle": "opt:mo",
+        "sourceHandle": "mo",
         "targetHandle": "in"
       },
       {
         "id": "e-lotus",
         "source": "n_lotus",
         "target": "enter",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nolotus",
         "source": "n_nolotus",
         "target": "enter",
-        "sourceHandle": "out",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-init-me",
         "source": "enter",
         "target": "a_my",
-        "sourceHandle": "cond:0",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2233,14 +2546,14 @@
         "id": "e-init-foe",
         "source": "enter",
         "target": "b_ai",
-        "sourceHandle": "else",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-sk-light",
         "source": "wait",
         "target": "pu",
-        "sourceHandle": "opt:light",
+        "sourceHandle": "light",
         "targetHandle": "in",
         "data": {
           "weight": 1
@@ -2250,7 +2563,7 @@
         "id": "e-sk-light2",
         "source": "wait",
         "target": "pu2",
-        "sourceHandle": "opt:light",
+        "sourceHandle": "light",
         "targetHandle": "in",
         "data": {
           "weight": 1
@@ -2260,7 +2573,7 @@
         "id": "e-sk-heavy",
         "source": "wait",
         "target": "zhong",
-        "sourceHandle": "opt:heavy",
+        "sourceHandle": "heavy",
         "targetHandle": "in",
         "data": {
           "weight": 1
@@ -2270,7 +2583,7 @@
         "id": "e-sk-heavy2",
         "source": "wait",
         "target": "z2",
-        "sourceHandle": "opt:heavy",
+        "sourceHandle": "heavy",
         "targetHandle": "in",
         "data": {
           "weight": 1
@@ -2280,14 +2593,14 @@
         "id": "e-sk-medit",
         "source": "wait",
         "target": "fuzhu",
-        "sourceHandle": "opt:medit",
+        "sourceHandle": "medit",
         "targetHandle": "in"
       },
       {
         "id": "e-sk-ult",
         "source": "wait",
         "target": "ult",
-        "sourceHandle": "opt:ult",
+        "sourceHandle": "ult",
         "targetHandle": "in"
       },
       {
@@ -2315,7 +2628,7 @@
         "id": "e-amy-win",
         "source": "a_my",
         "target": "win",
-        "sourceHandle": "cond:0",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2335,7 +2648,7 @@
         "id": "e-amy-foe",
         "source": "a_my",
         "target": "b_ai",
-        "sourceHandle": "cond:1",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2354,14 +2667,14 @@
         "id": "e-amy-loop",
         "source": "a_my",
         "target": "enter",
-        "sourceHandle": "else",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-bai-win",
         "source": "b_ai",
         "target": "win",
-        "sourceHandle": "cond:0",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2381,7 +2694,7 @@
         "id": "e-bai-lose",
         "source": "b_ai",
         "target": "lose",
-        "sourceHandle": "cond:1",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2401,7 +2714,7 @@
         "id": "e-bai-loop",
         "source": "b_ai",
         "target": "enter",
-        "sourceHandle": "cond:2",
+        "sourceHandle": "default",
         "targetHandle": "in",
         "data": {
           "condition": {
@@ -2420,7 +2733,21 @@
         "id": "e-bai-my",
         "source": "b_ai",
         "target": "a_my",
-        "sourceHandle": "else",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-adv-a_my-n_drink-0",
+        "source": "a_my",
+        "target": "n_drink",
+        "sourceHandle": "B3",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-adv-b_ai-n_drink-1",
+        "source": "b_ai",
+        "target": "n_drink",
+        "sourceHandle": "B3",
         "targetHandle": "in"
       }
     ]
@@ -2443,8 +2770,8 @@
       },
       "do": [
         {
-          "kind": "goto",
-          "targetNodeId": "win"
+          "kind": "advance",
+          "edgeId": "e-amy-win"
         }
       ]
     },
@@ -2465,8 +2792,8 @@
       },
       "do": [
         {
-          "kind": "goto",
-          "targetNodeId": "lose"
+          "kind": "advance",
+          "edgeId": "e-bai-lose"
         }
       ]
     }

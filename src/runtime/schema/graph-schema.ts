@@ -50,8 +50,6 @@ export {
 export {
   aggregateOverlayEvents,
   aggregateNodeOverlayEvents,
-  deriveEdgesFromReactions,
-  deriveEdgesFromNodeOverlays,
   eventsFromParams,
   resolveEventReactionDo,
   resolveEventReactions,
@@ -302,7 +300,7 @@ export type GameGraph = Graph<GameNode, GameEdge>
 
 /**
  * 局级 reactions（多为 `when.type === 'state'`）：状态变化后求值，
- * do 含 goto 则硬打断跳转。典型：HP≤0 → 胜/负。与挂载/节点共用瘦 Reaction。
+ * do 含显式 advance 则硬打断跳转。典型：HP≤0 → 胜/负。与挂载/节点共用瘦 Reaction。
  */
 // （类型 Reaction 由上方 export type 与 node-config 导出）
 

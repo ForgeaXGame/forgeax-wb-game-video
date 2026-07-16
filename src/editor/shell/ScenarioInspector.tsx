@@ -71,6 +71,7 @@ export function ScenarioInspector({
   value,
   nodeIds,
   nodeLabel,
+  edgeOptions,
   section,
   overlayUsage,
   onChange,
@@ -79,6 +80,8 @@ export function ScenarioInspector({
   nodeIds: string[]
   /** 节点下拉展示；缺省用 id。 */
   nodeLabel?: (id: string) => string
+  /** 全图出边目录（advance.edgeId 选择用）。 */
+  edgeOptions?: Array<{ value: string; label: string }>
   section?: ScenarioSection
   /** overlayId → 被多少节点挂载引用（资源池「已用/未用」角标）。 */
   overlayUsage?: Record<string, number>
@@ -304,7 +307,7 @@ export function ScenarioInspector({
                   ...reactions,
                   {
                     when: { type: 'state', condition: { all: [] } },
-                    do: [{ kind: 'goto', targetNodeId: nodeIds[0] ?? '' }],
+                    do: [{ kind: 'advance', edgeId: edgeOptions?.[0]?.value ?? '' }],
                   },
                 ])
               }
@@ -314,25 +317,25 @@ export function ScenarioInspector({
           </div>
           {reactions.map((r, i) => {
             const cond = r.when.type === 'state' ? r.when.condition : { all: [] }
-            const goto = r.do.find((a) => a.kind === 'goto')
+            const adv = r.do.find((a) => a.kind === 'advance')
             return (
               <div key={i} style={box}>
                 {field(
-                  '跳转到',
+                  '沿边跳转',
                   <select
-                    value={goto && goto.kind === 'goto' ? goto.targetNodeId : ''}
+                    value={adv && adv.kind === 'advance' ? adv.edgeId : ''}
                     onChange={(e) =>
                       patchReaction(i, {
                         when: { type: 'state', condition: cond },
-                        do: [{ kind: 'goto', targetNodeId: e.target.value }],
+                        do: [{ kind: 'advance', edgeId: e.target.value }],
                       })
                     }
                     style={{ flex: 1 }}
                   >
-                    <option value="">（选节点）</option>
-                    {nodeIds.map((nid) => (
-                      <option key={nid} value={nid}>
-                        {nodeLabel?.(nid) ?? nid}
+                    <option value="">（选出边）</option>
+                    {(edgeOptions ?? []).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </select>,

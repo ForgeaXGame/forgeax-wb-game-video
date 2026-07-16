@@ -24,7 +24,7 @@ describe('GraphRuntime advance', () => {
   it('auto edge advance on performanceEnd', () => {
     const graph: GameGraph = {
       nodes: [node('a', { durationMs: 100 }), node('b', { })],
-      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph)
     const rt = new GraphRuntime(scn.graph, scn)
@@ -43,8 +43,8 @@ describe('GraphRuntime advance', () => {
     const mk = (): GameGraph => ({
       nodes: [node('round'), node('init', { }), node('settle', { })],
       edges: [
-        { id: 'r-next', source: 'round', target: 'init', sourceHandle: 'cond:0', targetHandle: 'in', data: { condition: bothAlive } },
-        { id: 'r-over', source: 'round', target: 'settle', sourceHandle: 'else', targetHandle: 'in' },
+        { id: 'r-next', source: 'round', target: 'init', sourceHandle: 'default', targetHandle: 'in', data: { condition: bothAlive } },
+        { id: 'r-over', source: 'round', target: 'settle', sourceHandle: 'default', targetHandle: 'in' },
       ],
     })
     // both alive → init
@@ -118,7 +118,7 @@ describe('GraphRuntime advance', () => {
     registerCore()
     const graph: GameGraph = {
       nodes: [node('a', { durationMs: 100 }), node('b', { durationMs: 100 }), node('c', { durationMs: 100 })],
-      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph)
     const rt = new GraphRuntime(scn.graph, scn)

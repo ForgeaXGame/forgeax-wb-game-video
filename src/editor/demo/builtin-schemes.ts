@@ -59,9 +59,8 @@ const DYNAMIC_SCHEME: Overlay = {
       params: {
         component: 'battleParry',
         durationMs: 2600,
-        outcomeLabels: { pass: '防反', good: '闪避', fail: '受击' },
-        exits: [{ key: 'pass' }, { key: 'good' }, { key: 'fail' }],
-        defaultKey: 'fail',
+        events: [{ id: 'pass', label: '防反' }, { id: 'good', label: '闪避' }, { id: 'fail', label: '受击' }],
+        defaultEvent: 'fail',
       },
     },
     {
@@ -71,7 +70,7 @@ const DYNAMIC_SCHEME: Overlay = {
       params: {
         component: 'inkYingMo',
         prompt: '應 / 默',
-        options: [{ key: 'ying', label: '應' }, { key: 'mo', label: '默' }],
+        events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }],
       },
     },
     {
@@ -81,7 +80,7 @@ const DYNAMIC_SCHEME: Overlay = {
       params: {
         component: 'battleSkillBar',
         prompt: '技能',
-        options: [{ key: 'a', label: '斩' }, { key: 'b', label: '突' }, { key: 'c', label: '守' }],
+        events: [{ id: 'a', label: '斩' }, { id: 'b', label: '突' }, { id: 'c', label: '守' }],
       },
     },
     {
@@ -105,9 +104,9 @@ export const NEW_COMPONENT_PRESETS: Array<{
   { id: 'dialogue', label: '字幕', make: (id) => ({ id, component: 'dialogue', trigger: { when: 'enter' }, params: { text: '字幕示例' } }) },
   { id: 'floatText', label: '飘字', make: (id) => ({ id, component: 'floatText', trigger: { when: 'enter' }, params: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' } }) },
   { id: 'inkKou', label: 'QTE · 叩击', make: (id) => ({ id, component: 'qte', trigger: { when: 'enter' }, params: { component: 'inkKou', glyph: '叩', cues: [{ id: 'k0', x: 0.5, y: 0.45, appearAt: 0, targetAt: 400, endAt: 1000 }] } }) },
-  { id: 'battleParry', label: 'QTE · 防反', make: (id) => ({ id, component: 'qte', trigger: { when: 'enter' }, params: { component: 'battleParry', durationMs: 2600, exits: [{ key: 'pass' }, { key: 'good' }, { key: 'fail' }], defaultKey: 'fail' } }) },
-  { id: 'inkYingMo', label: '选项 · 應默', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'inkYingMo', prompt: '應 / 默', options: [{ key: 'ying', label: '應' }, { key: 'mo', label: '默' }] } }) },
-  { id: 'battleSkillBar', label: '选项 · 技能条', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'battleSkillBar', prompt: '技能', options: [{ key: 'a', label: '斩' }, { key: 'b', label: '突' }] } }) },
+  { id: 'battleParry', label: 'QTE · 防反', make: (id) => ({ id, component: 'qte', trigger: { when: 'enter' }, params: { component: 'battleParry', durationMs: 2600, events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }], defaultEvent: 'fail' } }) },
+  { id: 'inkYingMo', label: '选项 · 應默', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'inkYingMo', prompt: '應 / 默', events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }] } }) },
+  { id: 'battleSkillBar', label: '选项 · 技能条', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'battleSkillBar', prompt: '技能', events: [{ id: 'a', label: '斩' }, { id: 'b', label: '突' }] } }) },
 ]
 
 /** 保证内置方案存在于 overlays 目录（缺失才补，不覆盖用户已改内容）。 */

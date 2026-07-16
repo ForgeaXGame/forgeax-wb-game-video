@@ -52,8 +52,8 @@ describe('previewResolve', () => {
     const state = initState(scenarioOf())
     const detail = resolveChoicePreviewDetail(
       [
-        { key: 'a', label: '轻击', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -20 }] },
-        { key: 'b', label: '吸气', effects: [{ kind: 'var', varId: 'qi', op: 'add', value: 1 }] },
+        { label: '轻击', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -20 }] },
+        { label: '吸气', effects: [{ kind: 'var', varId: 'qi', op: 'add', value: 1 }] },
       ],
       ctx(),
       state,
@@ -66,7 +66,7 @@ describe('previewResolve', () => {
   it('选项：条件不成立标注锁定', () => {
     const state = initState(scenarioOf())
     const detail = resolveChoicePreviewDetail(
-      [{ key: 'a', label: '灭世', condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }] } }],
+      [{ label: '灭世', condition: { all: [{ type: 'var', varId: 'qi', op: 'gte', value: 5 }] } }],
       ctx(),
       state,
     )

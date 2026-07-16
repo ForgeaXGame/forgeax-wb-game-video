@@ -6,14 +6,21 @@
  */
 import { Component, createContext, useContext, type ComponentType, type CSSProperties, type ErrorInfo, type ReactNode } from 'react'
 import type { OverlaySnap, OverlayMountSnap, InteractionSnap, HudSnap } from '../engine/session'
+import type { ConditionTarget } from '../engine/condition'
 import type { Layout } from '../schema/node-config-schema'
 import { childWrapStyle, layoutHasExplicitSize, layoutToCss, mountWrapStyle } from '../schema/layout'
 import type { ChoiceParams, HotspotParams } from '../registry/core-kinds'
 import { isPlayerFocused } from '../input/playerFocus'
+import { isOptionLocked } from './optionLock'
 
 /** 皮肤/HUD 组件渲染时可读的游戏态上下文（vars/entities/score/flags）。 */
 export interface SkinCtx {
   hud: HudSnap
+  /**
+   * 选项门控求值目标（与引擎 condition 同源）。
+   * 试玩面应注入 `runtime.state`；缺省时 `isOptionLocked` 用 hud 拼弱化态。
+   */
+  condition?: ConditionTarget
 }
 
 /** HUD 元素在屏幕上的锚点位置（皮肤自定位用；缺省由皮肤按角色推断）。 */
@@ -279,15 +286,23 @@ const btn = (bg: string): CSSProperties => ({
 
 const bottomRow: CSSProperties = { position: 'absolute', left: 0, right: 0, bottom: '7%', display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', pointerEvents: 'auto' }
 
-function ChoiceButtons({ interaction, submit }: InteractionProps): ReactNode {
+function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): ReactNode {
   const params = interaction.params as unknown as ChoiceParams
   return (
     <div className="gv-choice-layer" style={bottomRow}>
-      {(params.options ?? []).map((o) => (
-        <button key={o.key} style={btn('#2563eb')} onClick={() => submit(o.key)}>
-          {o.label ?? o.key}
-        </button>
-      ))}
+      {(params.events ?? []).map((e) => {
+        const locked = isOptionLocked(e, ctx)
+        return (
+          <button
+            key={e.id}
+            style={{ ...btn('#2563eb'), ...(locked ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}
+            disabled={locked}
+            onClick={() => { if (!locked) submit(e.id) }}
+          >
+            {e.label ?? e.id}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -304,11 +319,35 @@ function QteButtons({ submit }: InteractionProps): ReactNode {
 
 function HotspotButtons({ interaction, submit }: InteractionProps): ReactNode {
   const params = interaction.params as unknown as HotspotParams
+  const spots = params.events ?? []
+  const positioned = spots.some((e) => typeof e.x === 'number' || typeof e.y === 'number')
+  if (!positioned) {
+    return (
+      <div className="gv-hotspot-layer" style={bottomRow}>
+        {spots.map((e) => (
+          <button key={e.id} style={btn('#0891b2')} onClick={() => submit(e.id)}>
+            {e.label ?? e.id}
+          </button>
+        ))}
+      </div>
+    )
+  }
   return (
-    <div className="gv-hotspot-layer" style={bottomRow}>
-      {(params.hotspots ?? []).map((h) => (
-        <button key={h.id} style={btn('#0891b2')} onClick={() => submit(h.id)}>
-          {h.label ?? h.id}
+    <div className="gv-hotspot-layer" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {spots.map((e) => (
+        <button
+          key={e.id}
+          style={{
+            ...btn('#0891b2'),
+            position: 'absolute',
+            left: `${(e.x ?? 0.5) * 100}%`,
+            top: `${(e.y ?? 0.5) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'auto',
+          }}
+          onClick={() => submit(e.id)}
+        >
+          {e.label ?? e.id}
         </button>
       ))}
     </div>

@@ -1,15 +1,22 @@
 /**
  * 视频编辑器预览叠层 —— 按当前场景初始态求值，展示与试玩一致的真实文案/效果摘要。
  *
- * 全部为纯函数：入参 GraphEffect / ChoiceOption / QteCue + 一个求值上下文（由 initState 建）。
+ * 全部为纯函数：入参 GraphEffect / 选项预览项 / QteCue + 一个求值上下文（由 initState 建）。
  * 表达式失败绝不抛错（编辑器随时半成品），回退「无法求值 / ?」。运行时消费见 core-kinds 各 render。
  */
-import type { Entity, GraphEffect, Variable } from '../../runtime/schema/graph-schema'
-import type { ChoiceOption, FloatTextParams, QteCue } from '../../runtime/registry/core-kinds'
+import type { Entity, GraphCondition, GraphEffect, Variable } from '../../runtime/schema/graph-schema'
+import type { FloatTextParams, QteCue } from '../../runtime/registry/core-kinds'
 import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import type { MutableState } from '../../runtime/engine/apply-effects'
 import { evaluateCondition } from '../../runtime/engine/condition'
 import { findEntity } from '../shell/metaCatalog'
+
+/** 选项预览项（label + 关联的 event reaction 效果 + 逐项门控条件）。 */
+export interface ChoicePreviewOption {
+  label: string
+  effects?: GraphEffect[]
+  condition?: GraphCondition
+}
 
 export interface PreviewEvalContext {
   evalCtx: EvalCtx
@@ -131,21 +138,21 @@ export function resolveFloatTextPreviewLabel(
   return text ? text.replace('{v}', num) : num
 }
 
-function optionLocked(opt: ChoiceOption, state: MutableState): boolean {
+function optionLocked(opt: ChoicePreviewOption, state: MutableState): boolean {
   if (!opt.condition) return false
   return !evaluateCondition(opt.condition, { state, visited: new Set() })
 }
 
 /** 选项预览：每条选项文案 + 求值后的效果摘要；锁定项标注。 */
 export function resolveChoicePreviewDetail(
-  options: ChoiceOption[],
+  options: ChoicePreviewOption[],
   ctx: PreviewEvalContext,
   state: MutableState,
 ): string {
   if (!options.length) return ''
   return options
     .map((o) => {
-      const label = (o.label ?? o.key).trim()
+      const label = o.label.trim()
       const fx = summarizeEffects(o.effects, state, ctx.entities, ctx.variables)
       const locked = optionLocked(o, state) ? '（锁定）' : ''
       return fx ? `• ${label}${locked}：${fx}` : `• ${label}${locked}`

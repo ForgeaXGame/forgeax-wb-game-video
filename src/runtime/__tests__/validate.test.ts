@@ -32,7 +32,7 @@ describe('validateGraph', () => {
     const b = perf('b')
     const g: GameGraph = {
       nodes: [a.node, b.node],
-      edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
     }
     expect(validateGraph(g, { overlays: { ...a.overlays, ...b.overlays } })).toEqual([])
   })
@@ -41,7 +41,7 @@ describe('validateGraph', () => {
     const a = perf('a')
     const g: GameGraph = {
       nodes: [a.node],
-      edges: [{ id: 'e1', source: 'a', target: 'ghost', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e1', source: 'a', target: 'ghost', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const issues = validateGraph(g, { overlays: a.overlays })
     expect(issues.filter((i) => i.level === 'error')).toHaveLength(1)

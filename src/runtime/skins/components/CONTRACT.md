@@ -11,13 +11,13 @@
 function MySkin({ interaction, submit, ctx }: InteractionProps) { … }
 ```
 - `interaction`：`{ elementId, kind, params, handles, timeoutMs? }`
-  - `params`：该元素配置（如 choice/skill 的 `options:[{key,label}]`、qte 的 `qteKind/durationMs`、你自定义的任意字段）。
-  - `handles`：可用出口 id（如 `['opt:light','opt:heavy']`、`['pass','good','fail']`）。
-- `submit(input)`：**提交玩家结果**，input 决定走哪条出边：
-  - choice / skill → 选项 `key`（如 `'light'`，引擎走 `opt:light`）。
-  - qte → `'pass' | 'good' | 'fail'`。
+  - `params`：该元素配置（交互目录统一 `events:[{id,label,x?,y?}]`、qte 的 `qteKind/durationMs`、你自定义的任意字段）。
+  - `handles`：可用出口 id（= 各 event.id，如 `['light','heavy']`、`['pass','good','fail']`）。
+- `submit(input)`：**提交玩家结果**，input = event id（引擎归一成 outcome，边用 `sourceHandle === id` 承接）：
+  - choice / skill → 选项 `id`（如 `'light'`，引擎 outcome = `'light'`）。
+  - qte → `'pass' | 'good' | 'fail'` 或自定义 event id。
   - hotspot → 热点 `id`。
-  - 传 `undefined` = 走超时/缺省出口（引擎按 `params.defaultKey` 处理）。
+  - 传 `undefined` = 走超时/缺省出口（引擎按 `params.defaultEvent` 处理）。
 - `ctx?.hud`：只读游戏态 `{ entities:{[id]:{hp,maxHp}}, vars:{[id]:number}, flags, score }`（做条件显隐/数值展示用）。
 
 ### 2) overlay（表现层：漂字 / 转场 / 对话，纯展示无输入）

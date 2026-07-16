@@ -41,15 +41,15 @@ describe('kind-registry', () => {
     expect(getKind('nope')).toBeUndefined()
   })
 
-  it('deriveOutputs = default out + interaction kind outputs (dedup)', () => {
+  it('deriveOutputs = default + interaction kind outputs (dedup)', () => {
     registerKind(qtePlugin)
     const { node, overlays } = nodeWithKinds(['qte'])
-    expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['out', 'pass', 'good', 'fail'])
+    expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['default', 'pass', 'good', 'fail'])
   })
 
   it('unregistered kind contributes no handle', () => {
     const { node, overlays } = nodeWithKinds(['unknownKind'])
-    expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['out'])
+    expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['default'])
   })
 
   it('manifest.inputs: explicit inputs pass through; events included', () => {

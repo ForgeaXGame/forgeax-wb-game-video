@@ -4,7 +4,7 @@
  *
  * 覆盖：悬空边、sourceHandle 与派生 outputs 不匹配、未注册 kind、kind 参数非法、不可达节点；
  * 传 `opts`（实体/变量/道具 id）后还查**引用**：condition/effect/expr 里引用的 entity/var/item/nodeId
- * 是否存在、reactions 中 goto 是否指向真实节点；并对**纯瞬时环**（全为无演出/无交互节点 + 无条件边）给告警。
+ * 是否存在、reactions 中 advance 是否指向真实边；并对**纯瞬时环**（全为无演出/无交互节点 + 无条件边）给告警。
  */
 import type { GameGraph, GameScenario, Overlay, Reaction } from '../schema/graph-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
@@ -22,15 +22,15 @@ export interface ValidateOpts {
   entities?: Iterable<string>
   vars?: Iterable<string>
   items?: Iterable<string>
-  /** 局级 reactions（scenario.reactions）——一并校验 when 引用与 goto 目标。 */
+  /** 局级 reactions（scenario.reactions）——一并校验 when 引用与 advance 边目标。 */
   reactions?: Reaction[]
   /** scenario.ui.overlays —— 展开 OverlayNode 做 kind / handle 校验。 */
   overlays?: Record<string, Overlay>
 }
 
-/** 路由/网关 handle（out、else、cond:N）由 edge 声明、非某 kind 产出，始终合法。 */
+/** 保留字 handle（default = 默认推进）由 edge 声明、非某 kind 产出，始终合法。 */
 function isRoutingHandle(h: string): boolean {
-  return h === 'out' || h === 'else' || /^cond:\d+$/.test(h)
+  return h === 'default'
 }
 
 const EFFECT_KINDS = new Set(['attr', 'var', 'flag', 'item'])
@@ -233,6 +233,7 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
         for (const ch of ov.children) walkRefs(ch, ctx, `overlay:${oid}/${ch.id}`, issues)
       }
     }
+    const edgeIds = new Set(graph.edges.map((e) => e.id))
     for (let i = 0; i < (opts.reactions ?? []).length; i++) {
       const r = opts.reactions![i]!
       const at = `reactions[${i}]`
@@ -240,8 +241,8 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
       if (r.when.type === 'complete' && r.when.if) walkRefs(r.when.if, ctx, at, issues)
       for (const a of r.do) {
         if (a.kind === 'effect') walkRefs(a.effects, ctx, at, issues)
-        if (a.kind === 'goto' && !ctx.nodeIds.has(a.targetNodeId)) {
-          issues.push({ level: 'error', code: 'ref.node.missing', msg: `reaction goto 指向未知节点 '${a.targetNodeId}'`, at })
+        if (a.kind === 'advance' && !edgeIds.has(a.edgeId)) {
+          issues.push({ level: 'error', code: 'ref.edge.missing', msg: `reaction advance 指向未知边 '${a.edgeId}'`, at })
         }
       }
     }
