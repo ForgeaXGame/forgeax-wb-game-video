@@ -8,6 +8,8 @@ import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import type { NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
+import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { overriddenChildIds } from '../../graph/edit/overlay-edit'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/kind-registry'
 import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles } from '../../graph/flow-handle-labels'
@@ -587,7 +589,7 @@ export function NodeInspector({
   // 响应规则选项（带组件中文名 label）：shown/hidden 的组件 = 本节点各挂载 overlay 的 children；spawn 模板 = 全目录。
   const compLabel = (component: string) => getComponentManifest(component)?.label ?? component
   const componentOptions: OptItem[] = (d.overlayNodes ?? []).flatMap((m) =>
-    (overlays?.[m.overlay]?.children ?? []).map((c) => ({ value: c.id, label: `${compLabel(c.component)}（${c.id}）` })),
+    resolveMountChildren(overlays, m).map((c) => ({ value: c.id, label: `${compLabel(c.component)}（${c.id}）` })),
   )
   const spawnOptions: OptItem[] = Object.values(overlays ?? {}).flatMap((o) =>
     o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
@@ -744,9 +746,27 @@ export function NodeInspector({
         </>
       )}
 
+      {/* 默认样式方案：不挂载、不常驻渲染——只给本节点将来新增的字幕/飘字/滤镜/特效提供默认样式（同类型组件取方案里第一个，
+          多个同类型样式时在素材检视器「方案样式」下拉里切）。 */}
+      <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
+        {row('默认样式', (
+          <select
+            value={d.styleScheme ?? ''}
+            onChange={(e) => patchData({ styleScheme: e.target.value || undefined })}
+            style={{ flex: 1 }}
+            title="选一套方案作本节点默认样式：新增字幕/飘字/滤镜/特效时自动套用方案里同类型组件的参数（同类型有多个时取第一个，可在素材检视器里切换）；方案本身不挂载、不出现在时间轴/预览里"
+          >
+            <option value="">（无）</option>
+            {Object.keys(overlays ?? {}).map((id) => (
+              <option key={id} value={id}>{overlayLabel(id)}</option>
+            ))}
+          </select>
+        ))}
+      </div>
+
       {/* 覆盖物挂载 + reactions（每挂载一份） */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
           <b>覆盖物事件</b>
           <select
             value=""
@@ -758,7 +778,7 @@ export function NodeInspector({
               mounts.push({ overlay: oid })
               patchData({ overlayNodes: mounts })
             }}
-            title="从目录追加一张 overlay 挂载"
+            title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）"
             style={{ maxWidth: 140, fontSize: 11 }}
           >
             <option value="">＋ 挂载…</option>
@@ -778,6 +798,8 @@ export function NodeInspector({
               prefixMount: multi,
             })
             const mountTitle = overlays?.[mount.overlay]?.title?.trim()
+            const { overridden, added, removed: removedIds } = overriddenChildIds(mount)
+            const hasDiff = overridden.length > 0 || added.length > 0 || removedIds.length > 0
             return (
               <div key={`${mid}-${i}`} style={{ marginTop: 8, border: '1px solid #333', borderRadius: 6, padding: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
@@ -801,6 +823,25 @@ export function NodeInspector({
                     移除
                   </button>
                 </div>
+                {!mount.overlay.startsWith('node:') && hasDiff ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4, fontSize: 11, opacity: 0.85 }}>
+                    <span title="本节点已脱离方案跟随的组件数（改共享方案不会同步到它们）">
+                      已覆盖 {overridden.length} · 新增 {added.length} · 屏蔽 {removedIds.length}
+                    </span>
+                    <button
+                      type="button"
+                      title="清空本挂载的全部差量，节点内容完全改回跟随该方案"
+                      onClick={() => {
+                        const next = (d.overlayNodes ?? []).map((m, j) =>
+                          j === i ? { ...m, overrides: undefined, added: undefined, removed: undefined } : m,
+                        )
+                        patchData({ overlayNodes: next })
+                      }}
+                    >
+                      ↺ 全部回连
+                    </button>
+                  </div>
+                ) : null}
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}

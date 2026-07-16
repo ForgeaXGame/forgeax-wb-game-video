@@ -377,6 +377,11 @@ function EntityRow({
   const attrMeta = ent.attrMeta ?? {}
   const setAttrs = (a: Record<string, number>) => onChange({ ...ent, id: entKey, attrs: a })
   const setAttrMeta = (m: Record<string, AttrMeta>) => onChange({ ...ent, id: entKey, attrMeta: m })
+  const removeAttr = (ak: string) => {
+    const { [ak]: _a, ...restAttrs } = attrs
+    const { [ak]: _m, ...restMeta } = attrMeta
+    onChange({ ...ent, id: entKey, attrs: restAttrs, attrMeta: Object.keys(restMeta).length ? restMeta : undefined })
+  }
 
   return (
     <div style={box}>
@@ -389,23 +394,41 @@ function EntityRow({
           style={{ flex: 1 }}
         />,
       )}
-      <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>attrs</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 2px' }}>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>attrs（公式里 entity.{entKey}.attr.&lt;名&gt; 引用）</span>
+        <button
+          style={{ fontSize: 11 }}
+          onClick={() => {
+            const id = allocId('attr', attrs)
+            setAttrs({ ...attrs, [id]: 0 })
+          }}
+        >
+          + 属性
+        </button>
+      </div>
       {Object.entries(attrs).map(([ak, av]) => (
         <div key={ak} style={rowStyle}>
-          <input value={ak} readOnly style={{ flex: 1 }} />
+          <input value={ak} readOnly style={{ width: 64, opacity: 0.7 }} title="属性 id：添加后固定，改「显示名」即可" />
+          <input
+            value={attrMeta[ak]?.label ?? ''}
+            placeholder="显示名"
+            onChange={(e) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: e.target.value || undefined } })}
+            style={{ flex: 1 }}
+          />
           <input
             type="number"
             value={av}
             onChange={(e) => setAttrs({ ...attrs, [ak]: Number(e.target.value) || 0 })}
-            style={{ width: 90 }}
+            style={{ width: 70 }}
+            title="当前/初始数值"
           />
+          <button style={del} onClick={() => removeAttr(ak)} title="删除该属性">×</button>
         </div>
       ))}
+      {Object.keys(attrs).length === 0 ? <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>暂无属性</div> : null}
       <button style={{ ...del, marginTop: 6 }} onClick={onDelete}>
         删除实体
       </button>
-      {/* silence unused */}
-      <span style={{ display: 'none' }}>{Object.keys(attrMeta).length}{setAttrMeta.length}</span>
     </div>
   )
 }

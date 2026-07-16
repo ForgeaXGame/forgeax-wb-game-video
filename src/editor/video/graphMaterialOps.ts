@@ -22,11 +22,13 @@ import type {
   GameScenario,
   GraphEffect,
   GraphTextStyle,
+  NumOrExpr,
   OverlayChild,
   Reaction,
   Trigger,
 } from '../../runtime/schema/graph-schema'
 import type { ChoiceOption, FloatTextParams, QteCue } from '../../runtime/registry/core-kinds'
+import { qteKind } from '../../runtime/registry/core-kinds'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
 import type { InteractionSnap } from '../../runtime/engine/session'
@@ -51,30 +53,30 @@ import {
   addOverlayChild,
   ensureNodeOverlay,
   forkSchemeForEdit,
+  overriddenChildIds,
   patchOverlayChild,
   patchOverlayMount,
   primaryOverlayMount,
   removeOverlayChild,
+  resetOverride,
 } from '../../graph/edit/overlay-edit'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 
-// ── overlay children 读取小工具（本节点专属 overlay 的 children） ────────────────
-function overlayIdOf(node: GameNode | undefined): string | undefined {
-  return node?.data.overlayNodes?.find((m) => m.overlay === `node:${node.id}`)?.overlay ?? node?.data.overlayNodes?.[0]?.overlay
-}
+// ── overlay children 读取小工具（内容挂载 = 原型 ⊕ 稀疏差量，见 resolveMountChildren） ──
+/** 内容挂载的 children：原型（共享方案）跟随 + 本挂载 overrides/added/removed 差量。 */
 function childrenOf(scenario: GameScenario, node: GameNode | undefined): OverlayChild[] {
-  const id = overlayIdOf(node)
-  if (!id) return []
-  return scenario.ui?.overlays?.[id]?.children ?? []
+  const mount = primaryOverlayMount(node)
+  if (!mount) return []
+  return resolveMountChildren(scenario.ui?.overlays, mount)
 }
 
-/** 节点所有挂载 overlay 的 children（共享方案 + 节点专属）；交互元素检索用。 */
+/** 节点所有挂载（共享方案 + 节点专属）解析后的 children；交互元素检索用。 */
 function mountedChildrenOf(scenario: GameScenario, node: GameNode | undefined): OverlayChild[] {
   if (!node) return []
   const out: OverlayChild[] = []
   for (const mount of node.data.overlayNodes ?? []) {
-    const ov = scenario.ui?.overlays?.[mount.overlay]
-    if (ov) out.push(...ov.children)
+    out.push(...resolveMountChildren(scenario.ui?.overlays, mount))
   }
   return out.length ? out : childrenOf(scenario, node)
 }
@@ -113,9 +115,22 @@ export const SUBTITLE_XY = { x: 0.5, y: 0.9 }
 export const OVERLAY_XY = { x: 0.5, y: 0.42 }
 const OPTION_XY = { x: 0.5, y: 0.72 }
 const QTE_GOOD_WINDOW = 480
-const QTE_HANDLES = ['pass', 'good', 'fail']
-/** QTE 元素级参数键（落 el.params，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分。 */
-const QTE_ELEMENT_PARAM_KEYS = new Set(['component', 'perfectMs', 'passingHits', 'score', 'passingScore', 'tolerance'])
+/**
+ * QTE 元素级参数键（落 el.params，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分 /
+ * 组合按键声明（exits/defaultKey，battleParry 等双键皮肤用）/ 皮肤自管时长窗口（windowMs——
+ * 注意与 cue 级 `durationMs`（hold 形态按住时长）同名冲突，故意不叫 durationMs）。
+ */
+const QTE_ELEMENT_PARAM_KEYS = new Set([
+  'component',
+  'perfectMs',
+  'passingHits',
+  'score',
+  'passingScore',
+  'tolerance',
+  'exits',
+  'defaultKey',
+  'windowMs',
+])
 const CHOICE_HANDLE = 'opt:'
 
 // ── 元素读取小工具 ────────────────────────────────────────────────────────────
@@ -153,8 +168,13 @@ function previewCtxFor(scenario: GameScenario): { ctx: PreviewEvalContext; state
   }
 }
 
-// ── QTE 结算（pass/good/fail：跳转=边，改数值=mount/node event reactions）────────
-export type QteOutcomeHandle = 'pass' | 'good' | 'fail'
+// ── QTE 结算（样式驱动：候选 handle 来自 qteKind.outputs(params)，缺省即 pass/good/fail；
+//    跳转=边，改数值=mount/node event reactions）───────────────────────────────
+export type QteOutcomeHandle = string
+export interface QteOutcomeCandidate {
+  handle: QteOutcomeHandle
+  label: string
+}
 export interface QteOutcomeView {
   handle: QteOutcomeHandle
   label: string
@@ -164,12 +184,20 @@ export interface QteOutcomeView {
   /** 优秀未单独配置时，运行时会按成功结算 —— UI 提示用。 */
   fallsBackToPass?: boolean
 }
-const QTE_OUTCOME_LABELS: Record<QteOutcomeHandle, string> = {
+const QTE_OUTCOME_FALLBACK_LABELS: Record<string, string> = {
   pass: '成功',
   good: '优秀',
   fail: '失败',
 }
-const QTE_OUTCOME_ORDER: QteOutcomeHandle[] = ['pass', 'good', 'fail']
+
+/** 某 QTE 元素当前样式（params.component / exits）声明的结算候选，顺序即默认优先级。 */
+function qteOutcomeCandidates(el: OverlayChild | undefined): QteOutcomeCandidate[] {
+  const params = paramsOf(el)
+  return qteKind.outputs(params).map((o) => ({
+    handle: o.id,
+    label: o.label ?? QTE_OUTCOME_FALLBACK_LABELS[o.id] ?? o.id,
+  }))
+}
 
 function qteOutcomeEdge(scenario: GameScenario, nodeId: string, handle: QteOutcomeHandle) {
   return scenario.graph.edges.find((e) => e.source === nodeId && e.sourceHandle === handle)
@@ -215,12 +243,12 @@ function isQteOutcomeConfigured(scenario: GameScenario, node: GameNode, handle: 
   return reactionEffectsForHandle(rx, handle).length > 0
 }
 
-function outcomeView(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): QteOutcomeView {
+function outcomeView(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle, label: string): QteOutcomeView {
   const edge = qteOutcomeEdge(scenario, node.id, handle)
   const rx = allQteOutcomeReactions(scenario, node)
   return {
     handle,
-    label: QTE_OUTCOME_LABELS[handle],
+    label,
     targetId: edge?.target,
     edgeId: edge?.id,
     effects: reactionEffectsForHandle(rx, handle),
@@ -228,18 +256,25 @@ function outcomeView(scenario: GameScenario, node: GameNode, handle: QteOutcomeH
   }
 }
 
-/** 检视器：已配置的 QTE 结算档；无任何配置时默认展示一张「成功」（可不跳转）。 */
+/** 检视器：已配置的 QTE 结算档；无任何配置时默认展示样式的第一档候选（可不跳转）。 */
 export function listQteOutcomeViews(scenario: GameScenario, node: GameNode): QteOutcomeView[] {
-  if (!qteElement(scenario, node)) return []
-  const configured = QTE_OUTCOME_ORDER.filter((h) => isQteOutcomeConfigured(scenario, node, h))
-  if (configured.length === 0) return [outcomeView(scenario, node, 'pass')]
-  return configured.map((h) => outcomeView(scenario, node, h))
+  const el = qteElement(scenario, node)
+  if (!el) return []
+  const candidates = qteOutcomeCandidates(el)
+  const configured = candidates.filter((c) => isQteOutcomeConfigured(scenario, node, c.handle))
+  if (configured.length === 0) {
+    const first = candidates[0] ?? { handle: 'pass', label: '成功' }
+    return [outcomeView(scenario, node, first.handle, first.label)]
+  }
+  return configured.map((c) => outcomeView(scenario, node, c.handle, c.label))
 }
 
-/** 还可添加的 QTE 结算档。 */
-export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomeHandle[] {
+/** 还可添加的 QTE 结算档（来自当前样式的候选集，减去已配置的）。 */
+export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomeCandidate[] {
+  const el = qteElement(scenario, node)
+  if (!el) return []
   const used = new Set(listQteOutcomeViews(scenario, node).map((o) => o.handle))
-  return QTE_OUTCOME_ORDER.filter((h) => !used.has(h))
+  return qteOutcomeCandidates(el).filter((c) => !used.has(c.handle))
 }
 
 function ensureQteReactionMount(scenario: GameScenario, node: GameNode): { scenario: GameScenario; mountId: string } {
@@ -273,22 +308,21 @@ function patchMountEventReaction(
 export function addQteOutcomeGraph(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): GameScenario {
   if (isQteOutcomeConfigured(scenario, node, handle)) return scenario
   let s = scenario
-  if (listQteOutcomeViews(s, node).length === 1 && !isQteOutcomeConfigured(s, node, 'pass') && handle !== 'pass') {
+  const first = qteOutcomeCandidates(qteElement(s, node))[0]?.handle ?? 'pass'
+  if (listQteOutcomeViews(s, node).length === 1 && !isQteOutcomeConfigured(s, node, first) && handle !== first) {
     s = ensureQtePassOutcomeGraph(s, node)
   }
   return setQteOutcomeEffectsGraph(s, node, handle, [])
 }
 
+/** 确保样式第一档候选（缺省 'pass'）已显式落盘——避免"只有一张隐式默认卡"的歧义态。 */
 export function ensureQtePassOutcomeGraph(scenario: GameScenario, node: GameNode): GameScenario {
-  if (isQteOutcomeConfigured(scenario, node, 'pass')) return scenario
-  return setQteOutcomeEffectsGraph(scenario, node, 'pass', [])
+  const first = qteOutcomeCandidates(qteElement(scenario, node))[0]?.handle ?? 'pass'
+  if (isQteOutcomeConfigured(scenario, node, first)) return scenario
+  return setQteOutcomeEffectsGraph(scenario, node, first, [])
 }
 
-export function removeQteOutcomeGraph(
-  scenario: GameScenario,
-  node: GameNode,
-  handle: QteOutcomeHandle,
-): GameScenario {
+export function removeQteOutcomeGraph(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): GameScenario {
   const cards = listQteOutcomeViews(scenario, node)
   if (cards.length <= 1) return scenario
   let s = scenario
@@ -357,7 +391,7 @@ function settleEffectId(floatId: string): string {
 function hpEffect(
   entities: Record<string, Entity> | undefined,
   target: 'boss' | 'player',
-  amount: number,
+  amount: NumOrExpr,
   floatId: string,
 ): GraphEffect {
   return {
@@ -365,7 +399,8 @@ function hpEffect(
     entityId: firstEntityId(entities, target),
     attr: 'hp',
     op: 'add',
-    value: -Math.abs(amount),
+    // 常量沿用旧语义（数值取绝对值后自动按扣血取负）；选取式公式的正负号完全由用户在条款里选（−=扣血/+=回血）。
+    value: typeof amount === 'number' ? -Math.abs(amount) : amount,
     id: settleEffectId(floatId),
   }
 }
@@ -383,18 +418,22 @@ export function settleElementFor(scenario: GameScenario, node: GameNode | undefi
     r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
   )
 }
-function settleHpEffect(settle: Reaction | undefined): { value?: unknown; entityId?: string } | undefined {
+function settleHpEffect(settle: Reaction | undefined): { value?: NumOrExpr; entityId?: string } | undefined {
   for (const a of settle?.do ?? []) {
     if (a.kind !== 'effect') continue
     const hp = a.effects.find((e) => e.kind === 'attr' && e.attr === 'hp')
-    if (hp) return hp as { value?: unknown; entityId?: string }
+    if (hp) return hp as { value?: NumOrExpr; entityId?: string }
   }
   return undefined
 }
-/** 结算 reaction 的绝对伤害（无则 0）。 */
+/** 结算 reaction 的绝对伤害（公式态时取不到常量，返回 0）。 */
 export function settleDamage(settle: Reaction | undefined): number {
   const hp = settleHpEffect(settle)
   return hp && typeof hp.value === 'number' ? Math.abs(hp.value) : 0
+}
+/** 结算 reaction 里 hp effect 的原始值（常量或 `{expr,pick}`），供检视器公式编辑器回填。 */
+export function settleValue(settle: Reaction | undefined): NumOrExpr | undefined {
+  return settleHpEffect(settle)?.value
 }
 /** 结算作用于 boss 还是 player。 */
 export function settleTargetKind(
@@ -405,22 +444,30 @@ export function settleTargetKind(
   const ent = hp?.entityId ? entities?.[hp.entityId] : undefined
   return ent?.kind === 'player' ? 'player' : 'boss'
 }
-/** 写入/覆盖某飘字的结算 reaction。 */
-function upsertSettleReaction(
+/** 飘字到点广播的 effects（settle reaction 里挂的完整效果列表；无结算则 []）。 */
+export function overlayEffects(
   scenario: GameScenario,
-  node: GameNode,
+  node: GameNode | undefined,
   floatId: string,
-  when: Reaction['when'],
-  entities: Record<string, Entity> | undefined,
-  target: 'boss' | 'player',
-  amount: number,
-): GameScenario {
-  const eid = settleEffectId(floatId)
-  const kept = (node.data.reactions ?? []).filter(
-    (r) => !r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
-  )
-  kept.push({ when, do: [{ kind: 'effect', effects: [hpEffect(entities, target, amount, floatId)] }] })
-  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions: kept }) }
+): GraphEffect[] {
+  const settle = settleElementFor(scenario, node, floatId)
+  for (const a of settle?.do ?? []) {
+    if (a.kind === 'effect') return a.effects
+  }
+  return []
+}
+/** 预览用飘字 params：`expr` 缺省时回落结算效果第一条的值，与「所见即所广播」一致。 */
+function floatPreviewParams(
+  scenario: GameScenario,
+  node: GameNode | undefined,
+  el: OverlayChild,
+  params: FloatTextParams,
+): FloatTextParams {
+  if (typeof params.expr === 'string' && params.expr.trim()) return params
+  const first = overlayEffects(scenario, node, el.id).find((e) => e.kind === 'attr' || e.kind === 'var')
+  const v = first && (first.kind === 'attr' || first.kind === 'var') ? first.value : undefined
+  if (v === undefined) return params
+  return { ...params, expr: typeof v === 'number' ? String(v) : v.expr }
 }
 /** 删除某飘字的结算 reaction。 */
 function removeSettleReaction(scenario: GameScenario, node: GameNode, floatId: string): GameScenario {
@@ -429,6 +476,27 @@ function removeSettleReaction(scenario: GameScenario, node: GameNode, floatId: s
     (r) => !r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
   )
   return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions: kept.length ? kept : undefined }) }
+}
+/**
+ * 写入/覆盖某飘字的结算 reaction，effects 为完整效果列表（对齐 `EffectsEditor` 的编辑单位）。
+ * 空列表＝纯展示，等价删除。首条效果打上 `${floatId}-settle` 定位 id，供 `settleElementFor` 检索；
+ * 其余保留用户自定义 id（缺省兜底生成，避免 undefined 冲突）。
+ */
+function upsertSettleEffects(
+  scenario: GameScenario,
+  node: GameNode,
+  floatId: string,
+  when: Reaction['when'],
+  effects: GraphEffect[],
+): GameScenario {
+  if (effects.length === 0) return removeSettleReaction(scenario, node, floatId)
+  const eid = settleEffectId(floatId)
+  const kept = (node.data.reactions ?? []).filter(
+    (r) => !r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
+  )
+  const tagged = effects.map((e, i) => (i === 0 ? { ...e, id: eid } : { ...e, id: e.id ?? `${eid}-${i + 1}` }))
+  kept.push({ when, do: [{ kind: 'effect', effects: tagged }] })
+  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions: kept }) }
 }
 
 // ── 节点/元素定位 ─────────────────────────────────────────────────────────────
@@ -446,7 +514,10 @@ export function qteElement(scenario: GameScenario, node: GameNode | undefined): 
   return mountedChildrenOf(scenario, node).find((e) => e.component === 'qte')
 }
 
-/** 编辑器预览：当前节点 QTE 使用 inkKou 皮肤时，供 GraphVideoView 渲染真实交互皮。 */
+/** 编辑器可实时联调的交互皮肤（有真正的按键渲染，值得在预览画布里接管点击/按键）。 */
+const QTE_LIVE_PREVIEW_SKINS = new Set(['inkKou', 'battleParry'])
+
+/** 编辑器预览：当前节点 QTE 用到可联调皮肤时，供 GraphVideoView 渲染真实交互皮、按键即时可测。 */
 export function qteSkinPreviewInteraction(
   scenario: GameScenario,
   node: GameNode | undefined,
@@ -454,14 +525,15 @@ export function qteSkinPreviewInteraction(
   const el = qteElement(scenario, node)
   if (!el) return null
   const params = paramsOf(el)
-  if (params.component !== 'inkKou') return null
+  const component = str(params.component)
+  if (!component || !QTE_LIVE_PREVIEW_SKINS.has(component)) return null
   const cues = cuesOf(el)
   if (!cues.length) return null
   return {
     elementId: el.id,
     component: 'qte',
     params: { ...params, cues },
-    handles: QTE_HANDLES,
+    handles: qteOutcomeCandidates(el).map((c) => c.handle),
     timeoutMs: typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined,
   }
 }
@@ -480,8 +552,11 @@ function timedStart(el: OverlayChild): number {
 // ── 读投影：node → MaterialItem[] ─────────────────────────────────────────────
 export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode | undefined, maxMs: number): MaterialItem[] {
   if (!node) return []
+  const { overridden, added } = overriddenChildIds(primaryOverlayMount(node))
+  const flagged = new Set([...overridden, ...added])
   const out: MaterialItem[] = []
   for (const el of childrenOf(scenario, node)) {
+    const overriddenFlag = flagged.has(el.id) || undefined
     if (el.component === 'dialogue') {
       const start = timedStart(el)
       out.push({
@@ -492,6 +567,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
         startMs: start,
         endMs: el.window?.endMs ?? Math.min(maxMs, start + 2000),
         zIndex: normalizeLayer(el.layout?.zIndex, 0),
+        overridden: overriddenFlag,
       })
     } else if (el.component === 'floatText') {
       const start = timedStart(el)
@@ -503,6 +579,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
         startMs: start,
         endMs: el.window?.endMs ?? Math.min(maxMs, start + 1200),
         zIndex: normalizeLayer(el.layout?.zIndex, 1),
+        overridden: overriddenFlag,
       })
     } else if (el.component === 'choice') {
       out.push({
@@ -513,6 +590,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
         startMs: el.window?.startMs ?? 0,
         endMs: el.window?.endMs ?? maxMs,
         zIndex: normalizeLayer(el.layout?.zIndex, 3),
+        overridden: overriddenFlag,
       })
     } else if (el.component === 'filter') {
       out.push({
@@ -523,6 +601,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
         startMs: el.window?.startMs ?? 0,
         endMs: el.window?.endMs ?? maxMs,
         zIndex: normalizeLayer(el.layout?.zIndex, 4),
+        overridden: overriddenFlag,
       })
     } else if (el.component === 'fx') {
       out.push({
@@ -533,6 +612,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
         startMs: el.window?.startMs ?? 0,
         endMs: el.window?.endMs ?? maxMs,
         zIndex: normalizeLayer(el.layout?.zIndex, 5),
+        overridden: overriddenFlag,
       })
     } else if (el.component === 'qte') {
       for (const c of cuesOf(el)) {
@@ -549,11 +629,19 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
           endMs: end,
           markerMs: Math.min(Math.max(target, s), end),
           zIndex: normalizeLayer(c.zIndex, 2),
+          overridden: overriddenFlag,
         })
       }
     }
   }
   return out
+}
+
+/** 时间轴「↺ 回连」：清掉该素材所属组件在挂载上的差量，改回跟随共享方案。 */
+export function resetMaterialOverrideGraph(scenario: GameScenario, node: GameNode, item: MaterialItem): GameScenario {
+  const elId = item.kind === 'qte' ? qteElementOfCue(scenario, node, item.id)?.id : item.id
+  if (!elId) return scenario
+  return resetOverride(scenario, node.id, elId)
 }
 
 // ── 读投影：预览叠层 ──────────────────────────────────────────────────────────
@@ -591,7 +679,7 @@ export function activePreviewOverlaysFromNode(
       const start = timedStart(el)
       const end = el.window?.endMs ?? Math.min(maxMs, start + 1200)
       if (ms < start || ms > end) continue
-      const label = resolveFloatTextPreviewLabel(params as FloatTextParams, previewCtx)
+      const label = resolveFloatTextPreviewLabel(floatPreviewParams(scenario, node, el, params as FloatTextParams), previewCtx)
       if (!label) continue
       out.push({
         id: `overlay:${el.id}`,
@@ -760,20 +848,8 @@ export function deleteMaterialGraph(scenario: GameScenario, node: GameNode, item
       const s1Node = findNode(s1.graph, node.id) ?? node
       return removeSettleReaction(s1, s1Node, item.id)
     }
-    case 'qte': {
-      const el = qteElementOfCue(scenario, node, item.id)
-      if (!el) return scenario
-      if (cuesOf(el).length <= 1) {
-        return teardownInteractionScenario(scenario, node, {
-          kind: 'qte',
-          handlePrefixes: QTE_HANDLES,
-          continueHandle: 'pass',
-          childId: el.id,
-        })
-      }
-      const cues = cuesOf(el).filter((c) => c.id !== item.id)
-      return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, cues } })
-    }
+    case 'qte':
+      return removeQteCueGraph(scenario, node, item.id)
     case 'option': {
       const el = choiceElement(scenario, node)
       return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: [CHOICE_HANDLE], childId: el?.id })
@@ -781,6 +857,16 @@ export function deleteMaterialGraph(scenario: GameScenario, node: GameNode, item
     default:
       return scenario
   }
+}
+
+/**
+ * 本节点「默认样式方案」（`node.data.styleScheme`）里，与 `component` 同类型的 child 全集。
+ * 方案本身不挂载、不进 `overlayNodes`——纯查表源；新增素材取 [0] 当默认，其余供检视器切换。
+ */
+export function styleVariantsFor(scenario: GameScenario, node: GameNode, component: string): OverlayChild[] {
+  const schemeId = node.data.styleScheme
+  if (!schemeId) return []
+  return scenario.ui?.overlays?.[schemeId]?.children.filter((c) => c.component === component) ?? []
 }
 
 // ── 写映射：新增材料 ──────────────────────────────────────────────────────────
@@ -812,41 +898,44 @@ export function addMaterialGraph(
   const endMs = clampMs(startMs + dur, startMs + 100, maxMs)
   if (template === 'subtitle') {
     const id = newElementId()
+    const style = styleVariantsFor(scenario, node, 'dialogue')[0]?.params
     const el: OverlayChild = {
       id,
       component: 'dialogue',
       trigger: { when: 'enter' },
       window: { startMs, endMs },
       layout: { zIndex: at ? at.zIndex : 0 },
-      params: { text: '新字幕' },
+      params: { text: '新字幕', ...style },
     }
     return { scenario: addOverlayChild(scenario, node.id, el), selectKey: `subtitle:${id}` }
   }
   if (template === 'overlay') {
     const id = newElementId()
+    const style = styleVariantsFor(scenario, node, 'floatText')[0]?.params
     const float: OverlayChild = {
       id,
       component: 'floatText',
       trigger: { when: 'enter' },
       window: { startMs, endMs },
       layout: { zIndex: at ? at.zIndex : 1 },
-      params: { text: '-100', x: OVERLAY_XY.x, y: 0.45 },
+      params: { text: '-100', x: OVERLAY_XY.x, y: 0.45, ...style },
     }
     const s1 = addOverlayChild(scenario, node.id, float)
     const s1Node = findNode(s1.graph, node.id) ?? node
     // 结算副作用挂节点 reaction（默认对 boss 扣 100，与飘字同相位出现）。
-    const s2 = upsertSettleReaction(s1, s1Node, id, floatSettleWhen(float), entities, 'boss', 100)
+    const s2 = upsertSettleEffects(s1, s1Node, id, floatSettleWhen(float), [hpEffect(entities, 'boss', 100, id)])
     return { scenario: s2, selectKey: `overlay:${id}` }
   }
   if (template === 'filter' || template === 'fx') {
     const id = newElementId()
+    const style = styleVariantsFor(scenario, node, template)[0]?.params
     const el: OverlayChild = {
       id,
       component: template,
       trigger: { when: 'at', ms: startMs },
       window: { startMs, endMs },
       layout: { zIndex: at ? at.zIndex : template === 'filter' ? 4 : 5 },
-      params: template === 'filter' ? { filter: 'warm', intensity: 1 } : { fx: 'flash', intensity: 1 },
+      params: { ...(template === 'filter' ? { filter: 'warm', intensity: 1 } : { fx: 'flash', intensity: 1 }), ...style },
     }
     return { scenario: addOverlayChild(scenario, node.id, el), selectKey: `${template}:${id}` }
   }
@@ -856,7 +945,11 @@ export function addMaterialGraph(
   // option
   const existing = choiceElement(scenario, node)
   if (existing) return { scenario, selectKey: `option:${existing.id}` }
-  const s0 = teardownInteractionScenario(scenario, node, { kind: 'qte', handlePrefixes: QTE_HANDLES })
+  const existingQte = qteElement(scenario, node)
+  const s0 = teardownInteractionScenario(scenario, node, {
+    kind: 'qte',
+    handlePrefixes: qteOutcomeCandidates(existingQte).map((c) => c.handle),
+  })
   const id = newElementId()
   const key = 'opt0'
   const el: OverlayChild = {
@@ -924,30 +1017,33 @@ export function addQteCueGraph(
   return { scenario: s, selectKey: `qte:${id}:${cueId}` }
 }
 
-/** 删一个 QTE 按键点（删到最后一个 = 拆整段 QTE）。 */
+/** 删一个 QTE 按键点（删到最后一个 = 拆整段 QTE；结算是整段共享的，删单个拍点不动结算）。 */
 export function removeQteCueGraph(scenario: GameScenario, node: GameNode, cueId: string): GameScenario {
   const el = qteElementOfCue(scenario, node, cueId)
   if (!el) return scenario
-  if (cuesOf(el).length <= 1) {
+  const cues = cuesOf(el)
+  if (cues.length <= 1) {
     return teardownInteractionScenario(scenario, node, {
       kind: 'qte',
-      handlePrefixes: QTE_HANDLES,
-      continueHandle: 'pass',
+      handlePrefixes: qteOutcomeCandidates(el).map((c) => c.handle),
+      continueHandle: qteOutcomeCandidates(el)[0]?.handle ?? 'pass',
       childId: el.id,
     })
   }
-  const cues = cuesOf(el).filter((c) => c.id !== cueId)
-  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, cues } })
+  const remaining = cues.filter((c) => c.id !== cueId)
+  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, cues: remaining } })
 }
 
 // ── 写映射：检视器 params 编辑 ────────────────────────────────────────────────
+/**
+ * 合并出下一份完整 params 快照。`v === undefined` 的键**保留但置为 undefined**（不 delete）——
+ * 下游 `patchOverlayChild` → `mergeChild`/`mergePatch` 对 params 是「浅 spread」式累积合并
+ * （`{ ...base.params, ...patch.params }`），若这里直接删键，缺席的键不会覆盖 base/override 里
+ * 的旧值，「清空」就会被历史值悄悄复活。显式置 undefined 才能穿透层层浅合并真正生效清空；
+ * 落盘走 JSON 时 undefined 键本就会被丢弹，不会遗留脏数据。
+ */
 function mergeParams(el: OverlayChild, patch: Record<string, unknown>): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...el.params }
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) delete next[k]
-    else next[k] = v
-  }
-  return next
+  return { ...el.params, ...patch }
 }
 
 /** 字幕/QTE-cue/选项的通用 params 编辑（飘字见 patchOverlayGraph）。 */
@@ -984,7 +1080,14 @@ export function patchSelectedGraph(
   return scenario
 }
 
-/** 飘字（floatText 展示 + 联动结算 reaction）的 params 编辑：content/settlementOn/effectTarget/style/x/y。 */
+/**
+ * 飘字（floatText 展示 + 联动结算 reaction）的 params 编辑。键：
+ *   - content  → params.text（显示文案，含 {v} 用数值替换）
+ *   - effects  → 结算 reaction 的完整效果列表（`EffectsEditor` 直接产出；空数组＝纯展示，删结算）
+ *   - 其余（expr/valuePick/style/x/y…）→ 直接并入 params（undefined 删键）
+ * expr 缺省时 {v} 取 effects 第一条的值（预览侧对齐，见 `activePreviewOverlaysFromNode`）；
+ * 写了 expr 则显示与效果解耦。
+ */
 export function patchOverlayGraph(
   scenario: GameScenario,
   node: GameNode,
@@ -1002,24 +1105,9 @@ export function patchOverlayGraph(
       const content = String(value)
       const cur = findElement(s, node, floatId)
       s = patchOverlayChild(s, node.id, floatId, { params: { ...cur?.params, text: content } })
-      // 有结算时，伤害从内容派生同步。
-      const settleNow = settleElementFor(s, curNode(), floatId)
-      if (settleNow) {
-        s = upsertSettleReaction(s, curNode(), floatId, floatSettleWhen(float), entities, settleTargetKind(settleNow, entities), parseDamageFromContent(content))
-      }
-    } else if (key === 'settlementOn') {
-      const has = !!settleElementFor(s, curNode(), floatId)
-      if (value && !has) {
-        const dmg = parseDamageFromContent(str(paramsOf(float).text) ?? '')
-        s = upsertSettleReaction(s, curNode(), floatId, floatSettleWhen(float), entities, 'boss', dmg)
-      } else if (!value && has) {
-        s = removeSettleReaction(s, curNode(), floatId)
-      }
-    } else if (key === 'effectTarget') {
-      const settleNow = settleElementFor(s, curNode(), floatId)
-      if (settleNow) {
-        s = upsertSettleReaction(s, curNode(), floatId, floatSettleWhen(float), entities, value === 'player' ? 'player' : 'boss', settleDamage(settleNow))
-      }
+    } else if (key === 'effects') {
+      const list = Array.isArray(value) ? (value as GraphEffect[]) : []
+      s = upsertSettleEffects(s, curNode(), floatId, floatSettleWhen(float), list)
     } else {
       const cur = findElement(s, node, floatId)
       if (cur) s = patchOverlayChild(s, node.id, floatId, { params: mergeParams(cur, { [key]: value }) })

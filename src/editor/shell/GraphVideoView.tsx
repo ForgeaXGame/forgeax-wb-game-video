@@ -48,6 +48,7 @@ import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import {
   type AudioItem,
   type MaterialItem,
+  type MaterialKind,
   materialClass,
   materialLabel,
 } from '../video/materialTimelineShared'
@@ -57,6 +58,7 @@ import { FILTER_OPTIONS, FX_OPTIONS, fxNeedsColor, resolveVideoFxForNode } from 
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
 import { EffectsEditor } from './editors'
+import { FloatValuePickEditor } from './ValueExprEditor'
 import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
@@ -83,7 +85,6 @@ import {
   listAvailableQteOutcomes,
   listOptionBranches,
   listQteOutcomeViews,
-  parseDamageFromContent,
   patchMaterialGraph,
   patchOverlayGraph,
   patchOverlayPositionGraph,
@@ -93,14 +94,14 @@ import {
   removeOptionBranchGraph,
   removeQteCueGraph,
   removeQteOutcomeGraph,
+  resetMaterialOverrideGraph,
   setOptionBranchEffectsGraph,
   setOptionTargetGraph,
   setQteOutcomeEffectsGraph,
   setQteOutcomeTargetGraph,
-  settleDamage,
-  settleElementFor,
-  settleTargetKind,
+  overlayEffects,
   setNodePromptGraph,
+  styleVariantsFor,
   updateOptionLabelGraph,
   activePreviewOverlaysFromNode,
   qteSkinPreviewInteraction,
@@ -345,9 +346,10 @@ export function GraphVideoView(): JSX.Element {
   )
   const previewOverlays = useMemo(() => {
     if (!node || !editingBoundClip) return []
-    const all = activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs)
-    return qteSkinPreview ? all.filter((o) => o.kind !== 'qte') : all
-  }, [scenario, node, editingBoundClip, playheadMs, maxMs, qteSkinPreview])
+    // 皮肤层只作展示（pointer-events:none），QTE 的可拖定位手柄始终保留并叠在皮肤之上，
+    // 否则挂了皮肤就再也拖不动 QTE 坐标（见渲染处 is-skinned / zIndex）。
+    return activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs)
+  }, [scenario, node, editingBoundClip, playheadMs, maxMs])
   // 滤镜/特效预览：按当前播放头解析出 filter / transform / 覆盖层，实时施加到预览视频。
   const videoFx = useMemo(
     () => (node && editingBoundClip ? resolveVideoFxForNode(node, overlays, playheadMs, maxMs) : { overlays: [] }),
@@ -544,6 +546,11 @@ export function GraphVideoView(): JSX.Element {
       setSelectedMaterialKey(null)
       setTopPanel('library')
     }
+  }
+
+  // 「↺ 回连」：清掉该素材所属组件在挂载上的差量（override/新增），改回跟随共享方案。
+  function resetMaterialOverride(item: MaterialItem): void {
+    editScenario((s, n) => resetMaterialOverrideGraph(s, n, item))
   }
 
   function addMaterial(template: MaterialTemplate): void {
@@ -796,14 +803,16 @@ export function GraphVideoView(): JSX.Element {
                       ) : null}
                       {previewOverlays.map((o) => {
                         const selected = selectedMaterialKey === o.materialKey
+                        // 有皮肤时：手柄要压过皮肤层（z-index 25），否则被盖住无法抓取。
+                        const skinned = !!qteSkinPreview && o.kind === 'qte'
                         return (
                           <div
                             key={o.id}
                             role="button"
                             tabIndex={0}
                             aria-label={`${materialLabel(o.kind)}：${o.label}${o.movable ? '，可拖动' : ''}`}
-                            className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}`}
-                            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: 20 + o.zIndex }}
+                            className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${skinned ? ' is-skinned' : ''}`}
+                            style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: skinned ? 30 : 20 + o.zIndex }}
                             onPointerDown={(e) => onOverlayPointerDown(e, o)}
                             onPointerMove={(e) => onOverlayPointerMove(e, o)}
                             onPointerUp={onOverlayPointerUp}
@@ -957,6 +966,7 @@ export function GraphVideoView(): JSX.Element {
                 onSelectMaterial={handleSelectMaterial}
                 onPatchMaterial={patchMaterial}
                 onDeleteMaterial={deleteMaterial}
+                onResetOverride={resetMaterialOverride}
                 onDropTemplate={addMaterialAt}
               />
             ) : (
@@ -975,6 +985,14 @@ export function GraphVideoView(): JSX.Element {
 function cuesOfEl(el: { params?: Record<string, unknown> } | undefined): QteCue[] | undefined {
   const cues = el?.params?.cues
   return Array.isArray(cues) ? (cues as QteCue[]) : undefined
+}
+
+/** MaterialKind → overlay child 的 component id（用于按类型查「默认样式方案」里的同类变体）。qte/option 结构性，不接样式方案。 */
+const STYLE_COMPONENT: Partial<Record<MaterialKind, string>> = {
+  subtitle: 'dialogue',
+  overlay: 'floatText',
+  filter: 'filter',
+  fx: 'fx',
 }
 
 function GraphMaterialInspector({
@@ -1020,17 +1038,42 @@ function GraphMaterialInspector({
   const el = item.kind === 'qte' ? qteElementOfCue(scenario, node, item.id) : findElement(scenario, node, item.id)
   const params = (el?.params ?? {}) as Record<string, unknown>
   const cue = item.kind === 'qte' ? cuesOfEl(el)?.find((c) => c.id === item.id) : undefined
-  const settle = item.kind === 'overlay' ? settleElementFor(scenario, node, item.id) : undefined
+  const overlayFx = item.kind === 'overlay' ? overlayEffects(scenario, node, item.id) : []
+  const overlayDisplayCustom = item.kind === 'overlay' && typeof params.expr === 'string' && params.expr.length > 0
   const branches = item.kind === 'option' ? listOptionBranches(scenario, node) : []
   const qteOutcomes = item.kind === 'qte' ? listQteOutcomeViews(scenario, node) : []
   const qteAvailable = item.kind === 'qte' ? listAvailableQteOutcomes(scenario, node) : []
   const nodeOptions = scenario.graph.nodes.filter((n) => n.id !== node.id)
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+  // 防反 QTE（A/B 收圈）：固定双键布局，命中/触发键/形态等拍点手感字段对它无意义，改走 exits/durationMs。
+  const isBattleParry = item.kind === 'qte' && str(params.component) === 'battleParry'
+
+  // 「默认样式方案」里同类型（component 相同）的其它变体——只有 ≥2 个才值得给下拉切（1 个时已经是默认，无需切）。
+  const styleComponent = STYLE_COMPONENT[item.kind]
+  const styleVariants = styleComponent ? styleVariantsFor(scenario, node, styleComponent) : []
+  const currentVariantId = styleVariants.find((v) => JSON.stringify(v.params ?? {}) === JSON.stringify(params))?.id ?? ''
 
   return (
     <div className="gc-inspector-card">
       <div className="gc-inspector-title">{materialLabel(item.kind)}</div>
+      {styleVariants.length > 1 && (
+        <label className="gc-field"><span>方案样式</span>
+          <select
+            value={currentVariantId}
+            onChange={(e) => {
+              const v = styleVariants.find((x) => x.id === e.target.value)
+              if (v) onPatch({ ...(v.params ?? {}) })
+            }}
+            title="来自节点「默认样式」方案里同类型的其它变体；切换即整体套用该变体参数"
+          >
+            <option value="">（自定义）</option>
+            {styleVariants.map((v, i) => (
+              <option key={v.id} value={v.id}>{v.note?.trim() || `样式 ${i + 1}`}</option>
+            ))}
+          </select>
+        </label>
+      )}
       {item.kind !== 'qte' ? (
         <div className="gc-field-row">
           <label>
@@ -1075,30 +1118,38 @@ function GraphMaterialInspector({
 
       {item.kind === 'overlay' && el && (
         <>
-          <label className="gc-field"><span>内容</span>
-            <input value={str(params.text)} placeholder="文字 / 数值" onChange={(e) => onPatch({ content: e.target.value })} />
+          <label className="gc-field"><span>显示文案</span>
+            <input value={str(params.text)} placeholder="固定字 / 含 {v} 用数值替换" onChange={(e) => onPatch({ content: e.target.value })} />
           </label>
           <div className="gc-field"><span>样式预设</span>
             <GraphTextStylePicker group="overlay" value={params.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
           </div>
+          <div className="gc-field"><span>到点效果</span>
+            <EffectsEditor value={overlayFx} entities={entities} variables={variables} onChange={(effects) => onPatch({ effects })} />
+          </div>
+          <p className="gc-inspector-hint">飘字出现时把这些效果广播出去（如给 Boss 的 hp 加负值＝扣血）。留空＝纯展示、不改数值。文案里的 {'{v}'} 默认显示第一条效果的数值。</p>
           <label className="gc-tsp-check">
-            <input type="checkbox" checked={!!settle} onChange={(e) => onPatch({ settlementOn: e.target.checked })} />
-            <span>启用结算（到点扣血）</span>
+            <input
+              type="checkbox"
+              checked={overlayDisplayCustom}
+              onChange={(e) => (e.target.checked
+                ? onPatch({ expr: str(params.expr) || '0' })
+                : onPatch({ expr: undefined, valuePick: undefined }))}
+            />
+            <span>自定义显示数值（默认＝效果值）</span>
           </label>
-          {settle && (
-            <>
-              <label className="gc-field"><span>结算目标</span>
-                <select value={settleTargetKind(settle, entities)} onChange={(e) => onPatch({ effectTarget: e.target.value })}>
-                  <option value="boss">Boss</option>
-                  <option value="player">玩家</option>
-                </select>
-              </label>
-              <div className="gc-readonly-note">
-                {parseDamageFromContent(str(params.text)) > 0
-                  ? `解析伤害：${parseDamageFromContent(str(params.text))}（取自内容）`
-                  : `解析伤害：${settleDamage(settle)}（内容无数字时保留）`}
-              </div>
-            </>
+          {overlayDisplayCustom && (
+            <div className="gc-field">
+              <span>显示数值</span>
+              <FloatValuePickEditor
+                valuePick={params.valuePick}
+                damageValue={str(params.expr) ? { expr: str(params.expr) } : 0}
+                entities={entities}
+                variables={variables}
+                onChange={({ valuePick, damageValue }) =>
+                  onPatch({ valuePick, expr: typeof damageValue === 'number' ? String(damageValue) : damageValue.expr })}
+              />
+            </div>
           )}
           <div className="gc-field-row">
             <label><span>X%</span>
@@ -1114,7 +1165,27 @@ function GraphMaterialInspector({
       {item.kind === 'qte' && cue && el && (
         <>
           <label className="gc-field"><span>交互皮肤</span>
-            <select value={str(params.component)} onChange={(e) => onPatch({ component: e.target.value || undefined })}>
+            <select
+              value={str(params.component)}
+              onChange={(e) => {
+                const next = e.target.value || undefined
+                if (next === 'battleParry') {
+                  const exits = Array.isArray(params.exits) && params.exits.length >= 2
+                    ? params.exits
+                    : [{ key: 'pass', label: '完美' }, { key: 'good', label: '普通' }]
+                  const windowMs = num(params.windowMs, 2600)
+                  onPatch({
+                    component: next,
+                    exits,
+                    defaultKey: (params.defaultKey as string | undefined) ?? 'fail',
+                    windowMs,
+                    endAt: (cue.appearAt ?? 0) + windowMs,
+                  })
+                } else {
+                  onPatch({ component: next, exits: undefined, defaultKey: undefined, windowMs: undefined })
+                }
+              }}
+            >
               <option value="">（默认按钮）</option>
               {INTERACTION_SKINS.filter((s) => s.target === 'qte').map((s) => (
                 <option key={s.id} value={s.id}>{s.label}</option>
@@ -1124,11 +1195,55 @@ function GraphMaterialInspector({
           <label className="gc-field"><span>标签</span>
             <input value={cue.label ?? ''} onChange={(e) => onPatch({ label: e.target.value || undefined })} />
           </label>
-          <label className="gc-field"><span>完美判定 ±ms</span>
-            <input type="number" min={0} step={10} value={num(params.perfectMs, NaN) >= 0 ? (params.perfectMs as number) : ''} placeholder="留空=皮肤内置手感"
-              onChange={(e) => onPatch({ perfectMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })} />
-          </label>
-          <p className="gc-inspector-hint">完美判定：以命中锚点为中心 ±此毫秒内按下=pass（完美）；命中落在显示窗内=good（成功），窗外/超时=fail。</p>
+          {isBattleParry ? (
+            <>
+              <p className="gc-inspector-hint">防反 QTE：两枚按键（A/B）各自独立结算——按哪个就按哪个的结算走，不要求同时命中；超时未按算下方「未命中」档。</p>
+              {[0, 1].map((i) => {
+                const exits = Array.isArray(params.exits) ? params.exits : []
+                const exit = (exits[i] ?? {}) as { key?: string; label?: string }
+                return (
+                  <div className="gc-field-row" key={i}>
+                    <label><span>按键 {i === 0 ? 'A' : 'B'} 结算 id</span>
+                      <input
+                        value={exit.key ?? ''}
+                        placeholder={i === 0 ? 'pass' : 'good'}
+                        onChange={(e) => {
+                          const next = [...exits]
+                          next[i] = { ...exit, key: e.target.value || (i === 0 ? 'pass' : 'good') }
+                          onPatch({ exits: next })
+                        }}
+                      />
+                    </label>
+                    <label><span>文案</span>
+                      <input
+                        value={exit.label ?? ''}
+                        placeholder={i === 0 ? '完美' : '普通'}
+                        onChange={(e) => {
+                          const next = [...exits]
+                          next[i] = { ...exit, label: e.target.value || undefined }
+                          onPatch({ exits: next })
+                        }}
+                      />
+                    </label>
+                  </div>
+                )
+              })}
+              <label className="gc-field"><span>超时/未命中结算 id</span>
+                <input
+                  value={str(params.defaultKey) || 'fail'}
+                  onChange={(e) => onPatch({ defaultKey: e.target.value || 'fail' })}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="gc-field"><span>完美判定 ±ms</span>
+                <input type="number" min={0} step={10} value={num(params.perfectMs, NaN) >= 0 ? (params.perfectMs as number) : ''} placeholder="留空=皮肤内置手感"
+                  onChange={(e) => onPatch({ perfectMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })} />
+              </label>
+              <p className="gc-inspector-hint">完美判定：以命中锚点为中心 ±此毫秒内按下=pass（完美）；命中落在显示窗内=good（成功），窗外/超时=fail。</p>
+            </>
+          )}
           <div className="gc-inspector-subhead">
             <span>结算</span>
             <span className="gc-inspector-subhint">默认可配「成功」且不跳转；未配「优秀」时优秀按成功结算</span>
@@ -1181,60 +1296,85 @@ function GraphMaterialInspector({
                 style={{ flex: 1 }}
               >
                 <option value="" disabled>＋ 添加结算…</option>
-                {qteAvailable.map((h) => (
-                  <option key={h} value={h}>{h === 'pass' ? '成功' : h === 'good' ? '优秀' : '失败'}</option>
+                {qteAvailable.map((c) => (
+                  <option key={c.handle} value={c.handle}>{c.label}</option>
                 ))}
               </select>
             </div>
           ) : null}
-          <p className="gc-inspector-hint">出现=提示出现（左缘）· 命中=最佳判定时刻（计分锚点，菱形）· 消失=提示撤离（右缘）。三者也可在时间轴上直接拖。</p>
-          <div className="gc-field-row">
-            <label><span>出现 ms</span>
-              <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
-                onChange={(e) => onPatch({ appearAt: Math.max(0, Number(e.target.value) || 0) })} />
-            </label>
-            <label><span>命中 ms</span>
-              <input type="number" min={0} step={100} value={cue.targetAt ?? ''} placeholder="命中锚点"
-                onChange={(e) => onPatch({ targetAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
-            </label>
-            <label><span>消失 ms</span>
-              <input type="number" min={0} step={100} value={cue.endAt ?? ''} placeholder="自动"
-                onChange={(e) => onPatch({ endAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
-            </label>
-          </div>
-          <label className="gc-field"><span>触发键</span>
-            <select value={cue.triggerKey ?? ''} onChange={(e) => onPatch({ triggerKey: e.target.value || undefined })}>
-              <option value="">默认（空格 / Enter / 点击）</option>
-              <option value="Space">Space</option>
-              <option value="Enter">Enter</option>
-              <option value="KeyA">A</option>
-              <option value="KeyD">D</option>
-              <option value="KeyW">W</option>
-              <option value="KeyS">S</option>
-              <option value="ArrowLeft">←</option>
-              <option value="ArrowRight">→</option>
-              <option value="ArrowUp">↑</option>
-              <option value="ArrowDown">↓</option>
-            </select>
-          </label>
-          <label className="gc-field"><span>形态</span>
-            <select value={cue.shape ?? 'tap'} onChange={(e) => onPatch({ shape: e.target.value })}>
-              <option value="tap">Tap</option>
-              <option value="hold">Hold</option>
-              <option value="sweep">Sweep</option>
-            </select>
-          </label>
-          {cue.shape === 'hold' && (
-            <label className="gc-field"><span>按住时长 ms</span>
-              <input type="number" min={100} value={cue.durationMs ?? 500} onChange={(e) => onPatch({ durationMs: Math.max(100, Number(e.target.value) || 500) })} />
-            </label>
-          )}
-          {cue.shape === 'sweep' && (
-            <label className="gc-field"><span>滑动方向</span>
-              <select value={cue.sweepDir ?? 'right'} onChange={(e) => onPatch({ sweepDir: e.target.value })}>
-                <option value="left">左</option><option value="right">右</option><option value="up">上</option><option value="down">下</option>
-              </select>
-            </label>
+          {isBattleParry ? (
+            <>
+              <p className="gc-inspector-hint">出现=整段防反出现（左缘）· 时长=收圈总时长（超过未按任一键＝未命中）。</p>
+              <div className="gc-field-row">
+                <label><span>出现 ms</span>
+                  <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
+                    onChange={(e) => {
+                      const appearAt = Math.max(0, Number(e.target.value) || 0)
+                      const windowMs = num(params.windowMs, 2600)
+                      onPatch({ appearAt, endAt: appearAt + windowMs })
+                    }} />
+                </label>
+                <label><span>时长 ms</span>
+                  <input type="number" min={200} step={100} value={num(params.windowMs, 2600)}
+                    onChange={(e) => {
+                      const windowMs = Math.max(200, Number(e.target.value) || 2600)
+                      onPatch({ windowMs, endAt: (cue.appearAt ?? 0) + windowMs })
+                    }} />
+                </label>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="gc-inspector-hint">出现=提示出现（左缘）· 命中=最佳判定时刻（计分锚点，菱形）· 消失=提示撤离（右缘）。三者也可在时间轴上直接拖。</p>
+              <div className="gc-field-row">
+                <label><span>出现 ms</span>
+                  <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
+                    onChange={(e) => onPatch({ appearAt: Math.max(0, Number(e.target.value) || 0) })} />
+                </label>
+                <label><span>命中 ms</span>
+                  <input type="number" min={0} step={100} value={cue.targetAt ?? ''} placeholder="命中锚点"
+                    onChange={(e) => onPatch({ targetAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                </label>
+                <label><span>消失 ms</span>
+                  <input type="number" min={0} step={100} value={cue.endAt ?? ''} placeholder="自动"
+                    onChange={(e) => onPatch({ endAt: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                </label>
+              </div>
+              <label className="gc-field"><span>触发键</span>
+                <select value={cue.triggerKey ?? ''} onChange={(e) => onPatch({ triggerKey: e.target.value || undefined })}>
+                  <option value="">默认（空格 / Enter / 点击）</option>
+                  <option value="Space">Space</option>
+                  <option value="Enter">Enter</option>
+                  <option value="KeyA">A</option>
+                  <option value="KeyD">D</option>
+                  <option value="KeyW">W</option>
+                  <option value="KeyS">S</option>
+                  <option value="ArrowLeft">←</option>
+                  <option value="ArrowRight">→</option>
+                  <option value="ArrowUp">↑</option>
+                  <option value="ArrowDown">↓</option>
+                </select>
+              </label>
+              <label className="gc-field"><span>形态</span>
+                <select value={cue.shape ?? 'tap'} onChange={(e) => onPatch({ shape: e.target.value })}>
+                  <option value="tap">Tap</option>
+                  <option value="hold">Hold</option>
+                  <option value="sweep">Sweep</option>
+                </select>
+              </label>
+              {cue.shape === 'hold' && (
+                <label className="gc-field"><span>按住时长 ms</span>
+                  <input type="number" min={100} value={cue.durationMs ?? 500} onChange={(e) => onPatch({ durationMs: Math.max(100, Number(e.target.value) || 500) })} />
+                </label>
+              )}
+              {cue.shape === 'sweep' && (
+                <label className="gc-field"><span>滑动方向</span>
+                  <select value={cue.sweepDir ?? 'right'} onChange={(e) => onPatch({ sweepDir: e.target.value })}>
+                    <option value="left">左</option><option value="right">右</option><option value="up">上</option><option value="down">下</option>
+                  </select>
+                </label>
+              )}
+            </>
           )}
           <button type="button" className="gc-mini-danger" onClick={() => onRemoveQteCue(cue.id)}>删除当前按键点</button>
         </>

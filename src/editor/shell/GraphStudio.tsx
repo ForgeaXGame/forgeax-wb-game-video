@@ -302,6 +302,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       setSelected(packDrill.containerId)
     }
   }
+  const clearCanvasGraph = () => {
+    if (canvasGraph.nodes.length === 0 && canvasGraph.edges.length === 0) return
+    if (!confirm('清空当前画布的所有节点和连线？（其它数据如实体/变量/界面方案不受影响）')) return
+    setCanvasGraph({ nodes: [], edges: [] })
+    setSelected(null)
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}>
       {/* 顶部工具条：场景级动作（保存/版本/试玩），不含画布编辑手势 */}
@@ -311,6 +317,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
         <button type="button" onClick={bumpRun}>▶ 重开</button>
         <button type="button" onClick={resetToDemo} title="恢复为内置 demo 数据（丢弃当前未保存编辑）">↺ 重置</button>
         <button type="button" onClick={() => setPlayOpen((v) => !v)} title="显示/隐藏试玩浮层">{playOpen ? '▣ 隐藏试玩' : '▷ 显示试玩'}</button>
+        <button type="button" onClick={clearCanvasGraph} title="清空当前画布的所有节点和连线">🗑 清空</button>
         <span style={{ opacity: 0.6, fontSize: 11 }}>{savedTip || `phase: ${snap.phase}`}</span>
       </div>
 

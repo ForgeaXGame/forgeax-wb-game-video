@@ -190,11 +190,12 @@ export interface GameScenarioUi {
 /**
  * **OverlayNode** — 演出节点上的一份 overlay **挂载**（`NodeData.overlayNodes[]` 之一）。
  * - `id`：挂载键（多挂载时事件命名空间用）；缺省 = `overlay`
- * - `overlay`：引用哪张可复用 Overlay
+ * - `overlay`：引用哪张可复用 Overlay（原型；本挂载始终跟随其后续编辑，除被 override 的字段外）
  * - `layout`：整块相对视频画面；**无显式宽高时自适应内容**（单组件 overlay = 组件大小）
  * - `reactions`：本挂载 when→do（多为 event；边可由 goto 派生）
- *
- * 子组件内容（时机 / params）只改目录模板；挂载侧不补丁 child。
+ * - `overrides` / `added` / `removed`：本挂载对 `overlay` 的**稀疏差量**（prototype + override，对齐
+ *   Figma 实例覆盖 / Unity Prefab modifications 心智）——未出现在这三者里的组件永远跟随原型；
+ *   只有显式改过的字段才脱钩。合并规则见 `expand-overlay.ts#resolveMountChildren`。
  */
 export interface OverlayNode {
   /**
@@ -202,11 +203,20 @@ export interface OverlayNode {
    * 同一节点多次挂同一张 overlay 时必须显式且唯一。
    */
   id?: string
-  /** `scenario.ui.overlays` 中的 overlay id。 */
+  /** `scenario.ui.overlays` 中的 overlay id（原型；持续可跟随，见上）。 */
   overlay: string
   /** 整块相对本节点视频；无显式尺寸 → 自适应子组件内容。 */
   layout?: Layout
   reactions?: Reaction[]
+  /**
+   * 逐组件差量：childId → 对原型该组件的字段级覆盖（仅存被改字段，未改字段仍读原型）。
+   * 键在原型里已不存在（方案改动导致孤儿）时，解析器忽略该条目。
+   */
+  overrides?: Record<string, Partial<OverlayChild>>
+  /** 本挂载本地新增的组件（不写回共享方案，只属于这个节点）。 */
+  added?: OverlayChild[]
+  /** 屏蔽原型里的这些 childId（tombstone；不物理删除共享方案）。 */
+  removed?: string[]
 }
 
 /** 挂载键：显式 id 优先，否则 overlay 目录 id。 */

@@ -203,7 +203,10 @@ export interface QteParams {
   /** 皮肤自管时限 ms（如叩击/防反的收圈时长；缺省各皮肤自带）。 */
   durationMs?: number
 }
-export const qteKind: KindPlugin<QteParams & { exits?: Array<{ key: string; label?: string }>; defaultKey?: string; timeoutMs?: number }> = {
+/** 样式（component）自带组合按键时，用 `exits` 声明各按键各自的结算 id/文案（见 battleParry）。 */
+export type QteExit = { key: string; label?: string }
+export type QteFullParams = QteParams & { exits?: QteExit[]; defaultKey?: string; timeoutMs?: number }
+export const qteKind: KindPlugin<QteFullParams> = {
   kind: 'qte',
   role: 'interaction',
   aliases: ['battleParry', 'inkKou'],
@@ -228,7 +231,13 @@ export const qteKind: KindPlugin<QteParams & { exits?: Array<{ key: string; labe
   outputs: (p) => {
     const exits = p.exits
     if (Array.isArray(exits) && exits.length > 0) {
-      return exits.map((e) => ({ id: e.key, label: e.label ?? p.outcomeLabels?.[e.key] }))
+      const list = exits.map((e) => ({ id: e.key, label: e.label ?? p.outcomeLabels?.[e.key] }))
+      // 超时/未命中兜底 handle（defaultKey，缺省 'fail'）运行时也可达，若不与某个按键 id 重合则一并列为候选。
+      const missKey = p.defaultKey ?? 'fail'
+      if (!list.some((o) => o.id === missKey)) {
+        list.push({ id: missKey, label: p.outcomeLabels?.[missKey] })
+      }
+      return list
     }
     // inkKou 只出 pass|fail；其余 QTE 默认三档（可用 outcomeLabels 补文案）
     if (p.component === 'inkKou') {

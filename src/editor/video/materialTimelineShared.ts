@@ -21,6 +21,11 @@ export interface MaterialItem {
   zIndex: number
   /** 段内的一个「判定点」标记（当前仅 QTE 用：= cue.targetAt 计分锚点）；缺省无标记。 */
   markerMs?: number
+  /**
+   * 该素材所在的组件已脱离共享方案跟随（挂载上有它的 override / 新增）。
+   * 未标记 = 仍跟随方案，改方案会同步；标记后可「↺ 回连」清掉该组件的差量。
+   */
+  overridden?: boolean
 }
 
 /**

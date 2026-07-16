@@ -215,6 +215,12 @@ export interface NodeData {
   durationMs?: number
   /** 本节点上的 overlay 挂载列表；纯过场可省略。 */
   overlayNodes?: OverlayNode[]
+  /**
+   * 默认样式方案：目录里一张 overlay 的 id。不挂载、不进 `overlayNodes`、不出现在时间轴/预览里——
+   * 纯粹是"新增字幕/飘字/滤镜/特效时套用什么默认参数"的查表源。同类型（`component` 相同）在该方案里
+   * 有多个 child 时取第一个当默认，其余可在素材检视器「方案样式」下拉里切换。
+   */
+  styleScheme?: string
   reactions?: Reaction[]
 }
 

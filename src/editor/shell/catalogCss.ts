@@ -234,6 +234,44 @@ export const CATALOG_CSS = `
   pointer-events: none;
   z-index: 25;
 }
+/* 挂皮肤时，皮肤自身已画在 cue 的 x/y 上（有样式）；这里只叠一个「平时透明、hover / 选中
+   才显描边」的可拖热区，避免与皮肤重复出现一个常驻的定位符号。拖它即改该 cue 的 x/y。 */
+.gc-preview-overlay.is-skinned {
+  width: 56px;
+  height: 56px;
+}
+.gc-preview-overlay.is-skinned .gc-preview-ring {
+  inset: 0;
+  width: auto;
+  height: auto;
+  border-style: dashed;
+  border-color: transparent;
+  box-shadow: none;
+  animation: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.gc-preview-overlay.is-skinned:hover .gc-preview-ring,
+.gc-preview-overlay.is-skinned.is-selected .gc-preview-ring {
+  border-color: rgba(240,136,64,.95);
+  box-shadow: 0 0 14px rgba(240,136,64,.5);
+}
+.gc-preview-overlay.is-skinned .gc-preview-label,
+.gc-preview-overlay.is-skinned .gc-preview-detail {
+  display: none;
+}
+.gc-preview-overlay.is-skinned:hover .gc-preview-label,
+.gc-preview-overlay.is-skinned.is-selected .gc-preview-label {
+  display: block;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(0,0,0,.72);
+  border-color: rgba(240,136,64,.55);
+  color: #ffd8bf;
+  font-size: 11px;
+}
 .gc-preview-ring {
   position: absolute;
   width: 56px;
