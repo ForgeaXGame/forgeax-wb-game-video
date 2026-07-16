@@ -57,9 +57,11 @@ function effectNumericValueSafe(eff: GraphEffect, state: MutableState): { val: n
   return { val: 0 }
 }
 
-function formatDelta(op: 'add' | 'set', val: number | null, expr?: string): string {
+function formatDelta(op: 'add' | 'mul' | 'div' | 'set', val: number | null, expr?: string): string {
   if (val === null) return expr ? `（无法求值: ${expr}）` : '（无法求值）'
   if (op === 'set') return `=${val}`
+  if (op === 'mul') return `×${val}`
+  if (op === 'div') return `÷${val}`
   return signed(val)
 }
 
@@ -160,10 +162,10 @@ export function resolveChoicePreviewDetail(
     .join('\n')
 }
 
-const QTE_OUTCOME_LABEL: Record<string, string> = { pass: '成功', good: '优秀', fail: '失败' }
-
 export interface QteOutcomePreview {
   handle: string
+  /** 展示文案（来自 manifest.events / exits.label）；缺省回退 handle。 */
+  label?: string
   effects: GraphEffect[]
   fallsBackToPass?: boolean
 }
@@ -178,8 +180,9 @@ export function resolveQteOutcomesPreviewDetail(
     .map((o) => {
       const fx = summarizeEffects(o.effects, state, ctx.entities, ctx.variables)
       if (!fx) return ''
-      const hint = o.fallsBackToPass ? '（优秀沿用）' : ''
-      return `${QTE_OUTCOME_LABEL[o.handle] ?? o.handle}${hint}：${fx}`
+      const name = o.label || o.handle
+      const hint = o.fallsBackToPass ? '（含未单独配置的相邻档）' : ''
+      return `${name}${hint}：${fx}`
     })
     .filter(Boolean)
     .join('\n')

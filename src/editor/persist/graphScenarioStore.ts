@@ -23,16 +23,47 @@ function withBuiltinSchemes(s: GameScenario): GameScenario {
 
 export type ScenarioMetaFields = Pick<GameScenario, 'variables' | 'entities' | 'ui' | 'rng' | 'reactions' | 'textStylePresets' | 'packs'>
 
-const pickMeta = (s: GameScenario): ScenarioMetaFields => ({
-  variables: s.variables,
-  entities: s.entities,
-  ui: s.ui,
-  rng: s.rng,
-  reactions: s.reactions,
-  textStylePresets: s.textStylePresets,
-  packs: s.packs,
-})
+/**
+ * 只挑「有值」的 meta 字段。草稿/磁盘常只带 graph+ui，entities/variables 为 undefined——
+ * 若原样写入 meta，`scn()` 里 `{...demo, ...meta}` 会把 demo 实体抹掉，血条 bind 全空。
+ */
+const pickMeta = (s: GameScenario): ScenarioMetaFields => {
+  const m: ScenarioMetaFields = {}
+  if (s.variables !== undefined) m.variables = s.variables
+  if (s.entities !== undefined) m.entities = s.entities
+  if (s.ui !== undefined) m.ui = s.ui
+  if (s.rng !== undefined) m.rng = s.rng
+  if (s.reactions !== undefined) m.reactions = s.reactions
+  if (s.textStylePresets !== undefined) m.textStylePresets = s.textStylePresets
+  if (s.packs !== undefined) m.packs = s.packs
+  return m
+}
+
+/** 载入草稿/版本时：缺实体/变量则回落 demo（不覆盖用户显式清空后的 `{}`）。 */
+function withDemoMetaFallback(s: GameScenario, demo: GameScenario): GameScenario {
+  return {
+    ...s,
+    entities: s.entities ?? demo.entities,
+    variables: s.variables ?? demo.variables,
+    reactions: s.reactions ?? demo.reactions,
+    rng: s.rng ?? demo.rng,
+  }
+}
+
 const EMPTY_GRAPH: GameGraph = { nodes: [], edges: [] }
+
+/** 合并 meta→完整 scenario：undefined 字段不覆盖 base（防草稿抹掉 demo 实体）。 */
+export function mergeScenario(base: GameScenario, meta: ScenarioMetaFields, graph: GameGraph): GameScenario {
+  const out: GameScenario = { ...base, graph }
+  if (meta.variables !== undefined) out.variables = meta.variables
+  if (meta.entities !== undefined) out.entities = meta.entities
+  if (meta.ui !== undefined) out.ui = meta.ui
+  if (meta.rng !== undefined) out.rng = meta.rng
+  if (meta.reactions !== undefined) out.reactions = meta.reactions
+  if (meta.textStylePresets !== undefined) out.textStylePresets = meta.textStylePresets
+  if (meta.packs !== undefined) out.packs = meta.packs
+  return out
+}
 
 /** 位置全 0（未布局）→ dagre 自动排一版；顺带归一遗留 subFlowRef。 */
 function layoutIfUnset(s: GameScenario): GameScenario {
@@ -137,23 +168,35 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     scn: () => {
       const { demo, meta, graph } = get()
       const base = demo ?? ({ schemaVersion: 'wb-game-video.graph.v1', graph: EMPTY_GRAPH } as GameScenario)
-      return { ...base, ...meta, graph }
+      return mergeScenario(base, meta, graph)
     },
 
     ensureBoot: (game, demo) => {
       const st = get()
       if (st.booted && st.game === game) {
-        if (!st.demo) set({ demo })
+        // 已 boot：补 demo 引用；旧草稿曾把 entities 抹成 undefined 的，从 demo 填回 meta。
+        const meta = { ...st.meta }
+        let dirty = !st.demo
+        if (meta.entities === undefined && demo.entities) {
+          meta.entities = demo.entities
+          dirty = true
+        }
+        if (meta.variables === undefined && demo.variables) {
+          meta.variables = demo.variables
+          dirty = true
+        }
+        if (dirty) set({ demo: st.demo ?? demo, meta })
+        else if (!st.demo) set({ demo })
         return
       }
       set({ game, demo, booted: true })
       void loadStore(game).then((s) => {
         // 进入优先级：未保存草稿(localStorage) > 磁盘最新已保存版本 > demo（出厂只读原始）。
         if (s.draft?.graph) {
-          const laid = withBuiltinSchemes(layoutIfUnset(s.draft))
+          const laid = withBuiltinSchemes(layoutIfUnset(withDemoMetaFallback(s.draft, demo)))
           set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: true, versions: s.versions, currentVersionId: s.versions[0]?.id ?? null, loadEpoch: st.loadEpoch + 1 }))
         } else if (s.scenario?.graph) {
-          const laid = withBuiltinSchemes(layoutIfUnset(s.scenario))
+          const laid = withBuiltinSchemes(layoutIfUnset(withDemoMetaFallback(s.scenario, demo)))
           set((st) => ({ graph: laid.graph, meta: pickMeta(laid), isDraft: false, versions: s.versions, currentVersionId: s.versions[0]?.id ?? null, loadEpoch: st.loadEpoch + 1 }))
         } else {
           // 首次（无草稿、磁盘也没有）→ 用 demo 打底，并把它作为第一个版本落盘。
@@ -204,9 +247,18 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       }).filter((i) => i.level === 'error')
       set({ isDraft: false, savedTip: errs.length ? `保存中 · ⚠ ${errs.length} 处校验错误` : '保存中…' })
       // 落盘（.forgeax/games/<slug>/game-video/），完成后用磁盘版本索引回填。
-      void saveScenario(scn, get().game).then((v) =>
-        set({ versions: v, currentVersionId: v[0]?.id ?? null, savedTip: errs.length ? `已保存 · ⚠ ${errs.length} 处校验错误` : `已保存 ${new Date().toLocaleTimeString()}` }),
-      )
+      void saveScenario(scn, get().game).then((v) => {
+        if (v.length === 0) {
+          // PUT 失败时 persist-client 已保留草稿；回滚 isDraft，别骗用户「已保存」。
+          set({ isDraft: true, savedTip: '保存失败 · 草稿仍在本地，请检查 /__graph__ 端点后重试' })
+          return
+        }
+        set({
+          versions: v,
+          currentVersionId: v[0]?.id ?? null,
+          savedTip: errs.length ? `已保存 · ⚠ ${errs.length} 处校验错误` : `已保存 ${new Date().toLocaleTimeString()}`,
+        })
+      })
       // eslint-disable-next-line no-console
       if (errs.length) console.warn('[graph validate] 保存时发现校验错误：', errs)
       return errs.length

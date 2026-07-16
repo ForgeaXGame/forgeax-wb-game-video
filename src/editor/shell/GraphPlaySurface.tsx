@@ -18,6 +18,7 @@ import { resolveMediaSrc } from './media'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
 import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { getGameSlug } from '../persist/gameScope'
 import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
 import { getKind } from '../../runtime/registry/kind-registry'
 
@@ -64,7 +65,8 @@ function DraggablePanel({ title, initial, onClose, children }: { title: string; 
 
 export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
-  const game = useMemo(() => new URLSearchParams(location.search).get('game') ?? 'game-nodia-fighting', [])
+  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
+  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   const graph = useGraphScenario((s) => s.graph)
   const overlays = useGraphScenario((s) => s.meta.ui?.overlays)
@@ -90,13 +92,18 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap?.clip?.nodeId])
 
+  // 实体从空被回填后要重建 session（否则 HUD bind 不到 ent-*）。
+  const entitySig = useGraphScenario((s) => {
+    const e = s.meta.entities ?? s.demo?.entities
+    return e ? Object.keys(e).sort().join(',') : ''
+  })
   useEffect(() => {
     if (!ready) return
     const s = new GraphSession(useGraphScenario.getState().scn())
     sessionRef.current = s
     setSkins(s.skins)
     setSnap(s.start())
-  }, [restartKey, ready])
+  }, [restartKey, ready, entitySig])
 
   const videoSrc = resolveMediaSrc(snap?.clip?.mediaId, game)
 
@@ -197,25 +204,20 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {/* 游戏 overlay 舞台：锚定视频实际显示矩形（object-fit:contain 后带黑边的那块）。
           HUD / QTE / 交互 / 结局横幅都相对这块定位，视频缩放/换比例时跟着视频走。 */}
       <VideoOverlayStage contentRect={contentRect}>
-      {/* 表现叠层 */}
+      {/* 表现叠层 + 挂载 HUD（battleHpBar 等）：必须传 skinCtx，否则 HUD 皮肤在 overlay 表里找不到会静默丢弃。 */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         {(snap?.overlayMounts ?? []).map((m) => (
           <span key={m.mountId} style={{ display: 'contents' }}>
-            {skins?.renderOverlayMount(m, (elementId, key) => { const s = sessionRef.current; if (s) setSnap(s.emitEvent(elementId, key)) })}
+            {skins?.renderOverlayMount(
+              m,
+              (elementId, key) => { const s = sessionRef.current; if (s) setSnap(s.emitEvent(elementId, key)) },
+              skinCtx,
+            )}
           </span>
         ))}
       </div>
 
-      {/* 皮肤 HUD：仅当前节点挂了 surface:'hud' 时显示（叙事段不挂 battleHud → 无血条）。 */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
-        {hudComp.size > 0 && Object.keys(snap?.hud.entities ?? {}).map((id) => {
-          const el = hudComp.get(id)
-          if (el?.component && skinCtx && skins) return <span key={id}>{skins.renderHudElement(el, skinCtx)}</span>
-          return null
-        })}
-      </div>
-
-      {/* 内置 HUD 列：仅节点声明了 HUD 挂载、且实体未配皮肤组件时兜底。 */}
+      {/* 内置 HUD 列：节点挂了 surface:'hud'、但实体未配已注册皮肤时兜底（有 battleHpBar 时走上方 overlayMounts）。 */}
       <div style={{ position: 'absolute', top: 10, left: 12, width: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {hudComp.size > 0 && Object.entries(snap?.hud.entities ?? {}).filter(([id]) => !hudComp.get(id)?.component).map(([id, e]) => {
           const ratio = e.maxHp > 0 ? Math.max(0, Math.min(1, e.hp / e.maxHp)) : 0

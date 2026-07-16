@@ -253,9 +253,16 @@ export const qteKind: KindPlugin<QteFullParams> = {
       return list
     }
     if (p.component === 'inkKou') {
-      return [{ id: 'pass' }, { id: 'fail' }]
+      return [
+        { id: 'pass', label: '完美' },
+        { id: 'fail', label: '失败' },
+      ]
     }
-    return [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }]
+    return [
+      { id: 'pass', label: '完美' },
+      { id: 'good', label: '良好' },
+      { id: 'fail', label: '失败' },
+    ]
   },
   resolve: (_ctx, p, input) => {
     // ① 字符串 outcome（event id / pass|good|fail）；② { key }；③ { hits } 由 passingHits 判；④ 超时 defaultEvent。

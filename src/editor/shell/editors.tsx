@@ -12,6 +12,7 @@ import type {
   GraphClause,
   GraphCondition,
   GraphEffect,
+  NumericEffectOp,
   NumOrExpr,
   Variable,
 } from '../../runtime/schema/graph-schema'
@@ -63,7 +64,15 @@ function resolveCatalog(args: CatalogArgs): {
 const CMP_OPS: CmpOp[] = ['gte', 'lte', 'gt', 'lt', 'eq', 'neq']
 const CMP_LABEL: Record<CmpOp, string> = { gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '=', neq: '≠' }
 const EFFECT_KIND_LABEL: Record<string, string> = { attr: '属性', var: '变量', flag: '标记', item: '道具' }
-const OP_LABEL: Record<string, string> = { add: '增加', set: '设为', give: '给予', take: '取走' }
+const NUMERIC_OPS: NumericEffectOp[] = ['add', 'mul', 'div', 'set']
+const OP_LABEL: Record<string, string> = {
+  add: '增加',
+  mul: '乘以',
+  div: '除以',
+  set: '设为',
+  give: '给予',
+  take: '取走',
+}
 const CLAUSE_LABEL: Record<string, string> = {
   attrRatio: '属性比例', attr: '属性值', attrCompare: '属性比较', var: '变量', flag: '标记', visited: '到过节点', score: '分数', hasItem: '拥有道具',
 }
@@ -242,10 +251,11 @@ function EffectRow({
               onChange={(attr) => onChange({ ...eff, attr })}
             />
           ))}
-          {field('op', (
-            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'add' | 'set' })}>
-              <option value="add">{OP_LABEL.add}</option>
-              <option value="set">{OP_LABEL.set}</option>
+          {field('运算', (
+            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as NumericEffectOp })}>
+              {NUMERIC_OPS.map((op) => (
+                <option key={op} value={op}>{OP_LABEL[op]}</option>
+              ))}
             </select>
           ))}
           {field('值', (
@@ -269,10 +279,11 @@ function EffectRow({
               onChange={(varId) => onChange({ ...eff, varId })}
             />
           ))}
-          {field('op', (
-            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'add' | 'set' })}>
-              <option value="add">{OP_LABEL.add}</option>
-              <option value="set">{OP_LABEL.set}</option>
+          {field('运算', (
+            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as NumericEffectOp })}>
+              {NUMERIC_OPS.map((op) => (
+                <option key={op} value={op}>{OP_LABEL[op]}</option>
+              ))}
             </select>
           ))}
           {field('值', (

@@ -77,13 +77,13 @@ describe('previewResolve', () => {
     const state = initState(scenarioOf())
     const detail = resolveQteOutcomesPreviewDetail(
       [
-        { handle: 'pass', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -80 }] },
-        { handle: 'fail', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -50 }] },
+        { handle: 'pass', label: '完美', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -80 }] },
+        { handle: 'fail', label: '失败', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -50 }] },
       ],
       state,
       ctx(),
     )
-    expect(detail).toContain('成功：影魔.hp -80')
+    expect(detail).toContain('完美：影魔.hp -80')
     expect(detail).toContain('失败：主角.hp -50')
   })
 

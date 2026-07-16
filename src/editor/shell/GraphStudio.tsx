@@ -16,6 +16,7 @@ import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { listVideoAssetInfos, resolveMediaSrc } from './media'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
@@ -64,7 +65,8 @@ const EMPTY_GRAPH: GameGraph = { nodes: [], edges: [] }
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
   ensureToolbarStyle()
-  const game = useMemo(() => new URLSearchParams(location.search).get('game') ?? 'game-nodia-fighting', [])
+  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
+  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const playRootRef = useRef<HTMLDivElement | null>(null)
   const [playRootEl, setPlayRootEl] = useState<HTMLElement | null>(null)
   const bindPlayRoot = (el: HTMLDivElement | null) => {
@@ -214,11 +216,16 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     })
   }
 
+  // 实体键签名：草稿曾缺 entities 被回填后必须重建 session，否则 HUD bind 全空、血条永不出现。
+  const entitySig = useGraphScenario((s) => {
+    const e = s.meta.entities ?? s.demo?.entities
+    return e ? Object.keys(e).sort().join(',') : ''
+  })
   const session = useMemo(
     () => new GraphSession(useGraphScenario.getState().scn()),
-    // 仅在「重开」时重建（runKey 变），编辑图时不打断当前试玩
+    // runKey：手动重开；entitySig：实体从空→有时自动重建（不跟 graph 编辑走，免打断试玩）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runKey],
+    [runKey, entitySig],
   )
   const sessionRef = useRef(session)
   sessionRef.current = session
@@ -443,7 +450,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                 {snap.overlayMounts.map((m) => (
                   <span key={m.mountId} style={{ display: 'contents' }}>
-                    {session.skins.renderOverlayMount(m, (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)))}
+                    {session.skins.renderOverlayMount(
+                      m,
+                      (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
+                      { hud: snap.hud },
+                    )}
                   </span>
                 ))}
               </div>

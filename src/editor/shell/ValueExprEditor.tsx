@@ -1,7 +1,7 @@
 /**
  * 通用数值表达式编辑器 —— 常量 / 从项目实体·变量选取，支持 ±×÷ 链式组合（含属性×属性）。
  */
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { Entity, NumOrExpr, ValuePick, ValueTerm, ValueTermOp, Variable } from '../../runtime/schema/graph-schema'
 import {
   VALUE_TERM_OP_LABEL,
@@ -20,6 +20,48 @@ const hint: CSSProperties = { fontSize: 11, opacity: 0.65, lineHeight: 1.4 }
 
 function termOp(t: ValueTerm): ValueTermOp {
   return t.op === '+' || t.op === '-' || t.op === '*' || t.op === '/' ? t.op : '+'
+}
+
+/** 允许输入过程中的 `-` / `.` / `-0.`；避免 `Number(x)||0` 把负数/小数草稿打回 0。 */
+const LOOSE_NUM_RE = /^[+-]?(\d+\.?\d*|\.\d*)?$/
+
+function LooseNumberInput({
+  value,
+  onChange,
+  style,
+  'aria-label': ariaLabel,
+}: {
+  value: number
+  onChange: (n: number) => void
+  style?: CSSProperties
+  'aria-label'?: string
+}): JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? String(value)
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      aria-label={ariaLabel}
+      value={shown}
+      style={style}
+      onFocus={() => setDraft(String(value))}
+      onBlur={() => {
+        const raw = (draft ?? '').trim()
+        const n = Number(raw)
+        onChange(raw !== '' && Number.isFinite(n) ? n : value)
+        setDraft(null)
+      }}
+      onChange={(e) => {
+        const next = e.target.value
+        if (next !== '' && !LOOSE_NUM_RE.test(next)) return
+        setDraft(next)
+        if (next === '' || next === '+' || next === '-' || next === '.' || next === '+.' || next === '-.') return
+        const n = Number(next)
+        if (Number.isFinite(n)) onChange(n)
+      }}
+    />
+  )
 }
 
 export function ValueExprEditor({
@@ -48,7 +90,8 @@ export function ValueExprEditor({
 
   function setMode(mode: 'const' | 'pick'): void {
     if (mode === 'const') {
-      const n = typeof value === 'number' ? Math.abs(value) : pick.mode === 'const' ? pick.const : 0
+      // 保留正负号（旧实现 Math.abs 会把扣血负数抹成正数）
+      const n = typeof value === 'number' ? value : pick.mode === 'const' ? pick.const : 0
       emit({ mode: 'const', const: n })
       return
     }
@@ -106,10 +149,10 @@ export function ValueExprEditor({
       </div>
 
       {pick.mode === 'const' ? (
-        <input
-          type="number"
+        <LooseNumberInput
           value={pick.const}
-          onChange={(e) => emit({ mode: 'const', const: Number(e.target.value) || 0 })}
+          onChange={(n) => emit({ mode: 'const', const: n })}
+          aria-label="常量数值"
           style={{ width: '100%' }}
         />
       ) : (
@@ -164,11 +207,9 @@ export function ValueExprEditor({
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="number"
-                    step={0.1}
+                  <LooseNumberInput
                     value={t.constValue ?? 0}
-                    onChange={(e) => patchTerm(i, { constValue: Number(e.target.value) || 0 })}
+                    onChange={(n) => patchTerm(i, { constValue: n })}
                     aria-label="常数"
                     style={{ width: 72 }}
                   />

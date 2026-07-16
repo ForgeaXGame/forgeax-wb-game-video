@@ -9,6 +9,7 @@ import { CatalogShell } from './CatalogShell'
 import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
 import { VersionPicker } from './VersionPicker'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { getGameSlug } from '../persist/gameScope'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -16,7 +17,8 @@ export interface ConfigTab {
 }
 
 export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario }: { tabs: ConfigTab[]; title?: string; icon?: string; scenario: GameScenario }): JSX.Element {
-  const game = useMemo(() => new URLSearchParams(location.search).get('game') ?? 'game-nodia-fighting', [])
+  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
+  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const meta = useGraphScenario((s) => s.meta)
   const graph = useGraphScenario((s) => s.graph)
   const isDraft = useGraphScenario((s) => s.isDraft)

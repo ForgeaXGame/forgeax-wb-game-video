@@ -137,33 +137,65 @@ export class SkinRegistry {
     this.hud.set(id, c)
   }
 
+  /**
+   * 渲染一份挂载的全部 children。
+   * - 表现层（dialogue / floatText …）走 overlay 表；
+   * - **HUD（battleHpBar 等）走 hud 表**：引擎仍把它们放进 overlayMounts（enter 即发射），
+   *   但皮肤注册在 hud registry——无 ctx 时只能静默跳过，试玩必须传入 `{ hud }`。
+   */
   renderOverlayMount(
     mount: OverlayMountSnap,
     emit?: (elementId: string, key: string) => void,
+    ctx?: SkinCtx,
   ): ReactNode {
     const mountHasSize = layoutHasExplicitSize(mount.mountLayout)
     return (
       <div key={mount.mountId} style={mountWrapStyle(mount.mountLayout)}>
         {mount.children.map((child) => {
           const C = this.overlay.get(child.component)
-          if (!C) return null
-          const snap: OverlaySnap = {
-            elementId: child.elementId,
-            component: child.component,
-            params: child.params,
+          if (C) {
+            const snap: OverlaySnap = {
+              elementId: child.elementId,
+              component: child.component,
+              params: child.params,
+            }
+            // 自定位组件（floatText 等用 x/y）：子盒铺满挂载盒且点击穿透，
+            // 让组件内部的百分比相对完整父框解析（否则会塌成左上角、被裁切）。
+            const wrapStyle: CSSProperties = child.selfPositioned
+              ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
+              : childWrapStyle(child.childLayout, mountHasSize)
+            return (
+              <div key={child.elementId} style={wrapStyle}>
+                <SkinErrorBoundary name={child.component}>
+                  <C overlay={snap} emit={(key) => emit?.(child.elementId, key)} />
+                </SkinErrorBoundary>
+              </div>
+            )
           }
-          // 自定位组件（floatText 等用 x/y）：子盒铺满挂载盒且点击穿透，
-          // 让组件内部的百分比相对完整父框解析（否则会塌成左上角、被裁切）。
-          const wrapStyle: CSSProperties = child.selfPositioned
-            ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
-            : childWrapStyle(child.childLayout, mountHasSize)
-          return (
-            <div key={child.elementId} style={wrapStyle}>
-              <SkinErrorBoundary name={child.component}>
-                <C overlay={snap} emit={(key) => emit?.(child.elementId, key)} />
-              </SkinErrorBoundary>
-            </div>
-          )
+          // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
+          if (ctx) {
+            const params = child.params as { bind?: string; label?: string; accent?: string; component?: string }
+            const skinId =
+              (typeof params.component === 'string' && params.component) || child.component
+            const Hud = this.hud.get(skinId) ?? this.hud.get(child.component)
+            if (Hud) {
+              const bind = typeof params.bind === 'string' ? params.bind : child.elementId
+              const el: HudElementView = {
+                element: bind,
+                component: skinId,
+                bind,
+                label: typeof params.label === 'string' ? params.label : undefined,
+                accent: typeof params.accent === 'string' ? params.accent : undefined,
+                layout: child.childLayout,
+              }
+              return (
+                <span key={child.elementId} style={{ display: 'contents' }}>
+                  {this.renderHudElement(el, ctx)}
+                </span>
+              )
+            }
+          }
+          return null
         })}
       </div>
     )
@@ -241,8 +273,12 @@ export const defaultSkinRegistry = new SkinRegistry()
 export function registerOverlayRenderer(kind: string, c: OverlayComponent): void {
   defaultSkinRegistry.registerOverlayRenderer(kind, c)
 }
-export function renderOverlayMount(mount: OverlayMountSnap, emit?: (elementId: string, key: string) => void): ReactNode {
-  return defaultSkinRegistry.renderOverlayMount(mount, emit)
+export function renderOverlayMount(
+  mount: OverlayMountSnap,
+  emit?: (elementId: string, key: string) => void,
+  ctx?: SkinCtx,
+): ReactNode {
+  return defaultSkinRegistry.renderOverlayMount(mount, emit, ctx)
 }
 export function renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void): ReactNode {
   return defaultSkinRegistry.renderOverlay(overlay, emit)
