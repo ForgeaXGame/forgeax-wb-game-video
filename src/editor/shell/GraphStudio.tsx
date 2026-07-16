@@ -238,7 +238,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
 
   useEffect(() => {
-    // 限时交互 timeoutMs：到点自动 submit(undefined) → 走 defaultKey / 缺省出口。
+    // 限时交互 timeoutMs：到点自动 submit(undefined) → 走 defaultEvent / 缺省出口。
     const inter = snap.interaction
     if (!inter?.timeoutMs) return
     const t = setTimeout(() => setSnap(sessionRef.current.submit(undefined)), inter.timeoutMs)
@@ -448,7 +448,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 ))}
               </div>
               {snap.interaction && (
-                <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0 }}>{session.skins.renderInteraction(snap.interaction, submit, { hud: snap.hud })}</div>
+                <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0 }}>
+                  {session.skins.renderInteraction(snap.interaction, submit, {
+                    hud: snap.hud,
+                    condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+                  })}
+                </div>
               )}
             </div>
             </PlayerRootContext.Provider>

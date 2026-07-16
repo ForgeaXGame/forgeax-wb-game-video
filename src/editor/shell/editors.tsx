@@ -19,12 +19,18 @@ import { flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
 import { ValueExprEditor } from './ValueExprEditor'
 
-/** choice/skill 选项形态（与 core-kinds ChoiceOption 同构；就地声明避免逻辑↔UI 耦合）。 */
-export interface ChoiceOptionLike {
-  key: string
+/** 交互事件目录项（共享壳 = ComponentEvent；kind 扩展字段按 variant 编辑）。 */
+export interface ComponentEventLike {
+  id: string
   label?: string
-  effects?: GraphEffect[]
+  /** choice/skill：逐项门控（组件私有）。 */
+  condition?: GraphCondition
+  /** hotspot：画面锚点（组件私有，归一化 0~1）。 */
+  x?: number
+  y?: number
 }
+
+export type EventsEditorVariant = 'plain' | 'choice' | 'hotspot'
 
 export type MetaCatalogProps = {
   entities?: Record<string, Entity>
@@ -547,69 +553,88 @@ export function ConditionEditor({
   )
 }
 
-// ── 选项（choice/skill 的 options: {key,label,effects}）────────────────────────
-function allocOptionKey(list: ChoiceOptionLike[]): string {
+// ── 交互事件目录（共享 id/label；choice→condition / hotspot→x,y 为组件私有扩展）──
+function allocEventId(list: ComponentEventLike[]): string {
   let i = list.length
-  let key = `opt${i}`
-  const used = new Set(list.map((o) => o.key))
-  while (used.has(key)) {
+  let id = `opt${i}`
+  const used = new Set(list.map((e) => e.id))
+  while (used.has(id)) {
     i += 1
-    key = `opt${i}`
+    id = `opt${i}`
   }
-  return key
+  return id
 }
 
-export function OptionsEditor({
+export function EventsEditor({
   value,
   onChange,
-  entities,
-  variables,
+  variant = 'plain',
   pickers,
 }: {
-  value: ChoiceOptionLike[] | undefined
-  onChange: (v: ChoiceOptionLike[]) => void
+  value: ComponentEventLike[] | undefined
+  onChange: (v: ComponentEventLike[]) => void
+  /** plain=目录；choice=可配门控；hotspot=可配锚点。 */
+  variant?: EventsEditorVariant
   pickers?: EditorPickerCtx
-} & MetaCatalogProps): JSX.Element {
-  const cat = resolveCatalog({ entities, variables, pickers })
+}): JSX.Element {
   const list = value ?? []
-  const patch = (i: number, p: Partial<ChoiceOptionLike>) => onChange(list.map((o, idx) => (idx === i ? { ...o, ...p } : o)))
+  const cat = pickers ?? {}
+  const patch = (i: number, p: Partial<ComponentEventLike>) => onChange(list.map((e, idx) => (idx === i ? { ...e, ...p } : e)))
   return (
     <div>
       <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 4 }}>
-        每项对应蓝图出口 <code>opt:&lt;标识&gt;</code>；连线「何时走」请选同名出口。
+        每项 = 一个出口事件；出边 <code>sourceHandle === 此 id</code>。副作用请写节点 reactions（event 同名）。
+        {variant === 'choice' ? ' 门控 condition 属本组件（灰置禁选）。' : null}
+        {variant === 'hotspot' ? ' 坐标 x/y 属本组件画面锚点。' : null}
       </div>
       {list.map((o, i) => (
-        <div key={`${o.key}-${i}`} style={box}>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }} title={`opt:${o.key}`}>
-            出口 · {flowHandleDisplay(`opt:${o.key}`, o.label)}
+        <div key={`${o.id}-${i}`} style={box}>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }} title={o.id}>
+            出口 · {flowHandleDisplay(o.id, o.label)}
           </div>
           {field('标识', (
             <input
-              value={o.key}
-              onChange={(e) => patch(i, { key: e.target.value })}
+              value={o.id}
+              onChange={(e) => patch(i, { id: e.target.value })}
               style={{ flex: 1, fontFamily: 'monospace', fontSize: 11 }}
-              title="落盘 key；出边 sourceHandle = opt:此标识"
+              title="落盘 id；出边 sourceHandle = 此 id"
             />
           ))}
           {field('显示文案', <input value={o.label ?? ''} onChange={(e) => patch(i, { label: e.target.value })} style={{ flex: 1 }} />)}
-          <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>选中时效果</div>
-          <EffectsEditor
-            value={o.effects}
-            entities={cat.entities}
-            variables={cat.variables}
-            onChange={(effects) => patch(i, { effects })}
-          />
-          <button style={{ ...del, marginTop: 4 }} onClick={() => onChange(list.filter((_, idx) => idx !== i))}>删除选项</button>
+          {variant === 'hotspot' ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {field('x', (
+                <input type="number" step={0.05} value={o.x ?? ''} onChange={(e) => patch(i, { x: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ flex: 1, fontSize: 11 }} />
+              ))}
+              {field('y', (
+                <input type="number" step={0.05} value={o.y ?? ''} onChange={(e) => patch(i, { y: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ flex: 1, fontSize: 11 }} />
+              ))}
+            </div>
+          ) : null}
+          {variant === 'choice' ? (
+            <>
+              <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>可选条件（不成立则锁定）</div>
+              <ConditionEditor
+                value={o.condition}
+                nodeIds={[]}
+                pickers={cat}
+                entities={cat.entities}
+                variables={cat.variables}
+                onChange={(condition) => patch(i, { condition: condition ?? undefined })}
+              />
+            </>
+          ) : null}
+          <button style={{ ...del, marginTop: 4 }} onClick={() => onChange(list.filter((_, idx) => idx !== i))}>删除</button>
         </div>
       ))}
       <button
         style={{ marginTop: 4 }}
         onClick={() => {
-          const key = allocOptionKey(list)
-          onChange([...list, { key, label: `选项 ${list.length + 1}`, effects: [] }])
+          const id = allocEventId(list)
+          onChange([...list, { id, label: `选项 ${list.length + 1}` }])
         }}
       >
-        + 选项
+        + 事件
       </button>
     </div>
   )

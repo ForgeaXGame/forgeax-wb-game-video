@@ -151,7 +151,7 @@ describe('container watch spans subflow (我方回合 场景)', () => {
         }),
         node('done', {}),
       ],
-      edges: [{ id: 'e', source: 'turn', target: 'done', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'turn', target: 'done', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, { ui: { overlays: { hitCheer: cheer } } })
     const rt = new GraphRuntime(scn.graph, scn)
@@ -224,12 +224,12 @@ describe('non-blocking component events (回合按钮面板)', () => {
       nodes: [
         node('turn', {
           subFlow: 'atk',
-          overlayNodes: [{ overlay: 'hpPanel', reactions: [{ when: { type: 'event', id: 'B3' }, do: [{ kind: 'goto', targetNodeId: 'drink' }] }] }],
+          overlayNodes: [{ overlay: 'hpPanel', reactions: [{ when: { type: 'event', id: 'B3' }, do: [{ kind: 'advance', edgeId: 'e-drink' }] }] }],
         }),
         node('atk', { durationMs: 5000 }),
         node('drink', {}),
       ],
-      edges: [],
+      edges: [{ id: 'e-drink', source: 'turn', target: 'drink', sourceHandle: 'B3', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, { ui: { overlays: { hpPanel: panel } } })
     const rt = new GraphRuntime(scn.graph, scn)
@@ -259,7 +259,7 @@ describe('lifecycle reactions (shown / hidden)', () => {
         }),
         node('b', {}),
       ],
-      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, { ui: { overlays: { hud2: overlay } } })
     const rt = new GraphRuntime(scn.graph, scn)

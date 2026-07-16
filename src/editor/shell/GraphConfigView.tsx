@@ -45,6 +45,14 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     if (!name || name === id) return id
     return `${name} (${id})`
   }, [graph.nodes])
+  const edgeOptions = useMemo(
+    () =>
+      graph.edges.map((e) => ({
+        value: e.id,
+        label: `${nodeLabel(e.source)} ─${e.sourceHandle ?? 'default'}→ ${nodeLabel(e.target)}`,
+      })),
+    [graph.edges, nodeLabel],
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: 'var(--work, #0e0c09)' }}>
@@ -63,7 +71,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
           onSelect={(id) => setActive(id as ScenarioSection)}
           renderPreview={() => (
             <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
-              <ScenarioInspector value={meta} nodeIds={nodeIds} nodeLabel={nodeLabel} section={active} overlayUsage={overlayUsage} onChange={setMeta} />
+              <ScenarioInspector value={meta} nodeIds={nodeIds} nodeLabel={nodeLabel} edgeOptions={edgeOptions} section={active} overlayUsage={overlayUsage} onChange={setMeta} />
             </div>
           )}
         />

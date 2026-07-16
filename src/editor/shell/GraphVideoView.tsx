@@ -1443,8 +1443,8 @@ function GraphMaterialInspector({
           {branches.map((b) => (
             <div key={b.key} className="gc-branch-block" style={{ border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6, marginBottom: 8 }}>
                 <div className="gc-branch-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                  <span className="gc-branch-handle" style={{ fontSize: 11, opacity: 0.65, minWidth: 88 }} title={`opt:${b.key}`}>
-                    {flowHandleDisplay(`opt:${b.key}`, b.label)}
+                  <span className="gc-branch-handle" style={{ fontSize: 11, opacity: 0.65, minWidth: 88 }} title={b.key}>
+                    {flowHandleDisplay(b.key, b.label)}
                   </span>
                   <input style={{ flex: 1, minWidth: 100 }} value={b.label} onChange={(e) => onSetBranchLabel(b.key, e.target.value)} placeholder="选项文案" />
                   <select style={{ flex: 1 }} value={b.targetId ?? ''} onChange={(e) => onSetBranchTarget(b.key, e.target.value)}>

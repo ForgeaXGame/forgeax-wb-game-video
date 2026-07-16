@@ -15,11 +15,11 @@ beforeEach(() => {
     kind: 'choiceX',
     role: 'interaction',
     validate: () => [],
-    outputs: (p) => ((p as { options?: { key: string }[] }).options ?? []).map((o) => ({ id: `opt:${o.key}` })),
+    outputs: (p) => ((p as { events?: { id: string }[] }).events ?? []).map((o) => ({ id: o.id })),
     resolve: (_c, p, input) => {
-      const pp = p as { options?: { key: string }[]; defaultKey?: string }
-      const key = typeof input === 'string' ? input : pp.defaultKey ?? pp.options?.[0]?.key
-      return { outcome: `opt:${key}` }
+      const pp = p as { events?: { id: string }[]; defaultEvent?: string }
+      const id = typeof input === 'string' ? input : pp.defaultEvent ?? pp.events?.[0]?.id
+      return { outcome: id ?? 'default' }
     },
   })
 })
@@ -38,7 +38,7 @@ describe('exit reaction', () => {
         }),
         node('b', { }),
       ],
-      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, { variables: { mark: { id: 'mark', initial: 0 } } })
     const rt = new GraphRuntime(scn.graph, scn)
@@ -80,7 +80,7 @@ describe('subflow (subFlow)', () => {
         node('sub', { durationMs: 100 }),
         node('after', { }),
       ],
-      edges: [{ id: 'e', source: 'wrap', target: 'after', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'wrap', target: 'after', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const scn = scnOf(graph)
     const rt = new GraphRuntime(scn.graph, scn)
@@ -102,7 +102,7 @@ describe('subflow pack (subFlowPack)', () => {
         node('wrap', { subFlowPack: { id: 'enemy-turn', version: '1' }, durationMs: 100 }),
         node('after', { }),
       ],
-      edges: [{ id: 'e', source: 'wrap', target: 'after', sourceHandle: 'out', targetHandle: 'in' }],
+      edges: [{ id: 'e', source: 'wrap', target: 'after', sourceHandle: 'default', targetHandle: 'in' }],
     }
     const packGraph: GameGraph = {
       nodes: [node('tele', { durationMs: 100 })],
@@ -158,7 +158,7 @@ describe('transition kind', () => {
 })
 
 describe('choice timeout', () => {
-  it('openInteraction carries timeoutMs; submit(undefined) falls back to defaultKey', () => {
+  it('openInteraction carries timeoutMs; submit(undefined) falls back to defaultEvent', () => {
     const graph: GameGraph = {
       nodes: [
         node('a', {
@@ -168,7 +168,7 @@ describe('choice timeout', () => {
               role: 'interaction',
               kind: 'choiceX',
               trigger: { when: 'enter' },
-              params: { options: [{ key: 'a' }, { key: 'b' }], timeoutMs: 3000, defaultKey: 'b' },
+              params: { events: [{ id: 'a' }, { id: 'b' }], timeoutMs: 3000, defaultEvent: 'b' },
             },
           ],
         }),
@@ -176,8 +176,8 @@ describe('choice timeout', () => {
         node('lose', { }),
       ],
       edges: [
-        { id: 'e-a', source: 'a', target: 'win', sourceHandle: 'opt:a', targetHandle: 'in' },
-        { id: 'e-b', source: 'a', target: 'lose', sourceHandle: 'opt:b', targetHandle: 'in' },
+        { id: 'e-a', source: 'a', target: 'win', sourceHandle: 'a', targetHandle: 'in' },
+        { id: 'e-b', source: 'a', target: 'lose', sourceHandle: 'b', targetHandle: 'in' },
       ],
     }
     const scn = scnOf(graph)
@@ -185,7 +185,7 @@ describe('choice timeout', () => {
     const dirs = rt.start()
     const open = dirs.find(isOpenInteraction)
     expect(open?.timeoutMs).toBe(3000)
-    // 模拟到点未选：submit(undefined) → defaultKey 'b' → lose
+    // 模拟到点未选：submit(undefined) → defaultEvent 'b' → lose
     rt.submitInteraction(rid('a', 'c'), undefined)
     expect(rt.state.currentNodeId).toBe('lose')
   })
@@ -200,7 +200,7 @@ describe('choice timeout', () => {
               role: 'interaction',
               kind: 'choiceX',
               trigger: { when: 'enter' },
-              params: { options: [{ key: 'pass' }, { key: 'fail' }], windowMs: 200, defaultKey: 'fail' },
+              params: { events: [{ id: 'pass' }, { id: 'fail' }], windowMs: 200, defaultEvent: 'fail' },
             },
           ],
         }),
@@ -208,8 +208,8 @@ describe('choice timeout', () => {
         node('miss', {}),
       ],
       edges: [
-        { id: 'e-p', source: 'a', target: 'ok', sourceHandle: 'opt:pass', targetHandle: 'in' },
-        { id: 'e-f', source: 'a', target: 'miss', sourceHandle: 'opt:fail', targetHandle: 'in' },
+        { id: 'e-p', source: 'a', target: 'ok', sourceHandle: 'pass', targetHandle: 'in' },
+        { id: 'e-f', source: 'a', target: 'miss', sourceHandle: 'fail', targetHandle: 'in' },
       ],
     }
     const scn = scnOf(graph)
@@ -222,7 +222,7 @@ describe('choice timeout', () => {
 describe('graph-level reactive rules (instant defeat/victory)', () => {
   const bossDead: Reaction = {
     when: { type: 'state', condition: { all: [{ type: 'attrRatio', entityId: 'ent-boss', attr: 'hp', op: 'lte', value: 0 }] } },
-    do: [{ kind: 'goto', targetNodeId: 'win' }],
+    do: [{ kind: 'advance', edgeId: 'e-win' }],
   }
 
   it('jumps to goto immediately when a rule matches mid-performance (at trigger)', () => {
@@ -237,7 +237,7 @@ describe('graph-level reactive rules (instant defeat/victory)', () => {
         }),
         node('win', { }),
       ],
-      edges: [],
+      edges: [{ id: 'e-win', source: 'a', target: 'win', sourceHandle: 'win', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, {
       reactions: [bossDead],
@@ -264,7 +264,7 @@ describe('graph-level reactive rules (instant defeat/victory)', () => {
         }),
         node('win', { }),
       ],
-      edges: [],
+      edges: [{ id: 'e-win', source: 'a', target: 'win', sourceHandle: 'win', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, {
       reactions: [bossDead],

@@ -1,10 +1,10 @@
 /**
- * 按 kind 注册表 form 字段渲染 overlay child params（标量 + options/effects 复合控件）。
+ * 按 kind 注册表 form 字段渲染 overlay child params（标量 + events/effects 复合控件）。
  */
 import type { CSSProperties, JSX } from 'react'
 import type { FormField } from '../../runtime/registry/kind-registry'
 import { getComponent } from '../../runtime/registry/kind-registry'
-import { EffectsEditor, OptionsEditor, type EditorPickerCtx, type ChoiceOptionLike } from './editors'
+import { EffectsEditor, EventsEditor, type EditorPickerCtx, type ComponentEventLike } from './editors'
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 72, opacity: 0.7, flexShrink: 0, fontSize: 11 }
@@ -43,17 +43,17 @@ function renderField(
   const val = readParam(params, f.key)
   switch (f.t) {
     case 'text': {
-      if (f.key === 'defaultKey') {
-        const options = params.options
-        const keys = Array.isArray(options)
-          ? options.map((o) => (typeof o === 'object' && o && 'key' in o ? String((o as { key: string }).key) : '')).filter(Boolean)
+      if (f.key === 'defaultEvent') {
+        const events = params.events
+        const ids = Array.isArray(events)
+          ? events.map((e) => (typeof e === 'object' && e && 'id' in e ? String((e as { id: string }).id) : '')).filter(Boolean)
           : []
-        if (keys.length) {
+        if (ids.length) {
           const v = typeof val === 'string' ? val : ''
           return field('超时默认', (
-            <select value={v} onChange={(e) => onPatch({ defaultKey: e.target.value || undefined })} style={{ flex: 1, fontSize: 12 }}>
+            <select value={v} onChange={(e) => onPatch({ defaultEvent: e.target.value || undefined })} style={{ flex: 1, fontSize: 12 }}>
               <option value="">（首项）</option>
-              {keys.map((k) => <option key={k} value={k}>{k}</option>)}
+              {ids.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           ))
         }
@@ -108,20 +108,20 @@ function renderField(
           />
         </div>
       )
-    case 'options':
+    case 'events':
       return (
         <div style={{ marginTop: 4 }}>
           <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{f.label}</div>
-          <OptionsEditor
-            value={Array.isArray(val) ? (val as ChoiceOptionLike[]) : undefined}
+          <EventsEditor
+            value={Array.isArray(val) ? (val as ComponentEventLike[]) : undefined}
+            variant={f.variant ?? 'plain'}
             pickers={pickers}
-            onChange={(options) => onPatch({ [f.key]: options })}
+            onChange={(events) => onPatch({ [f.key]: events })}
           />
         </div>
       )
     case 'textStyle':
     case 'qteCues':
-    case 'hotspots':
       return (
         <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
           {f.label}：请在「视频」轨编辑器中配置（{f.t}）

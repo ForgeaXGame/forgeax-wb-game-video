@@ -13,7 +13,7 @@ describe('GraphSession (playable view model)', () => {
 
     snap = session.performanceEnd() // enter → a_my(subflow) → wait（技能交互）
     expect(snap.interaction?.component).toBe('skill')
-    expect(snap.interaction?.handles).toEqual(['opt:light', 'opt:heavy', 'opt:medit', 'opt:ult'])
+    expect(snap.interaction?.handles).toEqual(['light', 'heavy', 'medit', 'ult'])
 
     snap = session.submit('light') // → 变招判定 → 轻攻击演出
     snap = session.tick(1000) // 命中 → 结算致死 → rules redirect → win

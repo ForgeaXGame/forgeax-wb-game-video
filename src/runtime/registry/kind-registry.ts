@@ -38,9 +38,9 @@ export type FormField =
   | { t: 'color'; key: string; label: string; placeholder?: string }
   | { t: 'textStyle'; key: string; label: string; group: 'subtitle' | 'overlay' }
   | { t: 'effects'; key: string; label: string }
-  | { t: 'options'; key: string; label: string }
+  /** variant：plain=仅目录；choice=可配 condition；hotspot=可配 x/y。 */
+  | { t: 'events'; key: string; label: string; variant?: 'plain' | 'choice' | 'hotspot' }
   | { t: 'qteCues'; key: string; label: string }
-  | { t: 'hotspots'; key: string; label: string }
 
 /** FormField.t → ComponentInput.valueType（复合控件归 'json'）。 */
 function formTypeToValueType(t: FormField['t']): ComponentInput['valueType'] {
@@ -85,7 +85,7 @@ export interface KindPlugin<P = Record<string, unknown>> {
   stageRelative?: boolean
   /** 同行为的其它 component id（如 battleParry → qte）。 */
   aliases?: string[]
-  /** 导出事件（无则回退 params.exits）。 */
+  /** 导出事件（无则回退 params.events）。 */
   events?: ComponentEvent[]
   /** 中文标签（编辑器「+ 元素」菜单展示）；缺省用 kind。 */
   label?: string
@@ -114,11 +114,12 @@ export interface KindPlugin<P = Record<string, unknown>> {
   resolve?(ctx: RuntimeCtx, params: P, input: unknown): ResolveResult
 }
 
+/** resolve 只判定 outcome；作者副作用一律走 reactions。continue 路径可带引擎内部累积 effects。 */
 export type ResolveResult =
-  | { outcome: string; effects?: GraphEffect[]; continue?: false }
+  | { outcome: string; continue?: false }
   | { continue: true; effects?: GraphEffect[]; outcome?: undefined }
 
-export function isContinueResult(r: ResolveResult): r is { continue: true; effects?: GraphEffect[] } {
+export function isContinueResult(r: ResolveResult): r is { continue: true; effects?: GraphEffect[]; outcome?: undefined } {
   return r.continue === true
 }
 
@@ -159,7 +160,7 @@ export class KindRegistry {
     return out
   }
 
-  /** 组件导出清单（manifest）：inputs（契约）+ events（无则从 params 默认值折 exits）。 */
+  /** 组件导出清单（manifest）：inputs（契约）+ events（无则从 params 默认值折）。 */
   getManifest(componentId: string): ComponentManifest | undefined {
     const p = this.getComponent(componentId)
     if (!p) return undefined
@@ -191,32 +192,24 @@ export class KindRegistry {
   }
 
   /**
-   * 派生节点输出 handle：默认 'out' + reactions 中带 goto 的 event/complete，或 interaction outputs()。
+   * 派生节点出口目录（outlets）：保留字 `default` + 各挂载组件可发事件。
+   * interaction → `outputs(params)`（= params.events）；presentation 等有 events 的（如面板按钮）一并纳入。
+   * 走向由边承接（sourceHandle === 出口 id）。
    */
   deriveOutputs(node: GameNode, overlays?: Record<string, Overlay>): NodeHandle[] {
     const instances = expandNodeOverlays(overlays, node)
     const children: OverlayInstanceChild[] = instances.flatMap((i) => i.children)
-    const out: NodeHandle[] = [{ id: 'out' }]
-    let anyEventReaction = false
-    const consider = (reactions: import('../schema/node-config-schema').Reaction[] | undefined) => {
-      if (!reactions) return
-      for (const r of reactions) {
-        if (!r.do.some((a) => a.kind === 'goto')) continue
-        if (r.when.type === 'event') {
-          anyEventReaction = true
-          out.push({ id: r.when.id, label: r.when.id })
-        }
+    const out: NodeHandle[] = [{ id: 'default' }]
+    for (const el of children) {
+      const plugin = this.getComponent(el.component)
+      if (!plugin) continue
+      if (plugin.role === 'interaction') {
+        out.push(...plugin.outputs(el.params))
+        continue
       }
-    }
-    consider(node.data.reactions)
-    for (const inst of instances) consider(inst.reactions)
-    if (!anyEventReaction) {
-      for (const el of children) {
-        const plugin = this.getComponent(el.component)
-        if (plugin && plugin.role === 'interaction') {
-          out.push(...plugin.outputs(el.params))
-        }
-      }
+      const fromParams = eventsFromParams(el.params as Record<string, unknown>)
+      const events = fromParams.length ? fromParams : (plugin.events ?? [])
+      for (const e of events) out.push({ id: e.id, label: e.label })
     }
     const seen = new Set<string>()
     return out.filter((h) => (seen.has(h.id) ? false : (seen.add(h.id), true)))

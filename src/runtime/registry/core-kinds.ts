@@ -6,11 +6,15 @@
  *
  * 覆盖 nodia 所需（数值结算/副作用一律走 node.data.reactions 的生命周期相位，无 logic 结算组件）：
  *  - floatText(view) 漂字：纯展示，params 交给 Player。
- *  - choice(interaction) / skill(interaction) 选择/技能：每选项一个 opt:<key> 出口。
- *  - qte(interaction)   三档判定：pass/good/fail 出口。
- *  - hotspot(interaction) 热点：每热点一个 hs:<id> 出口。
+ *  - choice(interaction) / skill(interaction) 选择/技能：每个 event 一个同名出口。
+ *  - qte(interaction)   判定：默认 pass/good/fail（inkKou 仅 pass/fail），或 params.events 自定义。
+ *  - hotspot(interaction) 热点：每个 HotspotSpot（id + 可选 x/y）一个同名出口。
+ *
+ * 交互目录：共享壳是 ComponentEvent；choice/skill 用 ChoiceOption（可带 condition），
+ * hotspot 用 HotspotSpot（可带 x/y）。出口 id === event.id；副作用一律进 reactions。
  */
-import type { GraphCondition, GraphEffect, GraphTextStyle } from '../schema/graph-schema'
+import type { GraphCondition, GraphTextStyle } from '../schema/graph-schema'
+import type { ComponentEvent } from '../schema/node-config-schema'
 import type { FormField, KindPlugin } from './kind-registry'
 import { KindRegistry, registerKind } from './kind-registry'
 import { evalExpr } from '../engine/expr'
@@ -93,28 +97,25 @@ export const hudKind: KindPlugin<HudParams> = {
 }
 
 // ── interaction: choice / skill ───────────────────────────────────────────────
-export interface ChoiceOption {
-  key: string
-  label?: string
-  effects?: GraphEffect[]
-  /** 逐项门控：条件不成立则该选项被锁定（皮肤灰置禁选）。如「灭世需 qi≥5」。 */
-  condition?: GraphCondition
-}
 /** 选项呈现形态：列表 / 画面热区。 */
 export type ChoicePresentation = 'list' | 'hotspot'
 /** 选项 UI 皮肤（对齐 legacy ChoiceUi）。 */
 export type ChoiceUi = 'default' | 'battleSkillBar' | 'inkYingMo'
+/**
+ * choice/skill 的选项项 = 共享事件 + 本组件门控。
+ * `condition` 不成立 → 皮肤用实时态灰置禁选（≠ 边 condition；引擎不注入 _locked）。
+ */
+export type ChoiceOption = ComponentEvent & { condition?: GraphCondition }
 export interface ChoiceParams {
-  options: ChoiceOption[]
+  /** 交互目录：每个 option 一个同名出口（id === 出口 handle）。 */
+  events: ChoiceOption[]
   /** 限时 ms（0/缺省=不限时）。 */
   timeoutMs?: number
-  /** 超时默认出口 key。 */
-  defaultKey?: string
+  /** 超时默认出口 event id。 */
+  defaultEvent?: string
   prompt?: string
   presentation?: ChoicePresentation
   ui?: ChoiceUi
-  /** 热区（presentation='hotspot' 时按 key 对应画面区域）。 */
-  hotspots?: HotspotItem[]
   /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
   component?: string
 }
@@ -123,24 +124,23 @@ const CHOICE_FORM: FormField[] = [
   { t: 'select', key: 'presentation', label: '呈现', options: [{ value: 'list', label: '列表' }, { value: 'hotspot', label: '热区' }] },
   { t: 'select', key: 'ui', label: '皮肤', options: [{ value: 'default', label: '默认' }, { value: 'battleSkillBar', label: '战斗技能条' }, { value: 'inkYingMo', label: '水墨影魔' }] },
   { t: 'number', key: 'timeoutMs', label: '限时ms' },
-  { t: 'text', key: 'defaultKey', label: '超时key' },
-  { t: 'options', key: 'options', label: '选项' },
+  { t: 'text', key: 'defaultEvent', label: '超时出口' },
+  { t: 'events', key: 'events', label: '选项', variant: 'choice' },
 ]
 function choiceLike(kind: string, label: string): KindPlugin<ChoiceParams> {
   return {
     kind,
     role: 'interaction',
     label,
-    defaults: () => ({ options: [{ key: 'opt0', label: '选项一' }], presentation: 'list', ui: 'default' }),
+    defaults: () => ({ events: [{ id: 'opt0', label: '选项一' }], presentation: 'list', ui: 'default' }),
     form: CHOICE_FORM,
     validate: (p) =>
-      Array.isArray(p.options) && p.options.length > 0 ? [] : [`${kind}.options must be non-empty`],
-    outputs: (p) => (p.options ?? []).map((o) => ({ id: `opt:${o.key}`, label: o.label })),
+      Array.isArray(p.events) && p.events.length > 0 ? [] : [`${kind}.events must be non-empty`],
+    outputs: (p) => (p.events ?? []).map((e) => ({ id: e.id, label: e.label })),
     resolve: (_ctx, p, input) => {
-      // input = 选项 key（超时/缺省时用 defaultKey）
-      const key = typeof input === 'string' ? input : p.defaultKey ?? p.options[0]?.key
-      const opt = p.options.find((o) => o.key === key)
-      return { outcome: `opt:${key}`, effects: opt?.effects }
+      // input = 选项 event id（超时/缺省时用 defaultEvent → 首项）
+      const id = typeof input === 'string' ? input : p.defaultEvent ?? p.events[0]?.id ?? 'default'
+      return { outcome: id }
     },
   }
 }
@@ -197,15 +197,24 @@ export interface QteParams {
   sequence?: string[]
   /** UI 皮肤 id。 */
   ui?: string
-  outcomeLabels?: Record<string, string>
+  /** 交互目录：自定义判定出口（缺省 = pass/good/fail，inkKou = pass/fail）。 */
+  events?: ComponentEvent[]
+  /** 超时默认出口 event id（缺省 'fail'）。 */
+  defaultEvent?: string
+  /** 限时 ms。 */
+  timeoutMs?: number
   /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
   component?: string
   /** 皮肤自管时限 ms（如叩击/防反的收圈时长；缺省各皮肤自带）。 */
   durationMs?: number
 }
-/** 样式（component）自带组合按键时，用 `exits` 声明各按键各自的结算 id/文案（见 battleParry）。 */
+/** @deprecated 旧草稿字段；新数据用 `events` / `defaultEvent`（边路由统一）。 */
 export type QteExit = { key: string; label?: string }
-export type QteFullParams = QteParams & { exits?: QteExit[]; defaultKey?: string; timeoutMs?: number }
+export type QteFullParams = QteParams & {
+  exits?: QteExit[]
+  defaultKey?: string
+  outcomeLabels?: Record<string, string>
+}
 export const qteKind: KindPlugin<QteFullParams> = {
   kind: 'qte',
   role: 'interaction',
@@ -225,35 +234,31 @@ export const qteKind: KindPlugin<QteFullParams> = {
     { t: 'number', key: 'score', label: '满分' },
     { t: 'number', key: 'windowMs', label: '窗口ms' },
     { t: 'text', key: 'ui', label: '皮肤' },
+    { t: 'events', key: 'events', label: '出口', variant: 'plain' },
     { t: 'qteCues', key: 'cues', label: '拍点' },
   ],
   validate: () => [],
   outputs: (p) => {
+    // 自定义 events 优先（PR #77）；旧 exits 仅作草稿兼容。
+    if (Array.isArray(p.events) && p.events.length > 0) {
+      return p.events.map((e) => ({ id: e.id, label: e.label }))
+    }
     const exits = p.exits
     if (Array.isArray(exits) && exits.length > 0) {
       const list = exits.map((e) => ({ id: e.key, label: e.label ?? p.outcomeLabels?.[e.key] }))
-      // 超时/未命中兜底 handle（defaultKey，缺省 'fail'）运行时也可达，若不与某个按键 id 重合则一并列为候选。
-      const missKey = p.defaultKey ?? 'fail'
+      const missKey = p.defaultKey ?? p.defaultEvent ?? 'fail'
       if (!list.some((o) => o.id === missKey)) {
         list.push({ id: missKey, label: p.outcomeLabels?.[missKey] })
       }
       return list
     }
-    // inkKou 只出 pass|fail；其余 QTE 默认三档（可用 outcomeLabels 补文案）
     if (p.component === 'inkKou') {
-      return [
-        { id: 'pass', label: p.outcomeLabels?.pass },
-        { id: 'fail', label: p.outcomeLabels?.fail },
-      ]
+      return [{ id: 'pass' }, { id: 'fail' }]
     }
-    return [
-      { id: 'pass', label: p.outcomeLabels?.pass },
-      { id: 'good', label: p.outcomeLabels?.good },
-      { id: 'fail', label: p.outcomeLabels?.fail },
-    ]
+    return [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }]
   },
   resolve: (_ctx, p, input) => {
-    // ① 字符串 outcome（含 exits key / pass|good|fail）；② { hits } 由 passingHits 判；③ 超时 defaultKey。
+    // ① 字符串 outcome（event id / pass|good|fail）；② { key }；③ { hits } 由 passingHits 判；④ 超时 defaultEvent。
     if (typeof input === 'string' && input) return { outcome: input }
     if (input && typeof input === 'object' && 'key' in input && typeof (input as { key: unknown }).key === 'string') {
       return { outcome: (input as { key: string }).key }
@@ -263,7 +268,7 @@ export const qteKind: KindPlugin<QteFullParams> = {
       const need = p.passingHits ?? 1
       return { outcome: hits >= need ? 'pass' : 'fail' }
     }
-    return { outcome: p.defaultKey ?? 'fail' }
+    return { outcome: p.defaultEvent ?? 'fail' }
   },
 }
 
@@ -319,25 +324,21 @@ export const transitionKind: KindPlugin<TransitionParams> = {
 }
 
 // ── interaction: hotspot ──────────────────────────────────────────────────────
-export interface HotspotItem {
-  id: string
-  target?: string
-  label?: string
-  x?: number
-  y?: number
-}
+/** 热点项 = 共享事件 + 本组件画面锚点（归一化 0~1）。 */
+export type HotspotSpot = ComponentEvent & { x?: number; y?: number }
 export interface HotspotParams {
-  hotspots: HotspotItem[]
+  /** 交互目录：每个 spot 一个同名出口；坐标由本组件 params 决定。 */
+  events: HotspotSpot[]
 }
 export const hotspotKind: KindPlugin<HotspotParams> = {
   kind: 'hotspot',
   role: 'interaction',
   label: '热点',
-  defaults: () => ({ hotspots: [] }),
-  form: [{ t: 'hotspots', key: 'hotspots', label: '热点' }],
-  validate: (p) => (Array.isArray(p.hotspots) ? [] : ['hotspot.hotspots must be an array']),
-  outputs: (p) => (p.hotspots ?? []).map((h) => ({ id: `hs:${h.id}`, label: h.label })),
-  resolve: (_ctx, _p, input) => ({ outcome: `hs:${String(input)}` }),
+  defaults: () => ({ events: [] }),
+  form: [{ t: 'events', key: 'events', label: '热点', variant: 'hotspot' }],
+  validate: (p) => (Array.isArray(p.events) ? [] : ['hotspot.events must be an array']),
+  outputs: (p) => (p.events ?? []).map((e) => ({ id: e.id, label: e.label })),
+  resolve: (_ctx, _p, input) => ({ outcome: String(input) }),
 }
 
 export const CORE_KINDS: KindPlugin[] = [

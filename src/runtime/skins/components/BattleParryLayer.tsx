@@ -2,8 +2,8 @@
  * 防反 QTE 皮肤（component id: `battleParry`）—— 复刻旧原型视觉：
  * 右侧纵向居中、A 左下 / B 右上两枚水墨小键，RAF 收圈。
  *
- * 提交：默认 A→pass、B→good；有 params.exits 时按 exits[0]/[1].key 提交。
- * 超时 → defaultKey ?? 'fail'。键位始终 A/B（不跟 exits.label / outcomeLabels 走，避免长文案撑大按钮）。
+ * 提交：默认 A→pass、B→good；有 params.events 时按 events[0]/[1].id 提交。
+ * 超时 → defaultEvent ?? 'fail'。键位始终 A/B（不跟 event.label 走，避免长文案撑大按钮）。
  */
 import { useEffect, useRef, useState } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
@@ -12,16 +12,16 @@ import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 type ExitOpt = { key: string; glyph: 'A' | 'B' }
 
 function exitsOf(params: Record<string, unknown>): ExitOpt[] {
-  const exits = params.exits
-  if (Array.isArray(exits) && exits.length >= 2) {
-    const keys = exits
-      .filter((e): e is { key: string } => !!e && typeof e === 'object' && typeof (e as { key?: unknown }).key === 'string')
+  const events = params.events
+  if (Array.isArray(events) && events.length >= 2) {
+    const ids = events
+      .filter((e): e is { id: string } => !!e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string')
       .slice(0, 2)
-      .map((e) => e.key)
-    if (keys.length >= 2) {
+      .map((e) => e.id)
+    if (ids.length >= 2) {
       return [
-        { key: keys[0]!, glyph: 'A' },
-        { key: keys[1]!, glyph: 'B' },
+        { key: ids[0]!, glyph: 'A' },
+        { key: ids[1]!, glyph: 'B' },
       ]
     }
   }
@@ -43,7 +43,7 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
     ?? interaction.timeoutMs
     ?? 2600
   const options = exitsOf(params)
-  const missKey = typeof params.defaultKey === 'string' ? params.defaultKey : 'fail'
+  const missKey = typeof params.defaultEvent === 'string' ? params.defaultEvent : 'fail'
   const resolvedRef = useRef(false)
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [settled, setSettled] = useState<{ kind: 'hit'; index: number } | { kind: 'miss' } | null>(null)

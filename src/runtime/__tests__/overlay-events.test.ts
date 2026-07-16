@@ -5,7 +5,6 @@ import type { Overlay, Reaction } from '../schema/node-config-schema'
 import {
   aggregateOverlayEvents,
   aggregateNodeOverlayEvents,
-  deriveEdgesFromReactions,
   resolveEventReactionDo,
 } from '../schema/overlay-events'
 import { GraphRuntime } from '../engine/engine'
@@ -23,17 +22,17 @@ describe('overlay events / reactions', () => {
         id: 'parry',
         component: 'battleParry',
         params: {
-          exits: [
-            { key: 'A', label: '防反' },
-            { key: 'B', label: '闪避' },
-            { key: 'miss', label: '失手' },
+          events: [
+            { id: 'A', label: '防反' },
+            { id: 'B', label: '闪避' },
+            { id: 'miss', label: '失手' },
           ],
         },
       },
     ],
   }
 
-  it('aggregates events from params.exits when single emitter', () => {
+  it('aggregates events from params.events when single emitter', () => {
     const refs = aggregateOverlayEvents(overlay, getComponentManifest)
     expect(refs.map((r) => r.eventId)).toEqual(['A', 'B', 'miss'])
     expect(refs[0]?.componentId).toBe('battleParry')
@@ -46,12 +45,12 @@ describe('overlay events / reactions', () => {
         {
           id: 'q1',
           component: 'qte',
-          params: { exits: [{ key: 'pass' }, { key: 'fail' }] },
+          params: { events: [{ id: 'pass' }, { id: 'fail' }] },
         },
         {
           id: 'q2',
           component: 'qte',
-          params: { exits: [{ key: 'pass' }, { key: 'fail' }] },
+          params: { events: [{ id: 'pass' }, { id: 'fail' }] },
         },
       ],
     }
@@ -60,27 +59,11 @@ describe('overlay events / reactions', () => {
   })
 
   it('resolveEventReactionDo matches bare and namespaced keys', () => {
-    const actions = [{ kind: 'goto' as const, targetNodeId: 'n2' }]
+    const actions = [{ kind: 'advance' as const, edgeId: 'e2' }]
     const bare: Reaction[] = [{ when: { type: 'event', id: 'A' }, do: actions }]
     const ns: Reaction[] = [{ when: { type: 'event', id: 'parry:A' }, do: actions }]
     expect(resolveEventReactionDo(bare, 'A')?.[0]).toEqual(actions[0])
     expect(resolveEventReactionDo(ns, 'A', 'parry')?.[0]).toEqual(actions[0])
-  })
-
-  it('deriveEdgesFromReactions builds goto edges without edge effects', () => {
-    const edges = deriveEdgesFromReactions('n1', [
-      {
-        when: { type: 'event', id: 'A' },
-        do: [
-          { kind: 'effect', effects: [{ kind: 'var', varId: 'x', op: 'set', value: 1 }] },
-          { kind: 'goto', targetNodeId: 'n2' },
-        ],
-      },
-    ])
-    expect(edges).toHaveLength(1)
-    expect(edges[0]?.sourceHandle).toBe('A')
-    expect(edges[0]?.target).toBe('n2')
-    expect(edges[0]?.data).toEqual({ label: 'A' })
   })
 
   it('event reaction applies effects; edge (by handle) decides routing', () => {
@@ -143,11 +126,11 @@ describe('overlay events / reactions', () => {
     const overlays = {
       hudA: {
         id: 'hudA',
-        children: [{ id: 'q', component: 'qte', params: { exits: [{ key: 'A' }] } }],
+        children: [{ id: 'q', component: 'qte', params: { events: [{ id: 'A' }] } }],
       },
       hudB: {
         id: 'hudB',
-        children: [{ id: 'q', component: 'qte', params: { exits: [{ key: 'A' }] } }],
+        children: [{ id: 'q', component: 'qte', params: { events: [{ id: 'A' }] } }],
       },
     }
     const refs = aggregateNodeOverlayEvents(mounts, overlays, getComponentManifest)

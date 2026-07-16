@@ -7,7 +7,7 @@
  * - **OverlayInstance**：运行态展开结果（不落盘）
  *
  * 视频上只能挂 overlay（经 OverlayNode），不能把裸组件直接贴视频。
- * 作者面：组件导出事件 → Overlay 聚合 → `reactions`（when/do）；边可由 goto 派生。
+ * 作者面：组件导出事件 → Overlay 聚合 → `reactions`（when/do）；走向经 do 内 advance + 边。
  *
  * 接入：`GameScenario.ui.overlays` / `NodeData.overlayNodes`。
  */
@@ -41,8 +41,12 @@ export interface ComponentInput {
 }
 
 /**
- * 组件对外抛出的事件（作者面）。
- * 运行时 submit / resolve → 归一成这些 id；≠ 图边条件。
+ * 组件对外抛出的事件（作者面 · 交互目录 SSOT）。
+ * 只描述「会发什么」：`id` / `label` / 可选 `payload`。
+ * 运行时 submit / resolve → 归一成这些 id；边用 `sourceHandle === event.id` 承接。
+ *
+ * 门控、坐标等**组件私有**参数不要挂这里——见各 kind 的 params 项类型
+ *（如 skill/choice 的 `ChoiceOption.condition`、hotspot 的 `HotspotSpot.x/y`）。
  */
 export interface ComponentEvent {
   id: string
@@ -67,15 +71,16 @@ export interface ComponentManifest {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * 闭合动作原语（改状态 / 跳转 / 刷出瞬态组件）。
+ * 闭合动作原语（改状态 / 沿边推进 / 刷出瞬态组件）——同级并列，一个 do 可含多件事。
  * - effect：施加副作用（改 attr/var/flag/item）
- * - goto：跳转（仅 state/watch/shown/hidden 类反应生效；event/complete 的走向由边负责）
+ * - advance：沿指定出边 `edgeId` 推进到其 `target`（唯一「换节点」通道；目标只在边上）。
+ *   交互/生命周期事件里可省略——省略时若存在匹配出边则默认推进；state 打断必须显式。
  * - spawn：由反应**主动实例化**一个 overlay 组件模板（瞬态表现，如伤害飘字）；
  *   `from` = `overlayId/childId` 引用目录模板，`params` 可含 `{expr}` 读 watch 局部量（prev/next/delta）。
  */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
-  | { kind: 'goto'; targetNodeId: string }
+  | { kind: 'advance'; edgeId: string }
   | { kind: 'spawn'; from: string; params?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
 
 /**
@@ -84,9 +89,9 @@ export type NodeAction =
  * - at(ms)：演出播到第 ms 毫秒
  * - exit：离开节点前
  * - complete：节点收尾自动推进（`if` 缺省 = 无条件）
- * - event：组件事件（挂 mount.reactions；do 仅 effect，走向由边）
- * - state：仅挂 scenario.reactions（硬打断 goto）；节点级不求值
- * - watch：观察某表达式(`of`)的值变化（`on` change/inc/dec）→ do（effect/spawn/goto）；
+ * - event：组件事件（挂 mount.reactions；do = effect/spawn/advance）
+ * - state：仅挂 scenario.reactions（硬打断，do 必含显式 advance）；节点级不求值
+ * - watch：观察某表达式(`of`)的值变化（`on` change/inc/dec）→ do（effect/spawn/advance）；
  *   在每个写屏障处重采样比对（pull-diff）。局部量 prev/next/delta 供 do 内 `{expr}` 使用。
  * - shown / hidden：某 overlay 组件实例**出现 / 消失**时触发（`of` = childId / mountId/childId / overlayId/childId）。
  */
@@ -103,7 +108,7 @@ export type ReactionTrigger =
 
 /**
  * 瘦 Reaction：when + do。作用域由挂载位置决定。
- * do 仅承载副作用（effect）；**走向由边负责**（state 类的 goto 例外，用于全局硬打断）。
+ * do 同级承载副作用（effect/spawn）+ 走向（advance edgeId）；**换节点只经边**。
  */
 export interface Reaction {
   when: ReactionTrigger
@@ -192,7 +197,7 @@ export interface GameScenarioUi {
  * - `id`：挂载键（多挂载时事件命名空间用）；缺省 = `overlay`
  * - `overlay`：引用哪张可复用 Overlay（原型；本挂载始终跟随其后续编辑，除被 override 的字段外）
  * - `layout`：整块相对视频画面；**无显式宽高时自适应内容**（单组件 overlay = 组件大小）
- * - `reactions`：本挂载 when→do（多为 event；边可由 goto 派生）
+ * - `reactions`：本挂载 when→do（多为 event；走向经 do 内 advance + 边）
  * - `overrides` / `added` / `removed`：本挂载对 `overlay` 的**稀疏差量**（prototype + override，对齐
  *   Figma 实例覆盖 / Unity Prefab modifications 心智）——未出现在这三者里的组件永远跟随原型；
  *   只有显式改过的字段才脱钩。合并规则见 `expand-overlay.ts#resolveMountChildren`。
@@ -257,12 +262,12 @@ export interface OverlayInstance {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6. Demo（reactions 作者 SSOT；边可由 goto 派生对照）
+// 6. Demo（reactions 作者 SSOT；走向经 do 内 advance + 边）
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * video → OverlayNode 挂上 overlay{ playerHp, bossHp, parry }
- * 扣血在 event reaction 的 effect；走向只靠边（无 goto）。
+ * 扣血在 event reaction 的 effect；走向只靠边（do 省略 advance 时按匹配出边默认推进）。
  */
 export const OVERLAY_DEMO = {
   schemaVersion: 'wb-game-video.overlay.v1',
@@ -308,12 +313,12 @@ export const OVERLAY_DEMO = {
             layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
             trigger: { when: 'at', ms: 1200 },
             params: {
-              exits: [
-                { key: 'A', label: '防反' },
-                { key: 'B', label: '闪避' },
-                { key: 'miss', label: '失手' },
+              events: [
+                { id: 'A', label: '防反' },
+                { id: 'B', label: '闪避' },
+                { id: 'miss', label: '失手' },
               ],
-              defaultKey: 'miss',
+              defaultEvent: 'miss',
               timeoutMs: 900,
             },
           },
@@ -449,12 +454,12 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
       trigger: { when: 'at', ms: 1200 },
       layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
       params: {
-        exits: [
-          { key: 'A', label: '防反' },
-          { key: 'B', label: '闪避' },
-          { key: 'miss', label: '失手' },
+        events: [
+          { id: 'A', label: '防反' },
+          { id: 'B', label: '闪避' },
+          { id: 'miss', label: '失手' },
         ],
-        defaultKey: 'miss',
+        defaultEvent: 'miss',
         timeoutMs: 900,
       },
       source: { mountId: 'battleHud', overlayId: 'battleHud', childId: 'parry', nodeId: 'n-boss-slash' },

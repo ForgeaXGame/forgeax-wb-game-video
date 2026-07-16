@@ -22,10 +22,8 @@ import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
 import { getKind } from '../../runtime/registry/kind-registry'
 
 function autoInput(handles: string[]): unknown {
-  const h = handles[0] ?? ''
-  if (h.startsWith('opt:')) return h.slice(4)
-  if (h.startsWith('hs:')) return h.slice(3)
-  return h
+  // handle === event id（无前缀）；auto 演示直接提交首个非默认出口。
+  return handles.find((h) => h !== 'default') ?? handles[0] ?? ''
 }
 
 // ── 可拖拽 + 可缩放浮层（对齐旧 BlueprintPlayer DraggablePanel）──────────────────
@@ -146,7 +144,15 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     }
     return m
   }, [overlays, currentNode])
-  const skinCtx: SkinCtx | undefined = snap ? { hud: snap.hud } : undefined
+  const rt = sessionRef.current?.runtime
+  const skinCtx: SkinCtx | undefined = snap && rt
+    ? {
+        hud: snap.hud,
+        condition: { state: rt.state, visited: rt.state.visited },
+      }
+    : snap
+      ? { hud: snap.hud }
+      : undefined
 
   const toolBtn = (on: boolean): CSSProperties => ({
     padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12,

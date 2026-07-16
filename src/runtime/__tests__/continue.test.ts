@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
 import { registerKind, unregisterKind } from '../registry/kind-registry'
-import type { GameGraph, GameNode, GameScenario, GraphEffect } from '../schema/graph-schema'
+import type { GameGraph, GameScenario, GraphEffect } from '../schema/graph-schema'
 import { node, scnOf as scnOfGraph, rid } from './test-fixtures'
 
 const KIND = 'multiStep'
@@ -15,9 +15,12 @@ beforeEach(() => {
       const hits = Number(ctx.state.vars.hits ?? 0)
       if (input === 'hit') {
         const next = hits + 1
-        const effects: GraphEffect[] = [{ kind: 'var', varId: 'hits', op: 'set', value: next }]
-        if (next < 3) return { continue: true, effects }
-        return { outcome: 'done', effects }
+        // continue 路径可带引擎内部累积 effects；定局 outcome 的副作用走 reactions（本测只验证 continue→outcome 相位）。
+        if (next < 3) {
+          const effects: GraphEffect[] = [{ kind: 'var', varId: 'hits', op: 'set', value: next }]
+          return { continue: true, effects }
+        }
+        return { outcome: 'done' }
       }
       return { outcome: 'done' }
     },
@@ -76,7 +79,8 @@ describe('submitInteraction continue', () => {
     expect(rt.state.vars.hits).toBe(2)
 
     rt.submitInteraction(rid('a', 'ms'), 'hit')
-    expect(rt.state.vars.hits).toBe(3)
+    // 第三次定局：outcome 副作用不经 resolve.effects；累积值停在上次 continue
+    expect(rt.state.vars.hits).toBe(2)
     expect(rt.state.currentNodeId).toBe('b')
     expect(rt.state.phase).toBe('ended')
   })
@@ -108,13 +112,13 @@ describe('submitInteraction continue', () => {
         }),
         node('win', { }),
       ],
-      edges: [],
+      edges: [{ id: 'e-win', source: 'a', target: 'win', sourceHandle: 'win', targetHandle: 'in' }],
     }
     const scn = scnOf(graph, {
         reactions: [
           {
             when: { type: 'state', condition: { all: [{ type: 'attrRatio', entityId: 'ent-boss', attr: 'hp', op: 'lte', value: 0 }] } },
-            do: [{ kind: 'goto', targetNodeId: 'win' }],
+            do: [{ kind: 'advance', edgeId: 'e-win' }],
           },
         ],
       })

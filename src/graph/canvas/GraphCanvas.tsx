@@ -104,18 +104,17 @@ const BADGE_COLOR: Record<string, string> = {
   subflow: '#eab308',
 }
 const HANDLE_COLOR: Record<string, string> = {
+  default: '#6b7280',
   pass: '#22c55e',
   good: '#84cc16',
   fail: '#ef4444',
   win: '#22c55e',
   lose: '#ef4444',
-  else: '#a3a3a3',
 }
 function handleColor(id: string): string {
   if (HANDLE_COLOR[id]) return HANDLE_COLOR[id]!
-  if (id.startsWith('cond:')) return '#eab308'
-  if (id.startsWith('opt:')) return '#3b82f6'
-  return '#6b7280'
+  if (id === 'default') return '#6b7280'
+  return '#3b82f6' // 交互出口（pass/fail/选项/热点…）
 }
 
 const Ico = {
@@ -579,7 +578,7 @@ function GraphCanvasInner({
   const onConnect = useCallback(
     (conn: Connection) => {
       if (!conn.source || !conn.target) return
-      const sourceHandle = (conn.sourceHandle ?? 'source:out').replace(/^source:/, '')
+      const sourceHandle = (conn.sourceHandle ?? 'source:default').replace(/^source:/, '')
       onChange(connect(graph, { source: conn.source, sourceHandle, target: conn.target }))
     },
     [graph, onChange],

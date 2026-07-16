@@ -4,7 +4,7 @@
  * - `panelA`：单按钮 A（事件 `A`）。
  * - `panelB`：三按钮 B1 / B2 / B3（事件 `B1` / `B2` / `B3`）。
  * 摆放由 overlay 子项 `layout` 决定（本组件只负责内容，不写死位置/尺寸）。
- * 点击经 `props.emit(key)` → session.emitEvent → 挂载 event 反应（effect/spawn/goto），**不阻塞演出**。
+ * 点击经 `props.emit(key)` → session.emitEvent → 挂载 event 反应（effect/spawn/advance），**不阻塞演出**。
  */
 import type { OverlayProps } from '../rendererRegistry'
 import type { KindPlugin } from '../../registry/kind-registry'
@@ -21,10 +21,13 @@ const btn: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-export function PanelA({ emit }: OverlayProps): JSX.Element {
+export function PanelA({ overlay, emit }: OverlayProps): JSX.Element {
+  const label = typeof overlay.params?.label === 'string' && overlay.params.label.trim()
+    ? overlay.params.label.trim()
+    : 'A'
   return (
     <div style={row}>
-      <button type="button" style={btn} onClick={() => emit?.('A')}>A</button>
+      <button type="button" style={btn} onClick={() => emit?.('A')}>{label}</button>
     </div>
   )
 }

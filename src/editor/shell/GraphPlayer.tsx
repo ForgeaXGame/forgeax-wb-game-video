@@ -52,7 +52,10 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
     }
     return m
   }, [overlays, currentNode])
-  const skinCtx: SkinCtx = { hud: snap.hud }
+  const skinCtx: SkinCtx = {
+    hud: snap.hud,
+    condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+  }
 
   useEffect(() => {
     const el = rootRef.current

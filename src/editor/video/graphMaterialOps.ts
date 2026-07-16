@@ -14,7 +14,7 @@
  *   字幕 dialogue[]     → kind 'dialogue'   （MaterialItem 'subtitle'）
  *   飘字 overlays[]      → kind 'floatText'  （'overlay'）+ 结算联动 = 节点 reaction（effect.id `${floatId}-settle`）
  *   QTE  qte.cues[]      → kind 'qte'（params.cues[]）→ 每 cue 一个 'qte' 项（整段 QTE 跨度由 cues 派生，不再单列 'qte_window' 轨）
- *   选项 choice+branches → kind 'choice'（params.options[]）+ 分支跳转 = 出边 `opt:<key>`
+ *   选项 choice+branches → kind 'choice'（params.events[]）+ 分支跳转 = 出边 `<id>`；效果 = 节点 event reaction
  */
 import type {
   Entity,
@@ -117,8 +117,8 @@ const OPTION_XY = { x: 0.5, y: 0.72 }
 const QTE_GOOD_WINDOW = 480
 /**
  * QTE 元素级参数键（落 el.params，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分 /
- * 组合按键声明（exits/defaultKey，battleParry 等双键皮肤用）/ 皮肤自管时长窗口（windowMs——
- * 注意与 cue 级 `durationMs`（hold 形态按住时长）同名冲突，故意不叫 durationMs）。
+ * 出口目录（events/defaultEvent，PR #77）+ 旧 exits/defaultKey 兼容 / 皮肤自管时长
+ * （windowMs 或 durationMs——注意与 cue 级 `durationMs` hold 时长同名冲突）。
  */
 const QTE_ELEMENT_PARAM_KEYS = new Set([
   'component',
@@ -127,11 +127,16 @@ const QTE_ELEMENT_PARAM_KEYS = new Set([
   'score',
   'passingScore',
   'tolerance',
+  'events',
+  'defaultEvent',
   'exits',
   'defaultKey',
   'windowMs',
+  'durationMs',
+  'timeoutMs',
 ])
-const CHOICE_HANDLE = 'opt:'
+/** 边路由统一后选项 handle = 裸 event id（无 `opt:` 前缀）。 */
+const CHOICE_HANDLE = ''
 
 // ── 元素读取小工具 ────────────────────────────────────────────────────────────
 function str(v: unknown): string | undefined {
@@ -145,8 +150,36 @@ function cuesOf(el: OverlayChild | undefined): QteCue[] {
   return Array.isArray(cues) ? (cues as QteCue[]) : []
 }
 function optionsOf(el: OverlayChild | undefined): ChoiceOption[] {
-  const options = paramsOf(el).options
-  return Array.isArray(options) ? (options as ChoiceOption[]) : []
+  const events = paramsOf(el).events
+  return Array.isArray(events) ? (events as ChoiceOption[]) : []
+}
+
+/** 读节点上某 event（id）reaction 的 effect 副作用（新模型：效果在 reactions，不在选项）。 */
+function readEventEffects(node: GameNode, id: string): GraphEffect[] {
+  const r = (node.data.reactions ?? []).find((rc) => rc.when.type === 'event' && rc.when.id === id)
+  const eff = r?.do.find((a) => a.kind === 'effect')
+  return eff && eff.kind === 'effect' ? eff.effects : []
+}
+
+/** 写节点上某 event（id）reaction 的 effect 副作用（空则移除该 effect 动作，保留其它 do）。 */
+function writeEventEffectsData(
+  reactions: Reaction[] | undefined,
+  id: string,
+  effects: GraphEffect[],
+): Reaction[] | undefined {
+  const list = reactions ?? []
+  const idx = list.findIndex((r) => r.when.type === 'event' && r.when.id === id)
+  if (idx < 0) {
+    if (!effects.length) return reactions
+    return [...list, { when: { type: 'event', id }, do: [{ kind: 'effect', effects }] }]
+  }
+  const r = list[idx]!
+  const rest = r.do.filter((a) => a.kind !== 'effect')
+  const nextDo = effects.length ? [{ kind: 'effect' as const, effects }, ...rest] : rest
+  const next = [...list]
+  if (nextDo.length) next[idx] = { ...r, do: nextDo }
+  else next.splice(idx, 1)
+  return next.length ? next : undefined
 }
 function filterLabel(id: unknown): string {
   return FILTER_PRESETS.find((p) => p.id === id)?.label ?? '滤镜'
@@ -723,7 +756,11 @@ export function activePreviewOverlaysFromNode(
         materialKey: `option:${el.id}`,
         kind: 'option',
         label: str(params.prompt) ?? '请选择',
-        detail: resolveChoicePreviewDetail(optionsOf(el), previewCtx, previewState) || undefined,
+        detail: resolveChoicePreviewDetail(
+          optionsOf(el).map((o) => ({ label: o.label ?? o.id, effects: readEventEffects(node, o.id), condition: o.condition })),
+          previewCtx,
+          previewState,
+        ) || undefined,
         x: OPTION_XY.x,
         y: OPTION_XY.y,
         zIndex: normalizeLayer(el.layout?.zIndex, 3),
@@ -852,7 +889,7 @@ export function deleteMaterialGraph(scenario: GameScenario, node: GameNode, item
       return removeQteCueGraph(scenario, node, item.id)
     case 'option': {
       const el = choiceElement(scenario, node)
-      return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: [CHOICE_HANDLE], childId: el?.id })
+      return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: el ? optionsOf(el).map((o) => o.id) : [], childId: el?.id })
     }
     default:
       return scenario
@@ -951,14 +988,13 @@ export function addMaterialGraph(
     handlePrefixes: qteOutcomeCandidates(existingQte).map((c) => c.handle),
   })
   const id = newElementId()
-  const key = 'opt0'
   const el: OverlayChild = {
     id,
     component: 'choice',
     trigger: { when: 'enter' },
     window: { startMs: 0, endMs: dur },
     layout: { zIndex: 3 },
-    params: { options: [{ key, label: '选项一' }], prompt: '请选择', presentation: 'list' },
+    params: { events: [{ id: 'opt0', label: '选项一' }], prompt: '请选择', presentation: 'list' },
   }
   let s = addOverlayChild(s0, node.id, el)
   return { scenario: s, selectKey: `option:${id}` }
@@ -999,7 +1035,7 @@ export function addQteCueGraph(
   }
   // 首次建 QTE：清掉 choice（互斥），新建 qte 元素。
   const choice = choiceElement(scenario, node)
-  const s0 = teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: [CHOICE_HANDLE], childId: choice?.id })
+  const s0 = teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: choice ? optionsOf(choice).map((o) => o.id) : [], childId: choice?.id })
   const id = newElementId()
   const newEl: OverlayChild = {
     id,
@@ -1116,7 +1152,7 @@ export function patchOverlayGraph(
   return s
 }
 
-// ── 写映射：选项分支（= 出边 opt:<key> + option.effects）──────────────────────
+// ── 写映射：选项分支（= 出边 <id> + event reaction effects）───────────────────
 export interface OptionBranchView {
   key: string
   label: string
@@ -1128,36 +1164,36 @@ export function listOptionBranches(scenario: GameScenario, node: GameNode): Opti
   const el = choiceElement(scenario, node)
   if (!el) return []
   return optionsOf(el).map((o) => {
-    const edge = scenario.graph.edges.find((e) => e.source === node.id && e.sourceHandle === `${CHOICE_HANDLE}${o.key}`)
+    const edge = scenario.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === o.id)
     return {
-      key: o.key,
-      label: o.label ?? o.key,
+      key: o.id,
+      label: o.label ?? o.id,
       targetId: edge?.target,
       edgeId: edge?.id,
-      effects: o.effects ?? [],
+      effects: readEventEffects(node, o.id),
     }
   })
 }
 export function addOptionBranchGraph(scenario: GameScenario, node: GameNode): GameScenario {
   const el = choiceElement(scenario, node)
   if (!el) return scenario
-  const options = optionsOf(el)
-  const key = `opt${options.length}-${Date.now().toString(36).slice(-3)}`
-  const label = `选项 ${options.length + 1}`
+  const events = optionsOf(el)
+  const id = `opt${events.length}-${Date.now().toString(36).slice(-3)}`
+  const label = `选项 ${events.length + 1}`
   return patchOverlayChild(scenario, node.id, el.id, {
-    params: { ...el.params, options: [...options, { key, label }] },
+    params: { ...el.params, events: [...events, { id, label }] },
   })
 }
 export function updateOptionLabelGraph(scenario: GameScenario, node: GameNode, key: string, label: string): GameScenario {
   const el = choiceElement(scenario, node)
   if (!el) return scenario
-  const options = optionsOf(el).map((o) => (o.key === key ? { ...o, label } : o))
-  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, options } })
+  const events = optionsOf(el).map((o) => (o.id === key ? { ...o, label } : o))
+  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, events } })
 }
 export function setOptionTargetGraph(scenario: GameScenario, node: GameNode, key: string, targetId: string): GameScenario {
   const handle = `${CHOICE_HANDLE}${key}`
   if (!targetId) {
-    const edge = scenario.graph.edges.find((e) => e.source === node.id && e.sourceHandle === handle)
+    const edge = scenario.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === handle)
     if (!edge) return scenario
     return { ...scenario, graph: disconnect(scenario.graph, edge.id) }
   }
@@ -1169,24 +1205,23 @@ export function setOptionBranchEffectsGraph(
   key: string,
   effects: GraphEffect[],
 ): GameScenario {
-  const el = choiceElement(scenario, node)
-  if (!el) return scenario
-  const options = optionsOf(el).map((o) =>
-    o.key === key ? { ...o, effects: effects.length ? effects : undefined } : o,
-  )
-  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, options } })
+  const reactions = writeEventEffectsData(node.data.reactions, key, effects)
+  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions }) }
 }
 export function removeOptionBranchGraph(scenario: GameScenario, node: GameNode, key: string): GameScenario {
   const el = choiceElement(scenario, node)
   if (!el) return scenario
-  const options = optionsOf(el).filter((o) => o.key !== key)
+  const events = optionsOf(el).filter((o) => o.id !== key)
   // 删到 0 个选项 = 拆整段选项交互（回落叙事 + 自动续连）。
-  if (options.length === 0) {
-    return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: [CHOICE_HANDLE], childId: el.id })
+  if (events.length === 0) {
+    return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: optionsOf(el).map((o) => o.id), childId: el.id })
   }
-  let s = patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, options } })
-  const edge = s.graph.edges.find((e) => e.source === node.id && e.sourceHandle === `${CHOICE_HANDLE}${key}`)
+  let s = patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, events } })
+  const edge = s.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === key)
   if (edge) s = { ...s, graph: disconnect(s.graph, edge.id) }
+  // 清掉该分支的 event 反应副作用。
+  const reactions = writeEventEffectsData(node.data.reactions, key, [])
+  if (reactions !== node.data.reactions) s = { ...s, graph: updateNodeData(s.graph, node.id, { reactions }) }
   return s
 }
 
