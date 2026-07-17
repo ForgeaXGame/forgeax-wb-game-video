@@ -2,7 +2,7 @@
  * fx-kinds —— 滤镜 / 特效两个 presentation kind（独立于 core-kinds，避免与运行时负责人
  * 的 core-kinds 改动冲突）。
  *
- * 两者都是「一段时间 + 叠层顺序 + 一组参数」，复用 OverlayChild 的 window/layout(zIndex)/params，
+ * 两者都是「一段时间 + 叠层顺序 + 一组参数」，复用 OverlayChild 的 window/layout(zIndex)/inputs，
  * **不新增任何 schema 字段**。预设与视觉解析在 `../fx/video-fx`（SSOT）：
  *   · filter：调色滤镜（黑白/怀旧/暖冷调/鲜艳/梦幻…）
  *   · fx：画面特效（闪白/染色/暗角/震屏/变焦冲击）
@@ -24,13 +24,10 @@ export const filterKind: KindPlugin<FilterParams> = {
   kind: 'filter',
   role: 'presentation',
   label: '滤镜',
-  defaults: () => ({ filter: 'warm', intensity: 1 }),
-  form: [
-    { t: 'select', key: 'filter', label: '滤镜', options: FILTER_OPTIONS },
-    { t: 'number', key: 'intensity', label: '强度', step: 0.05 },
+  inputs: [
+    { key: 'filter', label: '滤镜', valueType: 'string', default: 'warm', options: FILTER_OPTIONS },
+    { key: 'intensity', label: '强度', valueType: 'number', default: 1 },
   ],
-  validate: () => [],
-  outputs: () => [],
 }
 
 export interface FxParams {
@@ -45,14 +42,11 @@ export const fxKind: KindPlugin<FxParams> = {
   kind: 'fx',
   role: 'presentation',
   label: '特效',
-  defaults: () => ({ fx: 'flash', intensity: 1 }),
-  form: [
-    { t: 'select', key: 'fx', label: '特效', options: FX_OPTIONS },
-    { t: 'number', key: 'intensity', label: '强度', step: 0.05 },
-    { t: 'color', key: 'color', label: '颜色', placeholder: '#ffffff' },
+  inputs: [
+    { key: 'fx', label: '特效', valueType: 'string', default: 'flash', options: FX_OPTIONS },
+    { key: 'intensity', label: '强度', valueType: 'number', default: 1 },
+    { key: 'color', label: '颜色', valueType: 'string', component: 'color' },
   ],
-  validate: () => [],
-  outputs: () => [],
 }
 
 export const FX_KINDS: KindPlugin[] = [filterKind as unknown as KindPlugin, fxKind as unknown as KindPlugin]

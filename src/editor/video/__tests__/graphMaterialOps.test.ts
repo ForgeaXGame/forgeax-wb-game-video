@@ -46,12 +46,12 @@ function seedQte(): { scenario: GameScenario; node: GameNode; cueId: string } {
 }
 
 describe('graphMaterialOps · QTE 元素级参数', () => {
-  it('完美判定 perfectMs 落到元素级 params，不写进 cue（成功=命中显示窗内，无独立半窗）', () => {
+  it('完美判定 perfectMs 落到元素级 inputs，不写进 cue（成功=命中显示窗内，无独立半窗）', () => {
     const { scenario, node: n, cueId } = seedQte()
     const next = patchSelectedGraph(scenario, n, qteItem(cueId), { perfectMs: 100 })
     const el = qteEl(next, 'a')!
-    expect((el.params as { perfectMs?: number }).perfectMs).toBe(100)
-    const cue = ((el.params as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
+    expect((el.inputs as { perfectMs?: number }).perfectMs).toBe(100)
+    const cue = ((el.inputs as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
     expect((cue as { perfectMs?: number }).perfectMs).toBeUndefined()
   })
 
@@ -59,10 +59,10 @@ describe('graphMaterialOps · QTE 元素级参数', () => {
     const { scenario, node: n, cueId } = seedQte()
     const next = patchSelectedGraph(scenario, n, qteItem(cueId), { label: '叩', appearAt: 1200 })
     const el = qteEl(next, 'a')!
-    const cue = ((el.params as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
+    const cue = ((el.inputs as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
     expect(cue.label).toBe('叩')
     expect(cue.appearAt).toBe(1200)
-    expect((el.params as { label?: unknown }).label).toBeUndefined()
+    expect((el.inputs as { label?: unknown }).label).toBeUndefined()
   })
 })
 
@@ -89,7 +89,7 @@ describe('graphMaterialOps · QTE 结算候选（样式驱动，见 qteKind.outp
     const n2 = findNode(next.graph, 'a')!
     const el = qteEl(next, 'a')!
     // 落盘也被锁回样式 KindPlugin.events
-    expect((el.params as { events?: Array<{ id: string }> }).events?.map((e) => e.id)).toEqual(['pass', 'good', 'fail'])
+    expect((el.inputs as { events?: Array<{ id: string }> }).events?.map((e) => e.id)).toEqual(['pass', 'good', 'fail'])
     const available = listAvailableQteOutcomes(next, n2)
     expect(available.map((c) => c.handle)).toEqual(['good', 'fail'])
     const shown = listQteOutcomeViews(next, n2)
@@ -136,7 +136,7 @@ describe('graphMaterialOps · QTE 拖入门槛（无挂载/无默认样式含 qt
             scheme1: {
               id: 'scheme1',
               children: [
-                { id: 'skin1', component: 'qte', trigger: { when: 'enter' }, params: { qteKind: 'parry' } },
+                { id: 'skin1', component: 'qte', trigger: { when: 'enter' }, inputs: { qteKind: 'parry' } },
               ],
             },
           },
@@ -151,7 +151,7 @@ describe('graphMaterialOps · QTE 拖入门槛（无挂载/无默认样式含 qt
   })
 
   it('已挂载的 overlay 里有 qte 组件：canAddQte=true（挂载来源，不靠 styleScheme）', () => {
-    const n = node('a', { durationMs: 8000, timeline: [{ id: 'skin1', component: 'qte', params: { qteKind: 'parry' } }] })
+    const n = node('a', { durationMs: 8000, timeline: [{ id: 'skin1', component: 'qte', inputs: { qteKind: 'parry' } }] })
     const scenario = scnOf({ nodes: [n], edges: [] })
     const nodeRef = scenario.graph.nodes[0]!
     expect(canAddQte(scenario, nodeRef)).toBe(true)
@@ -173,7 +173,7 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
                   id: 'qte-parry',
                   component: 'qte',
                   trigger: { when: 'enter' },
-                  params: {
+                  inputs: {
                     component: 'battleParry',
                     durationMs: 2600,
                     exits: [{ key: 'pass' }, { key: 'good' }, { key: 'fail' }],
@@ -193,11 +193,11 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
     const { scenario, node: n } = seedBattleParryStyle()
     const res = addQteCueGraph(scenario, n, 8000, 1200)
     const el = qteEl(res.scenario, 'a')!
-    const cue = ((el.params as { cues?: QteCue[] }).cues ?? [])[0]!
+    const cue = ((el.inputs as { cues?: QteCue[] }).cues ?? [])[0]!
     expect(cue.appearAt).toBe(1200)
     expect(cue.endAt).toBe(1200 + 2600)
-    expect((el.params as { windowMs?: number }).windowMs).toBe(2600)
-    expect((el.params as { component?: string }).component).toBe('battleParry')
+    expect((el.inputs as { windowMs?: number }).windowMs).toBe(2600)
+    expect((el.inputs as { component?: string }).component).toBe('battleParry')
   })
 
   it('拖时间轴边缘：同步 cue 窗 + windowMs（检视器时长 SSOT）', () => {
@@ -216,10 +216,10 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
     }
     const next = patchMaterialGraph(res.scenario, n1, 8000, item, { startMs: 1500, endMs: 3000 })
     const el = qteEl(next, 'a')!
-    const cue = ((el.params as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
+    const cue = ((el.inputs as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
     expect(cue.appearAt).toBe(1500)
     expect(cue.endAt).toBe(3000)
-    expect((el.params as { windowMs?: number }).windowMs).toBe(1500)
+    expect((el.inputs as { windowMs?: number }).windowMs).toBe(1500)
   })
 
   it('qteSkinPreviewInteraction：播放头在 cue 窗外返回 null，窗内返回 snap', () => {
@@ -249,7 +249,7 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
                   id: 'choice-ym',
                   component: 'choice',
                   trigger: { when: 'enter' },
-                  params: {
+                  inputs: {
                     component: 'inkYingMo',
                     prompt: '應 / 默',
                     options: [{ key: 'ying', label: '應' }, { key: 'mo', label: '默' }],
@@ -265,15 +265,15 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
     const res = addMaterialGraph(scenario, nodeRef, 8000, 'option', undefined, 0, { ms: 1000, zIndex: 3 })
     const el = res.scenario.ui?.overlays?.[nodeOverlayId('a')]?.children?.find((c) => c.component === 'choice')
     expect(el).toBeDefined()
-    expect((el!.params as { component?: string }).component).toBe('inkYingMo')
-    expect((el!.params as { options?: { key: string }[] }).options?.map((o) => o.key)).toEqual(['ying', 'mo'])
+    expect((el!.inputs as { component?: string }).component).toBe('inkYingMo')
+    expect((el!.inputs as { options?: { key: string }[] }).options?.map((o) => o.key)).toEqual(['ying', 'mo'])
     expect(el!.window).toEqual({ startMs: 1000, endMs: 3500 })
 
     const n1 = findNode(res.scenario.graph, 'a')!
     expect(choiceSkinPreviewInteractions(res.scenario, n1, 500, 8000)).toHaveLength(0)
     const snaps = choiceSkinPreviewInteractions(res.scenario, n1, 2000, 8000)
     expect(snaps).toHaveLength(1)
-    expect(snaps[0]!.params.component).toBe('inkYingMo')
+    expect(snaps[0]!.inputs.component).toBe('inkYingMo')
     expect(choiceSkinPreviewInteractions(res.scenario, n1, 5000, 8000)).toHaveLength(0)
   })
 
@@ -305,8 +305,8 @@ describe('graphMaterialOps · choice 样式锁定选项集合', () => {
     expect(branches.map((b) => b.key)).toEqual(['ying', 'mo'])
     expect(branches.map((b) => b.label)).toEqual(['應', '默'])
     const el = next.ui?.overlays?.[nodeOverlayId('a')]?.children?.find((c) => c.component === 'choice')
-    expect((el!.params as { component?: string }).component).toBe('inkYingMo')
-    expect(choiceOptionsLocked(el!.params)).toBe(true)
+    expect((el!.inputs as { component?: string }).component).toBe('inkYingMo')
+    expect(choiceOptionsLocked(el!.inputs)).toBe(true)
   })
 
   it('样式锁定后 addOptionBranchGraph 为 no-op', () => {
@@ -323,8 +323,8 @@ describe('graphMaterialOps · choice 样式锁定选项集合', () => {
     const unlocked = setChoiceSkinGraph(locked, findNode(locked.graph, 'a')!, undefined)
     const n1 = findNode(unlocked.graph, 'a')!
     const el = unlocked.ui?.overlays?.[nodeOverlayId('a')]?.children?.find((c) => c.component === 'choice')
-    expect((el!.params as { component?: string }).component).toBeUndefined()
-    expect(choiceOptionsLocked(el!.params)).toBe(false)
+    expect((el!.inputs as { component?: string }).component).toBeUndefined()
+    expect(choiceOptionsLocked(el!.inputs)).toBe(false)
     expect(listOptionBranches(unlocked, n1)).toHaveLength(2)
     const added = addOptionBranchGraph(unlocked, n1)
     expect(listOptionBranches(added, findNode(added.graph, 'a')!)).toHaveLength(3)
@@ -372,7 +372,7 @@ describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.
     expect(curNode.data.reactions).toBeUndefined()
   })
 
-  it('valuePick/expr 往返：勾选自定义显示数值后写回 params，取消勾选清空二者', () => {
+  it('valuePick/expr 往返：勾选自定义显示数值后写回 inputs，取消勾选清空二者', () => {
     const { scenario, node: n, floatId } = seedFloat()
     const withExpr = patchOverlayGraph(
       scenario,
@@ -385,8 +385,8 @@ describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.
       undefined,
     )
     const el = findElement(withExpr, findNode(withExpr.graph, n.id), floatId)!
-    expect(el.params?.expr).toBe('entity.ent-boss.attr.hp')
-    expect(el.params?.valuePick).toBeDefined()
+    expect(el.inputs?.expr).toBe('entity.ent-boss.attr.hp')
+    expect(el.inputs?.valuePick).toBeDefined()
 
     const cleared = patchOverlayGraph(
       withExpr,
@@ -396,8 +396,8 @@ describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.
       undefined,
     )
     const el2 = findElement(cleared, findNode(cleared.graph, n.id), floatId)!
-    expect(el2.params?.expr).toBeUndefined()
-    expect(el2.params?.valuePick).toBeUndefined()
+    expect(el2.inputs?.expr).toBeUndefined()
+    expect(el2.inputs?.valuePick).toBeUndefined()
   })
 
   it('content 只改显示文案，不影响结算 effects', () => {
@@ -405,7 +405,7 @@ describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.
     const next = patchOverlayGraph(scenario, n, floatId, { content: '会心一击 {v}' }, undefined)
     const curNode = findNode(next.graph, n.id)!
     const el = findElement(next, curNode, floatId)!
-    expect(el.params?.text).toBe('会心一击 {v}')
+    expect(el.inputs?.text).toBe('会心一击 {v}')
     expect(overlayEffects(next, curNode, floatId)).toHaveLength(1)
   })
 })

@@ -37,7 +37,7 @@ describe('validateGraph reference checks', () => {
         id: 's',
         component: 'settle',
         trigger: { when: 'enter' },
-        params: {
+        inputs: {
           effects: [
             {
               id: 'd',

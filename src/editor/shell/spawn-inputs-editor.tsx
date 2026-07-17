@@ -1,5 +1,5 @@
 /**
- * spawn.params 第一层 key/value 编辑 —— 按模板组件 inputs 出字段，常量 / 表达式 / 引用。
+ * spawn.inputs 第一层 key/value 编辑 —— 按模板组件 inputs 出字段，常量 / 表达式 / 引用。
  * 落盘仍为 Record（字面量 或 {expr}/{ref}）；不碰嵌套 JSON。
  */
 import type { CSSProperties, JSX } from 'react'
@@ -110,20 +110,20 @@ function ParamRow({
   )
 }
 
-export function SpawnParamsEditor({
+export function SpawnInputsEditor({
   from,
-  params,
+  inputs,
   overlays,
   onChange,
 }: {
   from: string
-  params: Record<string, unknown> | undefined
+  inputs: Record<string, unknown> | undefined
   overlays?: Record<string, Overlay>
   onChange: (next: Record<string, unknown> | undefined) => void
 }): JSX.Element {
-  const inputs = resolveSpawnInputs(from, overlays)
-  const bag = params ?? {}
-  const known = new Set(inputs.map((i) => i.key))
+  const inputDefs = resolveSpawnInputs(from, overlays)
+  const bag = inputs ?? {}
+  const known = new Set(inputDefs.map((i) => i.key))
   const extras = Object.keys(bag).filter((k) => !known.has(k) && k !== 'component')
 
   const patchKey = (key: string, value: unknown | undefined) => {
@@ -152,10 +152,10 @@ export function SpawnParamsEditor({
       <div style={{ fontSize: 11, opacity: 0.6, margin: '4px 0 6px' }}>
         传入参数（覆盖模板默认值；表达式可用 prev / next / delta）
       </div>
-      {inputs.length === 0 && extras.length === 0 ? (
+      {inputDefs.length === 0 && extras.length === 0 ? (
         <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>该组件未声明入参，可手动加键</div>
       ) : null}
-      {inputs.map((inp) => (
+      {inputDefs.map((inp) => (
         <ParamRow
           key={inp.key}
           inputKey={inp.key}

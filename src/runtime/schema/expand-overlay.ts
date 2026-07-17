@@ -21,12 +21,12 @@ export function nodeOverlayMounts(node: GameNode | undefined): OverlayNode[] {
   return node?.data.overlayNodes ?? []
 }
 
-/** 字段级合并：顶层覆盖 + params/layout 各自浅合（与旧 patchOverlayChild 同款语义）。 */
+/** 字段级合并：顶层覆盖 + inputs/layout 各自浅合（与旧 patchOverlayChild 同款语义）。 */
 export function mergeChild(base: OverlayChild, patch: Partial<OverlayChild>): OverlayChild {
   return {
     ...base,
     ...patch,
-    params: patch.params ? { ...base.params, ...patch.params } : base.params,
+    inputs: patch.inputs ? { ...base.inputs, ...patch.inputs } : base.inputs,
     layout: patch.layout ? { ...base.layout, ...patch.layout } : base.layout,
   }
 }
@@ -60,15 +60,15 @@ function toInstanceChild(
 ): OverlayInstanceChild {
   const catalogId = def.id
   const runtimeId = overlayInstanceChildId(meta.mountId, catalogId)
-  const params = { ...(def.params ?? {}) }
-  if (params.component == null) params.component = def.component
+  const inputs = { ...(def.inputs ?? {}) }
+  if (inputs.component == null) inputs.component = def.component
   return {
     id: runtimeId,
     component: def.component,
     trigger: def.trigger ?? { when: 'enter' },
     window: def.window,
     layout: def.layout,
-    params,
+    inputs,
     source: {
       mountId: meta.mountId,
       overlayId: meta.overlayId,

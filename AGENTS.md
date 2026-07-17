@@ -6,6 +6,20 @@
 
 ---
 
+## ⚠️ 硬规矩：三份标准流程 schema 禁止随意加字段
+
+以下三份是**定义标准流程/落盘契约的 schema**，是全系统的稳定地基：
+
+- `src/runtime/schema/node-config-schema.ts`
+- `src/runtime/schema/react-flow-schema.ts`
+- `src/runtime/schema/graph-schema.ts`
+
+**不得随意往这三份里增删字段**。任何要往它们里加字段的改动，**必须先取得用户的专门同意**，不能自作主张。
+需要临时/派生信息时，优先放到**编辑器侧**（如 `editor/shell/*`）用现有数据推导，而不是往核心 schema 加字段。
+（反面教材：曾往 `ComponentInput` 加过 `variant` 字段来给 events 编辑器传参——错误做法，已改为在编辑器侧按组件 `kind` 推导。）
+
+---
+
 ## 它是什么
 
 `@forgeax-extension/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 把一张

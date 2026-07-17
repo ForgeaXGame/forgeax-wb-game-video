@@ -594,7 +594,7 @@ export function GraphVideoView(): JSX.Element {
 
   function removeQteCue(cueId: string): void {
     if (!node) return
-    const whole = (qteElementOfCue(scenario, node, cueId)?.params?.cues as QteCue[] | undefined)?.length ?? 0
+    const whole = (qteElementOfCue(scenario, node, cueId)?.inputs?.cues as QteCue[] | undefined)?.length ?? 0
     if (whole <= 1) {
       const cueItem = materials.find((m) => m.kind === 'qte' && m.id === cueId)
       if (cueItem && !confirmMaterialDelete(scenario, node, cueItem)) return
@@ -605,7 +605,7 @@ export function GraphVideoView(): JSX.Element {
     }
     editScenario((s, n) => removeQteCueGraph(s, n, cueId))
     if (selectedMaterialKey?.endsWith(`:${cueId}`)) {
-      const rest = (qteElementOfCue(scenario, node, cueId)?.params?.cues as QteCue[] | undefined)?.find((c) => c.id !== cueId)
+      const rest = (qteElementOfCue(scenario, node, cueId)?.inputs?.cues as QteCue[] | undefined)?.find((c) => c.id !== cueId)
       const el = qteElement(scenario, node)
       setSelectedMaterialKey(rest && el ? `qte:${el.id}:${rest.id}` : null)
     }
@@ -1014,8 +1014,8 @@ export function GraphVideoView(): JSX.Element {
 }
 
 // ── 检视器 ───────────────────────────────────────────────────────────────────
-function cuesOfEl(el: { params?: Record<string, unknown> } | undefined): QteCue[] | undefined {
-  const cues = el?.params?.cues
+function cuesOfEl(el: { inputs?: Record<string, unknown> } | undefined): QteCue[] | undefined {
+  const cues = el?.inputs?.cues
   return Array.isArray(cues) ? (cues as QteCue[]) : undefined
 }
 
@@ -1071,39 +1071,39 @@ function GraphMaterialInspector({
   const el = node && item
     ? (item.kind === 'qte' ? qteElementOfCue(scenario, node, item.id) : findElement(scenario, node, item.id))
     : undefined
-  const params = (el?.params ?? {}) as Record<string, unknown>
+  const inputs = (el?.inputs ?? {}) as Record<string, unknown>
   const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-  const qteSkinId = item?.kind === 'qte' ? (str(params.component) || 'qte') : 'qte'
+  const qteSkinId = item?.kind === 'qte' ? (str(inputs.component) || 'qte') : 'qte'
   const styleLocksQteEvents = item?.kind === 'qte' && qteSkinId === 'battleParry'
-  const styleLocksOptions = item?.kind === 'option' && choiceOptionsLocked(params)
+  const styleLocksOptions = item?.kind === 'option' && choiceOptionsLocked(inputs)
 
   // 打开检视器时把脏 events 写回样式锁定值（与运行时 submit 对齐）
   useEffect(() => {
     if (!item || item.kind !== 'qte' || !styleLocksQteEvents) return
-    const locked = applyStyleLockedQteParams(params)
-    const sameEvents = JSON.stringify(locked.events) === JSON.stringify(params.events)
-    const sameDefault = (locked.defaultEvent ?? 'fail') === (params.defaultEvent ?? params.defaultKey ?? 'fail')
+    const locked = applyStyleLockedQteParams(inputs)
+    const sameEvents = JSON.stringify(locked.events) === JSON.stringify(inputs.events)
+    const sameDefault = (locked.defaultEvent ?? 'fail') === (inputs.defaultEvent ?? inputs.defaultKey ?? 'fail')
     if (!sameEvents || !sameDefault) {
       onPatch({ events: locked.events, defaultEvent: locked.defaultEvent ?? 'fail' })
     }
-  }, [item?.kind, item?.id, qteSkinId, styleLocksQteEvents, params.events, params.defaultEvent, params.defaultKey, onPatch])
+  }, [item?.kind, item?.id, qteSkinId, styleLocksQteEvents, inputs.events, inputs.defaultEvent, inputs.defaultKey, onPatch])
 
   // 打开检视器时把脏 events 写回样式锁定值（應默/技能条选项数与皮肤对齐）
-  const choiceSkinId = item?.kind === 'option' ? str(params.component) : ''
+  const choiceSkinId = item?.kind === 'option' ? str(inputs.component) : ''
   useEffect(() => {
     if (!item || item.kind !== 'option' || !styleLocksOptions) return
-    const locked = applyStyleLockedChoiceParams(params)
-    if (JSON.stringify(locked.events) !== JSON.stringify(params.events)) {
+    const locked = applyStyleLockedChoiceParams(inputs)
+    if (JSON.stringify(locked.events) !== JSON.stringify(inputs.events)) {
       onSyncChoiceStyleLocked()
     }
-  }, [item?.kind, item?.id, choiceSkinId, styleLocksOptions, params.events, onSyncChoiceStyleLocked])
+  }, [item?.kind, item?.id, choiceSkinId, styleLocksOptions, inputs.events, onSyncChoiceStyleLocked])
 
   if (!node || !item) {
     return <div className="gc-inspector-empty"><span>选择时间轴上的素材以编辑属性</span></div>
   }
   const cue = item.kind === 'qte' ? cuesOfEl(el)?.find((c) => c.id === item.id) : undefined
   const overlayFx = item.kind === 'overlay' ? overlayEffects(scenario, node, item.id) : []
-  const overlayDisplayCustom = item.kind === 'overlay' && typeof params.expr === 'string' && params.expr.length > 0
+  const overlayDisplayCustom = item.kind === 'overlay' && typeof inputs.expr === 'string' && inputs.expr.length > 0
   const branches = item.kind === 'option' ? listOptionBranches(scenario, node) : []
   const qteOutcomes = item.kind === 'qte' ? listQteOutcomeViews(scenario, node) : []
   const qteAvailable = item.kind === 'qte' ? listAvailableQteOutcomes(scenario, node) : []
@@ -1112,7 +1112,7 @@ function GraphMaterialInspector({
   const qteManifest = item.kind === 'qte' ? getComponentManifest(qteSkinId) : undefined
   const qteConfigInputs = (qteManifest?.inputs ?? []).filter((i) => i.key !== 'events' && i.key !== 'defaultEvent')
   const qteLockedEvents = styleLocksQteEvents
-    ? ((applyStyleLockedQteParams(params).events as Array<{ id: string; label?: string }> | undefined) ?? qteManifest?.events ?? [])
+    ? ((applyStyleLockedQteParams(inputs).events as Array<{ id: string; label?: string }> | undefined) ?? qteManifest?.events ?? [])
     : (qteManifest?.events ?? [])
   const qteFirstLabel = qteOutcomes[0]?.label ?? qteLockedEvents[0]?.label ?? '第一档'
   const qteGoodLabel = qteOutcomes.find((o) => o.handle === 'good')?.label
@@ -1125,7 +1125,7 @@ function GraphMaterialInspector({
   // 「默认样式方案」里同类型（component 相同）的其它变体——只有 ≥2 个才值得给下拉切（1 个时已经是默认，无需切）。
   const styleComponent = STYLE_COMPONENT[item.kind]
   const styleVariants = styleComponent ? styleVariantsFor(scenario, node, styleComponent) : []
-  const currentVariantId = styleVariants.find((v) => JSON.stringify(v.params ?? {}) === JSON.stringify(params))?.id ?? ''
+  const currentVariantId = styleVariants.find((v) => JSON.stringify(v.inputs ?? {}) === JSON.stringify(inputs))?.id ?? ''
 
   return (
     <div className="gc-inspector-card">
@@ -1136,7 +1136,7 @@ function GraphMaterialInspector({
             value={currentVariantId}
             onChange={(e) => {
               const v = styleVariants.find((x) => x.id === e.target.value)
-              if (v) onPatch({ ...(v.params ?? {}) })
+              if (v) onPatch({ ...(v.inputs ?? {}) })
             }}
             title="来自节点「默认样式」方案里同类型的其它变体；切换即整体套用该变体参数"
           >
@@ -1163,26 +1163,26 @@ function GraphMaterialInspector({
       {item.kind === 'subtitle' && el && (
         <>
           <label className="gc-field"><span>文本</span>
-            <input value={str(params.text)} onChange={(e) => onPatch({ text: e.target.value })} />
+            <input value={str(inputs.text)} onChange={(e) => onPatch({ text: e.target.value })} />
           </label>
           <div className="gc-field"><span>样式预设</span>
-            <GraphTextStylePicker group="subtitle" value={params.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
+            <GraphTextStylePicker group="subtitle" value={inputs.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
           </div>
           <label className="gc-tsp-check">
-            <input type="checkbox" checked={params.speaker != null} onChange={(e) => onPatch(e.target.checked ? { speaker: '' } : { speaker: undefined })} />
+            <input type="checkbox" checked={inputs.speaker != null} onChange={(e) => onPatch(e.target.checked ? { speaker: '' } : { speaker: undefined })} />
             <span>显示说话人前缀</span>
           </label>
-          {params.speaker != null && (
+          {inputs.speaker != null && (
             <label className="gc-field"><span>说话人</span>
-              <input value={str(params.speaker)} onChange={(e) => onPatch({ speaker: e.target.value })} />
+              <input value={str(inputs.speaker)} onChange={(e) => onPatch({ speaker: e.target.value })} />
             </label>
           )}
           <div className="gc-field-row">
-            <label><span>X {num(params.x, SUBTITLE_XY.x).toFixed(2)}</span>
-              <input type="range" min={0} max={1} step={0.01} value={num(params.x, SUBTITLE_XY.x)} onChange={(e) => onPatch({ x: Number(e.target.value) })} />
+            <label><span>X {num(inputs.x, SUBTITLE_XY.x).toFixed(2)}</span>
+              <input type="range" min={0} max={1} step={0.01} value={num(inputs.x, SUBTITLE_XY.x)} onChange={(e) => onPatch({ x: Number(e.target.value) })} />
             </label>
-            <label><span>Y {num(params.y, SUBTITLE_XY.y).toFixed(2)}</span>
-              <input type="range" min={0} max={1} step={0.01} value={num(params.y, SUBTITLE_XY.y)} onChange={(e) => onPatch({ y: Number(e.target.value) })} />
+            <label><span>Y {num(inputs.y, SUBTITLE_XY.y).toFixed(2)}</span>
+              <input type="range" min={0} max={1} step={0.01} value={num(inputs.y, SUBTITLE_XY.y)} onChange={(e) => onPatch({ y: Number(e.target.value) })} />
             </label>
           </div>
           <button type="button" className="gc-tsp-toggle" onClick={() => onPatch({ x: undefined, y: undefined })}>归位到默认位置（底部居中）</button>
@@ -1192,10 +1192,10 @@ function GraphMaterialInspector({
       {item.kind === 'overlay' && el && (
         <>
           <label className="gc-field"><span>显示文案</span>
-            <input value={str(params.text)} placeholder="固定字 / 含 {v} 用数值替换" onChange={(e) => onPatch({ content: e.target.value })} />
+            <input value={str(inputs.text)} placeholder="固定字 / 含 {v} 用数值替换" onChange={(e) => onPatch({ content: e.target.value })} />
           </label>
           <div className="gc-field"><span>样式预设</span>
-            <GraphTextStylePicker group="overlay" value={params.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
+            <GraphTextStylePicker group="overlay" value={inputs.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
           </div>
           <div className="gc-field"><span>到点效果</span>
             <EffectsEditor value={overlayFx} entities={entities} variables={variables} onChange={(effects) => onPatch({ effects })} />
@@ -1206,7 +1206,7 @@ function GraphMaterialInspector({
               type="checkbox"
               checked={overlayDisplayCustom}
               onChange={(e) => (e.target.checked
-                ? onPatch({ expr: str(params.expr) || '0' })
+                ? onPatch({ expr: str(inputs.expr) || '0' })
                 : onPatch({ expr: undefined, valuePick: undefined }))}
             />
             <span>自定义显示数值（默认＝效果值）</span>
@@ -1215,8 +1215,8 @@ function GraphMaterialInspector({
             <div className="gc-field">
               <span>显示数值</span>
               <FloatValuePickEditor
-                valuePick={params.valuePick}
-                damageValue={str(params.expr) ? { expr: str(params.expr) } : 0}
+                valuePick={inputs.valuePick}
+                damageValue={str(inputs.expr) ? { expr: str(inputs.expr) } : 0}
                 entities={entities}
                 variables={variables}
                 onChange={({ valuePick, damageValue }) =>
@@ -1226,10 +1226,10 @@ function GraphMaterialInspector({
           )}
           <div className="gc-field-row">
             <label><span>X%</span>
-              <input type="number" value={Math.round(num(params.x, 0.5) * 100)} onChange={(e) => onPatch({ x: Number(e.target.value) / 100 })} />
+              <input type="number" value={Math.round(num(inputs.x, 0.5) * 100)} onChange={(e) => onPatch({ x: Number(e.target.value) / 100 })} />
             </label>
             <label><span>Y%</span>
-              <input type="number" value={Math.round(num(params.y, 0.42) * 100)} onChange={(e) => onPatch({ y: Number(e.target.value) / 100 })} />
+              <input type="number" value={Math.round(num(inputs.y, 0.42) * 100)} onChange={(e) => onPatch({ y: Number(e.target.value) / 100 })} />
             </label>
           </div>
         </>
@@ -1239,7 +1239,7 @@ function GraphMaterialInspector({
         <>
           <label className="gc-field"><span>交互皮肤</span>
             <select
-              value={str(params.component)}
+              value={str(inputs.component)}
               onChange={(e) => {
                 const next = e.target.value || undefined
                 if (!next) {
@@ -1247,7 +1247,7 @@ function GraphMaterialInspector({
                   return
                 }
                 // 切皮肤：白名单皮肤强制写 KindPlugin.events；不动 cues 等拍点字段
-                const locked = applyStyleLockedQteParams({ ...params, component: next })
+                const locked = applyStyleLockedQteParams({ ...inputs, component: next })
                 if (next === 'battleParry') {
                   const windowMs = typeof locked.windowMs === 'number'
                     ? locked.windowMs
@@ -1299,7 +1299,7 @@ function GraphMaterialInspector({
                       type="number"
                       min={0}
                       step={10}
-                      value={num(params.perfectMs, NaN) >= 0 ? (params.perfectMs as number) : ''}
+                      value={num(inputs.perfectMs, NaN) >= 0 ? (inputs.perfectMs as number) : ''}
                       placeholder="留空=皮肤内置手感"
                       onChange={(e) => onPatch({
                         perfectMs: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
@@ -1318,7 +1318,7 @@ function GraphMaterialInspector({
                   <span>{input.label ?? input.key}</span>
                   <input
                     type="number"
-                    value={typeof params[input.key] === 'number' ? (params[input.key] as number) : ''}
+                    value={typeof inputs[input.key] === 'number' ? (inputs[input.key] as number) : ''}
                     onChange={(e) => onPatch({
                       [input.key]: e.target.value === '' ? undefined : Number(e.target.value),
                     })}
@@ -1326,12 +1326,12 @@ function GraphMaterialInspector({
                 </label>
               )
             }
-            if (input.valueType === 'string' || input.valueType === 'color') {
+            if (input.valueType === 'string') {
               return (
                 <label className="gc-field" key={input.key}>
                   <span>{input.label ?? input.key}</span>
                   <input
-                    value={str(params[input.key])}
+                    value={str(inputs[input.key])}
                     onChange={(e) => onPatch({ [input.key]: e.target.value || undefined })}
                   />
                 </label>
@@ -1412,12 +1412,12 @@ function GraphMaterialInspector({
                   <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
                     onChange={(e) => {
                       const appearAt = Math.max(0, Number(e.target.value) || 0)
-                      const windowMs = num(params.windowMs, 2600)
+                      const windowMs = num(inputs.windowMs, 2600)
                       onPatch({ appearAt, endAt: appearAt + windowMs })
                     }} />
                 </label>
                 <label><span>{qteConfigInputs.find((i) => i.key === 'windowMs')?.label ?? '时长 ms'}</span>
-                  <input type="number" min={200} step={100} value={num(params.windowMs, 2600)}
+                  <input type="number" min={200} step={100} value={num(inputs.windowMs, 2600)}
                     onChange={(e) => {
                       const windowMs = Math.max(200, Number(e.target.value) || 2600)
                       onPatch({ windowMs, endAt: (cue.appearAt ?? 0) + windowMs })
@@ -1486,12 +1486,12 @@ function GraphMaterialInspector({
         <>
           <p className="gc-inspector-hint">在这段时间内给整帧画面调色，强度 0=原图、1=最强。效果在上方预览实时可见。</p>
           <label className="gc-field"><span>滤镜</span>
-            <select value={str(params.filter) || 'warm'} onChange={(e) => onPatch({ filter: e.target.value })}>
+            <select value={str(inputs.filter) || 'warm'} onChange={(e) => onPatch({ filter: e.target.value })}>
               {FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
-          <label><span>强度 {num(params.intensity, 1).toFixed(2)}</span>
-            <input type="range" min={0} max={1} step={0.05} value={num(params.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
+          <label><span>强度 {num(inputs.intensity, 1).toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.05} value={num(inputs.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
           </label>
         </>
       )}
@@ -1500,16 +1500,16 @@ function GraphMaterialInspector({
         <>
           <p className="gc-inspector-hint">画面特效叠加在视频上，强度 0~1。效果在上方预览实时可见。</p>
           <label className="gc-field"><span>特效</span>
-            <select value={str(params.fx) || 'flash'} onChange={(e) => onPatch({ fx: e.target.value })}>
+            <select value={str(inputs.fx) || 'flash'} onChange={(e) => onPatch({ fx: e.target.value })}>
               {FX_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
-          <label><span>强度 {num(params.intensity, 1).toFixed(2)}</span>
-            <input type="range" min={0} max={1} step={0.05} value={num(params.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
+          <label><span>强度 {num(inputs.intensity, 1).toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.05} value={num(inputs.intensity, 1)} onChange={(e) => onPatch({ intensity: Number(e.target.value) })} />
           </label>
-          {fxNeedsColor(str(params.fx) || 'flash') && (
+          {fxNeedsColor(str(inputs.fx) || 'flash') && (
             <label className="gc-field"><span>颜色</span>
-              <input type="color" value={str(params.color) || '#ffffff'} onChange={(e) => onPatch({ color: e.target.value })} />
+              <input type="color" value={str(inputs.color) || '#ffffff'} onChange={(e) => onPatch({ color: e.target.value })} />
             </label>
           )}
         </>
@@ -1519,7 +1519,7 @@ function GraphMaterialInspector({
         <>
           <label className="gc-field"><span>选项皮肤</span>
             <select
-              value={str(params.component)}
+              value={str(inputs.component)}
               onChange={(e) => onSetChoiceSkin(e.target.value || undefined)}
             >
               <option value="">（默认清单）</option>
@@ -1529,18 +1529,18 @@ function GraphMaterialInspector({
             </select>
           </label>
           <label className="gc-field"><span>提示文案</span>
-            <input value={str(params.prompt)} onChange={(e) => onPatch({ prompt: e.target.value || undefined })} />
+            <input value={str(inputs.prompt)} onChange={(e) => onPatch({ prompt: e.target.value || undefined })} />
           </label>
           {!styleLocksOptions && (
             <label className="gc-field"><span>呈现</span>
-              <select value={str(params.presentation) || 'list'} onChange={(e) => onPatch({ presentation: e.target.value })}>
+              <select value={str(inputs.presentation) || 'list'} onChange={(e) => onPatch({ presentation: e.target.value })}>
                 <option value="list">清单</option>
                 <option value="hotspot">画面热区</option>
               </select>
             </label>
           )}
           <label className="gc-field"><span>倒计时 ms（0=不限时）</span>
-            <input type="number" min={0} step={100} value={num(params.timeoutMs, 0) || ''} placeholder="不限时"
+            <input type="number" min={0} step={100} value={num(inputs.timeoutMs, 0) || ''} placeholder="不限时"
               onChange={(e) => onPatch({ timeoutMs: e.target.value === '' ? undefined : Number(e.target.value) })} />
           </label>
           <div className="gc-inspector-subhead">

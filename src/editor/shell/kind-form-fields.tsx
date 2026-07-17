@@ -1,10 +1,26 @@
 /**
- * 按 kind 注册表 form 字段渲染 overlay child params（标量 + events/effects 复合控件）。
+ * 按组件 `ComponentManifest.inputs` 渲染 overlay child 的输入：
+ * 有 `component`（color/entity/events/effects/textStyle/qteCues…）优先用对应输入组件；否则按 `valueType`
+ * （string/number/boolean + `options`→select）出标量控件。
+ *
+ * 复合输入（`component: textStyle/effects/events/qteCues`，或 valueType='json'）：events/effects 出结构化编辑器，
+ * textStyle/qteCues 暂交「视频」轨编辑器（见 docs/inputs-ssot.md）。填了 `component` 优先用它，否则按 valueType。
  */
 import type { CSSProperties, JSX } from 'react'
-import type { FormField } from '../../runtime/registry/kind-registry'
-import { getComponent } from '../../runtime/registry/kind-registry'
-import { EffectsEditor, EventsEditor, type EditorPickerCtx, type ComponentEventLike } from './editors'
+import type { ComponentInput } from '../../runtime/schema/node-config-schema'
+import { getComponent, getComponentManifest } from '../../runtime/registry/kind-registry'
+import { EffectsEditor, EventsEditor, type ComponentEventLike, type EditorPickerCtx } from './editors'
+
+/**
+ * events 编辑器的 variant 由组件（解析别名后的）kind 在编辑器侧推导——**不写进 schema**：
+ * hotspot=画面锚点 x/y；choice/skill=可配门控 condition；其余（qte…）=纯出口目录。
+ */
+function eventsVariantFor(componentId: string): 'plain' | 'choice' | 'hotspot' {
+  const kind = getComponent(componentId)?.kind
+  if (kind === 'hotspot') return 'hotspot'
+  if (kind === 'choice' || kind === 'skill') return 'choice'
+  return 'plain'
+}
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 72, opacity: 0.7, flexShrink: 0, fontSize: 11 }
@@ -18,146 +34,139 @@ function field(label: string, node: JSX.Element): JSX.Element {
   )
 }
 
-function readParam(params: Record<string, unknown>, key: string): unknown {
-  return params[key]
-}
-
-function patchParam(
-  params: Record<string, unknown>,
+function patchValue(
+  values: Record<string, unknown>,
   key: string,
   value: unknown,
 ): Record<string, unknown> {
   if (value === undefined || value === '') {
-    const { [key]: _drop, ...rest } = params
+    const { [key]: _drop, ...rest } = values
     return rest
   }
-  return { ...params, [key]: value }
+  return { ...values, [key]: value }
 }
 
-function renderField(
-  f: FormField,
-  params: Record<string, unknown>,
-  onPatch: (patch: Record<string, unknown>) => void,
+function renderInput(
+  componentId: string,
+  inp: ComponentInput,
+  values: Record<string, unknown>,
+  onPatch: (key: string, value: unknown) => void,
   pickers?: EditorPickerCtx,
 ): JSX.Element | null {
-  const val = readParam(params, f.key)
-  switch (f.t) {
-    case 'text': {
-      if (f.key === 'defaultEvent') {
-        const events = params.events
-        const ids = Array.isArray(events)
-          ? events.map((e) => (typeof e === 'object' && e && 'id' in e ? String((e as { id: string }).id) : '')).filter(Boolean)
-          : []
-        if (ids.length) {
-          const v = typeof val === 'string' ? val : ''
-          return field('超时默认', (
-            <select value={v} onChange={(e) => onPatch({ defaultEvent: e.target.value || undefined })} style={{ flex: 1, fontSize: 12 }}>
-              <option value="">（首项）</option>
-              {ids.map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
-          ))
-        }
-      }
-      return field(f.label, (
-        <input
-          value={typeof val === 'string' ? val : ''}
-          onChange={(e) => onPatch({ [f.key]: e.target.value || undefined })}
-          placeholder={f.placeholder}
-          style={{ flex: 1, fontFamily: f.mono ? 'monospace' : undefined, fontSize: 12 }}
+  const val = values[inp.key]
+  const label = inp.label ?? inp.key
+  // 有 component 优先用它渲染（复合编辑器）；events / effects 直接出结构化子编辑器，textStyle / qteCues 暂交「视频」轨。
+  if (inp.component === 'events') {
+    return (
+      <div key={inp.key} style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{label}</div>
+        <EventsEditor
+          value={Array.isArray(val) ? (val as ComponentEventLike[]) : undefined}
+          variant={eventsVariantFor(componentId)}
+          pickers={pickers}
+          onChange={(events) => onPatch(inp.key, events)}
         />
-      ))
-    }
+      </div>
+    )
+  }
+  if (inp.component === 'effects') {
+    return (
+      <div key={inp.key} style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{label}</div>
+        <EffectsEditor
+          value={Array.isArray(val) ? (val as never) : undefined}
+          pickers={pickers}
+          onChange={(effs) => onPatch(inp.key, effs)}
+        />
+      </div>
+    )
+  }
+  if (inp.component === 'color') {
+    return field(label, (
+      <input
+        value={typeof val === 'string' ? val : ''}
+        placeholder="#ffffff"
+        onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+        style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
+      />
+    ))
+  }
+  if (inp.component === 'entity') {
+    return field(label, (
+      <input
+        value={typeof val === 'string' ? val : ''}
+        placeholder="entity.ent-player…"
+        onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+        style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
+      />
+    ))
+  }
+  if (inp.component) {
+    // 其它输入组件（textStyle / qteCues / 未接入的）暂交「视频」轨编辑器。
+    return (
+      <div key={inp.key} style={{ fontSize: 11, opacity: 0.55, marginBottom: 4 }}>
+        {label}：请用「{inp.component}」编辑器（暂在「视频」轨配置）
+      </div>
+    )
+  }
+  if (inp.options) {
+    return field(label, (
+      <select
+        value={typeof val === 'string' ? val : ''}
+        onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+        style={{ flex: 1, fontSize: 12 }}
+      >
+        <option value="">（未选）</option>
+        {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    ))
+  }
+  switch (inp.valueType) {
     case 'number':
-      return field(f.label, (
+      return field(label, (
         <input
           type="number"
           value={typeof val === 'number' ? val : ''}
-          min={f.min}
-          max={f.max}
-          step={f.step}
-          onChange={(e) => onPatch({ [f.key]: e.target.value === '' ? undefined : Number(e.target.value) })}
+          onChange={(e) => onPatch(inp.key, e.target.value === '' ? undefined : Number(e.target.value))}
           style={{ flex: 1, fontSize: 12 }}
         />
       ))
-    case 'select':
-      return field(f.label, (
-        <select
-          value={typeof val === 'string' ? val : ''}
-          onChange={(e) => onPatch({ [f.key]: e.target.value })}
-          style={{ flex: 1, fontSize: 12 }}
-        >
-          {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+    case 'boolean':
+      return field(label, (
+        <input type="checkbox" checked={Boolean(val)} onChange={(e) => onPatch(inp.key, e.target.checked)} />
       ))
-    case 'checkbox':
-      return field(f.label, (
-        <input
-          type="checkbox"
-          checked={Boolean(val)}
-          onChange={(e) => onPatch({ [f.key]: e.target.checked })}
-        />
-      ))
-    case 'effects':
-      return (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{f.label}</div>
-          <EffectsEditor
-            value={Array.isArray(val) ? (val as never) : undefined}
-            pickers={pickers}
-            onChange={(effects) => onPatch({ [f.key]: effects })}
-          />
-        </div>
-      )
-    case 'events':
-      return (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{f.label}</div>
-          <EventsEditor
-            value={Array.isArray(val) ? (val as ComponentEventLike[]) : undefined}
-            variant={f.variant ?? 'plain'}
-            pickers={pickers}
-            onChange={(events) => onPatch({ [f.key]: events })}
-          />
-        </div>
-      )
-    case 'textStyle':
-    case 'qteCues':
-      return (
-        <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
-          {f.label}：请在「视频」轨编辑器中配置（{f.t}）
-        </div>
-      )
+    case 'string':
     default:
-      return null
+      return field(label, (
+        <input
+          value={typeof val === 'string' ? val : ''}
+          onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+          style={{ flex: 1, fontSize: 12 }}
+        />
+      ))
   }
 }
 
+/** 由组件 manifest.inputs 驱动的通用配置面板（标量 + select；复合项提示跳过）。 */
 export function KindFormFields({
   componentId,
-  params,
+  values,
   onChange,
   pickers,
 }: {
   componentId: string
-  params: Record<string, unknown>
+  values: Record<string, unknown>
   onChange: (next: Record<string, unknown>) => void
   pickers?: EditorPickerCtx
 }): JSX.Element | null {
-  const plugin = getComponent(componentId)
-  const form = plugin?.form
-  if (!form?.length) {
-    return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无表单字段（component={componentId}）</div>
+  const inputs = getComponentManifest(componentId)?.inputs ?? []
+  if (!inputs.length) {
+    return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无可配 inputs（component={componentId}）</div>
   }
-  const onPatch = (patch: Record<string, unknown>) => {
-    let next = { ...params }
-    for (const [k, v] of Object.entries(patch)) next = patchParam(next, k, v)
-    onChange(next)
-  }
+  const onPatch = (key: string, value: unknown) => onChange(patchValue(values, key, value))
   return (
     <div>
-      {form.map((f) => (
-        <div key={f.key}>{renderField(f, params, onPatch, pickers)}</div>
-      ))}
+      {inputs.map((inp) => renderInput(componentId, inp, values, onPatch, pickers))}
     </div>
   )
 }

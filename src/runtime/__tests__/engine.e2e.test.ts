@@ -106,8 +106,8 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
     const dirs = rt.tick(1000) // 命中扣 boss 血 → a_my 容器 watch → spawn 横幅
     const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.component === 'bossHitCheer')
     expect(spawn).toBeTruthy()
-    expect(spawn!.params.dmg as number).toBeGreaterThan(0)
-    expect(spawn!.params.heroName).toBe('空藏')
+    expect(spawn!.inputs.dmg as number).toBeGreaterThan(0)
+    expect(spawn!.inputs.heroName).toBe('空藏')
   })
 
   it('initiative: slower player yields enemy-first (直接进敌方回合 tele)', () => {

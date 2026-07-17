@@ -47,7 +47,7 @@ describe('挂载静态方案 · HUD 进试玩', () => {
     const hudChildren = snap.overlayMounts
       .flatMap((m) => m.children)
       .filter((c) => c.component === 'battleHpBar')
-    expect(hudChildren.map((c) => c.params.bind)).toEqual(['ent-player', 'ent-boss'])
+    expect(hudChildren.map((c) => c.inputs.bind)).toEqual(['ent-player', 'ent-boss'])
 
     const skins = createCoreSkinRegistry()
     const mount = snap.overlayMounts.find((m) => m.mountId === SCHEME_STATIC_ID)

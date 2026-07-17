@@ -22,8 +22,8 @@ const btn: React.CSSProperties = {
 }
 
 export function PanelA({ overlay, emit }: OverlayProps): JSX.Element {
-  const label = typeof overlay.params?.label === 'string' && overlay.params.label.trim()
-    ? overlay.params.label.trim()
+  const label = typeof overlay.inputs?.label === 'string' && overlay.inputs.label.trim()
+    ? overlay.inputs.label.trim()
     : 'A'
   return (
     <div style={row}>
@@ -46,10 +46,8 @@ export const panelAKind: KindPlugin = {
   kind: 'panelA',
   role: 'presentation',
   label: 'A 面板（单按钮）',
-  inputs: [],
+  inputs: [{ key: 'label', label: '按钮文案', valueType: 'string', default: 'A' }],
   events: [{ id: 'A', label: '按钮A' }],
-  validate: () => [],
-  outputs: () => [],
 }
 
 export const panelBKind: KindPlugin = {
@@ -62,6 +60,4 @@ export const panelBKind: KindPlugin = {
     { id: 'B2', label: '按钮B2' },
     { id: 'B3', label: '按钮B3（跳转）' },
   ],
-  validate: () => [],
-  outputs: () => [],
 }

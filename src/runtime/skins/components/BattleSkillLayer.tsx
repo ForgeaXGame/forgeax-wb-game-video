@@ -1,7 +1,7 @@
 /**
  * 战斗技能条皮肤（component id: `battleSkillBar`）—— 从旧 player/BattleSkillLayer 迁移。
  *
- * 读 InteractionSnap.params.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
+ * 读 InteractionSnap.inputs.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
  * 含 'ult' 的 id 用金色高亮。
  */
 import { useEffect, useState } from 'react'
@@ -17,7 +17,7 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const events = ((interaction.params as unknown as ChoiceParams).events ?? [])
+  const events = ((interaction.inputs as unknown as ChoiceParams).events ?? [])
   const [picked, setPicked] = useState<string | null>(null)
 
   function pick(id: string, locked: boolean): void {

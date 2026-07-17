@@ -97,7 +97,7 @@ export function ScenarioInspector({
   // 「通用样式」= 自由方案；排除每节点自动内容 overlay（node:*，那是时间轴的内容容器）。
   const schemeIds = Object.keys(allOverlays).filter((id) => !id.startsWith('node:'))
   const setOverlays = (overlays: Record<string, Overlay>) => onChange({ ...value, ui: { ...value.ui, overlays } })
-  const patchOverlayChildInMeta = (overlayId: string, childId: string, patch: { params?: Record<string, unknown>; component?: string }) => {
+  const patchOverlayChildInMeta = (overlayId: string, childId: string, patch: { inputs?: Record<string, unknown>; component?: string }) => {
     const ov = allOverlays[overlayId]
     if (!ov) return
     setOverlays({
@@ -110,7 +110,7 @@ export function ScenarioInspector({
             : {
                 ...c,
                 ...(patch.component != null ? { component: patch.component } : {}),
-                params: patch.params ? { ...c.params, ...patch.params } : c.params,
+                inputs: patch.inputs ? { ...c.inputs, ...patch.inputs } : c.inputs,
               },
         ),
       },
@@ -207,7 +207,7 @@ export function ScenarioInspector({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <OverlayChildStyleEditor
                             child={child}
-                            onPatchParams={(patch) => patchOverlayChildInMeta(id, child.id, { params: patch })}
+                            onPatchParams={(patch) => patchOverlayChildInMeta(id, child.id, { inputs: patch })}
                             onPatchComponent={(component) => patchOverlayChildInMeta(id, child.id, { component })}
                           />
                         </div>

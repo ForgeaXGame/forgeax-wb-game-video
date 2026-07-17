@@ -9,12 +9,12 @@ import type { NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { overriddenChildIds } from '../../graph/edit/overlay-edit'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/kind-registry'
 import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
-import { SpawnParamsEditor } from './spawn-params-editor'
+import { SpawnInputsEditor } from './spawn-inputs-editor'
+import { KindFormFields } from './kind-form-fields'
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -194,7 +194,7 @@ function OverlayReactionsEditor({
   if (!events.length) {
     return (
       <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-        无导出事件（交互组件需有 params.events / manifest.events）
+        无导出事件（交互组件需有 inputs.events / manifest.events）
       </div>
     )
   }
@@ -408,11 +408,11 @@ function NodeActionsEditor({
               {row('存活ms', (
                 <input type="number" value={a.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} title="0=常驻直到离场" />
               ))}
-              <SpawnParamsEditor
+              <SpawnInputsEditor
                 from={a.from}
-                params={a.params}
+                inputs={a.inputs}
                 overlays={overlays}
-                onChange={(params) => patchAt(i, { ...a, params })}
+                onChange={(inputs) => patchAt(i, { ...a, inputs })}
               />
             </>
           ) : null}
@@ -749,6 +749,21 @@ export function NodeInspector({
   }, [graph.edges, node.id, nodeLabel])
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
+  /**
+   * 编辑挂载组件的 inputs（NodeInspector 为准）：写成本挂载的稀疏 override（overrides[childId].inputs）。
+   * 值来自 KindFormFields（按 manifest.inputs 出控件），full-bag 覆盖——共享方案未改组件仍跟随原型。
+   */
+  const setChildInputs = (mountIndex: number, childId: string, nextInputs: Record<string, unknown>) => {
+    const mounts = [...(d.overlayNodes ?? [])]
+    const mount = mounts[mountIndex]
+    if (!mount) return
+    const prev = mount.overrides?.[childId]
+    mounts[mountIndex] = {
+      ...mount,
+      overrides: { ...mount.overrides, [childId]: { ...prev, inputs: nextInputs } },
+    }
+    patchData({ overlayNodes: mounts })
+  }
   const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
     if (mode === 'none') {
       patchData({ subFlow: undefined, subFlowPack: undefined })
@@ -961,8 +976,6 @@ export function NodeInspector({
               prefixMount: multi,
             })
             const mountTitle = overlays?.[mount.overlay]?.title?.trim()
-            const { overridden, added, removed: removedIds } = overriddenChildIds(mount)
-            const hasDiff = overridden.length > 0 || added.length > 0 || removedIds.length > 0
             return (
               <div key={`${mid}-${i}`} style={{ marginTop: 8, border: '1px solid #333', borderRadius: 6, padding: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
@@ -986,25 +999,32 @@ export function NodeInspector({
                     移除
                   </button>
                 </div>
-                {!mount.overlay.startsWith('node:') && hasDiff ? (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4, fontSize: 11, opacity: 0.85 }}>
-                    <span title="本节点已脱离方案跟随的组件数（改共享方案不会同步到它们）">
-                      已覆盖 {overridden.length} · 新增 {added.length} · 屏蔽 {removedIds.length}
-                    </span>
-                    <button
-                      type="button"
-                      title="清空本挂载的全部差量，节点内容完全改回跟随该方案"
-                      onClick={() => {
-                        const next = (d.overlayNodes ?? []).map((m, j) =>
-                          j === i ? { ...m, overrides: undefined, added: undefined, removed: undefined } : m,
+                {(() => {
+                  const mountChildren = resolveMountChildren(overlays, mount)
+                  if (!mountChildren.length) return null
+                  return (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>组件参数（inputs）</div>
+                      {mountChildren.map((child) => {
+                        const skinId = (typeof child.inputs?.component === 'string' && child.inputs.component) || child.component
+                        const compName = getComponentManifest(skinId)?.label ?? child.component
+                        return (
+                          <div key={child.id} style={{ border: '1px solid #262626', borderRadius: 6, padding: 6, marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, marginBottom: 2 }}>
+                              <b>{child.id}</b> <span style={{ opacity: 0.6 }}>· {compName}</span>
+                            </div>
+                            <KindFormFields
+                              componentId={skinId}
+                              values={(child.inputs ?? {}) as Record<string, unknown>}
+                              onChange={(next) => setChildInputs(i, child.id, next)}
+                              pickers={pickers}
+                            />
+                          </div>
                         )
-                        patchData({ overlayNodes: next })
-                      }}
-                    >
-                      ↺ 全部回连
-                    </button>
-                  </div>
-                ) : null}
+                      })}
+                    </div>
+                  )
+                })()}
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}

@@ -35,7 +35,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const p = interaction.params as {
+  const p = interaction.inputs as {
     glyph?: string
     anchorX?: number
     anchorY?: number

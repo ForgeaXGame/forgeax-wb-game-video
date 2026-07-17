@@ -3,7 +3,7 @@
  *
  * 交互皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
  * HUD 皮肤：battleHpBar
- * 配置里（元素 params.component / overlay HUD child `component`）填这些 id，试玩即按对应旧样式渲染；
+ * 配置里（元素 inputs.component / overlay HUD child `component`）填这些 id，试玩即按对应旧样式渲染；
  * 未指定 → 回退通用按钮 / 内置血条。加新皮肤只需在此注册一行。
  */
 import { registerHudRenderer, registerInteractionSkin, registerOverlayRenderer, SkinRegistry } from '../rendererRegistry'

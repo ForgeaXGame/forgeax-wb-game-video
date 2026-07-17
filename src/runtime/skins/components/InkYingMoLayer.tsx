@@ -1,8 +1,8 @@
 /**
  * 應/默 限时抉择皮肤（component id: `inkYingMo`）—— 从旧 player/InkYingMoLayer 迁移。
  *
- * 读 InteractionSnap.params.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → submit(id)。
- * 超时默认由引擎按 params.timeoutMs/defaultEvent 自动 submit(undefined) 处理，皮肤不再自管计时。
+ * 读 InteractionSnap.inputs.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → submit(id)。
+ * 超时默认由引擎按 inputs.timeoutMs/defaultEvent 自动 submit(undefined) 处理，皮肤不再自管计时。
  */
 import { useEffect, useRef } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
@@ -17,7 +17,7 @@ export function InkYingMoLayer({ interaction, submit, ctx }: InteractionProps) {
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const events = ((interaction.params as unknown as ChoiceParams).events ?? []).slice(0, 2)
+  const events = ((interaction.inputs as unknown as ChoiceParams).events ?? []).slice(0, 2)
   const pickedRef = useRef(false)
 
   function pick(id: string, locked: boolean): void {

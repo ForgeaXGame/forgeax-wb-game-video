@@ -11,7 +11,7 @@ function perf(id: string, kinds: string[] = []): { node: GameNode; overlays: Rec
         id: `${id}-e${i}`,
         component: k,
         trigger: { when: 'enter' as const },
-        params: {},
+        inputs: {},
       })),
     },
   }

@@ -146,8 +146,8 @@ export class SkinRegistry {
   /** 子项是否「舞台锚定」：自定位表现层（floatText 用 x/y）或走 hud 表的皮肤（血条按 CSS 角锚定舞台）。 */
   private isStageAnchoredChild(child: OverlayChildSnap): boolean {
     if (this.overlay.get(child.component)) return !!child.selfPositioned
-    const params = child.params as { component?: string }
-    const skinId = (typeof params.component === 'string' && params.component) || child.component
+    const inputs = child.inputs as { component?: string }
+    const skinId = (typeof inputs.component === 'string' && inputs.component) || child.component
     return !!(this.hud.get(skinId) ?? this.hud.get(child.component))
   }
 
@@ -172,7 +172,7 @@ export class SkinRegistry {
             const snap: OverlaySnap = {
               elementId: child.elementId,
               component: child.component,
-              params: child.params,
+              inputs: child.inputs,
             }
             // 自定位组件（floatText 等用 x/y）：子盒铺满挂载盒且点击穿透，
             // 让组件内部的百分比相对完整父框解析（否则会塌成左上角、被裁切）。
@@ -189,18 +189,18 @@ export class SkinRegistry {
           }
           // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
           if (ctx) {
-            const params = child.params as { bind?: string; label?: string; accent?: string; component?: string }
+            const inputs = child.inputs as { bind?: string; label?: string; accent?: string; component?: string }
             const skinId =
-              (typeof params.component === 'string' && params.component) || child.component
+              (typeof inputs.component === 'string' && inputs.component) || child.component
             const Hud = this.hud.get(skinId) ?? this.hud.get(child.component)
             if (Hud) {
-              const bind = typeof params.bind === 'string' ? params.bind : child.elementId
+              const bind = typeof inputs.bind === 'string' ? inputs.bind : child.elementId
               const el: HudElementView = {
                 element: bind,
                 component: skinId,
                 bind,
-                label: typeof params.label === 'string' ? params.label : undefined,
-                accent: typeof params.accent === 'string' ? params.accent : undefined,
+                label: typeof inputs.label === 'string' ? inputs.label : undefined,
+                accent: typeof inputs.accent === 'string' ? inputs.accent : undefined,
                 layout: child.childLayout,
               }
               return (
@@ -228,7 +228,7 @@ export class SkinRegistry {
   }
 
   renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx, preview?: { timeMs?: number }): ReactNode {
-    const paramComponent = (interaction.params as { component?: string }).component
+    const paramComponent = (interaction.inputs as { component?: string }).component
     const Skin = this.interaction.get(paramComponent ?? interaction.component)
     const Default = this.interaction.get(interaction.component)
     const C = Skin ?? Default
@@ -338,10 +338,10 @@ const btn = (bg: string): CSSProperties => ({
 const bottomRow: CSSProperties = { position: 'absolute', left: 0, right: 0, bottom: '7%', display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', pointerEvents: 'auto' }
 
 function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): ReactNode {
-  const params = interaction.params as unknown as ChoiceParams
+  const inputs = interaction.inputs as unknown as ChoiceParams
   return (
     <div className="gv-choice-layer" style={bottomRow}>
-      {(params.events ?? []).map((e) => {
+      {(inputs.events ?? []).map((e) => {
         const locked = isOptionLocked(e, ctx)
         return (
           <button
@@ -369,8 +369,8 @@ function QteButtons({ submit }: InteractionProps): ReactNode {
 }
 
 function HotspotButtons({ interaction, submit }: InteractionProps): ReactNode {
-  const params = interaction.params as unknown as HotspotParams
-  const spots = params.events ?? []
+  const inputs = interaction.inputs as unknown as HotspotParams
+  const spots = inputs.events ?? []
   const positioned = spots.some((e) => typeof e.x === 'number' || typeof e.y === 'number')
   if (!positioned) {
     return (
@@ -423,7 +423,7 @@ function ensureTransitionStyle(): void {
 }
 
 function TransitionOverlay({ overlay }: OverlayProps): ReactNode {
-  const p = overlay.params as { durationMs?: number; color?: string }
+  const p = overlay.inputs as { durationMs?: number; color?: string }
   const dur = p.durationMs ?? 600
   return (
     <div
@@ -434,7 +434,7 @@ function TransitionOverlay({ overlay }: OverlayProps): ReactNode {
 }
 
 function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
-  const p = overlay.params as { speaker?: string; text?: string; color?: string }
+  const p = overlay.inputs as { speaker?: string; text?: string; color?: string }
   return (
     <div
       className="gv-dialogue"
@@ -447,7 +447,7 @@ function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
 }
 
 function FloatTextOverlay({ overlay }: OverlayProps): ReactNode {
-  const p = overlay.params as { text?: string; x?: number; y?: number; color?: string; durationMs?: number }
+  const p = overlay.inputs as { text?: string; x?: number; y?: number; color?: string; durationMs?: number }
   const dur = p.durationMs ?? 1100
   const neg = typeof p.text === 'string' && p.text.trim().startsWith('-')
   return (

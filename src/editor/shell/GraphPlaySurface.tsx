@@ -139,13 +139,13 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     for (const c of children) {
       const plugin = getKind(c.component)
       if (plugin?.surface !== 'hud') continue
-      const params = c.params as { bind?: string; label?: string; accent?: string }
-      const bind = params.bind ?? c.id
+      const inputs = c.inputs as { bind?: string; label?: string; accent?: string }
+      const bind = inputs.bind ?? c.id
       m.set(bind, {
         element: bind,
         component: c.component,
-        label: params.label,
-        accent: params.accent,
+        label: inputs.label,
+        accent: inputs.accent,
         layout: c.layout,
       })
     }

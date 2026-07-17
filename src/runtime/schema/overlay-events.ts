@@ -19,9 +19,9 @@ import { overlayMountId } from './node-config-schema'
 
 export type ManifestResolver = (componentId: string) => ComponentManifest | undefined
 
-/** 从 `params.events` 折成事件表（交互目录 SSOT；组件未在 params 声明时回退 manifest.events）。 */
-export function eventsFromParams(params: Record<string, unknown> | undefined): ComponentEvent[] {
-  const events = params?.events
+/** 从 `inputs.events` 折成事件表（交互目录 SSOT；组件未在 inputs 声明时回退 manifest.events）。 */
+export function eventsFromParams(inputs: Record<string, unknown> | undefined): ComponentEvent[] {
+  const events = inputs?.events
   if (!Array.isArray(events)) return []
   const out: ComponentEvent[] = []
   for (const e of events) {
@@ -42,7 +42,7 @@ function emittingChildren(
 ): Array<{ child: Overlay['children'][number]; events: ComponentEvent[] }> {
   return overlay.children
     .map((child) => {
-      const fromParams = eventsFromParams(child.params)
+      const fromParams = eventsFromParams(child.inputs)
       const manifest = resolve(child.component)
       const events = fromParams.length ? fromParams : (manifest?.events ?? [])
       return { child, events }

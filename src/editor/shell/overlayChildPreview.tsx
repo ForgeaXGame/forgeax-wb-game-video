@@ -9,9 +9,9 @@ import type { OverlayChild } from '../../runtime/schema/graph-schema'
 import { getKind } from '../../runtime/registry/kind-registry'
 import type { HudElementView, SkinCtx, SkinRegistry } from '../../runtime/skins/rendererRegistry'
 
-/** 解析落盘 child 的实际渲染 component id（params.component 皮肤优先，回退基础 kind）。 */
+/** 解析落盘 child 的实际渲染 component id（inputs.component 皮肤优先，回退基础 kind）。 */
 function skinIdOf(child: OverlayChild): string {
-  const c = child.params?.component
+  const c = child.inputs?.component
   return typeof c === 'string' && c ? c : child.component
 }
 
@@ -27,13 +27,13 @@ export function renderOverlayChildPreview(
 ): ReactNode {
   const skinId = skinIdOf(child)
   const plugin = getKind(skinId) ?? getKind(child.component)
-  const params = { ...(child.params ?? {}) }
-  if (params.component == null) params.component = child.component
+  const inputs = { ...(child.inputs ?? {}) }
+  if (inputs.component == null) inputs.component = child.component
 
   if (plugin?.surface === 'hud') {
-    const bind = typeof params.bind === 'string' ? params.bind : child.id
-    const label = typeof params.label === 'string' ? params.label : undefined
-    const accent = typeof params.accent === 'string' ? params.accent : undefined
+    const bind = typeof inputs.bind === 'string' ? inputs.bind : child.id
+    const label = typeof inputs.label === 'string' ? inputs.label : undefined
+    const accent = typeof inputs.accent === 'string' ? inputs.accent : undefined
     const el: HudElementView = { element: bind, component: skinId, bind, label, accent, layout: child.layout }
     return reg.renderHudElement(el, ctx)
   }
@@ -43,9 +43,9 @@ export function renderOverlayChildPreview(
       {
         elementId: child.id,
         component: child.component,
-        params,
+        inputs,
         handles: [],
-        timeoutMs: typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined,
+        timeoutMs: typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined,
       },
       () => {},
       ctx,
@@ -57,6 +57,6 @@ export function renderOverlayChildPreview(
   return reg.renderOverlay({
     elementId: child.id,
     component: child.component,
-    params,
+    inputs,
   })
 }

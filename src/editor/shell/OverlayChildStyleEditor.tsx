@@ -35,12 +35,12 @@ export function OverlayChildStyleEditor({
   onPatchParams: (patch: Record<string, unknown>) => void
   onPatchComponent: (component: string) => void
 }): JSX.Element {
-  const params = child.params ?? {}
+  const inputs = child.inputs ?? {}
   const kind = child.component
   const title = COMPONENT_LABEL[kind] ?? kind
 
   if (kind === 'qte') {
-    const skin = typeof params.component === 'string' ? params.component : ''
+    const skin = typeof inputs.component === 'string' ? inputs.component : ''
     const opts = INTERACTION_SKINS.filter((s) => s.target === 'qte')
     return (
       <div style={{ marginTop: 6 }}>
@@ -61,7 +61,7 @@ export function OverlayChildStyleEditor({
   }
 
   if (kind === 'choice') {
-    const skin = typeof params.component === 'string' ? params.component : ''
+    const skin = typeof inputs.component === 'string' ? inputs.component : ''
     const opts = INTERACTION_SKINS.filter((s) => s.target === 'choice')
     return (
       <div style={{ marginTop: 6 }}>
@@ -109,7 +109,7 @@ export function OverlayChildStyleEditor({
           <div style={{ flex: 1, minWidth: 0 }}>
             <GraphTextStylePicker
               group="subtitle"
-              value={params.style as GraphTextStyle | undefined}
+              value={inputs.style as GraphTextStyle | undefined}
               onChange={(style) => onPatchParams({ style })}
             />
           </div>
@@ -127,7 +127,7 @@ export function OverlayChildStyleEditor({
           <div style={{ flex: 1, minWidth: 0 }}>
             <GraphTextStylePicker
               group="overlay"
-              value={params.style as GraphTextStyle | undefined}
+              value={inputs.style as GraphTextStyle | undefined}
               onChange={(style) => onPatchParams({ style })}
             />
           </div>
