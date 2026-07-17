@@ -7,14 +7,14 @@ import { evaluateCondition, type ConditionTarget } from '../engine/condition'
 import type { HudSnap } from '../engine/session'
 import type { SkinCtx } from './rendererRegistry'
 
-/** 由 hud 拼弱化运行态（仅 hp + vars/flags/score；无完整 attr 时用）。 */
+/** 由 hud 拼弱化运行态（attrs + vars/flags/score）。 */
 export function conditionTargetFromHud(hud: HudSnap, visited: Set<string> = new Set()): ConditionTarget {
   const entities: MutableState['entities'] = {}
   for (const [id, e] of Object.entries(hud.entities)) {
-    entities[id] = {
-      attrs: { hp: e.hp },
-      attrMeta: { hp: { max: e.maxHp } },
-    }
+    const attrs = e.attrs ?? { hp: e.hp }
+    const attrMeta: Record<string, { max?: number }> = { hp: { max: e.maxHp } }
+    for (const [k, max] of Object.entries(e.attrMax ?? {})) attrMeta[k] = { max }
+    entities[id] = { attrs, attrMeta }
   }
   return {
     state: {

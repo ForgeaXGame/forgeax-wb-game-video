@@ -10,6 +10,7 @@ import type { ConditionTarget } from '../engine/condition'
 import type { Layout } from '../schema/node-config-schema'
 import { childWrapStyle, layoutHasExplicitSize, layoutToCss, mountWrapStyle } from '../schema/layout'
 import type { ChoiceParams, HotspotParams } from '../registry/core-kinds'
+import { getKind } from '../registry/kind-registry'
 import { isPlayerFocused } from '../input/playerFocus'
 import { isOptionLocked } from './optionLock'
 
@@ -34,6 +35,8 @@ export interface HudElementView {
   component?: string
   /** 可选：绑定的实体/变量 id（缺省用 element 本身）。 */
   bind?: string
+  /** 绑定的属性名（缺省 hp；来自 OverlayChild.params.attr）。 */
+  attr?: string
   label?: string
   accent?: string
   /** @deprecated 用 layout（CSS inset）；皮肤内硬编码定位的遗留字段。 */
@@ -47,6 +50,9 @@ export interface OverlayProps {
   overlay: OverlaySnap
   /** 展示组件的非阻塞事件回调（按钮点击等）；由试玩面注入，路由到 session.emitEvent。 */
   emit?: (key: string) => void
+  /** 编辑器预览：纯 CSS 动画已由宿主 `.gc-preview-clock.is-paused` 统一冻住，多数皮肤无需接这两个。 */
+  preview?: boolean
+  previewTimeMs?: number
 }
 export interface InteractionProps {
   interaction: InteractionSnap
@@ -59,6 +65,9 @@ export interface InteractionProps {
 export interface HudProps {
   element: HudElementView
   ctx: SkinCtx
+  /** 编辑器预览：同 OverlayProps，多数 HUD 皮肤（常驻血条等）无需接。 */
+  preview?: boolean
+  previewTimeMs?: number
 }
 export type OverlayComponent = ComponentType<OverlayProps>
 export type InteractionComponent = ComponentType<InteractionProps>
@@ -136,6 +145,18 @@ export class SkinRegistry {
   registerHudRenderer(id: string, c: HudComponent): void {
     this.hud.set(id, c)
   }
+  /** 是否已注册 HUD 皮肤（预览分流用；与 KindPlugin.surface 解耦）。 */
+  hasHudRenderer(id: string): boolean {
+    return this.hud.has(id)
+  }
+  /** 是否已注册表现层 overlay 渲染器。 */
+  hasOverlayRenderer(id: string): boolean {
+    return this.overlay.has(id)
+  }
+  /** 是否已注册交互/皮肤渲染器。 */
+  hasInteractionRenderer(id: string): boolean {
+    return this.interaction.has(id)
+  }
 
   /**
    * 渲染一份挂载的全部 children。
@@ -174,16 +195,16 @@ export class SkinRegistry {
           }
           // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
           if (ctx) {
-            const params = child.params as { bind?: string; label?: string; accent?: string; component?: string }
-            const skinId =
-              (typeof params.component === 'string' && params.component) || child.component
-            const Hud = this.hud.get(skinId) ?? this.hud.get(child.component)
+            const params = child.params as { bind?: string; attr?: string; label?: string; accent?: string }
+            const skinId = child.component
+            const Hud = this.hud.get(skinId)
             if (Hud) {
               const bind = typeof params.bind === 'string' ? params.bind : child.elementId
               const el: HudElementView = {
                 element: bind,
                 component: skinId,
                 bind,
+                attr: typeof params.attr === 'string' ? params.attr : undefined,
                 label: typeof params.label === 'string' ? params.label : undefined,
                 accent: typeof params.accent === 'string' ? params.accent : undefined,
                 layout: child.childLayout,
@@ -202,23 +223,24 @@ export class SkinRegistry {
   }
 
   /** @deprecated 用 renderOverlayMount */
-  renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void): ReactNode {
+  renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void, preview?: { timeMs?: number }): ReactNode {
     const C = this.overlay.get(overlay.component)
     if (!C) return null
     return (
       <SkinErrorBoundary key={overlay.elementId} name={overlay.component}>
-        <C overlay={overlay} emit={emit} />
+        <C overlay={overlay} emit={emit} preview={!!preview} previewTimeMs={preview?.timeMs} />
       </SkinErrorBoundary>
     )
   }
 
   renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx, preview?: { timeMs?: number }): ReactNode {
-    const paramComponent = (interaction.params as { component?: string }).component
-    const Skin = this.interaction.get(paramComponent ?? interaction.component)
-    const Default = this.interaction.get(interaction.component)
+    // 顶栏 component = 皮肤/类型 id；缺皮肤时回退到 KindPlugin.kind 默认按钮。
+    const Skin = this.interaction.get(interaction.component)
+    const baseKind = getKind(interaction.component)?.kind ?? interaction.component
+    const Default = this.interaction.get(baseKind)
     const C = Skin ?? Default
     if (!C) return null
-    const name = paramComponent ?? interaction.component
+    const name = interaction.component
     const props: InteractionProps = {
       interaction,
       submit: safe(name, submit),
@@ -234,12 +256,12 @@ export class SkinRegistry {
     )
   }
 
-  renderHudElement(element: HudElementView, ctx: SkinCtx): ReactNode {
+  renderHudElement(element: HudElementView, ctx: SkinCtx, preview?: { timeMs?: number }): ReactNode {
     const C = element.component ? this.hud.get(element.component) : undefined
     if (!C) return null
     const body = (
       <SkinErrorBoundary key={element.element} name={element.component ?? element.element}>
-        <C element={element} ctx={ctx} />
+        <C element={element} ctx={ctx} preview={!!preview} previewTimeMs={preview?.timeMs} />
       </SkinErrorBoundary>
     )
     if (!element.layout) return body
@@ -280,8 +302,8 @@ export function renderOverlayMount(
 ): ReactNode {
   return defaultSkinRegistry.renderOverlayMount(mount, emit, ctx)
 }
-export function renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void): ReactNode {
-  return defaultSkinRegistry.renderOverlay(overlay, emit)
+export function renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void, preview?: { timeMs?: number }): ReactNode {
+  return defaultSkinRegistry.renderOverlay(overlay, emit, preview)
 }
 export function registerInteractionRenderer(kind: string, c: InteractionComponent): void {
   defaultSkinRegistry.registerInteractionRenderer(kind, c)
@@ -300,8 +322,8 @@ export function renderInteraction(
 export function registerHudRenderer(id: string, c: HudComponent): void {
   defaultSkinRegistry.registerHudRenderer(id, c)
 }
-export function renderHudElement(element: HudElementView, ctx: SkinCtx): ReactNode {
-  return defaultSkinRegistry.renderHudElement(element, ctx)
+export function renderHudElement(element: HudElementView, ctx: SkinCtx, preview?: { timeMs?: number }): ReactNode {
+  return defaultSkinRegistry.renderHudElement(element, ctx, preview)
 }
 export function registerCoreRenderers(): void {
   defaultSkinRegistry.registerCoreRenderers()
@@ -324,8 +346,23 @@ const bottomRow: CSSProperties = { position: 'absolute', left: 0, right: 0, bott
 
 function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): ReactNode {
   const params = interaction.params as unknown as ChoiceParams
+  const x = typeof params.x === 'number' ? params.x : 0.5
+  const y = typeof params.y === 'number' ? params.y : 0.72
   return (
-    <div className="gv-choice-layer" style={bottomRow}>
+    <div
+      className="gv-choice-layer"
+      style={{
+        position: 'absolute',
+        left: `${x * 100}%`,
+        top: `${y * 100}%`,
+        transform: 'translate(-50%, -50%)',
+        display: 'flex',
+        gap: 10,
+        justifyContent: 'center',
+        flexWrap: 'wrap',
+        pointerEvents: 'auto',
+      }}
+    >
       {(params.events ?? []).map((e) => {
         const locked = isOptionLocked(e, ctx)
         return (

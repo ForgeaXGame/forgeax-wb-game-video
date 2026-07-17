@@ -7,7 +7,8 @@
  * 覆盖 nodia 所需（数值结算/副作用一律走 node.data.reactions 的生命周期相位，无 logic 结算组件）：
  *  - floatText(view) 漂字：纯展示，params 交给 Player。
  *  - choice(interaction) / skill(interaction) 选择/技能：每个 event 一个同名出口。
- *  - qte(interaction)   判定：默认 pass/good/fail（inkKou 仅 pass/fail），或 params.events 自定义。
+ *  - qte(interaction)   判定：出口以 params.events 为准；缺省回退本 kind 的 events（三档）。
+ *    各皮肤自带出口 defaults（见 skins/components/*Preset），不在此按皮肤 id 分支。
  *  - hotspot(interaction) 热点：每个 HotspotSpot（id + 可选 x/y）一个同名出口。
  *
  * 交互目录：共享壳是 ComponentEvent；choice/skill 用 ChoiceOption（可带 condition），
@@ -78,29 +79,12 @@ export const floatTextKind: KindPlugin<FloatTextParams> = {
   },
 }
 
-// ── presentation: hud（血条等；皮 id 如 battleHpBar 为 alias）──────────────────
-export interface HudParams {
-  bind?: string
-  label?: string
-  accent?: string
-}
-export const hudKind: KindPlugin<HudParams> = {
-  kind: 'hud',
-  role: 'presentation',
-  surface: 'hud',
-  aliases: ['battleHpBar'],
-  label: 'HUD',
-  defaults: () => ({}),
-  validate: () => [],
-  outputs: () => [],
-  events: [],
-}
+// HUD 呈现（surface:'hud'）的具体组件契约住在各自皮肤 tsx（如 BattleHpBar），
+// 经 skins/components 的 COMPONENT_KINDS 注册——不要在 core-kinds 里为「未分类」硬编一种血条。
 
 // ── interaction: choice / skill ───────────────────────────────────────────────
 /** 选项呈现形态：列表 / 画面热区。 */
 export type ChoicePresentation = 'list' | 'hotspot'
-/** 选项 UI 皮肤（对齐 legacy ChoiceUi）。 */
-export type ChoiceUi = 'default' | 'battleSkillBar' | 'inkYingMo'
 /**
  * choice/skill 的选项项 = 共享事件 + 本组件门控。
  * `condition` 不成立 → 皮肤用实时态灰置禁选（≠ 边 condition；引擎不注入 _locked）。
@@ -115,14 +99,15 @@ export interface ChoiceParams {
   defaultEvent?: string
   prompt?: string
   presentation?: ChoicePresentation
-  ui?: ChoiceUi
-  /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
-  component?: string
+  /** 整组选项锚点（归一化 0~1；预览拖拽 / 试玩共用）。 */
+  x?: number
+  y?: number
 }
 const CHOICE_FORM: FormField[] = [
   { t: 'text', key: 'prompt', label: '提示' },
   { t: 'select', key: 'presentation', label: '呈现', options: [{ value: 'list', label: '列表' }, { value: 'hotspot', label: '热区' }] },
-  { t: 'select', key: 'ui', label: '皮肤', options: [{ value: 'default', label: '默认' }, { value: 'battleSkillBar', label: '战斗技能条' }, { value: 'inkYingMo', label: '水墨影魔' }] },
+  { t: 'number', key: 'x', label: 'x', step: 0.05 },
+  { t: 'number', key: 'y', label: 'y', step: 0.05 },
   { t: 'number', key: 'timeoutMs', label: '限时ms' },
   { t: 'text', key: 'defaultEvent', label: '超时出口' },
   { t: 'events', key: 'events', label: '选项', variant: 'choice' },
@@ -132,7 +117,7 @@ function choiceLike(kind: string, label: string): KindPlugin<ChoiceParams> {
     kind,
     role: 'interaction',
     label,
-    defaults: () => ({ events: [{ id: 'opt0', label: '选项一' }], presentation: 'list', ui: 'default' }),
+    defaults: () => ({ events: [{ id: 'opt0', label: '选项一' }], presentation: 'list', x: 0.5, y: 0.72 }),
     form: CHOICE_FORM,
     validate: (p) =>
       Array.isArray(p.events) && p.events.length > 0 ? [] : [`${kind}.events must be non-empty`],
@@ -147,6 +132,7 @@ function choiceLike(kind: string, label: string): KindPlugin<ChoiceParams> {
 export const choiceKind = {
   ...choiceLike('choice', '选项'),
   aliases: ['inkYingMo', 'battleSkillBar'],
+  aliasLabels: { inkYingMo: '應/默 抉择', battleSkillBar: '战斗技能条' },
 } as KindPlugin<ChoiceParams>
 export const skillKind = choiceLike('skill', '技能')
 
@@ -184,7 +170,7 @@ export interface QteParams {
   /**
    * 完美判定半窗 ms：|玩家按下时刻 − 拍点「命中(targetAt)」时刻| ≤ 此值 → pass（完美）。
    * 「成功(good)」不需要独立参数——命中落在拍点显示窗 [appearAt, endAt] 内即成功、窗外/超时=fail。
-   * 缺省=窗内命中即完美。运行时由 inkKou 等皮肤消费。
+   * 缺省=窗内命中即完美。运行时由各 QTE 皮肤消费。
    */
   perfectMs?: number
   /** @deprecated 由 perfectMs 取代（成功=命中于拍点显示窗内，无需独立半窗）；保留仅为旧数据兼容。 */
@@ -197,15 +183,13 @@ export interface QteParams {
   sequence?: string[]
   /** UI 皮肤 id。 */
   ui?: string
-  /** 交互目录：自定义判定出口（缺省 = pass/good/fail，inkKou = pass/fail）。 */
+  /** 交互目录：自定义判定出口（缺省见本 kind `events`；皮肤自带 defaults 写进 params.events）。 */
   events?: ComponentEvent[]
   /** 超时默认出口 event id（缺省 'fail'）。 */
   defaultEvent?: string
   /** 限时 ms。 */
   timeoutMs?: number
-  /** 渲染皮肤组件 id（皮肤 registry），缺省=通用按钮。 */
-  component?: string
-  /** 皮肤自管时限 ms（如叩击/防反的收圈时长；缺省各皮肤自带）。 */
+  /** 皮肤自管时限 ms（如收圈时长；缺省各皮肤自带）。 */
   durationMs?: number
 }
 /** @deprecated 旧草稿字段；新数据用 `events` / `defaultEvent`（边路由统一）。 */
@@ -215,16 +199,19 @@ export type QteFullParams = QteParams & {
   defaultKey?: string
   outcomeLabels?: Record<string, string>
 }
+/** 无皮肤 / 未落盘 events 时的通用三档出口（皮肤差异在各自 preset，不在此分支）。 */
+const QTE_DEFAULT_EVENTS: ComponentEvent[] = [
+  { id: 'pass', label: '完美' },
+  { id: 'good', label: '良好' },
+  { id: 'fail', label: '失败' },
+]
 export const qteKind: KindPlugin<QteFullParams> = {
   kind: 'qte',
   role: 'interaction',
   aliases: ['battleParry', 'inkKou'],
+  aliasLabels: { battleParry: '防反 QTE', inkKou: '叩击 QTE' },
   label: 'QTE',
-  events: [
-    { id: 'pass', label: '完美' },
-    { id: 'good', label: '良好' },
-    { id: 'fail', label: '失败' },
-  ],
+  events: QTE_DEFAULT_EVENTS,
   defaults: () => ({ qteKind: 'parry', cues: [], passingHits: 1 }),
   form: [
     { t: 'select', key: 'qteKind', label: 'QTE型', options: [{ value: 'parry', label: '完美防反' }, { value: 'timing', label: '打点' }, { value: 'mash', label: '连打' }, { value: 'sequence', label: '连招' }, { value: 'sweep', label: '划动' }] },
@@ -233,13 +220,12 @@ export const qteKind: KindPlugin<QteFullParams> = {
     { t: 'number', key: 'tolerance', label: '容差ms' },
     { t: 'number', key: 'score', label: '满分' },
     { t: 'number', key: 'windowMs', label: '窗口ms' },
-    { t: 'text', key: 'ui', label: '皮肤' },
     { t: 'events', key: 'events', label: '出口', variant: 'plain' },
     { t: 'qteCues', key: 'cues', label: '拍点' },
   ],
   validate: () => [],
   outputs: (p) => {
-    // 自定义 events 优先（PR #77）；旧 exits 仅作草稿兼容。
+    // 落盘 events 优先；旧 exits 仅作草稿兼容；再回退本 kind 通用三档。
     if (Array.isArray(p.events) && p.events.length > 0) {
       return p.events.map((e) => ({ id: e.id, label: e.label }))
     }
@@ -252,17 +238,7 @@ export const qteKind: KindPlugin<QteFullParams> = {
       }
       return list
     }
-    if (p.component === 'inkKou') {
-      return [
-        { id: 'pass', label: '完美' },
-        { id: 'fail', label: '失败' },
-      ]
-    }
-    return [
-      { id: 'pass', label: '完美' },
-      { id: 'good', label: '良好' },
-      { id: 'fail', label: '失败' },
-    ]
+    return QTE_DEFAULT_EVENTS.map((e) => ({ id: e.id, label: e.label }))
   },
   resolve: (_ctx, p, input) => {
     // ① 字符串 outcome（event id / pass|good|fail）；② { key }；③ { hits } 由 passingHits 判；④ 超时 defaultEvent。
@@ -350,7 +326,6 @@ export const hotspotKind: KindPlugin<HotspotParams> = {
 
 export const CORE_KINDS: KindPlugin[] = [
   floatTextKind as unknown as KindPlugin,
-  hudKind as unknown as KindPlugin,
   dialogueKind as unknown as KindPlugin,
   transitionKind as unknown as KindPlugin,
   choiceKind as unknown as KindPlugin,

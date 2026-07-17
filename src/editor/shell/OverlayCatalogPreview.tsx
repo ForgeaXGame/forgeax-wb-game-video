@@ -37,14 +37,19 @@ const PREVIEW_CSS = `
 
 function mockHudCtx(entities: Record<string, Entity> | undefined, variables: Record<string, Variable> | undefined): SkinCtx {
   const ents: SkinCtx['hud']['entities'] = {}
+  const pack = (attrs: Record<string, number>, attrMeta?: Record<string, { max?: number; initial?: number }>) => {
+    const attrMax: Record<string, number> = {}
+    for (const [k, v] of Object.entries(attrs)) attrMax[k] = attrMeta?.[k]?.max ?? v
+    return { hp: attrs.hp ?? 0, maxHp: attrMeta?.hp?.max ?? attrs.hp ?? 0, attrs: { ...attrs }, attrMax }
+  }
   for (const [id, e] of Object.entries(entities ?? {})) {
     const hp = e.attrs?.hp ?? e.attrMeta?.hp?.initial ?? 100
-    const maxHp = e.attrMeta?.hp?.max ?? Math.max(hp, 100)
-    ents[id] = { hp, maxHp }
+    const attrs = { ...(e.attrs ?? {}), hp }
+    ents[id] = pack(attrs, e.attrMeta)
   }
   // 保底给两个常见战斗实体样例血量，好让血条皮肤在无实体数据时也有内容。
-  if (!ents['ent-player']) ents['ent-player'] = { hp: 72, maxHp: 100 }
-  if (!ents['ent-boss']) ents['ent-boss'] = { hp: 58, maxHp: 100 }
+  if (!ents['ent-player']) ents['ent-player'] = pack({ hp: 72 }, { hp: { max: 100 } })
+  if (!ents['ent-boss']) ents['ent-boss'] = pack({ hp: 58 }, { hp: { max: 100 } })
   const vars: Record<string, number> = { qi: 3 }
   for (const [id, v] of Object.entries(variables ?? {})) vars[id] = v.initial ?? 0
   return { hud: { entities: ents, vars, flags: {}, score: 1200 } }

@@ -3,9 +3,59 @@
  *   我方（空藏）：右下角、蓝色镜像水墨血条（从左侧消减）+ 残影 + 气力珠（金/灰）。
  *   敌方（小怪）：顶部居中、红色微倾水墨血条 + 残影。
  * 样式/类名/位置与旧版完全一致；毛边走自带 #inkRough 滤镜。按 element 绑定的实体 id 判角色（ent-player=我方，否则敌方）。
+ *
+ * Kind 契约与渲染同文件（对齐 bossHitCheer）：In = bind/label/accent，由 COMPONENT_KINDS 注册。
  */
 import type { HudProps } from '../rendererRegistry'
+import type { OverlayChild } from '../../schema/graph-schema'
+import type { KindPlugin } from '../../registry/kind-registry'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+
+/** 组件入参（In）；同类型可有多份实例，各绑不同实体 / 属性。 */
+export interface BattleHpBarParams {
+  /** 绑定的实体 id（编辑器 EntityPicker）。 */
+  bind?: string
+  /** 绑定的属性名（编辑器 AttrPicker；缺省 hp）。 */
+  attr?: string
+  /** 画面 / 编辑器显示名。 */
+  label?: string
+  accent?: string
+}
+
+/**
+ * 组件的 Kind 契约（引擎/编辑器识别用）——与渲染实现同文件，组件即"包"。
+ * `surface: 'hud'` 让试玩面走 HUD 渲染表，而非通用 overlay 表。
+ * bind/attr 走场景 pickers，不在 core-kinds 硬编码。
+ */
+export const battleHpBarKind: KindPlugin<BattleHpBarParams> = {
+  kind: 'battleHpBar',
+  role: 'presentation',
+  surface: 'hud',
+  label: '水墨血条',
+  defaults: () => ({ bind: 'ent-player', attr: 'hp', label: '角色' }),
+  inputs: [
+    { key: 'bind', label: '绑定对象', valueType: 'bind' },
+    { key: 'attr', label: '绑定属性', valueType: 'attr', entityKey: 'bind' },
+    { key: 'label', label: '显示名', valueType: 'string' },
+    { key: 'accent', label: '强调色', valueType: 'color' },
+  ],
+  validate: () => [],
+  outputs: () => [],
+  events: [],
+}
+
+/** OverlayChild 预设（顶栏 component = 皮肤 id）。 */
+export function battleHpBarPreset(
+  id: string,
+  opts: { bind: string; label: string },
+): OverlayChild {
+  return {
+    id,
+    component: 'battleHpBar',
+    trigger: { when: 'enter' },
+    params: { bind: opts.bind, label: opts.label },
+  }
+}
 
 export function BattleHpBar({ element, ctx }: HudProps) {
   injectCss('graph-battle-hud', HUD_CSS)
@@ -14,7 +64,10 @@ export function BattleHpBar({ element, ctx }: HudProps) {
   const id = element.bind ?? element.element
   const e = ctx.hud.entities[id]
   if (!e) return null
-  const ratio = e.maxHp > 0 ? Math.max(0, Math.min(1, e.hp / e.maxHp)) : 0
+  const attr = element.attr?.trim() || 'hp'
+  const cur = e.attrs?.[attr] ?? (attr === 'hp' ? e.hp : 0)
+  const max = e.attrMax?.[attr] ?? (attr === 'hp' ? e.maxHp : cur)
+  const ratio = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0
   const pct = `${ratio * 100}%`
   const isPlayer = id === 'ent-player'
   const name = element.label ?? id

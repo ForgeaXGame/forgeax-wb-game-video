@@ -342,10 +342,21 @@ export class GraphRuntime {
     })
     this.setPhase('playing')
 
-    // enter 计算（可能开交互 → 挂起；或触发图级规则 → 即时改道）。带 window 的元素改由时钟窗口驱动，跳过。
+    // enter 计算：先铺完所有表现层（HUD / 字幕方案等），再开交互。
+    // 旧逻辑「碰交互就 break」会吞掉挂载顺序靠后的静态方案血条；带 window 的仍改由时钟驱动。
     for (const el of this.childrenOf(node)) {
-      if (el.trigger.when === 'enter' && !el.window) this.runElement(el)
-      if (this.state.phase === 'awaitInteraction' || this.redirect) break
+      if (el.trigger.when !== 'enter' || el.window) continue
+      if ((this.getComponent(el.component)?.role ?? 'presentation') === 'interaction') continue
+      this.runElement(el)
+      if (this.redirect) break
+    }
+    if (!this.redirect) {
+      for (const el of this.childrenOf(node)) {
+        if (el.trigger.when !== 'enter' || el.window) continue
+        if ((this.getComponent(el.component)?.role ?? 'presentation') !== 'interaction') continue
+        this.runElement(el)
+        if (this.state.phase === 'awaitInteraction' || this.redirect) break
+      }
     }
     // enter 相位 reactions 的副作用（生命周期效果）。
     if (this.state.phase !== 'awaitInteraction' && !this.redirect) this.applyPhaseReactionEffects(node, 'enter')
@@ -365,19 +376,28 @@ export class GraphRuntime {
   }
 
   // ── tick / 演出结束 ─────────────────────────────────────────────────────────
-  /** 推进节点时钟，触发到点的 at 元素。 */
+  /**
+   * 推进节点时钟：触发到点的 at 元素 + window 时段叠层。
+   * 交互挂起（awaitInteraction）时仍推进 window（时间轴飘字/字幕），否则试玩里选项一出叠层全灭。
+   */
   tick(elapsedMs: number): RuntimeDirective[] {
     this.state.elapsedMs = elapsedMs
     const node = this.node(this.state.currentNodeId)
-    if (!node || this.state.phase !== 'playing') return this.drain()
-    for (const el of this.childrenOf(node)) {
-      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
-        this.runElement(el)
-        if ((this.state.phase as GraphPhase) === 'awaitInteraction' || this.redirect) break
+    if (!node) return this.drain()
+    const phase = this.state.phase as GraphPhase
+    if (phase !== 'playing' && phase !== 'awaitInteraction') return this.drain()
+
+    if (phase === 'playing') {
+      for (const el of this.childrenOf(node)) {
+        if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
+          this.runElement(el)
+          if ((this.state.phase as GraphPhase) === 'awaitInteraction' || this.redirect) break
+        }
       }
+      // at 相位 reactions 的副作用（到点施加）。
+      if (this.state.phase === 'playing' && !this.redirect) this.applyAtReactionEffects(node, elapsedMs)
     }
-    // at 相位 reactions 的副作用（到点施加）。
-    if (this.state.phase === 'playing' && !this.redirect) this.applyAtReactionEffects(node, elapsedMs)
+
     this.tickWindows(node, elapsedMs)
     this.reapSpawns(elapsedMs)
     this.consumeRedirect()
@@ -551,13 +571,23 @@ export class GraphRuntime {
     const role = plugin?.role ?? 'presentation'
     this.fired.add(el.id)
     // 组件出现（mount）→ 触发 shown 生命周期反应（每节点访问首次）。
+    // 注意：已在 awaitInteraction 时仍要继续渲表现层（window 飘字/字幕）；
+    // 仅当「本次 shown 反应新打开交互 / 改道」才中断后续派发。
+    const phaseBeforeShown = this.state.phase as GraphPhase
     if (!this.shownChildren.has(el.id)) {
       this.shownChildren.add(el.id)
       this.fireLifecycle('shown', el)
-      if (this.state.phase === 'awaitInteraction' || this.redirect) return
+      if (this.redirect) return
+      if (
+        role !== 'presentation'
+        && phaseBeforeShown !== 'awaitInteraction'
+        && this.state.phase === 'awaitInteraction'
+      ) {
+        return
+      }
     }
     const ctx = { ...this.ctx(), elementId: el.id }
-    const params = el.params.component == null ? { ...el.params, component: el.component } : el.params
+    const params = { ...(el.params ?? {}) }
     if (role === 'presentation') {
       if (plugin?.render) {
         for (const d of plugin.render(ctx, params)) {
@@ -575,6 +605,8 @@ export class GraphRuntime {
       }
     } else if (role === 'interaction') {
       if (!plugin) return
+      // 已有主交互挂起时不再叠开第二个。
+      if (this.state.phase === 'awaitInteraction') return
       if (plugin.present) for (const d of plugin.present(ctx, params)) this.emit(d)
       // 限时：timeoutMs（choice）/ windowMs（QTE 窗口）/ durationMs（皮肤时限）同源。
       const timeoutRaw =
@@ -589,7 +621,7 @@ export class GraphRuntime {
         elementId: el.id,
         component: el.component,
         params,
-        handles: plugin.outputs(params).map((h) => h.id),
+        handles: plugin.outputs(params, el.component).map((h) => h.id),
         ...(timeoutMs ? { timeoutMs } : {}),
       })
       this.setPhase('awaitInteraction')
@@ -796,7 +828,7 @@ export class GraphRuntime {
     const params: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(merged)) params[k] = this.resolveBind(v, locals)
     const component = tpl?.component ?? overlayId
-    if (params.component == null) params.component = component
+    delete params.component
     const layout: Layout | undefined = action.layout ?? (tpl?.layout && !layoutIsEffectivelyEmpty(tpl.layout) ? tpl.layout : undefined)
     const plugin = this.getComponent(component)
     const mountLayout = layout ?? (plugin?.stageRelative ? STAGE_FILL : undefined)

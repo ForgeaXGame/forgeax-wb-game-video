@@ -8,6 +8,7 @@
  *   继续跟随共享方案（prototype + sparse override，见 `runtime/schema/expand-overlay.ts`）。
  */
 import type { GameScenario, OverlayChild, OverlayNode, GameGraph } from '../../runtime/schema/graph-schema'
+import type { Overlay } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { mergeChild, resolveMountChildren } from '../../runtime/schema/expand-overlay'
 
@@ -28,6 +29,35 @@ function contentMountIndex(node: { id: string }, mounts: OverlayNode[]): number 
   if (!mounts.length) return -1
   const idx = mounts.findIndex((m) => m.overlay === nodeOverlayId(node.id))
   return idx >= 0 ? idx : 0
+}
+
+/**
+ * 含指定 childId 的挂载下标（扫全部挂载的合并结果）。
+ * HUD 等常作为第二份挂载；写 overrides/删组件必须打到真正拥有它的那份，不能死盯内容挂载。
+ */
+function mountIndexOwningChild(
+  overlays: Record<string, Overlay> | undefined,
+  node: { id: string; data: { overlayNodes?: OverlayNode[] } },
+  childId: string,
+): number {
+  const mounts = node.data.overlayNodes ?? []
+  for (let i = 0; i < mounts.length; i++) {
+    if (resolveMountChildren(overlays, mounts[i]!).some((c) => c.id === childId)) return i
+  }
+  return -1
+}
+
+/**
+ * 含指定 childId 的挂载（跨全部挂载扫描；HUD 等常作第二份挂载，交互结算定位挂载复用这个）。
+ * 找不到则 undefined（调用方自行兜底 primaryOverlayMount）。
+ */
+export function findMountOwningChild(
+  scenario: GameScenario,
+  node: { id: string; data: { overlayNodes?: OverlayNode[] } },
+  childId: string,
+): OverlayNode | undefined {
+  const idx = mountIndexOwningChild(scenario.ui?.overlays, node, childId)
+  return idx >= 0 ? (node.data.overlayNodes ?? [])[idx] : undefined
 }
 
 /** 节点素材编辑用的主挂载：优先 `node:<id>`，否则第一份。 */
@@ -139,7 +169,7 @@ export function removeOverlayChild(scenario: GameScenario, nodeId: string, child
   const node = scn.graph.nodes.find((n) => n.id === nodeId)
   if (!node) return scn
   const mounts = [...(node.data.overlayNodes ?? [])]
-  const idx = contentMountIndex(node, mounts)
+  const idx = mountIndexOwningChild(scn.ui?.overlays, node, childId)
   if (idx < 0) return scn
   const mount = mounts[idx]!
 
@@ -179,7 +209,7 @@ export function patchOverlayChild(
   const node = scn.graph.nodes.find((n) => n.id === nodeId)
   if (!node) return scn
   const mounts = [...(node.data.overlayNodes ?? [])]
-  const idx = contentMountIndex(node, mounts)
+  const idx = mountIndexOwningChild(scn.ui?.overlays, node, childId)
   if (idx < 0) return scn
   const mount = mounts[idx]!
 
@@ -218,8 +248,10 @@ export function patchOverlayChildParams(
   params: Record<string, unknown>,
 ): GameScenario {
   const node = scenario.graph.nodes.find((n) => n.id === nodeId)
-  const mount = primaryOverlayMount(node)
-  if (!mount) return scenario
+  if (!node) return scenario
+  const idx = mountIndexOwningChild(scenario.ui?.overlays, node, childId)
+  if (idx < 0) return scenario
+  const mount = node.data.overlayNodes![idx]!
   const child = resolveMountChildren(scenario.ui?.overlays, mount).find((c) => c.id === childId)
   if (!child) return scenario
   return patchOverlayChild(scenario, nodeId, childId, { params: { ...child.params, ...params } })
@@ -274,7 +306,7 @@ export function resetOverride(scenario: GameScenario, nodeId: string, childId: s
   const node = scenario.graph.nodes.find((n) => n.id === nodeId)
   if (!node) return scenario
   const mounts = [...(node.data.overlayNodes ?? [])]
-  const idx = contentMountIndex(node, mounts)
+  const idx = mountIndexOwningChild(scenario.ui?.overlays, node, childId)
   if (idx < 0) return scenario
   const mount = mounts[idx]!
   if (!mount.overrides?.[childId]) return scenario

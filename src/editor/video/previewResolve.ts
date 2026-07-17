@@ -57,11 +57,10 @@ function effectNumericValueSafe(eff: GraphEffect, state: MutableState): { val: n
   return { val: 0 }
 }
 
-function formatDelta(op: 'add' | 'mul' | 'div' | 'set', val: number | null, expr?: string): string {
+function formatDelta(op: 'add' | 'mul' | 'set', val: number | null, expr?: string): string {
   if (val === null) return expr ? `（无法求值: ${expr}）` : '（无法求值）'
   if (op === 'set') return `=${val}`
   if (op === 'mul') return `×${val}`
-  if (op === 'div') return `÷${val}`
   return signed(val)
 }
 

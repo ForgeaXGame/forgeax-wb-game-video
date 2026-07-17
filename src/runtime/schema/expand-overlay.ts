@@ -10,6 +10,7 @@ import type {
   OverlayNode,
 } from './node-config-schema'
 import { overlayMountId } from './node-config-schema'
+import { normalizeOverlayChild } from './overlay-component'
 
 /** 运行态 child id：始终 mount/catalog，单挂载同形。 */
 export function overlayInstanceChildId(mountId: string, childId: string): string {
@@ -58,17 +59,16 @@ function toInstanceChild(
   def: OverlayChild,
   meta: { mountId: string; overlayId: string; nodeId: string },
 ): OverlayInstanceChild {
-  const catalogId = def.id
+  const norm = normalizeOverlayChild(def)
+  const catalogId = norm.id
   const runtimeId = overlayInstanceChildId(meta.mountId, catalogId)
-  const params = { ...(def.params ?? {}) }
-  if (params.component == null) params.component = def.component
   return {
     id: runtimeId,
-    component: def.component,
-    trigger: def.trigger ?? { when: 'enter' },
-    window: def.window,
-    layout: def.layout,
-    params,
+    component: norm.component,
+    trigger: norm.trigger ?? { when: 'enter' },
+    window: norm.window,
+    layout: norm.layout,
+    params: { ...(norm.params ?? {}) },
     source: {
       mountId: meta.mountId,
       overlayId: meta.overlayId,

@@ -80,8 +80,17 @@ export interface InteractionSnap {
   /** 限时 ms（>0 时 Player 到时自动 submit(undefined)）。 */
   timeoutMs?: number
 }
+export interface HudEntitySnap {
+  /** 约定便捷字段（= attrs.hp / attrMeta.hp.max）。 */
+  hp: number
+  maxHp: number
+  /** 全量 attrs，供 HUD 绑定非 hp 属性。 */
+  attrs: Record<string, number>
+  /** attr → max（来自 attrMeta.max；无则回退当前值）。 */
+  attrMax: Record<string, number>
+}
 export interface HudSnap {
-  entities: Record<string, { hp: number; maxHp: number }>
+  entities: Record<string, HudEntitySnap>
   vars: Record<string, number>
   flags: Record<string, number>
   score: number
@@ -133,9 +142,21 @@ export class GraphSession {
   private readHud(): HudSnap {
     const s = this.runtime.state
     const entities: HudSnap['entities'] = {}
-    // HUD 血条按约定读名为 hp 的 attr + attrMeta.hp.max（无 hp 的品类此处为 0/0，改由 HUD 元素绑定别的 attr）。
     for (const [id, e] of Object.entries(s.entities)) {
-      entities[id] = { hp: e.attrs.hp ?? 0, maxHp: e.attrMeta?.hp?.max ?? 0 }
+      const attrs = { ...e.attrs }
+      const attrMax: Record<string, number> = {}
+      for (const [k, v] of Object.entries(attrs)) {
+        attrMax[k] = e.attrMeta?.[k]?.max ?? v
+      }
+      for (const [k, m] of Object.entries(e.attrMeta ?? {})) {
+        if (attrMax[k] === undefined && m.max !== undefined) attrMax[k] = m.max
+      }
+      entities[id] = {
+        hp: attrs.hp ?? 0,
+        maxHp: e.attrMeta?.hp?.max ?? attrs.hp ?? 0,
+        attrs,
+        attrMax,
+      }
     }
     return { entities, vars: { ...s.vars }, flags: { ...s.flags }, score: s.score }
   }

@@ -3,24 +3,38 @@
  *
  * 交互皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
  * HUD 皮肤：battleHpBar
- * 配置里（元素 params.component / overlay HUD child `component`）填这些 id，试玩即按对应旧样式渲染；
- * 未指定 → 回退通用按钮 / 内置血条。加新皮肤只需在此注册一行。
+ * 落盘：OverlayChild.component = 这些 id（或基础 kind）；试玩按顶栏查渲染表。
+ * 未指定皮肤 → 回退通用按钮 / 内置血条。加新皮肤：tsx 导出 preset + 本文件注册一行。
  */
 import { registerHudRenderer, registerInteractionSkin, registerOverlayRenderer, SkinRegistry } from '../rendererRegistry'
 import { registerKind, type KindPlugin, type KindRegistry } from '../../registry/kind-registry'
-import { BattleParryLayer } from './BattleParryLayer'
-import { InkKouLayer } from './InkKouLayer'
-import { InkYingMoLayer } from './InkYingMoLayer'
-import { BattleSkillLayer } from './BattleSkillLayer'
-import { BattleHpBar } from './BattleHpBar'
+import { BattleParryLayer, battleParryDefaults, battleParryPreset } from './BattleParryLayer'
+import { InkKouLayer, inkKouDefaults, inkKouPreset } from './InkKouLayer'
+import { InkYingMoLayer, inkYingMoDefaults, inkYingMoPreset } from './InkYingMoLayer'
+import { BattleSkillLayer, battleSkillBarDefaults, battleSkillBarPreset } from './BattleSkillLayer'
+import { BattleHpBar, battleHpBarKind, battleHpBarPreset } from './BattleHpBar'
 import { BossHitCheer, bossHitCheerKind } from './BossHitCheer'
 import { PanelA, PanelB, panelAKind, panelBKind } from './TurnPanels'
+
+export {
+  battleHpBarKind,
+  battleHpBarPreset,
+  battleParryDefaults,
+  battleParryPreset,
+  battleSkillBarDefaults,
+  battleSkillBarPreset,
+  inkKouDefaults,
+  inkKouPreset,
+  inkYingMoDefaults,
+  inkYingMoPreset,
+}
 
 /**
  * 组件包自带的 Kind 契约（与渲染实现同文件导出）。
  * 通过 `installComponentKinds` 注入每局 KindRegistry；`registerCoreSkins` 注入默认表（编辑器/校验）。
  */
 export const COMPONENT_KINDS: KindPlugin[] = [
+  battleHpBarKind as unknown as KindPlugin,
   bossHitCheerKind as unknown as KindPlugin,
   panelAKind,
   panelBKind,
@@ -33,14 +47,14 @@ export function installComponentKinds(reg: KindRegistry): void {
 
 /**
  * 皮肤定位类型：
- *  - 'point'：单点皮肤，位置由作者的锚点/cue 坐标决定（可拖，创作=皮肤=试玩三处一致）。
- *  - 'fixed'：组合/固定布局皮肤（防反 A/B、底部按钮条），位置由皮肤自身固定，作者拖拽无意义。
+ *  - 'point'：位置由作者锚点（params.x/y 或 cue）决定（可拖，创作=皮肤=试玩三处一致）。
+ *  - 'fixed'：整段自定位（如防反收圈），不跟预览手柄走。
  */
 export type SkinPositioning = 'point' | 'fixed'
 
 /**
  * 可选交互皮肤（供编辑器下拉）。`target` 区分它天然是 QTE 皮肤还是选项皮肤；
- * `defaultAnchor` 仅 point 皮肤有意义（新建拍点的初始归一化位置）。
+ * `defaultAnchor` 仅 point 皮肤有意义（新建时的初始归一化位置）。
  */
 export const INTERACTION_SKINS: Array<{
   id: string
@@ -51,8 +65,8 @@ export const INTERACTION_SKINS: Array<{
 }> = [
   { id: 'battleParry', label: '防反 QTE（A/B 收圈）', target: 'qte', positioning: 'fixed' },
   { id: 'inkKou', label: '叩击 QTE（单点）', target: 'qte', positioning: 'point', defaultAnchor: { x: 0.58, y: 0.39 } },
-  { id: 'inkYingMo', label: '應/默 抉择', target: 'choice', positioning: 'fixed' },
-  { id: 'battleSkillBar', label: '战斗技能条', target: 'choice', positioning: 'fixed' },
+  { id: 'inkYingMo', label: '應/默 抉择', target: 'choice', positioning: 'point', defaultAnchor: { x: 0.72, y: 0.78 } },
+  { id: 'battleSkillBar', label: '战斗技能条', target: 'choice', positioning: 'point', defaultAnchor: { x: 0.5, y: 0.88 } },
 ]
 
 /** 皮肤定位类型查询；未知/未选皮肤（默认按钮条）按 'fixed'（底部居中）处理。 */

@@ -26,8 +26,8 @@ export const filterKind: KindPlugin<FilterParams> = {
   label: '滤镜',
   defaults: () => ({ filter: 'warm', intensity: 1 }),
   form: [
-    { t: 'select', key: 'filter', label: '滤镜', options: FILTER_OPTIONS },
-    { t: 'number', key: 'intensity', label: '强度', step: 0.05 },
+    { t: 'select', key: 'filter', label: '滤镜', options: FILTER_OPTIONS, fallback: 'warm' },
+    { t: 'number', key: 'intensity', label: '强度', step: 0.05, slider: true },
   ],
   validate: () => [],
   outputs: () => [],
@@ -47,8 +47,8 @@ export const fxKind: KindPlugin<FxParams> = {
   label: '特效',
   defaults: () => ({ fx: 'flash', intensity: 1 }),
   form: [
-    { t: 'select', key: 'fx', label: '特效', options: FX_OPTIONS },
-    { t: 'number', key: 'intensity', label: '强度', step: 0.05 },
+    { t: 'select', key: 'fx', label: '特效', options: FX_OPTIONS, fallback: 'flash' },
+    { t: 'number', key: 'intensity', label: '强度', step: 0.05, slider: true },
     { t: 'color', key: 'color', label: '颜色', placeholder: '#ffffff' },
   ],
   validate: () => [],

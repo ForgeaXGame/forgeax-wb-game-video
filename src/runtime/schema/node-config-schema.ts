@@ -34,10 +34,16 @@ export type BindValue = string | number | boolean | { expr: string }
 export interface ComponentInput {
   key: string
   label?: string
-  valueType: 'string' | 'number' | 'boolean' | 'color' | 'bind' | 'json'
+  /**
+   * - bind：场景实体下拉（编辑器 EntityPicker）
+   * - attr：某实体的属性下拉（编辑器 AttrPicker；默认跟同组件 params.bind）
+   */
+  valueType: 'string' | 'number' | 'boolean' | 'color' | 'bind' | 'attr' | 'json'
   required?: boolean
   default?: BindValue
   options?: { value: string; label: string }[]
+  /** valueType='attr' 时：实体 id 所在的 params 键，缺省 `'bind'`。 */
+  entityKey?: string
 }
 
 /**

@@ -7,7 +7,29 @@
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
-import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+import type { OverlayChild } from '../../schema/graph-schema'
+import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle } from './skinRuntime'
+
+/** 皮肤默认玩法参数（出口 / 新建预设共用；不进 core-kinds 特判）。 */
+export const inkKouDefaults = {
+  glyph: '叩',
+  events: [
+    { id: 'pass', label: '完美' },
+    { id: 'fail', label: '失败' },
+  ],
+  defaultEvent: 'fail',
+  cues: [{ id: 'k0', x: 0.5, y: 0.45, appearAt: 0, targetAt: 400, endAt: 1000 }],
+}
+
+/** OverlayChild 预设（顶栏 component = 皮肤 id）。 */
+export function inkKouPreset(id: string): OverlayChild {
+  return {
+    id,
+    component: 'inkKou',
+    trigger: { when: 'enter' },
+    params: { ...inkKouDefaults },
+  }
+}
 
 interface KouCueParam {
   id?: string
@@ -172,7 +194,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
 
   const t = preview ? (previewTimeMs ?? 0) : 0
   return (
-    <div className={`pvn-opts pvn-opts--kou pvn-opts--anchored show${preview ? ' is-frozen' : ''}`} aria-label="叩 QTE">
+    <div className={`pvn-opts pvn-opts--kou pvn-opts--anchored show${previewFreezeClass(preview)}`} aria-label="叩 QTE">
       {items.map((c) => {
         const hit = hitRef.current.has(c.key)
         const active = preview
@@ -185,7 +207,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
           ['--pvn-opt-x']: `${c.x * 100}%`,
           ['--pvn-opt-y']: `${c.y * 100}%`,
         }
-        if (preview) anchorStyle['--kou-t'] = `${Math.max(0, t - c.absAppear)}ms`
+        if (preview) Object.assign(anchorStyle, previewTStyle(t - c.absAppear))
         return (
           <button
             key={c.key}
@@ -216,10 +238,10 @@ const KOU_CSS = `
 .pvn-opts--kou.show{pointer-events:auto;}
 .pvn-opts--kou.is-frozen{pointer-events:none!important;}
 .pvn-opts--kou.is-frozen .pvn-kou-orn,.pvn-opts--kou.is-frozen .pvn-kou-glyph,.pvn-opts--kou.is-frozen .pvn-kou-hint,.pvn-opts--kou.is-frozen .pvn-kou-space{animation-play-state:paused;}
-.pvn-opts--kou.is-frozen .pvn-kou-orn{animation-delay:calc(0s - var(--kou-t,0ms));}
-.pvn-opts--kou.is-frozen .pvn-kou-glyph{animation-delay:calc(0.12s - var(--kou-t,0ms));}
-.pvn-opts--kou.is-frozen .pvn-kou-hint{animation-delay:calc(0.38s - var(--kou-t,0ms));}
-.pvn-opts--kou.is-frozen .pvn-kou-space{animation-delay:calc(0s - var(--kou-t,0ms));}
+.pvn-opts--kou.is-frozen .pvn-kou-orn{animation-delay:calc(0s - var(--preview-t,0ms));}
+.pvn-opts--kou.is-frozen .pvn-kou-glyph{animation-delay:calc(0.12s - var(--preview-t,0ms));}
+.pvn-opts--kou.is-frozen .pvn-kou-hint{animation-delay:calc(0.38s - var(--preview-t,0ms));}
+.pvn-opts--kou.is-frozen .pvn-kou-space{animation-delay:calc(0s - var(--preview-t,0ms));}
 .pvn-opts--kou.pvn-opts--anchored .pvn-opt--kou{position:absolute;left:var(--pvn-opt-x,58%);top:var(--pvn-opt-y,39%);transform:translate(-50%,-86%);}
 .pvn-opts--kou.pvn-opts--anchored .pvn-opt--kou:hover{transform:translate(-50%,calc(-86% - 2px)) scale(1.03);}
 .pvn-opt--kou{border:none;background:none;cursor:pointer;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px;color:#f8f4ec;}

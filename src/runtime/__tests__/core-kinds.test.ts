@@ -29,8 +29,11 @@ describe('core-kinds', () => {
     expect(choiceKind.resolve!(ctx, params, undefined).outcome).toBe('s1')
   })
 
-  it('qte: three outcomes; resolve by string or hits', () => {
+  it('qte: three outcomes by default; custom events 优先；resolve by string or hits', () => {
     expect(qteKind.outputs({}).map((h) => h.id)).toEqual(['pass', 'good', 'fail'])
+    expect(
+      qteKind.outputs({ events: [{ id: 'pass', label: '完美' }, { id: 'fail', label: '失败' }] }).map((h) => h.id),
+    ).toEqual(['pass', 'fail'])
     expect(qteKind.resolve!(ctx, {}, 'good').outcome).toBe('good')
     expect(qteKind.resolve!(ctx, { passingHits: 3 }, { hits: 3 }).outcome).toBe('pass')
     expect(qteKind.resolve!(ctx, { passingHits: 3 }, { hits: 1 }).outcome).toBe('fail')

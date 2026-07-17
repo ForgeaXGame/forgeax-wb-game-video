@@ -64,11 +64,10 @@ function resolveCatalog(args: CatalogArgs): {
 const CMP_OPS: CmpOp[] = ['gte', 'lte', 'gt', 'lt', 'eq', 'neq']
 const CMP_LABEL: Record<CmpOp, string> = { gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '=', neq: '≠' }
 const EFFECT_KIND_LABEL: Record<string, string> = { attr: '属性', var: '变量', flag: '标记', item: '道具' }
-const NUMERIC_OPS: NumericEffectOp[] = ['add', 'mul', 'div', 'set']
+const NUMERIC_OPS: NumericEffectOp[] = ['add', 'mul', 'set']
 const OP_LABEL: Record<string, string> = {
   add: '增加',
   mul: '乘以',
-  div: '除以',
   set: '设为',
   give: '给予',
   take: '取走',
@@ -89,6 +88,60 @@ function field(label: string, node: JSX.Element): JSX.Element {
     <div style={rowStyle}>
       <span style={lbl}>{label}</span>
       {node}
+    </div>
+  )
+}
+
+// ── 位置（x/y 归一化 0~1）——字幕/飘字/选项/通用组件/QTE point 皮肤共用 ──────────────
+export function PositionEditor({
+  x,
+  y,
+  defaultX,
+  defaultY,
+  onChange,
+  variant = 'percent',
+  resettable,
+}: {
+  x: number | undefined
+  y: number | undefined
+  defaultX: number
+  defaultY: number
+  onChange: (next: { x?: number; y?: number }) => void
+  /** percent=数字输入框（%）；slider=0~1 滑条（字幕现状）。 */
+  variant?: 'percent' | 'slider'
+  /** 显示「归位到默认位置」按钮，清空 x/y 回落到样式默认值。 */
+  resettable?: boolean
+}): JSX.Element {
+  const vx = typeof x === 'number' ? x : defaultX
+  const vy = typeof y === 'number' ? y : defaultY
+  if (variant === 'slider') {
+    return (
+      <>
+        <div className="gc-field-row">
+          <label><span>X {vx.toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.01} value={vx} onChange={(e) => onChange({ x: Number(e.target.value) })} />
+          </label>
+          <label><span>Y {vy.toFixed(2)}</span>
+            <input type="range" min={0} max={1} step={0.01} value={vy} onChange={(e) => onChange({ y: Number(e.target.value) })} />
+          </label>
+        </div>
+        {resettable ? (
+          <button type="button" className="gc-tsp-toggle" onClick={() => onChange({ x: undefined, y: undefined })}>归位到默认位置</button>
+        ) : null}
+      </>
+    )
+  }
+  return (
+    <div className="gc-inspector-grid2">
+      <label><span>X%</span>
+        <input type="number" value={Math.round(vx * 100)} onChange={(e) => onChange({ x: Number(e.target.value) / 100 })} />
+      </label>
+      <label><span>Y%</span>
+        <input type="number" value={Math.round(vy * 100)} onChange={(e) => onChange({ y: Number(e.target.value) / 100 })} />
+      </label>
+      {resettable ? (
+        <button type="button" className="gc-tsp-toggle" onClick={() => onChange({ x: undefined, y: undefined })}>归位到默认位置</button>
+      ) : null}
     </div>
   )
 }

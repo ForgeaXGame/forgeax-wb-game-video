@@ -130,6 +130,7 @@ export function resolveValuePick(
     const fromEmbedded = asValuePick(value.pick)
     if (fromEmbedded) return fromEmbedded
   }
-  if (typeof value === 'number') return { mode: 'const', const: Math.abs(value) }
+  // 常量保留正负号（结算扣血写 -10 等）；旧 Math.abs 会在回填时把负数抹成正数，输入框无法留下负号。
+  if (typeof value === 'number') return { mode: 'const', const: value }
   return { mode: 'pick', terms: [emptyPickTerm(entities, variables)] }
 }

@@ -78,8 +78,8 @@ export type ValueTerm = {
 export type CmpOp = 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'neq'
 
 // ── 副作用（图原生，通用）────────────────────────────────────────────────────
-/** 数值类 effect 的运算：加 / 乘 / 除 / 设为（减 = 增加负数）。 */
-export type NumericEffectOp = 'add' | 'mul' | 'div' | 'set'
+/** 数值类 effect 的运算：加 / 乘 / 设为（减 = 增加负数）。 */
+export type NumericEffectOp = 'add' | 'mul' | 'set'
 export type GraphEffect =
   | { kind: 'attr'; entityId: string; attr: string; op: NumericEffectOp; value: NumOrExpr; once?: boolean; id?: string }
   | { kind: 'var'; varId: string; op: NumericEffectOp; value: NumOrExpr; once?: boolean; id?: string }

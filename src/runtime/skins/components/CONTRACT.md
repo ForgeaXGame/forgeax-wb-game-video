@@ -35,7 +35,7 @@ function MyBar({ element, ctx }: HudProps) { … }
 1. 写组件（见下"自闭环规则"）。
 2. 在 `skins/index.ts` 注册：`registerInteractionSkin('myId', MySkin)` 或 `registerHudRenderer('myBar', MyBar)`；
    并加进 `INTERACTION_SKINS` / `HUD_SKINS` 以出现在编辑器下拉。
-3. json 对齐名字：元素 `params.component = 'myId'`；HUD overlay child `component = 'myBar'`（进 demo：`demo/nodia.graph.json`）。
+3. json 对齐名字：`OverlayChild.component = 'myId'`（皮肤 alias 或基础 kind；与 `id` 同级，**不要**写进 `params.component`）。进 demo：`demo/nodia.graph.json`。
 
 ## 自闭环规则（可独立运行 / 直接替换）
 - **只 import `react` 与 `./skinRuntime`**（`injectCss` / `ensureInkFilters` / `ensureBrushFont`）+ registry 的 props 类型。**不要** import 游戏引擎其它代码。

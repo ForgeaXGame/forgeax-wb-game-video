@@ -58,8 +58,6 @@ export interface MaterialTimelineProps {
   ) => void
   /** 提供时，选中可删材料后按 Delete/Backspace 或点击控件上的 × 即删除。 */
   onDeleteMaterial?: (item: MaterialItem) => void
-  /** 提供时，`item.overridden` 的控件上出现「↺」回连按钮，点击清掉该组件的差量、改回跟随共享方案。 */
-  onResetOverride?: (item: MaterialItem) => void
   /** 提供时，从素材库把控件卡片拖入时间轴 → 在落点时刻 atMs / 轨 zIndex 新增该模板。 */
   onDropTemplate?: (template: string, atMs: number, zIndex: number) => void
   /** 当前时间轴模式：组件（material）/ 音频（audio）。默认 material。 */
@@ -94,7 +92,6 @@ export function MaterialTimeline({
   onSelectMaterial,
   onPatchMaterial,
   onDeleteMaterial,
-  onResetOverride,
   onDropTemplate,
   mode,
   onModeChange,
@@ -434,24 +431,6 @@ export function MaterialTimeline({
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
                       ) : null}
                       <span>{materialDisplayLabel(m)}{m.label ? ` · ${m.label}` : ''}</span>
-                      {m.overridden && onResetOverride ? (
-                        <button
-                          type="button"
-                          className="gc-mrelink"
-                          aria-label="回连方案"
-                          title="已脱离方案跟随，点击清掉本组件差量、改回跟随共享方案"
-                          onPointerDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onResetOverride(m)
-                          }}
-                        >
-                          ↺
-                        </button>
-                      ) : null}
                       {editable && selected && onDeleteMaterial && canDeleteMaterial(m.kind) ? (
                         <button
                           type="button"
@@ -693,27 +672,6 @@ const MATERIAL_TIMELINE_CSS = `
   box-shadow: 0 0 6px rgba(255,213,74,.85), 0 0 0 1px rgba(0,0,0,.4);
   pointer-events: none;
 }
-.mtl-root .gc-mrelink {
-  position: absolute;
-  top: -8px;
-  left: 10px;
-  z-index: 3;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.4);
-  background: #b8860b;
-  color: #fff;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-}
-.mtl-root .gc-mrelink:hover { background: #d4a017; }
 .mtl-root .gc-mclip.is-subtitle { border-color: rgba(95,201,128,.58); color: #d6ffe2; }
 .mtl-root .gc-mclip.is-subtitle::before { background: #62c980; }
 .mtl-root .gc-mclip.is-overlay { border-color: rgba(240,136,64,.58); color: #ffd8bf; }
@@ -768,6 +726,8 @@ const MATERIAL_TIMELINE_CSS = `
 .mtl-root .gc-mclip.is-filter::before { background: #7ed67a; }
 .mtl-root .gc-mclip.is-fx { border-color: rgba(255,138,196,.6); color: #ffd9ee; }
 .mtl-root .gc-mclip.is-fx::before { background: #ff8ac4; }
+.mtl-root .gc-mclip.is-component { border-color: rgba(180,190,210,.55); color: #e2e8f0; }
+.mtl-root .gc-mclip.is-component::before { background: #94a3b8; }
 .mtl-root .gc-mhandle {
   position: absolute;
   top: 0; bottom: 0;

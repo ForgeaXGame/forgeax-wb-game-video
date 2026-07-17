@@ -91,6 +91,12 @@ describe('valueExprPick', () => {
 
   it('compiles const mode', () => {
     expect(compileValuePick({ mode: 'const', const: 100 })).toBe(100)
+    expect(compileValuePick({ mode: 'const', const: -30 })).toBe(-30)
+  })
+
+  it('resolve 常量保留负号（结算扣血可直接填 -10）', () => {
+    expect(resolveValuePick(-10, entities, variables)).toEqual({ mode: 'const', const: -10 })
+    expect(resolveValuePick(0, entities, variables)).toEqual({ mode: 'const', const: 0 })
   })
 
   it('resolve prefers stored sidecar pick', () => {

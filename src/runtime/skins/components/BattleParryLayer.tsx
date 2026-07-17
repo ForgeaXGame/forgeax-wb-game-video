@@ -4,10 +4,36 @@
  *
  * 提交：默认 A→pass、B→good；有 params.events 时按 events[0]/[1].id 提交。
  * 超时 → defaultEvent ?? 'fail'。键位始终 A/B（不跟 event.label 走，避免长文案撑大按钮）。
+ *
+ * 预览态：本皮肤用 rAF + performance.now 自计时，CSS `is-paused` 冻不住——preview 时完全不启
+ * rAF/超时，改按 previewTimeMs（相对 cues[0].appearAt）静态推导每个键的圈位/armed/sweet，
+ * 也不吃点击/键盘。
  */
 import { useEffect, useRef, useState } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
+import type { OverlayChild } from '../../schema/graph-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+
+/** 皮肤默认玩法参数（出口 / 样式锁 / 新建预设共用；不进 core-kinds 特判）。 */
+export const battleParryDefaults = {
+  durationMs: 2600,
+  events: [
+    { id: 'pass', label: '防反' },
+    { id: 'good', label: '闪避' },
+    { id: 'fail', label: '受击' },
+  ],
+  defaultEvent: 'fail' as const,
+}
+
+/** OverlayChild 预设（顶栏 component = 皮肤 id）。 */
+export function battleParryPreset(id: string): OverlayChild {
+  return {
+    id,
+    component: 'battleParry',
+    trigger: { when: 'enter' },
+    params: { ...battleParryDefaults },
+  }
+}
 
 type ExitOpt = { key: string; glyph: 'A' | 'B' }
 
@@ -31,7 +57,37 @@ function exitsOf(params: Record<string, unknown>): ExitOpt[] {
   ]
 }
 
-export function BattleParryLayer({ interaction, submit }: InteractionProps) {
+/** cues[0].appearAt——preview 时把 previewTimeMs（绝对播放头）折成「防反窗自己的 now」。 */
+function firstCueAppearAt(params: Record<string, unknown>): number {
+  const cues = params.cues
+  const first = Array.isArray(cues) ? (cues[0] as { appearAt?: unknown } | undefined) : undefined
+  return typeof first?.appearAt === 'number' ? first.appearAt : 0
+}
+
+/** 单帧圈位/armed/sweet 计算——rAF 实跑与 preview 静态推导共用，避免两套判定漂移。 */
+function applyKeyFrame(el: HTMLButtonElement, now: number, center: number, approach: number, tol: number): void {
+  const ring = el.querySelector<HTMLElement>('.pvb-key-ring')
+  const setRing = (scale: number): void => {
+    if (ring) ring.style.transform = `scale(${scale.toFixed(3)})`
+  }
+  if (now < center - approach) {
+    el.classList.remove('armed', 'sweet')
+    setRing(2.4)
+    return
+  }
+  if (now <= center + tol + 160) {
+    el.classList.add('armed')
+    const s = now <= center ? 1 + 1.4 * ((center - now) / approach) : 1 - 0.3 * Math.min(1, (now - center) / (tol + 160))
+    setRing(s)
+    if (now >= center - tol && now <= center + tol) el.classList.add('sweet')
+    else el.classList.remove('sweet')
+    return
+  }
+  el.classList.remove('armed', 'sweet')
+  setRing(1)
+}
+
+export function BattleParryLayer({ interaction, submit, preview, previewTimeMs }: InteractionProps) {
   injectCss('battle-parry-layer', PARRY_CSS)
   ensureInkFilters()
   ensureBrushFont()
@@ -47,6 +103,7 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
   const resolvedRef = useRef(false)
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [settled, setSettled] = useState<{ kind: 'hit'; index: number } | { kind: 'miss' } | null>(null)
+  const previewNow = preview ? Math.max(0, (previewTimeMs ?? 0) - firstCueAppearAt(params)) : 0
 
   function finish(outcome: string): void {
     if (resolvedRef.current) return
@@ -54,41 +111,38 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
     submit(outcome)
   }
   function hit(index: number): void {
-    if (resolvedRef.current) return
+    if (preview || resolvedRef.current) return
     setSettled({ kind: 'hit', index })
     window.setTimeout(() => finish(options[index]?.key ?? missKey), 180)
   }
 
+  // 预览态：不启 rAF/超时——每次播放头/参数变化按 previewNow 静态定帧，供 scrub 精确对齐。
   useEffect(() => {
+    if (!preview) return
+    const D = durationMs
+    const approach = Math.min(750, D * 0.24)
+    const tol = Math.min(240, D * 0.13)
+    btnRefs.current.forEach((el, i) => {
+      if (!el) return
+      const center = i === 0 ? D * 0.32 : D * 0.72
+      applyKeyFrame(el, previewNow, center, approach, tol)
+    })
+  }, [preview, previewNow, durationMs, options.length])
+
+  useEffect(() => {
+    if (preview) return
     const D = durationMs
     const approach = Math.min(750, D * 0.24)
     const tol = Math.min(240, D * 0.13)
     const centers = options.map((_, i) => (i === 0 ? D * 0.32 : D * 0.72))
     const start = performance.now()
     let raf = 0
-    function setRing(el: HTMLButtonElement, scale: number): void {
-      const ring = el.querySelector<HTMLElement>('.pvb-key-ring')
-      if (ring) ring.style.transform = `scale(${scale.toFixed(3)})`
-    }
     function loop(): void {
       if (resolvedRef.current) return
       const now = performance.now() - start
       btnRefs.current.forEach((el, i) => {
         if (!el) return
-        const c = centers[i] ?? D * 0.5
-        if (now < c - approach) {
-          el.classList.remove('armed', 'sweet')
-          setRing(el, 2.4)
-        } else if (now <= c + tol + 160) {
-          el.classList.add('armed')
-          const s = now <= c ? 1 + 1.4 * ((c - now) / approach) : 1 - 0.3 * Math.min(1, (now - c) / (tol + 160))
-          setRing(el, s)
-          if (now >= c - tol && now <= c + tol) el.classList.add('sweet')
-          else el.classList.remove('sweet')
-        } else {
-          el.classList.remove('armed', 'sweet')
-          setRing(el, 1)
-        }
+        applyKeyFrame(el, now, centers[i] ?? D * 0.5, approach, tol)
       })
       if (now >= D + 200) {
         setSettled({ kind: 'miss' })
@@ -111,10 +165,10 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
       window.removeEventListener('keydown', onKeyDown, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [durationMs, missKey])
+  }, [durationMs, missKey, preview])
 
   return (
-    <div className="pvb-parry show" aria-label="防反 QTE">
+    <div className={`pvb-parry show${preview ? ' is-frozen' : ''}`} aria-label="防反 QTE">
       <div className="pvb-parry-keys">
         {options.map((option, index) => {
           const hitHere = settled?.kind === 'hit' && settled.index === index
@@ -130,7 +184,7 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
               className={`pvb-key ${cls}`}
               aria-label={option.glyph}
               onClick={() => hit(index)}
-              disabled={!!settled}
+              disabled={!!settled || preview}
             >
               <span className="pvb-key-ring" />
               <span className="pvb-key-label">{option.glyph}</span>
@@ -147,6 +201,7 @@ export function BattleParryLayer({ interaction, submit }: InteractionProps) {
 const PARRY_CSS = `
 .pvb-parry{position:absolute;right:8%;top:48%;transform:translateY(-50%);z-index:46;display:none;flex-direction:column;align-items:center;gap:12px;cursor:pointer;user-select:none;pointer-events:auto}
 .pvb-parry.show{display:flex}
+.pvb-parry.is-frozen{pointer-events:none!important;cursor:default}
 .pvb-parry-keys{position:relative;width:190px;height:158px}
 .pvb-parry-keys .pvb-key:nth-child(1){position:absolute;left:0;bottom:0}
 .pvb-parry-keys .pvb-key:nth-child(2){position:absolute;right:0;top:0}

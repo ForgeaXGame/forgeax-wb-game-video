@@ -27,9 +27,17 @@ import type {
   Reaction,
   Trigger,
 } from '../../runtime/schema/graph-schema'
+import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption, FloatTextParams, QteCue, QteFullParams } from '../../runtime/registry/core-kinds'
 import { qteKind } from '../../runtime/registry/core-kinds'
-import { getComponent } from '../../runtime/registry/kind-registry'
+import { baseKindOf, componentTypeLabel, getComponent, isKind } from '../../runtime/registry/kind-registry'
+import { effectiveComponent, stripParamsComponent } from '../../runtime/schema/overlay-component'
+import {
+  battleParryDefaults,
+  battleSkillBarDefaults,
+  inkKouDefaults,
+  inkYingMoDefaults,
+} from '../../runtime/skins/components'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
 import type { InteractionSnap } from '../../runtime/engine/session'
@@ -53,6 +61,7 @@ import {
 import {
   addOverlayChild,
   ensureNodeOverlay,
+  findMountOwningChild,
   forkSchemeForEdit,
   overriddenChildIds,
   patchOverlayChild,
@@ -114,7 +123,8 @@ export interface PreviewOverlay {
 
 export const SUBTITLE_XY = { x: 0.5, y: 0.9 }
 export const OVERLAY_XY = { x: 0.5, y: 0.42 }
-const OPTION_XY = { x: 0.5, y: 0.72 }
+/** 选项整组默认锚点（预览拖拽 / 新建缺省 / 皮肤回退共用）。 */
+export const OPTION_XY = { x: 0.5, y: 0.72 }
 const QTE_GOOD_WINDOW = 480
 /**
  * QTE 元素级参数键（落 el.params，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分 /
@@ -122,7 +132,6 @@ const QTE_GOOD_WINDOW = 480
  * （windowMs 或 durationMs——注意与 cue 级 `durationMs` hold 时长同名冲突）。
  */
 const QTE_ELEMENT_PARAM_KEYS = new Set([
-  'component',
   'perfectMs',
   'passingHits',
   'score',
@@ -158,14 +167,63 @@ function optionsOf(el: OverlayChild | undefined): ChoiceOption[] {
   return Array.isArray(events) ? (events as ChoiceOption[]) : []
 }
 
-/** 读节点上某 event（id）reaction 的 effect 副作用（新模型：效果在 reactions，不在选项）。 */
+/** 结算后刷出的瞬态组件（NodeAction.spawn；本版 ttl 截断到当前节点时长）。 */
+export interface SettlementSpawn {
+  from: string
+  ttlMs?: number
+  params?: Record<string, unknown>
+}
+
+/** 本节点演出时长（ms）；缺省给一个安全上限，避免 spawn 无界。 */
+export function nodePlayDurationMs(node: GameNode): number {
+  const d = node.data.durationMs
+  return typeof d === 'number' && Number.isFinite(d) && d > 0 ? Math.round(d) : 60_000
+}
+
+/** 本版：spawn 不跨节点——ttl 夹在 (0, nodeDur]；缺省/0 = 撑到本节点结束。 */
+export function clampSettlementSpawnTtlMs(ttlMs: number | undefined, nodeDurMs: number): number {
+  const cap = Math.max(100, Math.round(nodeDurMs))
+  if (ttlMs == null || !Number.isFinite(ttlMs) || ttlMs <= 0) return cap
+  return Math.min(Math.max(100, Math.round(ttlMs)), cap)
+}
+
+function readSpawnFromDo(actions: NodeAction[] | undefined): SettlementSpawn | undefined {
+  const a = actions?.find((x) => x.kind === 'spawn' && x.from)
+  if (!a || a.kind !== 'spawn') return undefined
+  return {
+    from: a.from,
+    ...(a.ttlMs != null ? { ttlMs: a.ttlMs } : {}),
+    ...(a.params && Object.keys(a.params).length ? { params: a.params } : {}),
+  }
+}
+
+function spawnActionOf(spawn: SettlementSpawn, nodeDurMs: number): Extract<NodeAction, { kind: 'spawn' }> {
+  return {
+    kind: 'spawn',
+    from: spawn.from,
+    ttlMs: clampSettlementSpawnTtlMs(spawn.ttlMs, nodeDurMs),
+    ...(spawn.params && Object.keys(spawn.params).length ? { params: spawn.params } : {}),
+  }
+}
+
+/**
+ * legacy 读兜底 —— 2026-07-16 边路由统一重构曾把选项/组件结算误写进 `node.data.reactions`
+ * （运行时 submitInteraction/emitComponentEvent 只读 mount.reactions，这条数据从未被执行过，见
+ * §结算 mount-scoped 改造说明）。现只在 `readMountEventEffects`/`readMountEventSpawn` mount 侧
+ * 无命中时回落一次，避免历史配置在升级后静默消失；不再是任何结算的主写入位置。
+ */
 function readEventEffects(node: GameNode, id: string): GraphEffect[] {
   const r = (node.data.reactions ?? []).find((rc) => rc.when.type === 'event' && rc.when.id === id)
   const eff = r?.do.find((a) => a.kind === 'effect')
   return eff && eff.kind === 'effect' ? eff.effects : []
 }
 
-/** 写节点上某 event（id）reaction 的 effect 副作用（空则移除该 effect 动作，保留其它 do）。 */
+function readEventSpawn(node: GameNode, id: string): SettlementSpawn | undefined {
+  const r = (node.data.reactions ?? []).find((rc) => rc.when.type === 'event' && rc.when.id === id)
+  return readSpawnFromDo(r?.do)
+}
+
+/** legacy 清理用：见 `clearLegacyNodeEvent`（写入 mount 侧后同步清掉这条 node 级残留）。 */
 function writeEventEffectsData(
   reactions: Reaction[] | undefined,
   id: string,
@@ -184,6 +242,48 @@ function writeEventEffectsData(
   if (nextDo.length) next[idx] = { ...r, do: nextDo }
   else next.splice(idx, 1)
   return next.length ? next : undefined
+}
+
+/** legacy 清理用：见 `clearLegacyNodeEvent`。 */
+function writeEventSpawnData(
+  reactions: Reaction[] | undefined,
+  id: string,
+  spawn: SettlementSpawn | undefined,
+  nodeDurMs: number,
+): Reaction[] | undefined {
+  const list = reactions ?? []
+  const idx = list.findIndex((r) => r.when.type === 'event' && r.when.id === id)
+  const spawnDo = spawn?.from ? [spawnActionOf(spawn, nodeDurMs)] : []
+  if (idx < 0) {
+    if (!spawnDo.length) return reactions
+    return [...list, { when: { type: 'event', id }, do: spawnDo }]
+  }
+  const r = list[idx]!
+  const rest = r.do.filter((a) => a.kind !== 'spawn')
+  const nextDo = [...rest, ...spawnDo]
+  const next = [...list]
+  if (nextDo.length) next[idx] = { ...r, do: nextDo }
+  else next.splice(idx, 1)
+  return next.length ? next : undefined
+}
+
+/** 目录里可选作 spawn 模板的组件（`overlayId/childId`）。 */
+export function listSpawnTemplateOptions(
+  scenario: GameScenario,
+): Array<{ value: string; label: string }> {
+  const overlays = scenario.ui?.overlays ?? {}
+  const out: Array<{ value: string; label: string }> = []
+  for (const ov of Object.values(overlays)) {
+    for (const c of ov.children) {
+      const label = componentTypeLabel(c.component)
+      const title = ov.title?.trim()
+      out.push({
+        value: `${ov.id}/${c.id}`,
+        label: title ? `${label} · ${title}/${c.id}` : `${label} · ${ov.id}/${c.id}`,
+      })
+    }
+  }
+  return out
 }
 function filterLabel(id: unknown): string {
   return FILTER_PRESETS.find((p) => p.id === id)?.label ?? '滤镜'
@@ -205,70 +305,100 @@ function previewCtxFor(scenario: GameScenario): { ctx: PreviewEvalContext; state
   }
 }
 
-// ── QTE 结算（样式驱动：候选 handle 来自 qteKind.outputs(params)，缺省即 pass/good/fail；
-//    跳转=边，改数值=mount/node event reactions）───────────────────────────────
+// ── 结算（选项分支 / QTE 档位 / 通用组件事件，三者共用同一套读写内核）──────────────
+// 运行时只读 mount.reactions 承接 event 类反应（engine.ts submitInteraction/emitComponentEvent
+// 都只查 nodeOverlayMounts(node)...reactions），落盘统一走 mount 级——跳转=边，改数值/生成组件=
+// mount 的 event reaction。candidate handle 来自各自的 events 目录（选项=params.events 的 id、
+// QTE=qteKind.outputs(params)、通用组件=manifest.events/outputs）。
 export type QteOutcomeHandle = string
-export interface QteOutcomeCandidate {
+export interface OutcomeCandidate {
   handle: QteOutcomeHandle
   label: string
 }
-export interface QteOutcomeView {
-  handle: QteOutcomeHandle
+export interface OutcomeView {
+  key: string
   label: string
   targetId: string | undefined
   edgeId: string | undefined
   effects: GraphEffect[]
+  /** 结算后刷出的瞬态组件（本节点内，ttl 截断到节点时长）。 */
+  spawn?: SettlementSpawn
   /**
-   * 默认三档里「良好」未单独配置时，运行时会按「完美」结算 —— UI 提示用。
-   * 仅当候选同时含 pass/good 时才可能为 true（组合按键 exits 模式不适用）。
+   * QTE 默认三档里「良好」未单独配置时，运行时会按「完美」结算 —— UI 提示用。
+   * 仅当候选同时含 pass/good 时才可能为 true（组合按键 exits 模式不适用；选项/通用组件恒为 false）。
    */
   fallsBackToPass?: boolean
 }
+/** 向后兼容命名（QTE 结算专用别名，语义与 OutcomeCandidate/OutcomeView 相同）。 */
+export type QteOutcomeCandidate = OutcomeCandidate
 
-/** 出口集合由样式锁定的 QTE 皮肤（防反三档；叩击等仍走 outputs(params) 动态派生）。 */
-const QTE_EVENTS_LOCKED_SKINS = new Set(['battleParry'])
+/** 出口集合由样式锁定的 QTE 皮肤（禁止增删档位；切皮肤时强制写入皮肤 defaults）。 */
+const QTE_EVENTS_LOCKED_SKINS = new Set(['battleParry', 'inkKou'])
+
+/** 别名皮肤的默认出口（来自各皮肤 tsx 的 defaults；不进 core-kinds 特判）。 */
+const QTE_SKIN_DEFAULT_EVENTS: Record<string, Array<{ id: string; label?: string }>> = {
+  battleParry: battleParryDefaults.events,
+  inkKou: inkKouDefaults.events,
+}
+
+/** 当前 QTE 是否样式锁定出口集合（默认三档可增删；防反/叩击不可）。 */
+export function qteEventsLocked(componentOrParams: string | Record<string, unknown> | undefined): boolean {
+  const skin = typeof componentOrParams === 'string'
+    ? componentOrParams
+    : typeof componentOrParams?.component === 'string'
+      ? componentOrParams.component
+      : ''
+  return QTE_EVENTS_LOCKED_SKINS.has(skin)
+}
 
 /**
- * 样式锁定出口：白名单皮肤强制用 KindPlugin.events 覆盖实例上可被写脏的 events。
+ * 样式锁定出口：白名单皮肤强制用皮肤 defaults.events 覆盖实例上可被写脏的 events。
  * （边路由统一后 SSOT = params.events；旧 exits 仅作 outputs 回退。）
  */
-export function applyStyleLockedQteParams(params: Record<string, unknown>): Record<string, unknown> {
-  const skin = typeof params.component === 'string' && params.component ? params.component : ''
-  if (!QTE_EVENTS_LOCKED_SKINS.has(skin)) return params
-  const plugin = getComponent(skin)
-  const locked = plugin?.events
-  if (!Array.isArray(locked) || locked.length === 0) return params
+export function applyStyleLockedQteParams(
+  params: Record<string, unknown>,
+  skinId?: string,
+): Record<string, unknown> {
+  const skin = skinId ?? ''
+  const cleaned = stripParamsComponent(params)
+  if (!QTE_EVENTS_LOCKED_SKINS.has(skin)) return cleaned
+  const locked = QTE_SKIN_DEFAULT_EVENTS[skin]
+  if (!Array.isArray(locked) || locked.length === 0) return cleaned
   return {
-    ...params,
+    ...cleaned,
     events: locked.map((e) => ({ id: e.id, label: e.label })),
     defaultEvent:
-      (typeof params.defaultEvent === 'string' && params.defaultEvent) ||
-      (typeof params.defaultKey === 'string' && params.defaultKey) ||
+      (typeof cleaned.defaultEvent === 'string' && cleaned.defaultEvent) ||
+      (typeof cleaned.defaultKey === 'string' && cleaned.defaultKey) ||
       'fail',
   }
 }
 
 /** 某 QTE 元素当前样式声明的结算候选 = component manifest.events / outputs(params)。 */
 function qteOutcomeCandidates(el: OverlayChild | undefined): QteOutcomeCandidate[] {
-  const params = applyStyleLockedQteParams(paramsOf(el))
-  const skin = typeof params.component === 'string' && params.component ? params.component : 'qte'
+  if (!el) return []
+  const skin = effectiveComponent(el)
+  const params = applyStyleLockedQteParams(paramsOf(el), skin)
   const plugin = getComponent(skin)
-  const outs = plugin ? plugin.outputs(params) : qteKind.outputs(params as QteFullParams)
+  const outs = plugin ? plugin.outputs(params, skin) : qteKind.outputs(params as QteFullParams, skin)
   return outs.map((o: { id: string; label?: string }) => ({
     handle: o.id,
     label: o.label ?? o.id,
   }))
 }
 
-function qteOutcomeEdge(scenario: GameScenario, nodeId: string, handle: QteOutcomeHandle) {
-  return scenario.graph.edges.find((e) => e.source === nodeId && e.sourceHandle === handle)
+/** 出边命中（跳转=边，与 reactions 无关）；无 `sourceHandle` 视为 `'default'`。 */
+function edgeForHandle(scenario: GameScenario, nodeId: string, handle: string) {
+  return scenario.graph.edges.find((e) => e.source === nodeId && (e.sourceHandle ?? 'default') === handle)
 }
 
-function qteReactionMountId(scenario: GameScenario, node: GameNode): string | undefined {
-  for (const mount of node.data.overlayNodes ?? []) {
-    const ov = scenario.ui?.overlays?.[mount.overlay]
-    if (ov?.children.some((c) => c.component === 'qte')) return overlayMountId(mount)
-  }
+/**
+ * 含指定元素 elId 的挂载 id——选项/QTE/通用组件结算统一用这个定位落盘位置。
+ * 取代原先只找「含 qte 子件」的 QTE 专属定位，改为按元素 id 精确定位（HUD 等第二份挂载同样命中）。
+ */
+function mountIdForElement(scenario: GameScenario, node: GameNode, elId: string): string | undefined {
+  const owning = findMountOwningChild(scenario, node, elId)
+  if (owning) return overlayMountId(owning)
   const pm = primaryOverlayMount(node)
   return pm ? overlayMountId(pm) : undefined
 }
@@ -278,77 +408,90 @@ function mountReactionsOf(scenario: GameScenario, node: GameNode, mountId: strin
   return mount?.reactions ?? []
 }
 
-function allQteOutcomeReactions(scenario: GameScenario, node: GameNode): Reaction[] {
-  const mountId = qteReactionMountId(scenario, node)
-  const mountRx = mountId ? mountReactionsOf(scenario, node, mountId) : []
-  return [...(node.data.reactions ?? []), ...mountRx]
+function hasMountEventReaction(scenario: GameScenario, node: GameNode, elId: string, eventId: string): boolean {
+  const mountId = mountIdForElement(scenario, node, elId)
+  if (!mountId) return false
+  return mountReactionsOf(scenario, node, mountId).some((r) => r.when.type === 'event' && r.when.id === eventId)
 }
 
-function reactionEffectsForHandle(reactions: Reaction[], handle: QteOutcomeHandle): GraphEffect[] {
-  const out: GraphEffect[] = []
-  for (const r of reactions) {
-    if (r.when.type !== 'event' || r.when.id !== handle) continue
-    out.push(...r.do.flatMap((a) => (a.kind === 'effect' ? a.effects : [])))
-  }
-  return out
+/**
+ * 读某元素 event(id) 结算的 effect——运行时真正读的地方（mount.reactions）。
+ * legacy 兜底：2026-07-16 边路由统一重构一度把选项/组件结算误写进 `node.data.reactions`
+ * （运行时从不读，等于配了不生效，见本次修复说明），mount 侧无该档时回落扫一遍，
+ * 避免历史配置在升级后静默消失；下一次编辑写入时会同步清掉这条 legacy 残留（见 writeMountEventEffects）。
+ */
+function readMountEventEffects(scenario: GameScenario, node: GameNode, elId: string, eventId: string): GraphEffect[] {
+  const mountId = mountIdForElement(scenario, node, elId)
+  const rx = mountId ? mountReactionsOf(scenario, node, mountId) : []
+  const hit = rx.find((r) => r.when.type === 'event' && r.when.id === eventId)
+  const eff = hit?.do.find((a) => a.kind === 'effect')
+  if (eff && eff.kind === 'effect' && eff.effects.length) return eff.effects
+  return readEventEffects(node, eventId)
 }
 
-function hasOutcomeReaction(reactions: Reaction[], handle: QteOutcomeHandle): boolean {
-  return reactions.some((r) => r.when.type === 'event' && r.when.id === handle)
+/** 读某元素 event(id) 结算的 spawn；legacy 兜底同 `readMountEventEffects`。 */
+function readMountEventSpawn(scenario: GameScenario, node: GameNode, elId: string, eventId: string): SettlementSpawn | undefined {
+  const mountId = mountIdForElement(scenario, node, elId)
+  const rx = mountId ? mountReactionsOf(scenario, node, mountId) : []
+  const hit = rx.find((r) => r.when.type === 'event' && r.when.id === eventId)
+  const spawn = readSpawnFromDo(hit?.do)
+  return spawn ?? readEventSpawn(node, eventId)
 }
 
-function isQteOutcomeConfigured(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): boolean {
-  if (qteOutcomeEdge(scenario, node.id, handle)) return true
-  const rx = allQteOutcomeReactions(scenario, node)
-  if (hasOutcomeReaction(rx, handle)) return true
-  return reactionEffectsForHandle(rx, handle).length > 0
+function isOutcomeConfigured(scenario: GameScenario, node: GameNode, elId: string, handle: string): boolean {
+  if (edgeForHandle(scenario, node.id, handle)) return true
+  if (hasMountEventReaction(scenario, node, elId, handle)) return true
+  if (readMountEventEffects(scenario, node, elId, handle).length > 0) return true
+  return !!readMountEventSpawn(scenario, node, elId, handle)
 }
 
 function outcomeView(
   scenario: GameScenario,
   node: GameNode,
-  handle: QteOutcomeHandle,
+  elId: string,
+  handle: string,
   label: string,
-  candidates: QteOutcomeCandidate[],
-): QteOutcomeView {
-  const edge = qteOutcomeEdge(scenario, node.id, handle)
-  const rx = allQteOutcomeReactions(scenario, node)
+  candidates: OutcomeCandidate[],
+): OutcomeView {
+  const edge = edgeForHandle(scenario, node.id, handle)
   const hasGood = candidates.some((c) => c.handle === 'good')
   return {
-    handle,
+    key: handle,
     label,
     targetId: edge?.target,
     edgeId: edge?.id,
-    effects: reactionEffectsForHandle(rx, handle),
-    fallsBackToPass: handle === 'pass' && hasGood && !isQteOutcomeConfigured(scenario, node, 'good'),
+    effects: readMountEventEffects(scenario, node, elId, handle),
+    spawn: readMountEventSpawn(scenario, node, elId, handle),
+    fallsBackToPass: handle === 'pass' && hasGood && !isOutcomeConfigured(scenario, node, elId, 'good'),
   }
 }
 
 /** 检视器：已配置的 QTE 结算档；无任何配置时默认展示样式的第一档候选（可不跳转）。 */
-export function listQteOutcomeViews(scenario: GameScenario, node: GameNode): QteOutcomeView[] {
+export function listQteOutcomeViews(scenario: GameScenario, node: GameNode): OutcomeView[] {
   const el = qteElement(scenario, node)
   if (!el) return []
   const candidates = qteOutcomeCandidates(el)
-  const configured = candidates.filter((c) => isQteOutcomeConfigured(scenario, node, c.handle))
+  const configured = candidates.filter((c) => isOutcomeConfigured(scenario, node, el.id, c.handle))
   if (configured.length === 0) {
     const first = candidates[0] ?? { handle: 'pass', label: '完美' }
-    return [outcomeView(scenario, node, first.handle, first.label, candidates)]
+    return [outcomeView(scenario, node, el.id, first.handle, first.label, candidates)]
   }
-  return configured.map((c) => outcomeView(scenario, node, c.handle, c.label, candidates))
+  return configured.map((c) => outcomeView(scenario, node, el.id, c.handle, c.label, candidates))
 }
 
 /** 还可添加的 QTE 结算档（来自当前样式的候选集，减去已配置的）。 */
-export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomeCandidate[] {
+export function listAvailableQteOutcomes(scenario: GameScenario, node: GameNode): OutcomeCandidate[] {
   const el = qteElement(scenario, node)
   if (!el) return []
-  const used = new Set(listQteOutcomeViews(scenario, node).map((o) => o.handle))
+  const used = new Set(listQteOutcomeViews(scenario, node).map((o) => o.key))
   return qteOutcomeCandidates(el).filter((c) => !used.has(c.handle))
 }
 
-function ensureQteReactionMount(scenario: GameScenario, node: GameNode): { scenario: GameScenario; mountId: string } {
+/** 确保节点至少有一份可编辑挂载，并定位 elId 所属挂载 id（写路径通用入口）。 */
+function ensureReactionMountFor(scenario: GameScenario, node: GameNode, elId: string): { scenario: GameScenario; mountId: string } {
   let s = forkSchemeForEdit(scenario, node.id)
   const n = s.graph.nodes.find((x) => x.id === node.id)!
-  let mountId = qteReactionMountId(s, n)
+  let mountId = mountIdForElement(s, n, elId)
   if (!mountId) {
     const pm = primaryOverlayMount(n)!
     mountId = overlayMountId(pm)
@@ -356,28 +499,92 @@ function ensureQteReactionMount(scenario: GameScenario, node: GameNode): { scena
   return { scenario: s, mountId }
 }
 
+/**
+ * 写挂载级 event reaction 的 effect（保留 spawn 等其它 do）。
+ * `effects: []` 仍落一条空 effect，用作「该档已配置」标记（与历史行为一致）。
+ */
 function patchMountEventReaction(
   scenario: GameScenario,
   node: GameNode,
   mountId: string,
-  handle: QteOutcomeHandle,
+  handle: string,
   effects: GraphEffect[] | undefined,
   remove = false,
 ): GameScenario {
-  const kept = mountReactionsOf(scenario, node, mountId).filter(
-    (r) => !(r.when.type === 'event' && r.when.id === handle),
-  )
+  const prev = mountReactionsOf(scenario, node, mountId)
+  const existing = prev.find((r) => r.when.type === 'event' && r.when.id === handle)
+  const kept = prev.filter((r) => !(r.when.type === 'event' && r.when.id === handle))
   if (!remove) {
-    kept.push({ when: { type: 'event', id: handle }, do: [{ kind: 'effect', effects: effects ?? [] }] })
+    const rest = (existing?.do ?? []).filter((a) => a.kind !== 'effect')
+    kept.push({
+      when: { type: 'event', id: handle },
+      do: [{ kind: 'effect', effects: effects ?? [] }, ...rest],
+    })
   }
   return patchOverlayMount(scenario, node.id, mountId, { reactions: kept.length ? kept : undefined })
 }
 
+/** 写挂载级 event reaction 的 spawn（保留 effect 等其它 do；本版 ttl 截断到节点时长）。 */
+function patchMountEventSpawn(
+  scenario: GameScenario,
+  node: GameNode,
+  mountId: string,
+  handle: string,
+  spawn: SettlementSpawn | undefined,
+): GameScenario {
+  const prev = mountReactionsOf(scenario, node, mountId)
+  const existing = prev.find((r) => r.when.type === 'event' && r.when.id === handle)
+  const kept = prev.filter((r) => !(r.when.type === 'event' && r.when.id === handle))
+  const rest = (existing?.do ?? []).filter((a) => a.kind !== 'spawn')
+  // 尚无 reaction 时补空 effect，保证该档算「已配置」
+  const withEffect = rest.some((a) => a.kind === 'effect')
+    ? rest
+    : ([{ kind: 'effect' as const, effects: [] as GraphEffect[] }, ...rest] as NodeAction[])
+  const nextDo = spawn?.from
+    ? [...withEffect, spawnActionOf(spawn, nodePlayDurationMs(node))]
+    : withEffect
+  if (nextDo.length) kept.push({ when: { type: 'event', id: handle }, do: nextDo })
+  return patchOverlayMount(scenario, node.id, mountId, { reactions: kept.length ? kept : undefined })
+}
+
+/** 删掉挂载上某档整条 event reaction（区别于「effects 置空」——那仍算「已配置」）。 */
+function removeMountEventReaction(scenario: GameScenario, node: GameNode, elId: string, eventId: string): GameScenario {
+  const mountId = mountIdForElement(scenario, node, elId)
+  if (!mountId) return scenario
+  return patchMountEventReaction(scenario, node, mountId, eventId, undefined, true)
+}
+
+/** 清掉 legacy `node.data.reactions` 里同 id 的残留（写入新位置后不留两处数据）。 */
+function clearLegacyNodeEvent(scenario: GameScenario, node: GameNode, eventId: string): GameScenario {
+  const n = scenario.graph.nodes.find((x) => x.id === node.id) ?? node
+  let reactions = writeEventEffectsData(n.data.reactions, eventId, [])
+  reactions = writeEventSpawnData(reactions, eventId, undefined, nodePlayDurationMs(n))
+  if (reactions === n.data.reactions) return scenario
+  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions }) }
+}
+
+/** 写某元素 event(id) 结算的 effect（mount 级，运行时真正读的地方）+ 顺带清 legacy 残留。 */
+function writeMountEventEffects(scenario: GameScenario, node: GameNode, elId: string, eventId: string, effects: GraphEffect[]): GameScenario {
+  const { scenario: s0, mountId } = ensureReactionMountFor(scenario, node, elId)
+  const n = s0.graph.nodes.find((x) => x.id === node.id)!
+  const s1 = patchMountEventReaction(s0, n, mountId, eventId, effects)
+  return clearLegacyNodeEvent(s1, s1.graph.nodes.find((x) => x.id === node.id)!, eventId)
+}
+
+/** 写某元素 event(id) 结算的 spawn（mount 级）+ 顺带清 legacy 残留。 */
+function writeMountEventSpawn(scenario: GameScenario, node: GameNode, elId: string, eventId: string, spawn: SettlementSpawn | undefined): GameScenario {
+  const { scenario: s0, mountId } = ensureReactionMountFor(scenario, node, elId)
+  const n = s0.graph.nodes.find((x) => x.id === node.id)!
+  const s1 = patchMountEventSpawn(s0, n, mountId, eventId, spawn)
+  return clearLegacyNodeEvent(s1, s1.graph.nodes.find((x) => x.id === node.id)!, eventId)
+}
+
 export function addQteOutcomeGraph(scenario: GameScenario, node: GameNode, handle: QteOutcomeHandle): GameScenario {
-  if (isQteOutcomeConfigured(scenario, node, handle)) return scenario
+  const el = qteElement(scenario, node)
+  if (!el || isOutcomeConfigured(scenario, node, el.id, handle)) return scenario
   let s = scenario
-  const first = qteOutcomeCandidates(qteElement(s, node))[0]?.handle ?? 'pass'
-  if (listQteOutcomeViews(s, node).length === 1 && !isQteOutcomeConfigured(s, node, first) && handle !== first) {
+  const first = qteOutcomeCandidates(el)[0]?.handle ?? 'pass'
+  if (listQteOutcomeViews(s, node).length === 1 && !isOutcomeConfigured(s, node, el.id, first) && handle !== first) {
     s = ensureQtePassOutcomeGraph(s, node)
   }
   return setQteOutcomeEffectsGraph(s, node, handle, [])
@@ -385,8 +592,10 @@ export function addQteOutcomeGraph(scenario: GameScenario, node: GameNode, handl
 
 /** 确保样式第一档候选（缺省 'pass'）已显式落盘——避免"只有一张隐式默认卡"的歧义态。 */
 export function ensureQtePassOutcomeGraph(scenario: GameScenario, node: GameNode): GameScenario {
-  const first = qteOutcomeCandidates(qteElement(scenario, node))[0]?.handle ?? 'pass'
-  if (isQteOutcomeConfigured(scenario, node, first)) return scenario
+  const el = qteElement(scenario, node)
+  if (!el) return scenario
+  const first = qteOutcomeCandidates(el)[0]?.handle ?? 'pass'
+  if (isOutcomeConfigured(scenario, node, el.id, first)) return scenario
   return setQteOutcomeEffectsGraph(scenario, node, first, [])
 }
 
@@ -394,12 +603,11 @@ export function removeQteOutcomeGraph(scenario: GameScenario, node: GameNode, ha
   const cards = listQteOutcomeViews(scenario, node)
   if (cards.length <= 1) return scenario
   let s = scenario
-  const edge = qteOutcomeEdge(s, node.id, handle)
+  const edge = edgeForHandle(s, node.id, handle)
   if (edge) s = { ...s, graph: disconnect(s.graph, edge.id) }
-  const mountId = qteReactionMountId(s, s.graph.nodes.find((n) => n.id === node.id)!)
-  if (mountId) {
-    s = patchMountEventReaction(s, s.graph.nodes.find((n) => n.id === node.id)!, mountId, handle, undefined, true)
-  }
+  const n = s.graph.nodes.find((x) => x.id === node.id)!
+  const el = qteElement(s, n)
+  if (el) s = removeMountEventReaction(s, s.graph.nodes.find((x) => x.id === node.id)!, el.id, handle)
   return s
 }
 
@@ -411,10 +619,11 @@ export function setQteOutcomeTargetGraph(
 ): GameScenario {
   let s = scenario
   if (!targetId) {
-    const edge = qteOutcomeEdge(s, node.id, handle)
+    const edge = edgeForHandle(s, node.id, handle)
     return edge ? { ...s, graph: disconnect(s.graph, edge.id) } : s
   }
-  if (!isQteOutcomeConfigured(s, node, handle)) {
+  const el = qteElement(s, node)
+  if (el && !isOutcomeConfigured(s, node, el.id, handle)) {
     s = setQteOutcomeEffectsGraph(s, node, handle, [])
   }
   return { ...s, graph: upsertBranchEdge(s.graph, { source: node.id, sourceHandle: handle, target: targetId }) }
@@ -426,17 +635,28 @@ export function setQteOutcomeEffectsGraph(
   handle: QteOutcomeHandle,
   effects: GraphEffect[],
 ): GameScenario {
-  const { scenario: s0, mountId } = ensureQteReactionMount(scenario, node)
-  const n = s0.graph.nodes.find((x) => x.id === node.id)!
-  return patchMountEventReaction(s0, n, mountId, handle, effects)
+  const el = qteElement(scenario, node)
+  if (!el) return scenario
+  return writeMountEventEffects(scenario, node, el.id, handle, effects)
 }
 
-/** 预览摘要：各档改数值（读 mount/node reactions）。 */
+export function setQteOutcomeSpawnGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  handle: QteOutcomeHandle,
+  spawn: SettlementSpawn | undefined,
+): GameScenario {
+  const el = qteElement(scenario, node)
+  if (!el) return scenario
+  return writeMountEventSpawn(scenario, node, el.id, handle, spawn)
+}
+
+/** 预览摘要：各档改数值（读 mount reactions，legacy 兜底见 readMountEventEffects）。 */
 function listQteOutcomes(scenario: GameScenario, node: GameNode): QteOutcomePreview[] {
   return listQteOutcomeViews(scenario, node)
     .filter((o) => o.effects.length > 0)
     .map((o) => ({
-      handle: o.handle,
+      handle: o.key,
       label: o.label,
       effects: o.effects,
       fallsBackToPass: o.fallsBackToPass,
@@ -578,13 +798,14 @@ export function findNode(graph: GameScenario['graph'], nodeId: string | undefine
   return graph.nodes.find((n) => n.id === nodeId)
 }
 export function findElement(scenario: GameScenario, node: GameNode | undefined, elId: string): OverlayChild | undefined {
-  return childrenOf(scenario, node).find((e) => e.id === elId)
+  // 扫全部挂载：HUD 方案常挂在内容挂载之外的第二份上。
+  return mountedChildrenOf(scenario, node).find((e) => e.id === elId)
 }
 export function qteElementOfCue(scenario: GameScenario, node: GameNode | undefined, cueId: string): OverlayChild | undefined {
-  return mountedChildrenOf(scenario, node).find((e) => e.component === 'qte' && cuesOf(e).some((c) => c.id === cueId))
+  return mountedChildrenOf(scenario, node).find((e) => isKind(e, 'qte') && cuesOf(e).some((c) => c.id === cueId))
 }
 export function qteElement(scenario: GameScenario, node: GameNode | undefined): OverlayChild | undefined {
-  return mountedChildrenOf(scenario, node).find((e) => e.component === 'qte')
+  return mountedChildrenOf(scenario, node).find((e) => isKind(e, 'qte'))
 }
 
 /** 编辑器可实时联调的交互皮肤（有真正的按键渲染，值得在预览画布里接管点击/按键）。 */
@@ -599,9 +820,9 @@ export function qteSkinPreviewInteraction(
 ): InteractionSnap | null {
   const el = qteElement(scenario, node)
   if (!el) return null
-  const params = paramsOf(el)
-  const component = str(params.component)
-  if (!component || !QTE_LIVE_PREVIEW_SKINS.has(component)) return null
+  const component = effectiveComponent(el)
+  if (!QTE_LIVE_PREVIEW_SKINS.has(component)) return null
+  const params = stripParamsComponent(paramsOf(el))
   const cues = cuesOf(el)
   if (!cues.length) return null
   if (playheadMs != null) {
@@ -614,7 +835,7 @@ export function qteSkinPreviewInteraction(
   }
   return {
     elementId: el.id,
-    component: 'qte',
+    component,
     params: { ...params, cues },
     handles: qteOutcomeCandidates(el).map((c) => c.handle),
     timeoutMs: typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined,
@@ -622,7 +843,7 @@ export function qteSkinPreviewInteraction(
 }
 
 export function choiceElement(scenario: GameScenario, node: GameNode | undefined): OverlayChild | undefined {
-  return mountedChildrenOf(scenario, node).find((e) => e.component === 'choice')
+  return mountedChildrenOf(scenario, node).find((e) => isKind(e, 'choice'))
 }
 
 /** 编辑器可实时联调的选项皮肤（應默 / 技能条），与 QTE 白名单同级。 */
@@ -631,36 +852,37 @@ const CHOICE_LIVE_PREVIEW_SKINS = new Set(['inkYingMo', 'battleSkillBar'])
 /** 选项集合由样式锁定的皮肤：禁止增删选项，切皮肤时强制写入皮肤默认 events。 */
 const CHOICE_OPTIONS_LOCKED_SKINS = new Set(['inkYingMo', 'battleSkillBar'])
 
-/** 别名皮肤的默认出口（choiceKind 共用 defaults，不能按 alias 区分）。 */
+/** 别名皮肤的默认出口（来自各皮肤 tsx 的 defaults）。 */
 const CHOICE_SKIN_DEFAULT_EVENTS: Record<string, ChoiceOption[]> = {
-  inkYingMo: [
-    { id: 'ying', label: '應' },
-    { id: 'mo', label: '默' },
-  ],
-  battleSkillBar: [
-    { id: 'a', label: '斩' },
-    { id: 'b', label: '突' },
-    { id: 'c', label: '守' },
-  ],
+  inkYingMo: inkYingMoDefaults.events,
+  battleSkillBar: battleSkillBarDefaults.events,
 }
 
 /** 当前 choice 是否样式锁定选项集合（默认清单可增删；應默/技能条不可）。 */
-export function choiceOptionsLocked(params: Record<string, unknown> | undefined): boolean {
-  const skin = typeof params?.component === 'string' ? params.component : ''
+export function choiceOptionsLocked(componentOrParams: string | Record<string, unknown> | undefined): boolean {
+  const skin = typeof componentOrParams === 'string'
+    ? componentOrParams
+    : typeof componentOrParams?.component === 'string'
+      ? componentOrParams.component
+      : ''
   return CHOICE_OPTIONS_LOCKED_SKINS.has(skin)
 }
 
 /**
  * 样式锁定选项：强制用皮肤默认 events（边路由统一后的出口目录）。
- * 与 `applyStyleLockedQteParams` 同构。
+ * 与 `applyStyleLockedQteParams` 同构。`skinId` = 顶栏 component。
  */
-export function applyStyleLockedChoiceParams(params: Record<string, unknown>): Record<string, unknown> {
-  const skin = typeof params.component === 'string' && params.component ? params.component : ''
-  if (!CHOICE_OPTIONS_LOCKED_SKINS.has(skin)) return params
+export function applyStyleLockedChoiceParams(
+  params: Record<string, unknown>,
+  skinId?: string,
+): Record<string, unknown> {
+  const skin = skinId ?? (typeof params.component === 'string' ? params.component : '')
+  const cleaned = stripParamsComponent(params)
+  if (!CHOICE_OPTIONS_LOCKED_SKINS.has(skin)) return cleaned
   const locked = CHOICE_SKIN_DEFAULT_EVENTS[skin]
-  if (!Array.isArray(locked) || locked.length === 0) return params
+  if (!Array.isArray(locked) || locked.length === 0) return cleaned
   return {
-    ...params,
+    ...cleaned,
     events: locked.map((d) => ({ id: d.id, label: d.label, condition: d.condition })),
   }
 }
@@ -685,30 +907,40 @@ function writeChoiceParamsWithEdgeCleanup(
 }
 
 /**
- * 切换选项皮肤：写入 component + 样式默认 events/prompt；清掉旧出口边。
- * `skinId` 空 = 回到默认清单（保留当前 events，只摘 component）。
+ * 切换选项皮肤：改顶栏 `component` + 样式默认 events/prompt；清掉旧出口边。
+ * `skinId` 空 = 回到默认清单 `choice`（保留当前 events）。
+ * `childId` 指定时间轴选中的那份 choice（多选项并存时避免改错第一份）。
  */
 export function setChoiceSkinGraph(
   scenario: GameScenario,
   node: GameNode,
   skinId: string | undefined,
+  childId?: string,
 ): GameScenario {
-  const el = choiceElement(scenario, node)
+  const el = childId
+    ? mountedChildrenOf(scenario, node).find((e) => e.id === childId && isKind(e, 'choice'))
+    : choiceElement(scenario, node)
   if (!el) return scenario
+  const baseParams = stripParamsComponent(el.params)
   if (!skinId) {
-    // patch 浅合并：必须显式 component:undefined 才能摘掉皮肤（省略键会保留旧值）。
-    return patchOverlayChild(scenario, node.id, el.id, {
-      params: { ...el.params, component: undefined },
-    })
+    let s = writeChoiceParamsWithEdgeCleanup(scenario, node, el, baseParams)
+    return patchOverlayChild(s, node.id, el.id, { component: 'choice' })
   }
-  const defaults = getComponent(skinId)?.defaults?.() as { events?: ChoiceOption[]; prompt?: string } | undefined
+  const skinDefaults = skinId === 'inkYingMo'
+    ? inkYingMoDefaults
+    : skinId === 'battleSkillBar'
+      ? battleSkillBarDefaults
+      : undefined
   const seeded: Record<string, unknown> = {
-    ...el.params,
-    component: skinId,
-    ...(defaults?.prompt != null ? { prompt: defaults.prompt } : {}),
+    ...baseParams,
+    ...(skinDefaults?.prompt != null ? { prompt: skinDefaults.prompt } : {}),
+    // 尚无锚点时写入皮肤默认；已拖过的 x/y 保留
+    ...(typeof baseParams.x !== 'number' && skinDefaults?.x != null ? { x: skinDefaults.x } : {}),
+    ...(typeof baseParams.y !== 'number' && skinDefaults?.y != null ? { y: skinDefaults.y } : {}),
   }
-  const locked = applyStyleLockedChoiceParams(seeded)
-  return writeChoiceParamsWithEdgeCleanup(scenario, node, el, locked)
+  const locked = applyStyleLockedChoiceParams(seeded, skinId)
+  let s = writeChoiceParamsWithEdgeCleanup(scenario, node, el, locked)
+  return patchOverlayChild(s, node.id, el.id, { component: skinId })
 }
 
 /**
@@ -725,19 +957,18 @@ export function choiceSkinPreviewInteractions(
   if (!node) return []
   const out: InteractionSnap[] = []
   for (const el of mountedChildrenOf(scenario, node)) {
-    if (el.component !== 'choice') continue
-    const params = paramsOf(el)
-    const component = str(params.component)
-    if (!component || !CHOICE_LIVE_PREVIEW_SKINS.has(component)) continue
+    if (!isKind(el, 'choice')) continue
+    const component = effectiveComponent(el)
+    if (!CHOICE_LIVE_PREVIEW_SKINS.has(component)) continue
     if (playheadMs != null) {
       const start = el.window?.startMs ?? 0
       const end = el.window?.endMs ?? maxMs
       if (playheadMs < start || playheadMs > end) continue
     }
-    const locked = applyStyleLockedChoiceParams(params)
+    const locked = applyStyleLockedChoiceParams(paramsOf(el), component)
     out.push({
       elementId: el.id,
-      component: 'choice',
+      component,
       params: { ...locked },
       handles: (Array.isArray(locked.events) ? (locked.events as ChoiceOption[]) : []).map((o) => o.id),
       timeoutMs: typeof locked.timeoutMs === 'number' ? locked.timeoutMs : undefined,
@@ -753,72 +984,47 @@ function timedStart(el: OverlayChild): number {
   return 0
 }
 
+/** 默认六槽对应的基础 kind（仅影响添加图标 / 条带配色；挂载全量仍上时间轴）。 */
+const SLOT_BASE_KINDS = new Set(['dialogue', 'floatText', 'choice', 'qte', 'filter', 'fx'])
+
+function materialKindForChild(el: OverlayChild): MaterialKind {
+  if (isKind(el, 'dialogue')) return 'subtitle'
+  if (isKind(el, 'floatText')) return 'overlay'
+  if (isKind(el, 'choice')) return 'option'
+  if (isKind(el, 'qte')) return 'qte'
+  if (isKind(el, 'filter')) return 'filter'
+  if (isKind(el, 'fx')) return 'fx'
+  return 'component'
+}
+
+function componentLabelOf(el: OverlayChild): string {
+  const id = effectiveComponent(el)
+  const params = paramsOf(el)
+  if (isKind(el, 'dialogue')) return str(params.text) || '字幕'
+  if (isKind(el, 'floatText')) return (str(params.text) ?? '').trim() || '飘字'
+  if (isKind(el, 'choice')) return str(params.prompt) || componentTypeLabel(id) || '选项'
+  if (isKind(el, 'filter')) return filterLabel(params.filter)
+  if (isKind(el, 'fx')) return fxLabel(params.fx)
+  // 未分类：实例 params.label（如「我方」）→ 类型展示名（manifest / aliasLabels）→ component id
+  return str(params.label) || componentTypeLabel(id)
+}
+
 // ── 读投影：node → MaterialItem[] ─────────────────────────────────────────────
 export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode | undefined, maxMs: number): MaterialItem[] {
   if (!node) return []
-  const { overridden, added } = overriddenChildIds(primaryOverlayMount(node))
-  const flagged = new Set([...overridden, ...added])
+  // 全部挂载的差量徽章（HUD 等第二份挂载也要能标 overridden）。
+  const flagged = new Set<string>()
+  for (const mount of node.data.overlayNodes ?? []) {
+    const { overridden, added } = overriddenChildIds(mount)
+    for (const id of overridden) flagged.add(id)
+    for (const id of added) flagged.add(id)
+  }
   const out: MaterialItem[] = []
-  for (const el of childrenOf(scenario, node)) {
+  for (const el of mountedChildrenOf(scenario, node)) {
     const overriddenFlag = flagged.has(el.id) || undefined
-    if (el.component === 'dialogue') {
-      const start = timedStart(el)
-      out.push({
-        key: `subtitle:${el.id}`,
-        id: el.id,
-        kind: 'subtitle',
-        label: str(paramsOf(el).text) || '字幕',
-        startMs: start,
-        endMs: el.window?.endMs ?? Math.min(maxMs, start + 2000),
-        zIndex: normalizeLayer(el.layout?.zIndex, 0),
-        overridden: overriddenFlag,
-      })
-    } else if (el.component === 'floatText') {
-      const start = timedStart(el)
-      out.push({
-        key: `overlay:${el.id}`,
-        id: el.id,
-        kind: 'overlay',
-        label: (str(paramsOf(el).text) ?? '').trim() || '飘字',
-        startMs: start,
-        endMs: el.window?.endMs ?? Math.min(maxMs, start + 1200),
-        zIndex: normalizeLayer(el.layout?.zIndex, 1),
-        overridden: overriddenFlag,
-      })
-    } else if (el.component === 'choice') {
-      out.push({
-        key: `option:${el.id}`,
-        id: el.id,
-        kind: 'option',
-        label: str(paramsOf(el).prompt) || '选项',
-        startMs: el.window?.startMs ?? 0,
-        endMs: el.window?.endMs ?? maxMs,
-        zIndex: normalizeLayer(el.layout?.zIndex, 3),
-        overridden: overriddenFlag,
-      })
-    } else if (el.component === 'filter') {
-      out.push({
-        key: `filter:${el.id}`,
-        id: el.id,
-        kind: 'filter',
-        label: filterLabel(paramsOf(el).filter),
-        startMs: el.window?.startMs ?? 0,
-        endMs: el.window?.endMs ?? maxMs,
-        zIndex: normalizeLayer(el.layout?.zIndex, 4),
-        overridden: overriddenFlag,
-      })
-    } else if (el.component === 'fx') {
-      out.push({
-        key: `fx:${el.id}`,
-        id: el.id,
-        kind: 'fx',
-        label: fxLabel(paramsOf(el).fx),
-        startMs: el.window?.startMs ?? 0,
-        endMs: el.window?.endMs ?? maxMs,
-        zIndex: normalizeLayer(el.layout?.zIndex, 5),
-        overridden: overriddenFlag,
-      })
-    } else if (el.component === 'qte') {
+    const componentId = effectiveComponent(el)
+    const kind = materialKindForChild(el)
+    if (kind === 'qte') {
       for (const c of cuesOf(el)) {
         // 左缘=出现(appearAt) 右缘=消失(endAt) 菱形=命中判定(targetAt，计分锚点)。
         const s = c.appearAt ?? 0
@@ -828,6 +1034,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
           key: `qte:${el.id}:${c.id}`,
           id: c.id,
           kind: 'qte',
+          componentId,
           label: c.label || 'QTE',
           startMs: s,
           endMs: end,
@@ -836,12 +1043,28 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
           overridden: overriddenFlag,
         })
       }
+      continue
     }
+    const start = kind === 'subtitle' || kind === 'overlay'
+      ? timedStart(el)
+      : (el.window?.startMs ?? timedStart(el))
+    const defaultEnd = kind === 'subtitle' ? start + 2000 : kind === 'overlay' ? start + 1200 : maxMs
+    out.push({
+      key: `${kind}:${el.id}`,
+      id: el.id,
+      kind,
+      componentId,
+      label: componentLabelOf(el),
+      startMs: start,
+      endMs: el.window?.endMs ?? Math.min(maxMs, defaultEnd),
+      zIndex: normalizeLayer(el.layout?.zIndex, kind === 'component' ? 3 : kind === 'filter' ? 4 : kind === 'fx' ? 5 : kind === 'option' ? 3 : kind === 'overlay' ? 1 : 0),
+      overridden: overriddenFlag,
+    })
   }
   return out
 }
 
-/** 时间轴「↺ 回连」：清掉该素材所属组件在挂载上的差量，改回跟随共享方案。 */
+/** 素材属性「↺ 回连方案」：清掉该素材所属组件在挂载上的差量，改回跟随共享方案。 */
 export function resetMaterialOverrideGraph(scenario: GameScenario, node: GameNode, item: MaterialItem): GameScenario {
   const elId = item.kind === 'qte' ? qteElementOfCue(scenario, node, item.id)?.id : item.id
   if (!elId) return scenario
@@ -859,9 +1082,9 @@ export function activePreviewOverlaysFromNode(
   const out: PreviewOverlay[] = []
   const { ctx: previewCtx, state: previewState } = previewCtxFor(scenario)
   let qteOutcomeDetail: string | undefined
-  for (const el of childrenOf(scenario, node)) {
+  for (const el of mountedChildrenOf(scenario, node)) {
     const params = paramsOf(el)
-    if (el.component === 'dialogue') {
+    if (isKind(el, 'dialogue')) {
       const start = timedStart(el)
       const end = el.window?.endMs ?? Math.min(maxMs, start + 2000)
       if (ms < start || ms > end) continue
@@ -879,7 +1102,7 @@ export function activePreviewOverlaysFromNode(
         style: params.style as GraphTextStyle | undefined,
         target: { kind: 'element', elementId: el.id },
       })
-    } else if (el.component === 'floatText') {
+    } else if (isKind(el, 'floatText')) {
       const start = timedStart(el)
       const end = el.window?.endMs ?? Math.min(maxMs, start + 1200)
       if (ms < start || ms > end) continue
@@ -897,7 +1120,7 @@ export function activePreviewOverlaysFromNode(
         style: params.style as GraphTextStyle | undefined,
         target: { kind: 'element', elementId: el.id },
       })
-    } else if (el.component === 'qte') {
+    } else if (isKind(el, 'qte')) {
       if (qteOutcomeDetail === undefined) {
         qteOutcomeDetail = resolveQteOutcomesPreviewDetail(listQteOutcomes(scenario, node), previewState, previewCtx)
       }
@@ -918,7 +1141,7 @@ export function activePreviewOverlaysFromNode(
           target: { kind: 'qteCue', elementId: el.id, cueId: c.id },
         })
       }
-    } else if (el.component === 'choice') {
+    } else if (isKind(el, 'choice')) {
       const start = el.window?.startMs ?? 0
       const end = el.window?.endMs ?? maxMs
       if (ms < start || ms > end) continue
@@ -928,19 +1151,70 @@ export function activePreviewOverlaysFromNode(
         kind: 'option',
         label: str(params.prompt) ?? '请选择',
         detail: resolveChoicePreviewDetail(
-          optionsOf(el).map((o) => ({ label: o.label ?? o.id, effects: readEventEffects(node, o.id), condition: o.condition })),
+          optionsOf(el).map((o) => ({ label: o.label ?? o.id, effects: readMountEventEffects(scenario, node, el.id, o.id), condition: o.condition })),
           previewCtx,
           previewState,
         ) || undefined,
-        x: OPTION_XY.x,
-        y: OPTION_XY.y,
+        x: typeof params.x === 'number' ? params.x : OPTION_XY.x,
+        y: typeof params.y === 'number' ? params.y : OPTION_XY.y,
         zIndex: normalizeLayer(el.layout?.zIndex, 3),
-        movable: false,
-        target: { kind: 'readonly' },
+        movable: true,
+        target: { kind: 'element', elementId: el.id },
+      })
+    } else if (isKind(el, 'filter') || isKind(el, 'fx')) {
+      // 滤镜/特效走 videoFx 旁路，不进可拖叠层
+      continue
+    } else {
+      // 未分类组件：整组上预览手柄，可拖 params.x/y
+      const start = el.window?.startMs ?? timedStart(el)
+      const end = el.window?.endMs ?? maxMs
+      if (ms < start || ms > end) continue
+      out.push({
+        id: `component:${el.id}`,
+        materialKey: `component:${el.id}`,
+        kind: 'component',
+        label: componentLabelOf(el),
+        x: typeof params.x === 'number' ? params.x : 0.5,
+        y: typeof params.y === 'number' ? params.y : 0.5,
+        zIndex: normalizeLayer(el.layout?.zIndex, 3),
+        movable: true,
+        target: { kind: 'element', elementId: el.id },
       })
     }
   }
   return out.sort((a, b) => a.zIndex - b.zIndex)
+}
+
+/**
+ * 当前播放头落在 window 内、应画到预览皮肤层的挂载 children（不含 filter/fx）。
+ * 含未分类组件；与 `activePreviewOverlaysFromNode` 手柄配套。
+ */
+export function previewSkinChildrenInWindow(
+  scenario: GameScenario,
+  node: GameNode | undefined,
+  ms: number,
+  maxMs: number,
+): OverlayChild[] {
+  if (!node) return []
+  const out: OverlayChild[] = []
+  // 与运行时一致：扫全部挂载（内容轨 + 常驻 HUD 方案），不能只看 primary。
+  for (const el of mountedChildrenOf(scenario, node)) {
+    if (isKind(el, 'filter') || isKind(el, 'fx')) continue
+    if (isKind(el, 'qte')) {
+      const inCue = cuesOf(el).some((c) => {
+        const s = c.appearAt ?? 0
+        const end = c.endAt ?? s + QTE_GOOD_WINDOW
+        return ms >= s && ms <= end
+      })
+      if (inCue) out.push(el)
+      continue
+    }
+    const start = el.window?.startMs ?? timedStart(el)
+    const end = el.window?.endMs ?? maxMs
+    if (ms < start || ms > end) continue
+    out.push(el)
+  }
+  return out
 }
 
 // ── 写映射：时间轴拖拽（start/end/zIndex）──────────────────────────────────────
@@ -959,6 +1233,7 @@ export function patchMaterialGraph(
     case 'overlay':
     case 'filter':
     case 'fx':
+    case 'component':
       return patchOverlayChild(scenario, node.id, item.id, {
         window: { startMs: start, endMs: end },
         trigger: { when: 'at', ms: start },
@@ -1000,8 +1275,8 @@ export function patchMaterialGraph(
         return next
       })
       // battleParry 检视器以 windowMs 为时长 SSOT；拖缘时同步，避免检视器/皮肤与时间轴脱节。
-      const skin = str(paramsOf(el).component)
-      const nextParams: Record<string, unknown> = { ...el.params, cues }
+      const skin = effectiveComponent(el)
+      const nextParams: Record<string, unknown> = { ...stripParamsComponent(el.params), cues }
       if (skin === 'battleParry' && patch.markerMs == null) {
         nextParams.windowMs = Math.max(200, end - start)
       }
@@ -1054,6 +1329,7 @@ export function deleteMaterialGraph(scenario: GameScenario, node: GameNode, item
     case 'subtitle':
     case 'filter':
     case 'fx':
+    case 'component':
       return removeOverlayChild(scenario, node.id, item.id)
     case 'overlay': {
       const s1 = removeOverlayChild(scenario, node.id, item.id)
@@ -1078,7 +1354,11 @@ export function deleteMaterialGraph(scenario: GameScenario, node: GameNode, item
 export function styleVariantsFor(scenario: GameScenario, node: GameNode, component: string): OverlayChild[] {
   const schemeId = node.data.styleScheme
   if (!schemeId) return []
-  return scenario.ui?.overlays?.[schemeId]?.children.filter((c) => c.component === component) ?? []
+  // `component` 可以是基础 kind（choice/qte）或具体皮肤 id；按 baseKind / 精确 id 匹配。
+  return scenario.ui?.overlays?.[schemeId]?.children.filter((c) => {
+    const id = effectiveComponent(c)
+    return id === component || baseKindOf(id) === component
+  }) ?? []
 }
 
 /**
@@ -1088,12 +1368,90 @@ export function styleVariantsFor(scenario: GameScenario, node: GameNode, compone
  */
 export function canAddQte(scenario: GameScenario, node: GameNode | undefined): boolean {
   if (!node) return false
-  if (mountedChildrenOf(scenario, node).some((c) => c.component === 'qte')) return true
+  if (mountedChildrenOf(scenario, node).some((c) => isKind(c, 'qte'))) return true
   return styleVariantsFor(scenario, node, 'qte').length > 0
 }
 
 // ── 写映射：新增材料 ──────────────────────────────────────────────────────────
-export type MaterialTemplate = 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx'
+/** 默认六槽 template；其它值为原始 component id（添加未分类组件）。 */
+export type MaterialTemplate = 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx' | string
+
+const BUILTIN_TEMPLATES = new Set(['subtitle', 'overlay', 'qte', 'option', 'filter', 'fx'])
+
+export function isBuiltinMaterialTemplate(t: string): boolean {
+  return BUILTIN_TEMPLATES.has(t)
+}
+
+/**
+ * 「添加控件」额外槽：按**已挂载界面方案的原型 OverlayChild**列（对齐 `spawn.from = overlayId/childId`）。
+ * 同 `component` 类型可有多份（如两份 battleHpBar：我方/敌方，各有自己的 params.bind）。
+ * 六槽基础 kind（字幕/飘字/选项/QTE…）仍走专用卡，不进额外格。
+ *
+ * 刻意排除：
+ * - `node:*` 本地内容容器（时间轴直写产物，不是可复用界面方案）
+ * - `mount.added`（本节点 override 新增的实例——再列进模板库会导致「添加一次多一张卡」）
+ */
+export interface ExtraAddableComponent {
+  /** = `overlayId/childId`（添加时作 template，克隆该实例的 params）。 */
+  id: string
+  /** 卡片标题：实例 params.label → 类型名 · childId → childId。 */
+  label: string
+  /** 注册表 component id（图标/描述用）。 */
+  componentId: string
+}
+
+export function listExtraAddableComponents(
+  scenario: GameScenario,
+  node: GameNode | undefined,
+): ExtraAddableComponent[] {
+  if (!node) return []
+  const out: ExtraAddableComponent[] = []
+  const seen = new Set<string>()
+  for (const mount of node.data.overlayNodes ?? []) {
+    const overlayId = mount.overlay
+    if (overlayId.startsWith('node:')) continue
+    // 只枚举目录原型；overrides 改字段仍可借 resolveSchemeChildTemplate 取合并结果，但不把 added 当模板。
+    for (const el of scenario.ui?.overlays?.[overlayId]?.children ?? []) {
+      const componentId = effectiveComponent(el)
+      if (!componentId || SLOT_BASE_KINDS.has(baseKindOf(componentId))) continue
+      const from = `${overlayId}/${el.id}`
+      if (seen.has(from)) continue
+      seen.add(from)
+      const params = paramsOf(el)
+      const instanceLabel = str(params.label)
+      out.push({
+        id: from,
+        label: instanceLabel || `${componentTypeLabel(componentId)} · ${el.id}`,
+        componentId,
+      })
+    }
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label, 'zh'))
+}
+
+/** 解析 `overlayId/childId`：优先当前挂载的合并结果（含 overrides），再回退目录原型。 */
+export function resolveSchemeChildTemplate(
+  scenario: GameScenario,
+  node: GameNode | undefined,
+  from: string,
+): OverlayChild | undefined {
+  const slash = from.indexOf('/')
+  if (slash <= 0 || slash >= from.length - 1) return undefined
+  const head = from.slice(0, slash)
+  const childId = from.slice(slash + 1)
+  if (node) {
+    for (const mount of node.data.overlayNodes ?? []) {
+      if (mount.overlay !== head && overlayMountId(mount) !== head) continue
+      const hit = resolveMountChildren(scenario.ui?.overlays, mount).find((c) => c.id === childId)
+      if (hit) return hit
+    }
+  }
+  return scenario.ui?.overlays?.[head]?.children.find((c) => c.id === childId)
+}
+
+function isSchemeTemplateRef(template: string): boolean {
+  return template.includes('/')
+}
 
 export interface AddResult {
   scenario: GameScenario
@@ -1166,34 +1524,60 @@ export function addMaterialGraph(
     if (!canAddQte(scenario, node)) return { scenario, selectKey: null }
     return addQteCueGraph(scenario, node, maxMs, at ? at.ms : playheadMs)
   }
-  // option
-  const existing = choiceElement(scenario, node)
-  if (existing) return { scenario, selectKey: `option:${existing.id}` }
-  const existingQte = qteElement(scenario, node)
-  const s0 = teardownInteractionScenario(scenario, node, {
-    kind: 'qte',
-    handlePrefixes: qteOutcomeCandidates(existingQte).map((c) => c.handle),
-  })
+  if (template === 'option') {
+    const existing = choiceElement(scenario, node)
+    if (existing) return { scenario, selectKey: `option:${existing.id}` }
+    const existingQte = qteElement(scenario, node)
+    const s0 = teardownInteractionScenario(scenario, node, {
+      kind: 'qte',
+      handlePrefixes: qteOutcomeCandidates(existingQte).map((c) => c.handle),
+    })
+    const id = newElementId()
+    const styleChild = styleVariantsFor(scenario, node, 'choice')[0]
+    const styleComp = styleChild ? effectiveComponent(styleChild) : 'choice'
+    const style = stripParamsComponent(styleChild?.params)
+    const styleEvents = Array.isArray(style.events) ? (style.events as ChoiceOption[]) : []
+    const optStart = at ? startMs : 0
+    const optEnd = at ? endMs : dur
+    const el: OverlayChild = {
+      id,
+      component: styleComp,
+      trigger: { when: 'enter' },
+      window: { startMs: optStart, endMs: optEnd },
+      layout: { zIndex: at ? at.zIndex : 3 },
+      params: applyStyleLockedChoiceParams({
+        prompt: '请选择',
+        presentation: 'list',
+        x: OPTION_XY.x,
+        y: OPTION_XY.y,
+        ...style,
+        events: styleEvents.length ? styleEvents : [{ id: 'opt0', label: '选项一' }],
+      }, styleComp),
+    }
+    const s = addOverlayChild(s0, node.id, el)
+    return { scenario: s, selectKey: `option:${id}` }
+  }
+  // 未分类：优先 `overlayId/childId` 克隆挂载实例（保留 bind/label 等 In）；否则按 component id 用 defaults。
+  const fromChild = isSchemeTemplateRef(template)
+    ? resolveSchemeChildTemplate(scenario, node, template)
+    : undefined
+  const componentId = fromChild ? effectiveComponent(fromChild) : template
+  const plugin = getComponent(componentId)
+  if (!plugin && !fromChild) return { scenario, selectKey: null }
   const id = newElementId()
-  const style = styleVariantsFor(scenario, node, 'choice')[0]?.params ?? {}
-  const styleEvents = Array.isArray(style.events) ? (style.events as ChoiceOption[]) : []
-  const optStart = at ? startMs : 0
-  const optEnd = at ? endMs : dur
+  const defaults = stripParamsComponent((plugin?.defaults?.() ?? {}) as Record<string, unknown>)
+  const seeded = fromChild
+    ? stripParamsComponent(fromChild.params)
+    : { x: 0.5, y: 0.5, ...defaults }
   const el: OverlayChild = {
     id,
-    component: 'choice',
-    trigger: { when: 'enter' },
-    window: { startMs: optStart, endMs: optEnd },
-    layout: { zIndex: at ? at.zIndex : 3 },
-    params: {
-      prompt: '请选择',
-      presentation: 'list',
-      ...style,
-      events: styleEvents.length ? styleEvents : [{ id: 'opt0', label: '选项一' }],
-    },
+    component: componentId,
+    trigger: { when: 'at', ms: startMs },
+    window: { startMs, endMs },
+    layout: { zIndex: at ? at.zIndex : (fromChild?.layout?.zIndex ?? 3) },
+    params: seeded,
   }
-  let s = addOverlayChild(s0, node.id, el)
-  return { scenario: s, selectKey: `option:${id}` }
+  return { scenario: addOverlayChild(scenario, node.id, el), selectKey: `component:${id}` }
 }
 
 /** 新增一个 QTE 按键点（无 qte 元素则新建整段 QTE，并清掉 choice）。 */
@@ -1207,8 +1591,8 @@ export function addQteCueGraph(
   const el = qteElement(scenario, node)
   const cues = cuesOf(el)
   const base = afterCueId ? cues.find((c) => c.id === afterCueId) : cues[cues.length - 1]
-  const skin = str(paramsOf(el).component)
-    || str(styleVariantsFor(scenario, node, 'qte')[0]?.params?.component)
+  const styleQte = styleVariantsFor(scenario, node, 'qte')[0]
+  const skin = (el ? effectiveComponent(el) : '') || (styleQte ? effectiveComponent(styleQte) : '') || 'qte'
   const isParry = skin === 'battleParry'
   // battleParry：整段只有一个时间窗——落点=出现，时长取 windowMs/durationMs（与检视器一致）。
   // 其它皮肤：沿用「已有 cue 后 +500」拍点节奏；无已有 cue 时落点即出现。
@@ -1216,10 +1600,11 @@ export function addQteCueGraph(
   let target: number
   let end: number
   if (isParry) {
+    const parryStyle = styleVariantsFor(scenario, node, 'qte').find((c) => effectiveComponent(c) === 'battleParry')
     const windowMs = num(paramsOf(el).windowMs)
       ?? num(paramsOf(el).durationMs)
-      ?? num(styleVariantsFor(scenario, node, 'qte').find((c) => str(c.params?.component) === 'battleParry')?.params?.windowMs)
-      ?? num(styleVariantsFor(scenario, node, 'qte').find((c) => str(c.params?.component) === 'battleParry')?.params?.durationMs)
+      ?? num(parryStyle?.params?.windowMs)
+      ?? num(parryStyle?.params?.durationMs)
       ?? 2600
     appear = clampMs(cues.length ? (base?.endAt ?? playheadMs) + 200 : playheadMs, 0, Math.max(0, maxMs - 200))
     end = clampMs(appear + windowMs, appear + 200, maxMs)
@@ -1247,7 +1632,7 @@ export function addQteCueGraph(
     zIndex: base?.zIndex ?? 2,
   }
   if (el) {
-    const nextParams: Record<string, unknown> = { ...el.params, cues: [...cues, cue] }
+    const nextParams: Record<string, unknown> = { ...stripParamsComponent(el.params), cues: [...cues, cue] }
     if (isParry) nextParams.windowMs = Math.max(200, end - appear)
     const s = patchOverlayChild(scenario, node.id, el.id, { params: nextParams })
     return { scenario: s, selectKey: `qte:${el.id}:${cueId}` }
@@ -1256,17 +1641,19 @@ export function addQteCueGraph(
   const choice = choiceElement(scenario, node)
   const s0 = teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: choice ? optionsOf(choice).map((o) => o.id) : [], childId: choice?.id })
   const id = newElementId()
-  const styleParams = styleVariantsFor(scenario, node, 'qte')[0]?.params ?? {}
+  const styleChild = styleVariantsFor(scenario, node, 'qte')[0]
+  const styleComp = styleChild ? effectiveComponent(styleChild) : skin
+  const styleParams = stripParamsComponent(styleChild?.params)
   const seeded = applyStyleLockedQteParams({
     qteKind: 'parry',
     passingHits: 1,
     ...styleParams,
     cues: [cue],
     ...(isParry ? { windowMs: Math.max(200, end - appear) } : {}),
-  })
+  }, styleComp)
   const newEl: OverlayChild = {
     id,
-    component: 'qte',
+    component: styleComp,
     trigger: { when: 'enter' },
     params: seeded,
   }
@@ -1321,22 +1708,48 @@ export function patchSelectedGraph(
     const el = qteElementOfCue(scenario, node, item.id)
     if (!el) return scenario
     // 元素级 QTE 参数（如完美半窗 perfectMs）落 el.params；其余按 cue 级 patch 进当前拍点。
+    // `component` 键 = 切皮肤 → 写顶栏，不进 params。
+    let nextComponent: string | undefined
     const elemPatch: Record<string, unknown> = {}
     const cuePatch: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(patch)) {
+      if (k === 'component') {
+        nextComponent = typeof v === 'string' && v ? v : 'qte'
+        continue
+      }
       if (QTE_ELEMENT_PARAM_KEYS.has(k)) elemPatch[k] = v
       else cuePatch[k] = v
     }
     const cues = cuesOf(el).map((c) => (c.id === item.id ? { ...c, ...cuePatch } : c))
-    // 样式锁出口：写入时强制用皮肤 defaults.exits，丢掉实例上的脏出口
-    const nextParams = applyStyleLockedQteParams({ ...el.params, ...elemPatch, cues })
-    return patchOverlayChild(scenario, node.id, el.id, { params: nextParams })
+    const skin = nextComponent ?? effectiveComponent(el)
+    const nextParams = applyStyleLockedQteParams(
+      { ...stripParamsComponent(el.params), ...elemPatch, cues },
+      skin,
+    )
+    return patchOverlayChild(scenario, node.id, el.id, {
+      ...(nextComponent != null ? { component: nextComponent } : {}),
+      params: nextParams,
+    })
   }
   if (item.kind === 'option') {
     const el = findElement(scenario, node, item.id)
     if (!el) return scenario
-    const next = mergeParams(el, patch)
-    return patchOverlayChild(scenario, node.id, el.id, { params: next })
+    // `component` 键 = 切皮肤 → 写顶栏（与 QTE 同构）；其余进 params。
+    const nextComponent = Object.prototype.hasOwnProperty.call(patch, 'component')
+      ? (typeof patch.component === 'string' && patch.component ? patch.component : 'choice')
+      : undefined
+    const { component: _skin, ...rest } = patch
+    const skin = nextComponent ?? effectiveComponent(el)
+    const next = stripParamsComponent(mergeParams(el, rest))
+    return patchOverlayChild(scenario, node.id, el.id, {
+      ...(nextComponent != null ? { component: nextComponent } : {}),
+      params: applyStyleLockedChoiceParams(next, skin),
+    })
+  }
+  if (item.kind === 'component') {
+    const el = findElement(scenario, node, item.id)
+    if (!el) return scenario
+    return patchOverlayChild(scenario, node.id, el.id, { params: stripParamsComponent(mergeParams(el, patch)) })
   }
   return scenario
 }
@@ -1377,60 +1790,47 @@ export function patchOverlayGraph(
   return s
 }
 
-// ── 写映射：选项分支（= 出边 <id> + event reaction effects）───────────────────
-export interface OptionBranchView {
-  key: string
-  label: string
-  targetId: string | undefined
-  edgeId: string | undefined
-  effects: GraphEffect[]
-}
-export function listOptionBranches(scenario: GameScenario, node: GameNode): OptionBranchView[] {
+// ── 写映射：选项分支（= 出边 <id> + mount event reaction effects，与 QTE 同内核）─────
+/** 向后兼容命名（选项分支专用别名，结构与 OutcomeView 相同）。 */
+export type OptionBranchView = OutcomeView
+export function listOptionBranches(scenario: GameScenario, node: GameNode): OutcomeView[] {
   const el = choiceElement(scenario, node)
   if (!el) return []
-  const locked = applyStyleLockedChoiceParams(paramsOf(el))
+  const locked = applyStyleLockedChoiceParams(paramsOf(el), effectiveComponent(el))
   const events = Array.isArray(locked.events) ? (locked.events as ChoiceOption[]) : optionsOf(el)
-  return events.map((o) => {
-    const edge = scenario.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === o.id)
-    return {
-      key: o.id,
-      label: o.label ?? o.id,
-      targetId: edge?.target,
-      edgeId: edge?.id,
-      effects: readEventEffects(node, o.id),
-    }
-  })
+  const candidates: OutcomeCandidate[] = events.map((o) => ({ handle: o.id, label: o.label ?? o.id }))
+  return candidates.map((c) => outcomeView(scenario, node, el.id, c.handle, c.label, candidates))
 }
 
 /** 打开检视器时把脏 events 写回样式锁定值（与 listOptionBranches / 预览对齐）。 */
 export function syncChoiceStyleLockedOptionsGraph(scenario: GameScenario, node: GameNode): GameScenario {
   const el = choiceElement(scenario, node)
-  if (!el || !choiceOptionsLocked(paramsOf(el))) return scenario
-  const locked = applyStyleLockedChoiceParams(paramsOf(el))
+  if (!el || !choiceOptionsLocked(effectiveComponent(el))) return scenario
+  const locked = applyStyleLockedChoiceParams(paramsOf(el), effectiveComponent(el))
   if (JSON.stringify(locked.events) === JSON.stringify(paramsOf(el).events)) return scenario
   return writeChoiceParamsWithEdgeCleanup(scenario, node, el, locked)
 }
 
 export function addOptionBranchGraph(scenario: GameScenario, node: GameNode): GameScenario {
   const el = choiceElement(scenario, node)
-  if (!el || choiceOptionsLocked(paramsOf(el))) return scenario
+  if (!el || choiceOptionsLocked(effectiveComponent(el))) return scenario
   const events = optionsOf(el)
   const id = `opt${events.length}-${Date.now().toString(36).slice(-3)}`
   const label = `选项 ${events.length + 1}`
   return patchOverlayChild(scenario, node.id, el.id, {
-    params: { ...el.params, events: [...events, { id, label }] },
+    params: { ...stripParamsComponent(el.params), events: [...events, { id, label }] },
   })
 }
 export function updateOptionLabelGraph(scenario: GameScenario, node: GameNode, key: string, label: string): GameScenario {
   const el = choiceElement(scenario, node)
-  if (!el || choiceOptionsLocked(paramsOf(el))) return scenario
+  if (!el || choiceOptionsLocked(effectiveComponent(el))) return scenario
   const events = optionsOf(el).map((o) => (o.id === key ? { ...o, label } : o))
-  return patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, events } })
+  return patchOverlayChild(scenario, node.id, el.id, { params: { ...stripParamsComponent(el.params), events } })
 }
 export function setOptionTargetGraph(scenario: GameScenario, node: GameNode, key: string, targetId: string): GameScenario {
   const handle = `${CHOICE_HANDLE}${key}`
   if (!targetId) {
-    const edge = scenario.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === handle)
+    const edge = edgeForHandle(scenario, node.id, handle)
     if (!edge) return scenario
     return { ...scenario, graph: disconnect(scenario.graph, edge.id) }
   }
@@ -1442,23 +1842,80 @@ export function setOptionBranchEffectsGraph(
   key: string,
   effects: GraphEffect[],
 ): GameScenario {
-  const reactions = writeEventEffectsData(node.data.reactions, key, effects)
-  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { reactions }) }
+  const el = choiceElement(scenario, node)
+  if (!el) return scenario
+  return writeMountEventEffects(scenario, node, el.id, key, effects)
+}
+
+export function setOptionBranchSpawnGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  key: string,
+  spawn: SettlementSpawn | undefined,
+): GameScenario {
+  const el = choiceElement(scenario, node)
+  if (!el) return scenario
+  return writeMountEventSpawn(scenario, node, el.id, key, spawn)
+}
+
+/**
+ * 通用组件的事件结算列表（manifest.events / outputs；跳转·改数值·spawn 与选项/QTE 同内核）。
+ */
+export function listComponentEventViews(
+  scenario: GameScenario,
+  node: GameNode,
+  el: OverlayChild | undefined,
+): OutcomeView[] {
+  if (!el) return []
+  const componentId = effectiveComponent(el)
+  const plugin = getComponent(componentId)
+  const fromPlugin = plugin?.events?.length
+    ? plugin.events
+    : (plugin ? plugin.outputs(el.params as never, componentId) : [])
+  const candidates: OutcomeCandidate[] = fromPlugin.map((e) => ({ handle: e.id, label: e.label ?? e.id }))
+  if (!candidates.length) return []
+  return candidates.map((c) => outcomeView(scenario, node, el.id, c.handle, c.label, candidates))
+}
+
+/**
+ * 通用组件事件结算写入（elId = 该组件在时间轴上的落盘 id，与 listComponentEventViews 用同一个）。
+ * 修复：此前 UI 把通用组件的改数值/生成组件误接到 setOptionBranchEffectsGraph/Spawn（内部按
+ * choiceElement 定位，非选项元素时静默 no-op），这里补上真正 elId-驱动的写入路径。
+ */
+export function setComponentEventEffectsGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  elId: string,
+  key: string,
+  effects: GraphEffect[],
+): GameScenario {
+  return writeMountEventEffects(scenario, node, elId, key, effects)
+}
+
+export function setComponentEventSpawnGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  elId: string,
+  key: string,
+  spawn: SettlementSpawn | undefined,
+): GameScenario {
+  return writeMountEventSpawn(scenario, node, elId, key, spawn)
 }
 export function removeOptionBranchGraph(scenario: GameScenario, node: GameNode, key: string): GameScenario {
   const el = choiceElement(scenario, node)
-  if (!el || choiceOptionsLocked(paramsOf(el))) return scenario
+  if (!el || choiceOptionsLocked(effectiveComponent(el))) return scenario
   const events = optionsOf(el).filter((o) => o.id !== key)
   // 删到 0 个选项 = 拆整段选项交互（回落叙事 + 自动续连）。
   if (events.length === 0) {
     return teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: optionsOf(el).map((o) => o.id), childId: el.id })
   }
-  let s = patchOverlayChild(scenario, node.id, el.id, { params: { ...el.params, events } })
-  const edge = s.graph.edges.find((e) => e.source === node.id && (e.sourceHandle ?? 'default') === key)
+  let s = patchOverlayChild(scenario, node.id, el.id, { params: { ...stripParamsComponent(el.params), events } })
+  const edge = edgeForHandle(s, node.id, key)
   if (edge) s = { ...s, graph: disconnect(s.graph, edge.id) }
-  // 清掉该分支的 event 反应副作用。
-  const reactions = writeEventEffectsData(s.graph.nodes.find((n) => n.id === node.id)?.data.reactions, key, [])
-  if (reactions !== node.data.reactions) s = { ...s, graph: updateNodeData(s.graph, node.id, { reactions }) }
+  // 清掉该分支的 event 反应（mount 级 effect + spawn，legacy node 级残留一并清）。
+  const n = s.graph.nodes.find((x) => x.id === node.id)!
+  s = removeMountEventReaction(s, n, el.id, key)
+  s = clearLegacyNodeEvent(s, s.graph.nodes.find((x) => x.id === node.id)!, key)
   return s
 }
 

@@ -8,16 +8,42 @@ import { useEffect, useState } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
 import type { ChoiceParams } from '../../registry/core-kinds'
+import type { OverlayChild } from '../../schema/graph-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 const SKILL_KEYS = ['X', 'A', 'Y', 'B'] as const
+
+/** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
+export const battleSkillBarDefaults: Pick<ChoiceParams, 'prompt' | 'events' | 'x' | 'y'> = {
+  prompt: '技能',
+  events: [
+    { id: 'a', label: '斩' },
+    { id: 'b', label: '突' },
+    { id: 'c', label: '守' },
+  ],
+  x: 0.5,
+  y: 0.88,
+}
+
+/** OverlayChild 预设（顶栏 component = 皮肤 id）。 */
+export function battleSkillBarPreset(id: string): OverlayChild {
+  return {
+    id,
+    component: 'battleSkillBar',
+    trigger: { when: 'enter' },
+    params: { ...battleSkillBarDefaults },
+  }
+}
 
 export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const events = ((interaction.params as unknown as ChoiceParams).events ?? [])
+  const params = interaction.params as unknown as ChoiceParams
+  const events = params.events ?? []
+  const x = typeof params.x === 'number' ? params.x : battleSkillBarDefaults.x!
+  const y = typeof params.y === 'number' ? params.y : battleSkillBarDefaults.y!
   const [picked, setPicked] = useState<string | null>(null)
 
   function pick(id: string, locked: boolean): void {
@@ -42,7 +68,11 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
   }, [picked, events, ctx])
 
   return (
-    <div className="pvb-skills enter" aria-label="技能选择">
+    <div
+      className="pvb-skills enter"
+      aria-label="技能选择"
+      style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+    >
       {events.map((ev, index) => {
         const key = SKILL_KEYS[index] ?? String(index + 1)
         const isUlt = ev.id.includes('ult')
@@ -65,7 +95,7 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
 }
 
 const SKILL_CSS = `
-.pvb-skills { position: absolute; left: 0; right: 0; bottom: 0; z-index: 44; display: flex; flex-wrap: wrap; gap: 26px; justify-content: center; align-items: flex-end; min-height: 40px; padding: 34px 16px 18px; pointer-events: auto; }
+.pvb-skills { position: absolute; z-index: 44; display: flex; flex-wrap: wrap; gap: 26px; justify-content: center; align-items: flex-end; min-height: 40px; padding: 8px 16px; transform: translate(-50%, -50%); pointer-events: auto; }
 .pvb-skill { position: relative; display: flex; align-items: center; gap: 9px; cursor: pointer; background: none; border: none; padding: 4px; box-shadow: none; line-height: 1; color: #fbf6ec; transition: transform .14s ease, opacity .14s ease; }
 .pvb-sk-key { position: relative; flex: none; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif; font-weight: 800; font-size: 1.18rem; color: #efe7d6; z-index: 1; text-shadow: 0 2px 6px rgba(0,0,0,.85); }
 .pvb-sk-key::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 52% 48% 50% 50% / 50% 52% 48% 50%; background: linear-gradient(180deg, #2b2620, #0c0a08); border: 1.5px solid rgba(239,231,214,.5); box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 2px 7px rgba(0,0,0,.6); filter: url(#inkRough); }

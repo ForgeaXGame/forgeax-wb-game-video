@@ -3,7 +3,10 @@
  * 原样搬来（解耦自已删的 FMV 外壳），供 GraphVideoView（视频 tab）与 CatalogShell
  * （界面/规则）共用。两处都经 injectStyleOnce('graph-catalog') 注入，去重后只落一份。
  */
+import { PREVIEW_CLOCK_CSS } from './previewClock'
+
 export const CATALOG_CSS = `
+${PREVIEW_CLOCK_CSS}
 .gc-tab {
   --gc-bg: var(--work, #0e0c09);
   --gc-panel: var(--panel, #1b1713);
@@ -215,6 +218,10 @@ export const CATALOG_CSS = `
 .gc-preview-overlay.is-qte .gc-preview-label {
   color: #cfe4ff;
   border-color: rgba(95,163,247,.48);
+}
+.gc-preview-overlay.is-component .gc-preview-label {
+  color: #e2e8f0;
+  border-color: rgba(148,163,184,.48);
 }
 .gc-preview-detail {
   max-width: 100%;

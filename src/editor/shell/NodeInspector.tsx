@@ -684,6 +684,8 @@ export function NodeInspector({
     if (!title || title === id) return id
     return `${title} (${id})`
   }
+  // 「默认样式 / ＋ 挂载」只列界面方案；node:* 是时间轴内容容器，不当整体方案选。
+  const schemeOverlayIds = Object.keys(overlays ?? {}).filter((id) => !id.startsWith('node:'))
   const mediaRef = d.media?.ref ?? ''
   // 当前引用若不在资产清单里也要能显示（避免选中项丢失）。
   const videoChoices: VideoOption[] = (() => {
@@ -709,9 +711,12 @@ export function NodeInspector({
   const componentOptions: OptItem[] = (d.overlayNodes ?? []).flatMap((m) =>
     resolveMountChildren(overlays, m).map((c) => ({ value: c.id, label: `${compLabel(c.component)}（${c.id}）` })),
   )
-  const spawnOptions: OptItem[] = Object.values(overlays ?? {}).flatMap((o) =>
-    o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
-  )
+  // spawn 模板只列界面方案（排除 node:* 本地内容容器 / 历史 fork）。
+  const spawnOptions: OptItem[] = Object.values(overlays ?? {})
+    .filter((o) => !o.id.startsWith('node:'))
+    .flatMap((o) =>
+      o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
+    )
   const fieldTree = buildFieldTree(entities, variables)
   const pickers: EditorPickerCtx = { entities, variables, nodeLabel }
   const flowHandleOptions = useMemo(() => {
@@ -906,7 +911,7 @@ export function NodeInspector({
             title="选一套方案作本节点默认样式：新增字幕/飘字/滤镜/特效时自动套用方案里同类型组件的参数（同类型有多个时取第一个，可在素材检视器里切换）；方案本身不挂载、不出现在时间轴/预览里"
           >
             <option value="">（无）</option>
-            {Object.keys(overlays ?? {}).map((id) => (
+            {schemeOverlayIds.map((id) => (
               <option key={id} value={id}>{overlayLabel(id)}</option>
             ))}
           </select>
@@ -931,7 +936,7 @@ export function NodeInspector({
             style={{ maxWidth: 140, fontSize: 11 }}
           >
             <option value="">＋ 挂载…</option>
-            {Object.keys(overlays ?? {}).map((id) => (
+            {schemeOverlayIds.map((id) => (
               <option key={id} value={id}>{overlayLabel(id)}</option>
             ))}
           </select>

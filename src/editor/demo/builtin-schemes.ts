@@ -1,12 +1,19 @@
 /**
  * 内置「通用样式」方案 —— 两份自由 overlay，装齐现有全部组件预设，做「组件画廊 / 预设仓库」。
  *
- * 与普通 overlay 同一套数据格式（Overlay + OverlayChild），只是 id/标题固定、boot 时保证存在，
- * 免得后续因缺失某个皮肤预设被带偏。静态 = 常驻展示类；动态 = 交互/动画类。皮肤放 params.component。
+ * 与普通 overlay 同一套数据格式（Overlay + OverlayChild），只是 id/标题固定、boot 时保证存在。
+ * 各皮肤预设由对应 tsx 导出；本文件只组装引用。顶栏 `component` = 唯一类型键（含皮肤 alias）。
  *
- * 幂等：boot 只在缺失时补，用户可自由改内部 children；删掉整份下次 boot 会补回（这正是「别丢预设」）。
+ * 幂等：boot 只在缺失时补，用户可自由改内部 children；删掉整份下次 boot 会补回。
  */
 import type { Overlay, OverlayChild } from '../../runtime/schema/graph-schema'
+import {
+  battleHpBarPreset,
+  battleParryPreset,
+  battleSkillBarPreset,
+  inkKouPreset,
+  inkYingMoPreset,
+} from '../../runtime/skins/components'
 
 export const SCHEME_STATIC_ID = 'scheme-static'
 export const SCHEME_DYNAMIC_ID = 'scheme-dynamic'
@@ -16,18 +23,8 @@ const STATIC_SCHEME: Overlay = {
   id: SCHEME_STATIC_ID,
   title: '静态组件方案',
   children: [
-    {
-      id: 'hp-player',
-      component: 'battleHpBar',
-      trigger: { when: 'enter' },
-      params: { bind: 'ent-player', label: '我方' },
-    },
-    {
-      id: 'hp-boss',
-      component: 'battleHpBar',
-      trigger: { when: 'enter' },
-      params: { bind: 'ent-boss', label: '敌方' },
-    },
+    battleHpBarPreset('hp-player', { bind: 'ent-player', label: '我方' }),
+    battleHpBarPreset('hp-boss', { bind: 'ent-boss', label: '敌方' }),
     {
       id: 'line',
       component: 'dialogue',
@@ -42,47 +39,10 @@ const DYNAMIC_SCHEME: Overlay = {
   id: SCHEME_DYNAMIC_ID,
   title: '动态组件方案',
   children: [
-    {
-      id: 'qte-kou',
-      component: 'qte',
-      trigger: { when: 'enter' },
-      params: {
-        component: 'inkKou',
-        glyph: '叩',
-        cues: [{ id: 'k0', x: 0.5, y: 0.45, appearAt: 0, targetAt: 400, endAt: 1000 }],
-      },
-    },
-    {
-      id: 'qte-parry',
-      component: 'qte',
-      trigger: { when: 'enter' },
-      params: {
-        component: 'battleParry',
-        durationMs: 2600,
-        events: [{ id: 'pass', label: '防反' }, { id: 'good', label: '闪避' }, { id: 'fail', label: '受击' }],
-        defaultEvent: 'fail',
-      },
-    },
-    {
-      id: 'choice-yingmo',
-      component: 'choice',
-      trigger: { when: 'enter' },
-      params: {
-        component: 'inkYingMo',
-        prompt: '應 / 默',
-        events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }],
-      },
-    },
-    {
-      id: 'choice-skills',
-      component: 'choice',
-      trigger: { when: 'enter' },
-      params: {
-        component: 'battleSkillBar',
-        prompt: '技能',
-        events: [{ id: 'a', label: '斩' }, { id: 'b', label: '突' }, { id: 'c', label: '守' }],
-      },
-    },
+    inkKouPreset('qte-kou'),
+    battleParryPreset('qte-parry'),
+    inkYingMoPreset('choice-yingmo'),
+    battleSkillBarPreset('choice-skills'),
     {
       id: 'float',
       component: 'floatText',
@@ -94,19 +54,41 @@ const DYNAMIC_SCHEME: Overlay = {
 
 export const BUILTIN_SCHEMES: Overlay[] = [STATIC_SCHEME, DYNAMIC_SCHEME]
 
-/** 「+ 组件」菜单：每项 = 一个组件预设模板（基础 kind + 皮肤 params.component）。 */
+/** 「+ 组件」菜单：每项 = 一个组件预设模板（顶栏 component = 类型/皮肤 id）。 */
 export const NEW_COMPONENT_PRESETS: Array<{
   id: string
   label: string
   make: (childId: string) => OverlayChild
 }> = [
-  { id: 'battleHpBar', label: 'HUD · 水墨血条', make: (id) => ({ id, component: 'battleHpBar', trigger: { when: 'enter' }, params: { bind: 'ent-player', label: '角色' } }) },
-  { id: 'dialogue', label: '字幕', make: (id) => ({ id, component: 'dialogue', trigger: { when: 'enter' }, params: { text: '字幕示例' } }) },
-  { id: 'floatText', label: '飘字', make: (id) => ({ id, component: 'floatText', trigger: { when: 'enter' }, params: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' } }) },
-  { id: 'inkKou', label: 'QTE · 叩击', make: (id) => ({ id, component: 'qte', trigger: { when: 'enter' }, params: { component: 'inkKou', glyph: '叩', cues: [{ id: 'k0', x: 0.5, y: 0.45, appearAt: 0, targetAt: 400, endAt: 1000 }] } }) },
-  { id: 'battleParry', label: 'QTE · 防反', make: (id) => ({ id, component: 'qte', trigger: { when: 'enter' }, params: { component: 'battleParry', durationMs: 2600, events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }], defaultEvent: 'fail' } }) },
-  { id: 'inkYingMo', label: '选项 · 應默', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'inkYingMo', prompt: '應 / 默', events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }] } }) },
-  { id: 'battleSkillBar', label: '选项 · 技能条', make: (id) => ({ id, component: 'choice', trigger: { when: 'enter' }, params: { component: 'battleSkillBar', prompt: '技能', events: [{ id: 'a', label: '斩' }, { id: 'b', label: '突' }] } }) },
+  {
+    id: 'battleHpBar',
+    label: 'HUD · 水墨血条',
+    make: (id) => battleHpBarPreset(id, { bind: 'ent-player', label: '角色' }),
+  },
+  {
+    id: 'dialogue',
+    label: '字幕',
+    make: (id) => ({
+      id,
+      component: 'dialogue',
+      trigger: { when: 'enter' },
+      params: { text: '字幕示例' },
+    }),
+  },
+  {
+    id: 'floatText',
+    label: '飘字',
+    make: (id) => ({
+      id,
+      component: 'floatText',
+      trigger: { when: 'enter' },
+      params: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' },
+    }),
+  },
+  { id: 'inkKou', label: 'QTE · 叩击', make: inkKouPreset },
+  { id: 'battleParry', label: 'QTE · 防反', make: battleParryPreset },
+  { id: 'inkYingMo', label: '选项 · 應默', make: inkYingMoPreset },
+  { id: 'battleSkillBar', label: '选项 · 技能条', make: battleSkillBarPreset },
 ]
 
 /** 保证内置方案存在于 overlays 目录（缺失才补，不覆盖用户已改内容）。 */

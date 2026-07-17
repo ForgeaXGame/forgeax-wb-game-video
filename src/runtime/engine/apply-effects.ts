@@ -50,15 +50,13 @@ function clamp(v: number, meta?: { min?: number; max?: number }): number {
   return out
 }
 
-/** 数值 op：add=加、mul=乘、div=除（除数为 0 则保持原值）、set=设为。 */
+/** 数值 op：add=加、mul=乘、set=设为。 */
 export function applyNumericOp(op: NumericEffectOp, cur: number, val: number): number {
   switch (op) {
     case 'set':
       return val
     case 'mul':
       return cur * val
-    case 'div':
-      return val === 0 ? cur : cur / val
     case 'add':
     default:
       return cur + val

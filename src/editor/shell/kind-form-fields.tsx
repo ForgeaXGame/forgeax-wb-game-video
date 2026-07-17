@@ -1,10 +1,13 @@
 /**
- * 按 kind 注册表 form 字段渲染 overlay child params（标量 + events/effects 复合控件）。
+ * 按 kind 注册表 form / inputs 渲染 overlay child params。
+ * valueType bind/attr 复用 scenario-pickers（实体·属性下拉），不手写 id。
  */
 import type { CSSProperties, JSX } from 'react'
 import type { FormField } from '../../runtime/registry/kind-registry'
-import { getComponent } from '../../runtime/registry/kind-registry'
+import { getComponent, getComponentManifest } from '../../runtime/registry/kind-registry'
+import type { ComponentInput } from '../../runtime/schema/node-config-schema'
 import { EffectsEditor, EventsEditor, type EditorPickerCtx, type ComponentEventLike } from './editors'
+import { AttrPicker, EntityPicker } from './scenario-pickers'
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 72, opacity: 0.7, flexShrink: 0, fontSize: 11 }
@@ -67,7 +70,21 @@ function renderField(
         />
       ))
     }
-    case 'number':
+    case 'number': {
+      if (f.slider) {
+        const v = typeof val === 'number' ? val : (f.min ?? 0)
+        return field(`${f.label} ${v.toFixed(2)}`, (
+          <input
+            type="range"
+            min={f.min ?? 0}
+            max={f.max ?? 1}
+            step={f.step ?? 0.05}
+            value={v}
+            onChange={(e) => onPatch({ [f.key]: Number(e.target.value) })}
+            style={{ flex: 1 }}
+          />
+        ))
+      }
       return field(f.label, (
         <input
           type="number"
@@ -79,10 +96,11 @@ function renderField(
           style={{ flex: 1, fontSize: 12 }}
         />
       ))
+    }
     case 'select':
       return field(f.label, (
         <select
-          value={typeof val === 'string' ? val : ''}
+          value={typeof val === 'string' && val ? val : (f.fallback ?? '')}
           onChange={(e) => onPatch({ [f.key]: e.target.value })}
           style={{ flex: 1, fontSize: 12 }}
         >
@@ -97,6 +115,37 @@ function renderField(
           onChange={(e) => onPatch({ [f.key]: e.target.checked })}
         />
       ))
+    case 'color':
+      return field(f.label, (
+        <input
+          type="color"
+          value={typeof val === 'string' && val ? val : (f.placeholder || '#5fbf7f')}
+          onChange={(e) => onPatch({ [f.key]: e.target.value || undefined })}
+          style={{ width: 42, height: 28, padding: 0, border: 'none', background: 'transparent' }}
+          title={typeof val === 'string' ? val : f.placeholder}
+        />
+      ))
+    case 'bind':
+      return field(f.label, (
+        <EntityPicker
+          value={typeof val === 'string' ? val : ''}
+          entities={pickers?.entities}
+          onChange={(id) => onPatch({ [f.key]: id || undefined })}
+          allowEmpty
+        />
+      ))
+    case 'attr': {
+      const entityKey = f.entityKey ?? 'bind'
+      const entityId = typeof params[entityKey] === 'string' ? (params[entityKey] as string) : ''
+      return field(f.label, (
+        <AttrPicker
+          entityId={entityId}
+          value={typeof val === 'string' ? val : ''}
+          entities={pickers?.entities}
+          onChange={(a) => onPatch({ [f.key]: a || undefined })}
+        />
+      ))
+    }
     case 'effects':
       return (
         <div style={{ marginTop: 4 }}>
@@ -132,21 +181,44 @@ function renderField(
   }
 }
 
+function inputToField(inp: ComponentInput): FormField {
+  const label = inp.label?.trim() || inp.key
+  if (inp.valueType === 'number') return { t: 'number', key: inp.key, label }
+  if (inp.valueType === 'boolean') return { t: 'checkbox', key: inp.key, label }
+  if (inp.valueType === 'color') return { t: 'color', key: inp.key, label }
+  if (inp.valueType === 'bind') return { t: 'bind', key: inp.key, label }
+  if (inp.valueType === 'attr') return { t: 'attr', key: inp.key, label, entityKey: inp.entityKey ?? 'bind' }
+  if (inp.valueType === 'string' && inp.options?.length) {
+    return { t: 'select', key: inp.key, label, options: inp.options }
+  }
+  return { t: 'text', key: inp.key, label }
+}
+
 export function KindFormFields({
   componentId,
   params,
   onChange,
   pickers,
+  excludeKeys,
 }: {
   componentId: string
   params: Record<string, unknown>
   onChange: (next: Record<string, unknown>) => void
   pickers?: EditorPickerCtx
+  /**
+   * 排除某些字段——已有专属编辑器接管时用（如 x/y 走 PositionEditor、
+   * speaker 走「显示说话人前缀」开关、events 走结算区自带的分支编辑）。
+   */
+  excludeKeys?: string[]
 }): JSX.Element | null {
   const plugin = getComponent(componentId)
   const form = plugin?.form
-  if (!form?.length) {
-    return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无表单字段（component={componentId}）</div>
+  const inputs = getComponentManifest(componentId)?.inputs ?? []
+  // form 优先（含 events/effects 等复合控件）；无 form 时由 inputs（含 bind/attr）派生。
+  const allFields: FormField[] = form?.length ? form : inputs.map(inputToField)
+  const fields = excludeKeys?.length ? allFields.filter((f) => !excludeKeys.includes(f.key)) : allFields
+  if (!fields.length) {
+    return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无配置字段（component={componentId}）</div>
   }
   const onPatch = (patch: Record<string, unknown>) => {
     let next = { ...params }
@@ -155,7 +227,7 @@ export function KindFormFields({
   }
   return (
     <div>
-      {form.map((f) => (
+      {fields.map((f) => (
         <div key={f.key}>{renderField(f, params, onPatch, pickers)}</div>
       ))}
     </div>

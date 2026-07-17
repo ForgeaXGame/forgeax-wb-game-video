@@ -219,6 +219,55 @@ describe('choice timeout', () => {
   })
 })
 
+describe('submitInteraction · event 结算只读 mount.reactions（选项/通用组件结算修复的运行时证明）', () => {
+  // 复现「素材属性编辑面板统一化」修复的真实运行时后果：2026-07-16 边路由统一重构曾把
+  // 选项/通用组件结算误写进 node.data.reactions，但 submitInteraction 从头到尾只读
+  // nodeOverlayMounts(node)[...].reactions（见 engine.ts:467-470），配了但从不生效。
+  function seedChoiceNode(reactionsOn: 'mount' | 'legacyNode'): { graph: GameGraph; scn: GameScenario } {
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 1000,
+          timeline: [
+            { id: 'c', role: 'interaction', kind: 'choiceX', trigger: { when: 'enter' }, params: { events: [{ id: 'hit' }] } },
+          ],
+        }),
+      ],
+      edges: [],
+    }
+    const scn = scnOf(graph, {
+      entities: { 'ent-boss': { id: 'ent-boss', kind: 'boss', attrs: { hp: 700 }, attrMeta: { hp: { max: 700 } } } },
+    })
+    const a = scn.graph.nodes.find((n) => n.id === 'a')!
+    const effects = [{ id: 'hit-fx', kind: 'attr' as const, entityId: 'ent-boss', attr: 'hp', op: 'add' as const, value: -100 }]
+    if (reactionsOn === 'mount') {
+      a.data.overlayNodes = [{
+        overlay: 'ov-a',
+        reactions: [{ when: { type: 'event', id: 'hit' }, do: [{ kind: 'effect', effects }] }],
+      }]
+    } else {
+      a.data.reactions = [{ when: { type: 'event', id: 'hit' }, do: [{ kind: 'effect', effects }] }]
+    }
+    return { graph: scn.graph, scn }
+  }
+
+  it('写在 mount.reactions（新统一写入位置）：submitInteraction 后 effect 真的生效', () => {
+    const { graph, scn } = seedChoiceNode('mount')
+    const rt = new GraphRuntime(graph, scn)
+    rt.start()
+    rt.submitInteraction(rid('a', 'c'), 'hit')
+    expect(rt.state.entities['ent-boss']?.attrs.hp).toBe(600)
+  })
+
+  it('写在 node.data.reactions（历史 bug 位置）：submitInteraction 不读它，effect 不生效', () => {
+    const { graph, scn } = seedChoiceNode('legacyNode')
+    const rt = new GraphRuntime(graph, scn)
+    rt.start()
+    rt.submitInteraction(rid('a', 'c'), 'hit')
+    expect(rt.state.entities['ent-boss']?.attrs.hp).toBe(700)
+  })
+})
+
 describe('graph-level reactive rules (instant defeat/victory)', () => {
   const bossDead: Reaction = {
     when: { type: 'state', condition: { all: [{ type: 'attrRatio', entityId: 'ent-boss', attr: 'hp', op: 'lte', value: 0 }] } },

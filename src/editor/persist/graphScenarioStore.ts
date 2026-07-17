@@ -15,10 +15,14 @@ import { computeGraphLayout } from '../../graph/edit/graph-layout'
 import { normalizeSubFlowFields } from '../../graph/edit/graph-edit'
 import { validateGraph } from '../../runtime/validate/validate'
 import { ensureBuiltinSchemes } from '../demo/builtin-schemes'
+import { normalizeOverlays } from '../../runtime/schema/overlay-component'
 
-/** 载入任意 scenario 时保证内置「通用样式」方案存在（缺失才补）。 */
+/** 载入任意 scenario 时保证内置「通用样式」方案存在，并归一遗留 params.component。 */
 function withBuiltinSchemes(s: GameScenario): GameScenario {
-  return { ...s, ui: { ...s.ui, overlays: ensureBuiltinSchemes(s.ui?.overlays) } }
+  return {
+    ...s,
+    ui: { ...s.ui, overlays: normalizeOverlays(ensureBuiltinSchemes(s.ui?.overlays)) },
+  }
 }
 
 export type ScenarioMetaFields = Pick<GameScenario, 'variables' | 'entities' | 'ui' | 'rng' | 'reactions' | 'textStylePresets' | 'packs'>
