@@ -15,6 +15,8 @@ import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
+import { VideoOverlayStage } from '../video/VideoOverlayStage'
+import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
@@ -230,6 +232,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const sessionRef = useRef(session)
   sessionRef.current = session
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
+  // overlay 舞台锚视频实际画面矩形（object-fit:contain），与 GraphPlaySurface/GraphPlayer 同源，避免有黑边时叠层错位。
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
+  const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
 
   useEffect(() => {
     setSnap(sessionRef.current.start())
@@ -430,11 +435,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               {videoSrc ? (
                 <video
                   key={snap.clip?.nodeId}
+                  ref={videoElRef}
                   src={videoSrc}
                   autoPlay
                   muted
                   playsInline
                   loop={!!snap.clip?.loop}
+                  onLoadedMetadata={recomputeRect}
                   onEnded={() => {
                     if (snap.clip?.loop) return
                     setSnap(sessionRef.current.performanceEnd())
@@ -456,25 +463,28 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   {snap.clip?.name ?? '（无演出）'}
                 </div>
               )}
-              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                {snap.overlayMounts.map((m) => (
-                  <span key={m.mountId} style={{ display: 'contents' }}>
-                    {session.skins.renderOverlayMount(
-                      m,
-                      (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
-                      { hud: snap.hud },
-                    )}
-                  </span>
-                ))}
-              </div>
-              {snap.interaction && (
-                <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0 }}>
-                  {session.skins.renderInteraction(snap.interaction, submit, {
-                    hud: snap.hud,
-                    condition: { state: session.runtime.state, visited: session.runtime.state.visited },
-                  })}
+              {/* overlay / 交互层锚视频实际画面矩形（VideoOverlayStage）；contentRect 为空时回退整容器（inset:0）。 */}
+              <VideoOverlayStage contentRect={contentRect}>
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                  {snap.overlayMounts.map((m) => (
+                    <span key={m.mountId} style={{ display: 'contents' }}>
+                      {session.skins.renderOverlayMount(
+                        m,
+                        (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
+                        { hud: snap.hud },
+                      )}
+                    </span>
+                  ))}
                 </div>
-              )}
+                {snap.interaction && (
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {session.skins.renderInteraction(snap.interaction, submit, {
+                      hud: snap.hud,
+                      condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+                    })}
+                  </div>
+                )}
+              </VideoOverlayStage>
             </div>
             </PlayerRootContext.Provider>
             <div style={{ padding: 8, borderTop: '1px solid #2e2924', fontSize: 12, background: '#121316' }}>
