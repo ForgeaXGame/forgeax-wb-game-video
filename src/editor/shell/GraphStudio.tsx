@@ -18,7 +18,7 @@ import { bootEditorSkins } from '../init'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
-import { listVideoAssetInfos, resolveMediaSrc } from './media'
+import { listVideoAssetInfos, resolveMediaSrc, videoDurationCapReached } from './media'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode, insertSubFlowPackAfter, makeEmptySubFlowPack, makeSubFlowPackContainer } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
@@ -237,8 +237,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
   useEffect(() => {
-    // 有视频：按素材播完（onEnded）推进，不看 durationMs。
-    // 无视频：durationMs 到点推进（兼容旧图/逻辑节拍节点）。
+    // 无视频：durationMs 到点推进（逻辑节拍节点）。
+    // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
     if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
@@ -439,7 +439,16 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                     if (snap.clip?.loop) return
                     setSnap(sessionRef.current.performanceEnd())
                   }}
-                  onTimeUpdate={(e) => setSnap(sessionRef.current.tick(Math.floor(e.currentTarget.currentTime * 1000)))}
+                  onTimeUpdate={(e) => {
+                    const el = e.currentTarget
+                    const nowMs = Math.floor(el.currentTime * 1000)
+                    // 播放时长上限：到点提前收演出（awaitInteraction 下 performanceEnd 为 no-op）。
+                    if (!snap.interaction && videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
+                      setSnap(sessionRef.current.performanceEnd())
+                      return
+                    }
+                    setSnap(sessionRef.current.tick(nowMs))
+                  }}
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                 />
               ) : (

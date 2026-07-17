@@ -824,6 +824,20 @@ export function NodeInspector({
           <option value="loop">循环</option>
         </select>
       ))}
+      {row('播放时长', (
+        <input
+          type="number"
+          min={0}
+          value={d.durationMs ?? ''}
+          onChange={(e) => {
+            const v = e.target.value.trim()
+            patchData({ durationMs: v === '' ? undefined : Math.max(0, Math.floor(Number(v)) || 0) })
+          }}
+          placeholder="留空 = 视频完整长度"
+          style={{ flex: 1 }}
+          title="毫秒。留空 / 0 / 超过视频本身长度 → 以视频完整长度为准；填 >0 且 ≤ 视频长度 → 到点提前收演出。无视频的逻辑节点用它作停留节拍。"
+        />
+      ))}
       {row('嵌套', (
         <select
           value={nestMode}
