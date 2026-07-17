@@ -55,7 +55,7 @@ function checkExpr(expr: string, ctx: RefCtx, at: string, issues: Issue[]): void
   }
 }
 
-/** 深度遍历任意值，凡遇 {expr} / GraphEffect / GraphClause 形状即校验其 id 引用（对任意 kind params 通用）。 */
+/** 深度遍历任意值，凡遇 {expr} / GraphEffect / GraphClause 形状即校验其 id 引用（对任意 kind inputs 通用）。 */
 function walkRefs(value: unknown, ctx: RefCtx, at: string, issues: Issue[]): void {
   if (value == null || typeof value !== 'object') return
   if (Array.isArray(value)) {
@@ -177,7 +177,7 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
         })
         continue
       }
-      for (const problem of plugin.validate(el.params)) {
+      for (const problem of plugin.validate?.(el.inputs) ?? []) {
         issues.push({
           level: 'error',
           code: 'component.invalid',

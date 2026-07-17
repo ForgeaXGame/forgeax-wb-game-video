@@ -14,14 +14,14 @@ describe('directives', () => {
       mountId: 'hpPanel',
       elementId: 'e1',
       component: 'floatText',
-      params: { text: '+30' },
+      inputs: { text: '+30' },
     }
     const inter: RuntimeDirective = {
       type: 'openInteraction',
       nodeId: 'n1',
       elementId: 'e2',
       component: 'qte',
-      params: {},
+      inputs: {},
       handles: ['pass', 'good', 'fail'],
     }
     expect(play.type).toBe('playClip')
@@ -35,7 +35,7 @@ describe('directives', () => {
       nodeId: 'n',
       elementId: 'e',
       component: 'qte',
-      params: {},
+      inputs: {},
       handles: [],
     }
     const overlay: RuntimeDirective = {
@@ -44,7 +44,7 @@ describe('directives', () => {
       mountId: 'm1',
       elementId: 'e',
       component: 'x',
-      params: {},
+      inputs: {},
     }
     expect(isOpenInteraction(inter)).toBe(true)
     expect(isOpenInteraction(overlay)).toBe(false)

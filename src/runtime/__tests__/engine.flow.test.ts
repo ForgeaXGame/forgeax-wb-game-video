@@ -10,17 +10,11 @@ const callers = (rt: GraphRuntime) => rt.state.callStack.map((f) => f.callerNode
 // Minimal kinds: a presentation "float", a choice-like（副作用改由 node.data.reactions 承载）。
 const KINDS = ['floatT', 'choiceX']
 beforeEach(() => {
-  registerKind({ kind: 'floatT', role: 'presentation', validate: () => [], outputs: () => [] })
+  registerKind({ kind: 'floatT', role: 'presentation' })
   registerKind({
     kind: 'choiceX',
     role: 'interaction',
-    validate: () => [],
-    outputs: (p) => ((p as { events?: { id: string }[] }).events ?? []).map((o) => ({ id: o.id })),
-    resolve: (_c, p, input) => {
-      const pp = p as { events?: { id: string }[]; defaultEvent?: string }
-      const id = typeof input === 'string' ? input : pp.defaultEvent ?? pp.events?.[0]?.id
-      return { outcome: id ?? 'default' }
-    },
+    // 出口由实例 inputs.events 派生（handlesOf）；无需声明 outputs。
   })
 })
 afterEach(() => KINDS.forEach(unregisterKind))
@@ -57,7 +51,7 @@ describe('element window (startMs/endMs)', () => {
         node('a', {
           durationMs: 5000,
           timeline: [
-            { id: 'w', role: 'presentation', kind: 'floatT', trigger: { when: 'enter' }, window: { startMs: 2000, endMs: 4000 }, params: { text: 'x' } },
+            { id: 'w', role: 'presentation', kind: 'floatT', trigger: { when: 'enter' }, window: { startMs: 2000, endMs: 4000 }, inputs: { text: 'x' } },
           ],
         }),
       ],
@@ -139,12 +133,12 @@ describe('subflow pack (subFlowPack)', () => {
 
 describe('transition kind', () => {
   it('emits a transition overlay on enter (generic renderOverlay)', () => {
-    registerKind({ kind: 'transition', role: 'presentation', validate: () => [], outputs: () => [] })
+    registerKind({ kind: 'transition', role: 'presentation' })
     const graph: GameGraph = {
       nodes: [
         node('a', {
           durationMs: 1000,
-          timeline: [{ id: 't', role: 'presentation', kind: 'transition', trigger: { when: 'enter' }, params: { durationMs: 500 } }],
+          timeline: [{ id: 't', role: 'presentation', kind: 'transition', trigger: { when: 'enter' }, inputs: { durationMs: 500 } }],
         }),
       ],
       edges: [],
@@ -168,7 +162,7 @@ describe('choice timeout', () => {
               role: 'interaction',
               kind: 'choiceX',
               trigger: { when: 'enter' },
-              params: { events: [{ id: 'a' }, { id: 'b' }], timeoutMs: 3000, defaultEvent: 'b' },
+              inputs: { events: [{ id: 'a' }, { id: 'b' }], timeoutMs: 3000, defaultEvent: 'b' },
             },
           ],
         }),
@@ -200,7 +194,7 @@ describe('choice timeout', () => {
               role: 'interaction',
               kind: 'choiceX',
               trigger: { when: 'enter' },
-              params: { events: [{ id: 'pass' }, { id: 'fail' }], windowMs: 200, defaultEvent: 'fail' },
+              inputs: { events: [{ id: 'pass' }, { id: 'fail' }], windowMs: 200, defaultEvent: 'fail' },
             },
           ],
         }),

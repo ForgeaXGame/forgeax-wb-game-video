@@ -47,7 +47,7 @@ describe('挂载静态方案 · HUD 进试玩', () => {
     const hudChildren = snap.overlayMounts
       .flatMap((m) => m.children)
       .filter((c) => c.component === 'battleHpBar')
-    expect(hudChildren.map((c) => c.params.bind)).toEqual(['ent-player', 'ent-boss'])
+    expect(hudChildren.map((c) => c.inputs.bind)).toEqual(['ent-player', 'ent-boss'])
 
     const skins = createCoreSkinRegistry()
     const mount = snap.overlayMounts.find((m) => m.mountId === SCHEME_STATIC_ID)
@@ -67,5 +67,10 @@ describe('挂载静态方案 · HUD 进试玩', () => {
     expect(withCtx).toContain('ks-hud-rage') // 气力珠（vars.qi 为 number 即显示）
     expect(withCtx).toContain('我方')
     expect(withCtx).toContain('敌方')
+
+    // 回归：无 layout 的 HUD 挂载盒必须铺满舞台（inset:0），不能塌成 fit-content 左上角 0×0——
+    // 否则血条的角锚定（right/bottom/left:50%）相对 0×0 盒解析会跑到屏幕外/挤到左上角，试玩看不见。
+    expect(withCtx).toContain('inset:0')
+    expect(withCtx).not.toContain('fit-content')
   })
 })

@@ -30,34 +30,35 @@ import type {
 /** State → 展示：常量或 `{ expr }`（声明式，无函数入库）。 */
 export type BindValue = string | number | boolean | { expr: string }
 
-/** 编辑器可渲染的输入槽（In）。 */
+/** 编辑器可渲染的输入槽（In · 唯一输入声明 SSOT）。 */
 export interface ComponentInput {
   key: string
   label?: string
-  /**
-   * - bind：场景实体下拉（编辑器 EntityPicker）
-   * - attr：某实体的属性下拉（编辑器 AttrPicker；默认跟同组件 params.bind）
-   */
-  valueType: 'string' | 'number' | 'boolean' | 'color' | 'bind' | 'attr' | 'json'
+  valueType: 'string' | 'number' | 'boolean'
   required?: boolean
-  default?: BindValue
+  /** 新建实例初值；放宽到任意（含结构化默认：选项数组 / QTE 拍点等）。 */
+  default?: unknown
+  /** 有 options ⇒ 编辑器出 select。 */
   options?: { value: string; label: string }[]
-  /** valueType='attr' 时：实体 id 所在的 params 键，缺省 `'bind'`。 */
-  entityKey?: string
+  /**
+   * 用哪个**输入组件**渲染该 input：填了就优先用它，没填则按 `valueType` 出标量控件。
+   * 例：`color`（取色）/ `entity`（实体引用）/ `events` / `effects` / `textStyle` / `qteCues` …
+   */
+  component?: string
 }
 
 /**
  * 组件对外抛出的事件（作者面 · 交互目录 SSOT）。
- * 只描述「会发什么」：`id` / `label` / 可选 `payload`。
+ * 只描述「会发什么」：`id` / `label`。
  * 运行时 submit / resolve → 归一成这些 id；边用 `sourceHandle === event.id` 承接。
  *
- * 门控、坐标等**组件私有**参数不要挂这里——见各 kind 的 params 项类型
+ * 门控、坐标等**组件私有**参数不要挂这里——见各 kind 的 inputs 项类型
  *（如 skill/choice 的 `ChoiceOption.condition`、hotspot 的 `HotspotSpot.x/y`）。
+ * 将来事件若需自带入参，再在此加 `inputs?: ComponentInput[]`。
  */
 export interface ComponentEvent {
   id: string
   label?: string
-  payload?: Record<string, 'string' | 'number' | 'boolean' | 'unknown'>
 }
 
 /**
@@ -82,12 +83,12 @@ export interface ComponentManifest {
  * - advance：沿指定出边 `edgeId` 推进到其 `target`（唯一「换节点」通道；目标只在边上）。
  *   交互/生命周期事件里可省略——省略时若存在匹配出边则默认推进；state 打断必须显式。
  * - spawn：由反应**主动实例化**一个 overlay 组件模板（瞬态表现，如伤害飘字）；
- *   `from` = `overlayId/childId` 引用目录模板，`params` 可含 `{expr}` 读 watch 局部量（prev/next/delta）。
+ *   `from` = `overlayId/childId` 引用目录模板，`inputs` 可含 `{expr}` 读 watch 局部量（prev/next/delta）。
  */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
   | { kind: 'advance'; edgeId: string }
-  | { kind: 'spawn'; from: string; params?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
+  | { kind: 'spawn'; from: string; inputs?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
 
 /**
  * 触发面（闭合）——节点生命周期 + 事件 + 数据/状态 + 组件生命周期。effect 一律挂 reactions。
@@ -162,7 +163,7 @@ export interface Layout {
  * - `component`：唯一类型键（行为 + 皮均由此查注册表）
  * - layout：overlay 内组件相对**挂载盒**的排版（含 zIndex）；挂载有显式尺寸时缺省 = 左上角
  * - trigger / window：出现时机
- * - params：玩法 / 表现入参（不含摆放）
+ * - inputs：玩法 / 表现入参（不含摆放）
  */
 export interface OverlayChild {
   id: string
@@ -175,7 +176,7 @@ export interface OverlayChild {
    * 组件参数袋（In）。
    * 禁止：pos / layout / component（摆放用 layout 字段；component 用顶栏字段）
    */
-  params?: Record<string, unknown>
+  inputs?: Record<string, unknown>
   note?: string
 }
 
@@ -249,7 +250,7 @@ export interface OverlayInstanceChild {
   trigger: Trigger
   window?: { startMs?: number; endMs?: number }
   layout?: Layout
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
   /** 溯源：挂载 / 模板 / 目录 child / 节点。多挂载路由与 id 派生均依赖此字段。 */
   source: { mountId: string; overlayId: string; childId: string; nodeId: string }
 }
@@ -305,20 +306,20 @@ export const OVERLAY_DEMO = {
             id: 'playerHp',
             component: 'battleHpBar',
             trigger: { when: 'enter' },
-            params: { bind: 'ent-player', label: '少主' },
+            inputs: { bind: 'ent-player', label: '少主' },
           },
           {
             id: 'bossHp',
             component: 'battleHpBar',
             trigger: { when: 'enter' },
-            params: { bind: 'ent-boss', label: '刀狂' },
+            inputs: { bind: 'ent-boss', label: '刀狂' },
           },
           {
             id: 'parry',
             component: 'battleParry',
             layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
             trigger: { when: 'at', ms: 1200 },
-            params: {
+            inputs: {
               events: [
                 { id: 'A', label: '防反' },
                 { id: 'B', label: '闪避' },
@@ -444,14 +445,14 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
       id: 'battleHud/playerHp',
       component: 'battleHpBar',
       trigger: { when: 'enter' },
-      params: { bind: 'ent-player', label: '少主' },
+      inputs: { bind: 'ent-player', label: '少主' },
       source: { mountId: 'battleHud', overlayId: 'battleHud', childId: 'playerHp', nodeId: 'n-boss-slash' },
     },
     {
       id: 'battleHud/bossHp',
       component: 'battleHpBar',
       trigger: { when: 'enter' },
-      params: { bind: 'ent-boss', label: '刀狂' },
+      inputs: { bind: 'ent-boss', label: '刀狂' },
       source: { mountId: 'battleHud', overlayId: 'battleHud', childId: 'bossHp', nodeId: 'n-boss-slash' },
     },
     {
@@ -459,7 +460,7 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
       component: 'battleParry',
       trigger: { when: 'at', ms: 1200 },
       layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
-      params: {
+      inputs: {
         events: [
           { id: 'A', label: '防反' },
           { id: 'B', label: '闪避' },

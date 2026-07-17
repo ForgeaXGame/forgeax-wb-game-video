@@ -2,7 +2,7 @@
  * 防反 QTE 皮肤（component id: `battleParry`）—— 复刻旧原型视觉：
  * 右侧纵向居中、A 左下 / B 右上两枚水墨小键，RAF 收圈。
  *
- * 提交：默认 A→pass、B→good；有 params.events 时按 events[0]/[1].id 提交。
+ * 提交：默认 A→pass、B→good；有 inputs.events 时按 events[0]/[1].id 提交。
  * 超时 → defaultEvent ?? 'fail'。键位始终 A/B（不跟 event.label 走，避免长文案撑大按钮）。
  *
  * 预览态：本皮肤用 rAF + performance.now 自计时，CSS `is-paused` 冻不住——preview 时完全不启
@@ -31,14 +31,14 @@ export function battleParryPreset(id: string): OverlayChild {
     id,
     component: 'battleParry',
     trigger: { when: 'enter' },
-    params: { ...battleParryDefaults },
+    inputs: { ...battleParryDefaults },
   }
 }
 
 type ExitOpt = { key: string; glyph: 'A' | 'B' }
 
-function exitsOf(params: Record<string, unknown>): ExitOpt[] {
-  const events = params.events
+function exitsOf(inputs: Record<string, unknown>): ExitOpt[] {
+  const events = inputs.events
   if (Array.isArray(events) && events.length >= 2) {
     const ids = events
       .filter((e): e is { id: string } => !!e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string')
@@ -92,18 +92,18 @@ export function BattleParryLayer({ interaction, submit, preview, previewTimeMs }
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const params = interaction.params as Record<string, unknown>
-  const durationMs = (typeof params.durationMs === 'number' ? params.durationMs : undefined)
-    ?? (typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined)
-    ?? (typeof params.windowMs === 'number' ? params.windowMs : undefined)
+  const inputs = interaction.inputs as Record<string, unknown>
+  const durationMs = (typeof inputs.durationMs === 'number' ? inputs.durationMs : undefined)
+    ?? (typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined)
+    ?? (typeof inputs.windowMs === 'number' ? inputs.windowMs : undefined)
     ?? interaction.timeoutMs
     ?? 2600
-  const options = exitsOf(params)
-  const missKey = typeof params.defaultEvent === 'string' ? params.defaultEvent : 'fail'
+  const options = exitsOf(inputs)
+  const missKey = typeof inputs.defaultEvent === 'string' ? inputs.defaultEvent : 'fail'
   const resolvedRef = useRef(false)
   const btnRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [settled, setSettled] = useState<{ kind: 'hit'; index: number } | { kind: 'miss' } | null>(null)
-  const previewNow = preview ? Math.max(0, (previewTimeMs ?? 0) - firstCueAppearAt(params)) : 0
+  const previewNow = preview ? Math.max(0, (previewTimeMs ?? 0) - firstCueAppearAt(inputs)) : 0
 
   function finish(outcome: string): void {
     if (resolvedRef.current) return

@@ -85,7 +85,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "qteKind": "parry",
               "windowMs": 200,
               "component": "inkKou",
@@ -114,7 +114,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "speaker": "小魂",
               "text": "……你也是来渡河的吗？",
               "color": "#ffd54a"
@@ -131,8 +131,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -159,8 +158,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -187,8 +185,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -215,8 +212,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -243,8 +239,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -271,8 +266,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "應 / 默",
+            "inputs": {
               "timeoutMs": 8000,
               "component": "inkYingMo",
               "events": [
@@ -299,7 +293,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "durationMs": 700,
               "style": "fade",
               "color": "#000"
@@ -316,9 +310,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
-              "prompt": "选择技能",
-              "component": "battleSkillBar",
+            "inputs": {
               "events": [
                 {
                   "id": "light",
@@ -364,7 +356,7 @@
                 }
               ]
             },
-            "component": "skill"
+            "component": "battleSkillBar"
           }
         ]
       },
@@ -377,7 +369,7 @@
               "when": "at",
               "ms": 1000
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -397,7 +389,7 @@
               "when": "at",
               "ms": 600
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -417,7 +409,7 @@
               "when": "at",
               "ms": 1700
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -437,7 +429,7 @@
               "when": "at",
               "ms": 2500
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -457,7 +449,7 @@
               "when": "at",
               "ms": 2000
             },
-            "params": {
+            "inputs": {
               "text": "+30",
               "x": 0.5,
               "y": 0.42,
@@ -476,7 +468,7 @@
               "when": "at",
               "ms": 7000
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -495,7 +487,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "qteKind": "parry",
               "component": "battleParry",
               "durationMs": 2600,
@@ -528,7 +520,7 @@
               "when": "at",
               "ms": 1800
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -548,7 +540,7 @@
               "when": "at",
               "ms": 2000
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -568,7 +560,7 @@
               "when": "at",
               "ms": 10
             },
-            "params": {
+            "inputs": {
               "text": "{v}",
               "x": 0.5,
               "y": 0.42,
@@ -589,7 +581,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "bind": "ent-player",
               "label": "空藏"
             }
@@ -600,7 +592,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "bind": "ent-boss",
               "label": "小怪"
             }
@@ -621,7 +613,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "heroName": {
                 "ref": "entity.ent-player.name"
               }
@@ -643,7 +635,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {}
+            "inputs": {}
           },
           {
             "id": "panelB",
@@ -655,7 +647,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {}
+            "inputs": {}
           }
         ]
       },
@@ -670,7 +662,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "x": 0.08,
               "y": 0.16
             }
@@ -682,7 +674,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "x": 0.92,
               "y": 0.16
             }
@@ -705,7 +697,7 @@
             "trigger": {
               "when": "enter"
             },
-            "params": {
+            "inputs": {
               "label": "调息 +2气"
             }
           }
@@ -1433,7 +1425,7 @@
                 {
                   "kind": "spawn",
                   "from": "hitCheer/banner",
-                  "params": {
+                  "inputs": {
                     "dmg": {
                       "expr": "abs(delta)"
                     },
@@ -1467,7 +1459,7 @@
                     {
                       "kind": "spawn",
                       "from": "readouts/bossHp",
-                      "params": {
+                      "inputs": {
                         "text": {
                           "expr": "entity.ent-boss.attr.hp"
                         }
@@ -1485,7 +1477,7 @@
                     {
                       "kind": "spawn",
                       "from": "readouts/heroHp",
-                      "params": {
+                      "inputs": {
                         "text": {
                           "expr": "entity.ent-player.attr.hp"
                         }
@@ -1561,7 +1553,7 @@
                     {
                       "kind": "spawn",
                       "from": "readouts/bossHp",
-                      "params": {
+                      "inputs": {
                         "text": {
                           "expr": "entity.ent-boss.attr.hp"
                         }
@@ -1579,7 +1571,7 @@
                     {
                       "kind": "spawn",
                       "from": "readouts/heroHp",
-                      "params": {
+                      "inputs": {
                         "text": {
                           "expr": "entity.ent-player.attr.hp"
                         }

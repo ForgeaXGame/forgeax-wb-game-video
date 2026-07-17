@@ -9,9 +9,9 @@
  *  - 触发时机 Trigger：enter / at(ms)。
  *  - 出口=handle：sourceHandle === 出口 event id（default = 保留字/默认推进），edge 只管连接 + 条件/权重。
  *  - 条件网关：同 handle 多边，有条件者按序求值、无条件兜底；加权随机：候选皆带 weight → rng 加权。
- *  - 交互：openInteraction 挂起 → submitInteraction(resolve) → outcome=event id → reactions.do（effect/spawn/advance）
- *    → 有边则默认 advance（无匹配边则只做副作用、不换节点）。
- *  - 副作用：一律走 reactions（边与 resolve 都不带 effects）。
+ *  - 交互：openInteraction 挂起 → 皮肤自判定后 submit（=emit 已声明 event id）→ outcome=event id →
+ *    reactions.do（effect/spawn/advance）→ 有边则默认 advance（无匹配边则只做副作用、不换节点）。
+ *  - 副作用：一律走 reactions（边与皮肤 submit 都不带 effects）。
  *  - 换节点：只经边；reactions.do 的 advance(edgeId) 或引擎默认推进。
  *  - jumpToNode：seek 到任意节点（默认保留全局态）。
  */
@@ -32,7 +32,7 @@ import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../sche
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
 import { initState } from './engine-init'
-import { defaultKindRegistry, isContinueResult, type KindRegistry, type RuntimeCtx } from '../registry/kind-registry'
+import { defaultKindRegistry, type KindRegistry, type RuntimeCtx } from '../registry/kind-registry'
 import type { RuntimeDirective, RenderOverlayDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
 import { evalExpr, type EvalCtx } from './expr'
@@ -440,34 +440,29 @@ export class GraphRuntime {
 
   // ── 交互 ────────────────────────────────────────────────────────────────────
   /**
-   * 玩家对挂起的 interaction 提交输入 → resolve →
-   *   continue:true →（可选 effects@安全点）保持 awaitInteraction，可再 submit；
-   *   outcome →（可选 effects@安全点）选边；rules redirect 压过本次 outcome。
+   * 玩家对挂起的 interaction 提交输入：皮肤已自行判定，`input` 即最终 outcome（event id）——
+   * 命中的 event reaction 的 do（effect/spawn/advance）；无显式 advance 则有匹配出边默认推进。
    */
   submitInteraction(elementId: string, input: unknown): RuntimeDirective[] {
     const node = this.node(this.state.currentNodeId)
     const el = this.childrenOf(node).find((e) => e.id === elementId)
     if (!node || !el) return this.drain()
     if (this.state.phase !== 'awaitInteraction' || this.pending !== elementId) return this.drain()
-    const plugin = this.getComponent(el.component)
-    if (!plugin?.resolve) return this.drain()
-    const result = plugin.resolve(this.ctx(), el.params, input)
-    if (isContinueResult(result)) {
-      // 连打/累积等未定局的中间态：仅引擎内部累积副作用（无 outcome 可挂 reaction），保持挂起。
-      if (result.effects?.length) this.applyAndReact(result.effects as GraphEffect[])
-      if (this.consumeRedirect()) return this.drain()
-      return this.drain()
-    }
+    // 皮肤自判定后 emit 的**最终 event id** 即 outcome；缺省（超时 submit(undefined)）落 inputs.defaultEvent（兜底 'fail'）。
+    const outcome =
+      typeof input === 'string' && input
+        ? input
+        : ((el.inputs as { defaultEvent?: unknown }).defaultEvent as string) ?? 'fail'
     this.pending = null
     this.setPhase('playing')
     this.chain = 0
     if (this.consumeRedirect()) return this.drain()
 
-    // 命中 outcome 的 event reaction：do 同级跑 effect/spawn/advance（副作用一律在此，不在 resolve）。
+    // 命中 outcome 的 event reaction：do 同级跑 effect/spawn/advance（副作用一律在此）。
     const mountReactions =
       nodeOverlayMounts(node).find((m) => overlayMountId(m) === el.source.mountId)?.reactions
       ?? nodeOverlayMounts(node)[0]?.reactions
-    const evReactions = resolveEventReactions(mountReactions, result.outcome, el.source.childId, el.source.mountId)
+    const evReactions = resolveEventReactions(mountReactions, outcome, el.source.childId, el.source.mountId)
     let advanced = false
     for (const r of evReactions) {
       if (this.runEventActions(r.do)) {
@@ -480,7 +475,7 @@ export class GraphRuntime {
     if (advanced) return this.drain()
 
     // 无显式 advance：有匹配出边则默认推进；无匹配边 → 只做副作用、不换节点（演出续播/收尾时再默认推进）。
-    const edge = this.selectHandleEdge(node.id, result.outcome)
+    const edge = this.selectHandleEdge(node.id, outcome)
     if (edge) this.traverse(edge)
     return this.drain()
   }
@@ -587,10 +582,10 @@ export class GraphRuntime {
       }
     }
     const ctx = { ...this.ctx(), elementId: el.id }
-    const params = { ...(el.params ?? {}) }
+    const inputs = el.inputs.component == null ? { ...el.inputs, component: el.component } : el.inputs
     if (role === 'presentation') {
       if (plugin?.render) {
-        for (const d of plugin.render(ctx, params)) {
+        for (const d of plugin.render(ctx, inputs)) {
           if (d.type === 'renderOverlay') this.emitRenderOverlay(d, el)
           else this.emit(d)
         }
@@ -600,28 +595,27 @@ export class GraphRuntime {
           nodeId: this.state.currentNodeId ?? '',
           elementId: el.id,
           component: el.component,
-          params,
+          inputs,
         }, el)
       }
     } else if (role === 'interaction') {
       if (!plugin) return
-      // 已有主交互挂起时不再叠开第二个。
+      // 已有主交互挂起时不再叠开第二个（window 触发的交互元素不受 enter/tick 外层循环 break 约束，需要本地兜底）。
       if (this.state.phase === 'awaitInteraction') return
-      if (plugin.present) for (const d of plugin.present(ctx, params)) this.emit(d)
       // 限时：timeoutMs（choice）/ windowMs（QTE 窗口）/ durationMs（皮肤时限）同源。
       const timeoutRaw =
-        (typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined)
-        ?? (typeof params.windowMs === 'number' ? params.windowMs : undefined)
-        ?? (typeof params.durationMs === 'number' ? params.durationMs : undefined)
+        (typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined)
+        ?? (typeof inputs.windowMs === 'number' ? inputs.windowMs : undefined)
+        ?? (typeof inputs.durationMs === 'number' ? inputs.durationMs : undefined)
       const timeoutMs = typeof timeoutRaw === 'number' && timeoutRaw > 0 ? timeoutRaw : undefined
-      // 选项门控由皮肤用 params.events[].condition + SkinCtx 时时求值（不注入 _locked）。
+      // 选项门控由皮肤用 inputs.events[].condition + SkinCtx 时时求值（不注入 _locked）。
       this.emit({
         type: 'openInteraction',
         nodeId: this.state.currentNodeId ?? '',
         elementId: el.id,
         component: el.component,
-        params,
-        handles: plugin.outputs(params, el.component).map((h) => h.id),
+        inputs,
+        handles: this.kinds.handlesOf(el.component, inputs).map((h) => h.id),
         ...(timeoutMs ? { timeoutMs } : {}),
       })
       this.setPhase('awaitInteraction')
@@ -824,11 +818,11 @@ export class GraphRuntime {
     const childId = slash >= 0 ? action.from.slice(slash + 1) : ''
     const tpl = this.scenario.ui?.overlays?.[overlayId]?.children.find((c) => c.id === childId)
     // 模板默认 + spawn 覆盖，合并后统一 resolveBind：{expr}(数值) / {ref}(实体名等) 均在此就地求值成具体值。
-    const merged: Record<string, unknown> = { ...(tpl?.params ?? {}), ...(action.params ?? {}) }
-    const params: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(merged)) params[k] = this.resolveBind(v, locals)
+    const merged: Record<string, unknown> = { ...(tpl?.inputs ?? {}), ...(action.inputs ?? {}) }
+    const inputs: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(merged)) inputs[k] = this.resolveBind(v, locals)
     const component = tpl?.component ?? overlayId
-    delete params.component
+    if (inputs.component == null) inputs.component = component
     const layout: Layout | undefined = action.layout ?? (tpl?.layout && !layoutIsEffectivelyEmpty(tpl.layout) ? tpl.layout : undefined)
     const plugin = this.getComponent(component)
     const mountLayout = layout ?? (plugin?.stageRelative ? STAGE_FILL : undefined)
@@ -840,7 +834,7 @@ export class GraphRuntime {
       mountLayout,
       elementId,
       component,
-      params,
+      inputs,
       selfPositioned: plugin?.stageRelative,
     })
     if (action.ttlMs && action.ttlMs > 0) {

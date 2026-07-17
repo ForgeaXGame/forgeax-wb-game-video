@@ -52,13 +52,13 @@ export interface ClipSnap {
 export interface OverlaySnap {
   elementId: string
   component: string
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
 }
 
 export interface OverlayChildSnap {
   elementId: string
   component: string
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
   /** 子组件级排版（相对挂载盒）。 */
   childLayout?: Layout
   /** 组件自定位（内部 %/inset 摆放）：子盒需铺满挂载盒且点击穿透。 */
@@ -75,7 +75,7 @@ export interface OverlayMountSnap {
 export interface InteractionSnap {
   elementId: string
   component: string
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
   handles: string[]
   /** 限时 ms（>0 时 Player 到时自动 submit(undefined)）。 */
   timeoutMs?: number
@@ -221,7 +221,7 @@ export class GraphSession {
           const child: OverlayChildSnap = {
             elementId: d.elementId,
             component: d.component,
-            params: d.params,
+            inputs: d.inputs,
             childLayout: d.childLayout,
             selfPositioned: d.selfPositioned,
           }
@@ -240,7 +240,7 @@ export class GraphSession {
           this.snapshot.interaction = {
             elementId: d.elementId,
             component: d.component,
-            params: d.params,
+            inputs: d.inputs,
             handles: d.handles,
             timeoutMs: d.timeoutMs,
           }

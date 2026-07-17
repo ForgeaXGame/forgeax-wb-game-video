@@ -40,7 +40,7 @@ describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
                   id: 'choice',
                   component: 'choice',
                   trigger: { when: 'enter' },
-                  params: {
+                  inputs: {
                     events: [
                       { id: 'a', label: 'A' },
                       { id: 'b', label: 'B' },
@@ -60,7 +60,7 @@ describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
     const hud = snap.overlayMounts
       .flatMap((m) => m.children)
       .filter((c) => c.component === 'battleHpBar')
-    expect(hud.map((c) => c.params.bind).sort()).toEqual(['ent-boss', 'ent-player'])
+    expect(hud.map((c) => c.inputs.bind).sort()).toEqual(['ent-boss', 'ent-player'])
   })
 
   it('tick：awaitInteraction 期间 window 飘字仍会进 overlayMounts', () => {
@@ -72,7 +72,7 @@ describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
           id: 'choice',
           component: 'choice',
           trigger: { when: 'enter' },
-          params: {
+          inputs: {
             events: [
               { id: 'a', label: 'A' },
               { id: 'b', label: 'B' },
@@ -84,7 +84,7 @@ describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
           component: 'floatText',
           trigger: { when: 'enter' },
           window: { startMs: 500, endMs: 2500 },
-          params: { text: '-100', x: 0.5, y: 0.4 },
+          inputs: { text: '-100', x: 0.5, y: 0.4 },
         },
       ],
     })
@@ -102,6 +102,6 @@ describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
       .flatMap((m) => m.children)
       .filter((c) => c.component === 'floatText')
     expect(floats).toHaveLength(1)
-    expect(floats[0]?.params.text).toBe('-100')
+    expect(floats[0]?.inputs.text).toBe('-100')
   })
 })

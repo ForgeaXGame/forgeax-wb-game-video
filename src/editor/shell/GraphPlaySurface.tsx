@@ -14,7 +14,7 @@ import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { PlayerRootContext, type HudElementView, type SkinCtx } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
-import { resolveMediaSrc } from './media'
+import { resolveMediaSrc, videoDurationCapReached } from './media'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
 import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
@@ -108,7 +108,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const videoSrc = resolveMediaSrc(snap?.clip?.mediaId, game)
 
   useEffect(() => {
-    // 有视频：按素材播完（onEnded）推进；无视频才用 durationMs 定时器。
+    // 无视频：durationMs 到点推进；有视频：durationMs 作播放时长上限，走 <video> onTimeUpdate。
     if (!snap || snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current!.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
@@ -139,15 +139,13 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     for (const c of children) {
       const plugin = getKind(c.component)
       if (plugin?.surface !== 'hud') continue
-      const params = c.params as { bind?: string; attr?: string; label?: string; accent?: string }
-      const bind = params.bind ?? c.id
+      const inputs = c.inputs as { bind?: string; label?: string; accent?: string }
+      const bind = inputs.bind ?? c.id
       m.set(bind, {
         element: bind,
         component: c.component,
-        bind,
-        attr: params.attr,
-        label: params.label,
-        accent: params.accent,
+        label: inputs.label,
+        accent: inputs.accent,
         layout: c.layout,
       })
     }
@@ -194,7 +192,16 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
             if (snap?.clip?.loop) return
             setSnap(sessionRef.current!.performanceEnd())
           }}
-          onTimeUpdate={(e) => setSnap(sessionRef.current!.tick(Math.floor(e.currentTarget.currentTime * 1000)))}
+          onTimeUpdate={(e) => {
+            const el = e.currentTarget
+            const nowMs = Math.floor(el.currentTime * 1000)
+            // 播放时长上限：到点提前收演出（awaitInteraction 下 performanceEnd 为 no-op，故加 interaction 卫护省无谓渲染）。
+            if (!snap?.interaction && videoDurationCapReached(nowMs, snap?.clip?.durationMs, el.duration)) {
+              setSnap(sessionRef.current!.performanceEnd())
+              return
+            }
+            setSnap(sessionRef.current!.tick(nowMs))
+          }}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
         />
       ) : (

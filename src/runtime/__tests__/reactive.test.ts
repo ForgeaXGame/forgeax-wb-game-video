@@ -8,13 +8,13 @@ import { node, scnOf } from './test-fixtures'
 
 const KINDS = ['floatT']
 beforeEach(() => {
-  registerKind({ kind: 'floatT', role: 'presentation', validate: () => [], outputs: () => [] })
+  registerKind({ kind: 'floatT', role: 'presentation' })
 })
 afterEach(() => KINDS.forEach(unregisterKind))
 
 const dmgOverlay: Overlay = {
   id: 'hud',
-  children: [{ id: 'dmgFloat', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+  children: [{ id: 'dmgFloat', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
 }
 
 describe('watch reaction (数值变化 → spawn)', () => {
@@ -25,7 +25,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
           durationMs: 5000,
           reactions: [
             { when: { type: 'at', ms: 500 }, do: [{ kind: 'effect', effects: [{ id: 'd', kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -20 }] }] },
-            { when: { type: 'watch', of: 'entity.ent-player.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hud/dmgFloat', params: { amount: { expr: 'abs(delta)' } }, ttlMs: 800 }] },
+            { when: { type: 'watch', of: 'entity.ent-player.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hud/dmgFloat', inputs: { amount: { expr: 'abs(delta)' } }, ttlMs: 800 }] },
           ],
         }),
       ],
@@ -39,7 +39,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
     const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
     expect(spawn).toBeTruthy()
     expect(spawn!.component).toBe('floatT')
-    expect(spawn!.params.amount).toBe(20)
+    expect(spawn!.inputs.amount).toBe(20)
 
     // ttl 到点自动回收
     const later = rt.tick(1600) // 600 + 800 = 1400 已过
@@ -49,7 +49,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
   it('spawns bossHitCheer with dmg=abs(delta) and remain=entity read (demo shape)', () => {
     const cheer: Overlay = {
       id: 'hitCheer',
-      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, params: { heroName: '空藏' } }],
+      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, inputs: { heroName: '空藏' } }],
     }
     const graph: GameGraph = {
       nodes: [
@@ -65,7 +65,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
     const scn = scnOf(graph, {
       ui: { overlays: { hitCheer: cheer } },
       reactions: [
-        { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', params: { dmg: { expr: 'abs(delta)' }, remain: { expr: 'entity.ent-boss.attr.hp' }, heroName: '空藏' }, ttlMs: 3000 }] },
+        { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', inputs: { dmg: { expr: 'abs(delta)' }, remain: { expr: 'entity.ent-boss.attr.hp' }, heroName: '空藏' }, ttlMs: 3000 }] },
       ],
     })
     const rt = new GraphRuntime(scn.graph, scn) // boss hp=700
@@ -74,15 +74,15 @@ describe('watch reaction (数值变化 → spawn)', () => {
     const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
     expect(spawn).toBeTruthy()
     expect(spawn!.component).toBe('bossHitCheer')
-    expect(spawn!.params.dmg).toBe(40)
-    expect(spawn!.params.remain).toBe(660)
-    expect(spawn!.params.heroName).toBe('空藏')
+    expect(spawn!.inputs.dmg).toBe(40)
+    expect(spawn!.inputs.remain).toBe(660)
+    expect(spawn!.inputs.heroName).toBe('空藏')
   })
 
   it('heroName resolves dynamically from entity name via { ref } (rename-safe, not hardcoded)', () => {
     const cheer: Overlay = {
       id: 'hitCheer',
-      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, params: {} }],
+      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, inputs: {} }],
     }
     const graph: GameGraph = {
       nodes: [
@@ -90,7 +90,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
           durationMs: 5000,
           reactions: [
             { when: { type: 'at', ms: 500 }, do: [{ kind: 'effect', effects: [{ id: 'd', kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -10 }] }] },
-            { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', params: { heroName: { ref: 'entity.ent-player.name' } }, ttlMs: 3000 }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', inputs: { heroName: { ref: 'entity.ent-player.name' } }, ttlMs: 3000 }] },
           ],
         }),
       ],
@@ -104,7 +104,7 @@ describe('watch reaction (数值变化 → spawn)', () => {
     rt.start()
     const dirs = rt.tick(600)
     const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
-    expect(spawn!.params.heroName).toBe('苏鹤') // 跟随实体名，非写死
+    expect(spawn!.inputs.heroName).toBe('苏鹤') // 跟随实体名，非写死
   })
 
   it('does not fire when direction mismatches (on=inc but value decreased)', () => {
@@ -132,7 +132,7 @@ describe('container watch spans subflow (我方回合 场景)', () => {
   it('fires a watch declared on the subflow container while a child node deals damage', () => {
     const cheer: Overlay = {
       id: 'hitCheer',
-      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, params: {} }],
+      children: [{ id: 'banner', component: 'bossHitCheer', trigger: { when: 'enter' }, inputs: {} }],
     }
     const graph: GameGraph = {
       nodes: [
@@ -140,7 +140,7 @@ describe('container watch spans subflow (我方回合 场景)', () => {
         node('turn', {
           subFlow: 'atk',
           reactions: [
-            { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', params: { dmg: { expr: 'abs(delta)' } }, ttlMs: 3000 }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' }, do: [{ kind: 'spawn', from: 'hitCheer/banner', inputs: { dmg: { expr: 'abs(delta)' } }, ttlMs: 3000 }] },
           ],
         }),
         node('atk', {
@@ -162,7 +162,7 @@ describe('container watch spans subflow (我方回合 场景)', () => {
     const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
     expect(spawn).toBeTruthy()
     expect(spawn!.component).toBe('bossHitCheer')
-    expect(spawn!.params.dmg).toBe(30)
+    expect(spawn!.inputs.dmg).toBe(30)
   })
 })
 
@@ -171,13 +171,13 @@ describe('non-blocking component events (回合按钮面板)', () => {
     const panel: Overlay = {
       id: 'hpPanel',
       children: [
-        { id: 'panelA', component: 'floatT', trigger: { when: 'enter' }, params: {} },
-        { id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, params: {} },
+        { id: 'panelA', component: 'floatT', trigger: { when: 'enter' }, inputs: {} },
+        { id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, inputs: {} },
       ],
     }
     const readouts: Overlay = {
       id: 'readouts',
-      children: [{ id: 'bossHp', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+      children: [{ id: 'bossHp', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
     }
     const graph: GameGraph = {
       nodes: [
@@ -186,7 +186,7 @@ describe('non-blocking component events (回合按钮面板)', () => {
           overlayNodes: [{
             overlay: 'hpPanel',
             reactions: [
-              { when: { type: 'event', id: 'A' }, do: [{ kind: 'spawn', from: 'readouts/bossHp', params: { text: { expr: 'entity.ent-boss.attr.hp' } }, ttlMs: 1500 }] },
+              { when: { type: 'event', id: 'A' }, do: [{ kind: 'spawn', from: 'readouts/bossHp', inputs: { text: { expr: 'entity.ent-boss.attr.hp' } }, ttlMs: 1500 }] },
               { when: { type: 'event', id: 'B2' }, do: [{ kind: 'effect', effects: [{ id: 'q', kind: 'var', varId: 'qi', op: 'add', value: 2 }] }] },
             ],
           }],
@@ -207,7 +207,7 @@ describe('non-blocking component events (回合按钮面板)', () => {
     const dirsA = rt.emitComponentEvent('hpPanel/panelA', 'A')
     const spawn = dirsA.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
     expect(spawn).toBeTruthy()
-    expect(spawn!.params.text).toBe(700) // 小怪当前血量
+    expect(spawn!.inputs.text).toBe(700) // 小怪当前血量
     expect(rt.state.phase).toBe('playing') // 未阻塞
 
     // 点击 B2 → 英雄气力 +2
@@ -218,7 +218,7 @@ describe('non-blocking component events (回合按钮面板)', () => {
   it('panel button with goto: click jumps to target node (硬跳转)', () => {
     const panel: Overlay = {
       id: 'hpPanel',
-      children: [{ id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+      children: [{ id: 'panelB', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
     }
     const graph: GameGraph = {
       nodes: [
@@ -245,7 +245,7 @@ describe('lifecycle reactions (shown / hidden)', () => {
   it('fires shown on mount and hidden on node exit', () => {
     const overlay: Overlay = {
       id: 'hud2',
-      children: [{ id: 'banner', component: 'floatT', trigger: { when: 'enter' }, params: {} }],
+      children: [{ id: 'banner', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
     }
     const graph: GameGraph = {
       nodes: [

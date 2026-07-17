@@ -128,12 +128,12 @@ export function dropOverlayIfUnreferenced(scenario: GameScenario, overlayId: str
   return { ...scenario, ui: { ...scenario.ui, overlays: rest } }
 }
 
-/** 累积一条差量补丁（顶层覆盖 + params/layout 各自浅合），用于往 `mount.overrides[childId]` 里叠加。 */
+/** 累积一条差量补丁（顶层覆盖 + inputs/layout 各自浅合），用于往 `mount.overrides[childId]` 里叠加。 */
 function mergePatch(prev: Partial<OverlayChild> | undefined, patch: Partial<OverlayChild>): Partial<OverlayChild> {
   return {
     ...prev,
     ...patch,
-    params: patch.params ? { ...prev?.params, ...patch.params } : prev?.params,
+    inputs: patch.inputs ? { ...prev?.inputs, ...patch.inputs } : prev?.inputs,
     layout: patch.layout ? { ...prev?.layout, ...patch.layout } : prev?.layout,
   }
 }
@@ -245,7 +245,7 @@ export function patchOverlayChildParams(
   scenario: GameScenario,
   nodeId: string,
   childId: string,
-  params: Record<string, unknown>,
+  inputs: Record<string, unknown>,
 ): GameScenario {
   const node = scenario.graph.nodes.find((n) => n.id === nodeId)
   if (!node) return scenario
@@ -254,7 +254,7 @@ export function patchOverlayChildParams(
   const mount = node.data.overlayNodes![idx]!
   const child = resolveMountChildren(scenario.ui?.overlays, mount).find((c) => c.id === childId)
   if (!child) return scenario
-  return patchOverlayChild(scenario, nodeId, childId, { params: { ...child.params, ...params } })
+  return patchOverlayChild(scenario, nodeId, childId, { inputs: { ...child.inputs, ...inputs } })
 }
 
 /** 改 ui.overlays 目录里的 child（界面 tab / 共享 overlay，不经节点挂载路由）。 */

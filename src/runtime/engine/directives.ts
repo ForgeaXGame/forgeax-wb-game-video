@@ -3,7 +3,7 @@
  * 侧的**渲染器 registry**按 `kind` 派发成实际 UI（视频/HUD/QTE/选项/漂字…）。
  *
  * 关键设计（spec §3.3）：presentation / interaction 用**泛型** `renderOverlay` / `openInteraction`
- * 携带 `{ kind, params }`，而不是每种玩法一个 directive 类型——这样新增 kind 时 Player 只需在
+ * 携带 `{ kind, inputs }`，而不是每种玩法一个 directive 类型——这样新增 kind 时 Player 只需在
  * registry 注册一个渲染器，**不必改 Player 的 switch**（消除旧 BlueprintPlayer 的 else-if 爆炸）。
  */
 
@@ -29,7 +29,7 @@ export interface RenderOverlayDirective {
   mountLayout?: Layout
   elementId: string
   component: string
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
   /** 子组件级排版：相对挂载盒；挂载有尺寸时缺省 = 左上角。 */
   childLayout?: Layout
   /**
@@ -45,7 +45,7 @@ export interface OpenInteractionDirective {
   nodeId: string
   elementId: string
   component: string
-  params: Record<string, unknown>
+  inputs: Record<string, unknown>
   handles: string[]
   /** 限时 ms（choice/skill 的 timeoutMs；QTE 亦接受 windowMs/durationMs 归一）。>0 时 Player 到时自动 submit(undefined) 走缺省出口。 */
   timeoutMs?: number

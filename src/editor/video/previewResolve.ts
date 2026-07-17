@@ -123,11 +123,11 @@ export function summarizeEffects(
 
 /** 飘字预览主文案：有 expr 时按初始态求值替换 `{v}`（signed）；失败回退 `?`。 */
 export function resolveFloatTextPreviewLabel(
-  params: FloatTextParams,
+  inputs: FloatTextParams,
   ctx: PreviewEvalContext,
 ): string {
-  const text = (params.text ?? '').trim()
-  const expr = (params.expr ?? '').trim()
+  const text = (inputs.text ?? '').trim()
+  const expr = (inputs.expr ?? '').trim()
   if (!text && !expr) return ''
   if (!expr) return text
   const v = tryEvalExpr(expr, ctx.evalCtx)

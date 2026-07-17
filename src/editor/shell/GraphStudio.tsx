@@ -15,10 +15,12 @@ import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
+import { VideoOverlayStage } from '../video/VideoOverlayStage'
+import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
-import { listVideoAssetInfos, resolveMediaSrc } from './media'
+import { listVideoAssetInfos, resolveMediaSrc, videoDurationCapReached } from './media'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode, insertSubFlowPackAfter, makeEmptySubFlowPack, makeSubFlowPackContainer } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
@@ -230,6 +232,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const sessionRef = useRef(session)
   sessionRef.current = session
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
+  // overlay 舞台锚视频实际画面矩形（object-fit:contain），与 GraphPlaySurface/GraphPlayer 同源，避免有黑边时叠层错位。
+  const videoElRef = useRef<HTMLVideoElement | null>(null)
+  const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
 
   useEffect(() => {
     setSnap(sessionRef.current.start())
@@ -237,8 +242,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
   useEffect(() => {
-    // 有视频：按素材播完（onEnded）推进，不看 durationMs。
-    // 无视频：durationMs 到点推进（兼容旧图/逻辑节拍节点）。
+    // 无视频：durationMs 到点推进（逻辑节拍节点）。
+    // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
     if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
@@ -430,16 +435,27 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               {videoSrc ? (
                 <video
                   key={snap.clip?.nodeId}
+                  ref={videoElRef}
                   src={videoSrc}
                   autoPlay
                   muted
                   playsInline
                   loop={!!snap.clip?.loop}
+                  onLoadedMetadata={recomputeRect}
                   onEnded={() => {
                     if (snap.clip?.loop) return
                     setSnap(sessionRef.current.performanceEnd())
                   }}
-                  onTimeUpdate={(e) => setSnap(sessionRef.current.tick(Math.floor(e.currentTarget.currentTime * 1000)))}
+                  onTimeUpdate={(e) => {
+                    const el = e.currentTarget
+                    const nowMs = Math.floor(el.currentTime * 1000)
+                    // 播放时长上限：到点提前收演出（awaitInteraction 下 performanceEnd 为 no-op）。
+                    if (!snap.interaction && videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
+                      setSnap(sessionRef.current.performanceEnd())
+                      return
+                    }
+                    setSnap(sessionRef.current.tick(nowMs))
+                  }}
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                 />
               ) : (
@@ -447,25 +463,28 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   {snap.clip?.name ?? '（无演出）'}
                 </div>
               )}
-              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                {snap.overlayMounts.map((m) => (
-                  <span key={m.mountId} style={{ display: 'contents' }}>
-                    {session.skins.renderOverlayMount(
-                      m,
-                      (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
-                      { hud: snap.hud },
-                    )}
-                  </span>
-                ))}
-              </div>
-              {snap.interaction && (
-                <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0 }}>
-                  {session.skins.renderInteraction(snap.interaction, submit, {
-                    hud: snap.hud,
-                    condition: { state: session.runtime.state, visited: session.runtime.state.visited },
-                  })}
+              {/* overlay / 交互层锚视频实际画面矩形（VideoOverlayStage）；contentRect 为空时回退整容器（inset:0）。 */}
+              <VideoOverlayStage contentRect={contentRect}>
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                  {snap.overlayMounts.map((m) => (
+                    <span key={m.mountId} style={{ display: 'contents' }}>
+                      {session.skins.renderOverlayMount(
+                        m,
+                        (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
+                        { hud: snap.hud },
+                      )}
+                    </span>
+                  ))}
                 </div>
-              )}
+                {snap.interaction && (
+                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {session.skins.renderInteraction(snap.interaction, submit, {
+                      hud: snap.hud,
+                      condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+                    })}
+                  </div>
+                )}
+              </VideoOverlayStage>
             </div>
             </PlayerRootContext.Provider>
             <div style={{ padding: 8, borderTop: '1px solid #2e2924', fontSize: 12, background: '#121316' }}>

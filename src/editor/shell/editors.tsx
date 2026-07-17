@@ -163,7 +163,7 @@ export function ValueInput({
   )
 }
 
-function EntitySelect({
+export function EntitySelect({
   value,
   entities,
   onChange,

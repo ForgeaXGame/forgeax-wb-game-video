@@ -5,8 +5,7 @@ import type { GameNode, Overlay } from '../schema/graph-schema'
 const qtePlugin: KindPlugin = {
   kind: 'qte',
   role: 'interaction',
-  validate: () => [],
-  outputs: () => [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }],
+  events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }],
 }
 
 function nodeWithKinds(kinds: string[]): { node: GameNode; overlays: Record<string, Overlay> } {
@@ -17,7 +16,7 @@ function nodeWithKinds(kinds: string[]): { node: GameNode; overlays: Record<stri
         id: `e${i}`,
         component: k,
         trigger: { when: 'enter' as const },
-        params: {},
+        inputs: {},
       })),
     },
   }
@@ -62,8 +61,6 @@ describe('kind-registry', () => {
         { key: 'dmg', label: '扣血', valueType: 'number' },
       ],
       events: [{ id: 'cheer', label: '加油' }],
-      validate: () => [],
-      outputs: () => [],
     })
     const m = getComponentManifest('banner')!
     expect(m.inputs?.map((i) => `${i.key}:${i.valueType}`)).toEqual(['heroName:string', 'dmg:number'])
@@ -71,40 +68,9 @@ describe('kind-registry', () => {
     unregisterKind('banner')
   })
 
-  it('manifest.inputs: derived from form when inputs absent (back-compat)', () => {
-    registerKind({
-      kind: 'legacyForm',
-      role: 'presentation',
-      defaults: () => ({ text: 'hi', size: 12 }),
-      form: [
-        { t: 'text', key: 'text', label: '文案' },
-        { t: 'number', key: 'size', label: '字号' },
-        { t: 'effects', key: 'fx', label: '效果' },
-      ],
-      validate: () => [],
-      outputs: () => [],
-    })
-    const m = getComponentManifest('legacyForm')!
-    expect(m.inputs).toEqual([
-      { key: 'text', label: '文案', valueType: 'string', default: 'hi' },
-      { key: 'size', label: '字号', valueType: 'number', default: 12 },
-      { key: 'fx', label: '效果', valueType: 'json' },
-    ])
-    unregisterKind('legacyForm')
-  })
-
-  it('runtime contract: interaction resolve', () => {
-    registerKind({
-      kind: 'qteResolve',
-      role: 'interaction',
-      validate: () => [],
-      outputs: () => [{ id: 'pass' }, { id: 'fail' }],
-      resolve: (_ctx, _p, input) => ({ outcome: input === 'hit' ? 'pass' : 'fail' }),
-    })
-    const inter = getKind('qteResolve')!
-    const ended = inter.resolve!({ state: {} as never, nodeId: 'n', elapsedMs: 0 }, {}, 'hit')
-    expect(ended.continue).not.toBe(true)
-    if (ended.continue !== true) expect(ended.outcome).toBe('pass')
+  it('interaction 出口 = 声明的 events（皮肤自 emit，引擎无 resolve/outputs）', () => {
+    registerKind({ kind: 'qteResolve', role: 'interaction', events: [{ id: 'pass' }, { id: 'fail' }] })
+    expect(getComponentManifest('qteResolve')!.events.map((e) => e.id)).toEqual(['pass', 'fail'])
     unregisterKind('qteResolve')
   })
 })

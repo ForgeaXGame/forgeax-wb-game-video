@@ -2,7 +2,7 @@
  * 受击加油横幅（component id: `bossHitCheer`）—— 右上角，展示「加油，boss扣了 X 血量，还剩 Y 血量」。
  *
  * - 由 watch(小怪掉血) → spawn 触发，`ttlMs` 控制显示时长（demo 用 3000ms）。
- * - 数值（dmg / remain）在 spawn 时用 expr 求值后作为 params 传入（本组件只读 params，不读实时态）。
+ * - 数值（dmg / remain）在 spawn 时用 expr 求值后作为 inputs 传入（本组件只读 inputs，不读实时态）。
  * - 「加油」可点击（组件内事件，manifest 暴露 `cheer`）：点击后在文案后追加**传入的英雄名**（`heroName`）。
  */
 import { useState } from 'react'
@@ -27,21 +27,18 @@ export const bossHitCheerKind: KindPlugin<BossHitCheerParams> = {
   kind: 'bossHitCheer',
   role: 'presentation',
   label: '受击加油横幅',
-  defaults: () => ({ heroName: '' }),
   // 输入契约（In · SSOT）：编辑器据此渲染配置控件；dmg/remain 通常由 spawn 时 expr 注入。
   inputs: [
-    { key: 'heroName', label: '英雄名', valueType: 'string' },
+    { key: 'heroName', label: '英雄名', valueType: 'string', default: '' },
     { key: 'dmg', label: '扣血', valueType: 'number' },
     { key: 'remain', label: '剩余', valueType: 'number' },
   ],
   // 暴露点击事件（Out），供节点配置发现/绑定；demo 中点击追加英雄名由组件自身处理。
   events: [{ id: 'cheer', label: '加油点击' }],
-  validate: () => [],
-  outputs: () => [],
 }
 
 export function BossHitCheer({ overlay }: OverlayProps): JSX.Element {
-  const p = overlay.params as { dmg?: number; remain?: number; heroName?: string }
+  const p = overlay.inputs as { dmg?: number; remain?: number; heroName?: string }
   const [cheered, setCheered] = useState(false)
   const dmg = typeof p.dmg === 'number' ? p.dmg : 0
   const remain = typeof p.remain === 'number' ? p.remain : 0

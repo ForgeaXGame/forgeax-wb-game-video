@@ -1,8 +1,9 @@
 /**
  * 内置「通用样式」方案 —— 两份自由 overlay，装齐现有全部组件预设，做「组件画廊 / 预设仓库」。
  *
- * 与普通 overlay 同一套数据格式（Overlay + OverlayChild），只是 id/标题固定、boot 时保证存在。
- * 各皮肤预设由对应 tsx 导出；本文件只组装引用。顶栏 `component` = 唯一类型键（含皮肤 alias）。
+ * 与普通 overlay 同一套数据格式（Overlay + OverlayChild），只是 id/标题固定、boot 时保证存在，
+ * 免得后续因缺失某个皮肤预设被带偏。静态 = 常驻展示类；动态 = 交互/动画类。皮肤放 inputs.component；
+ * 各皮肤预设由对应 tsx 导出，本文件组装引用。
  *
  * 幂等：boot 只在缺失时补，用户可自由改内部 children；删掉整份下次 boot 会补回。
  */
@@ -29,7 +30,7 @@ const STATIC_SCHEME: Overlay = {
       id: 'line',
       component: 'dialogue',
       trigger: { when: 'enter' },
-      params: { speaker: '角色', text: '这是一句字幕示例。' },
+      inputs: { speaker: '角色', text: '这是一句字幕示例。' },
     },
   ],
 }
@@ -47,14 +48,14 @@ const DYNAMIC_SCHEME: Overlay = {
       id: 'float',
       component: 'floatText',
       trigger: { when: 'enter' },
-      params: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' },
+      inputs: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' },
     },
   ],
 }
 
 export const BUILTIN_SCHEMES: Overlay[] = [STATIC_SCHEME, DYNAMIC_SCHEME]
 
-/** 「+ 组件」菜单：每项 = 一个组件预设模板（顶栏 component = 类型/皮肤 id）。 */
+/** 「+ 组件」菜单：每项 = 一个组件预设模板（顶栏 component = 类型/皮肤 id；或基础 kind + 皮肤 inputs.component）。 */
 export const NEW_COMPONENT_PRESETS: Array<{
   id: string
   label: string
@@ -72,7 +73,7 @@ export const NEW_COMPONENT_PRESETS: Array<{
       id,
       component: 'dialogue',
       trigger: { when: 'enter' },
-      params: { text: '字幕示例' },
+      inputs: { text: '字幕示例' },
     }),
   },
   {
@@ -82,7 +83,7 @@ export const NEW_COMPONENT_PRESETS: Array<{
       id,
       component: 'floatText',
       trigger: { when: 'enter' },
-      params: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' },
+      inputs: { text: '+30', x: 0.5, y: 0.4, color: '#5fbf7f' },
     }),
   },
   { id: 'inkKou', label: 'QTE · 叩击', make: inkKouPreset },

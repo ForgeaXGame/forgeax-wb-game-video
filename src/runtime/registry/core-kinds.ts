@@ -1,22 +1,21 @@
 /**
  * 核心元素 kind 模块（三职责，低耦合可复用）—— 注册后即可被任意节点复用。
  *
- * 每个 kind 只声明：role + params 校验 + 输出 handle + 运行时契约（run/resolve）。引擎按 role 调用；
+ * 每个 kind 只声明：role + inputs 校验 + 输出 handle + 运行时契约（run/resolve）。引擎按 role 调用；
  * presentation 由引擎发泛型 renderOverlay，Player 按 kind 渲染。新增玩法 = 加一个这样的模块，核心不改。
  *
  * 覆盖 nodia 所需（数值结算/副作用一律走 node.data.reactions 的生命周期相位，无 logic 结算组件）：
- *  - floatText(view) 漂字：纯展示，params 交给 Player。
+ *  - floatText(view) 漂字：纯展示，inputs 交给 Player。
  *  - choice(interaction) / skill(interaction) 选择/技能：每个 event 一个同名出口。
- *  - qte(interaction)   判定：出口以 params.events 为准；缺省回退本 kind 的 events（三档）。
- *    各皮肤自带出口 defaults（见 skins/components/*Preset），不在此按皮肤 id 分支。
+ *  - qte(interaction)   判定：默认 pass/good/fail（inkKou 仅 pass/fail），或 inputs.events 自定义。
  *  - hotspot(interaction) 热点：每个 HotspotSpot（id + 可选 x/y）一个同名出口。
  *
  * 交互目录：共享壳是 ComponentEvent；choice/skill 用 ChoiceOption（可带 condition），
  * hotspot 用 HotspotSpot（可带 x/y）。出口 id === event.id；副作用一律进 reactions。
  */
 import type { GraphCondition, GraphTextStyle } from '../schema/graph-schema'
-import type { ComponentEvent } from '../schema/node-config-schema'
-import type { FormField, KindPlugin } from './kind-registry'
+import type { ComponentEvent, ComponentInput } from '../schema/node-config-schema'
+import type { KindPlugin } from './kind-registry'
 import { KindRegistry, registerKind } from './kind-registry'
 import { evalExpr } from '../engine/expr'
 
@@ -48,18 +47,16 @@ export const floatTextKind: KindPlugin<FloatTextParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '花字/飘字',
-  defaults: () => ({ text: '', x: 0.5, y: 0.45 }),
-  form: [
-    { t: 'text', key: 'text', label: '文案', placeholder: '含 {v} 用 expr 替换' },
-    { t: 'text', key: 'expr', label: '表达式', placeholder: 'entity.ent-boss.attr.hp', mono: true },
-    { t: 'textStyle', key: 'style', label: '样式', group: 'overlay' },
-    { t: 'number', key: 'x', label: 'x', step: 0.05 },
-    { t: 'number', key: 'y', label: 'y', step: 0.05 },
-    { t: 'number', key: 'durationMs', label: '时长ms' },
-    { t: 'color', key: 'color', label: '兜底色', placeholder: '#ffd54a' },
+  inputs: [
+    { key: 'text', label: '文案', valueType: 'string', default: '' },
+    { key: 'expr', label: '表达式', valueType: 'string' },
+    { key: 'style', label: '样式', valueType: 'string', component: 'textStyle' },
+    { key: 'x', label: 'x', valueType: 'number', default: 0.5 },
+    { key: 'y', label: 'y', valueType: 'number', default: 0.45 },
+    { key: 'durationMs', label: '时长ms', valueType: 'number' },
+    { key: 'color', label: '兜底色', valueType: 'string', component: 'color' },
   ],
   validate: (p) => (p.text || p.expr ? [] : ['floatText 需要 text 或 expr']),
-  outputs: () => [],
   // 到触发时机时按当前状态算出要飘的文本，emit 一个已解析的 renderOverlay（Player 只管飘起淡出动画）。
   render: (ctx, p) => {
     let display = p.text ?? ''
@@ -73,14 +70,33 @@ export const floatTextKind: KindPlugin<FloatTextParams> = {
         nodeId: ctx.nodeId,
         elementId: ctx.elementId ?? 'float',
         component: 'floatText',
-        params: { text: display, x: p.x, y: p.y, color: p.color, style: p.style, durationMs: p.durationMs, enter: p.enter, exit: p.exit, float: true },
+        inputs: { text: display, x: p.x, y: p.y, color: p.color, style: p.style, durationMs: p.durationMs, enter: p.enter, exit: p.exit, float: true },
       },
     ]
   },
 }
 
-// HUD 呈现（surface:'hud'）的具体组件契约住在各自皮肤 tsx（如 BattleHpBar），
-// 经 skins/components 的 COMPONENT_KINDS 注册——不要在 core-kinds 里为「未分类」硬编一种血条。
+// ── presentation: hud（血条等；皮 id 如 battleHpBar 为 alias）──────────────────
+export interface HudParams {
+  bind?: string
+  label?: string
+  accent?: string
+}
+export const hudKind: KindPlugin<HudParams> = {
+  kind: 'hud',
+  role: 'presentation',
+  surface: 'hud',
+  aliases: ['battleHpBar'],
+  label: 'HUD',
+  // alias 专属展示名：避免添加栏/时间轴把 battleHpBar 显示成泛化基类名「HUD」。
+  aliasLabels: { battleHpBar: '水墨血条' },
+  inputs: [
+    { key: 'bind', label: '绑定实体', valueType: 'string', component: 'entity' },
+    { key: 'label', label: '名称', valueType: 'string' },
+    { key: 'accent', label: '主色', valueType: 'string', component: 'color' },
+  ],
+  events: [],
+}
 
 // ── interaction: choice / skill ───────────────────────────────────────────────
 /** 选项呈现形态：列表 / 画面热区。 */
@@ -97,36 +113,26 @@ export interface ChoiceParams {
   timeoutMs?: number
   /** 超时默认出口 event id。 */
   defaultEvent?: string
-  prompt?: string
   presentation?: ChoicePresentation
   /** 整组选项锚点（归一化 0~1；预览拖拽 / 试玩共用）。 */
   x?: number
   y?: number
 }
-const CHOICE_FORM: FormField[] = [
-  { t: 'text', key: 'prompt', label: '提示' },
-  { t: 'select', key: 'presentation', label: '呈现', options: [{ value: 'list', label: '列表' }, { value: 'hotspot', label: '热区' }] },
-  { t: 'number', key: 'x', label: 'x', step: 0.05 },
-  { t: 'number', key: 'y', label: 'y', step: 0.05 },
-  { t: 'number', key: 'timeoutMs', label: '限时ms' },
-  { t: 'text', key: 'defaultEvent', label: '超时出口' },
-  { t: 'events', key: 'events', label: '选项', variant: 'choice' },
+const CHOICE_INPUTS: ComponentInput[] = [
+  { key: 'presentation', label: '呈现', valueType: 'string', default: 'list', options: [{ value: 'list', label: '列表' }, { value: 'hotspot', label: '热区' }] },
+  { key: 'ui', label: '皮肤', valueType: 'string', default: 'default', options: [{ value: 'default', label: '默认' }, { value: 'battleSkillBar', label: '战斗技能条' }, { value: 'inkYingMo', label: '水墨影魔' }] },
+  { key: 'timeoutMs', label: '限时ms', valueType: 'number' },
+  { key: 'defaultEvent', label: '超时出口', valueType: 'string' },
+  { key: 'events', label: '选项', valueType: 'string', component: 'events', default: [{ id: 'opt0', label: '选项一' }] },
 ]
 function choiceLike(kind: string, label: string): KindPlugin<ChoiceParams> {
   return {
     kind,
     role: 'interaction',
     label,
-    defaults: () => ({ events: [{ id: 'opt0', label: '选项一' }], presentation: 'list', x: 0.5, y: 0.72 }),
-    form: CHOICE_FORM,
+    inputs: CHOICE_INPUTS,
     validate: (p) =>
       Array.isArray(p.events) && p.events.length > 0 ? [] : [`${kind}.events must be non-empty`],
-    outputs: (p) => (p.events ?? []).map((e) => ({ id: e.id, label: e.label })),
-    resolve: (_ctx, p, input) => {
-      // input = 选项 event id（超时/缺省时用 defaultEvent → 首项）
-      const id = typeof input === 'string' ? input : p.defaultEvent ?? p.events[0]?.id ?? 'default'
-      return { outcome: id }
-    },
   }
 }
 export const choiceKind = {
@@ -212,47 +218,23 @@ export const qteKind: KindPlugin<QteFullParams> = {
   aliasLabels: { battleParry: '防反 QTE', inkKou: '叩击 QTE' },
   label: 'QTE',
   events: QTE_DEFAULT_EVENTS,
-  defaults: () => ({ qteKind: 'parry', cues: [], passingHits: 1 }),
-  form: [
-    { t: 'select', key: 'qteKind', label: 'QTE型', options: [{ value: 'parry', label: '完美防反' }, { value: 'timing', label: '打点' }, { value: 'mash', label: '连打' }, { value: 'sequence', label: '连招' }, { value: 'sweep', label: '划动' }] },
-    { t: 'number', key: 'passingHits', label: '过关次' },
-    { t: 'number', key: 'passingScore', label: '过关分' },
-    { t: 'number', key: 'tolerance', label: '容差ms' },
-    { t: 'number', key: 'score', label: '满分' },
-    { t: 'number', key: 'windowMs', label: '窗口ms' },
-    { t: 'events', key: 'events', label: '出口', variant: 'plain' },
-    { t: 'qteCues', key: 'cues', label: '拍点' },
+  inputs: [
+    { key: 'qteKind', label: 'QTE型', valueType: 'string', default: 'parry', options: [{ value: 'parry', label: '完美防反' }, { value: 'timing', label: '打点' }, { value: 'mash', label: '连打' }, { value: 'sequence', label: '连招' }, { value: 'sweep', label: '划动' }] },
+    { key: 'passingHits', label: '过关次', valueType: 'number', default: 1 },
+    { key: 'passingScore', label: '过关分', valueType: 'number' },
+    { key: 'perfectMs', label: '完美半窗ms', valueType: 'number' },
+    { key: 'tolerance', label: '容差ms', valueType: 'number' },
+    { key: 'score', label: '满分', valueType: 'number' },
+    { key: 'windowMs', label: '窗口ms', valueType: 'number' },
+    { key: 'durationMs', label: '收圈时长ms', valueType: 'number' },
+    { key: 'timeoutMs', label: '限时ms', valueType: 'number' },
+    { key: 'defaultEvent', label: '超时出口', valueType: 'string' },
+    { key: 'glyph', label: '字形（inkKou）', valueType: 'string' },
+    { key: 'ui', label: '皮肤', valueType: 'string' },
+    { key: 'events', label: '出口', valueType: 'string', component: 'events' },
+    { key: 'cues', label: '拍点', valueType: 'string', component: 'qteCues', default: [] },
   ],
-  validate: () => [],
-  outputs: (p) => {
-    // 落盘 events 优先；旧 exits 仅作草稿兼容；再回退本 kind 通用三档。
-    if (Array.isArray(p.events) && p.events.length > 0) {
-      return p.events.map((e) => ({ id: e.id, label: e.label }))
-    }
-    const exits = p.exits
-    if (Array.isArray(exits) && exits.length > 0) {
-      const list = exits.map((e) => ({ id: e.key, label: e.label ?? p.outcomeLabels?.[e.key] }))
-      const missKey = p.defaultKey ?? p.defaultEvent ?? 'fail'
-      if (!list.some((o) => o.id === missKey)) {
-        list.push({ id: missKey, label: p.outcomeLabels?.[missKey] })
-      }
-      return list
-    }
-    return QTE_DEFAULT_EVENTS.map((e) => ({ id: e.id, label: e.label }))
-  },
-  resolve: (_ctx, p, input) => {
-    // ① 字符串 outcome（event id / pass|good|fail）；② { key }；③ { hits } 由 passingHits 判；④ 超时 defaultEvent。
-    if (typeof input === 'string' && input) return { outcome: input }
-    if (input && typeof input === 'object' && 'key' in input && typeof (input as { key: unknown }).key === 'string') {
-      return { outcome: (input as { key: string }).key }
-    }
-    if (input && typeof input === 'object' && 'hits' in input) {
-      const hits = Number((input as { hits: number }).hits)
-      const need = p.passingHits ?? 1
-      return { outcome: hits >= need ? 'pass' : 'fail' }
-    }
-    return { outcome: p.defaultEvent ?? 'fail' }
-  },
+  // 出口 = inputs.events（若配）否则组件 events（pass/good/fail）；由 registry.handlesOf 派生。
 }
 
 // ── presentation: dialogue（原地对话：说话人 + 台词，底部对话框）──────────────────
@@ -271,16 +253,15 @@ export const dialogueKind: KindPlugin<DialogueParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '字幕/对白',
-  defaults: () => ({ text: '', speaker: '' }),
-  form: [
-    { t: 'text', key: 'speaker', label: '说话人' },
-    { t: 'text', key: 'text', label: '台词' },
-    { t: 'textStyle', key: 'style', label: '样式', group: 'subtitle' },
-    { t: 'number', key: 'x', label: 'x', step: 0.05 },
-    { t: 'number', key: 'y', label: 'y', step: 0.05 },
+  inputs: [
+    { key: 'speaker', label: '说话人', valueType: 'string', default: '' },
+    { key: 'text', label: '台词', valueType: 'string', default: '' },
+    { key: 'color', label: '说话人色', valueType: 'string', component: 'color' },
+    { key: 'style', label: '样式', valueType: 'string', component: 'textStyle' },
+    { key: 'x', label: 'x', valueType: 'number' },
+    { key: 'y', label: 'y', valueType: 'number' },
   ],
   validate: (p) => (p.text ? [] : ['dialogue 需要 text']),
-  outputs: () => [],
   // 无 render()：走引擎泛型 renderOverlay，Player 侧 dialogue 渲染器画底部对话框。
 }
 
@@ -295,14 +276,11 @@ export const transitionKind: KindPlugin<TransitionParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '转场',
-  defaults: () => ({ durationMs: 600, style: 'fade' }),
-  form: [
-    { t: 'number', key: 'durationMs', label: '时长ms' },
-    { t: 'select', key: 'style', label: '样式', options: [{ value: 'fade', label: '淡入淡出' }, { value: 'wipe', label: '擦除' }] },
-    { t: 'color', key: 'color', label: '颜色', placeholder: '#000000' },
+  inputs: [
+    { key: 'durationMs', label: '时长ms', valueType: 'number', default: 600 },
+    { key: 'style', label: '样式', valueType: 'string', default: 'fade', options: [{ value: 'fade', label: '淡入淡出' }, { value: 'wipe', label: '擦除' }] },
+    { key: 'color', label: '颜色', valueType: 'string', component: 'color' },
   ],
-  validate: () => [],
-  outputs: () => [],
   // 无 render()：走引擎泛型 renderOverlay，Player 侧 transition 渲染器按 durationMs 做淡入淡出，换节点时随叠层清空。
 }
 
@@ -310,18 +288,15 @@ export const transitionKind: KindPlugin<TransitionParams> = {
 /** 热点项 = 共享事件 + 本组件画面锚点（归一化 0~1）。 */
 export type HotspotSpot = ComponentEvent & { x?: number; y?: number }
 export interface HotspotParams {
-  /** 交互目录：每个 spot 一个同名出口；坐标由本组件 params 决定。 */
+  /** 交互目录：每个 spot 一个同名出口；坐标由本组件 inputs 决定。 */
   events: HotspotSpot[]
 }
 export const hotspotKind: KindPlugin<HotspotParams> = {
   kind: 'hotspot',
   role: 'interaction',
   label: '热点',
-  defaults: () => ({ events: [] }),
-  form: [{ t: 'events', key: 'events', label: '热点', variant: 'hotspot' }],
+  inputs: [{ key: 'events', label: '热点', valueType: 'string', component: 'events', default: [] }],
   validate: (p) => (Array.isArray(p.events) ? [] : ['hotspot.events must be an array']),
-  outputs: (p) => (p.events ?? []).map((e) => ({ id: e.id, label: e.label })),
-  resolve: (_ctx, _p, input) => ({ outcome: String(input) }),
 }
 
 export const CORE_KINDS: KindPlugin[] = [

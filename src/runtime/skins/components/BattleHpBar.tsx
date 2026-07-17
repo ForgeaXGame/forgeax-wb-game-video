@@ -32,15 +32,12 @@ export const battleHpBarKind: KindPlugin<BattleHpBarParams> = {
   role: 'presentation',
   surface: 'hud',
   label: '水墨血条',
-  defaults: () => ({ bind: 'ent-player', attr: 'hp', label: '角色' }),
   inputs: [
-    { key: 'bind', label: '绑定对象', valueType: 'bind' },
-    { key: 'attr', label: '绑定属性', valueType: 'attr', entityKey: 'bind' },
-    { key: 'label', label: '显示名', valueType: 'string' },
-    { key: 'accent', label: '强调色', valueType: 'color' },
+    { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-player', component: 'entity' },
+    { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp' },
+    { key: 'label', label: '显示名', valueType: 'string', default: '角色' },
+    { key: 'accent', label: '强调色', valueType: 'string', component: 'color' },
   ],
-  validate: () => [],
-  outputs: () => [],
   events: [],
 }
 
@@ -53,7 +50,7 @@ export function battleHpBarPreset(
     id,
     component: 'battleHpBar',
     trigger: { when: 'enter' },
-    params: { bind: opts.bind, label: opts.label },
+    inputs: { bind: opts.bind, label: opts.label },
   }
 }
 

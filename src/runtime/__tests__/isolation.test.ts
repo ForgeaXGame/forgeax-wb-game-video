@@ -26,8 +26,6 @@ describe('multi-runtime isolation (B)', () => {
     onlyA.registerKind({
       kind: 'secretView',
       role: 'presentation',
-      validate: () => [],
-      outputs: () => [],
     })
     expect(onlyA.getKind('secretView')?.kind).toBe('secretView')
     expect(new KindRegistry().getKind('secretView')).toBeUndefined()

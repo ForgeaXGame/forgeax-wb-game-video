@@ -3,8 +3,8 @@
  *
  * 交互皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
  * HUD 皮肤：battleHpBar
- * 落盘：OverlayChild.component = 这些 id（或基础 kind）；试玩按顶栏查渲染表。
- * 未指定皮肤 → 回退通用按钮 / 内置血条。加新皮肤：tsx 导出 preset + 本文件注册一行。
+ * 配置里（元素 inputs.component / overlay HUD child `component`）填这些 id，试玩即按对应旧样式渲染；
+ * 未指定 → 回退通用按钮 / 内置血条。加新皮肤只需在此注册一行。
  */
 import { registerHudRenderer, registerInteractionSkin, registerOverlayRenderer, SkinRegistry } from '../rendererRegistry'
 import { registerKind, type KindPlugin, type KindRegistry } from '../../registry/kind-registry'

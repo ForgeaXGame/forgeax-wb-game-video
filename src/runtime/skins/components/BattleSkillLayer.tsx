@@ -1,7 +1,7 @@
 /**
  * 战斗技能条皮肤（component id: `battleSkillBar`）—— 从旧 player/BattleSkillLayer 迁移。
  *
- * 读 InteractionSnap.params.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
+ * 读 InteractionSnap.inputs.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
  * 含 'ult' 的 id 用金色高亮。
  */
 import { useEffect, useState } from 'react'
@@ -14,8 +14,7 @@ import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 const SKILL_KEYS = ['X', 'A', 'Y', 'B'] as const
 
 /** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
-export const battleSkillBarDefaults: Pick<ChoiceParams, 'prompt' | 'events' | 'x' | 'y'> = {
-  prompt: '技能',
+export const battleSkillBarDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y'> = {
   events: [
     { id: 'a', label: '斩' },
     { id: 'b', label: '突' },
@@ -31,7 +30,7 @@ export function battleSkillBarPreset(id: string): OverlayChild {
     id,
     component: 'battleSkillBar',
     trigger: { when: 'enter' },
-    params: { ...battleSkillBarDefaults },
+    inputs: { ...battleSkillBarDefaults },
   }
 }
 
@@ -40,10 +39,10 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const params = interaction.params as unknown as ChoiceParams
-  const events = params.events ?? []
-  const x = typeof params.x === 'number' ? params.x : battleSkillBarDefaults.x!
-  const y = typeof params.y === 'number' ? params.y : battleSkillBarDefaults.y!
+  const inputs = interaction.inputs as unknown as ChoiceParams
+  const events = inputs.events ?? []
+  const x = typeof inputs.x === 'number' ? inputs.x : battleSkillBarDefaults.x!
+  const y = typeof inputs.y === 'number' ? inputs.y : battleSkillBarDefaults.y!
   const [picked, setPicked] = useState<string | null>(null)
 
   function pick(id: string, locked: boolean): void {

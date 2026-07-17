@@ -4,12 +4,12 @@
  */
 import type { CSSProperties, JSX } from 'react'
 import type { Overlay } from '../../runtime/schema/graph-schema'
-import { SpawnParamsEditor } from './spawn-params-editor'
+import { SpawnInputsEditor } from './spawn-inputs-editor'
 
 export interface SettlementSpawnValue {
   from: string
   ttlMs?: number
-  params?: Record<string, unknown>
+  inputs?: Record<string, unknown>
 }
 
 export interface SpawnTemplateOption {
@@ -99,11 +99,11 @@ export function SettlementSpawnEditor({
             />
             <span style={{ fontSize: 11, opacity: 0.5 }}>≤ {ttlCap}</span>
           </div>
-          <SpawnParamsEditor
+          <SpawnInputsEditor
             from={value.from}
-            params={value.params}
+            inputs={value.inputs}
             overlays={overlays}
-            onChange={(params) => onChange({ ...value, params })}
+            onChange={(inputs) => onChange({ ...value, inputs })}
           />
           <p style={hint}>仅在当前节点内显示，时长不超过本节点；离场或换节点会卸掉。</p>
           {hasJump ? (

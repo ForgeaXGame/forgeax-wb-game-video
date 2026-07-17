@@ -3,8 +3,6 @@
  */
 import type { CSSProperties, JSX } from 'react'
 import type { GraphTextStyle, OverlayChild } from '../../runtime/schema/graph-schema'
-import { baseKindOf } from '../../runtime/registry/kind-registry'
-import { effectiveComponent } from '../../runtime/schema/overlay-component'
 import { HUD_SKINS, INTERACTION_SKINS } from '../../runtime/skins/components'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
 
@@ -37,20 +35,19 @@ export function OverlayChildStyleEditor({
   onPatchParams: (patch: Record<string, unknown>) => void
   onPatchComponent: (component: string) => void
 }): JSX.Element {
-  const params = child.params ?? {}
-  const component = effectiveComponent(child)
-  const kind = baseKindOf(component)
+  const inputs = child.inputs ?? {}
+  const kind = child.component
   const title = COMPONENT_LABEL[kind] ?? kind
 
   if (kind === 'qte') {
-    const skin = INTERACTION_SKINS.some((s) => s.id === component) ? component : ''
+    const skin = typeof inputs.component === 'string' ? inputs.component : ''
     const opts = INTERACTION_SKINS.filter((s) => s.target === 'qte')
     return (
       <div style={{ marginTop: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{child.id} · {title}</div>
         {field(
           '交互皮肤',
-          <select value={skin} onChange={(e) => onPatchComponent(e.target.value || 'qte')} style={{ flex: 1 }}>
+          <select value={skin} onChange={(e) => onPatchParams({ component: e.target.value || undefined })} style={{ flex: 1 }}>
             <option value="">（默认按钮）</option>
             {opts.map((s) => (
               <option key={s.id} value={s.id}>
@@ -64,14 +61,14 @@ export function OverlayChildStyleEditor({
   }
 
   if (kind === 'choice') {
-    const skin = INTERACTION_SKINS.some((s) => s.id === component) ? component : ''
+    const skin = typeof inputs.component === 'string' ? inputs.component : ''
     const opts = INTERACTION_SKINS.filter((s) => s.target === 'choice')
     return (
       <div style={{ marginTop: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{child.id} · {title}</div>
         {field(
           '选项皮肤',
-          <select value={skin} onChange={(e) => onPatchComponent(e.target.value || 'choice')} style={{ flex: 1 }}>
+          <select value={skin} onChange={(e) => onPatchParams({ component: e.target.value || undefined })} style={{ flex: 1 }}>
             <option value="">（默认清单）</option>
             {opts.map((s) => (
               <option key={s.id} value={s.id}>
@@ -84,8 +81,8 @@ export function OverlayChildStyleEditor({
     )
   }
 
-  if (HUD_SKINS.some((s) => s.id === component) || kind === 'battleHpBar') {
-    const skin = HUD_SKINS.some((s) => s.id === component) ? component : ''
+  if (HUD_SKINS.some((s) => s.id === kind) || kind === 'battleHpBar') {
+    const skin = HUD_SKINS.some((s) => s.id === child.component) ? child.component : ''
     return (
       <div style={{ marginTop: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{child.id} · HUD</div>
@@ -112,7 +109,7 @@ export function OverlayChildStyleEditor({
           <div style={{ flex: 1, minWidth: 0 }}>
             <GraphTextStylePicker
               group="subtitle"
-              value={params.style as GraphTextStyle | undefined}
+              value={inputs.style as GraphTextStyle | undefined}
               onChange={(style) => onPatchParams({ style })}
             />
           </div>
@@ -130,7 +127,7 @@ export function OverlayChildStyleEditor({
           <div style={{ flex: 1, minWidth: 0 }}>
             <GraphTextStylePicker
               group="overlay"
-              value={params.style as GraphTextStyle | undefined}
+              value={inputs.style as GraphTextStyle | undefined}
               onChange={(style) => onPatchParams({ style })}
             />
           </div>
@@ -140,8 +137,8 @@ export function OverlayChildStyleEditor({
   }
 
   return (
-    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.6 }}>
-      {child.id} · {title}（无可编辑样式）
+    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>
+      {child.id} · {title}（暂无可编辑样式）
     </div>
   )
 }

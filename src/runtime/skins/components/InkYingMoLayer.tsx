@@ -1,8 +1,8 @@
 /**
  * 應/默 限时抉择皮肤（component id: `inkYingMo`）—— 从旧 player/InkYingMoLayer 迁移。
  *
- * 读 InteractionSnap.params.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → submit(id)。
- * 超时默认由引擎按 params.timeoutMs/defaultEvent 自动 submit(undefined) 处理，皮肤不再自管计时。
+ * 读 InteractionSnap.inputs.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → submit(id)。
+ * 超时默认由引擎按 inputs.timeoutMs/defaultEvent 自动 submit(undefined) 处理，皮肤不再自管计时。
  *
  * 预览态：与 inkKou 同一套 --preview-t 负 delay 冻结契约——preview 时加 is-frozen，
  * 入场动画按播放头定帧，且禁键/禁点（不吃提交）。
@@ -17,8 +17,7 @@ import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previ
 const KEY_LABELS = ['A', 'B'] as const
 
 /** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
-export const inkYingMoDefaults: Pick<ChoiceParams, 'prompt' | 'events' | 'x' | 'y'> = {
-  prompt: '應 / 默',
+export const inkYingMoDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y'> = {
   events: [
     { id: 'ying', label: '應' },
     { id: 'mo', label: '默' },
@@ -33,7 +32,7 @@ export function inkYingMoPreset(id: string): OverlayChild {
     id,
     component: 'inkYingMo',
     trigger: { when: 'enter' },
-    params: { ...inkYingMoDefaults },
+    inputs: { ...inkYingMoDefaults },
   }
 }
 
@@ -42,10 +41,10 @@ export function InkYingMoLayer({ interaction, submit, ctx, preview, previewTimeM
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const params = interaction.params as unknown as ChoiceParams
-  const events = (params.events ?? []).slice(0, 2)
-  const x = typeof params.x === 'number' ? params.x : inkYingMoDefaults.x!
-  const y = typeof params.y === 'number' ? params.y : inkYingMoDefaults.y!
+  const inputs = interaction.inputs as unknown as ChoiceParams
+  const events = (inputs.events ?? []).slice(0, 2)
+  const x = typeof inputs.x === 'number' ? inputs.x : inkYingMoDefaults.x!
+  const y = typeof inputs.y === 'number' ? inputs.y : inkYingMoDefaults.y!
   const pickedRef = useRef(false)
 
   function pick(id: string, locked: boolean): void {

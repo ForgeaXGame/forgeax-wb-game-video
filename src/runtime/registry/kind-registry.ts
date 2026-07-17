@@ -8,10 +8,9 @@
  * 模块级 `registerKind` / `getKind` / `getComponent` 仍指向默认表。
  */
 import type { ComponentEvent, ComponentInput, ComponentManifest, Overlay, OverlayChild } from '../schema/node-config-schema'
-import type { ElementRole, GameNode, GraphEffect, NodeHandle } from '../schema/graph-schema'
+import type { ElementRole, GameNode, NodeHandle } from '../schema/graph-schema'
 import type { OverlayInstanceChild } from '../schema/node-config-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
-import { effectiveComponent } from '../schema/overlay-component'
 import { eventsFromParams } from '../schema/overlay-events'
 import type { MutableState } from '../engine/apply-effects'
 import type { RuntimeDirective } from '../engine/directives'
@@ -24,67 +23,15 @@ export interface RuntimeCtx {
   /** 当前正在执行的时间线元素 id（render/present 构造 directive 用）。 */
   elementId?: string
 }
-
-/**
- * 声明式表单字段 schema —— 让 NodeInspector 的 per-kind 检视器由注册表驱动，
- * 取代硬编码 switch。标量字段（text/number/select/checkbox/color）直接渲染；
- * 复杂字段（textStyle/effects/options/qteCues/hotspots）派发到专用受控组件，
- * 由组件自身处理内部条件分支。
- */
-export type FormField =
-  | { t: 'text'; key: string; label: string; placeholder?: string; mono?: boolean }
-  /** slider=渲染成 0~1 类滑条（标签实时显示当前值，如「强度 0.60」），缺省=普通数字输入框。 */
-  | { t: 'number'; key: string; label: string; step?: number; min?: number; max?: number; slider?: boolean }
-  /** fallback：params 未设值时的展示态默认选中项（不落盘，仅 UI；如 filter 缺省显示 'warm'）。 */
-  | { t: 'select'; key: string; label: string; options: { value: string; label: string }[]; fallback?: string }
-  | { t: 'checkbox'; key: string; label: string }
-  | { t: 'color'; key: string; label: string; placeholder?: string }
-  /** 场景实体下拉（复用 EntityPicker；需 KindFormFields 注入 pickers.entities）。 */
-  | { t: 'bind'; key: string; label: string }
-  /** 实体属性下拉（复用 AttrPicker；entityKey 默认 'bind'）。 */
-  | { t: 'attr'; key: string; label: string; entityKey?: string }
-  | { t: 'textStyle'; key: string; label: string; group: 'subtitle' | 'overlay' }
-  | { t: 'effects'; key: string; label: string }
-  /** variant：plain=仅目录；choice=可配 condition；hotspot=可配 x/y。 */
-  | { t: 'events'; key: string; label: string; variant?: 'plain' | 'choice' | 'hotspot' }
-  | { t: 'qteCues'; key: string; label: string }
-
-/** FormField.t → ComponentInput.valueType（复合控件归 'json'）。 */
-function formTypeToValueType(t: FormField['t']): ComponentInput['valueType'] {
-  switch (t) {
-    case 'number':
-      return 'number'
-    case 'checkbox':
-      return 'boolean'
-    case 'color':
-      return 'color'
-    case 'bind':
-      return 'bind'
-    case 'attr':
-      return 'attr'
-    case 'text':
-    case 'select':
-      return 'string'
-    default:
-      return 'json' // textStyle / effects / options / qteCues / hotspots
-  }
-}
-
-/** 向后兼容：无显式 inputs 时，从 form + defaults 派生 ComponentInput[]（契约投影）。 */
-function deriveInputsFromForm(form: FormField[] | undefined, defaults: Record<string, unknown>): ComponentInput[] {
-  if (!form?.length) return []
-  return form.map((f): ComponentInput => {
-    const base: ComponentInput = { key: f.key, label: f.label, valueType: formTypeToValueType(f.t) }
-    if (f.t === 'select') base.options = f.options
-    if (f.t === 'attr' && f.entityKey) base.entityKey = f.entityKey
-    const dv = defaults[f.key]
-    if (typeof dv === 'string' || typeof dv === 'number' || typeof dv === 'boolean') base.default = dv
-    return base
-  })
-}
-
 export interface KindPlugin<P = Record<string, unknown>> {
-  /** 组件 id（= OverlayChild.component / 注册键）。 */
+  /**
+   * 组件 id（= OverlayChild.component / 注册键）——皮肤 alias 折叠回的**基础家族**。
+   * ⚠️ 只做「隶属判断」用（编辑器侧按家族分类/出对应子编辑器），不承载 inputs/validate/events/render
+   * 等业务读取——那些一律走 alias 已指向同一 plugin 对象这件事本身，跟这个字段值无关。
+   * 业务代码不要直接读 `plugin.kind`，统一走 `baseKindOf`/`isKind`（唯一官方入口）。
+   * 这样以后若要换成别的归类方式（不按 kind），只需改这两个函数 + 它们的调用点，
+   * 不会牵连任何读 inputs/events 的逻辑。
+   */
   kind: string
   /** 引擎调度用（不进落盘 OverlayChild）。 */
   role: ElementRole
@@ -103,45 +50,37 @@ export interface KindPlugin<P = Record<string, unknown>> {
    * 新皮肤注册 alias 时一并写上，避免添加栏/时间轴只显示泛化基类名（如「HUD」）。
    */
   aliasLabels?: Record<string, string>
-  /** 导出事件（无则回退 params.events）。 */
+  /**
+   * 组件会抛出的**事件**（= 出口 handle 来源）。
+   * 静态出口写这里（如 qte 的 pass/good/fail）；随实例变化的（choice/hotspot 的选项）写在 `inputs.events`，
+   * 运行时出口 = `inputs.events`（若有）否则本字段（见 `handlesOf`）。
+   */
   events?: ComponentEvent[]
   /** 中文标签（编辑器「+ 元素」菜单展示）；缺省用 kind。 */
   label?: string
-  /** 新建该组件时的默认 params。 */
-  defaults?(): P
   /**
-   * **输入契约（In · SSOT）**：组件接收哪些 params 及其语义类型。
-   * 进 `ComponentManifest.inputs`；编辑器据此自动渲染配置控件。
-   * 缺省时由 `form` 派生（向后兼容）。
+   * **输入契约（In · 唯一 SSOT）**：组件接收哪些 inputs 及其语义类型 + `default`（新建初值）。
+   * 进 `ComponentManifest.inputs`；编辑器据此自动渲染配置控件（valueType→控件、options→select、component→复合编辑器）。
+   * 新建实例默认值由各 input 的 `default` 组装（`buildDefaults`），不再有 `defaults()` 方法。
    */
   inputs?: ComponentInput[]
-  /**
-   * 编辑器控件覆盖（可选）：仅当某输入需要**复合控件**（effects/textStyle/qteCues…）时声明；
-   * 标量输入无需 form——由 `inputs` 的 valueType 自动出控件。
-   */
-  form?: FormField[]
-  /** 返回问题描述数组，空数组 = 合法。 */
-  validate(params: P): string[]
-  /**
-   * 该组件需要的输出 handle（仅 interaction 通常有多出口）。
-   * 出口随 `params.events`（或 kind 默认 events）派生；`componentId` 仅供调用方透传，勿在此按皮肤分支。
-   */
-  outputs(params: P, componentId?: string): NodeHandle[]
 
-  // ── 运行时契约（按 role 实现其一；引擎调用，纯 TS）──────────────────────────
-  // 副作用（改状态）一律走 node.data.reactions 的生命周期相位，组件不再承载 run()。
-  render?(ctx: RuntimeCtx, params: P): RuntimeDirective[]
-  present?(ctx: RuntimeCtx, params: P): RuntimeDirective[]
-  resolve?(ctx: RuntimeCtx, params: P, input: unknown): ResolveResult
+  // ── 可选行为逃生舱（默认数据驱动；仅少数组件需要）──────────────────────────────
+  /** 作者期跨字段校验（如 floatText 需 text||expr）；必填/类型由 inputs.required/valueType 兜底。 */
+  validate?(inputs: P): string[]
+  /**
+   * 到触发时机按当前态**算出要发的 overlay 指令**（唯一命令式钩子，供 floatText 之类按 expr 求值）。
+   * 多数 presentation 无 render：走引擎泛型 renderOverlay，Player 按 inputs 直接画。
+   * interaction 无判定钩子：皮肤自判定后经 emit 抛已声明 event id，引擎按事件路由。
+   */
+  render?(ctx: RuntimeCtx, inputs: P): RuntimeDirective[]
 }
 
-/** resolve 只判定 outcome；作者副作用一律走 reactions。continue 路径可带引擎内部累积 effects。 */
-export type ResolveResult =
-  | { outcome: string; continue?: false }
-  | { continue: true; effects?: GraphEffect[]; outcome?: undefined }
-
-export function isContinueResult(r: ResolveResult): r is { continue: true; effects?: GraphEffect[]; outcome?: undefined } {
-  return r.continue === true
+/** 从 inputs[].default 组装新建实例默认值（取代旧 `defaults()` 方法）。 */
+export function buildDefaults(inputs: ComponentInput[] | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const i of inputs ?? []) if (i.default !== undefined) out[i.key] = i.default
+  return out
 }
 
 /** 可注入的组件注册表（每局 Runtime 一份即可隔离）。 */
@@ -181,13 +120,12 @@ export class KindRegistry {
     return out
   }
 
-  /** 组件导出清单（manifest）：inputs（契约）+ events（无则从 params 默认值折）。 */
+  /** 组件导出清单（manifest）：inputs（契约）+ events（无则从 inputs 默认值折）。 */
   getManifest(componentId: string): ComponentManifest | undefined {
     const p = this.getComponent(componentId)
     if (!p) return undefined
-    const defaults = (p.defaults?.() ?? {}) as Record<string, unknown>
-    const events = p.events?.length ? p.events : eventsFromParams(defaults)
-    const inputs = p.inputs ?? deriveInputsFromForm(p.form, defaults)
+    const inputs = p.inputs ?? []
+    const events = p.events?.length ? p.events : eventsFromParams(buildDefaults(inputs))
     // 按查找键取名：alias → aliasLabels；基类 → label；都缺则用 id。
     const label =
       (componentId !== p.kind ? p.aliasLabels?.[componentId] : undefined) ?? p.label ?? componentId
@@ -197,6 +135,23 @@ export class KindRegistry {
       ...(inputs.length ? { inputs } : {}),
       events,
     }
+  }
+
+  /** 新建该组件实例的默认 inputs 值（由 inputs[].default 组装）。 */
+  defaultsFor(componentId: string): Record<string, unknown> {
+    return buildDefaults(this.getComponent(componentId)?.inputs)
+  }
+
+  /**
+   * 组件实例的出口 handle：实例 `inputs.events`（choice/hotspot 的选项，若有）否则组件静态 `events`（qte 的 pass/good/fail）。
+   * 取代旧的 `outputs(inputs)` 方法。
+   */
+  handlesOf(componentId: string, inputsBag: Record<string, unknown> | undefined): NodeHandle[] {
+    const p = this.getComponent(componentId)
+    if (!p) return []
+    const fromInputs = eventsFromParams(inputsBag ?? {})
+    const events = fromInputs.length ? fromInputs : (p.events ?? [])
+    return events.map((e) => ({ id: e.id, label: e.label }))
   }
 
   registerPlugin(id: string, meta?: { version?: string }): void {
@@ -217,24 +172,14 @@ export class KindRegistry {
 
   /**
    * 派生节点出口目录（outlets）：保留字 `default` + 各挂载组件可发事件。
-   * interaction → `outputs(params)`（= params.events）；presentation 等有 events 的（如面板按钮）一并纳入。
+   * interaction → `outputs(inputs)`（= inputs.events）；presentation 等有 events 的（如面板按钮）一并纳入。
    * 走向由边承接（sourceHandle === 出口 id）。
    */
   deriveOutputs(node: GameNode, overlays?: Record<string, Overlay>): NodeHandle[] {
     const instances = expandNodeOverlays(overlays, node)
     const children: OverlayInstanceChild[] = instances.flatMap((i) => i.children)
     const out: NodeHandle[] = [{ id: 'default' }]
-    for (const el of children) {
-      const plugin = this.getComponent(el.component)
-      if (!plugin) continue
-      if (plugin.role === 'interaction') {
-        out.push(...plugin.outputs(el.params, el.component))
-        continue
-      }
-      const fromParams = eventsFromParams(el.params as Record<string, unknown>)
-      const events = fromParams.length ? fromParams : (plugin.events ?? [])
-      for (const e of events) out.push({ id: e.id, label: e.label })
-    }
+    for (const el of children) out.push(...this.handlesOf(el.component, el.inputs as Record<string, unknown>))
     const seen = new Set<string>()
     return out.filter((h) => (seen.has(h.id) ? false : (seen.add(h.id), true)))
   }
@@ -261,9 +206,9 @@ export function baseKindOf(componentId: string): string {
   return getKind(componentId)?.kind ?? componentId
 }
 
-/** 是否属于某基础 kind（含皮肤 alias；兼容遗留 params.component）。 */
-export function isKind(child: Pick<OverlayChild, 'component' | 'params'>, kind: string): boolean {
-  return baseKindOf(effectiveComponent(child)) === kind
+/** 是否属于某基础 kind（含皮肤 alias；`component` 已是唯一权威字段，无需归一化）。 */
+export function isKind(child: Pick<OverlayChild, 'component'>, kind: string): boolean {
+  return baseKindOf(child.component) === kind
 }
 export function getComponentManifest(componentId: string): ComponentManifest | undefined {
   return defaultKindRegistry.getManifest(componentId)
@@ -290,6 +235,14 @@ export function listPlugins(): Array<{ id: string; version?: string }> {
 }
 export function deriveOutputs(node: GameNode, overlays?: Record<string, import('../schema/node-config-schema').Overlay>): NodeHandle[] {
   return defaultKindRegistry.deriveOutputs(node, overlays)
+}
+/** 组件实例出口 handle（inputs.events 优先，否则组件静态 events）。 */
+export function componentHandles(componentId: string, inputsBag: Record<string, unknown> | undefined): NodeHandle[] {
+  return defaultKindRegistry.handlesOf(componentId, inputsBag)
+}
+/** 组件新建实例默认 inputs 值（由 inputs[].default 组装）。 */
+export function defaultsForComponent(componentId: string): Record<string, unknown> {
+  return defaultKindRegistry.defaultsFor(componentId)
 }
 
 /** 输入永远单一 'in'。 */

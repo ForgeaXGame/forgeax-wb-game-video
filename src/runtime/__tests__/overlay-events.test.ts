@@ -17,11 +17,11 @@ describe('overlay events / reactions', () => {
   const overlay: Overlay = {
     id: 'battleHud',
     children: [
-      { id: 'hp', component: 'battleHpBar', params: { bind: 'ent-player' } },
+      { id: 'hp', component: 'battleHpBar', inputs: { bind: 'ent-player' } },
       {
         id: 'parry',
         component: 'battleParry',
-        params: {
+        inputs: {
           events: [
             { id: 'A', label: '防反' },
             { id: 'B', label: '闪避' },
@@ -32,7 +32,7 @@ describe('overlay events / reactions', () => {
     ],
   }
 
-  it('aggregates events from params.events when single emitter', () => {
+  it('aggregates events from inputs.events when single emitter', () => {
     const refs = aggregateOverlayEvents(overlay, getComponentManifest)
     expect(refs.map((r) => r.eventId)).toEqual(['A', 'B', 'miss'])
     expect(refs[0]?.componentId).toBe('battleParry')
@@ -45,12 +45,12 @@ describe('overlay events / reactions', () => {
         {
           id: 'q1',
           component: 'qte',
-          params: { events: [{ id: 'pass' }, { id: 'fail' }] },
+          inputs: { events: [{ id: 'pass' }, { id: 'fail' }] },
         },
         {
           id: 'q2',
           component: 'qte',
-          params: { events: [{ id: 'pass' }, { id: 'fail' }] },
+          inputs: { events: [{ id: 'pass' }, { id: 'fail' }] },
         },
       ],
     }
@@ -95,7 +95,7 @@ describe('overlay events / reactions', () => {
                 id: 'q',
                 component: 'qte',
                 trigger: { when: 'enter' },
-                params: {},
+                inputs: {},
               },
             ],
           },
@@ -126,11 +126,11 @@ describe('overlay events / reactions', () => {
     const overlays = {
       hudA: {
         id: 'hudA',
-        children: [{ id: 'q', component: 'qte', params: { events: [{ id: 'A' }] } }],
+        children: [{ id: 'q', component: 'qte', inputs: { events: [{ id: 'A' }] } }],
       },
       hudB: {
         id: 'hudB',
-        children: [{ id: 'q', component: 'qte', params: { events: [{ id: 'A' }] } }],
+        children: [{ id: 'q', component: 'qte', inputs: { events: [{ id: 'A' }] } }],
       },
     }
     const refs = aggregateNodeOverlayEvents(mounts, overlays, getComponentManifest)
