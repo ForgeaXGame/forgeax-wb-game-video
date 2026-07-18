@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { registerPlugin, unregisterPlugin } from '../registry/kind-registry'
+import { registerPlugin, unregisterPlugin } from '../registry/component-registry'
 import { validateScenario } from '../validate/validate'
 import type { GameScenario } from '../schema/graph-schema'
 

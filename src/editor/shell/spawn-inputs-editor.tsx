@@ -5,7 +5,7 @@
 import type { CSSProperties, JSX } from 'react'
 import type { Overlay } from '../../runtime/schema/graph-schema'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
-import { getComponentManifest } from '../../runtime/registry/kind-registry'
+import { getComponentManifest } from '../../runtime/registry/component-registry'
 
 type BindMode = 'literal' | 'expr' | 'ref'
 

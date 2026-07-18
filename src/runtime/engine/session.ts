@@ -8,15 +8,15 @@
 import type { GameNode, GameScenario, SubFlowPackDef } from '../schema/graph-schema'
 import type { Layout } from '../schema/node-config-schema'
 import { GraphRuntime } from './engine'
-import { createCoreKindRegistry } from '../registry/core-kinds'
-import type { KindRegistry } from '../registry/kind-registry'
-import { createCoreSkinRegistry, installComponentKinds } from '../skins/components'
+import { createCoreComponentRegistry } from '../registry/core-components'
+import type { ComponentRegistry } from '../registry/component-registry'
+import { createCoreSkinRegistry, installExtraComponents } from '../skins/components'
 import type { SkinRegistry } from '../skins/rendererRegistry'
 import type { RuntimeDirective } from './directives'
 
-/** GraphSession 构造选项：可注入隔离注册表；缺省每局新建核心 Kind/Skin 表。 */
+/** GraphSession 构造选项：可注入隔离注册表；缺省每局新建核心组件/Skin 表。 */
 export interface GraphSessionOptions {
-  kinds?: KindRegistry
+  components?: ComponentRegistry
   skins?: SkinRegistry
   /** 覆盖 scenario.packs；缺省用 scenario.packs。 */
   packs?: readonly SubFlowPackDef[]
@@ -118,11 +118,11 @@ export class GraphSession {
   private pendingEntryReason: string | undefined
 
   constructor(scenario: GameScenario, opts: GraphSessionOptions = {}) {
-    const kinds = opts.kinds ?? createCoreKindRegistry()
-    if (!opts.kinds) installComponentKinds(kinds) // 组件包自带 Kind（与渲染同文件）注入本局表
+    const components = opts.components ?? createCoreComponentRegistry()
+    if (!opts.components) installExtraComponents(components) // 组件包自带契约（与渲染同文件）注入本局表
     this.skins = opts.skins ?? createCoreSkinRegistry()
     const packs = opts.packs ?? scenario.packs ?? []
-    this.runtime = new GraphRuntime(scenario.graph, scenario, kinds, packs)
+    this.runtime = new GraphRuntime(scenario.graph, scenario, components, packs)
     this.nodesById = new Map(scenario.graph.nodes.map((n) => [n.id, n]))
     this.snapshot = this.freshSnapshot()
   }

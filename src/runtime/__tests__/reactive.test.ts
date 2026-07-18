@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
-import { registerKind, unregisterKind } from '../registry/kind-registry'
+import { registerComponent, unregisterComponent } from '../registry/component-registry'
 import { isRenderOverlay } from '../engine/directives'
 import type { RenderOverlayDirective } from '../engine/directives'
 import type { GameGraph, Overlay } from '../schema/graph-schema'
 import { node, scnOf } from './test-fixtures'
 
-const KINDS = ['floatT']
+const COMPONENT_IDS = ['floatT']
 beforeEach(() => {
-  registerKind({ kind: 'floatT', role: 'presentation' })
+  registerComponent('floatT', { role: 'presentation' })
 })
-afterEach(() => KINDS.forEach(unregisterKind))
+afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 const dmgOverlay: Overlay = {
   id: 'hud',

@@ -20,7 +20,7 @@ import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
-import { getKind } from '../../runtime/registry/kind-registry'
+import { getComponent } from '../../runtime/registry/component-registry'
 
 function autoInput(handles: string[]): unknown {
   // handle === event id（无前缀）；auto 演示直接提交首个非默认出口。
@@ -137,7 +137,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     if (!currentNode) return m
     const children = expandNodeOverlays(overlays, currentNode).flatMap((i) => i.children)
     for (const c of children) {
-      const plugin = getKind(c.component)
+      const plugin = getComponent(c.component)
       if (plugin?.surface !== 'hud') continue
       const inputs = c.inputs as { bind?: string; label?: string; accent?: string }
       const bind = inputs.bind ?? c.id

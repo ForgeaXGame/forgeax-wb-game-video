@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
-import { registerKind, unregisterKind } from '../registry/kind-registry'
+import { registerComponent, unregisterComponent } from '../registry/component-registry'
 import { isOpenInteraction, isRenderOverlay } from '../engine/directives'
 import type { GameGraph, GameNode, GameScenario } from '../schema/graph-schema'
 import { node, scnOf, rid } from './test-fixtures'
 
-const KINDS = ['floatT', 'qteT']
-afterEach(() => KINDS.forEach(unregisterKind))
+const COMPONENT_IDS = ['floatT', 'qteT']
+afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 function registerCore() {
-  registerKind({ kind: 'floatT', role: 'presentation' })
-  registerKind({
-    kind: 'qteT',
+  registerComponent('floatT', { role: 'presentation' })
+  registerComponent('qteT', {
     role: 'interaction',
     events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }],
   })

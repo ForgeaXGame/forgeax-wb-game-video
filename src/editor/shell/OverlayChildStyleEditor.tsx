@@ -3,7 +3,7 @@
  */
 import type { CSSProperties, JSX } from 'react'
 import type { GraphTextStyle, OverlayChild } from '../../runtime/schema/graph-schema'
-import { HUD_SKINS, INTERACTION_SKINS } from '../../runtime/skins/components'
+import { HUD_SKINS } from '../../runtime/skins/components'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
 
 const row: CSSProperties = { display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, fontSize: 12 }
@@ -38,48 +38,6 @@ export function OverlayChildStyleEditor({
   const inputs = child.inputs ?? {}
   const kind = child.component
   const title = COMPONENT_LABEL[kind] ?? kind
-
-  if (kind === 'qte') {
-    const skin = typeof inputs.component === 'string' ? inputs.component : ''
-    const opts = INTERACTION_SKINS.filter((s) => s.target === 'qte')
-    return (
-      <div style={{ marginTop: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{child.id} · {title}</div>
-        {field(
-          '交互皮肤',
-          <select value={skin} onChange={(e) => onPatchParams({ component: e.target.value || undefined })} style={{ flex: 1 }}>
-            <option value="">（默认按钮）</option>
-            {opts.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>,
-        )}
-      </div>
-    )
-  }
-
-  if (kind === 'choice') {
-    const skin = typeof inputs.component === 'string' ? inputs.component : ''
-    const opts = INTERACTION_SKINS.filter((s) => s.target === 'choice')
-    return (
-      <div style={{ marginTop: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{child.id} · {title}</div>
-        {field(
-          '选项皮肤',
-          <select value={skin} onChange={(e) => onPatchParams({ component: e.target.value || undefined })} style={{ flex: 1 }}>
-            <option value="">（默认清单）</option>
-            {opts.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>,
-        )}
-      </div>
-    )
-  }
 
   if (HUD_SKINS.some((s) => s.id === kind) || kind === 'battleHpBar') {
     const skin = HUD_SKINS.some((s) => s.id === child.component) ? child.component : ''

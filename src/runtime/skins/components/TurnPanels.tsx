@@ -7,7 +7,7 @@
  * 点击经 `props.emit(key)` → session.emitEvent → 挂载 event 反应（effect/spawn/advance），**不阻塞演出**。
  */
 import type { OverlayProps } from '../rendererRegistry'
-import type { KindPlugin } from '../../registry/kind-registry'
+import type { ComponentDef } from '../../registry/component-registry'
 
 const row: React.CSSProperties = { display: 'flex', gap: 8, width: '100%', height: '100%' }
 const btn: React.CSSProperties = {
@@ -42,16 +42,14 @@ export function PanelB({ emit }: OverlayProps): JSX.Element {
   )
 }
 
-export const panelAKind: KindPlugin = {
-  kind: 'panelA',
+export const panelAComponent: ComponentDef = {
   role: 'presentation',
   label: 'A 面板（单按钮）',
   inputs: [{ key: 'label', label: '按钮文案', valueType: 'string', default: 'A' }],
   events: [{ id: 'A', label: '按钮A' }],
 }
 
-export const panelBKind: KindPlugin = {
-  kind: 'panelB',
+export const panelBComponent: ComponentDef = {
   role: 'presentation',
   label: 'B 面板（三按钮）',
   inputs: [],

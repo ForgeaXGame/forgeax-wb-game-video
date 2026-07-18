@@ -1,20 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { registerKind, getKind, unregisterKind, deriveOutputs, getComponentManifest, type KindPlugin } from '../registry/kind-registry'
+import { registerComponent, getComponent, unregisterComponent, deriveOutputs, getComponentManifest, type ComponentDef } from '../registry/component-registry'
 import type { GameNode, Overlay } from '../schema/graph-schema'
 
-const qtePlugin: KindPlugin = {
-  kind: 'qte',
+const qteDef: ComponentDef = {
   role: 'interaction',
   events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }],
 }
 
-function nodeWithKinds(kinds: string[]): { node: GameNode; overlays: Record<string, Overlay> } {
+function nodeWithComponents(componentIds: string[]): { node: GameNode; overlays: Record<string, Overlay> } {
   const overlays: Record<string, Overlay> = {
     'ov-n1': {
       id: 'ov-n1',
-      children: kinds.map((k, i) => ({
+      children: componentIds.map((c, i) => ({
         id: `e${i}`,
-        component: k,
+        component: c,
         trigger: { when: 'enter' as const },
         inputs: {},
       })),
@@ -31,29 +30,28 @@ function nodeWithKinds(kinds: string[]): { node: GameNode; overlays: Record<stri
   return { node, overlays }
 }
 
-afterEach(() => unregisterKind('qte'))
+afterEach(() => unregisterComponent('qte'))
 
-describe('kind-registry', () => {
+describe('component-registry', () => {
   it('register / get', () => {
-    registerKind(qtePlugin)
-    expect(getKind('qte')?.role).toBe('interaction')
-    expect(getKind('nope')).toBeUndefined()
+    registerComponent('qte', qteDef)
+    expect(getComponent('qte')?.role).toBe('interaction')
+    expect(getComponent('nope')).toBeUndefined()
   })
 
-  it('deriveOutputs = default + interaction kind outputs (dedup)', () => {
-    registerKind(qtePlugin)
-    const { node, overlays } = nodeWithKinds(['qte'])
+  it('deriveOutputs = default + interaction component outputs (dedup)', () => {
+    registerComponent('qte', qteDef)
+    const { node, overlays } = nodeWithComponents(['qte'])
     expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['default', 'pass', 'good', 'fail'])
   })
 
-  it('unregistered kind contributes no handle', () => {
-    const { node, overlays } = nodeWithKinds(['unknownKind'])
+  it('unregistered component contributes no handle', () => {
+    const { node, overlays } = nodeWithComponents(['unknownComponent'])
     expect(deriveOutputs(node, overlays).map((h) => h.id)).toEqual(['default'])
   })
 
   it('manifest.inputs: explicit inputs pass through; events included', () => {
-    registerKind({
-      kind: 'banner',
+    registerComponent('banner', {
       role: 'presentation',
       label: '横幅',
       inputs: [
@@ -65,12 +63,12 @@ describe('kind-registry', () => {
     const m = getComponentManifest('banner')!
     expect(m.inputs?.map((i) => `${i.key}:${i.valueType}`)).toEqual(['heroName:string', 'dmg:number'])
     expect(m.events.map((e) => e.id)).toEqual(['cheer'])
-    unregisterKind('banner')
+    unregisterComponent('banner')
   })
 
   it('interaction 出口 = 声明的 events（皮肤自 emit，引擎无 resolve/outputs）', () => {
-    registerKind({ kind: 'qteResolve', role: 'interaction', events: [{ id: 'pass' }, { id: 'fail' }] })
+    registerComponent('qteResolve', { role: 'interaction', events: [{ id: 'pass' }, { id: 'fail' }] })
     expect(getComponentManifest('qteResolve')!.events.map((e) => e.id)).toEqual(['pass', 'fail'])
-    unregisterKind('qteResolve')
+    unregisterComponent('qteResolve')
   })
 })

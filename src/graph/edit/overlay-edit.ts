@@ -164,6 +164,43 @@ export function addOverlayChild(scenario: GameScenario, nodeId: string, child: O
   return { ...scn, graph: setNodeOverlayNodes(scn.graph, nodeId, mounts) }
 }
 
+/**
+ * 同 `addOverlayChild`，但按显式 `mountId` 定位落盘挂载（不走 `contentMountIndex` 的"内容主挂载"自动解析）。
+ * 供「添加控件」二级栏——从某个方案 tab 拖入的组件必须落进**那个方案自己的挂载** `added[]`，
+ * 不能落进节点本地内容容器，否则「统一逻辑」编辑分支（按挂载归属判定，见 `graphMaterialOps.isSchemeOriginElement`）
+ * 就会误判成默认样式来源。
+ */
+export function addOverlayChildToMount(
+  scenario: GameScenario,
+  nodeId: string,
+  mountId: string,
+  child: OverlayChild,
+): GameScenario {
+  const scn = ensureNodeOverlay(scenario, nodeId)
+  const node = scn.graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return scn
+  const mounts = [...(node.data.overlayNodes ?? [])]
+  const idx = mounts.findIndex((m) => overlayMountId(m) === mountId)
+  if (idx < 0) return scn
+  const mount = mounts[idx]!
+
+  if (mount.overlay.startsWith('node:')) {
+    const overlayId = mount.overlay
+    const ov = scn.ui?.overlays?.[overlayId]
+    if (!ov) return scn
+    return {
+      ...scn,
+      ui: {
+        ...scn.ui,
+        overlays: { ...scn.ui!.overlays, [overlayId]: { ...ov, children: [...ov.children, child] } },
+      },
+    }
+  }
+
+  mounts[idx] = { ...mount, added: [...(mount.added ?? []), child] }
+  return { ...scn, graph: setNodeOverlayNodes(scn.graph, nodeId, mounts) }
+}
+
 export function removeOverlayChild(scenario: GameScenario, nodeId: string, childId: string): GameScenario {
   const scn = ensureNodeOverlay(scenario, nodeId)
   const node = scn.graph.nodes.find((n) => n.id === nodeId)

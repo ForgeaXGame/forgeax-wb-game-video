@@ -2,10 +2,10 @@
  * 视频编辑器预览叠层 —— 按当前场景初始态求值，展示与试玩一致的真实文案/效果摘要。
  *
  * 全部为纯函数：入参 GraphEffect / 选项预览项 / QteCue + 一个求值上下文（由 initState 建）。
- * 表达式失败绝不抛错（编辑器随时半成品），回退「无法求值 / ?」。运行时消费见 core-kinds 各 render。
+ * 表达式失败绝不抛错（编辑器随时半成品），回退「无法求值 / ?」。运行时消费见 core-components 各 render。
  */
 import type { Entity, GraphCondition, GraphEffect, Variable } from '../../runtime/schema/graph-schema'
-import type { FloatTextParams, QteCue } from '../../runtime/registry/core-kinds'
+import type { FloatTextParams, QteCue } from '../../runtime/registry/core-components'
 import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import type { MutableState } from '../../runtime/engine/apply-effects'
 import { evaluateCondition } from '../../runtime/engine/condition'

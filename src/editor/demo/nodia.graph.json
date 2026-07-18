@@ -77,8 +77,8 @@
   },
   "ui": {
     "overlays": {
-      "ov-n_door": {
-        "id": "ov-n_door",
+      "node:n_door": {
+        "id": "node:n_door",
         "children": [
           {
             "id": "kou",
@@ -88,7 +88,6 @@
             "inputs": {
               "qteKind": "parry",
               "windowMs": 200,
-              "component": "inkKou",
               "glyph": "叩",
               "timeoutMs": 200,
               "events": [
@@ -100,14 +99,22 @@
                   "id": "fail",
                   "label": "错过"
                 }
+              ],
+              "cues": [
+                {
+                  "id": "kou-0",
+                  "appearAt": 0,
+                  "targetAt": 100,
+                  "endAt": 200
+                }
               ]
             },
-            "component": "qte"
+            "component": "inkKou"
           }
         ]
       },
-      "ov-n_soul": {
-        "id": "ov-n_soul",
+      "node:n_soul": {
+        "id": "node:n_soul",
         "children": [
           {
             "id": "soul-line",
@@ -123,8 +130,8 @@
           }
         ]
       },
-      "ov-n_river": {
-        "id": "ov-n_river",
+      "node:n_river": {
+        "id": "node:n_river",
         "children": [
           {
             "id": "n_river-c",
@@ -133,7 +140,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -146,12 +152,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-n_land": {
-        "id": "ov-n_land",
+      "node:n_land": {
+        "id": "node:n_land",
         "children": [
           {
             "id": "n_land-c",
@@ -160,7 +166,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -173,12 +178,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-n_tea": {
-        "id": "ov-n_tea",
+      "node:n_tea": {
+        "id": "node:n_tea",
         "children": [
           {
             "id": "n_tea-c",
@@ -187,7 +192,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -200,12 +204,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-n_nodrink": {
-        "id": "ov-n_nodrink",
+      "node:n_nodrink": {
+        "id": "node:n_nodrink",
         "children": [
           {
             "id": "n_nodrink-c",
@@ -214,7 +218,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -227,12 +230,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-n_follow": {
-        "id": "ov-n_follow",
+      "node:n_follow": {
+        "id": "node:n_follow",
         "children": [
           {
             "id": "n_follow-c",
@@ -241,7 +244,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -254,12 +256,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-n_nofollow": {
-        "id": "ov-n_nofollow",
+      "node:n_nofollow": {
+        "id": "node:n_nofollow",
         "children": [
           {
             "id": "n_nofollow-c",
@@ -268,7 +270,6 @@
             },
             "inputs": {
               "timeoutMs": 8000,
-              "component": "inkYingMo",
               "events": [
                 {
                   "id": "ying",
@@ -281,12 +282,12 @@
               ],
               "defaultEvent": "mo"
             },
-            "component": "choice"
+            "component": "inkYingMo"
           }
         ]
       },
-      "ov-enter": {
-        "id": "ov-enter",
+      "node:enter": {
+        "id": "node:enter",
         "children": [
           {
             "id": "enter-fade",
@@ -302,8 +303,8 @@
           }
         ]
       },
-      "ov-wait": {
-        "id": "ov-wait",
+      "node:wait": {
+        "id": "node:wait",
         "children": [
           {
             "id": "skill",
@@ -360,8 +361,8 @@
           }
         ]
       },
-      "ov-pu": {
-        "id": "ov-pu",
+      "node:pu": {
+        "id": "node:pu",
         "children": [
           {
             "id": "pu-fx",
@@ -380,8 +381,8 @@
           }
         ]
       },
-      "ov-pu2": {
-        "id": "ov-pu2",
+      "node:pu2": {
+        "id": "node:pu2",
         "children": [
           {
             "id": "pu2-fx",
@@ -400,8 +401,8 @@
           }
         ]
       },
-      "ov-zhong": {
-        "id": "ov-zhong",
+      "node:zhong": {
+        "id": "node:zhong",
         "children": [
           {
             "id": "zhong-fx",
@@ -420,8 +421,8 @@
           }
         ]
       },
-      "ov-z2": {
-        "id": "ov-z2",
+      "node:z2": {
+        "id": "node:z2",
         "children": [
           {
             "id": "z2-fx",
@@ -440,8 +441,8 @@
           }
         ]
       },
-      "ov-fuzhu": {
-        "id": "ov-fuzhu",
+      "node:fuzhu": {
+        "id": "node:fuzhu",
         "children": [
           {
             "id": "fuzhu-fx",
@@ -459,8 +460,8 @@
           }
         ]
       },
-      "ov-ult": {
-        "id": "ov-ult",
+      "node:ult": {
+        "id": "node:ult",
         "children": [
           {
             "id": "ult-fx",
@@ -479,8 +480,8 @@
           }
         ]
       },
-      "ov-tele": {
-        "id": "ov-tele",
+      "node:tele": {
+        "id": "node:tele",
         "children": [
           {
             "id": "parry",
@@ -489,7 +490,6 @@
             },
             "inputs": {
               "qteKind": "parry",
-              "component": "battleParry",
               "durationMs": 2600,
               "events": [
                 {
@@ -505,14 +505,22 @@
                   "label": "受击"
                 }
               ],
-              "defaultEvent": "fail"
+              "defaultEvent": "fail",
+              "cues": [
+                {
+                  "id": "parry-0",
+                  "appearAt": 0,
+                  "targetAt": 1300,
+                  "endAt": 2600
+                }
+              ]
             },
-            "component": "qte"
+            "component": "battleParry"
           }
         ]
       },
-      "ov-block": {
-        "id": "ov-block",
+      "node:block": {
+        "id": "node:block",
         "children": [
           {
             "id": "block-fx",
@@ -531,8 +539,8 @@
           }
         ]
       },
-      "ov-dodgeP": {
-        "id": "ov-dodgeP",
+      "node:dodgeP": {
+        "id": "node:dodgeP",
         "children": [
           {
             "id": "dodgeP-fx",
@@ -551,8 +559,8 @@
           }
         ]
       },
-      "ov-hurt": {
-        "id": "ov-hurt",
+      "node:hurt": {
+        "id": "node:hurt",
         "children": [
           {
             "id": "hurt-fx",
@@ -681,8 +689,8 @@
           }
         ]
       },
-      "ov-breathe": {
-        "id": "ov-breathe",
+      "node:breathe": {
+        "id": "node:breathe",
         "title": "调息（方案B：非阻塞改气力）",
         "children": [
           {
@@ -747,7 +755,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_door",
+              "overlay": "node:n_door",
               "reactions": [
                 {
                   "when": {
@@ -796,7 +804,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_soul"
+              "overlay": "node:n_soul"
             }
           ]
         }
@@ -819,7 +827,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_river",
+              "overlay": "node:n_river",
               "reactions": [
                 {
                   "when": {
@@ -887,7 +895,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_land",
+              "overlay": "node:n_land",
               "reactions": [
                 {
                   "when": {
@@ -974,7 +982,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_tea",
+              "overlay": "node:n_tea",
               "reactions": [
                 {
                   "when": {
@@ -1070,7 +1078,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_nodrink",
+              "overlay": "node:n_nodrink",
               "reactions": [
                 {
                   "when": {
@@ -1119,7 +1127,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_follow",
+              "overlay": "node:n_follow",
               "reactions": [
                 {
                   "when": {
@@ -1206,7 +1214,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "ov-n_nofollow",
+              "overlay": "node:n_nofollow",
               "reactions": [
                 {
                   "when": {
@@ -1345,7 +1353,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-enter"
+              "overlay": "node:enter"
             }
           ],
           "reactions": [
@@ -1638,7 +1646,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-wait",
+              "overlay": "node:wait",
               "reactions": [
                 {
                   "when": {
@@ -1719,7 +1727,7 @@
               ]
             },
             {
-              "overlay": "ov-breathe",
+              "overlay": "node:breathe",
               "reactions": [
                 {
                   "when": {
@@ -1767,7 +1775,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-pu"
+              "overlay": "node:pu"
             }
           ],
           "reactions": [
@@ -1818,7 +1826,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-pu2"
+              "overlay": "node:pu2"
             }
           ],
           "reactions": [
@@ -1869,7 +1877,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-zhong"
+              "overlay": "node:zhong"
             }
           ],
           "reactions": [
@@ -1920,7 +1928,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-z2"
+              "overlay": "node:z2"
             }
           ],
           "reactions": [
@@ -1971,7 +1979,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-fuzhu"
+              "overlay": "node:fuzhu"
             }
           ],
           "reactions": [
@@ -2027,7 +2035,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-ult"
+              "overlay": "node:ult"
             }
           ],
           "reactions": [
@@ -2078,7 +2086,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-tele",
+              "overlay": "node:tele",
               "reactions": [
                 {
                   "when": {
@@ -2166,7 +2174,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-block"
+              "overlay": "node:block"
             }
           ],
           "reactions": [
@@ -2217,7 +2225,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-dodgeP"
+              "overlay": "node:dodgeP"
             }
           ],
           "reactions": [
@@ -2268,7 +2276,7 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ov-hurt"
+              "overlay": "node:hurt"
             }
           ],
           "reactions": [

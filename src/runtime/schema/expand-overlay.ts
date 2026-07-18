@@ -61,7 +61,6 @@ function toInstanceChild(
   const catalogId = def.id
   const runtimeId = overlayInstanceChildId(meta.mountId, catalogId)
   const inputs = { ...(def.inputs ?? {}) }
-  if (inputs.component == null) inputs.component = def.component
   return {
     id: runtimeId,
     component: def.component,

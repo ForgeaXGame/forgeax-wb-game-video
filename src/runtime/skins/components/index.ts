@@ -3,21 +3,21 @@
  *
  * 交互皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
  * HUD 皮肤：battleHpBar
- * 配置里（元素 inputs.component / overlay HUD child `component`）填这些 id，试玩即按对应旧样式渲染；
+ * 各自是独立注册的顶层组件 id——`OverlayChild.component` 填这些 id 即按对应样式渲染；
  * 未指定 → 回退通用按钮 / 内置血条。加新皮肤只需在此注册一行。
  */
 import { registerHudRenderer, registerInteractionSkin, registerOverlayRenderer, SkinRegistry } from '../rendererRegistry'
-import { registerKind, type KindPlugin, type KindRegistry } from '../../registry/kind-registry'
+import { registerComponent, type ComponentDef, type ComponentRegistry } from '../../registry/component-registry'
 import { BattleParryLayer, battleParryDefaults, battleParryPreset } from './BattleParryLayer'
 import { InkKouLayer, inkKouDefaults, inkKouPreset } from './InkKouLayer'
 import { InkYingMoLayer, inkYingMoDefaults, inkYingMoPreset } from './InkYingMoLayer'
 import { BattleSkillLayer, battleSkillBarDefaults, battleSkillBarPreset } from './BattleSkillLayer'
-import { BattleHpBar, battleHpBarKind, battleHpBarPreset } from './BattleHpBar'
-import { BossHitCheer, bossHitCheerKind } from './BossHitCheer'
-import { PanelA, PanelB, panelAKind, panelBKind } from './TurnPanels'
+import { BattleHpBar, battleHpBarComponent, battleHpBarPreset } from './BattleHpBar'
+import { BossHitCheer, bossHitCheerComponent } from './BossHitCheer'
+import { PanelA, PanelB, panelAComponent, panelBComponent } from './TurnPanels'
 
 export {
-  battleHpBarKind,
+  battleHpBarComponent,
   battleHpBarPreset,
   battleParryDefaults,
   battleParryPreset,
@@ -30,19 +30,19 @@ export {
 }
 
 /**
- * 组件包自带的 Kind 契约（与渲染实现同文件导出）。
- * 通过 `installComponentKinds` 注入每局 KindRegistry；`registerCoreSkins` 注入默认表（编辑器/校验）。
+ * 组件包自带的注册契约（与渲染实现同文件导出）。
+ * 通过 `installExtraComponents` 注入每局 ComponentRegistry；`registerCoreSkins` 注入默认表（编辑器/校验）。
  */
-export const COMPONENT_KINDS: KindPlugin[] = [
-  battleHpBarKind as unknown as KindPlugin,
-  bossHitCheerKind as unknown as KindPlugin,
-  panelAKind,
-  panelBKind,
+export const EXTRA_COMPONENTS: Array<[string, ComponentDef]> = [
+  ['battleHpBar', battleHpBarComponent as unknown as ComponentDef],
+  ['bossHitCheer', bossHitCheerComponent as unknown as ComponentDef],
+  ['panelA', panelAComponent],
+  ['panelB', panelBComponent],
 ]
 
-/** 把组件包的 Kind 注入某个隔离 KindRegistry（多局 Session 用）。 */
-export function installComponentKinds(reg: KindRegistry): void {
-  for (const k of COMPONENT_KINDS) reg.registerKind(k)
+/** 把组件包注入某个隔离 ComponentRegistry（多局 Session 用）。 */
+export function installExtraComponents(reg: ComponentRegistry): void {
+  for (const [id, c] of EXTRA_COMPONENTS) reg.registerComponent(id, c)
 }
 
 /**
@@ -53,20 +53,27 @@ export function installComponentKinds(reg: KindRegistry): void {
 export type SkinPositioning = 'point' | 'fixed'
 
 /**
- * 可选交互皮肤（供编辑器下拉）。`target` 区分它天然是 QTE 皮肤还是选项皮肤；
- * `defaultAnchor` 仅 point 皮肤有意义（新建时的初始归一化位置）。
+ * 可选交互皮肤（供编辑器下拉/定位查询用，也是「这个组件是否有完整专属皮肤」的唯一登记点）。
+ * `defaultAnchor` 仅 point 皮肤有意义（新建时的初始归一化位置）。`defaultEvents` = 该皮肤自己
+ * tsx 里的固定出口目录——编辑器据此判定「这个组件的出口不让自由增删/改文案，永远用这份 defaults
+ * 覆盖」（`graphMaterialOps.ts` 的 `applyStyleLockedEventParams`/`componentEventsLocked`），
+ * 同时它也是「时间轴可渲染真实交互皮肤做预览」的白名单来源——两者共用同一份登记，不是两份手工
+ * 维护的名单。新皮肤只需在这个数组里加一行（+ 下面 `installCoreSkins`/`registerCoreSkins` 注册渲染
+ * 器），不必再去别的文件同步维护第二份组件 id 名单。
+ * 各皮肤是独立注册的顶层组件 id，这里不再标它们该归到哪个编辑器下拉分组——那层分组现由
+ * `listSchemeMountTabs`（`graphMaterialOps.ts`）接管。
  */
 export const INTERACTION_SKINS: Array<{
   id: string
   label: string
-  target: 'choice' | 'qte'
   positioning: SkinPositioning
   defaultAnchor?: { x: number; y: number }
+  defaultEvents: Array<{ id: string; label?: string; condition?: unknown }>
 }> = [
-  { id: 'battleParry', label: '防反 QTE（A/B 收圈）', target: 'qte', positioning: 'fixed' },
-  { id: 'inkKou', label: '叩击 QTE（单点）', target: 'qte', positioning: 'point', defaultAnchor: { x: 0.58, y: 0.39 } },
-  { id: 'inkYingMo', label: '應/默 抉择', target: 'choice', positioning: 'point', defaultAnchor: { x: 0.72, y: 0.78 } },
-  { id: 'battleSkillBar', label: '战斗技能条', target: 'choice', positioning: 'point', defaultAnchor: { x: 0.5, y: 0.88 } },
+  { id: 'battleParry', label: '防反 QTE（A/B 收圈）', positioning: 'fixed', defaultEvents: battleParryDefaults.events },
+  { id: 'inkKou', label: '叩击 QTE（单点）', positioning: 'point', defaultAnchor: { x: 0.58, y: 0.39 }, defaultEvents: inkKouDefaults.events },
+  { id: 'inkYingMo', label: '應/默 抉择', positioning: 'point', defaultAnchor: { x: 0.72, y: 0.78 }, defaultEvents: inkYingMoDefaults.events },
+  { id: 'battleSkillBar', label: '战斗技能条', positioning: 'point', defaultAnchor: { x: 0.5, y: 0.88 }, defaultEvents: battleSkillBarDefaults.events },
 ]
 
 /** 皮肤定位类型查询；未知/未选皮肤（默认按钮条）按 'fixed'（底部居中）处理。 */
@@ -94,11 +101,11 @@ function installCoreSkins(reg: SkinRegistry): void {
 }
 
 let _registered = false
-/** 注册到默认表（编辑器幂等）：渲染器 + 组件包自带 Kind。 */
+/** 注册到默认表（编辑器幂等）：渲染器 + 组件包自带契约。 */
 export function registerCoreSkins(): void {
   if (_registered) return
   _registered = true
-  for (const k of COMPONENT_KINDS) registerKind(k)
+  for (const [id, c] of EXTRA_COMPONENTS) registerComponent(id, c)
   registerInteractionSkin('battleParry', BattleParryLayer)
   registerInteractionSkin('inkKou', InkKouLayer)
   registerInteractionSkin('inkYingMo', InkYingMoLayer)

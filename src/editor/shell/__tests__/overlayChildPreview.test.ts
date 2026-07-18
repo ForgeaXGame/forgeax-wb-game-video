@@ -1,11 +1,11 @@
 /**
  * 回归：时间轴预览必须能画挂载方案里的未分类组件（含 HUD 血条）。
- * 分流走渲染表，不依赖 KindPlugin.surface 是否已挂上。
+ * 分流走渲染表，不依赖 ComponentDef.surface 是否已挂上。
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { registerCoreKinds } from '../../../runtime/registry/core-kinds'
+import { registerCoreComponents } from '../../../runtime/registry/core-components'
 import { createCoreSkinRegistry, registerCoreSkins } from '../../../runtime/skins/components'
 import { battleHpBarPreset } from '../../../runtime/skins/components/BattleHpBar'
 import { inkKouPreset } from '../../../runtime/skins/components/InkKouLayer'
@@ -14,7 +14,7 @@ import { renderOverlayChildPreview } from '../overlayChildPreview'
 import type { SkinCtx } from '../../../runtime/skins/rendererRegistry'
 
 beforeAll(() => {
-  registerCoreKinds()
+  registerCoreComponents()
   registerCoreSkins()
 })
 

@@ -52,7 +52,7 @@ export interface ComponentInput {
  * 只描述「会发什么」：`id` / `label`。
  * 运行时 submit / resolve → 归一成这些 id；边用 `sourceHandle === event.id` 承接。
  *
- * 门控、坐标等**组件私有**参数不要挂这里——见各 kind 的 inputs 项类型
+ * 门控、坐标等**组件私有**参数不要挂这里——见各组件自己的 inputs 项类型
  *（如 skill/choice 的 `ChoiceOption.condition`、hotspot 的 `HotspotSpot.x/y`）。
  * 将来事件若需自带入参，再在此加 `inputs?: ComponentInput[]`。
  */

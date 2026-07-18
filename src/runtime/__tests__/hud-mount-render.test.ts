@@ -8,13 +8,13 @@ import { describe, expect, it, beforeAll } from 'vitest'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { GraphSession } from '../engine/session'
-import { registerCoreKinds } from '../registry/core-kinds'
+import { registerCoreComponents } from '../registry/core-components'
 import { createCoreSkinRegistry } from '../skins/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
 import { ensureBuiltinSchemes, SCHEME_STATIC_ID } from '../../editor/demo/builtin-schemes'
 
 beforeAll(() => {
-  registerCoreKinds()
+  registerCoreComponents()
 })
 
 describe('挂载静态方案 · HUD 进试玩', () => {

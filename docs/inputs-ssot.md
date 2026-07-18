@@ -26,7 +26,7 @@ interface ComponentInput {
   required?: boolean
   default?: unknown          // 放宽到任意（含结构化默认，如选项数组/拍点数组）
   options?: { value: string; label: string }[]   // 有 options ⇒ 编辑器出 select
-  component?: 'textStyle' | 'effects' | 'events' | 'qteCues' | 'entity'  // 复合控件提示（可选；标量不填）
+  component?: 'textStyle' | 'effects' | 'events' | 'hotspotEvents' | 'qteCues' | 'entity' | 'attr' | 'color'  // 复合控件提示（可选；标量不填）
 }
 
 interface ComponentEvent {          // 组件会吐哪些事件（= 出口 handle 来源）
@@ -107,3 +107,32 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 ## 5. 取舍备注
 
 - 判定权归**客户端**（组件内判定）：headless 引擎不再权威复算；自动演示/测试改成「直接 emit 事件」驱动（更简单）。对 chat 驱动的网页 demo 可接受；若将来要服务端权威/防作弊，再引入可选的引擎侧复算。
+
+## 6. Kind 概念退役 + component 单层化（2026-07-19，已完成）
+
+上面 §4b 的"实施状态"记录里仍称呼当时的类型/文件为 `KindPlugin`/`KindRegistry`/`KindFormFields`——
+这是历史记录，如实反映当时的命名。本次改动把这套残留命名与「顶层 component + `inputs.component`
+皮肤覆盖」双层结构一次性收尾：
+
+- **机械改名**（36 文件，不改行为）：`kind-registry.ts`→`component-registry.ts`
+  （`KindPlugin`→`ComponentDef`、`KindRegistry`→`ComponentRegistry`、`registerKind`→`registerComponent`、
+  `getKind`/`getComponent` 合并为 `getComponent`……）；`core-kinds.ts`→`core-components.ts`
+  （`qteKind`/`inkKouKind`… 去 `Kind` 后缀→`qteComponent`/`inkKouComponent`…）；
+  `kind-form-fields.tsx`→`component-form-fields.tsx`（`KindFormFields`→`ComponentFormFields`）；
+  14 个测试文件同步。全仓已不再有 `Kind` 字样指代这套注册表概念。
+- **拍平双层 `component`**：`inkKou`/`battleParry`/`inkYingMo`/`battleSkillBar` 从"顶层 `qte`/`choice` +
+  `inputs.component` 皮肤覆盖"提升为**独立顶层 `component` id**——manifest 补 `family: 'qte' | 'choice'`
+  元数据，`graphMaterialOps.ts` 的分类/识别逐一改查 `componentFamily()`（`isQteComponent`/`isChoiceComponent`），
+  不再维护 `QTE_COMPONENT_IDS`/`CHOICE_COMPONENT_IDS` 硬编码集合。`effectiveComponent()`/`paramComponent`
+  这类"内层优先"读取逻辑与 `OverlayChildStyleEditor` 的皮肤切换下拉一并删除：**创建时一次性选定是哪个
+  组件，创建后没有"换皮肤/换类型"的编辑入口**。引擎侧 `inputs.component` 镜像回填（`expand-overlay.ts`
+  `toInstanceChild` / `engine.ts` `runElement`/`doSpawn`）与 `rendererRegistry.tsx` 对应的双层回退读取
+  同步清除——`OverlayChild.component` 现在是唯一真源，`inputs` 里不会再出现 `component` 键。
+- **数据迁移 + 顺带修复时间轴 bug**：`nodia.graph.json` 21 个节点专属挂载 `ov-<nodeId>` 改名
+  `node:<nodeId>`（`materialKindForChild` 靠 `mount.overlay.startsWith('node:')` 判断"是否方案来源"，
+  旧命名一直被误判成方案来源，時間軸拖拽只写 `window`/`trigger`，`InkKouLayer` 却只读 `inputs.cues`，
+  两者从未对上）；8 处双层 `component` 实例（1 个 inkKou + 6 个 inkYingMo + 1 个 battleParry）拍平为
+  单层，并补上缺失的 `inputs.cues`（`InkKouLayer`/`BattleParryLayer` 都以 `cues[]` 驱动时间轴/预览，
+  没有 cues 时它们要么退化成与时间轴脱节的固定单帧、要么在时间轴上完全不可见）。
+  `materialKindForChild` 同步改用 `isQteComponent`/`isChoiceComponent`（而非字面 `=== 'qte'`），因为
+  「新建默认样式」现在直接落盘 `inkKou`/`battleParry` 等顶层皮肤 id，字面判断会漏判。

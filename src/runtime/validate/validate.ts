@@ -2,13 +2,13 @@
  * 图 validator —— AI 时代刚需：graph 是 SSOT 且会被 AI 生成/编辑，落盘/加载/AI 写入时都要能
  * 静态发现结构性错误，给出可读诊断（而不是运行时炸）。
  *
- * 覆盖：悬空边、sourceHandle 与派生 outputs 不匹配、未注册 kind、kind 参数非法、不可达节点；
+ * 覆盖：悬空边、sourceHandle 与派生 outputs 不匹配、未注册 component、component 参数非法、不可达节点；
  * 传 `opts`（实体/变量/道具 id）后还查**引用**：condition/effect/expr 里引用的 entity/var/item/nodeId
  * 是否存在、reactions 中 advance 是否指向真实边；并对**纯瞬时环**（全为无演出/无交互节点 + 无条件边）给告警。
  */
 import type { GameGraph, GameScenario, Overlay, Reaction } from '../schema/graph-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
-import { deriveOutputs, getKind, hasPlugin } from '../registry/kind-registry'
+import { deriveOutputs, getComponent, hasPlugin } from '../registry/component-registry'
 
 export interface Issue {
   level: 'error' | 'warn'
@@ -24,11 +24,11 @@ export interface ValidateOpts {
   items?: Iterable<string>
   /** 局级 reactions（scenario.reactions）——一并校验 when 引用与 advance 边目标。 */
   reactions?: Reaction[]
-  /** scenario.ui.overlays —— 展开 OverlayNode 做 kind / handle 校验。 */
+  /** scenario.ui.overlays —— 展开 OverlayNode 做 component / handle 校验。 */
   overlays?: Record<string, Overlay>
 }
 
-/** 保留字 handle（default = 默认推进）由 edge 声明、非某 kind 产出，始终合法。 */
+/** 保留字 handle（default = 默认推进）由 edge 声明、非某 component 产出，始终合法。 */
 function isRoutingHandle(h: string): boolean {
   return h === 'default'
 }
@@ -55,7 +55,7 @@ function checkExpr(expr: string, ctx: RefCtx, at: string, issues: Issue[]): void
   }
 }
 
-/** 深度遍历任意值，凡遇 {expr} / GraphEffect / GraphClause 形状即校验其 id 引用（对任意 kind inputs 通用）。 */
+/** 深度遍历任意值，凡遇 {expr} / GraphEffect / GraphClause 形状即校验其 id 引用（对任意 component inputs 通用）。 */
 function walkRefs(value: unknown, ctx: RefCtx, at: string, issues: Issue[]): void {
   if (value == null || typeof value !== 'object') return
   if (Array.isArray(value)) {
@@ -103,7 +103,7 @@ function checkInstantCycle(graph: GameGraph, overlays: Record<string, Overlay> |
       .filter((n) => {
         const children = expandNodeOverlays(overlays, n).flatMap((i) => i.children)
         const hasMedia = !!n.data.media?.ref
-        const hasInteraction = children.some((el) => getKind(el.component)?.role === 'interaction')
+        const hasInteraction = children.some((el) => getComponent(el.component)?.role === 'interaction')
         return !hasMedia && !n.data.durationMs && !hasInteraction
       })
       .map((n) => n.id),
@@ -167,7 +167,7 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
   for (const n of graph.nodes) {
     const children = expandNodeOverlays(overlays, n).flatMap((i) => i.children)
     for (const el of children) {
-      const plugin = getKind(el.component)
+      const plugin = getComponent(el.component)
       if (!plugin) {
         issues.push({
           level: 'error',

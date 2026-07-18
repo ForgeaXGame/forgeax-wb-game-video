@@ -10,7 +10,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
-import type { ChoiceParams } from '../../registry/core-kinds'
+import type { ChoiceParams } from '../../registry/core-components'
 import type { OverlayChild } from '../../schema/graph-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle } from './skinRuntime'
 

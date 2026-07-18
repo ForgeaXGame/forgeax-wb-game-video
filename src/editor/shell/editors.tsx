@@ -101,6 +101,7 @@ export function PositionEditor({
   onChange,
   variant = 'percent',
   resettable,
+  disabled,
 }: {
   x: number | undefined
   y: number | undefined
@@ -111,21 +112,30 @@ export function PositionEditor({
   variant?: 'percent' | 'slider'
   /** 显示「归位到默认位置」按钮，清空 x/y 回落到样式默认值。 */
   resettable?: boolean
+  /**
+   * 该组件不支持自由定位（`isPositionable()` 为 false，如 HUD 血条按角色/规则锚定固定屏幕位置）时置灰：
+   * 控件仍展示（不隐藏，方便看清当前坐标从哪来），但禁止输入。
+   */
+  disabled?: boolean
 }): JSX.Element {
   const vx = typeof x === 'number' ? x : defaultX
   const vy = typeof y === 'number' ? y : defaultY
+  const hint = disabled ? (
+    <div className="gc-inspector-hint" title="该组件按角色/规则锚定固定屏幕位置，渲染不读取 x/y">不支持自由定位</div>
+  ) : null
   if (variant === 'slider') {
     return (
       <>
         <div className="gc-field-row">
           <label><span>X {vx.toFixed(2)}</span>
-            <input type="range" min={0} max={1} step={0.01} value={vx} onChange={(e) => onChange({ x: Number(e.target.value) })} />
+            <input type="range" min={0} max={1} step={0.01} value={vx} disabled={disabled} onChange={(e) => onChange({ x: Number(e.target.value) })} />
           </label>
           <label><span>Y {vy.toFixed(2)}</span>
-            <input type="range" min={0} max={1} step={0.01} value={vy} onChange={(e) => onChange({ y: Number(e.target.value) })} />
+            <input type="range" min={0} max={1} step={0.01} value={vy} disabled={disabled} onChange={(e) => onChange({ y: Number(e.target.value) })} />
           </label>
         </div>
-        {resettable ? (
+        {hint}
+        {resettable && !disabled ? (
           <button type="button" className="gc-tsp-toggle" onClick={() => onChange({ x: undefined, y: undefined })}>归位到默认位置</button>
         ) : null}
       </>
@@ -134,12 +144,13 @@ export function PositionEditor({
   return (
     <div className="gc-inspector-grid2">
       <label><span>X%</span>
-        <input type="number" value={Math.round(vx * 100)} onChange={(e) => onChange({ x: Number(e.target.value) / 100 })} />
+        <input type="number" value={Math.round(vx * 100)} disabled={disabled} onChange={(e) => onChange({ x: Number(e.target.value) / 100 })} />
       </label>
       <label><span>Y%</span>
-        <input type="number" value={Math.round(vy * 100)} onChange={(e) => onChange({ y: Number(e.target.value) / 100 })} />
+        <input type="number" value={Math.round(vy * 100)} disabled={disabled} onChange={(e) => onChange({ y: Number(e.target.value) / 100 })} />
       </label>
-      {resettable ? (
+      {hint}
+      {resettable && !disabled ? (
         <button type="button" className="gc-tsp-toggle" onClick={() => onChange({ x: undefined, y: undefined })}>归位到默认位置</button>
       ) : null}
     </div>
@@ -183,7 +194,8 @@ export function EntitySelect({
   )
 }
 
-function AttrSelect({
+/** 属性下拉：依 `entityId` 实时扫该实体的 attrs（复用同一份 metaCatalog，与 EntitySelect 同源联动）。 */
+export function AttrSelect({
   entityId,
   value,
   entities,

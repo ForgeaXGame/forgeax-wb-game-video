@@ -1,6 +1,6 @@
 /**
- * fx-kinds —— 滤镜 / 特效两个 presentation kind（独立于 core-kinds，避免与运行时负责人
- * 的 core-kinds 改动冲突）。
+ * fx-components —— 滤镜 / 特效两个 presentation 组件（独立于 core-components，避免与运行时负责人
+ * 的 core-components 改动冲突）。
  *
  * 两者都是「一段时间 + 叠层顺序 + 一组参数」，复用 OverlayChild 的 window/layout(zIndex)/inputs，
  * **不新增任何 schema 字段**。预设与视觉解析在 `../fx/video-fx`（SSOT）：
@@ -10,8 +10,8 @@
  * 无 render()：与 dialogue/transition 一致，走引擎泛型 renderOverlay，Player 侧由运行时
  * 负责人接对应渲染（P2）；编辑器预览已用 video-fx 直接画出。
  */
-import type { KindPlugin } from './kind-registry'
-import { registerKind } from './kind-registry'
+import type { ComponentDef } from './component-registry'
+import { registerComponent } from './component-registry'
 import { FILTER_OPTIONS, FX_OPTIONS } from '../fx/video-fx'
 
 export interface FilterParams {
@@ -20,8 +20,7 @@ export interface FilterParams {
   /** 强度 0~1。 */
   intensity?: number
 }
-export const filterKind: KindPlugin<FilterParams> = {
-  kind: 'filter',
+export const filterComponent: ComponentDef<FilterParams> = {
   role: 'presentation',
   label: '滤镜',
   inputs: [
@@ -38,8 +37,7 @@ export interface FxParams {
   /** 颜色（flash/tint 用）。 */
   color?: string
 }
-export const fxKind: KindPlugin<FxParams> = {
-  kind: 'fx',
+export const fxComponent: ComponentDef<FxParams> = {
   role: 'presentation',
   label: '特效',
   inputs: [
@@ -49,9 +47,12 @@ export const fxKind: KindPlugin<FxParams> = {
   ],
 }
 
-export const FX_KINDS: KindPlugin[] = [filterKind as unknown as KindPlugin, fxKind as unknown as KindPlugin]
+export const FX_COMPONENTS: Array<[string, ComponentDef]> = [
+  ['filter', filterComponent as unknown as ComponentDef],
+  ['fx', fxComponent as unknown as ComponentDef],
+]
 
-/** 注册滤镜/特效 kind（幂等）。registry 为全局单例：编辑器侧调用后，校验与运行时 getKind 均可见。 */
-export function registerFxKinds(): void {
-  for (const k of FX_KINDS) registerKind(k)
+/** 注册滤镜/特效组件（幂等）。registry 为全局单例：编辑器侧调用后，校验与运行时 getComponent 均可见。 */
+export function registerFxComponents(): void {
+  for (const [id, c] of FX_COMPONENTS) registerComponent(id, c)
 }

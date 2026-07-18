@@ -11,7 +11,7 @@ import type { FXEdge, FXGraph, FXNode, Handle } from '../../runtime/schema/react
 import type { GameGraph, GameNode } from '../../runtime/schema/graph-schema'
 import type { Overlay } from '../../runtime/schema/node-config-schema'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
-import { deriveInputs, deriveOutputs } from '../../runtime/registry/kind-registry'
+import { deriveInputs, deriveOutputs } from '../../runtime/registry/component-registry'
 import { flowHandleDisplay, mergeFlowHandles } from '../flow-handle-labels'
 
 function nodeOutputHandles(

@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { validateGraph } from '../validate/validate'
 import type { GameGraph, GameNode, Overlay } from '../schema/graph-schema'
 
-function perf(id: string, kinds: string[] = []): { node: GameNode; overlays: Record<string, Overlay> } {
+function perf(id: string, componentIds: string[] = []): { node: GameNode; overlays: Record<string, Overlay> } {
   const oid = `ov-${id}`
   const overlays: Record<string, Overlay> = {
     [oid]: {
       id: oid,
-      children: kinds.map((k, i) => ({
+      children: componentIds.map((c, i) => ({
         id: `${id}-e${i}`,
-        component: k,
+        component: c,
         trigger: { when: 'enter' as const },
         inputs: {},
       })),
@@ -21,7 +21,7 @@ function perf(id: string, kinds: string[] = []): { node: GameNode; overlays: Rec
     position: { x: 0, y: 0 },
     inputs: [],
     outputs: [],
-    data: { name: id, ...(kinds.length ? { overlayNodes: [{ overlay: oid }] } : {}) },
+    data: { name: id, ...(componentIds.length ? { overlayNodes: [{ overlay: oid }] } : {}) },
   }
   return { node, overlays }
 }

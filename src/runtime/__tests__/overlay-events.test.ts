@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { registerCoreKinds } from '../registry/core-kinds'
-import { getComponentManifest } from '../registry/kind-registry'
+import { registerCoreComponents } from '../registry/core-components'
+import { getComponentManifest } from '../registry/component-registry'
 import type { Overlay, Reaction } from '../schema/node-config-schema'
 import {
   aggregateOverlayEvents,
@@ -11,7 +11,7 @@ import { GraphRuntime } from '../engine/engine'
 import { scnOf, node, rid } from './test-fixtures'
 import type { GameGraph } from '../schema/graph-schema'
 
-registerCoreKinds()
+registerCoreComponents()
 
 describe('overlay events / reactions', () => {
   const overlay: Overlay = {

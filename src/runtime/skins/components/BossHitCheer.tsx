@@ -7,7 +7,7 @@
  */
 import { useState } from 'react'
 import type { OverlayProps } from '../rendererRegistry'
-import type { KindPlugin } from '../../registry/kind-registry'
+import type { ComponentDef } from '../../registry/component-registry'
 
 /** 组件入参（In）；dmg/remain 由 spawn 时 expr 求值传入，heroName 由节点配置传入。 */
 export interface BossHitCheerParams {
@@ -20,11 +20,10 @@ export interface BossHitCheerParams {
 }
 
 /**
- * 组件的 Kind 契约（引擎/编辑器识别用）——**与渲染实现同文件**，组件即"包"。
- * 由 `skins/components/index.ts` 统一注册进 Kind 表 + 渲染表。
+ * 组件的注册契约（引擎/编辑器识别用）——**与渲染实现同文件**，组件即"包"。
+ * 由 `skins/components/index.ts` 统一注册进组件表 + 渲染表。
  */
-export const bossHitCheerKind: KindPlugin<BossHitCheerParams> = {
-  kind: 'bossHitCheer',
+export const bossHitCheerComponent: ComponentDef<BossHitCheerParams> = {
   role: 'presentation',
   label: '受击加油横幅',
   // 输入契约（In · SSOT）：编辑器据此渲染配置控件；dmg/remain 通常由 spawn 时 expr 注入。

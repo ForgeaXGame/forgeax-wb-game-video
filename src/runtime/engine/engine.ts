@@ -32,7 +32,7 @@ import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../sche
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
 import { initState } from './engine-init'
-import { defaultKindRegistry, type KindRegistry, type RuntimeCtx } from '../registry/kind-registry'
+import { defaultComponentRegistry, type ComponentRegistry, type RuntimeCtx } from '../registry/component-registry'
 import type { RuntimeDirective, RenderOverlayDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
 import { evalExpr, type EvalCtx } from './expr'
@@ -104,24 +104,24 @@ export class GraphRuntime {
   private pendingSpawns: Array<{ elementId: string; nodeId: string; removeAtMs: number }> = []
   private spawnSeq = 0
 
-  /** 本局 Kind / Plugin 表（多局隔离；缺省用模块默认表以兼容旧单测）。 */
-  readonly kinds: KindRegistry
+  /** 本局组件 / Plugin 表（多局隔离；缺省用模块默认表以兼容旧单测）。 */
+  readonly components: ComponentRegistry
 
   constructor(
     graph: GameGraph,
     private readonly scenario: GameScenario,
-    kinds: KindRegistry = defaultKindRegistry,
+    components: ComponentRegistry = defaultComponentRegistry,
     packs: readonly SubFlowPackDef[] = [],
   ) {
     this.rootGraph = graph
     this.activeGraph = graph
-    this.kinds = kinds
+    this.components = components
     for (const p of packs) {
       this.packsByKey.set(packLookupKey(p.id, p.version), p)
       if (!this.packsByKey.has(p.id)) this.packsByKey.set(p.id, p) // 无版本时也可按 id 命中
     }
     for (const req of scenario.requiredPlugins ?? []) {
-      if (!this.kinds.hasPlugin(req.id, req.version)) {
+      if (!this.components.hasPlugin(req.id, req.version)) {
         const ver = req.version ? `@${req.version}` : ''
         throw new Error(`required plugin '${req.id}${ver}' is not registered`)
       }
@@ -166,7 +166,7 @@ export class GraphRuntime {
   }
 
   private getComponent(componentId: string) {
-    return this.kinds.getComponent(componentId)
+    return this.components.getComponent(componentId)
   }
 
   /**
@@ -582,7 +582,7 @@ export class GraphRuntime {
       }
     }
     const ctx = { ...this.ctx(), elementId: el.id }
-    const inputs = el.inputs.component == null ? { ...el.inputs, component: el.component } : el.inputs
+    const inputs = el.inputs
     if (role === 'presentation') {
       if (plugin?.render) {
         for (const d of plugin.render(ctx, inputs)) {
@@ -615,7 +615,7 @@ export class GraphRuntime {
         elementId: el.id,
         component: el.component,
         inputs,
-        handles: this.kinds.handlesOf(el.component, inputs).map((h) => h.id),
+        handles: this.components.handlesOf(el.component, inputs).map((h) => h.id),
         ...(timeoutMs ? { timeoutMs } : {}),
       })
       this.setPhase('awaitInteraction')
@@ -822,7 +822,6 @@ export class GraphRuntime {
     const inputs: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(merged)) inputs[k] = this.resolveBind(v, locals)
     const component = tpl?.component ?? overlayId
-    if (inputs.component == null) inputs.component = component
     const layout: Layout | undefined = action.layout ?? (tpl?.layout && !layoutIsEffectivelyEmpty(tpl.layout) ? tpl.layout : undefined)
     const plugin = this.getComponent(component)
     const mountLayout = layout ?? (plugin?.stageRelative ? STAGE_FILL : undefined)

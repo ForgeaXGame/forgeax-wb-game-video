@@ -9,18 +9,21 @@
  */
 import type { ReactNode } from 'react'
 import type { OverlayChild } from '../../runtime/schema/graph-schema'
-import { getKind } from '../../runtime/registry/kind-registry'
+import { defaultsForComponent, getComponent } from '../../runtime/registry/component-registry'
 import type { HudElementView, SkinCtx, SkinRegistry } from '../../runtime/skins/rendererRegistry'
+import { applyStyleLockedEventParams } from '../video/graphMaterialOps'
 import { localMsForChild } from './previewClock'
-
-/** 解析落盘 child 的实际渲染 component id（inputs.component 皮肤优先，回退基础 kind）。 */
-function skinIdOf(child: OverlayChild): string {
-  const c = child.inputs?.component
-  return typeof c === 'string' && c ? c : child.component
-}
 
 /**
  * 渲染单个 overlay child 到预览。timeMs = 当前播放头（相对整段素材）；未知 component 返回 null（不炸）。
+ *
+ * 缺省字段兜底：老数据 / 手改 JSON 常见只写 `{ id, component }` 不带 `inputs`——皮肤按自己的
+ * `inputs.events` 之类必填字段 map 渲染，缺了就画不出任何东西（不报错，纯静默空白，
+ * 容易被误当成「组件坏了」）。这里用 `defaultsForComponent` 兜底缺省值，child 自己写的字段仍优先。
+ *
+ * 叩击/防反/應默/技能条这几个样式锁定组件还要再过一遍 `applyStyleLockedEventParams`——
+ * 通用 defaultsForComponent 只给得出无皮肤特征的泛用兜底（"选项一"），这几个组件自己的出口
+ * 文案（應/默、斩/突/守…）只有这个函数知道，预览才能跟真正克隆出来的实例长一样。
  */
 export function renderOverlayChildPreview(
   child: OverlayChild,
@@ -28,17 +31,18 @@ export function renderOverlayChildPreview(
   ctx: SkinCtx,
   timeMs: number,
 ): ReactNode {
-  const skinId = skinIdOf(child)
-  const plugin = getKind(skinId) ?? getKind(child.component)
-  const inputs = { ...(child.inputs ?? {}) }
-  if (inputs.component == null) inputs.component = child.component
+  const plugin = getComponent(child.component)
+  const inputs = applyStyleLockedEventParams(
+    { ...defaultsForComponent(child.component), ...(child.inputs ?? {}) },
+    child.component,
+  )
   const preview = { timeMs: localMsForChild(child, timeMs) }
 
   if (plugin?.surface === 'hud') {
     const bind = typeof inputs.bind === 'string' ? inputs.bind : child.id
     const label = typeof inputs.label === 'string' ? inputs.label : undefined
     const accent = typeof inputs.accent === 'string' ? inputs.accent : undefined
-    const el: HudElementView = { element: bind, component: skinId, bind, label, accent, layout: child.layout }
+    const el: HudElementView = { element: bind, component: child.component, bind, label, accent, layout: child.layout }
     return reg.renderHudElement(el, ctx, preview)
   }
 

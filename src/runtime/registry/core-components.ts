@@ -1,8 +1,8 @@
 /**
- * 核心元素 kind 模块（三职责，低耦合可复用）—— 注册后即可被任意节点复用。
+ * 核心组件模块（三职责，低耦合可复用）—— 注册后即可被任意节点复用。
  *
- * 每个 kind 只声明：role + inputs 校验 + 输出 handle + 运行时契约（run/resolve）。引擎按 role 调用；
- * presentation 由引擎发泛型 renderOverlay，Player 按 kind 渲染。新增玩法 = 加一个这样的模块，核心不改。
+ * 每个组件只声明：role + inputs 校验 + 输出 handle + 运行时契约（run/resolve）。引擎按 role 调用；
+ * presentation 由引擎发泛型 renderOverlay，Player 按 component id 渲染。新增玩法 = 加一个这样的模块，核心不改。
  *
  * 覆盖 nodia 所需（数值结算/副作用一律走 node.data.reactions 的生命周期相位，无 logic 结算组件）：
  *  - floatText(view) 漂字：纯展示，inputs 交给 Player。
@@ -12,11 +12,16 @@
  *
  * 交互目录：共享壳是 ComponentEvent；choice/skill 用 ChoiceOption（可带 condition），
  * hotspot 用 HotspotSpot（可带 x/y）。出口 id === event.id；副作用一律进 reactions。
+ *
+ * 「皮肤」不是独立维度：叩击/防反/應默/战斗技能条各自是完全独立注册的顶层组件 id，不经由
+ * 「基础类型 + inputs.component 覆盖」这层间接——创建时一次性选定是哪个组件，创建后不提供
+ * 「换皮肤/换类型」的编辑入口。它们要不要走某种专属交互，只看各自 inputs 里声明了什么结构
+ * （如 `component: 'qteCues'`），不设跨组件的分类/家族标签。
  */
 import type { GraphCondition, GraphTextStyle } from '../schema/graph-schema'
 import type { ComponentEvent, ComponentInput } from '../schema/node-config-schema'
-import type { KindPlugin } from './kind-registry'
-import { KindRegistry, registerKind } from './kind-registry'
+import type { ComponentDef } from './component-registry'
+import { ComponentRegistry, registerComponent } from './component-registry'
 import { evalExpr } from '../engine/expr'
 
 // ── presentation: floatText（花字/飘字：文案飘起淡出，支持固定文案或动态表达式）──────
@@ -42,8 +47,7 @@ export interface FloatTextParams {
 function signed(v: number): string {
   return v > 0 ? `+${v}` : String(v)
 }
-export const floatTextKind: KindPlugin<FloatTextParams> = {
-  kind: 'floatText',
+export const floatTextComponent: ComponentDef<FloatTextParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '花字/飘字',
@@ -76,28 +80,6 @@ export const floatTextKind: KindPlugin<FloatTextParams> = {
   },
 }
 
-// ── presentation: hud（血条等；皮 id 如 battleHpBar 为 alias）──────────────────
-export interface HudParams {
-  bind?: string
-  label?: string
-  accent?: string
-}
-export const hudKind: KindPlugin<HudParams> = {
-  kind: 'hud',
-  role: 'presentation',
-  surface: 'hud',
-  aliases: ['battleHpBar'],
-  label: 'HUD',
-  // alias 专属展示名：避免添加栏/时间轴把 battleHpBar 显示成泛化基类名「HUD」。
-  aliasLabels: { battleHpBar: '水墨血条' },
-  inputs: [
-    { key: 'bind', label: '绑定实体', valueType: 'string', component: 'entity' },
-    { key: 'label', label: '名称', valueType: 'string' },
-    { key: 'accent', label: '主色', valueType: 'string', component: 'color' },
-  ],
-  events: [],
-}
-
 // ── interaction: choice / skill ───────────────────────────────────────────────
 /** 选项呈现形态：列表 / 画面热区。 */
 export type ChoicePresentation = 'list' | 'hotspot'
@@ -120,27 +102,40 @@ export interface ChoiceParams {
 }
 const CHOICE_INPUTS: ComponentInput[] = [
   { key: 'presentation', label: '呈现', valueType: 'string', default: 'list', options: [{ value: 'list', label: '列表' }, { value: 'hotspot', label: '热区' }] },
-  { key: 'ui', label: '皮肤', valueType: 'string', default: 'default', options: [{ value: 'default', label: '默认' }, { value: 'battleSkillBar', label: '战斗技能条' }, { value: 'inkYingMo', label: '水墨影魔' }] },
   { key: 'timeoutMs', label: '限时ms', valueType: 'number' },
   { key: 'defaultEvent', label: '超时出口', valueType: 'string' },
   { key: 'events', label: '选项', valueType: 'string', component: 'events', default: [{ id: 'opt0', label: '选项一' }] },
+  // x/y 补进 inputs 契约（此前只在 ChoiceParams 类型上有、manifest 里缺失）：
+  // isPositionable() 按「inputs 是否同时声明 x + y」推断能不能拖，这两项缺了会被误判成不可定位。
+  { key: 'x', label: 'x', valueType: 'number' },
+  { key: 'y', label: 'y', valueType: 'number' },
 ]
-function choiceLike(kind: string, label: string): KindPlugin<ChoiceParams> {
-  return {
-    kind,
-    role: 'interaction',
-    label,
-    inputs: CHOICE_INPUTS,
-    validate: (p) =>
-      Array.isArray(p.events) && p.events.length > 0 ? [] : [`${kind}.events must be non-empty`],
-  }
+const validateChoiceEvents = (p: ChoiceParams): string[] =>
+  Array.isArray(p.events) && p.events.length > 0 ? [] : ['events must be non-empty']
+export const choiceComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '选项',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
 }
-export const choiceKind = {
-  ...choiceLike('choice', '选项'),
-  aliases: ['inkYingMo', 'battleSkillBar'],
-  aliasLabels: { inkYingMo: '應/默 抉择', battleSkillBar: '战斗技能条' },
-} as KindPlugin<ChoiceParams>
-export const skillKind = choiceLike('skill', '技能')
+export const skillComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '技能',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
+}
+export const inkYingMoComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '應/默 抉择',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
+}
+export const battleSkillBarComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '战斗技能条',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
+}
 
 // ── interaction: qte ──────────────────────────────────────────────────────────
 /** QTE 单拍的几何/判定形态（对齐 legacy QTECue.shape）。 */
@@ -187,9 +182,7 @@ export interface QteParams {
   passingScore?: number
   /** sequence 型的按键序列。 */
   sequence?: string[]
-  /** UI 皮肤 id。 */
-  ui?: string
-  /** 交互目录：自定义判定出口（缺省见本 kind `events`；皮肤自带 defaults 写进 params.events）。 */
+  /** 交互目录：自定义判定出口（缺省见本组件 `events`；皮肤自带 defaults 写进 params.events）。 */
   events?: ComponentEvent[]
   /** 超时默认出口 event id（缺省 'fail'）。 */
   defaultEvent?: string
@@ -211,30 +204,39 @@ const QTE_DEFAULT_EVENTS: ComponentEvent[] = [
   { id: 'good', label: '良好' },
   { id: 'fail', label: '失败' },
 ]
-export const qteKind: KindPlugin<QteFullParams> = {
-  kind: 'qte',
+const QTE_INPUTS: ComponentInput[] = [
+  { key: 'qteKind', label: 'QTE型', valueType: 'string', default: 'parry', options: [{ value: 'parry', label: '完美防反' }, { value: 'timing', label: '打点' }, { value: 'mash', label: '连打' }, { value: 'sequence', label: '连招' }, { value: 'sweep', label: '划动' }] },
+  { key: 'passingHits', label: '过关次', valueType: 'number', default: 1 },
+  { key: 'passingScore', label: '过关分', valueType: 'number' },
+  { key: 'perfectMs', label: '完美半窗ms', valueType: 'number' },
+  { key: 'tolerance', label: '容差ms', valueType: 'number' },
+  { key: 'score', label: '满分', valueType: 'number' },
+  { key: 'windowMs', label: '窗口ms', valueType: 'number' },
+  { key: 'durationMs', label: '收圈时长ms', valueType: 'number' },
+  { key: 'timeoutMs', label: '限时ms', valueType: 'number' },
+  { key: 'defaultEvent', label: '超时出口', valueType: 'string' },
+  { key: 'glyph', label: '字形（inkKou）', valueType: 'string' },
+  { key: 'events', label: '出口', valueType: 'string', component: 'events' },
+  { key: 'cues', label: '拍点', valueType: 'string', component: 'qteCues', default: [] },
+]
+// 出口 = inputs.events（若配）否则组件 events（pass/good/fail）；由 registry.handlesOf 派生。
+export const qteComponent: ComponentDef<QteFullParams> = {
   role: 'interaction',
-  aliases: ['battleParry', 'inkKou'],
-  aliasLabels: { battleParry: '防反 QTE', inkKou: '叩击 QTE' },
   label: 'QTE',
   events: QTE_DEFAULT_EVENTS,
-  inputs: [
-    { key: 'qteKind', label: 'QTE型', valueType: 'string', default: 'parry', options: [{ value: 'parry', label: '完美防反' }, { value: 'timing', label: '打点' }, { value: 'mash', label: '连打' }, { value: 'sequence', label: '连招' }, { value: 'sweep', label: '划动' }] },
-    { key: 'passingHits', label: '过关次', valueType: 'number', default: 1 },
-    { key: 'passingScore', label: '过关分', valueType: 'number' },
-    { key: 'perfectMs', label: '完美半窗ms', valueType: 'number' },
-    { key: 'tolerance', label: '容差ms', valueType: 'number' },
-    { key: 'score', label: '满分', valueType: 'number' },
-    { key: 'windowMs', label: '窗口ms', valueType: 'number' },
-    { key: 'durationMs', label: '收圈时长ms', valueType: 'number' },
-    { key: 'timeoutMs', label: '限时ms', valueType: 'number' },
-    { key: 'defaultEvent', label: '超时出口', valueType: 'string' },
-    { key: 'glyph', label: '字形（inkKou）', valueType: 'string' },
-    { key: 'ui', label: '皮肤', valueType: 'string' },
-    { key: 'events', label: '出口', valueType: 'string', component: 'events' },
-    { key: 'cues', label: '拍点', valueType: 'string', component: 'qteCues', default: [] },
-  ],
-  // 出口 = inputs.events（若配）否则组件 events（pass/good/fail）；由 registry.handlesOf 派生。
+  inputs: QTE_INPUTS,
+}
+export const inkKouComponent: ComponentDef<QteFullParams> = {
+  role: 'interaction',
+  label: '叩击 QTE',
+  events: QTE_DEFAULT_EVENTS,
+  inputs: QTE_INPUTS,
+}
+export const battleParryComponent: ComponentDef<QteFullParams> = {
+  role: 'interaction',
+  label: '防反 QTE',
+  events: QTE_DEFAULT_EVENTS,
+  inputs: QTE_INPUTS,
 }
 
 // ── presentation: dialogue（原地对话：说话人 + 台词，底部对话框）──────────────────
@@ -248,8 +250,7 @@ export interface DialogueParams {
   x?: number
   y?: number
 }
-export const dialogueKind: KindPlugin<DialogueParams> = {
-  kind: 'dialogue',
+export const dialogueComponent: ComponentDef<DialogueParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '字幕/对白',
@@ -271,8 +272,7 @@ export interface TransitionParams {
   style?: 'fade' | 'wipe'
   color?: string
 }
-export const transitionKind: KindPlugin<TransitionParams> = {
-  kind: 'transition',
+export const transitionComponent: ComponentDef<TransitionParams> = {
   role: 'presentation',
   stageRelative: true,
   label: '转场',
@@ -291,32 +291,37 @@ export interface HotspotParams {
   /** 交互目录：每个 spot 一个同名出口；坐标由本组件 inputs 决定。 */
   events: HotspotSpot[]
 }
-export const hotspotKind: KindPlugin<HotspotParams> = {
-  kind: 'hotspot',
+export const hotspotComponent: ComponentDef<HotspotParams> = {
   role: 'interaction',
   label: '热点',
-  inputs: [{ key: 'events', label: '热点', valueType: 'string', component: 'events', default: [] }],
+  // 标记用 'hotspotEvents'（非 'events'）：本组件的出口带画面坐标 x/y，编辑器要出专属的锚点
+  // 编辑器而非纯文本清单，用独立标记跟 choice 系的 'events' 区分，不必回查任何分类表。
+  inputs: [{ key: 'events', label: '热点', valueType: 'string', component: 'hotspotEvents', default: [] }],
   validate: (p) => (Array.isArray(p.events) ? [] : ['hotspot.events must be an array']),
 }
 
-export const CORE_KINDS: KindPlugin[] = [
-  floatTextKind as unknown as KindPlugin,
-  dialogueKind as unknown as KindPlugin,
-  transitionKind as unknown as KindPlugin,
-  choiceKind as unknown as KindPlugin,
-  skillKind as unknown as KindPlugin,
-  qteKind as unknown as KindPlugin,
-  hotspotKind as unknown as KindPlugin,
+export const CORE_COMPONENTS: Array<[string, ComponentDef]> = [
+  ['floatText', floatTextComponent as unknown as ComponentDef],
+  ['dialogue', dialogueComponent as unknown as ComponentDef],
+  ['transition', transitionComponent as unknown as ComponentDef],
+  ['choice', choiceComponent as unknown as ComponentDef],
+  ['skill', skillComponent as unknown as ComponentDef],
+  ['inkYingMo', inkYingMoComponent as unknown as ComponentDef],
+  ['battleSkillBar', battleSkillBarComponent as unknown as ComponentDef],
+  ['qte', qteComponent as unknown as ComponentDef],
+  ['inkKou', inkKouComponent as unknown as ComponentDef],
+  ['battleParry', battleParryComponent as unknown as ComponentDef],
+  ['hotspot', hotspotComponent as unknown as ComponentDef],
 ]
 
-/** 注册全部核心 kind 到默认表（幂等：重复调用覆盖同名）。编辑器 / 单测用。 */
-export function registerCoreKinds(): void {
-  for (const k of CORE_KINDS) registerKind(k)
+/** 注册全部核心组件到默认表（幂等：重复调用覆盖同名）。编辑器 / 单测用。 */
+export function registerCoreComponents(): void {
+  for (const [id, c] of CORE_COMPONENTS) registerComponent(id, c)
 }
 
-/** 新建一份已装核心 kind 的隔离注册表（多局 Runtime 各持一份）。 */
-export function createCoreKindRegistry(): KindRegistry {
-  const reg = new KindRegistry()
-  for (const k of CORE_KINDS) reg.registerKind(k)
+/** 新建一份已装核心组件的隔离注册表（多局 Runtime 各持一份）。 */
+export function createCoreComponentRegistry(): ComponentRegistry {
+  const reg = new ComponentRegistry()
+  for (const [id, c] of CORE_COMPONENTS) reg.registerComponent(id, c)
   return reg
 }

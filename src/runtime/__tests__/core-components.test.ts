@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { floatTextKind, registerCoreKinds } from '../registry/core-kinds'
-import { componentHandles } from '../registry/kind-registry'
+import { floatTextComponent, registerCoreComponents } from '../registry/core-components'
+import { componentHandles } from '../registry/component-registry'
 
-beforeAll(() => { registerCoreKinds() })
+beforeAll(() => { registerCoreComponents() })
 
-describe('core-kinds', () => {
+describe('core-components', () => {
   it('floatText: validate requires text or expr', () => {
-    expect(floatTextKind.validate!({ text: '+30' })).toEqual([])
-    expect(floatTextKind.validate!({ text: '' })).toHaveLength(1)
+    expect(floatTextComponent.validate!({ text: '+30' })).toEqual([])
+    expect(floatTextComponent.validate!({ text: '' })).toHaveLength(1)
   })
 
   it('choice/hotspot 出口 = inputs.events（handlesOf 派生）', () => {

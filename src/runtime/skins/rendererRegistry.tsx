@@ -1,5 +1,5 @@
 /**
- * Player 渲染器 registry —— 按 `kind` / `component`(皮肤 id) 派发**独立 React 组件**（spec §3.3）。
+ * Player 渲染器 registry —— 按 `component`（顶层组件 id）派发**独立 React 组件**（spec §3.3）。
  *
  * 多局并行：每个 GraphSession 持有自己的 `SkinRegistry`；模块级 `register*` / `render*`
  * 仍指向 `defaultSkinRegistry`（编辑器兼容）。
@@ -9,7 +9,7 @@ import type { OverlaySnap, OverlayChildSnap, OverlayMountSnap, InteractionSnap, 
 import type { ConditionTarget } from '../engine/condition'
 import type { Layout } from '../schema/node-config-schema'
 import { childWrapStyle, layoutHasExplicitSize, layoutIsEffectivelyEmpty, layoutToCss, mountWrapStyle } from '../schema/layout'
-import type { ChoiceParams, HotspotParams } from '../registry/core-kinds'
+import type { ChoiceParams, HotspotParams } from '../registry/core-components'
 import { isPlayerFocused } from '../input/playerFocus'
 import { isOptionLocked } from './optionLock'
 
@@ -34,7 +34,7 @@ export interface HudElementView {
   component?: string
   /** 可选：绑定的实体/变量 id（缺省用 element 本身）。 */
   bind?: string
-  /** 绑定的属性名（缺省 hp；来自 OverlayChild.params.attr）。 */
+  /** 绑定的属性名（缺省 hp；来自 OverlayChild.inputs.attr）。 */
   attr?: string
   label?: string
   accent?: string
@@ -144,7 +144,7 @@ export class SkinRegistry {
   registerHudRenderer(id: string, c: HudComponent): void {
     this.hud.set(id, c)
   }
-  /** 是否已注册 HUD 皮肤（预览分流用；与 KindPlugin.surface 解耦）。 */
+  /** 是否已注册 HUD 皮肤（预览分流用；与 ComponentDef.surface 解耦）。 */
   hasHudRenderer(id: string): boolean {
     return this.hud.has(id)
   }
@@ -166,9 +166,7 @@ export class SkinRegistry {
   /** 子项是否「舞台锚定」：自定位表现层（floatText 用 x/y）或走 hud 表的皮肤（血条按 CSS 角锚定舞台）。 */
   private isStageAnchoredChild(child: OverlayChildSnap): boolean {
     if (this.overlay.get(child.component)) return !!child.selfPositioned
-    const inputs = child.inputs as { component?: string }
-    const skinId = (typeof inputs.component === 'string' && inputs.component) || child.component
-    return !!(this.hud.get(skinId) ?? this.hud.get(child.component))
+    return !!this.hud.get(child.component)
   }
 
   renderOverlayMount(
@@ -209,15 +207,13 @@ export class SkinRegistry {
           }
           // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
           if (ctx) {
-            const inputs = child.inputs as { bind?: string; label?: string; accent?: string; component?: string }
-            const skinId =
-              (typeof inputs.component === 'string' && inputs.component) || child.component
-            const Hud = this.hud.get(skinId) ?? this.hud.get(child.component)
+            const inputs = child.inputs as { bind?: string; label?: string; accent?: string }
+            const Hud = this.hud.get(child.component)
             if (Hud) {
               const bind = typeof inputs.bind === 'string' ? inputs.bind : child.elementId
               const el: HudElementView = {
                 element: bind,
-                component: skinId,
+                component: child.component,
                 bind,
                 label: typeof inputs.label === 'string' ? inputs.label : undefined,
                 accent: typeof inputs.accent === 'string' ? inputs.accent : undefined,
@@ -248,10 +244,7 @@ export class SkinRegistry {
   }
 
   renderInteraction(interaction: InteractionSnap, submit: (input: unknown) => void, ctx?: SkinCtx, preview?: { timeMs?: number }): ReactNode {
-    const paramComponent = (interaction.inputs as { component?: string }).component
-    const Skin = this.interaction.get(paramComponent ?? interaction.component)
-    const Default = this.interaction.get(interaction.component)
-    const C = Skin ?? Default
+    const C = this.interaction.get(interaction.component)
     if (!C) return null
     const name = interaction.component
     const props: InteractionProps = {
@@ -261,9 +254,8 @@ export class SkinRegistry {
       preview: !!preview,
       previewTimeMs: preview?.timeMs,
     }
-    const fallback = Skin && Default && Default !== Skin ? <Default {...props} /> : undefined
     return (
-      <SkinErrorBoundary key={`${interaction.elementId}:${name}`} name={name} fallback={fallback}>
+      <SkinErrorBoundary key={`${interaction.elementId}:${name}`} name={name}>
         <C {...props} />
       </SkinErrorBoundary>
     )
@@ -357,10 +349,34 @@ const btn = (bg: string): CSSProperties => ({
 
 const bottomRow: CSSProperties = { position: 'absolute', left: 0, right: 0, bottom: '7%', display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', pointerEvents: 'auto' }
 
+/**
+ * 归一化锚点（0~1，画面中心 0.5,0.5）→ 居中于该点的绝对定位样式。
+ * 与编辑器预览拖拽手柄（`activePreviewOverlaysFromNode` / `GraphVideoView` 的 `o.x/o.y`）用同一套坐标语义，
+ * 保证「预览手柄在哪、试玩/成片就画在哪」——这两处历史上各写各的定位 CSS，是「拖动手柄能动、真实呈现不动」的根因。
+ */
+function anchorStyle(x: number, y: number, extra?: CSSProperties): CSSProperties {
+  return {
+    position: 'absolute',
+    left: `${x * 100}%`,
+    top: `${y * 100}%`,
+    transform: 'translate(-50%, -50%)',
+    maxWidth: '84%',
+    ...extra,
+  }
+}
+
+/** x/y 均为有限数字才算「有锚点」；否则回退各组件自带的固定布局（历史默认样式不变）。 */
+function hasAnchor(x: unknown, y: unknown): x is number {
+  return typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)
+}
+
 function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): ReactNode {
   const inputs = interaction.inputs as unknown as ChoiceParams
+  const rowStyle = hasAnchor(inputs.x, inputs.y)
+    ? anchorStyle(inputs.x as number, inputs.y as number, { display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', pointerEvents: 'auto' })
+    : bottomRow
   return (
-    <div className="gv-choice-layer" style={bottomRow}>
+    <div className="gv-choice-layer" style={rowStyle}>
       {(inputs.events ?? []).map((e) => {
         const locked = isOptionLocked(e, ctx)
         return (
@@ -453,13 +469,23 @@ function TransitionOverlay({ overlay }: OverlayProps): ReactNode {
   )
 }
 
+const dialogueBoxStyle: CSSProperties = {
+  padding: '12px 16px',
+  borderRadius: 12,
+  background: 'rgba(12,14,18,0.82)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  color: '#f0f0f0',
+  pointerEvents: 'none',
+  boxShadow: '0 6px 24px rgba(0,0,0,0.5)',
+}
+
 function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
-  const p = overlay.inputs as { speaker?: string; text?: string; color?: string }
+  const p = overlay.inputs as { speaker?: string; text?: string; color?: string; x?: number; y?: number }
+  const boxPos = hasAnchor(p.x, p.y)
+    ? anchorStyle(p.x as number, p.y as number)
+    : { position: 'absolute', left: '8%', right: '8%', bottom: '10%' } as CSSProperties
   return (
-    <div
-      className="gv-dialogue"
-      style={{ position: 'absolute', left: '8%', right: '8%', bottom: '10%', padding: '12px 16px', borderRadius: 12, background: 'rgba(12,14,18,0.82)', border: '1px solid rgba(255,255,255,0.12)', color: '#f0f0f0', pointerEvents: 'none', boxShadow: '0 6px 24px rgba(0,0,0,0.5)' }}
-    >
+    <div className="gv-dialogue" style={{ ...boxPos, ...dialogueBoxStyle }}>
       {p.speaker && <div style={{ fontWeight: 700, fontSize: 13, color: p.color ?? '#ffd54a', marginBottom: 4 }}>{p.speaker}</div>}
       <div style={{ fontSize: 15, lineHeight: 1.5 }}>{p.text}</div>
     </div>

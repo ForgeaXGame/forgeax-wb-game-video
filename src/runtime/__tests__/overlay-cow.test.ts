@@ -278,7 +278,7 @@ describe('overlay sparse override（prototype + override）', () => {
       const line = children.find((c) => c.source.childId === 'line')!
       const hp = children.find((c) => c.source.childId === 'hp')!
       expect(textOf(line)).toBe('edited')
-      expect(hp.inputs).toEqual({ bind: 'ent-player', component: 'battleHpBar' })
+      expect(hp.inputs).toEqual({ bind: 'ent-player' })
     })
   })
 

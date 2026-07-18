@@ -9,12 +9,12 @@ import type { NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { deriveOutputs, getComponentManifest } from '../../runtime/registry/kind-registry'
+import { deriveOutputs, getComponentManifest } from '../../runtime/registry/component-registry'
 import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
 import { SpawnInputsEditor } from './spawn-inputs-editor'
-import { KindFormFields } from './kind-form-fields'
+import { ComponentFormFields } from './component-form-fields'
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -756,7 +756,7 @@ export function NodeInspector({
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
   /**
    * 编辑挂载组件的 inputs（NodeInspector 为准）：写成本挂载的稀疏 override（overrides[childId].inputs）。
-   * 值来自 KindFormFields（按 manifest.inputs 出控件），full-bag 覆盖——共享方案未改组件仍跟随原型。
+   * 值来自 ComponentFormFields（按 manifest.inputs 出控件），full-bag 覆盖——共享方案未改组件仍跟随原型。
    */
   const setChildInputs = (mountIndex: number, childId: string, nextInputs: Record<string, unknown>) => {
     const mounts = [...(d.overlayNodes ?? [])]
@@ -994,6 +994,12 @@ export function NodeInspector({
                     type="button"
                     style={{ color: '#ff6b6b', fontSize: 11 }}
                     onClick={() => {
+                      const addedCount = mount.added?.length ?? 0
+                      // 「添加控件」二级栏拖入的组件落在这份挂载的 added[] 里；移除挂载连带删除它们，先提示。
+                      if (addedCount > 0 && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+                        const ok = window.confirm(`将同时删除 ${addedCount} 个由此方案添加到时间轴的组件，是否确认移除挂载？`)
+                        if (!ok) return
+                      }
                       const removed = mount.overlay
                       const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
                       patchData({ overlayNodes: next.length ? next : undefined })
@@ -1011,15 +1017,14 @@ export function NodeInspector({
                     <div style={{ marginBottom: 6 }}>
                       <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>组件参数（inputs）</div>
                       {mountChildren.map((child) => {
-                        const skinId = (typeof child.inputs?.component === 'string' && child.inputs.component) || child.component
-                        const compName = getComponentManifest(skinId)?.label ?? child.component
+                        const compName = getComponentManifest(child.component)?.label ?? child.component
                         return (
                           <div key={child.id} style={{ border: '1px solid #262626', borderRadius: 6, padding: 6, marginBottom: 4 }}>
                             <div style={{ fontSize: 11, marginBottom: 2 }}>
                               <b>{child.id}</b> <span style={{ opacity: 0.6 }}>· {compName}</span>
                             </div>
-                            <KindFormFields
-                              componentId={skinId}
+                            <ComponentFormFields
+                              componentId={child.component}
                               values={(child.inputs ?? {}) as Record<string, unknown>}
                               onChange={(next) => setChildInputs(i, child.id, next)}
                               pickers={pickers}

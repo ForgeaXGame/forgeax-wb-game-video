@@ -1,23 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
-import { registerKind, unregisterKind } from '../registry/kind-registry'
+import { registerComponent, unregisterComponent } from '../registry/component-registry'
 import { isRenderOverlay, isOpenInteraction } from '../engine/directives'
 import type { GameGraph, GameNode, GameScenario, Reaction, SubFlowPackDef } from '../schema/graph-schema'
 import { node, scnOf, rid } from './test-fixtures'
 
 const callers = (rt: GraphRuntime) => rt.state.callStack.map((f) => f.callerNodeId)
 
-// Minimal kinds: a presentation "float", a choice-like（副作用改由 node.data.reactions 承载）。
-const KINDS = ['floatT', 'choiceX']
+// Minimal components: a presentation "float", a choice-like（副作用改由 node.data.reactions 承载）。
+const COMPONENT_IDS = ['floatT', 'choiceX']
 beforeEach(() => {
-  registerKind({ kind: 'floatT', role: 'presentation' })
-  registerKind({
-    kind: 'choiceX',
+  registerComponent('floatT', { role: 'presentation' })
+  registerComponent('choiceX', {
     role: 'interaction',
     // 出口由实例 inputs.events 派生（handlesOf）；无需声明 outputs。
   })
 })
-afterEach(() => KINDS.forEach(unregisterKind))
+afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 
 describe('exit reaction', () => {
@@ -131,9 +130,9 @@ describe('subflow pack (subFlowPack)', () => {
   })
 })
 
-describe('transition kind', () => {
+describe('transition component', () => {
   it('emits a transition overlay on enter (generic renderOverlay)', () => {
-    registerKind({ kind: 'transition', role: 'presentation' })
+    registerComponent('transition', { role: 'presentation' })
     const graph: GameGraph = {
       nodes: [
         node('a', {
@@ -147,7 +146,7 @@ describe('transition kind', () => {
     const rt = new GraphRuntime(scn.graph, scn)
     const dirs = rt.start()
     expect(dirs.some((d) => isRenderOverlay(d) && d.component === 'transition')).toBe(true)
-    unregisterKind('transition')
+    unregisterComponent('transition')
   })
 })
 

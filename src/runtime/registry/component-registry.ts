@@ -1,13 +1,16 @@
 /**
- * 组件注册契约 —— Overlay child 的**唯一扩展点**（历史名 KindPlugin / KindRegistry）。
+ * 组件注册契约 —— Overlay child 的**唯一扩展点**。
  *
- * 落盘字段只有 `OverlayChild.component`；插件上的 `kind` 字符串 = 组件 id。
- * `role` / `surface` 仅注册表内部，不进 OverlayChild。
+ * 落盘字段只有 `OverlayChild.component`；注册键（`registerComponent(id, def)` 的 `id`）与之直接对应，
+ * 一一对齐，无别名/分类折叠——皮肤（如 `inkKou`/`battleParry`）本身就是独立注册的顶层组件 id，
+ * 不再经由「基础类型 + inputs.component 覆盖」这层间接。`role` / `surface` 仅注册表内部，不进 OverlayChild。
+ * 没有「组件种类」这层概念——只有一个个独立组件，各自的能力由自己 `inputs` 里声明了什么结构化打（如
+ * `component: 'qteCues'`）决定；要不要按某种专属交互对待，永远问 inputs 长什么样，不查任何分类标签。
  *
  * 多局并行：每个 GraphRuntime / GraphSession 持有自己的实例；
- * 模块级 `registerKind` / `getKind` / `getComponent` 仍指向默认表。
+ * 模块级 `registerComponent` / `getComponent` 仍指向默认表。
  */
-import type { ComponentEvent, ComponentInput, ComponentManifest, Overlay, OverlayChild } from '../schema/node-config-schema'
+import type { ComponentEvent, ComponentInput, ComponentManifest, Overlay } from '../schema/node-config-schema'
 import type { ElementRole, GameNode, NodeHandle } from '../schema/graph-schema'
 import type { OverlayInstanceChild } from '../schema/node-config-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
@@ -23,16 +26,8 @@ export interface RuntimeCtx {
   /** 当前正在执行的时间线元素 id（render/present 构造 directive 用）。 */
   elementId?: string
 }
-export interface KindPlugin<P = Record<string, unknown>> {
-  /**
-   * 组件 id（= OverlayChild.component / 注册键）——皮肤 alias 折叠回的**基础家族**。
-   * ⚠️ 只做「隶属判断」用（编辑器侧按家族分类/出对应子编辑器），不承载 inputs/validate/events/render
-   * 等业务读取——那些一律走 alias 已指向同一 plugin 对象这件事本身，跟这个字段值无关。
-   * 业务代码不要直接读 `plugin.kind`，统一走 `baseKindOf`/`isKind`（唯一官方入口）。
-   * 这样以后若要换成别的归类方式（不按 kind），只需改这两个函数 + 它们的调用点，
-   * 不会牵连任何读 inputs/events 的逻辑。
-   */
-  kind: string
+
+export interface ComponentDef<P = Record<string, unknown>> {
   /** 引擎调度用（不进落盘 OverlayChild）。 */
   role: ElementRole
   /** HUD 呈现面（GraphPlaySurface 等据此分流）。 */
@@ -42,21 +37,13 @@ export interface KindPlugin<P = Record<string, unknown>> {
    * （如 floatText / dialogue / transition）
    */
   stageRelative?: boolean
-  /** 同行为的其它 component id（如 battleParry → qte）。 */
-  aliases?: string[]
-  /**
-   * 皮肤/别名专属展示名（编辑器用）。
-   * `getManifest(aliasId).label` 优先读这里；缺省回退 `label`。
-   * 新皮肤注册 alias 时一并写上，避免添加栏/时间轴只显示泛化基类名（如「HUD」）。
-   */
-  aliasLabels?: Record<string, string>
   /**
    * 组件会抛出的**事件**（= 出口 handle 来源）。
    * 静态出口写这里（如 qte 的 pass/good/fail）；随实例变化的（choice/hotspot 的选项）写在 `inputs.events`，
    * 运行时出口 = `inputs.events`（若有）否则本字段（见 `handlesOf`）。
    */
   events?: ComponentEvent[]
-  /** 中文标签（编辑器「+ 元素」菜单展示）；缺省用 kind。 */
+  /** 中文标签（编辑器「+ 元素」菜单展示）；缺省用 component id。 */
   label?: string
   /**
    * **输入契约（In · 唯一 SSOT）**：组件接收哪些 inputs 及其语义类型 + `default`（新建初值）。
@@ -84,35 +71,24 @@ export function buildDefaults(inputs: ComponentInput[] | undefined): Record<stri
 }
 
 /** 可注入的组件注册表（每局 Runtime 一份即可隔离）。 */
-export class KindRegistry {
-  private readonly kinds = new Map<string, KindPlugin>()
+export class ComponentRegistry {
+  private readonly components = new Map<string, ComponentDef>()
   private readonly plugins = new Map<string, { version?: string }>()
 
-  registerKind<P>(plugin: KindPlugin<P>): void {
-    const p = plugin as unknown as KindPlugin
-    this.kinds.set(p.kind, p)
-    for (const a of p.aliases ?? []) this.kinds.set(a, p)
+  registerComponent<P>(id: string, def: ComponentDef<P>): void {
+    this.components.set(id, def as unknown as ComponentDef)
   }
-  unregisterKind(kind: string): void {
-    const p = this.kinds.get(kind)
-    this.kinds.delete(kind)
-    if (p) {
-      for (const [k, v] of this.kinds) {
-        if (v === p) this.kinds.delete(k)
-      }
-    }
+  unregisterComponent(id: string): void {
+    this.components.delete(id)
   }
-  getKind(kind: string): KindPlugin | undefined {
-    return this.kinds.get(kind)
+  /** 按 OverlayChild.component 查找。 */
+  getComponent(componentId: string): ComponentDef | undefined {
+    return this.components.get(componentId)
   }
-  /** 与 getKind 同义：按 OverlayChild.component 查找。 */
-  getComponent(componentId: string): KindPlugin | undefined {
-    return this.kinds.get(componentId)
-  }
-  listKinds(): KindPlugin[] {
-    const seen = new Set<KindPlugin>()
-    const out: KindPlugin[] = []
-    for (const p of this.kinds.values()) {
+  listComponents(): ComponentDef[] {
+    const seen = new Set<ComponentDef>()
+    const out: ComponentDef[] = []
+    for (const p of this.components.values()) {
       if (seen.has(p)) continue
       seen.add(p)
       out.push(p)
@@ -126,9 +102,7 @@ export class KindRegistry {
     if (!p) return undefined
     const inputs = p.inputs ?? []
     const events = p.events?.length ? p.events : eventsFromParams(buildDefaults(inputs))
-    // 按查找键取名：alias → aliasLabels；基类 → label；都缺则用 id。
-    const label =
-      (componentId !== p.kind ? p.aliasLabels?.[componentId] : undefined) ?? p.label ?? componentId
+    const label = p.label ?? componentId
     return {
       id: componentId,
       label,
@@ -185,64 +159,87 @@ export class KindRegistry {
   }
 }
 
-/** 编辑器 / 单测默认表（模块单例）。多局试玩请用 `createCoreKindRegistry()` 新建实例。 */
-export const defaultKindRegistry = new KindRegistry()
+/** 编辑器 / 单测默认表（模块单例）。多局试玩请用 `createCoreComponentRegistry()` 新建实例。 */
+export const defaultComponentRegistry = new ComponentRegistry()
 
-export function registerKind<P>(plugin: KindPlugin<P>): void {
-  defaultKindRegistry.registerKind(plugin)
+export function registerComponent<P>(id: string, def: ComponentDef<P>): void {
+  defaultComponentRegistry.registerComponent(id, def)
 }
-export function unregisterKind(kind: string): void {
-  defaultKindRegistry.unregisterKind(kind)
+export function unregisterComponent(id: string): void {
+  defaultComponentRegistry.unregisterComponent(id)
 }
-export function getKind(kind: string): KindPlugin | undefined {
-  return defaultKindRegistry.getKind(kind)
-}
-export function getComponent(componentId: string): KindPlugin | undefined {
-  return defaultKindRegistry.getComponent(componentId)
+export function getComponent(componentId: string): ComponentDef | undefined {
+  return defaultComponentRegistry.getComponent(componentId)
 }
 
-/** KindPlugin.kind（如 inkYingMo → choice）；未注册则原样返回。 */
-export function baseKindOf(componentId: string): string {
-  return getKind(componentId)?.kind ?? componentId
-}
-
-/** 是否属于某基础 kind（含皮肤 alias；`component` 已是唯一权威字段，无需归一化）。 */
-export function isKind(child: Pick<OverlayChild, 'component'>, kind: string): boolean {
-  return baseKindOf(child.component) === kind
+/**
+ * 该组件是否支持「自由拖拽定位」——**唯一官方入口**，纯结构化推导，不设独立开关字段：
+ * 组件 `inputs` 里同时声明了 `x` 和 `y` 才算支持（渲染端才有地方读、写回才有地方落）；
+ * 缺其一 → 不支持（HUD 类血条/气力条按角色/规则锚定固定屏幕位置，inputs 里本就没有 x/y）。
+ * 未注册组件默认 `true`（保持编辑器旧行为，宁可给手柄不误判）。
+ * 新增组件只需在自己 `inputs` 里老实声明 x/y——不必回来改这个函数，也不必再加一个平行的
+ * `positionable` 标记跟 inputs 保持同步（那样两处数据源迟早会漂移）。
+ * 编辑器预览手柄生成处（`activePreviewOverlaysFromNode`）/ 素材属性面板置灰逻辑均调用此函数。
+ */
+export function isPositionable(componentId: string): boolean {
+  const inputs = getComponent(componentId)?.inputs
+  if (!inputs) return true
+  return inputs.some((i) => i.key === 'x') && inputs.some((i) => i.key === 'y')
 }
 export function getComponentManifest(componentId: string): ComponentManifest | undefined {
-  return defaultKindRegistry.getManifest(componentId)
+  return defaultComponentRegistry.getManifest(componentId)
 }
 
-/** 编辑器展示名：读 `ComponentManifest.label`（含 aliasLabels）；未注册则退回 component id。 */
+/** 编辑器展示名：读 `ComponentManifest.label`；未注册则退回 component id。 */
 export function componentTypeLabel(componentId: string): string {
   return getComponentManifest(componentId)?.label || componentId
 }
-export function listKinds(): KindPlugin[] {
-  return defaultKindRegistry.listKinds()
+
+/**
+ * 该组件的 `inputs` 里是否声明了「多拍点」结构（`component: 'qteCues'` 那一项）——
+ * 纯结构判定，不查任何分类标签。有 ⇒ 时间轴走多拍点专属交互（左缘=appearAt/右缘=endAt/菱形=targetAt），
+ * 没有就走通用单条 window 拖拽。新组件要参与这套交互，只需在自己 inputs 里老实声明该项。
+ */
+export function hasCuePointsInput(componentId: string): boolean {
+  const inputs = getComponent(componentId)?.inputs
+  return !!inputs?.some((i) => i.component === 'qteCues')
+}
+
+/**
+ * 该组件的 `inputs` 里是否声明了「出口清单」结构（`component: 'events'` 那一项，供选项清单编辑器用）——
+ * 纯结构判定；hotspot 的画面热点用另一个标记 `hotspotEvents` 区分，不撞这里；已经有拍点结构的
+ * 组件走拍点专属交互，不再落进出口清单分支（即便它自己也声明了 `events`）。
+ */
+export function hasOptionEventsInput(componentId: string): boolean {
+  if (hasCuePointsInput(componentId)) return false
+  const inputs = getComponent(componentId)?.inputs
+  return !!inputs?.some((i) => i.component === 'events')
+}
+export function listComponents(): ComponentDef[] {
+  return defaultComponentRegistry.listComponents()
 }
 export function registerPlugin(id: string, meta?: { version?: string }): void {
-  defaultKindRegistry.registerPlugin(id, meta)
+  defaultComponentRegistry.registerPlugin(id, meta)
 }
 export function unregisterPlugin(id: string): void {
-  defaultKindRegistry.unregisterPlugin(id)
+  defaultComponentRegistry.unregisterPlugin(id)
 }
 export function hasPlugin(id: string, version?: string): boolean {
-  return defaultKindRegistry.hasPlugin(id, version)
+  return defaultComponentRegistry.hasPlugin(id, version)
 }
 export function listPlugins(): Array<{ id: string; version?: string }> {
-  return defaultKindRegistry.listPlugins()
+  return defaultComponentRegistry.listPlugins()
 }
 export function deriveOutputs(node: GameNode, overlays?: Record<string, import('../schema/node-config-schema').Overlay>): NodeHandle[] {
-  return defaultKindRegistry.deriveOutputs(node, overlays)
+  return defaultComponentRegistry.deriveOutputs(node, overlays)
 }
 /** 组件实例出口 handle（inputs.events 优先，否则组件静态 events）。 */
 export function componentHandles(componentId: string, inputsBag: Record<string, unknown> | undefined): NodeHandle[] {
-  return defaultKindRegistry.handlesOf(componentId, inputsBag)
+  return defaultComponentRegistry.handlesOf(componentId, inputsBag)
 }
 /** 组件新建实例默认 inputs 值（由 inputs[].default 组装）。 */
 export function defaultsForComponent(componentId: string): Record<string, unknown> {
-  return defaultKindRegistry.defaultsFor(componentId)
+  return defaultComponentRegistry.defaultsFor(componentId)
 }
 
 /** 输入永远单一 'in'。 */
