@@ -650,36 +650,45 @@ function GraphCanvasInner({
           {clipTip}
         </div>
       )}
-      {(onAddNode || onAddPackNode || onFitLayout) && (
-        <div className="gv-canvas-chrome">
-          {onAddNode && (
-            <button
-              type="button"
-              onClick={() => {
-                const c = viewportCenter()
-                // 轻微抖动，连续添加时不完全重叠。
-                onAddNode({ x: c.x - 90 + Math.random() * 40, y: c.y - 40 + Math.random() * 40 })
-              }}
-              title="添加演出节点"
-            >
-              ＋ 添加节点
-            </button>
-          )}
-          {onAddPackNode && (
-            <button
-              type="button"
-              onClick={() => {
-                const c = viewportCenter()
-                onAddPackNode({ x: c.x - 90 + Math.random() * 40, y: c.y - 40 + Math.random() * 40 })
-              }}
-              title="添加子蓝图容器（新建空包并引用）"
-            >
-              ＋ 子蓝图
-            </button>
-          )}
-          {onFitLayout && <button type="button" onClick={onFitLayout} title="dagre 自动重排节点位置并框选">⤢ 自适应</button>}
-        </div>
-      )}
+      <div className="gv-canvas-chrome">
+        {onAddNode && (
+          <button
+            type="button"
+            onClick={() => {
+              const c = viewportCenter()
+              // 轻微抖动，连续添加时不完全重叠。
+              onAddNode({ x: c.x - 90 + Math.random() * 40, y: c.y - 40 + Math.random() * 40 })
+            }}
+            title="添加演出节点"
+          >
+            ＋ 添加节点
+          </button>
+        )}
+        {onAddPackNode && (
+          <button
+            type="button"
+            onClick={() => {
+              const c = viewportCenter()
+              onAddPackNode({ x: c.x - 90 + Math.random() * 40, y: c.y - 40 + Math.random() * 40 })
+            }}
+            title="添加子蓝图容器（新建空包并引用）"
+          >
+            ＋ 子蓝图
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => fitView({ padding: 0.18, duration: 200, maxZoom: 1 })}
+          title="把整张图框进视口正中（不改动节点位置）"
+        >
+          ◎ 居中
+        </button>
+        {onFitLayout && (
+          <button type="button" onClick={onFitLayout} title="dagre 自动重排节点位置并框选">
+            ⤢ 自适应
+          </button>
+        )}
+      </div>
     </div>
   )
 }

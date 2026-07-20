@@ -246,7 +246,8 @@ type EffectKind = GraphEffect['kind']
 // 「标记」(flag) 从新建下拉隐藏（避免与「变量」混淆）；已有 flag 数据仍可编辑。
 const EFFECT_KINDS: EffectKind[] = ['attr', 'var', 'item']
 
-function defaultEffect(
+/** 新建一条效果的默认值（属性 / 变量 / …）；供 EffectsEditor 与「＋ 效果」动作共用。 */
+export function createDefaultEffect(
   kind: EffectKind,
   entities: Record<string, Entity> | undefined,
   variables: Record<string, Variable> | undefined,
@@ -267,6 +268,47 @@ function defaultEffect(
   }
 }
 
+function defaultEffect(
+  kind: EffectKind,
+  entities: Record<string, Entity> | undefined,
+  variables: Record<string, Variable> | undefined,
+): GraphEffect {
+  return createDefaultEffect(kind, entities, variables)
+}
+
+function formatEffectValue(v: NumOrExpr | undefined): string {
+  if (v === undefined) return '…'
+  if (typeof v === 'number') return String(v)
+  if (typeof v === 'object' && v && 'expr' in v) {
+    const expr = String((v as { expr: string }).expr)
+    return expr.length > 36 ? `${expr.slice(0, 36)}…` : expr
+  }
+  return String(v)
+}
+
+/** 一行人话摘要：类型 · 谁 · 做什么。 */
+function summarizeEffect(
+  eff: GraphEffect,
+  entities?: Record<string, Entity>,
+  variables?: Record<string, Variable>,
+): string {
+  const kind = EFFECT_KIND_LABEL[eff.kind] ?? eff.kind
+  const entLabel = (id: string) => listEntityOptions(entities).find((o) => o.id === id)?.label ?? id
+  const varLabel = (id: string) => listVarOptions(variables).find((o) => o.id === id)?.label ?? id
+  const attrLabel = (entityId: string, attr: string) =>
+    listAttrOptions(findEntity(entities, entityId)).find((a) => a.id === attr)?.label ?? attr
+  switch (eff.kind) {
+    case 'attr':
+      return `${kind} · ${entLabel(eff.entityId)} 的 ${attrLabel(eff.entityId, eff.attr)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
+    case 'var':
+      return `${kind} · ${varLabel(eff.varId)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
+    case 'flag':
+      return `${kind} · ${varLabel(eff.varId)} 设为 ${eff.value ? '是' : '否'}`
+    case 'item':
+      return `${kind} · ${OP_LABEL[eff.op] ?? eff.op} ${eff.itemId || '？'} ×${eff.count}`
+  }
+}
+
 function EffectRow({
   eff,
   entities,
@@ -281,20 +323,27 @@ function EffectRow({
   const entityOpts = listEntityOptions(entities)
   const numVars = listVarOptions(variables, { numbersOnly: true })
   const flagVars = listVarOptions(variables, { flagsOnly: true })
+  const summary = summarizeEffect(eff, entities, variables)
 
   return (
     <div style={box}>
       <div style={rowStyle}>
+        <span style={{ fontSize: 12, fontWeight: 600, flex: 1, minWidth: 0 }} title={summary}>
+          {summary}
+        </span>
+        <button type="button" style={del} onClick={onDelete} title={`删除：${summary}`}>删除</button>
+      </div>
+      {field('类型', (
         <select
           value={eff.kind}
           onChange={(e) => onChange(defaultEffect(e.target.value as EffectKind, entities, variables))}
+          title="效果类型：属性 / 变量 / 道具"
         >
           {(eff.kind === 'flag' ? [...EFFECT_KINDS, 'flag' as EffectKind] : EFFECT_KINDS).map((k) => (
             <option key={k} value={k}>{EFFECT_KIND_LABEL[k] ?? k}</option>
           ))}
         </select>
-        <button style={del} onClick={onDelete}>删除</button>
-      </div>
+      ))}
       {eff.kind === 'attr' && (
         <>
           {entityOpts.length === 0 && <p style={hint}>请先到「配置」添加实体</p>}
@@ -383,7 +432,7 @@ function EffectRow({
       {eff.kind === 'item' && (
         <>
           {field('道具', <input value={eff.itemId} onChange={(e) => onChange({ ...eff, itemId: e.target.value })} style={{ flex: 1 }} />)}
-          {field('op', (
+          {field('操作', (
             <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'give' | 'take' })}>
               <option value="give">{OP_LABEL.give}</option>
               <option value="take">{OP_LABEL.take}</option>

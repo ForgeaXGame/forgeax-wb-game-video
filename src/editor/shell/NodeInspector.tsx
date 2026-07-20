@@ -22,9 +22,9 @@ import {
   type NodeDataPatch,
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
-import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
+import { ConditionEditor, EffectsEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
 import { SpawnInputsEditor } from './spawn-inputs-editor'
-import { ComponentFormFields } from './component-form-fields'
+import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
 import { BUILTIN_SCHEMES } from '../demo/builtin-schemes'
 import { NODIA_SCHEME_OVERLAYS } from '../demo/nodia-scheme-overlays'
 
@@ -36,10 +36,110 @@ const PRESET_SCHEME_BY_ID: Readonly<Record<string, Overlay>> = Object.fromEntrie
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
-    <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
+    <label
+      style={{
+        display: 'flex',
+        gap: 6,
+        alignItems: 'center',
+        marginBottom: 4,
+        fontSize: 12,
+        minWidth: 0,
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
       <span style={{ width: 76, opacity: 0.7, flexShrink: 0 }}>{label}</span>
-      {node}
+      {/* 约束右侧控件：长 select 文案不得撑破父层 */}
+      <span style={{ flex: 1, minWidth: 0, maxWidth: '100%', display: 'flex', alignItems: 'center' }}>{node}</span>
     </label>
+  )
+}
+
+/** 悬停 / 模块内聚焦时边框微亮；`nested` 仅略缩进，底色与父级一致。 */
+const HOVER_CARD_CLASS = 'ni-hover-card'
+const HOVER_CARD_NESTED = 'ni-hover-card--nested'
+const HOVER_CARD_STYLE_ID = 'ni-hover-card-style-v6'
+
+function ensureHoverCardStyle(): void {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(HOVER_CARD_STYLE_ID)) return
+  for (const id of [
+    'ni-hover-card-style',
+    'ni-hover-card-style-v2',
+    'ni-hover-card-style-v3',
+    'ni-hover-card-style-v4',
+    'ni-hover-card-style-v5',
+  ]) {
+    document.getElementById(id)?.remove()
+  }
+  const el = document.createElement('style')
+  el.id = HOVER_CARD_STYLE_ID
+  el.textContent = `
+.${HOVER_CARD_CLASS} {
+  margin-top: 8px;
+  border-radius: 6px;
+  padding: 8px;
+  border: 1px solid #333;
+  background: #141414;
+  transition: border-color 120ms ease;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.${HOVER_CARD_CLASS}:hover,
+.${HOVER_CARD_CLASS}:focus-within {
+  border-color: #4ea1ff;
+}
+.${HOVER_CARD_CLASS}.${HOVER_CARD_NESTED} {
+  margin-left: 6px;
+  border-color: #2c2c2c;
+}
+.${HOVER_CARD_CLASS}.${HOVER_CARD_NESTED}:hover,
+.${HOVER_CARD_CLASS}.${HOVER_CARD_NESTED}:focus-within {
+  border-color: #6bc4a8;
+}
+`
+  document.head.appendChild(el)
+}
+
+function HoverCard({
+  header,
+  children,
+  nested,
+}: {
+  header: ReactNode
+  children: ReactNode
+  /** 子模块（如覆盖物下的事件）：略缩进；悬停青绿边，底色与父级同。 */
+  nested?: boolean
+}): JSX.Element {
+  ensureHoverCardStyle()
+  return (
+    <div className={nested ? `${HOVER_CARD_CLASS} ${HOVER_CARD_NESTED}` : HOVER_CARD_CLASS}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 6,
+          paddingBottom: 6,
+          borderBottom: '1px solid #262626',
+        }}
+      >
+        {header}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function sectionLabel(text: string): JSX.Element {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.75, margin: '8px 0 4px', letterSpacing: 0.2 }}>
+      {text}
+    </div>
   )
 }
 
@@ -223,7 +323,13 @@ function LifecycleReactionsEditor({
           </div>
         )
       })}
-      <button type="button" onClick={() => commit([...life, { when: { type: 'enter' }, do: [] }])}>
+      <button
+        type="button"
+        onClick={() => commit([...life, {
+          when: { type: 'enter' },
+          do: [{ kind: 'effect', effects: [createDefaultEffect('attr', entities ?? pickers?.entities, variables ?? pickers?.variables)] }],
+        }])}
+      >
         ＋ 生命周期效果
       </button>
     </div>
@@ -288,9 +394,10 @@ function OverlayReactionsEditor({
     )
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-      <div style={{ fontSize: 11, opacity: 0.6 }}>
-        选目标节点会同步写出边（sourceHandle = 事件 id）；效果/生成组件仍在下方配置。多目标加权见「出边」。
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+      {sectionLabel('事件响应')}
+      <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 2, lineHeight: 1.4 }}>
+        选目标节点会同步写出边；多目标加权见「出边」。
       </div>
       {events.map((ev) => {
         const actions = eventReactionDo(reactions, ev)
@@ -302,11 +409,32 @@ function OverlayReactionsEditor({
           ? ''
           : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
         const hint = routeHints?.[ev.localEventId] ?? routeHints?.[ev.eventId]
+        const actionBrief =
+          actions.length === 0
+            ? '无动作'
+            : actions.map((a) => (a.kind === 'effect' ? '效果' : a.kind === 'spawn' ? '生成' : '推进')).join(' · ')
         return (
-          <div key={ev.eventId} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
-            <div style={{ fontSize: 12, marginBottom: 4 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
-              <b>{overlayEventLabel(ev)}</b>
-            </div>
+          <HoverCard
+            key={ev.eventId}
+            nested
+            header={(
+              <div style={{ minWidth: 0, flex: 1 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
+                <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {overlayEventLabel(ev)}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
+                  {currentTarget
+                    ? `→ ${nodeOptions.find((o) => o.value === currentTarget)?.label ?? currentTarget}`
+                    : multiPool
+                      ? `多目标边池 (${pool.length})`
+                      : '仅副作用'}
+                  {' · '}
+                  {actionBrief}
+                </div>
+              </div>
+            )}
+          >
+            {sectionLabel('走向')}
             {row('目标节点', (
               multiPool ? (
                 <span style={{ fontSize: 11, color: '#ce9178' }}>
@@ -326,7 +454,7 @@ function OverlayReactionsEditor({
                 </select>
               )
             ))}
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>触发时 do</div>
+            {sectionLabel('触发时动作')}
             <NodeActionsEditor
               actions={actions}
               edgeOptions={edgeOptions}
@@ -335,16 +463,105 @@ function OverlayReactionsEditor({
               pickers={catalog}
               onChange={(doActions) => onChange(upsertEventReaction(reactions, ev, doActions))}
             />
-          </div>
+          </HoverCard>
         )
       })}
     </div>
   )
 }
 
-type MountLayoutKey = 'left' | 'top' | 'width' | 'height'
+type MountLayoutKey = keyof Layout
 
-/** 挂载相对视频的 layout（比例 0~1 或留空）。 */
+const MOUNT_LAYOUT_HINT =
+  '挂载盒在视频视口上的位置与尺寸（对齐 CSS absolute）。只影响血条、飘字等表现层；應默 / QTE / 技能条请改下方组件参数里的 x、y。'
+
+const MOUNT_LAYOUT_PRESETS: Array<{
+  id: string
+  label: string
+  layout: Layout | undefined
+  title: string
+}> = [
+  {
+    id: 'tl',
+    label: '左上',
+    layout: undefined,
+    title: '快捷：清掉 layout，挂载盒贴视频左上角并随内容自适应',
+  },
+  {
+    id: 'br',
+    label: '右下',
+    layout: { right: 0, bottom: 0 },
+    title: '快捷：right=0、bottom=0，把挂载盒贴到视频右下角',
+  },
+  {
+    id: 'c',
+    label: '居中',
+    layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
+    title: '快捷：left/top=0.5 且 translate=-0.5，挂载盒中心对齐视频中心',
+  },
+]
+
+const MOUNT_LAYOUT_FIELDS: Array<{ key: MountLayoutKey; label: string; title: string }> = [
+  {
+    key: 'left',
+    label: 'L',
+    title: 'left（左边距）：挂载盒左边缘距视频左边的距离。数字 0~1 为比例，也可写 40% / 12px。与 right 一般二选一。',
+  },
+  {
+    key: 'right',
+    label: 'R',
+    title: 'right（右边距）：挂载盒右边缘距视频右边的距离。贴右下角时填 0，并配合 bottom=0；勿再写 left。',
+  },
+  {
+    key: 'top',
+    label: 'T',
+    title: 'top（上边距）：挂载盒上边缘距视频上边的距离。数字 0~1 为比例，也可写 40% / 12px。',
+  },
+  {
+    key: 'bottom',
+    label: 'B',
+    title: 'bottom（下边距）：挂载盒下边缘距视频下边的距离。贴右下角时填 0，并配合 right=0；勿再写 top。',
+  },
+  {
+    key: 'width',
+    label: 'W',
+    title: 'width（宽度）：挂载盒宽度。空=随内容自适应；可写 0.5 / 50% / 120px。',
+  },
+  {
+    key: 'height',
+    label: 'H',
+    title: 'height（高度）：挂载盒高度。空=随内容自适应；可写 0.5 / 50% / 120px。',
+  },
+  {
+    key: 'translateX',
+    label: 'tx',
+    title: 'translateX（水平自偏移）：相对挂载盒自身再平移。居中时常与 left=0.5 合用，填 -0.5（左移自身半宽）。',
+  },
+  {
+    key: 'translateY',
+    label: 'ty',
+    title: 'translateY（垂直自偏移）：相对挂载盒自身再平移。居中时常与 top=0.5 合用，填 -0.5。',
+  },
+  {
+    key: 'zIndex',
+    label: 'z',
+    title: 'zIndex（叠层顺序）：数字越大越靠上，用于多挂载重叠时控制谁盖住谁。',
+  },
+]
+
+function summarizeMountLayout(layout: Layout | undefined): string {
+  if (!layout) return '默认·左上'
+  const parts: string[] = []
+  for (const { key, label } of MOUNT_LAYOUT_FIELDS) {
+    const v = layout[key]
+    if (v !== undefined) parts.push(`${label}${v}`)
+  }
+  return parts.length ? parts.join(' ') : '默认·左上'
+}
+
+/**
+ * 挂载盒相对视频视口的 layout —— 默认一行摘要+快捷预设，展开再编全字段。
+ */
 function MountLayoutEditor({
   layout,
   onChange,
@@ -355,36 +572,93 @@ function MountLayoutEditor({
   const display = (key: MountLayoutKey): string => {
     const v = layout?.[key]
     if (v === undefined) return ''
-    return typeof v === 'number' ? String(v) : String(v)
+    return String(v)
   }
   const set = (key: MountLayoutKey, raw: string) => {
     const trimmed = raw.trim()
     const next: Layout = { ...layout }
     if (!trimmed) delete next[key]
-    else if (/^-?\d+(\.\d+)?$/.test(trimmed)) next[key] = Number(trimmed)
-    else next[key] = trimmed as Layout[MountLayoutKey]
+    else if (key === 'zIndex') {
+      const n = Number(trimmed)
+      if (Number.isFinite(n)) next.zIndex = n
+      else delete next.zIndex
+    } else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      next[key] = Number(trimmed)
+    } else {
+      next[key] = trimmed as Layout[Exclude<MountLayoutKey, 'zIndex'>]
+    }
     onChange(Object.keys(next).length ? next : undefined)
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-      {([
-        ['left', '左'],
-        ['top', '上'],
-        ['width', '宽'],
-        ['height', '高'],
-      ] as const).map(([key, label]) => (
-        <label key={key} style={{ display: 'flex', gap: 3, alignItems: 'center', fontSize: 11 }}>
-          <span style={{ opacity: 0.65 }}>{label}</span>
-          <input
-            value={display(key)}
-            placeholder="—"
-            onChange={(e) => set(key, e.target.value)}
-            style={{ width: 52, fontSize: 11 }}
-            title="相对视频 0~1，或 50% / 12px"
-          />
-        </label>
-      ))}
-    </div>
+    <details style={{ marginBottom: 6, fontSize: 11 }} title={MOUNT_LAYOUT_HINT}>
+      <summary
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 6,
+          cursor: 'pointer',
+          listStyle: 'none',
+          opacity: 0.9,
+        }}
+      >
+        <span style={{ opacity: 0.65 }} title={MOUNT_LAYOUT_HINT}>位置</span>
+        <span
+          style={{ fontFamily: 'ui-monospace, monospace', opacity: 0.85 }}
+          title={`当前 layout：${summarizeMountLayout(layout)}。${MOUNT_LAYOUT_HINT}`}
+        >
+          {summarizeMountLayout(layout)}
+        </span>
+        <span style={{ display: 'inline-flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+          {MOUNT_LAYOUT_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                onChange(p.layout ? { ...p.layout } : undefined)
+              }}
+              style={{
+                fontSize: 10,
+                padding: '1px 6px',
+                border: '1px solid #444',
+                borderRadius: 4,
+                background: '#1a1a1a',
+                color: '#ccc',
+                cursor: 'pointer',
+              }}
+              title={p.title}
+            >
+              {p.label}
+            </button>
+          ))}
+        </span>
+        <span
+          style={{ opacity: 0.45, marginLeft: 'auto' }}
+          title="展开后可分别编辑 left/right/top/bottom/width/height/translate/zIndex"
+        >
+          ▾ 细调
+        </span>
+      </summary>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px', marginTop: 6, paddingLeft: 2 }}>
+        {MOUNT_LAYOUT_FIELDS.map(({ key, label, title }) => (
+          <label
+            key={key}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11 }}
+            title={title}
+          >
+            <span style={{ opacity: 0.55, width: 14, textAlign: 'right', flexShrink: 0 }}>{label}</span>
+            <input
+              value={display(key)}
+              onChange={(e) => set(key, e.target.value)}
+              style={{ width: 44, fontSize: 11 }}
+              title={title}
+              aria-label={title}
+            />
+          </label>
+        ))}
+      </div>
+    </details>
   )
 }
 
@@ -540,9 +814,21 @@ function NodeActionsEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {actions.map((a, i) => (
-        <div key={i} style={{ border: '1px solid #242424', borderRadius: 6, padding: 6 }}>
+        <div
+          key={i}
+          style={{
+            border: '1px solid #2a2a2a',
+            borderRadius: 5,
+            padding: '6px 8px',
+            background: 'rgba(0,0,0,0.22)',
+            minWidth: 0,
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8 }}>
               {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '沿边推进'}
             </span>
             <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
@@ -553,13 +839,23 @@ function NodeActionsEditor({
           {a.kind === 'spawn' ? (
             <>
               {row('模板', (
-                <select value={a.from} onChange={(e) => patchAt(i, { ...a, from: e.target.value })} style={{ flex: 1 }}>
+                <select
+                  value={a.from}
+                  onChange={(e) => patchAt(i, { ...a, from: e.target.value })}
+                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+                >
                   <option value="">（选组件模板）</option>
                   {spawnOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               ))}
               {row('存活ms', (
-                <input type="number" value={a.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1 }} title="0=常驻直到离场" />
+                <input
+                  type="number"
+                  value={a.ttlMs ?? 0}
+                  onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })}
+                  style={{ flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }}
+                  title="0=常驻直到离场"
+                />
               ))}
               <SpawnInputsEditor
                 from={a.from}
@@ -572,7 +868,11 @@ function NodeActionsEditor({
           {a.kind === 'advance' ? (
             <>
               {row('走边', (
-                <select value={a.edgeId} onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })} style={{ flex: 1 }}>
+                <select
+                  value={a.edgeId}
+                  onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })}
+                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+                >
                   <option value="">（选出边）</option>
                   {edgeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -587,7 +887,16 @@ function NodeActionsEditor({
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'effect', effects: [] }])}>＋ 效果</button>
+        <button
+          type="button"
+          onClick={() => onChange([...actions, {
+            kind: 'effect',
+            // 与「生成组件」一样一次带好初值，避免先出空壳再点一次「+ 效果」
+            effects: [createDefaultEffect('attr', pickers?.entities, pickers?.variables)],
+          }])}
+        >
+          ＋ 效果
+        </button>
         <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
         <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button>
       </div>
@@ -600,6 +909,19 @@ function NodeActionsEditor({
  * - watch：观察表达式 of（如 entity.ent-player.attr.hp）+ 方向 on → do
  * - shown/hidden：组件 of（childId）出现/消失 → do
  */
+function reactiveRuleSummary(r: Reaction, componentOptions: OptItem[]): string {
+  const w = r.when
+  if (w.type === 'watch') {
+    const dir = w.on === 'inc' ? '增加' : w.on === 'dec' ? '减少' : '变化'
+    return `${w.of?.trim() || '（未选字段）'} · ${dir}`
+  }
+  if (w.type === 'shown' || w.type === 'hidden') {
+    const label = componentOptions.find((o) => o.value === w.of)?.label ?? w.of
+    return label?.trim() || '（未选组件）'
+  }
+  return ''
+}
+
 function ReactiveRulesEditor({
   reactions,
   edgeOptions,
@@ -634,42 +956,79 @@ function ReactiveRulesEditor({
     patchAt(i, { ...rules[i]!, when })
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-      {rules.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6 }}>无响应规则</div> : null}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+      {rules.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>无响应规则</div> : null}
       {rules.map((r, i) => {
         const w = r.when as Extract<Reaction['when'], { type: 'watch' } | { type: 'shown' } | { type: 'hidden' }>
+        const doBrief =
+          r.do.length === 0
+            ? '无动作'
+            : r.do.map((a) => (a.kind === 'effect' ? '效果' : a.kind === 'spawn' ? '生成' : '推进')).join(' · ')
         return (
-          <div key={i} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
-              <select value={w.type} onChange={(e) => setType(i, e.target.value as ReactiveType)} style={{ fontSize: 12 }}>
-                {(['watch', 'shown', 'hidden'] as ReactiveType[]).map((t) => <option key={t} value={t}>{REACTIVE_LABEL[t]}</option>)}
-              </select>
-              <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => commit(rules.filter((_, j) => j !== i))}>移除</button>
-            </div>
+          <HoverCard
+            key={i}
+            header={(
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <select
+                    value={w.type}
+                    onChange={(e) => setType(i, e.target.value as ReactiveType)}
+                    style={{ fontSize: 12, fontWeight: 600 }}
+                    title="规则类型"
+                  >
+                    {(['watch', 'shown', 'hidden'] as ReactiveType[]).map((t) => (
+                      <option key={t} value={t}>{REACTIVE_LABEL[t]}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10, opacity: 0.55, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {reactiveRuleSummary(r, componentOptions)}
+                    {' · '}
+                    {doBrief}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  style={{ color: '#ff6b6b', fontSize: 11, flexShrink: 0 }}
+                  onClick={() => commit(rules.filter((_, j) => j !== i))}
+                >
+                  移除
+                </button>
+              </div>
+            )}
+          >
+            {sectionLabel('触发条件')}
             {w.type === 'watch' ? (
-              <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <WatchFieldEditor
                   tree={fieldTree}
                   value={w.of}
                   onChange={(of) => patchAt(i, { ...r, when: { ...w, of } })}
                 />
                 {row('方向', (
-                  <select value={w.on ?? 'change'} onChange={(e) => patchAt(i, { ...r, when: { ...w, on: e.target.value as 'change' | 'inc' | 'dec' } })} style={{ flex: 1 }}>
+                  <select
+                    value={w.on ?? 'change'}
+                    onChange={(e) => patchAt(i, { ...r, when: { ...w, on: e.target.value as 'change' | 'inc' | 'dec' } })}
+                    style={{ flex: 1 }}
+                  >
                     <option value="change">变化</option>
                     <option value="inc">增加</option>
                     <option value="dec">减少</option>
                   </select>
                 ))}
-              </>
+              </div>
             ) : (
               row('组件', (
-                <select value={w.of} onChange={(e) => patchAt(i, { ...r, when: { type: w.type, of: e.target.value } })} style={{ flex: 1 }}>
+                <select
+                  value={w.of}
+                  onChange={(e) => patchAt(i, { ...r, when: { type: w.type, of: e.target.value } })}
+                  style={{ flex: 1 }}
+                >
                   <option value="">（选组件）</option>
                   {componentOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               ))
             )}
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>动作 do</div>
+            {sectionLabel('动作')}
             <NodeActionsEditor
               actions={r.do}
               edgeOptions={edgeOptions}
@@ -678,10 +1037,14 @@ function ReactiveRulesEditor({
               pickers={pickers}
               onChange={(acts) => patchAt(i, { ...r, do: acts })}
             />
-          </div>
+          </HoverCard>
         )
       })}
-      <button type="button" onClick={() => commit([...rules, { when: { type: 'watch', of: '', on: 'change' }, do: [] }])}>
+      <button
+        type="button"
+        style={{ marginTop: 6, alignSelf: 'flex-start' }}
+        onClick={() => commit([...rules, { when: { type: 'watch', of: '', on: 'change' }, do: [] }])}
+      >
         ＋ 响应规则
       </button>
     </div>
@@ -828,7 +1191,7 @@ export function NodeInspector({
   onJump?: (id: string) => void
 }): JSX.Element {
   const node = graph.nodes.find((n) => n.id === nodeId)
-  if (!node) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
+  if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
   const d = node.data
   const nodeIds = graph.nodes.map((n) => n.id)
   /** 下拉展示：名称优先，id 作后缀（名称与 id 相同时只显示一份）。 */
@@ -1158,54 +1521,84 @@ export function NodeInspector({
               { mountId: mid, prefixMount: multi },
             )
             const mountTitle = overlays?.[mount.overlay]?.title?.trim() || PRESET_SCHEME_BY_ID[mount.overlay]?.title?.trim()
+            const titleText = mountTitle && mountTitle !== mid ? `${mountTitle} (${mid})` : mid
             return (
-              <div key={`${mid}-${i}`} style={{ marginTop: 8, border: '1px solid #333', borderRadius: 6, padding: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12 }}>
-                    <b>{mountTitle && mountTitle !== mid ? `${mountTitle} (${mid})` : mid}</b>
-                    {mount.id && mount.id !== mount.overlay ? (
-                      <span style={{ opacity: 0.55, marginLeft: 6 }}>→ {mount.overlay}</span>
-                    ) : null}
-                  </span>
-                  <button
-                    type="button"
-                    style={{ color: '#ff6b6b', fontSize: 11 }}
-                    onClick={() => {
-                      const addedCount = mount.added?.length ?? 0
-                      // 「添加控件」二级栏拖入的组件落在这份挂载的 added[] 里；移除挂载连带删除它们，先提示。
-                      if (addedCount > 0 && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-                        const ok = window.confirm(`将同时删除 ${addedCount} 个由此方案添加到时间轴的组件，是否确认移除挂载？`)
-                        if (!ok) return
-                      }
-                      const removed = mount.overlay
-                      const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
-                      patchData({ overlayNodes: next.length ? next : undefined })
-                      // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
-                      if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
-                    }}
-                  >
-                    移除
-                  </button>
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>挂载排版（相对视频）</div>
+              <HoverCard
+                key={`${mid}-${i}`}
+                header={(
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>{titleText}</span>
+                      <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
+                        {mount.id && mount.id !== mount.overlay ? `模板 ${mount.overlay} · ` : null}
+                        {mountChildren.length} 组件 · {events.length} 事件
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ color: '#ff6b6b', fontSize: 11, flexShrink: 0 }}
+                      onClick={() => {
+                        const addedCount = mount.added?.length ?? 0
+                        // 「添加控件」二级栏拖入的组件落在这份挂载的 added[] 里；移除挂载连带删除它们，先提示。
+                        if (addedCount > 0 && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+                          const ok = window.confirm(`将同时删除 ${addedCount} 个由此方案添加到时间轴的组件，是否确认移除挂载？`)
+                          if (!ok) return
+                        }
+                        const removed = mount.overlay
+                        const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
+                        patchData({ overlayNodes: next.length ? next : undefined })
+                        // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
+                        if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
+                      }}
+                    >
+                      移除
+                    </button>
+                  </div>
+                )}
+              >
                 <MountLayoutEditor layout={mount.layout} onChange={(layout) => setMountLayout(i, layout)} />
                 {mountChildren.length ? (
-                  <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>组件参数（inputs）</div>
+                  <div style={{ marginBottom: 4 }}>
+                    {sectionLabel('组件参数')}
                     {mountChildren.map((child) => {
                       const compName = getComponentManifest(child.component)?.label ?? child.component
+                      const inputs = (child.inputs ?? {}) as Record<string, unknown>
+                      const summary = summarizeComponentInputs(inputs)
                       return (
-                        <div key={child.id} style={{ border: '1px solid #262626', borderRadius: 6, padding: 6, marginBottom: 4 }}>
-                          <div style={{ fontSize: 11, marginBottom: 2 }}>
-                            <b>{child.id}</b> <span style={{ opacity: 0.6 }}>· {compName}</span>
+                        <details
+                          key={child.id}
+                          style={{ marginBottom: 4, border: '1px solid #262626', borderRadius: 6, padding: '2px 6px', fontSize: 11 }}
+                        >
+                          <summary
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                              gap: 6,
+                              cursor: 'pointer',
+                              listStyle: 'none',
+                              padding: '2px 0',
+                            }}
+                            title={`组件 ${child.id}（${compName}）的 inputs。展开后编辑；悬停各字段可看说明。`}
+                          >
+                            <span style={{ opacity: 0.65 }}>组件</span>
+                            <b>{child.id}</b>
+                            <span style={{ opacity: 0.55 }}>· {compName}</span>
+                            {summary ? (
+                              <span style={{ fontFamily: 'ui-monospace, monospace', opacity: 0.75 }}>{summary}</span>
+                            ) : null}
+                            <span style={{ opacity: 0.4, marginLeft: 'auto' }}>▾</span>
+                          </summary>
+                          <div style={{ padding: '4px 0 6px' }}>
+                            <ComponentFormFields
+                              componentId={child.component}
+                              values={inputs}
+                              onChange={(next) => setChildInputs(i, child.id, next)}
+                              pickers={pickers}
+                              density="compact"
+                            />
                           </div>
-                          <ComponentFormFields
-                            componentId={child.component}
-                            values={(child.inputs ?? {}) as Record<string, unknown>}
-                            onChange={(next) => setChildInputs(i, child.id, next)}
-                            pickers={pickers}
-                          />
-                        </div>
+                        </details>
                       )
                     })}
                   </div>
@@ -1229,7 +1622,7 @@ export function NodeInspector({
                   }}
                   onRouteTo={(ev, targetId) => onChange(routeMountEventToNode(graph, node.id, i, ev, targetId))}
                 />
-              </div>
+              </HoverCard>
             )
           })
         )}
