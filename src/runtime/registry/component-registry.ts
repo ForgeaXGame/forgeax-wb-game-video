@@ -73,7 +73,6 @@ export function buildDefaults(inputs: ComponentInput[] | undefined): Record<stri
 /** 可注入的组件注册表（每局 Runtime 一份即可隔离）。 */
 export class ComponentRegistry {
   private readonly components = new Map<string, ComponentDef>()
-  private readonly plugins = new Map<string, { version?: string }>()
 
   registerComponent<P>(id: string, def: ComponentDef<P>): void {
     this.components.set(id, def as unknown as ComponentDef)
@@ -126,22 +125,6 @@ export class ComponentRegistry {
     const fromInputs = eventsFromParams(inputsBag ?? {})
     const events = fromInputs.length ? fromInputs : (p.events ?? [])
     return events.map((e) => ({ id: e.id, label: e.label }))
-  }
-
-  registerPlugin(id: string, meta?: { version?: string }): void {
-    this.plugins.set(id, { version: meta?.version })
-  }
-  unregisterPlugin(id: string): void {
-    this.plugins.delete(id)
-  }
-  hasPlugin(id: string, version?: string): boolean {
-    const meta = this.plugins.get(id)
-    if (!meta) return false
-    if (version != null && version !== '' && meta.version !== version) return false
-    return true
-  }
-  listPlugins(): Array<{ id: string; version?: string }> {
-    return [...this.plugins.entries()].map(([id, m]) => ({ id, version: m.version }))
   }
 
   /**
@@ -217,18 +200,6 @@ export function hasOptionEventsInput(componentId: string): boolean {
 }
 export function listComponents(): ComponentDef[] {
   return defaultComponentRegistry.listComponents()
-}
-export function registerPlugin(id: string, meta?: { version?: string }): void {
-  defaultComponentRegistry.registerPlugin(id, meta)
-}
-export function unregisterPlugin(id: string): void {
-  defaultComponentRegistry.unregisterPlugin(id)
-}
-export function hasPlugin(id: string, version?: string): boolean {
-  return defaultComponentRegistry.hasPlugin(id, version)
-}
-export function listPlugins(): Array<{ id: string; version?: string }> {
-  return defaultComponentRegistry.listPlugins()
 }
 export function deriveOutputs(node: GameNode, overlays?: Record<string, import('../schema/node-config-schema').Overlay>): NodeHandle[] {
   return defaultComponentRegistry.deriveOutputs(node, overlays)

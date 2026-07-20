@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { GraphRuntime } from '../engine/engine'
 import { GraphSession } from '../engine/session'
 import { createCoreComponentRegistry } from '../registry/core-components'
 import { ComponentRegistry } from '../registry/component-registry'
-import type { GameGraph } from '../schema/graph-schema'
 import { node, scnOf } from './test-fixtures'
 import {
   claimPlayerFocus,
@@ -31,20 +29,6 @@ describe('multi-runtime isolation (B)', () => {
     // core components present on A, absent on a bare registry
     expect(onlyA.getComponent('qte')?.role).toBe('interaction')
     expect(new ComponentRegistry().getComponent('qte')).toBeUndefined()
-  })
-
-  it('requiredPlugins checked against the injected registry, not the global default', () => {
-    const local = new ComponentRegistry()
-    local.registerPlugin('pack-a', { version: '1' })
-    const graph: GameGraph = { nodes: [node('n')], edges: [] }
-    expect(() => {
-      const s = scnOf(graph, { requiredPlugins: [{ id: 'pack-a', version: '1' }] })
-      return new GraphRuntime(s.graph, s, local)
-    }).not.toThrow()
-    expect(() => {
-      const s = scnOf(graph, { requiredPlugins: [{ id: 'pack-a', version: '1' }] })
-      return new GraphRuntime(s.graph, s, new ComponentRegistry())
-    }).toThrow(/pack-a/)
   })
 })
 

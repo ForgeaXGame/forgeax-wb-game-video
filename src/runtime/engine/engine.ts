@@ -25,7 +25,7 @@ import type {
   SubFlowPack,
   SubFlowPackDef,
 } from '../schema/graph-schema'
-import { getSubFlowPack, getSubFlow, isSubflowContainerData } from '../schema/graph-schema'
+import { getSubFlowPack } from '../schema/graph-schema'
 import { nodeOverlayChildren, nodeOverlayMounts } from '../schema/expand-overlay'
 import { resolveEventReactions, completeReactions } from '../schema/overlay-events'
 import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../schema/node-config-schema'
@@ -37,6 +37,12 @@ import type { RuntimeDirective, RenderOverlayDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
 import { evalExpr, type EvalCtx } from './expr'
 import { layoutIsEffectivelyEmpty } from '../schema/layout'
+import {
+  createCoreNodeKindRegistry,
+  type NextIntent,
+  type NodeKindRegistry,
+  type NodeRuntimeCtx,
+} from '../nodes'
 
 const STAGE_FILL: Layout = { left: 0, top: 0, width: 1, height: 1 }
 
@@ -60,10 +66,6 @@ export interface RuntimeState extends MutableState {
 }
 
 const CHAIN_GUARD = 200
-
-function isSubflowContainer(node: GameNode): boolean {
-  return isSubflowContainerData(node.data)
-}
 
 function packLookupKey(id: string, version?: string): string {
   return version ? `${id}@${version}` : id
@@ -107,6 +109,9 @@ export class GraphRuntime {
   /** 本局组件 / Plugin 表（多局隔离；缺省用模块默认表以兼容旧单测）。 */
   readonly components: ComponentRegistry
 
+  /** 节点类型注册表：按 GameNode.type 派发 execute/next（perf/subflow/subflowPack 内置）。 */
+  private readonly nodeKinds: NodeKindRegistry = createCoreNodeKindRegistry()
+
   constructor(
     graph: GameGraph,
     private readonly scenario: GameScenario,
@@ -119,12 +124,6 @@ export class GraphRuntime {
     for (const p of packs) {
       this.packsByKey.set(packLookupKey(p.id, p.version), p)
       if (!this.packsByKey.has(p.id)) this.packsByKey.set(p.id, p) // 无版本时也可按 id 命中
-    }
-    for (const req of scenario.requiredPlugins ?? []) {
-      if (!this.components.hasPlugin(req.id, req.version)) {
-        const ver = req.version ? `@${req.version}` : ''
-        throw new Error(`required plugin '${req.id}${ver}' is not registered`)
-      }
     }
     this.indexGraph(graph)
     this.reactions = scenario.reactions ?? []
@@ -286,39 +285,70 @@ export class GraphRuntime {
       this.setPhase('ended')
       return
     }
-    // 跨图子蓝图：压栈（含 returnGraph）→ 切到 pack 图 → 进入口。
-    const packRef = getSubFlowPack(node.data)
-    if (packRef && !this.returningTo.has(id)) {
-      const pack = this.resolvePack(packRef)
-      const entry = packRef.entry ?? pack.entry
-      this.state.currentNodeId = id
-      this.state.visited.add(id)
-      this.pushCall(id)
-      this.switchGraph(pack.graph)
-      this.enterNode(entry)
+    const kind = this.nodeKinds.resolve(node)
+    if (!kind) {
+      this.setPhase('ended')
       return
     }
-    // 同图子流程：压栈 + 跳到本图入口（不播容器自身演出）。
-    const subRef = getSubFlow(node.data)
-    if (subRef && !this.returningTo.has(id)) {
-      this.state.currentNodeId = id
-      this.state.visited.add(id)
-      this.pushCall(id)
-      this.enterNode(subRef)
-      return
-    }
+    // 调度层公共入场：认领当前节点、清弹回标记、置时钟原点。节点态重置 / 换片 / 相位、跑元素 / 交互
+    // 全由 kind.execute 经 ctx.beginPerform / beginResume 表达（descend 下钻不重置、不重播）。
     const returning = this.returningTo.delete(id)
     this.state.currentNodeId = id
     this.state.elapsedMs = 0
     this.state.visited.add(id)
-    // 子流程/子蓝图容器弹回：不重播演出、不跑 enter 元素，直接沿 out 续走。
-    if (returning && isSubflowContainer(node)) {
-      this.fired = new Set()
-      this.pending = null
-      this.setPhase('playing')
-      this.advanceAuto()
-      return
+    const intent = kind.execute(this.nodeCtx(node, returning))
+    // 交互挂起优先于消费 redirect（与旧逻辑一致：await 期间 redirect 暂存，不在本次跳）。
+    if (this.state.phase === 'awaitInteraction') return
+    if (this.consumeRedirect()) return
+    this.runIntent(intent, node)
+  }
+
+  /** 执行 NodeKind 返回的走向意图（节点只表达意图，动栈 / 切图 / 走边 / 结束由此代劳）。 */
+  private runIntent(intent: NextIntent, node: GameNode): void {
+    switch (intent.kind) {
+      case 'descend':
+        this.pushCall(node.id)
+        if (intent.graph) this.switchGraph(intent.graph)
+        this.enterNode(intent.entry)
+        return
+      case 'advance':
+        // 无自动出边时 advanceAuto 自理：有调用栈则弹回 caller，栈空则 finishEnd 结束本局。
+        if (this.state.phase === 'playing') this.advanceAuto()
+        return
+      case 'await':
+      default:
+        return
     }
+  }
+
+  /** 构造给 NodeKind 的受控上下文：读调度态 + 发指令 / 跑元素 + 节点态生命周期钩子。 */
+  private nodeCtx(node: GameNode, returning: boolean): NodeRuntimeCtx {
+    const self = this
+    return {
+      node,
+      state: self.state,
+      elapsedMs: self.state.elapsedMs,
+      returning,
+      get awaiting() {
+        return self.state.phase === 'awaitInteraction'
+      },
+      get redirected() {
+        return self.redirect !== null
+      },
+      emit: (d) => self.emit(d),
+      childrenOf: (n) => self.childrenOf(n),
+      runElement: (el) => self.runElement(el),
+      roleOf: (component) => self.getComponent(component)?.role ?? 'presentation',
+      beginPerform: () => self.beginPerform(node),
+      beginResume: () => self.beginResume(),
+      applyEnterReactions: (n) => self.applyPhaseReactionEffects(n, 'enter'),
+      isInstant: (n) => self.isInstantNode(n),
+      resolvePackEntry: (n) => self.resolvePackEntry(n),
+    }
+  }
+
+  /** perf 进入：重置本节点态 + seedWatch + 发 playClip（换片清上一节点叠层）+ 相位置 playing。 */
+  private beginPerform(node: GameNode): void {
     this.fired = new Set()
     this.firedAtReactions = new Set()
     this.windowShown = new Set()
@@ -329,50 +359,39 @@ export class GraphRuntime {
     this.hiddenFired = new Set()
     this.pendingSpawns = []
     this.seedWatch()
-
-    // 先发 playClip（换片会清空上一节点的叠层/交互）；随后 enter 元素产生的 overlay/interaction
-    // 才不会被 playClip 反向清掉。
+    // 先发 playClip（换片会清空上一节点的叠层/交互）；随后 enter 元素产生的 overlay/interaction 才不会被反清。
     this.emit({
       type: 'playClip',
-      nodeId: id,
+      nodeId: node.id,
       name: node.data.name,
       mediaId: node.data.media?.ref,
       loop: node.data.mediaPlayMode === 'loop',
       durationMs: node.data.durationMs,
     })
     this.setPhase('playing')
+  }
 
-    // enter 计算：先铺完所有表现层（HUD / 字幕方案等），再开交互。
-    // 旧逻辑「碰交互就 break」会吞掉挂载顺序靠后的静态方案血条；带 window 的仍改由时钟驱动。
-    for (const el of this.childrenOf(node)) {
-      if (el.trigger.when !== 'enter' || el.window) continue
-      if ((this.getComponent(el.component)?.role ?? 'presentation') === 'interaction') continue
-      this.runElement(el)
-      if (this.redirect) break
-    }
-    if (!this.redirect) {
-      for (const el of this.childrenOf(node)) {
-        if (el.trigger.when !== 'enter' || el.window) continue
-        if ((this.getComponent(el.component)?.role ?? 'presentation') !== 'interaction') continue
-        this.runElement(el)
-        if (this.state.phase === 'awaitInteraction' || this.redirect) break
-      }
-    }
-    // enter 相位 reactions 的副作用（生命周期效果）。
-    if (this.state.phase !== 'awaitInteraction' && !this.redirect) this.applyPhaseReactionEffects(node, 'enter')
-    if (this.state.phase === 'awaitInteraction') return
-    if (this.consumeRedirect()) return
+  /** 容器弹回：不重播演出、不跑 enter 元素，只重置 fired/pending + 相位置 playing，随后沿 out 续走。 */
+  private beginResume(): void {
+    this.fired = new Set()
+    this.pending = null
+    this.setPhase('playing')
+  }
 
-    // 瞬时节点（无视频、无演出时长、无交互）→ 立即推进，形成逻辑穿链。
-    // 有视频时按素材播完（Player onEnded）推进，不看 durationMs。
-    const hasMedia = !!node.data.media?.ref
-    const hasInteraction = this.childrenOf(node).some(
-      (el) => this.getComponent(el.component)?.role === 'interaction',
-    )
-    if (!hasMedia && !node.data.durationMs && !hasInteraction) {
-      if (this.consumeRedirect()) return
-      if (this.state.phase === 'playing') this.advanceAuto()
-    }
+  /** 瞬时节点：无 media、无 durationMs、无 interaction → 进入即可推进（逻辑穿链）。 */
+  private isInstantNode(node: GameNode): boolean {
+    if (node.data.media?.ref) return false
+    if (node.data.durationMs) return false
+    return !this.childrenOf(node).some((el) => this.getComponent(el.component)?.role === 'interaction')
+  }
+
+  /** 解析子蓝图包入口 + 其图（subflowPack 用）；非 pack 返回 undefined。 */
+  private resolvePackEntry(node: GameNode): { entry: string; graph: GameGraph } | undefined {
+    const ref = getSubFlowPack(node.data)
+    if (!ref) return undefined
+    const pack = this.resolvePack(ref)
+    const entry = ref.entry ?? pack.entry
+    return { entry, graph: pack.graph }
   }
 
   // ── tick / 演出结束 ─────────────────────────────────────────────────────────
@@ -434,7 +453,10 @@ export class GraphRuntime {
     if (!node || this.state.phase !== 'playing') return this.drain()
     this.chain = 0
     if (this.consumeRedirect()) return this.drain()
-    if (this.state.phase === 'playing') this.advanceAuto()
+    // 时间驱动唤醒（媒体播完/时长到点）→ 交由 NodeKind.next 决定走向（缺省 advance）。
+    const kind = this.nodeKinds.resolve(node)
+    const intent: NextIntent = kind?.next ? kind.next(this.nodeCtx(node, false)) : { kind: 'advance' }
+    this.runIntent(intent, node)
     return this.drain()
   }
 
