@@ -532,6 +532,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               variables={variables}
               onChange={setCanvasGraph}
               onPacksChange={setPacks}
+              onEnsureOverlay={(overlay) => {
+                setMeta((m) => {
+                  const cur = m.ui?.overlays ?? {}
+                  if (cur[overlay.id]) return m
+                  return { ...m, ui: { ...m.ui, overlays: { ...cur, [overlay.id]: overlay } } }
+                })
+              }}
               onDropOverlayIfOrphan={(oid) => {
                 // 卸载已同步写入 store；用最新完整 scenario（主图 + 所有 packs）判断是否孤儿再清。
                 const st = useGraphScenario.getState()

@@ -7,11 +7,26 @@
 import { useEffect, useState } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
-import type { ChoiceParams } from '../../registry/core-components'
+import {
+  CHOICE_INPUTS,
+  validateChoiceEvents,
+  type ChoiceParams,
+} from '../../registry/core-components'
+import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 const SKILL_KEYS = ['X', 'A', 'Y', 'B'] as const
+
+/**
+ * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
+ */
+export const battleSkillBarComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '战斗技能条',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
+}
 
 /** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
 export const battleSkillBarDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y'> = {

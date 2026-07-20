@@ -12,5 +12,24 @@ export * from './registry/component-registry'
 export * from './registry/core-components'
 export * from './validate/validate'
 export * from './skins/rendererRegistry'
-export { registerCoreSkins, createCoreSkinRegistry } from './skins/components'
+export {
+  registerCoreSkins,
+  createCoreSkinRegistry,
+  createDefaultComponentRegistry,
+  installExtraComponents,
+  floatTextComponent,
+  dialogueComponent,
+  transitionComponent,
+  choiceComponent,
+  skillComponent,
+  qteComponent,
+  hotspotComponent,
+  filterComponent,
+  fxComponent,
+  inkKouComponent,
+  battleParryComponent,
+  inkYingMoComponent,
+  battleSkillBarComponent,
+  battleHpBarComponent,
+} from './skins/components'
 export * from './input/playerFocus'

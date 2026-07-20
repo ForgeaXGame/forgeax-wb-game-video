@@ -1,10 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { floatTextComponent, registerCoreComponents } from '../registry/core-components'
+import { floatTextComponent } from '../skins/components/FloatText'
+import { registerCoreSkins } from '../skins/components'
 import { componentHandles } from '../registry/component-registry'
 
-beforeAll(() => { registerCoreComponents() })
+beforeAll(() => {
+  registerCoreSkins()
+})
 
-describe('core-components', () => {
+describe('core-components（现为 skins/components 包）', () => {
   it('floatText: validate requires text or expr', () => {
     expect(floatTextComponent.validate!({ text: '+30' })).toEqual([])
     expect(floatTextComponent.validate!({ text: '' })).toHaveLength(1)

@@ -12,7 +12,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
 import type { OverlayChild } from '../../schema/graph-schema'
+import type { ComponentDef } from '../../registry/component-registry'
+import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+
+/**
+ * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
+ */
+export const battleParryComponent: ComponentDef<QteFullParams> = {
+  role: 'interaction',
+  label: '防反 QTE',
+  events: QTE_DEFAULT_EVENTS,
+  inputs: QTE_INPUTS,
+}
 
 /** 皮肤默认玩法参数（出口 / 样式锁 / 新建预设共用；不进 core-kinds 特判）。 */
 export const battleParryDefaults = {

@@ -16,6 +16,7 @@ import {
   inkKouPreset,
   inkYingMoPreset,
 } from '../../runtime/skins/components'
+import { ensureNodiaSchemeOverlays } from './nodia-scheme-overlays'
 
 export const SCHEME_STATIC_ID = 'scheme-static'
 export const SCHEME_DYNAMIC_ID = 'scheme-dynamic'
@@ -101,5 +102,6 @@ export function ensureBuiltinSchemes(
   for (const s of BUILTIN_SCHEMES) {
     if (!next[s.id]) next[s.id] = structuredClone(s)
   }
-  return next
+  // 再补 nodia 抽出的界面方案（battleHud / hitCheer / hpPanel / readouts）。
+  return ensureNodiaSchemeOverlays(next)
 }

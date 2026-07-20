@@ -8,9 +8,8 @@
 import type { GameNode, GameScenario, SubFlowPackDef } from '../schema/graph-schema'
 import type { Layout } from '../schema/node-config-schema'
 import { GraphRuntime } from './engine'
-import { createCoreComponentRegistry } from '../registry/core-components'
 import type { ComponentRegistry } from '../registry/component-registry'
-import { createCoreSkinRegistry, installExtraComponents } from '../skins/components'
+import { createCoreSkinRegistry, createDefaultComponentRegistry } from '../skins/components'
 import type { SkinRegistry } from '../skins/rendererRegistry'
 import type { RuntimeDirective } from './directives'
 
@@ -118,8 +117,8 @@ export class GraphSession {
   private pendingEntryReason: string | undefined
 
   constructor(scenario: GameScenario, opts: GraphSessionOptions = {}) {
-    const components = opts.components ?? createCoreComponentRegistry()
-    if (!opts.components) installExtraComponents(components) // 组件包自带契约（与渲染同文件）注入本局表
+    // 默认 = 核心契约 + 皮肤包契约（同文件 ComponentDef）；调用方自带 components 则假定已装全。
+    const components = opts.components ?? createDefaultComponentRegistry()
     this.skins = opts.skins ?? createCoreSkinRegistry()
     const packs = opts.packs ?? scenario.packs ?? []
     this.runtime = new GraphRuntime(scenario.graph, scenario, components, packs)

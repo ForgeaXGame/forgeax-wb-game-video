@@ -54,7 +54,6 @@ import {
 } from '../video/materialTimelineShared'
 import { computeVideoContentRect, pointerToVideoNorm, type VideoContentRect } from '../video/videoContentRect'
 import { DEFAULT_STYLE_SLOTS, ICON_COMPONENT, type DefaultStyleSlot } from './defaultStyleSlots'
-import { registerFxComponents } from '../../runtime/registry/fx-components'
 import { fxNeedsColor, resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
@@ -131,8 +130,7 @@ import {
 // 「添加控件」/「重新生成」右列与检视器同槽切换（对齐 main 生成面板）。
 // 复用视频 tab 的 --gc-* token；不改 CatalogTabs 的全局 CSS，样式自持。
 // 视频 tab 的基础栏目/预览台样式（gc-*）复用共享 CATALOG_CSS（原旧 forge/CatalogTabs 全局 CSS）。
-// 注册滤镜/特效组件（registry 全局单例 → 校验 + 运行时可见）；幂等。
-registerFxComponents()
+// 注册全部组件包（含 filter/fx）；幂等。
 bootEditorSkins()
 
 injectStyleOnce('graph-catalog', CATALOG_CSS)

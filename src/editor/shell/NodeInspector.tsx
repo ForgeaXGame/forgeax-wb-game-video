@@ -15,6 +15,14 @@ import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-lab
 import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
 import { SpawnInputsEditor } from './spawn-inputs-editor'
 import { ComponentFormFields } from './component-form-fields'
+import { BUILTIN_SCHEMES } from '../demo/builtin-schemes'
+import { NODIA_SCHEME_OVERLAYS } from '../demo/nodia-scheme-overlays'
+
+/** 「＋ 挂载 / 默认样式」候选：画廊内置 + nodia 界面方案（有序去重）。 */
+const PRESET_SCHEME_OVERLAYS: readonly Overlay[] = [...BUILTIN_SCHEMES, ...NODIA_SCHEME_OVERLAYS]
+const PRESET_SCHEME_BY_ID: Readonly<Record<string, Overlay>> = Object.fromEntries(
+  PRESET_SCHEME_OVERLAYS.map((o) => [o.id, o]),
+)
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -647,6 +655,7 @@ export function NodeInspector({
   variables,
   onChange,
   onPacksChange,
+  onEnsureOverlay,
   onDropOverlayIfOrphan,
   onJump,
 }: {
@@ -661,6 +670,11 @@ export function NodeInspector({
   variables?: Record<string, Variable>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
+  /**
+   * 挂载预设方案前：若目录里还没有该 overlay，上层写入固化原型（缺失才补）。
+   * 未传则仅能挂载当前 `overlays` 里已有的方案。
+   */
+  onEnsureOverlay?: (overlay: Overlay) => void
   /**
    * 卸载某挂载后，请上层用完整 scenario（主图 + 所有子蓝图包）判断该 overlay 是否已无人引用，
    * 无引用则清理孤儿副本。本组件只看得到 canvasGraph，无法自行判断跨图引用，故上抛。
@@ -680,12 +694,27 @@ export function NodeInspector({
     return `${name} (${id})`
   }
   const overlayLabel = (id: string) => {
-    const title = overlays?.[id]?.title?.trim()
+    const title = overlays?.[id]?.title?.trim() || PRESET_SCHEME_BY_ID[id]?.title?.trim()
     if (!title || title === id) return id
     return `${title} (${id})`
   }
   // 「默认样式 / ＋ 挂载」只列界面方案；node:* 是时间轴内容容器，不当整体方案选。
-  const schemeOverlayIds = Object.keys(overlays ?? {}).filter((id) => !id.startsWith('node:'))
+  // 下拉 = 场景里已有的非 node: 方案 ∪ 固化预设（画廊 + nodia 界面方案），保证总能选到。
+  const schemeOverlayIds = (() => {
+    const seen = new Set<string>()
+    const ids: string[] = []
+    for (const o of PRESET_SCHEME_OVERLAYS) {
+      if (seen.has(o.id)) continue
+      seen.add(o.id)
+      ids.push(o.id)
+    }
+    for (const id of Object.keys(overlays ?? {})) {
+      if (id.startsWith('node:') || seen.has(id)) continue
+      seen.add(id)
+      ids.push(id)
+    }
+    return ids
+  })()
   const mediaRef = d.media?.ref ?? ''
   // 当前引用若不在资产清单里也要能显示（避免选中项丢失）。
   const videoChoices: VideoOption[] = (() => {
@@ -958,10 +987,15 @@ export function NodeInspector({
               if (!oid) return
               const mounts = [...(d.overlayNodes ?? [])]
               if (mounts.some((m) => overlayMountId(m) === oid || m.overlay === oid)) return
+              // 目录缺失时先写入固化原型，再挂载（否则聚合事件/预览会空）。
+              if (!overlays?.[oid]) {
+                const preset = PRESET_SCHEME_BY_ID[oid]
+                if (preset) onEnsureOverlay?.(structuredClone(preset))
+              }
               mounts.push({ overlay: oid })
               patchData({ overlayNodes: mounts })
             }}
-            title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）"
+            title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）；含内置画廊与 nodia 界面方案"
             style={{ maxWidth: 140, fontSize: 11 }}
           >
             <option value="">＋ 挂载…</option>

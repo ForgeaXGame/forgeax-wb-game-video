@@ -3,6 +3,7 @@ import type { GameNode, GameScenario } from '../../../runtime/schema/graph-schem
 import type { OverlayChild } from '../../../runtime/schema/node-config-schema'
 import type { QteCue } from '../../../runtime/registry/core-components'
 import { registerCoreComponents } from '../../../runtime/registry/core-components'
+import { registerCoreSkins } from '../../../runtime/skins/components'
 import { node, scnOf } from '../../../runtime/__tests__/test-fixtures'
 import { nodeOverlayId } from '../../../graph/edit/overlay-edit'
 import {
@@ -41,7 +42,10 @@ import { registerCoreSkins } from '../../../runtime/skins/components'
 // `hasCuePointsInput`/`hasOptionEventsInput` 都查 registry 里各组件自己的 inputs，任何用到
 // qteElement/choiceElement 的用例（含本文件顶部几个 describe）都需要先注册核心组件——放在文件级
 // beforeAll，不依赖某个 describe 恰好排在后面的顺序。
-beforeAll(() => registerCoreComponents())
+beforeAll(() => {
+  registerCoreComponents()
+  registerCoreSkins()
+})
 
 function qteEl(scenario: GameScenario, nodeId: string): OverlayChild | undefined {
   return scenario.ui?.overlays?.[nodeOverlayId(nodeId)]?.children?.find(

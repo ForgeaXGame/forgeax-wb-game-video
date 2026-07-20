@@ -1,39 +1,95 @@
 /**
- * 皮肤组件 registry 注册入口 —— 把从旧引擎迁移过来的皮肤组件按 component id 注册进渲染器 registry。
+ * 组件包 registry 入口 —— 组件包 = ComponentDef + Renderer（同文件），经本入口注册。
  *
- * 交互皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
- * HUD 皮肤：battleHpBar
- * 各自是独立注册的顶层组件 id——`OverlayChild.component` 填这些 id 即按对应样式渲染；
- * 未指定 → 回退通用按钮 / 内置血条。加新皮肤只需在此注册一行。
+ * 默认表现/交互：floatText / dialogue / transition / choice / skill / qte / hotspot / filter / fx
+ * 专属皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
+ * HUD / overlay：battleHpBar / bossHitCheer / panelA / panelB
+ *
+ * 加新组件 = 同文件导出契约+渲染，并在 EXTRA_COMPONENTS + installCoreSkins 各挂一行。
  */
-import { registerHudRenderer, registerInteractionSkin, registerOverlayRenderer, SkinRegistry } from '../rendererRegistry'
-import { registerComponent, type ComponentDef, type ComponentRegistry } from '../../registry/component-registry'
-import { BattleParryLayer, battleParryDefaults, battleParryPreset } from './BattleParryLayer'
-import { InkKouLayer, inkKouDefaults, inkKouPreset } from './InkKouLayer'
-import { InkYingMoLayer, inkYingMoDefaults, inkYingMoPreset } from './InkYingMoLayer'
-import { BattleSkillLayer, battleSkillBarDefaults, battleSkillBarPreset } from './BattleSkillLayer'
+import {
+  registerHudRenderer,
+  registerInteractionRenderer,
+  registerInteractionSkin,
+  registerOverlayRenderer,
+  SkinRegistry,
+} from '../rendererRegistry'
+import { ComponentRegistry, registerComponent, type ComponentDef } from '../../registry/component-registry'
+import {
+  BattleParryLayer,
+  battleParryComponent,
+  battleParryDefaults,
+  battleParryPreset,
+} from './BattleParryLayer'
+import { InkKouLayer, inkKouComponent, inkKouDefaults, inkKouPreset } from './InkKouLayer'
+import {
+  InkYingMoLayer,
+  inkYingMoComponent,
+  inkYingMoDefaults,
+  inkYingMoPreset,
+} from './InkYingMoLayer'
+import {
+  BattleSkillLayer,
+  battleSkillBarComponent,
+  battleSkillBarDefaults,
+  battleSkillBarPreset,
+} from './BattleSkillLayer'
 import { BattleHpBar, battleHpBarComponent, battleHpBarPreset } from './BattleHpBar'
 import { BossHitCheer, bossHitCheerComponent } from './BossHitCheer'
 import { PanelA, PanelB, panelAComponent, panelBComponent } from './TurnPanels'
+import { FloatTextOverlay, floatTextComponent } from './FloatText'
+import { DialogueOverlay, dialogueComponent } from './Dialogue'
+import { TransitionOverlay, transitionComponent } from './Transition'
+import { ChoiceButtons, choiceComponent, skillComponent } from './Choice'
+import { QteButtons, qteComponent } from './Qte'
+import { HotspotButtons, hotspotComponent } from './Hotspot'
+import { FilterOverlay, filterComponent } from './Filter'
+import { FxOverlay, fxComponent } from './FxEffect'
 
 export {
   battleHpBarComponent,
   battleHpBarPreset,
+  battleParryComponent,
   battleParryDefaults,
   battleParryPreset,
+  battleSkillBarComponent,
   battleSkillBarDefaults,
   battleSkillBarPreset,
+  inkKouComponent,
   inkKouDefaults,
   inkKouPreset,
+  inkYingMoComponent,
   inkYingMoDefaults,
   inkYingMoPreset,
+  floatTextComponent,
+  dialogueComponent,
+  transitionComponent,
+  choiceComponent,
+  skillComponent,
+  qteComponent,
+  hotspotComponent,
+  filterComponent,
+  fxComponent,
 }
 
 /**
- * 组件包自带的注册契约（与渲染实现同文件导出）。
- * 通过 `installExtraComponents` 注入每局 ComponentRegistry；`registerCoreSkins` 注入默认表（编辑器/校验）。
+ * 全部可挂载组件契约（与渲染同文件导出）。
+ * `installExtraComponents` → 每局 ComponentRegistry；`registerCoreSkins` → 默认表。
  */
 export const EXTRA_COMPONENTS: Array<[string, ComponentDef]> = [
+  ['floatText', floatTextComponent as unknown as ComponentDef],
+  ['dialogue', dialogueComponent as unknown as ComponentDef],
+  ['transition', transitionComponent as unknown as ComponentDef],
+  ['choice', choiceComponent as unknown as ComponentDef],
+  ['skill', skillComponent as unknown as ComponentDef],
+  ['qte', qteComponent as unknown as ComponentDef],
+  ['hotspot', hotspotComponent as unknown as ComponentDef],
+  ['filter', filterComponent as unknown as ComponentDef],
+  ['fx', fxComponent as unknown as ComponentDef],
+  ['inkKou', inkKouComponent as unknown as ComponentDef],
+  ['battleParry', battleParryComponent as unknown as ComponentDef],
+  ['inkYingMo', inkYingMoComponent as unknown as ComponentDef],
+  ['battleSkillBar', battleSkillBarComponent as unknown as ComponentDef],
   ['battleHpBar', battleHpBarComponent as unknown as ComponentDef],
   ['bossHitCheer', bossHitCheerComponent as unknown as ComponentDef],
   ['panelA', panelAComponent],
@@ -45,6 +101,13 @@ export function installExtraComponents(reg: ComponentRegistry): void {
   for (const [id, c] of EXTRA_COMPONENTS) reg.registerComponent(id, c)
 }
 
+/** 完整组件契约隔离表（GraphSession 默认用）。 */
+export function createDefaultComponentRegistry(): ComponentRegistry {
+  const reg = new ComponentRegistry()
+  installExtraComponents(reg)
+  return reg
+}
+
 /**
  * 皮肤定位类型：
  *  - 'point'：位置由作者锚点（params.x/y 或 cue）决定（可拖，创作=皮肤=试玩三处一致）。
@@ -54,14 +117,6 @@ export type SkinPositioning = 'point' | 'fixed'
 
 /**
  * 可选交互皮肤（供编辑器下拉/定位查询用，也是「这个组件是否有完整专属皮肤」的唯一登记点）。
- * `defaultAnchor` 仅 point 皮肤有意义（新建时的初始归一化位置）。`defaultEvents` = 该皮肤自己
- * tsx 里的固定出口目录——编辑器据此判定「这个组件的出口不让自由增删/改文案，永远用这份 defaults
- * 覆盖」（`graphMaterialOps.ts` 的 `applyStyleLockedEventParams`/`componentEventsLocked`），
- * 同时它也是「时间轴可渲染真实交互皮肤做预览」的白名单来源——两者共用同一份登记，不是两份手工
- * 维护的名单。新皮肤只需在这个数组里加一行（+ 下面 `installCoreSkins`/`registerCoreSkins` 注册渲染
- * 器），不必再去别的文件同步维护第二份组件 id 名单。
- * 各皮肤是独立注册的顶层组件 id，这里不再标它们该归到哪个编辑器下拉分组——那层分组现由
- * `listSchemeMountTabs`（`graphMaterialOps.ts`）接管。
  */
 export const INTERACTION_SKINS: Array<{
   id: string
@@ -90,6 +145,15 @@ export function skinDefaultAnchor(id: string | undefined): { x: number; y: numbe
 export const HUD_SKINS: Array<{ id: string; label: string }> = [{ id: 'battleHpBar', label: '水墨血条' }]
 
 function installCoreSkins(reg: SkinRegistry): void {
+  reg.registerInteractionRenderer('choice', ChoiceButtons)
+  reg.registerInteractionRenderer('skill', ChoiceButtons)
+  reg.registerInteractionRenderer('qte', QteButtons)
+  reg.registerInteractionRenderer('hotspot', HotspotButtons)
+  reg.registerOverlayRenderer('floatText', FloatTextOverlay)
+  reg.registerOverlayRenderer('transition', TransitionOverlay)
+  reg.registerOverlayRenderer('dialogue', DialogueOverlay)
+  reg.registerOverlayRenderer('filter', FilterOverlay)
+  reg.registerOverlayRenderer('fx', FxOverlay)
   reg.registerInteractionSkin('battleParry', BattleParryLayer)
   reg.registerInteractionSkin('inkKou', InkKouLayer)
   reg.registerInteractionSkin('inkYingMo', InkYingMoLayer)
@@ -101,11 +165,20 @@ function installCoreSkins(reg: SkinRegistry): void {
 }
 
 let _registered = false
-/** 注册到默认表（编辑器幂等）：渲染器 + 组件包自带契约。 */
+/** 注册到默认表（编辑器幂等）：渲染器 + 组件包契约。 */
 export function registerCoreSkins(): void {
   if (_registered) return
   _registered = true
   for (const [id, c] of EXTRA_COMPONENTS) registerComponent(id, c)
+  registerInteractionRenderer('choice', ChoiceButtons)
+  registerInteractionRenderer('skill', ChoiceButtons)
+  registerInteractionRenderer('qte', QteButtons)
+  registerInteractionRenderer('hotspot', HotspotButtons)
+  registerOverlayRenderer('floatText', FloatTextOverlay)
+  registerOverlayRenderer('transition', TransitionOverlay)
+  registerOverlayRenderer('dialogue', DialogueOverlay)
+  registerOverlayRenderer('filter', FilterOverlay)
+  registerOverlayRenderer('fx', FxOverlay)
   registerInteractionSkin('battleParry', BattleParryLayer)
   registerInteractionSkin('inkKou', InkKouLayer)
   registerInteractionSkin('inkYingMo', InkYingMoLayer)
@@ -116,10 +189,9 @@ export function registerCoreSkins(): void {
   registerOverlayRenderer('panelB', PanelB)
 }
 
-/** 新建一份已装核心渲染器 + 战斗/水墨皮肤的隔离表（多局 Session 各持一份）。 */
+/** 新建一份已装全部默认渲染器的隔离表（多局 Session 各持一份）。 */
 export function createCoreSkinRegistry(): SkinRegistry {
   const reg = new SkinRegistry()
-  reg.registerCoreRenderers()
   installCoreSkins(reg)
   return reg
 }

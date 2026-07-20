@@ -10,11 +10,26 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
-import type { ChoiceParams } from '../../registry/core-components'
+import {
+  CHOICE_INPUTS,
+  validateChoiceEvents,
+  type ChoiceParams,
+} from '../../registry/core-components'
+import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle } from './skinRuntime'
 
 const KEY_LABELS = ['A', 'B'] as const
+
+/**
+ * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
+ */
+export const inkYingMoComponent: ComponentDef<ChoiceParams> = {
+  role: 'interaction',
+  label: '應/默 抉择',
+  inputs: CHOICE_INPUTS,
+  validate: validateChoiceEvents,
+}
 
 /** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
 export const inkYingMoDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y'> = {

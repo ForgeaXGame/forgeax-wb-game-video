@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GraphSession } from '../engine/session'
-import { createCoreComponentRegistry } from '../registry/core-components'
+import { createDefaultComponentRegistry } from '../skins/components'
 import { ComponentRegistry } from '../registry/component-registry'
 import { node, scnOf } from './test-fixtures'
 import {
@@ -20,13 +20,13 @@ describe('multi-runtime isolation (B)', () => {
   })
 
   it('custom component on one registry is invisible to another registry', () => {
-    const onlyA = createCoreComponentRegistry()
+    const onlyA = createDefaultComponentRegistry()
     onlyA.registerComponent('secretView', {
       role: 'presentation',
     })
     expect(onlyA.getComponent('secretView')?.role).toBe('presentation')
     expect(new ComponentRegistry().getComponent('secretView')).toBeUndefined()
-    // core components present on A, absent on a bare registry
+    // 默认组件包在 A，裸表没有
     expect(onlyA.getComponent('qte')?.role).toBe('interaction')
     expect(new ComponentRegistry().getComponent('qte')).toBeUndefined()
   })

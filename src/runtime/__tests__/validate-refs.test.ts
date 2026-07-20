@@ -1,9 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { validateGraph } from '../validate/validate'
 import { registerCoreComponents } from '../registry/core-components'
+import { registerCoreSkins } from '../skins/components'
 import type { GameGraph, Overlay } from '../schema/graph-schema'
 
-beforeAll(() => registerCoreComponents())
+beforeAll(() => {
+  registerCoreComponents()
+  registerCoreSkins()
+})
 
 const optsBase = { entities: ['ent-player', 'ent-boss'], vars: ['qi'] }
 
