@@ -5,12 +5,22 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
-import type { NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
+import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/component-registry'
-import { connect, disconnect, reconnect, removeNode, updateEdgeData, updateNodeData, makeEmptySubFlowPack, type NodeDataPatch } from '../../graph/edit/graph-edit'
+import {
+  connect,
+  disconnect,
+  reconnect,
+  removeNode,
+  updateEdgeData,
+  updateNodeData,
+  upsertBranchEdge,
+  makeEmptySubFlowPack,
+  type NodeDataPatch,
+} from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, type EditorPickerCtx } from './editors'
 import { SpawnInputsEditor } from './spawn-inputs-editor'
@@ -38,7 +48,7 @@ function eventReactionDo(reactions: Reaction[] | undefined, ev: OverlayEventRef)
   return resolveEventReactionDo(reactions, ev.localEventId, ev.childId, ev.mountId) ?? []
 }
 
-/** eventKeys 全集：替换某事件反应时移除所有别名，写入规范 eventId。 */
+/** eventKeys 全集：替换某事件反应时移除所有别名，写入规范 id（= 组件 emit 的 localEventId，对齐边 sourceHandle）。 */
 function eventKeySet(ev: OverlayEventRef): Set<string> {
   const keys = new Set<string>([ev.localEventId, ev.eventId])
   keys.add(`${ev.childId}:${ev.localEventId}`)
@@ -54,8 +64,69 @@ function upsertEventReaction(
 ): Reaction[] | undefined {
   const keys = eventKeySet(ev)
   const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
-  if (doActions.length) rest.push({ when: { type: 'event', id: ev.eventId }, do: doActions })
+  // 落盘用 localEventId：与引擎 outcome / 边 sourceHandle 一致（勿写 mount:child:… 展示用 eventId）。
+  if (doActions.length) rest.push({ when: { type: 'event', id: ev.localEventId }, do: doActions })
   return rest.length ? rest : undefined
+}
+
+/** 本节点上某交互出口（sourceHandle = localEventId）的出边。 */
+function handleEdges(graph: GameGraph, nodeId: string, handle: string) {
+  return graph.edges.filter((e) => e.source === nodeId && (e.sourceHandle ?? 'default') === handle)
+}
+
+/**
+ * 「覆盖物事件 → 目标节点」捷径：upsert `sourceHandle=localEventId` 的边，并把 advance 写到**当前挂载**。
+ * 同 handle 已有多条边（加权边池）时不改边，仅提示走「出边」。
+ * 清空目标 = 拆掉该 handle 下出边（disconnect 会清掉指向它们的 advance）。
+ */
+function routeMountEventToNode(
+  graph: GameGraph,
+  nodeId: string,
+  mountIndex: number,
+  ev: OverlayEventRef,
+  targetId: string,
+): GameGraph {
+  const handle = ev.localEventId
+  const pool = handleEdges(graph, nodeId, handle)
+  if (!targetId) {
+    let g = graph
+    for (const e of pool) g = disconnect(g, e.id)
+    return g
+  }
+  if (pool.length > 1) return graph
+
+  let g = upsertBranchEdge(graph, { source: nodeId, sourceHandle: handle, target: targetId })
+  const edge = handleEdges(g, nodeId, handle).find((e) => e.target === targetId)
+    ?? handleEdges(g, nodeId, handle)[0]
+  if (!edge) return g
+
+  const node = g.nodes.find((n) => n.id === nodeId)
+  if (!node?.data.overlayNodes?.[mountIndex]) return g
+
+  // 保留本事件已有的 effect/spawn（任一挂载上的），只换成指向新边的 advance；收拢到当前挂载。
+  let preserved: NodeAction[] = []
+  for (const m of node.data.overlayNodes) {
+    const doList = eventReactionDo(m.reactions, ev)
+    if (doList.length) {
+      preserved = doList.filter((a) => a.kind !== 'advance')
+      break
+    }
+  }
+  const keys = eventKeySet(ev)
+  const strip = (rs: Reaction[] | undefined): Reaction[] | undefined => {
+    const next = (rs ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
+    return next.length ? next : undefined
+  }
+  const mounts = node.data.overlayNodes.map((m, i) => {
+    let reactions = strip(m.reactions)
+    if (i === mountIndex) {
+      const doActions: NodeAction[] = [...preserved, { kind: 'advance', edgeId: edge.id }]
+      reactions = [...(reactions ?? []), { when: { type: 'event', id: handle }, do: doActions }]
+    }
+    return { ...m, reactions }
+  })
+  const dataReactions = strip(node.data.reactions)
+  return updateNodeData(g, nodeId, { overlayNodes: mounts, reactions: dataReactions })
 }
 
 type LifecyclePhase = 'enter' | 'at' | 'exit' | 'complete'
@@ -184,7 +255,11 @@ function OverlayReactionsEditor({
   pickers,
   entities,
   variables,
+  nodeOptions,
+  graph,
+  nodeId,
   onChange,
+  onRouteTo,
 }: {
   events: OverlayEventRef[]
   reactions: Reaction[] | undefined
@@ -196,7 +271,13 @@ function OverlayReactionsEditor({
   pickers?: EditorPickerCtx
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
+  /** 目标节点下拉（不含当前节点）。 */
+  nodeOptions: OptItem[]
+  graph: GameGraph
+  nodeId: string
   onChange: (next: Reaction[] | undefined) => void
+  /** 选目标节点：upsert 边 + 本挂载 advance；空串 = 清除该出口边。 */
+  onRouteTo: (ev: OverlayEventRef, targetId: string) => void
 }): JSX.Element {
   const catalog = pickers ?? { entities, variables }
   if (!events.length) {
@@ -209,25 +290,43 @@ function OverlayReactionsEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
       <div style={{ fontSize: 11, opacity: 0.6 }}>
-        组件点击/交互时在此配置响应（效果 / 生成组件 / 沿边推进）；走向必须能看出目标节点。
+        选目标节点会同步写出边（sourceHandle = 事件 id）；效果/生成组件仍在下方配置。多目标加权见「出边」。
       </div>
       {events.map((ev) => {
         const actions = eventReactionDo(reactions, ev)
-        const hint = routeHints?.[ev.eventId] ?? routeHints?.[ev.localEventId]
-        const hasAdvance = actions.some((a) => a.kind === 'advance')
+        const pool = handleEdges(graph, nodeId, ev.localEventId)
+        const advance = actions.find((a): a is Extract<NodeAction, { kind: 'advance' }> => a.kind === 'advance')
+        const advanceEdge = advance ? graph.edges.find((e) => e.id === advance.edgeId) : undefined
+        const multiPool = pool.length > 1
+        const currentTarget = multiPool
+          ? ''
+          : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
+        const hint = routeHints?.[ev.localEventId] ?? routeHints?.[ev.eventId]
         return (
           <div key={ev.eventId} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
             <div style={{ fontSize: 12, marginBottom: 4 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
               <b>{overlayEventLabel(ev)}</b>
             </div>
-            {hint ? (
-              <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 4, color: hasAdvance ? '#9cdcfe' : '#ce9178' }}>
-                {hasAdvance ? '沿边推进' : '默认推进'} {hint}
-              </div>
-            ) : (
-              <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>无出边 · 只做副作用、不换节点</div>
-            )}
-            <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>触发时 do</div>
+            {row('目标节点', (
+              multiPool ? (
+                <span style={{ fontSize: 11, color: '#ce9178' }}>
+                  多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}
+                </span>
+              ) : (
+                <select
+                  value={currentTarget}
+                  onChange={(e) => onRouteTo(ev, e.target.value)}
+                  style={{ flex: 1 }}
+                  title="写入出边 sourceHandle=事件 id，并在本挂载 reactions 里挂 advance"
+                >
+                  <option value="">（无 · 只做副作用）</option>
+                  {nodeOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              )
+            ))}
+            <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>触发时 do</div>
             <NodeActionsEditor
               actions={actions}
               edgeOptions={edgeOptions}
@@ -239,6 +338,52 @@ function OverlayReactionsEditor({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+type MountLayoutKey = 'left' | 'top' | 'width' | 'height'
+
+/** 挂载相对视频的 layout（比例 0~1 或留空）。 */
+function MountLayoutEditor({
+  layout,
+  onChange,
+}: {
+  layout: Layout | undefined
+  onChange: (next: Layout | undefined) => void
+}): JSX.Element {
+  const display = (key: MountLayoutKey): string => {
+    const v = layout?.[key]
+    if (v === undefined) return ''
+    return typeof v === 'number' ? String(v) : String(v)
+  }
+  const set = (key: MountLayoutKey, raw: string) => {
+    const trimmed = raw.trim()
+    const next: Layout = { ...layout }
+    if (!trimmed) delete next[key]
+    else if (/^-?\d+(\.\d+)?$/.test(trimmed)) next[key] = Number(trimmed)
+    else next[key] = trimmed as Layout[MountLayoutKey]
+    onChange(Object.keys(next).length ? next : undefined)
+  }
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+      {([
+        ['left', '左'],
+        ['top', '上'],
+        ['width', '宽'],
+        ['height', '高'],
+      ] as const).map(([key, label]) => (
+        <label key={key} style={{ display: 'flex', gap: 3, alignItems: 'center', fontSize: 11 }}>
+          <span style={{ opacity: 0.65 }}>{label}</span>
+          <input
+            value={display(key)}
+            placeholder="—"
+            onChange={(e) => set(key, e.target.value)}
+            style={{ width: 52, fontSize: 11 }}
+            title="相对视频 0~1，或 50% / 12px"
+          />
+        </label>
+      ))}
     </div>
   )
 }
@@ -698,23 +843,8 @@ export function NodeInspector({
     if (!title || title === id) return id
     return `${title} (${id})`
   }
-  // 「默认样式 / ＋ 挂载」只列界面方案；node:* 是时间轴内容容器，不当整体方案选。
-  // 下拉 = 场景里已有的非 node: 方案 ∪ 固化预设（画廊 + nodia 界面方案），保证总能选到。
-  const schemeOverlayIds = (() => {
-    const seen = new Set<string>()
-    const ids: string[] = []
-    for (const o of PRESET_SCHEME_OVERLAYS) {
-      if (seen.has(o.id)) continue
-      seen.add(o.id)
-      ids.push(o.id)
-    }
-    for (const id of Object.keys(overlays ?? {})) {
-      if (id.startsWith('node:') || seen.has(id)) continue
-      seen.add(id)
-      ids.push(id)
-    }
-    return ids
-  })()
+  // 「默认样式 / ＋ 挂载」只列固化界面方案（画廊 + nodia），不混入草稿残留 ov-* 等。
+  const schemeOverlayIds = PRESET_SCHEME_OVERLAYS.map((o) => o.id)
   const mediaRef = d.media?.ref ?? ''
   // 当前引用若不在资产清单里也要能显示（避免选中项丢失）。
   const videoChoices: VideoOption[] = (() => {
@@ -798,6 +928,16 @@ export function NodeInspector({
     }
     patchData({ overlayNodes: mounts })
   }
+  const setMountLayout = (mountIndex: number, layout: Layout | undefined) => {
+    const mounts = [...(d.overlayNodes ?? [])]
+    const mount = mounts[mountIndex]
+    if (!mount) return
+    mounts[mountIndex] = { ...mount, layout }
+    patchData({ overlayNodes: mounts })
+  }
+  const targetNodeOptions: OptItem[] = nodeIds
+    .filter((id) => id !== node.id)
+    .map((id) => ({ value: id, label: nodeLabel(id) }))
   const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
     if (mode === 'none') {
       patchData({ subFlow: undefined, subFlowPack: undefined })
@@ -1010,11 +1150,14 @@ export function NodeInspector({
           (d.overlayNodes ?? []).map((mount, i) => {
             const mid = overlayMountId(mount)
             const multi = (d.overlayNodes?.length ?? 0) > 1
-            const events = aggregateOverlayEvents(overlays?.[mount.overlay], getComponentManifest, {
-              mountId: mid,
-              prefixMount: multi,
-            })
-            const mountTitle = overlays?.[mount.overlay]?.title?.trim()
+            // 事件列表跟挂载展开（含 overrides / added），与运行时一致。
+            const mountChildren = resolveMountChildren(overlays, mount)
+            const events = aggregateOverlayEvents(
+              { id: mount.overlay, title: overlays?.[mount.overlay]?.title, children: mountChildren },
+              getComponentManifest,
+              { mountId: mid, prefixMount: multi },
+            )
+            const mountTitle = overlays?.[mount.overlay]?.title?.trim() || PRESET_SCHEME_BY_ID[mount.overlay]?.title?.trim()
             return (
               <div key={`${mid}-${i}`} style={{ marginTop: 8, border: '1px solid #333', borderRadius: 6, padding: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
@@ -1044,31 +1187,29 @@ export function NodeInspector({
                     移除
                   </button>
                 </div>
-                {(() => {
-                  const mountChildren = resolveMountChildren(overlays, mount)
-                  if (!mountChildren.length) return null
-                  return (
-                    <div style={{ marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>组件参数（inputs）</div>
-                      {mountChildren.map((child) => {
-                        const compName = getComponentManifest(child.component)?.label ?? child.component
-                        return (
-                          <div key={child.id} style={{ border: '1px solid #262626', borderRadius: 6, padding: 6, marginBottom: 4 }}>
-                            <div style={{ fontSize: 11, marginBottom: 2 }}>
-                              <b>{child.id}</b> <span style={{ opacity: 0.6 }}>· {compName}</span>
-                            </div>
-                            <ComponentFormFields
-                              componentId={child.component}
-                              values={(child.inputs ?? {}) as Record<string, unknown>}
-                              onChange={(next) => setChildInputs(i, child.id, next)}
-                              pickers={pickers}
-                            />
+                <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>挂载排版（相对视频）</div>
+                <MountLayoutEditor layout={mount.layout} onChange={(layout) => setMountLayout(i, layout)} />
+                {mountChildren.length ? (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, opacity: 0.7, margin: '2px 0' }}>组件参数（inputs）</div>
+                    {mountChildren.map((child) => {
+                      const compName = getComponentManifest(child.component)?.label ?? child.component
+                      return (
+                        <div key={child.id} style={{ border: '1px solid #262626', borderRadius: 6, padding: 6, marginBottom: 4 }}>
+                          <div style={{ fontSize: 11, marginBottom: 2 }}>
+                            <b>{child.id}</b> <span style={{ opacity: 0.6 }}>· {compName}</span>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
+                          <ComponentFormFields
+                            componentId={child.component}
+                            values={(child.inputs ?? {}) as Record<string, unknown>}
+                            onChange={(next) => setChildInputs(i, child.id, next)}
+                            pickers={pickers}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
                 <OverlayReactionsEditor
                   events={events}
                   reactions={mount.reactions}
@@ -1079,10 +1220,14 @@ export function NodeInspector({
                   pickers={pickers}
                   entities={entities}
                   variables={variables}
+                  nodeOptions={targetNodeOptions}
+                  graph={graph}
+                  nodeId={node.id}
                   onChange={(reactions) => {
                     const next = (d.overlayNodes ?? []).map((m, j) => (j === i ? { ...m, reactions } : m))
                     patchData({ overlayNodes: next })
                   }}
+                  onRouteTo={(ev, targetId) => onChange(routeMountEventToNode(graph, node.id, i, ev, targetId))}
                 />
               </div>
             )

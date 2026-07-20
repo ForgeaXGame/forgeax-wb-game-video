@@ -579,7 +579,7 @@ export const NODIA_NODE_SCHEME_WAIT: Overlay = {
           },
           {
             "id": "heavy",
-            "label": "重攻击（气≥2）",
+            "label": "重攻击",
             "condition": {
               "all": [
                 {
@@ -597,7 +597,7 @@ export const NODIA_NODE_SCHEME_WAIT: Overlay = {
           },
           {
             "id": "ult",
-            "label": "灭世（气≥5·理智≥4）",
+            "label": "灭世",
             "condition": {
               "all": [
                 {

@@ -100,6 +100,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const selected = useGraphScenario((s) => s.selectedNodeId)
   const setSelected = useGraphScenario((s) => s.setSelectedNode)
   const [playOpen, setPlayOpen] = useState(false)
+  /** 每次 start / 从此试玩 递增，强制 <video> remount——末节点同 id 再 jump 时否则 key 不变、播完不重开。 */
+  const [playEpoch, setPlayEpoch] = useState(0)
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
@@ -178,12 +180,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setPackDrill(null)
     setDrillStack([])
   }
-  const addPerfNode = () => {
+  const addPerfNode = (position: { x: number; y: number }) => {
     const id = `n-${Date.now().toString(36)}`
     const node: GameNode = {
       id,
       type: 'perf',
-      position: { x: 40 + Math.random() * 80, y: 40 + Math.random() * 80 },
+      position,
       inputs: [],
       outputs: [],
       data: { name: '新演出节点' },
@@ -191,9 +193,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setCanvasGraph((g) => addNode(g, node))
     setSelected(id)
   }
-  const addPackNode = () => {
+  const addPackNode = (position: { x: number; y: number }) => {
     const pack = makeEmptySubFlowPack({ title: '子蓝图' })
-    const container = makeSubFlowPackContainer(pack, { name: '子蓝图' })
+    const container = makeSubFlowPackContainer(pack, { name: '子蓝图', position })
     setPacks([...packs, pack])
     setGraph((g) => addNode(g, container))
     setSelected(container.id)
@@ -238,6 +240,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
   useEffect(() => {
     setSnap(sessionRef.current.start())
+    setPlayEpoch((n) => n + 1)
   }, [session])
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
@@ -258,7 +261,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [snap.interaction?.elementId, snap.interaction?.timeoutMs])
 
   const submit = (input: unknown) => setSnap(sessionRef.current.submit(input))
-  const jump = useCallback((nodeId: string) => setSnap(sessionRef.current.jump(nodeId)), [])
+  /** 从此试玩：打开试玩浮层 + 强制视频 remount，再 seek 到该节点（末节点同 id 再点也能重播）。 */
+  const jump = useCallback((nodeId: string) => {
+    setPlayOpen(true)
+    setPlayEpoch((n) => n + 1)
+    setSnap(sessionRef.current.jump(nodeId))
+  }, [])
   const traversed = useMemo(() => new Set(snap.traversedEdgeIds), [snap.traversedEdgeIds])
 
   const visibleNodeIds = useMemo(() => {
@@ -417,9 +425,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
         {/* 试玩浮层：画布右上角（原独立试玩面板搬来） */}
         {playOpen && (
           <div style={{ position: 'absolute', top: 8, right: 8, width: 320, zIndex: 6, borderRadius: 10, overflow: 'hidden', border: '1px solid #403830', background: 'rgba(27,23,19,0.94)', boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#252019', borderBottom: '1px solid #2e2924', fontSize: 11, color: '#c9d1e0' }}>
-              <span>试玩 · {snap.phase}</span>
-              <span style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#252019', borderBottom: '1px solid #2e2924', fontSize: 11, color: '#c9d1e0', gap: 8 }}>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={snap.currentNodeId ? `${snap.phase} · ${nameOf(snap.currentNodeId)}` : snap.phase}>
+                试玩 · {snap.phase}
+                {snap.currentNodeId ? ` · ${snap.clip?.name || nameOf(snap.currentNodeId)}` : ''}
+              </span>
+              <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <button onClick={bumpRun} title="重开" style={{ background: 'none', border: 'none', color: '#f08840', cursor: 'pointer', padding: 0 }}>▶ 重开</button>
                 <button onClick={() => setPlayOpen(false)} title="隐藏" style={{ background: 'none', border: 'none', color: '#9aa2b1', cursor: 'pointer', padding: 0 }}>✕</button>
               </span>
@@ -434,7 +445,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
             >
               {videoSrc ? (
                 <video
-                  key={snap.clip?.nodeId}
+                  key={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
                   ref={videoElRef}
                   src={videoSrc}
                   autoPlay
@@ -516,7 +527,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
       {/* 右：节点配置面板 —— 默认隐藏，点画布节点才出现；✕ 或点画布空白处关闭 */}
       {selected && (
-        <div style={{ width: 340, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #2e2924' }}>
+        <div style={{ width: 440, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #2e2924' }}>
           <div style={{ display: 'flex', gap: 4, padding: 6, borderBottom: '1px solid #2e2924', alignItems: 'center' }}>
             <b style={{ fontSize: 12 }}>节点配置</b>
             <button onClick={() => setSelected(null)} title="关闭" style={{ marginLeft: 'auto', color: '#9aa2b1', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
