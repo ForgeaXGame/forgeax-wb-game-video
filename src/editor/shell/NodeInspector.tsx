@@ -1346,7 +1346,7 @@ export function NodeInspector({
         <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button
             onClick={() => onJump?.(node.id)}
-            title="调试：从这个节点开始试玩（沿用当前血量/变量等状态，不改图、不设为起点）"
+            title="从此节点试玩；浮层重开回到该节点（不改图、不设为起点）"
           >
             ▶ 从此试玩
           </button>
