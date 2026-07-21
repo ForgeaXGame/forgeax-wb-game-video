@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { GameNode, GameScenario } from '../../../runtime/schema/graph-schema'
 import type { OverlayChild } from '../../../runtime/schema/node-config-schema'
-import type { QteCue } from '../../../runtime/registry/core-components'
-import { registerCoreComponents } from '../../../runtime/registry/core-components'
+import type { QteCue } from '../../../runtime/skins/components/Qte'
 import { registerCoreSkins } from '../../../runtime/skins/components'
 import { node, scnOf } from '../../../runtime/__tests__/test-fixtures'
 import { nodeOverlayId } from '../../../graph/edit/overlay-edit'
@@ -42,8 +41,7 @@ import type { MaterialItem } from '../materialTimelineShared'
 // qteElement/choiceElement 的用例（含本文件顶部几个 describe）都需要先注册核心组件——放在文件级
 // beforeAll，不依赖某个 describe 恰好排在后面的顺序。
 beforeAll(() => {
-  registerCoreComponents()
-  registerCoreSkins()
+    registerCoreSkins()
 })
 
 function qteEl(scenario: GameScenario, nodeId: string): OverlayChild | undefined {
@@ -115,9 +113,9 @@ describe('graphMaterialOps · QTE 元素级参数', () => {
 })
 
 describe('graphMaterialOps · QTE 结算候选（样式驱动，见 qteComponent.outputs）', () => {
-  beforeAll(() => registerCoreComponents())
+  beforeAll(() => registerCoreSkins())
 
-  it('默认（无 exits）：泛用 qte 组件不在样式锁定表里，候选仍是 完美/良好/失败 三档', () => {
+  it('默认（无自定义 events）：泛用 qte 组件不在样式锁定表里，候选仍是 完美/良好/失败 三档', () => {
     const { scenario, node: n } = seedQteSkin('qte', { events: undefined })
     const views = listQteOutcomeViews(scenario, n)
     expect(views).toHaveLength(1)
@@ -335,7 +333,7 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
 })
 
 describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
-  beforeAll(() => registerCoreComponents())
+  beforeAll(() => registerCoreSkins())
 
   it('inkYingMo 顶层组件：播放头窗内可预览、窗外卸掉', () => {
     const n = node('a', { durationMs: 8000 })
@@ -504,8 +502,7 @@ describe('graphMaterialOps · 选项/组件结算统一写 mount.reactions（修
 
 describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
   beforeAll(() => {
-    registerCoreComponents()
-    registerCoreSkins()
+        registerCoreSkins()
   })
 
   it('未分类按挂载实例列槽（同类型两份血条各一格）；添加时克隆 bind/label', () => {
@@ -713,7 +710,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
 })
 
 describe('graphMaterialOps · choice 顶层组件样式锁定选项集合（创建时定组件，创建后不可切皮肤）', () => {
-  beforeAll(() => registerCoreComponents())
+  beforeAll(() => registerCoreSkins())
 
   function seedDefaultOption(): { scenario: GameScenario; node: GameNode } {
     const n = node('a', { durationMs: 8000 })

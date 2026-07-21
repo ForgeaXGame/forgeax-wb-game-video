@@ -5,7 +5,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { registerCoreComponents } from '../../../runtime/registry/core-components'
 import { createCoreSkinRegistry, registerCoreSkins } from '../../../runtime/skins/components'
 import { battleHpBarPreset } from '../../../runtime/skins/components/BattleHpBar'
 import { inkKouPreset } from '../../../runtime/skins/components/InkKouLayer'
@@ -14,8 +13,7 @@ import { renderOverlayChildPreview } from '../overlayChildPreview'
 import type { SkinCtx } from '../../../runtime/skins/rendererRegistry'
 
 beforeAll(() => {
-  registerCoreComponents()
-  registerCoreSkins()
+    registerCoreSkins()
 })
 
 function hudEnt(hp: number, maxHp: number) {

@@ -4,9 +4,29 @@
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
-import type { FloatTextParams } from '../../registry/core-components'
+import type { GraphTextStyle } from '../../schema/graph-schema'
 import { evalExpr, type EvalCtx } from '../../engine/expr'
 import type { OverlayProps, SkinCtx } from '../rendererRegistry'
+
+export interface FloatTextParams {
+  /** 固定文案；含 `{v}` 时用 expr 求值替换（如 "气力 {v}"）。 */
+  text?: string
+  /** 动态值表达式（如伤害 `-(entity.ent-player.attr.attack*2 - entity.ent-boss.attr.defense)`）。 */
+  expr?: string
+  /** 归一化锚点（0~1，画面中心 0.5,0.5）。 */
+  x?: number
+  y?: number
+  /** 文本样式（预设快照，含 fontSize/描边/色/投影）。 */
+  style?: GraphTextStyle
+  /** 兜底文字色（无 style.color 时用；伤害飘字用）。 */
+  color?: string
+  /** 飘起淡出总时长 ms。 */
+  durationMs?: number
+  /** 入场动画预设 id（pop/fade/slide/floatUp…）。 */
+  enter?: string
+  /** 出场动画预设 id。 */
+  exit?: string
+}
 
 function signed(v: number): string {
   return v > 0 ? `+${v}` : String(v)

@@ -14,7 +14,7 @@ import {
   CHOICE_INPUTS,
   validateChoiceEvents,
   type ChoiceParams,
-} from '../../registry/core-components'
+} from './Choice'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import { STAGE_FILL_LAYOUT } from '../../schema/layout'

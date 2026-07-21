@@ -85,7 +85,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 
 1. **Schema**：删 `ComponentEvent.payload`（✅ 已做）；`ComponentInput.default` 放宽为 `unknown`、加可选 `component`。
 2. **Registry**：`ComponentDef`（`label`/`inputs`/`events` + 可选钩子）+ `registerOverlayRenderer`；删 `form/deriveInputsFromForm`；出口 =「events → handles」；`defaults` 由 `inputs[].default` 组装。
-3. **core-components / 皮肤**：各组件声明 `inputs`（复合项标 `component` 控件提示）；判定型把逻辑留在皮肤，到点/命中后 `emit`。
+3. **skins/components**：各组件同文件声明 `inputs`（复合项标 `component` 控件提示）；判定型把逻辑留在皮肤，到点/命中后 `emit`。
 4. **编辑器**：`ComponentFormFields` 读 `manifest.inputs` 出控件；spawn/QTE 检视器对齐 `inputs`。
 5. **值键 rename**：`params → inputs`（语义替换，避开 `URLSearchParams` 等无关词）。
 6. **数据迁移**：`nodia.graph.json` + 界面方案的 `params → inputs`。
@@ -119,7 +119,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 
 - **机械改名**（36 文件，不改行为）：`kind-registry.ts`→`component-registry.ts`
   （`KindPlugin`→`ComponentDef`、`KindRegistry`→`ComponentRegistry`、`registerKind`→`registerComponent`、
-  `getKind`/`getComponent` 合并为 `getComponent`……）；`core-kinds.ts`→`core-components.ts`
+  `getKind`/`getComponent` 合并为 `getComponent`……）；契约已下沉到 `skins/components/*`
   （`qteKind`/`inkKouKind`… 去 `Kind` 后缀→`qteComponent`/`inkKouComponent`…）；
   `kind-form-fields.tsx`→`component-form-fields.tsx`（`KindFormFields`→`ComponentFormFields`）；
   14 个测试文件同步。全仓已不再有 `Kind` 字样指代这套注册表概念。
@@ -170,7 +170,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
   `NumOrExpr.pick` 里，`valuePick` 概念退役，改成通用 `ValueInput` 直接绑定 `expr`。
   **`FloatTextParams.expr` 的类型不写成 `NumOrExpr`**，而是本地窄类型
   `number | { expr: string }`（不含 `pick`，也不从 schema 导入 `NumOrExpr`）——runtime
-  的 `core-components.ts` 只消费 `expr` 字段本身，`pick` 是纯编辑器 sidecar，与
+  的 `FloatText.tsx` 只消费 `expr` 字段本身，`pick` 是纯编辑器 sidecar，与
   `apply-effects.ts::resolveValue` 处理 `GraphEffect.value`（同样在 schema 里声明成
   `NumOrExpr`，但消费端只本地声明 `number | { expr: string }`）的既有写法保持一致。
   编辑器侧（`ValueInput`/`graphMaterialOps.ts`/`previewResolve.ts`）仍按完整 `NumOrExpr`
@@ -183,11 +183,11 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 - `ComponentFormFields`（`component-form-fields.tsx`）新增通用 `numberExpr` 分支，供以后新组件
   在 manifest 里打标记即可直接获得表达式下拉——当前没有强制消费者，是预留入口。
 - `NumOrExpr` → 求值器认的字符串源码这步转换（`number`→`String`／`{expr}`→`.expr`）**不设跨模块共享
-  helper**：三个真正求值的消费方（`core-components.ts` 的 `render()`、`graphMaterialOps.ts` 的
+  helper**：三个真正求值的消费方（`FloatText.tsx` 的 `resolveFloatTextDisplay`、`graphMaterialOps.ts` 的
   `floatPreviewParams`、`previewResolve.ts` 的 `resolveFloatTextPreviewLabel`）各自在本地写一个不
   导出的小函数，与 `apply-effects.ts::resolveValue` 处理 `GraphEffect.value` 的既有写法一致——
   `runtime/engine/expr.ts` 只认字符串，不感知 `NumOrExpr` 这个「值形状」概念，也不引入
-  schema 的类型依赖。同理，`core-components.ts` 的 `FloatTextParams.expr` 也不声明成 `NumOrExpr`，
+  schema 的类型依赖。同理，`FloatTextParams.expr` 也不声明成 `NumOrExpr`，
   而是本地最窄类型 `number | { expr: string }`（不含 `pick`，也不从 schema import `NumOrExpr`）。
 
 ## 8. 运算符符号化统一：`OpSymbolButtons` + Effect 层减/除靠取反/取倒数（2026-07-20，已完成）

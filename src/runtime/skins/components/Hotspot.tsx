@@ -3,10 +3,17 @@
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
-import type { HotspotParams } from '../../registry/core-components'
+import type { ComponentEvent } from '../../schema/node-config-schema'
 import type { OverlayProps } from '../rendererRegistry'
 import { bottomRow, defaultBtn } from './defaultUi'
 import { useDefaultEventTimeout } from './skinRuntime'
+
+/** 热点项 = 共享事件 + 本组件画面锚点（归一化 0~1）。 */
+export type HotspotSpot = ComponentEvent & { x?: number; y?: number }
+export interface HotspotParams {
+  /** 交互目录：每个 spot 一个同名出口；坐标由本组件 inputs 决定。 */
+  events: HotspotSpot[]
+}
 
 export const hotspotComponent: ComponentDef<HotspotParams> = {
   label: '热点',

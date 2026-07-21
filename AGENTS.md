@@ -129,7 +129,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | 图 schema / 类型 SSOT | `src/runtime/schema/graph-schema.ts` |
 | 状态机引擎 | `src/runtime/engine/engine.ts` |
 | 视图模型（引擎↔UI） | `src/runtime/engine/session.ts` |
-| 核心 kind / 注册 | `src/runtime/registry/core-kinds.ts` / `kind-registry.ts` |
+| 组件契约 / 注册 | `src/runtime/skins/components/*` + `src/runtime/registry/component-registry.ts` |
 | 表达式 / 随机 / 效果 / 条件 | `src/runtime/engine/{expr,rng,apply-effects,condition}.ts` |
 | 校验 | `src/runtime/validate/validate.ts` |
 | 皮肤 / renderer registry | `src/runtime/skins/` |

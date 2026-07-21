@@ -68,6 +68,14 @@ export {
   filterComponent,
   fxComponent,
 }
+export { CHOICE_INPUTS, validateChoiceEvents } from './Choice'
+export type { ChoiceOption, ChoiceParams, ChoicePresentation } from './Choice'
+export type { FloatTextParams } from './FloatText'
+export type { DialogueParams } from './Dialogue'
+export type { TransitionParams } from './Transition'
+export type { HotspotSpot, HotspotParams } from './Hotspot'
+export { QTE_DEFAULT_EVENTS, QTE_INPUTS } from './Qte'
+export type { QteCue, QteCueShape, QteParams } from './Qte'
 
 /**
  * 全部可挂载组件契约（与渲染同文件导出）。

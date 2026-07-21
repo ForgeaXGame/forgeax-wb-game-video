@@ -13,20 +13,20 @@ import { useEffect, useRef, useState } from 'react'
 import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import type { ComponentDef } from '../../registry/component-registry'
-import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
+import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteParams } from './Qte'
 import { STAGE_FILL_LAYOUT } from '../../schema/layout'
 import { injectCss, ensureInkFilters, ensureBrushFont, resolveTimeoutMs } from './skinRuntime'
 
 /**
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  */
-export const battleParryComponent: ComponentDef<QteFullParams> = {
+export const battleParryComponent: ComponentDef<QteParams> = {
   label: '防反 QTE',
   events: QTE_DEFAULT_EVENTS,
   inputs: QTE_INPUTS,
 }
 
-/** 皮肤默认玩法参数（出口 / 样式锁 / 新建预设共用；不进 core-kinds 特判）。 */
+/** 皮肤默认玩法参数（出口 / 样式锁 / 新建预设共用）。 */
 export const battleParryDefaults = {
   durationMs: 2600,
   events: [
@@ -84,8 +84,8 @@ function firstCueAppearAt(params: Record<string, unknown>): number {
 
 /**
  * 收圈总时长 —— 唯一 SSOT 是本皮肤那个 cue 的 [appearAt, endAt]（时间轴拖左右缘直接改的就是它）。
- * `inputs.durationMs`/`inputs.timeoutMs`/`inputs.windowMs` 仅在没有 cue 的异常/旧数据下才顶上，
- * 避免拖时间轴改了窗口、动画时长却纹丝不动（历史上曾经优先读 durationMs，跟时间轴完全脱节）。
+ * `inputs.durationMs`/`inputs.timeoutMs`/`inputs.windowMs` 仅在没有 cue 时才顶上，
+ * 避免拖时间轴改了窗口、动画时长却纹丝不动。
  */
 function resolveDurationMs(inputs: Record<string, unknown>): number {
   const cue = firstCue(inputs)

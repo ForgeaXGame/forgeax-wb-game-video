@@ -29,7 +29,9 @@ import type {
   Trigger,
 } from '../../runtime/schema/graph-schema'
 import type { NodeAction } from '../../runtime/schema/node-config-schema'
-import type { ChoiceOption, FloatTextParams, QteCue } from '../../runtime/registry/core-components'
+import type { ChoiceOption } from '../../runtime/skins/components/Choice'
+import type { FloatTextParams } from '../../runtime/skins/components/FloatText'
+import type { QteCue } from '../../runtime/skins/components/Qte'
 import { componentHandles, componentTypeLabel, defaultsForComponent, getComponent, hasCuePointsInput, hasOptionEventsInput } from '../../runtime/registry/component-registry'
 import { isPositionable } from '../shell/editors'
 import { INTERACTION_SKINS } from '../../runtime/skins/components'
@@ -137,20 +139,15 @@ export const OVERLAY_XY = { x: 0.5, y: 0.42 }
 export const OPTION_XY = { x: 0.5, y: 0.72 }
 const QTE_GOOD_WINDOW = 480
 /**
- * QTE 元素级参数键（落 el.inputs，非某个 cue）：完美半窗 / 过关次数 / 满分 / 过关分 /
- * 出口目录（events/defaultEvent，PR #77）+ 旧 exits/defaultKey 兼容 / 皮肤自管时长
+ * QTE 元素级参数键（落 el.inputs，非某个 cue）：完美半窗 / 过关次数 /
+ * 出口目录（events/defaultEvent）/ 皮肤自管时长
  * （windowMs 或 durationMs——注意与 cue 级 `durationMs` hold 时长同名冲突）。
  */
 const QTE_ELEMENT_PARAM_KEYS = new Set([
   'perfectMs',
   'passingHits',
-  'score',
-  'passingScore',
-  'tolerance',
   'events',
   'defaultEvent',
-  'exits',
-  'defaultKey',
   'windowMs',
   'durationMs',
   'timeoutMs',
@@ -335,11 +332,11 @@ export interface OutcomeView {
   spawn?: SettlementSpawn
   /**
    * QTE 默认三档里「良好」未单独配置时，运行时会按「完美」结算 —— UI 提示用。
-   * 仅当候选同时含 pass/good 时才可能为 true（组合按键 exits 模式不适用；选项/通用组件恒为 false）。
+   * 仅当候选同时含 pass/good 时才可能为 true（选项/通用组件恒为 false）。
    */
   fallsBackToPass?: boolean
 }
-/** 向后兼容命名（QTE 结算专用别名，语义与 OutcomeCandidate/OutcomeView 相同）。 */
+/** QTE 结算专用别名（语义与 OutcomeCandidate/OutcomeView 相同）。 */
 export type QteOutcomeCandidate = OutcomeCandidate
 
 /**
@@ -366,7 +363,7 @@ export function componentEventsLocked(component: string | undefined): boolean {
 
 /**
  * 样式锁定出口：白名单组件强制用自己皮肤 defaults.events 覆盖实例上可被写脏的 events。
- * （边路由统一后 SSOT = inputs.events；旧 exits/defaultKey 仅作兼容回退。）
+ * SSOT = inputs.events / inputs.defaultEvent。
  */
 export function applyStyleLockedEventParams(
   inputs: Record<string, unknown>,
@@ -381,9 +378,7 @@ export function applyStyleLockedEventParams(
     ...cleaned,
     events: locked.map((e) => ({ id: e.id, label: e.label, condition: e.condition })),
     defaultEvent:
-      (typeof cleaned.defaultEvent === 'string' && cleaned.defaultEvent) ||
-      (typeof cleaned.defaultKey === 'string' && cleaned.defaultKey) ||
-      'fail',
+      (typeof cleaned.defaultEvent === 'string' && cleaned.defaultEvent) || 'fail',
   }
 }
 
@@ -1651,7 +1646,7 @@ export function patchSelectedGraph(
       else cuePatch[k] = v
     }
     const cues = cuesOf(el).map((c) => (c.id === item.id ? { ...c, ...cuePatch } : c))
-    // 样式锁出口：写入时强制用皮肤 defaults.exits，丢掉实例上的脏出口
+    // 样式锁出口：写入时强制用皮肤 defaults.events，丢掉实例上的脏出口
     const nextParams = applyStyleLockedEventParams({ ...(el.inputs ?? {}), ...elemPatch, cues }, el.component)
     return patchOverlayChild(scenario, node.id, el.id, { inputs: nextParams })
   }

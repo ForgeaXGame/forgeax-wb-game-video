@@ -8,7 +8,7 @@ beforeAll(() => {
   registerCoreSkins()
 })
 
-describe('core-components（现为 skins/components 包）', () => {
+describe('skins/components 契约', () => {
   it('floatText: validate requires text or expr', () => {
     expect(floatTextComponent.validate!({ text: '+30' })).toEqual([])
     expect(floatTextComponent.validate!({ text: '' })).toHaveLength(1)

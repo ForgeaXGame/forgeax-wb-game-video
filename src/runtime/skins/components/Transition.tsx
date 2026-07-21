@@ -3,8 +3,13 @@
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
-import type { TransitionParams } from '../../registry/core-components'
 import type { OverlayProps } from '../rendererRegistry'
+
+export interface TransitionParams {
+  durationMs?: number
+  style?: 'fade' | 'wipe'
+  color?: string
+}
 
 function ensureTransitionStyle(): void {
   if (typeof document === 'undefined' || document.getElementById('gv-transition-style')) return

@@ -6,14 +6,13 @@ import { describe, expect, it, beforeAll } from 'vitest'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { GraphSession } from '../engine/session'
-import { registerCoreComponents } from '../registry/core-components'
-import { createCoreSkinRegistry } from '../skins/components'
+import { createCoreSkinRegistry, registerCoreSkins } from '../skins/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
 import { ensureBuiltinSchemes, SCHEME_STATIC_ID } from '../../editor/demo/builtin-schemes'
 import { STAGE_FILL_LAYOUT } from '../schema/layout'
 
 beforeAll(() => {
-  registerCoreComponents()
+  registerCoreSkins()
 })
 
 describe('挂载静态方案 · 血条进试玩', () => {

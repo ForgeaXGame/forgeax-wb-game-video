@@ -294,7 +294,7 @@ sequenceDiagram
   App->>Store: ensureBoot(game, demo)（试玩）
   Store-->>App: scn() → GameScenario
   App->>S: new GraphSession(scenario)
-  S->>S: createCoreComponentRegistry / SkinRegistry
+  S->>S: createDefaultComponentRegistry / SkinRegistry
   S->>RT: new GraphRuntime(graph, scenario, components, packs)
   RT->>Init: initState(scenario)
   Note over Init: vars / entities / flags / score / items / rng

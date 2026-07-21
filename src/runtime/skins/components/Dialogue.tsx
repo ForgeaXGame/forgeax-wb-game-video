@@ -3,9 +3,20 @@
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
-import type { DialogueParams } from '../../registry/core-components'
+import type { GraphTextStyle } from '../../schema/graph-schema'
 import type { OverlayProps } from '../rendererRegistry'
 import { anchorStyle, hasAnchor } from './defaultUi'
+
+export interface DialogueParams {
+  speaker?: string
+  text: string
+  color?: string
+  /** 文本样式（字幕预设快照）。 */
+  style?: GraphTextStyle
+  /** 归一化位置（缺省=底部居中字幕带）。 */
+  x?: number
+  y?: number
+}
 
 const dialogueBoxStyle: CSSProperties = {
   padding: '12px 16px',

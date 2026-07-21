@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { registerCoreComponents } from '../registry/core-components'
 import { registerCoreSkins } from '../skins/components'
 import { getComponentManifest } from '../registry/component-registry'
 import type { Overlay, Reaction } from '../schema/node-config-schema'
@@ -12,7 +11,6 @@ import { GraphRuntime } from '../engine/engine'
 import { scnOf, node, rid } from './test-fixtures'
 import type { GameGraph } from '../schema/graph-schema'
 
-registerCoreComponents()
 registerCoreSkins()
 
 describe('overlay events / reactions', () => {

@@ -8,12 +8,12 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest'
 import { GraphSession } from '../engine/session'
-import { registerCoreComponents } from '../registry/core-components'
 import { ensureBuiltinSchemes, SCHEME_STATIC_ID } from '../../editor/demo/builtin-schemes'
+import { registerCoreSkins } from '../skins/components'
 import { node, scnOf } from './test-fixtures'
 
 beforeAll(() => {
-  registerCoreComponents()
+  registerCoreSkins()
 })
 
 describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {

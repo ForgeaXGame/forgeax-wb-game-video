@@ -9,7 +9,6 @@ export * from './engine/expr'
 export * from './engine/rng'
 export * from './engine/engine-init'
 export * from './registry/component-registry'
-export * from './registry/core-components'
 export * from './validate/validate'
 export * from './skins/rendererRegistry'
 export {
@@ -31,5 +30,22 @@ export {
   inkYingMoComponent,
   battleSkillBarComponent,
   battleHpBarComponent,
+  CHOICE_INPUTS,
+  validateChoiceEvents,
+  QTE_DEFAULT_EVENTS,
+  QTE_INPUTS,
+} from './skins/components'
+export type {
+  ChoiceOption,
+  ChoiceParams,
+  ChoicePresentation,
+  FloatTextParams,
+  DialogueParams,
+  TransitionParams,
+  HotspotSpot,
+  HotspotParams,
+  QteCue,
+  QteCueShape,
+  QteParams,
 } from './skins/components'
 export * from './input/playerFocus'

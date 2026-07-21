@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import type { ComponentDef } from '../../registry/component-registry'
-import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
+import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteParams } from './Qte'
 import { STAGE_FILL_LAYOUT } from '../../schema/layout'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle, resolveTimeoutMs, useDefaultEventTimeout } from './skinRuntime'
 
@@ -17,13 +17,13 @@ import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previ
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  * inputs 复用 qte 系共享表；出口缺省回退 QTE_DEFAULT_EVENTS（preset 会写入 inputs.events）。
  */
-export const inkKouComponent: ComponentDef<QteFullParams> = {
+export const inkKouComponent: ComponentDef<QteParams> = {
   label: '叩击 QTE',
   events: QTE_DEFAULT_EVENTS,
   inputs: QTE_INPUTS,
 }
 
-/** 皮肤默认玩法参数（出口 / 新建预设共用；不进 core-kinds 特判）。 */
+/** 皮肤默认玩法参数（出口 / 新建预设共用）。 */
 export const inkKouDefaults = {
   glyph: '叩',
   events: [

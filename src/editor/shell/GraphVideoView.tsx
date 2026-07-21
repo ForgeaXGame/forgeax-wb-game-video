@@ -70,7 +70,7 @@ import { createCoreSkinRegistry, skinPositioning, skinDefaultAnchor } from '../.
 import { CATALOG_CSS } from './catalogCss'
 import type { Entity, GameNode, GameScenario, GraphTextStyle, Layout, NumOrExpr } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
-import type { QteCue } from '../../runtime/registry/core-components'
+import type { QteCue } from '../../runtime/skins/components/Qte'
 import { getComponent, getComponentManifest } from '../../runtime/registry/component-registry'
 import {
   type MaterialTemplate,
@@ -1199,11 +1199,11 @@ function GraphMaterialInspector({
     if (!item || item.kind !== 'qte' || !styleLocksQteEvents) return
     const locked = applyStyleLockedEventParams(inputs, qteSkinId)
     const sameEvents = JSON.stringify(locked.events) === JSON.stringify(inputs.events)
-    const sameDefault = (locked.defaultEvent ?? 'fail') === (inputs.defaultEvent ?? inputs.defaultKey ?? 'fail')
+    const sameDefault = (locked.defaultEvent ?? 'fail') === (inputs.defaultEvent ?? 'fail')
     if (!sameEvents || !sameDefault) {
       onPatch({ events: locked.events, defaultEvent: locked.defaultEvent ?? 'fail' })
     }
-  }, [item?.kind, item?.id, qteSkinId, styleLocksQteEvents, inputs.events, inputs.defaultEvent, inputs.defaultKey, onPatch])
+  }, [item?.kind, item?.id, qteSkinId, styleLocksQteEvents, inputs.events, inputs.defaultEvent, onPatch])
 
   // 打开检视器时把脏 events 写回样式锁定值（應默/技能条选项数与皮肤对齐）
   useEffect(() => {
@@ -1426,7 +1426,7 @@ function GraphMaterialInspector({
               onChange={(next) => onPatch(next)}
             />
           )}
-          {/* 配置区 = manifest.inputs（出口 exits 不在 inputs 里，样式锁定） */}
+          {/* 配置区 = manifest.inputs（样式锁定时出口只读展示） */}
           {styleLocksQteEvents && qteLockedEvents.length > 0 ? (
             <p className="gc-inspector-hint">
               样式出口（只读）：{qteLockedEvents.map((e) => e.label || e.id).join(' · ')}

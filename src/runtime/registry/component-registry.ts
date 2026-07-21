@@ -119,7 +119,7 @@ export class ComponentRegistry {
   }
 }
 
-/** 编辑器 / 单测默认表（模块单例）。多局试玩请用 `createCoreComponentRegistry()` 新建实例。 */
+/** 编辑器 / 单测默认表（模块单例）。多局试玩请用 `createDefaultComponentRegistry()` 新建实例。 */
 export const defaultComponentRegistry = new ComponentRegistry()
 
 export function registerComponent<P>(id: string, def: ComponentDef<P>): void {
