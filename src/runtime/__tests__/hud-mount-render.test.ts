@@ -68,6 +68,20 @@ describe('挂载静态方案 · HUD 进试玩', () => {
     expect(withCtx).toContain('我方')
     expect(withCtx).toContain('敌方')
 
+    // 配置 attr 必须传到 HUD 皮肤：玩家 attack=40，attrMax.attack=40，故血条应满。
+    const attackMount = {
+      ...mount!,
+      children: mount!.children.map((child) =>
+        child.component === 'battleHpBar' && child.inputs.bind === 'ent-player'
+          ? { ...child, inputs: { ...child.inputs, attr: 'attack' } }
+          : child,
+      ),
+    }
+    const withAttackAttr = renderToStaticMarkup(
+      skins.renderOverlayMount(attackMount, undefined, { hud: snap.hud }) as ReactElement,
+    )
+    expect(withAttackAttr).toContain('width:100%')
+
     // 回归：无 layout 的 HUD 挂载盒必须铺满舞台（inset:0），不能塌成 fit-content 左上角 0×0——
     // 否则血条的角锚定（right/bottom/left:50%）相对 0×0 盒解析会跑到屏幕外/挤到左上角，试玩看不见。
     expect(withCtx).toContain('inset:0')

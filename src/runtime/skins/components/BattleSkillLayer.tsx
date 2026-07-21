@@ -108,12 +108,14 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
   )
 }
 
+// 尺寸用 cqmin/cqh（相对舞台，见 VideoOverlayStage.tsx 的 containerType:'size'）而非 px/rem，
+// 保证技能条在预览小窗和全屏试玩里是同一个相对舞台的比例。
 const SKILL_CSS = `
-.pvb-skills { position: absolute; z-index: 44; display: flex; flex-wrap: wrap; gap: 26px; justify-content: center; align-items: flex-end; min-height: 40px; padding: 8px 16px; transform: translate(-50%, -50%); pointer-events: auto; }
-.pvb-skill { position: relative; display: flex; align-items: center; gap: 9px; cursor: pointer; background: none; border: none; padding: 4px; box-shadow: none; line-height: 1; color: #fbf6ec; transition: transform .14s ease, opacity .14s ease; }
-.pvb-sk-key { position: relative; flex: none; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif; font-weight: 800; font-size: 1.18rem; color: #efe7d6; z-index: 1; text-shadow: 0 2px 6px rgba(0,0,0,.85); }
+.pvb-skills { position: absolute; z-index: 44; display: flex; flex-wrap: wrap; gap: 2.4cqmin; justify-content: center; align-items: flex-end; min-height: 4.4cqmin; padding: 8px 16px; transform: translate(-50%, -50%); pointer-events: auto; }
+.pvb-skill { position: relative; display: flex; align-items: center; gap: 1cqmin; cursor: pointer; background: none; border: none; padding: 4px; box-shadow: none; line-height: 1; color: #fbf6ec; transition: transform .14s ease, opacity .14s ease; }
+.pvb-sk-key { position: relative; flex: none; width: 4cqmin; height: 4cqmin; display: flex; align-items: center; justify-content: center; font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif; font-weight: 800; font-size: 2.1cqh; color: #efe7d6; z-index: 1; text-shadow: 0 2px 6px rgba(0,0,0,.85); }
 .pvb-sk-key::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 52% 48% 50% 50% / 50% 52% 48% 50%; background: linear-gradient(180deg, #2b2620, #0c0a08); border: 1.5px solid rgba(239,231,214,.5); box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 2px 7px rgba(0,0,0,.6); filter: url(#inkRough); }
-.pvb-sk-nm { font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif; font-size: 1.05rem; letter-spacing: .06em; text-shadow: 0 2px 5px rgba(0,0,0,.85); }
+.pvb-sk-nm { font-family: 'HYShangWei', 'STKaiti', 'KaiTi', serif; font-size: 1.9cqh; letter-spacing: .06em; text-shadow: 0 2px 5px rgba(0,0,0,.85); }
 .pvb-skill.ult .pvb-sk-key { color: #ffe7a0; }
 .pvb-skill.ult .pvb-sk-key::before { border-color: rgba(255,214,120,.75); box-shadow: 0 2px 6px rgba(0,0,0,.5) inset, 0 0 10px rgba(255,196,80,.35); }
 .pvb-skill.ult .pvb-sk-nm { color: #ffe7a0; }

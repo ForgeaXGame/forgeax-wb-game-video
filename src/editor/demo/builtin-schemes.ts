@@ -57,6 +57,19 @@ const DYNAMIC_SCHEME: Overlay = {
 
 export const BUILTIN_SCHEMES: Overlay[] = [STATIC_SCHEME, DYNAMIC_SCHEME]
 
+/**
+ * 界面方案列表排序：内置方案（静态/动态）固定置顶，其余（项目自建 + demo 具名方案）按原有相对
+ * 顺序跟后——`ensureBuiltinSchemes` 只在缺失时把内置方案 append 到 overlays 目录末尾（对象 key
+ * 插入顺序），若不重排，UI 各处方案下拉/列表会看到内置方案沉底。凡是展示「界面方案」清单的地方
+ * （NodeInspector 挂载/默认样式下拉、ScenarioInspector 目录列表…）都应过这层排序，保持同一顺序感。
+ */
+export function sortSchemeIds(ids: string[]): string[] {
+  const builtinIds = BUILTIN_SCHEMES.map((s) => s.id)
+  const builtin = builtinIds.filter((id) => ids.includes(id))
+  const rest = ids.filter((id) => !builtinIds.includes(id))
+  return [...builtin, ...rest]
+}
+
 /** 「+ 组件」菜单：每项 = 一个组件预设模板（顶栏 component = 该组件的顶层 id）。 */
 export const NEW_COMPONENT_PRESETS: Array<{
   id: string

@@ -246,6 +246,8 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
   )
 }
 
+// 「叩」字号用 cqh/cqmin（相对舞台，见 VideoOverlayStage.tsx 的 containerType:'size'）取代 vw，
+// vw 相对浏览器视口，预览小窗和全屏试玩里同一份配置会呈现出完全不同的物理大小。
 const KOU_CSS = `
 .pvn-opts--kou{position:absolute;inset:0;z-index:6;pointer-events:none;}
 .pvn-opts--kou.show{pointer-events:auto;}
@@ -262,7 +264,7 @@ const KOU_CSS = `
 .pvn-kou-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 0 6px rgba(255,255,255,.35);}
 .pvn-kou-diamond{width:10px;height:10px;position:relative;transform:rotate(45deg);border:1.5px solid rgba(255,255,255,.9);border-radius:1px;}
 .pvn-kou-diamond::after{content:'';position:absolute;left:50%;top:50%;width:5px;height:5px;transform:translate(-50%,-50%);background:rgba(255,255,255,.92);border-radius:1px;}
-.pvn-kou-glyph{font-family:'HYShangWei','STKaiti','KaiTi',serif;font-size:clamp(2rem,5.5vw,3.2rem);font-weight:800;line-height:1;letter-spacing:.08em;color:#f8f4ec;text-shadow:0 0 16px rgba(255,248,235,.28),0 0 2px rgba(255,255,255,.35);animation:pvnKouGlyphIn .48s cubic-bezier(.22,.92,.28,1) .12s both;}
+.pvn-kou-glyph{font-family:'HYShangWei','STKaiti','KaiTi',serif;font-size:clamp(4cqh,6cqmin,9cqh);font-weight:800;line-height:1;letter-spacing:.08em;color:#f8f4ec;text-shadow:0 0 16px rgba(255,248,235,.28),0 0 2px rgba(255,255,255,.35);animation:pvnKouGlyphIn .48s cubic-bezier(.22,.92,.28,1) .12s both;}
 .pvn-opt--kou:hover .pvn-kou-glyph{text-shadow:0 0 22px rgba(255,248,235,.38),0 0 2px rgba(255,255,255,.45);}
 .pvn-kou-hint{display:flex;align-items:center;justify-content:center;margin-top:4px;pointer-events:none;opacity:0;animation:pvnKouHintIn .5s ease .38s forwards;}
 .pvn-kou-space{display:block;width:2.85em;height:.58em;position:relative;background:transparent;border:none;filter:url(#inkRoughNarr);animation:pvnKouSpacePulse 2.6s ease-in-out infinite;}

@@ -4,6 +4,7 @@
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
+import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
@@ -861,6 +862,7 @@ function NodeActionsEditor({
                 from={a.from}
                 inputs={a.inputs}
                 overlays={overlays}
+                pickers={pickers}
                 onChange={(inputs) => patchAt(i, { ...a, inputs })}
               />
             </>
@@ -1161,6 +1163,7 @@ export function NodeInspector({
   overlays,
   entities,
   variables,
+  formulas,
   onChange,
   onPacksChange,
   onEnsureOverlay,
@@ -1176,6 +1179,8 @@ export function NodeInspector({
   /** 场景实体 / 变量目录（供 effects / condition 下拉、选取式公式与 watch 字段级联下拉）。 */
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
+  /** 公式库（「规则 → 公式」维护）；供 effects/numberExpr 数值字段开出「应用公式」模式。 */
+  formulas?: Record<string, Formula>
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   /**
@@ -1240,7 +1245,7 @@ export function NodeInspector({
       o.children.map((c) => ({ value: `${o.id}/${c.id}`, label: `${compLabel(c.component)} · ${o.id}/${c.id}` })),
     )
   const fieldTree = buildFieldTree(entities, variables)
-  const pickers: EditorPickerCtx = { entities, variables, nodeLabel }
+  const pickers: EditorPickerCtx = { entities, variables, formulas, nodeLabel }
   const flowHandleOptions = useMemo(() => {
     const extra = graph.edges
       .filter((e) => e.source === node.id)
