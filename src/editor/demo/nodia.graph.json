@@ -393,9 +393,16 @@
                   "targetAt": 100,
                   "endAt": 200
                 }
-              ]
+              ],
+              "defaultEvent": "fail"
             },
-            "component": "inkKou"
+            "component": "inkKou",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -420,9 +427,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -447,9 +462,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -474,9 +497,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -501,9 +532,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -528,9 +567,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -579,9 +626,17 @@
                   "label": "默"
                 }
               ],
-              "defaultEvent": "mo"
+              "defaultEvent": "mo",
+              "x": 0.72,
+              "y": 0.78
             },
-            "component": "inkYingMo"
+            "component": "inkYingMo",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -675,7 +730,13 @@
                 }
               ]
             },
-            "component": "battleParry"
+            "component": "battleParry",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -759,9 +820,17 @@
                     ]
                   }
                 }
-              ]
+              ],
+              "x": 0.5,
+              "y": 0.88
             },
-            "component": "battleSkillBar"
+            "component": "battleSkillBar",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -889,7 +958,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -967,7 +1042,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1035,7 +1116,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1122,7 +1209,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1218,7 +1311,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1267,7 +1366,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1354,7 +1459,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1856,7 +1967,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "breathe",
@@ -2358,7 +2475,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }

@@ -104,8 +104,12 @@ function checkInstantCycle(graph: GameGraph, overlays: Record<string, Overlay> |
       .filter((n) => {
         const children = expandNodeOverlays(overlays, n).flatMap((i) => i.children)
         const hasMedia = !!n.data.media?.ref
-        const hasInteraction = children.some((el) => getComponent(el.component)?.role === 'interaction')
-        return !hasMedia && !n.data.durationMs && !hasInteraction
+        const hasEvents = children.some(
+          (el) => (getComponent(el.component)?.events?.length ?? 0) > 0
+            || (Array.isArray((el.inputs as { events?: unknown })?.events)
+              && ((el.inputs as { events: unknown[] }).events.length > 0)),
+        )
+        return !hasMedia && !n.data.durationMs && !hasEvents
       })
       .map((n) => n.id),
   )

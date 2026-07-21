@@ -8,8 +8,6 @@
  * 加新组件 = 同文件导出契约+渲染，并在 EXTRA_COMPONENTS + installCoreSkins 各挂一行。
  */
 import {
-  registerInteractionRenderer,
-  registerInteractionSkin,
   registerOverlayRenderer,
   SkinRegistry,
 } from '../rendererRegistry'
@@ -146,19 +144,19 @@ export const HP_BAR_COMPONENTS: Array<{ id: string; label: string }> = [
 ]
 
 function installCoreSkins(reg: SkinRegistry): void {
-  reg.registerInteractionRenderer('choice', ChoiceButtons)
-  reg.registerInteractionRenderer('skill', ChoiceButtons)
-  reg.registerInteractionRenderer('qte', QteButtons)
-  reg.registerInteractionRenderer('hotspot', HotspotButtons)
+  reg.registerOverlayRenderer('choice', ChoiceButtons)
+  reg.registerOverlayRenderer('skill', ChoiceButtons)
+  reg.registerOverlayRenderer('qte', QteButtons)
+  reg.registerOverlayRenderer('hotspot', HotspotButtons)
   reg.registerOverlayRenderer('floatText', FloatTextOverlay)
   reg.registerOverlayRenderer('transition', TransitionOverlay)
   reg.registerOverlayRenderer('dialogue', DialogueOverlay)
   reg.registerOverlayRenderer('filter', FilterOverlay)
   reg.registerOverlayRenderer('fx', FxOverlay)
-  reg.registerInteractionSkin('battleParry', BattleParryLayer)
-  reg.registerInteractionSkin('inkKou', InkKouLayer)
-  reg.registerInteractionSkin('inkYingMo', InkYingMoLayer)
-  reg.registerInteractionSkin('battleSkillBar', BattleSkillLayer)
+  reg.registerOverlayRenderer('battleParry', BattleParryLayer)
+  reg.registerOverlayRenderer('inkKou', InkKouLayer)
+  reg.registerOverlayRenderer('inkYingMo', InkYingMoLayer)
+  reg.registerOverlayRenderer('battleSkillBar', BattleSkillLayer)
   reg.registerOverlayRenderer('battleHpBar', BattleHpBar)
   reg.registerOverlayRenderer('bossHitCheer', BossHitCheer)
   reg.registerOverlayRenderer('panelA', PanelA)
@@ -171,19 +169,19 @@ export function registerCoreSkins(): void {
   if (_registered) return
   _registered = true
   for (const [id, c] of EXTRA_COMPONENTS) registerComponent(id, c)
-  registerInteractionRenderer('choice', ChoiceButtons)
-  registerInteractionRenderer('skill', ChoiceButtons)
-  registerInteractionRenderer('qte', QteButtons)
-  registerInteractionRenderer('hotspot', HotspotButtons)
+  registerOverlayRenderer('choice', ChoiceButtons)
+  registerOverlayRenderer('skill', ChoiceButtons)
+  registerOverlayRenderer('qte', QteButtons)
+  registerOverlayRenderer('hotspot', HotspotButtons)
   registerOverlayRenderer('floatText', FloatTextOverlay)
   registerOverlayRenderer('transition', TransitionOverlay)
   registerOverlayRenderer('dialogue', DialogueOverlay)
   registerOverlayRenderer('filter', FilterOverlay)
   registerOverlayRenderer('fx', FxOverlay)
-  registerInteractionSkin('battleParry', BattleParryLayer)
-  registerInteractionSkin('inkKou', InkKouLayer)
-  registerInteractionSkin('inkYingMo', InkYingMoLayer)
-  registerInteractionSkin('battleSkillBar', BattleSkillLayer)
+  registerOverlayRenderer('battleParry', BattleParryLayer)
+  registerOverlayRenderer('inkKou', InkKouLayer)
+  registerOverlayRenderer('inkYingMo', InkYingMoLayer)
+  registerOverlayRenderer('battleSkillBar', BattleSkillLayer)
   registerOverlayRenderer('battleHpBar', BattleHpBar)
   registerOverlayRenderer('bossHitCheer', BossHitCheer)
   registerOverlayRenderer('panelA', PanelA)

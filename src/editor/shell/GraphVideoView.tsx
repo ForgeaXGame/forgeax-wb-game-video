@@ -57,7 +57,7 @@ import { DEFAULT_STYLE_SLOTS, ICON_COMPONENT, type DefaultStyleSlot } from './de
 import { fxNeedsColor, resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
-import { EffectsEditor, isSizable, PositionEditor, SizeEditor, ValueInput } from './editors'
+import { EffectsEditor, isPositionable, isSizable, PositionEditor, SizeEditor, ValueInput } from './editors'
 import { ComponentFormFields } from './component-form-fields'
 import { SettlementEditor } from './SettlementEditor'
 import { renderOverlayChildPreview } from './overlayChildPreview'
@@ -1194,7 +1194,7 @@ function GraphMaterialInspector({
   const choiceSkinId = item?.kind === 'option' && el ? el.component : ''
   const styleLocksOptions = item?.kind === 'option' && componentEventsLocked(choiceSkinId)
 
-  // 打开检视器时把脏 events 写回样式锁定值（与运行时 submit 对齐）
+  // 打开检视器时把脏 events 写回样式锁定值（与皮肤声明 / emit 出口对齐）
   useEffect(() => {
     if (!item || item.kind !== 'qte' || !styleLocksQteEvents) return
     const locked = applyStyleLockedEventParams(inputs, qteSkinId)
@@ -1233,7 +1233,19 @@ function GraphMaterialInspector({
   const nodeOptions = scenario.graph.nodes.filter((n) => n.id !== node.id)
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const qteManifest = item.kind === 'qte' ? getComponentManifest(qteSkinId) : undefined
-  const qteConfigInputs = (qteManifest?.inputs ?? []).filter((i) => i.key !== 'events' && i.key !== 'defaultEvent')
+  const qteHasCues = item.kind === 'qte' && (cuesOfEl(el)?.length ?? 0) > 0
+  // cues 驱动窗长时元素级 timeoutMs 无效（皮肤走 cue end）；defaultEvent 用下方专用下拉。
+  const qteConfigInputs = (qteManifest?.inputs ?? []).filter((i) => {
+    if (i.key === 'events' || i.key === 'defaultEvent') return false
+    if (qteHasCues && i.key === 'timeoutMs') return false
+    return true
+  })
+  const qteDefaultEventChoices = (
+    styleLocksQteEvents
+      ? ((applyStyleLockedEventParams(inputs, qteSkinId).events as Array<{ id: string; label?: string }> | undefined) ?? [])
+      : ((Array.isArray(inputs.events) ? (inputs.events as Array<{ id: string; label?: string }>) : null)
+        ?? qteManifest?.events ?? [])
+  )
   const qteLockedEvents = styleLocksQteEvents
     ? ((applyStyleLockedEventParams(inputs, qteSkinId).events as Array<{ id: string; label?: string }> | undefined) ?? qteManifest?.events ?? [])
     : (qteManifest?.events ?? [])
@@ -1470,6 +1482,18 @@ function GraphMaterialInspector({
             }
             return null
           })}
+          {qteDefaultEventChoices.length > 0 && (
+            <label className="gc-field"><span>超时 / 未命中出口</span>
+              <select
+                value={str(inputs.defaultEvent) || qteDefaultEventChoices.find((e) => e.id === 'fail')?.id || qteDefaultEventChoices[qteDefaultEventChoices.length - 1]!.id}
+                onChange={(e) => onPatch({ defaultEvent: e.target.value })}
+              >
+                {qteDefaultEventChoices.map((e) => (
+                  <option key={e.id} value={e.id}>{e.label?.trim() || e.id}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {/* 结算区：只配跳转/改数值；候选 = 样式锁定的 events */}
           <SettlementEditor
             branches={qteOutcomes}
@@ -1609,6 +1633,7 @@ function GraphMaterialInspector({
             defaultX={OPTION_XY.x}
             defaultY={OPTION_XY.y}
             onChange={(next) => onPatch(next)}
+            disabled={!isPositionable(el.component)}
           />
           {!styleLocksOptions && (
             <label className="gc-field"><span>呈现</span>
@@ -1622,6 +1647,18 @@ function GraphMaterialInspector({
             <input type="number" min={0} step={100} value={num(inputs.timeoutMs, 0) || ''} placeholder="不限时"
               onChange={(e) => onPatch({ timeoutMs: e.target.value === '' ? undefined : Number(e.target.value) })} />
           </label>
+          {branches.length > 0 && (
+            <label className="gc-field"><span>超时出口</span>
+              <select
+                value={str(inputs.defaultEvent) || branches[0]!.key}
+                onChange={(e) => onPatch({ defaultEvent: e.target.value })}
+              >
+                {branches.map((b) => (
+                  <option key={b.key} value={b.key}>{b.label?.trim() || b.key}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <SettlementEditor
             branches={branches}
             nodeOptions={nodeOptions}
@@ -1657,13 +1694,14 @@ function GraphMaterialInspector({
             defaultX={0.5}
             defaultY={0.5}
             onChange={(next) => onPatch(next)}
+            disabled={!isPositionable(item.componentId || el.component)}
           />
           <ComponentFormFields
             componentId={item.componentId || el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
             pickers={{ entities, variables, formulas }}
-            excludeKeys={['x', 'y', 'events', 'defaultEvent']}
+            excludeKeys={['x', 'y', 'events']}
           />
           {componentEvents.length > 0 ? (
             <SettlementEditor

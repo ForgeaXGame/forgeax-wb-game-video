@@ -19,7 +19,7 @@ import type {
 } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
-import { getComponent } from '../../runtime/registry/component-registry'
+import { getComponent, hasCuePointsInput, hasOptionEventsInput } from '../../runtime/registry/component-registry'
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
 import { ValueExprEditor } from './ValueExprEditor'
 
@@ -175,20 +175,18 @@ export function isPositionable(componentId: string): boolean {
 }
 
 /**
- * 该组件是否读取 `Layout.width/height` 这个整体尺寸盒子——编辑器侧判定，**唯一官方入口**：
- * - `role: 'interaction'` 完全绕开 mount/child layout，走独立的 `InteractionSnap` 渲染路径
- *   （见 rendererRegistry.tsx 里交互专属分支 / GraphPlaySurface 对 interaction 单独铺一层
- *   inset:0），不管 layout 写了什么都没地方读。
- * - 声明了 `inputs.x/y` 的表现层（字幕/飘字等）自定位，通常配合 `STAGE_FILL_LAYOUT`，
- *   不消费 Layout 宽高滑杆。
- * 其余（通用组件走 `childWrapStyle` / layout→CSS）才真读这个盒子。
+ * 该组件是否读取 `Layout.width/height` 这个整体尺寸盒子——编辑器侧判定，**只问 inputs 结构**：
+ * - 声明了 `x`+`y` → 自定位，通常配 STAGE_FILL，不消费宽高滑杆
+ * - 声明了拍点（`qteCues`）或选项清单（`events`）→ 在铺满盒内自绘，同样不消费
+ * 不按 component id 枚举。
  */
 export function isSizable(componentId: string): boolean {
   const plugin = getComponent(componentId)
   if (!plugin) return true
-  if (plugin.role === 'interaction') return false
   const keys = new Set((plugin.inputs ?? []).map((i) => i.key))
-  return !(keys.has('x') && keys.has('y'))
+  if (keys.has('x') && keys.has('y')) return false
+  if (hasCuePointsInput(componentId) || hasOptionEventsInput(componentId)) return false
+  return true
 }
 
 // ── 尺寸（width/height 归一化 0~1，相对舞台）——对所有组件通用，对应 `Layout.width/height` ──────

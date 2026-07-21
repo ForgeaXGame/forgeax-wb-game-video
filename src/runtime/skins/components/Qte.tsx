@@ -5,22 +5,23 @@
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
 import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
-import type { InteractionProps } from '../rendererRegistry'
+import type { OverlayProps } from '../rendererRegistry'
 import { bottomRow, defaultBtn } from './defaultUi'
+import { useDefaultEventTimeout } from './skinRuntime'
 
 export const qteComponent: ComponentDef<QteFullParams> = {
-  role: 'interaction',
   label: 'QTE',
   events: QTE_DEFAULT_EVENTS,
   inputs: QTE_INPUTS,
 }
 
-export function QteButtons({ submit }: InteractionProps): ReactNode {
+export function QteButtons({ overlay, emit, preview }: OverlayProps): ReactNode {
+  useDefaultEventTimeout(emit, overlay.inputs as Record<string, unknown>, preview)
   return (
     <div className="gv-qte-layer" style={bottomRow}>
-      <button style={defaultBtn('#16a34a')} onClick={() => submit('pass')}>完美</button>
-      <button style={defaultBtn('#65a30d')} onClick={() => submit('good')}>成功</button>
-      <button style={defaultBtn('#dc2626')} onClick={() => submit('fail')}>失败</button>
+      <button style={defaultBtn('#16a34a')} onClick={() => emit?.('pass')}>完美</button>
+      <button style={defaultBtn('#65a30d')} onClick={() => emit?.('good')}>成功</button>
+      <button style={defaultBtn('#dc2626')} onClick={() => emit?.('fail')}>失败</button>
     </div>
   )
 }

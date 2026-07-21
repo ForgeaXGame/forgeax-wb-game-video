@@ -10,17 +10,17 @@
  * 也不吃点击/键盘。
  */
 import { useEffect, useRef, useState } from 'react'
-import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
+import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import type { ComponentDef } from '../../registry/component-registry'
 import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
-import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+import { STAGE_FILL_LAYOUT } from '../../schema/layout'
+import { injectCss, ensureInkFilters, ensureBrushFont, resolveTimeoutMs } from './skinRuntime'
 
 /**
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  */
 export const battleParryComponent: ComponentDef<QteFullParams> = {
-  role: 'interaction',
   label: '防反 QTE',
   events: QTE_DEFAULT_EVENTS,
   inputs: QTE_INPUTS,
@@ -42,6 +42,7 @@ export function battleParryPreset(id: string): OverlayChild {
   return {
     id,
     component: 'battleParry',
+    layout: { ...STAGE_FILL_LAYOUT },
     trigger: { when: 'enter' },
     inputs: { ...battleParryDefaults },
   }
@@ -86,15 +87,13 @@ function firstCueAppearAt(params: Record<string, unknown>): number {
  * `inputs.durationMs`/`inputs.timeoutMs`/`inputs.windowMs` 仅在没有 cue 的异常/旧数据下才顶上，
  * 避免拖时间轴改了窗口、动画时长却纹丝不动（历史上曾经优先读 durationMs，跟时间轴完全脱节）。
  */
-function resolveDurationMs(inputs: Record<string, unknown>, interactionTimeoutMs: number | undefined): number {
+function resolveDurationMs(inputs: Record<string, unknown>): number {
   const cue = firstCue(inputs)
   if (typeof cue?.appearAt === 'number' && typeof cue?.endAt === 'number' && cue.endAt > cue.appearAt) {
     return cue.endAt - cue.appearAt
   }
   return (typeof inputs.durationMs === 'number' ? inputs.durationMs : undefined)
-    ?? (typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined)
-    ?? (typeof inputs.windowMs === 'number' ? inputs.windowMs : undefined)
-    ?? interactionTimeoutMs
+    ?? resolveTimeoutMs(inputs)
     ?? 2600
 }
 
@@ -121,13 +120,13 @@ function applyKeyFrame(el: HTMLButtonElement, now: number, center: number, appro
   setRing(1)
 }
 
-export function BattleParryLayer({ interaction, submit, preview, previewTimeMs }: InteractionProps) {
+export function BattleParryLayer({ overlay, emit, preview, previewTimeMs }: OverlayProps) {
   injectCss('battle-parry-layer', PARRY_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const inputs = interaction.inputs as Record<string, unknown>
-  const durationMs = resolveDurationMs(inputs, interaction.timeoutMs)
+  const inputs = overlay.inputs as Record<string, unknown>
+  const durationMs = resolveDurationMs(inputs)
   const options = exitsOf(inputs)
   const missKey = typeof inputs.defaultEvent === 'string' ? inputs.defaultEvent : 'fail'
   const resolvedRef = useRef(false)
@@ -138,7 +137,7 @@ export function BattleParryLayer({ interaction, submit, preview, previewTimeMs }
   function finish(outcome: string): void {
     if (resolvedRef.current) return
     resolvedRef.current = true
-    submit(outcome)
+    emit?.(outcome)
   }
   function hit(index: number): void {
     if (preview || resolvedRef.current) return

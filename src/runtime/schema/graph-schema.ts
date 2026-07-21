@@ -191,8 +191,6 @@ export type Trigger =
  * Kind 插件职责（presentation 渲染 / interaction 交互）。副作用不在组件层，走 node.data.reactions。
  * 覆盖物见 OverlayChild.component（无落盘 role）。
  */
-export type ElementRole = 'presentation' | 'interaction'
-
 /** 节点端口描述（`outputs()` / `deriveOutputs` 返回）；边经 `sourceHandle`/`targetHandle` 引用其 `id`。 */
 export interface NodeHandle {
   id: string

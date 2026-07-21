@@ -1,8 +1,11 @@
 # 组件契约收敛：inputs 作唯一真源 + 组件自吐事件
 
-> 状态：🟡 SPEC（落地中）· 2026-07-17
+> 状态：🟢 SPEC（已落地）· 2026-07-17 · 修订 2026-07-21
 > 目标：把「组件声明 / 配置 / 运行时」全部对齐到一个模型——**组件 = `inputs`（输入）+ `events`（吐出的事件）**。
 > 不考虑向后兼容，直接按目标态走（本仓 demo/存档随之迁移）。
+>
+> **2026-07-21 并轨收尾**：已删 `ComponentDef.role` / `surface`；交互不再走 `openInteraction`/`submitInteraction`；
+> 全部组件统一 `renderOverlay` + 皮肤 `emit` → `emitComponentEvent`；超时由皮肤自 emit `defaultEvent`。
 
 ## 1. 心智模型（目标态）
 
@@ -16,7 +19,7 @@
 
 ## 2. 组件定义 = ComponentManifest + 运行时渲染
 
-组件不再是「一堆分散方法的 KindPlugin」，而是**导出一个 ComponentManifest**（作者契约）+ 一个渲染实现（Player 侧）。
+组件是**导出一个 ComponentDef / Manifest**（作者契约）+ 一个 Overlay 渲染实现（Player 侧）。
 
 ```ts
 interface ComponentInput {
@@ -36,24 +39,29 @@ interface ComponentEvent {          // 组件会吐哪些事件（= 出口 handl
 }
 
 interface ComponentManifest {
-  id: string
+  id: string                         // 注册键 = OverlayChild.component
   label?: string
-  role: 'presentation' | 'interaction'   // 引擎调度分派（presentation→overlay / interaction→挂起；B 阶段再收）
-  inputs: ComponentInput[]        // 唯一输入声明（SSOT）
-  events: ComponentEvent[]        // 组件吐出的事件；出口 handle = events（不再有 outputs()）
+  inputs: ComponentInput[]           // 唯一输入声明（SSOT）
+  events: ComponentEvent[]           // 组件吐出的事件；出口 handle = events（不再有 outputs()）
+  // 无 role / surface：调度与渲染一律 renderOverlay + emit
 }
 ```
+
+> 代码侧类型名是 `ComponentDef`（`component-registry.ts`）；上表用 Manifest 描述作者契约形状。
 
 ### 被删除 / 收敛的东西
 
 | 旧物 | 处置 |
 |---|---|
+| `ComponentDef.role` / `surface` | **删**。不再区分 presentation/interaction/hud 调度标签 |
+| `openInteraction` / `submitInteraction` / `snapshot.interaction` / `awaitInteraction` | **删**。统一 `renderOverlay` + `emitComponentEvent` |
+| `InteractionProps` / `submit` / 独立 interaction 渲染表 | **删**。皮肤统一 `OverlayProps`（`overlay` / `emit` / `ctx`） |
 | `form` / `FormField` / `deriveInputsFromForm` | **删**。编辑器改按 `inputs` 的 `valueType`/`options`/`component` 出控件 |
 | `defaults()` | **删**。新建实例初值 = 由 `inputs[].default` 组装 |
 | `outputs(params)` | **删**。出口 handle 由 `events` 派生（choice/qte 的选项即 events） |
-| `resolve()` | **删**。判定搬进组件内部，自行 `emit` 最终 event |
+| `resolve()` / `continue` | **删**。判定搬进组件内部，自行 `emit` 最终 event |
 | `present()` | **删**。组件自己渲染 |
-| `render()`（floatText 的 expr 求值） | 逻辑挪到 **Player**：组件声明 `expr` input，渲染时求值 |
+| `render()`（floatText 的 expr 求值） | 可选逃生舱：仅少数组件（如 floatText）保留 `ComponentDef.render?` |
 | `validate(params)` | 必填/类型 → 由 `inputs.required/valueType` 校验；跨字段校验（如 floatText `text\|\|expr`）留可选作者期钩子 |
 | `ComponentEvent.payload` | **删**（无人用；将来需要再定义） |
 
@@ -76,31 +84,28 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 ## 4. 落地阶段（每阶段 tsc + vitest 必须绿）
 
 1. **Schema**：删 `ComponentEvent.payload`（✅ 已做）；`ComponentInput.default` 放宽为 `unknown`、加可选 `component`。
-2. **Registry**：`KindPlugin` 收敛为 manifest（`id/label/role/inputs/events`）+ 渲染引用；删 `form/deriveInputsFromForm`；`getManifest` 直接投影；`deriveOutputs` 改为「events → handles」；`defaults` 由 `inputs[].default` 组装。
-3. **core-kinds / 组件**：各 kind 的 `form:[...]` → `inputs:[...]`（复合项标 `component`）；补 `battleHpBar.inputs`（✅ 已做）。判定型（qte）把 `resolve` 逻辑下沉到皮肤 `emit`。
-4. **编辑器**：`KindFormFields` 改读 `manifest.inputs` 按 `valueType/options/component` 出控件并挂到 NodeInspector；spawn/QTE 检视器对齐 `inputs`。
+2. **Registry**：`ComponentDef`（`label`/`inputs`/`events` + 可选钩子）+ `registerOverlayRenderer`；删 `form/deriveInputsFromForm`；出口 =「events → handles」；`defaults` 由 `inputs[].default` 组装。
+3. **core-components / 皮肤**：各组件声明 `inputs`（复合项标 `component` 控件提示）；判定型把逻辑留在皮肤，到点/命中后 `emit`。
+4. **编辑器**：`ComponentFormFields` 读 `manifest.inputs` 出控件；spawn/QTE 检视器对齐 `inputs`。
 5. **值键 rename**：`params → inputs`（语义替换，避开 `URLSearchParams` 等无关词）。
-6. **数据迁移**：`nodia.graph.json` + `builtin-schemes` 的 `params → inputs`。
+6. **数据迁移**：`nodia.graph.json` + 界面方案的 `params → inputs`。
 7. **测试/fixtures 全绿**。
+8. **并轨（2026-07-21）**：删 `role`/`surface`；交互并进 overlay；`emitComponentEvent` 对齐旧 submit 的 reactions + 默认找边；超时皮肤自 emit。
 
-## 4b. 实施状态（2026-07-17）
+## 4b. 实施状态（2026-07-17 → 2026-07-21）
 
 - ✅ 阶段 1（schema：删 payload、default→unknown、加 component）
-- ✅ 阶段 2/3（删 form/FormField/deriveInputsFromForm；全部 kind 声明 inputs；getManifest 投影）
-- ✅ 阶段 4（KindFormFields 改 inputs 驱动）
+- ✅ 阶段 2/3（删 form/FormField/deriveInputsFromForm；全部组件声明 inputs）
+- ✅ 阶段 4（ComponentFormFields 改 inputs 驱动）
 - ✅ 阶段 5/6（值键 `params→inputs`；demo `nodia.graph.json` 数据迁移）
-- ✅ **B（resolve 下沉）**：删 `resolve`/`continue`/`ResolveResult`；交互皮肤自判定后 `submit`(=emit) 最终 event id，
-  引擎 `submitInteraction` 直接把它当 outcome 路由（超时 `submit(undefined)` 落 `inputs.defaultEvent`，兜底 `'fail'`）。
-- ✅ **manifest 化（吸收 C）**：`KindPlugin` 收敛为「manifest 数据（id/label/role/inputs/events）
-  + 少量可选逃生舱（`render?`/`validate?`）」。**删掉 `outputs()`/`defaults()`/`present()` 方法**：
-  - 出口 handle 由 `registry.handlesOf`（实例 `inputs.events` 优先，否则组件静态 `events`）派生；
-  - 新建初值由 `buildDefaults(inputs)`（读 `inputs[].default`）组装；
-  - `defaultsForComponent` / `componentHandles` 供编辑器（graphMaterialOps）调用；
-  - `render?` 仅 floatText 保留（按 `expr` 求值算飘字文本）；`validate?` 转可选（跨字段校验，如 floatText `text||expr`）。
-  - 测试 kind 从 `outputs:()=>[...]` 改为声明 `events:[...]`（更干净）；`GameNode.outputs`（节点 handle 数组）不受影响。
-- ✅ **p4b（inputs 面板挂进 NodeInspector · 以 NodeInspector 为准）**：每个挂载列出其 children，按
-  `KindFormFields`（读 `manifest.inputs`、valueType/options 出控件、复合 component 提示交视频轨）编辑，写成本挂载的
-  稀疏 `overrides[childId].inputs`（共享方案未改组件仍跟随原型）。
+- ✅ **判定下沉**：删 `resolve`/`continue`/`ResolveResult`；皮肤自判定后 `emit(eventId)`；
+  引擎 `emitComponentEvent` 跑 mount `reactions`，无显式 advance 时按 handle 找边；
+  超时由皮肤 `useDefaultEventTimeout` → `emit(defaultEvent ?? 'fail')`（不再 Player `submit(undefined)`）。
+- ✅ **manifest 化**：`ComponentDef` = 数据契约 + 少量可选逃生舱（`render?`/`validate?`）。
+  出口由 `handlesOf` 派生；新建初值由 `buildDefaults`；`render?` 仅 floatText 等少数保留。
+- ✅ **删 `role` / `surface` / 独立 interaction 层**（2026-07-21）：全部 `registerOverlayRenderer`；
+  demo 交互皮补 `STAGE_FILL_LAYOUT` + `timeoutMs`/`defaultEvent`。
+- ✅ **inputs 面板**：挂载 children 按 manifest.inputs 编辑。
 
 ## 5. 取舍备注
 

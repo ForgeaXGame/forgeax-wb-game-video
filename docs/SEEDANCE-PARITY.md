@@ -44,4 +44,4 @@
 |---|---|
 | Overlay 契约 | `docs/superpowers/specs/2026-07-13-wb-game-video-screen-slot-contract-design.md` |
 | 类型 SSOT | `src/runtime/schema/node-config-schema.ts` + `graph-schema.ts` |
-| 皮肤契约 | `src/runtime/skins/components/CONTRACT.md` |
+| 皮肤 props / 注册 | `src/runtime/skins/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |

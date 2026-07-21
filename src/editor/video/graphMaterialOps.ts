@@ -35,7 +35,7 @@ import { isPositionable } from '../shell/editors'
 import { INTERACTION_SKINS } from '../../runtime/skins/components'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
-import type { InteractionSnap } from '../../runtime/engine/session'
+import type { OverlaySnap } from '../../runtime/engine/session'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
 import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import {
@@ -68,6 +68,20 @@ import {
 } from '../../graph/edit/overlay-edit'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { STAGE_FILL_LAYOUT, layoutIsEffectivelyEmpty } from '../../runtime/schema/layout'
+
+/**
+ * 新建/克隆子件 layout（通用，不按 component id 特判）：
+ * - 有来源 layout（方案克隆 / 面板角落锚点）→ 原样保留
+ * - 否则一律 `STAGE_FILL_LAYOUT`（视频编辑器叠层默认铺满舞台；% 自绘才有正确坐标空间）
+ */
+function layoutForNewChild(fromLayout: Layout | undefined, zIndex: number | undefined): Layout {
+  const base =
+    fromLayout && !layoutIsEffectivelyEmpty(fromLayout)
+      ? { ...fromLayout }
+      : { ...STAGE_FILL_LAYOUT }
+  return { ...base, zIndex: zIndex ?? fromLayout?.zIndex ?? 3 }
+}
 
 // ── overlay children 读取小工具（内容挂载 = 原型 ⊕ 稀疏差量，见 resolveMountChildren） ──
 /** 内容挂载的 children：原型（共享方案）跟随 + 本挂载 overrides/added/removed 差量。 */
@@ -204,7 +218,7 @@ function spawnActionOf(spawn: SettlementSpawn, nodeDurMs: number): Extract<NodeA
 
 /**
  * legacy 读兜底 —— 2026-07-16 边路由统一重构曾把选项/组件结算误写进 `node.data.reactions`
- * （运行时 submitInteraction/emitComponentEvent 只读 mount.reactions，这条数据从未被执行过，见
+ * （运行时 emitComponentEvent 只读 mount.reactions，这条数据从未被执行过，见
  * §结算 mount-scoped 改造说明）。现只在 `readMountEventEffects`/`readMountEventSpawn` mount 侧
  * 无命中时回落一次，避免历史配置在升级后静默消失；不再是任何结算的主写入位置。
  */
@@ -302,7 +316,7 @@ function previewCtxFor(scenario: GameScenario): { ctx: PreviewEvalContext; state
 }
 
 // ── 结算（选项分支 / QTE 档位 / 通用组件事件，三者共用同一套读写内核）──────────────
-// 运行时只读 mount.reactions 承接 event 类反应（engine.ts submitInteraction/emitComponentEvent
+// 运行时只读 mount.reactions 承接 event 类反应（engine.ts emitComponentEvent
 // 都只查 nodeOverlayMounts(node)...reactions），落盘统一走 mount 级——跳转=边，改数值/生成组件=
 // mount 的 event reaction。candidate handle 来自各自的 events 目录（选项=inputs.events 的 id、
 // QTE=componentHandles(skin, inputs)、通用组件=manifest.events/inputs.events）。
@@ -815,7 +829,7 @@ export function qteSkinPreviewInteraction(
   scenario: GameScenario,
   node: GameNode | undefined,
   playheadMs?: number,
-): InteractionSnap | null {
+): OverlaySnap | null {
   const el = qteElement(scenario, node)
   if (!el) return null
   const component = el.component
@@ -835,8 +849,6 @@ export function qteSkinPreviewInteraction(
     elementId: el.id,
     component,
     inputs: { ...inputs, component, cues },
-    handles: qteOutcomeCandidates(el).map((c) => c.handle),
-    timeoutMs: typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined,
   }
 }
 
@@ -873,9 +885,9 @@ export function choiceSkinPreviewInteractions(
   node: GameNode | undefined,
   playheadMs?: number,
   maxMs = 60_000,
-): InteractionSnap[] {
+): OverlaySnap[] {
   if (!node) return []
-  const out: InteractionSnap[] = []
+  const out: OverlaySnap[] = []
   for (const el of mountedChildrenOf(scenario, node)) {
     if (!hasOptionEventsInput(el.component)) continue
     const component = el.component
@@ -890,8 +902,6 @@ export function choiceSkinPreviewInteractions(
       elementId: el.id,
       component,
       inputs: { ...locked, component },
-      handles: (Array.isArray(locked.events) ? (locked.events as ChoiceOption[]) : []).map((o) => o.id),
-      timeoutMs: typeof locked.timeoutMs === 'number' ? locked.timeoutMs : undefined,
     })
   }
   return out
@@ -1482,8 +1492,14 @@ export function addMaterialGraph(
       component: 'choice',
       trigger: { when: 'enter' },
       window: { startMs: optStart, endMs: optEnd },
-      layout: { zIndex: at ? at.zIndex : 3 },
-      inputs: { presentation: 'list', x: OPTION_XY.x, y: OPTION_XY.y, events: [{ id: 'opt0', label: '选项一' }] },
+      layout: layoutForNewChild(undefined, at ? at.zIndex : 3),
+      inputs: {
+        presentation: 'list',
+        x: OPTION_XY.x,
+        y: OPTION_XY.y,
+        events: [{ id: 'opt0', label: '选项一' }],
+        defaultEvent: 'opt0',
+      },
     }
     const s = addOverlayChild(s0, node.id, el)
     return { scenario: s, selectKey: `option:${id}` }
@@ -1510,7 +1526,7 @@ export function addMaterialGraph(
     component: componentId,
     trigger: { when: 'at', ms: startMs },
     window: { startMs, endMs },
-    layout: { zIndex: at ? at.zIndex : (fromChild?.layout?.zIndex ?? 3) },
+    layout: layoutForNewChild(fromChild?.layout, at ? at.zIndex : undefined),
     inputs: seeded,
   }
   // 方案克隆（template = `mountId/childId`）：落进「那个方案」自己的挂载 added[]，
@@ -1566,11 +1582,15 @@ export function addQteCueGraph(
   const choice = choiceElement(scenario, node)
   const s0 = teardownInteractionScenario(scenario, node, { kind: 'choice', handlePrefixes: choice ? optionsOf(choice).map((o) => o.id) : [], childId: choice?.id })
   const id = newElementId()
-  const seeded = applyStyleLockedEventParams({ qteKind: 'parry', passingHits: 1, cues: [cue] }, 'inkKou')
+  const seeded = applyStyleLockedEventParams(
+    { qteKind: 'parry', passingHits: 1, cues: [cue], defaultEvent: 'fail' },
+    'inkKou',
+  )
   const newEl: OverlayChild = {
     id,
     component: 'inkKou',
     trigger: { when: 'enter' },
+    layout: layoutForNewChild(undefined, 3),
     inputs: seeded,
   }
   let s = addOverlayChild(s0, node.id, newEl)

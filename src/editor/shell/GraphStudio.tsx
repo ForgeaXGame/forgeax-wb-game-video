@@ -248,20 +248,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   useEffect(() => {
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
     // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
-    if (snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
+    if (snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.interaction, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
+  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
 
-  useEffect(() => {
-    // 限时交互 timeoutMs：到点自动 submit(undefined) → 走 defaultEvent / 缺省出口。
-    const inter = snap.interaction
-    if (!inter?.timeoutMs) return
-    const t = setTimeout(() => setSnap(sessionRef.current.submit(undefined)), inter.timeoutMs)
-    return () => clearTimeout(t)
-  }, [snap.interaction?.elementId, snap.interaction?.timeoutMs])
-
-  const submit = (input: unknown) => setSnap(sessionRef.current.submit(input))
   /** 从此试玩：打开试玩浮层 + 强制视频 remount，再 seek 到该节点（末节点同 id 再点也能重播）。 */
   const jump = useCallback((nodeId: string) => {
     setPlayOpen(true)
@@ -461,8 +452,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   onTimeUpdate={(e) => {
                     const el = e.currentTarget
                     const nowMs = Math.floor(el.currentTime * 1000)
-                    // 播放时长上限：到点提前收演出（awaitInteraction 下 performanceEnd 为 no-op）。
-                    if (!snap.interaction && videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
+                    if (videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
                       setSnap(sessionRef.current.performanceEnd())
                       return
                     }
@@ -475,7 +465,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   {snap.clip?.name ?? '（无演出）'}
                 </div>
               )}
-              {/* overlay / 交互层锚视频实际画面矩形（VideoOverlayStage）；contentRect 为空时回退整容器（inset:0）。 */}
+              {/* 全部叠层锚视频实际画面矩形（VideoOverlayStage）；contentRect 为空时回退整容器（inset:0）。 */}
               <VideoOverlayStage contentRect={contentRect}>
                 <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                   {snap.overlayMounts.map((m) => (
@@ -483,19 +473,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                       {session.skins.renderOverlayMount(
                         m,
                         (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
-                        { hud: snap.hud },
+                        {
+                          hud: snap.hud,
+                          condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+                        },
                       )}
                     </span>
                   ))}
                 </div>
-                {snap.interaction && (
-                  <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                    {session.skins.renderInteraction(snap.interaction, submit, {
-                      hud: snap.hud,
-                      condition: { state: session.runtime.state, visited: session.runtime.state.visited },
-                    })}
-                  </div>
-                )}
               </VideoOverlayStage>
             </div>
             </PlayerRootContext.Provider>

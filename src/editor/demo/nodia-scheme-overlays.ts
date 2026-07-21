@@ -4,8 +4,9 @@
  * - 挂载与目录均用方案 id（`n_door` / `tele` / `battleHud`…），不再使用 `node:*` 本地桶 id。
  * - JSON 内嵌同一份正文，便于整图自洽；本文件供「＋ 挂载」预设与 `ensureBuiltinSchemes` 缺失补齐。
  * - 改方案内容时两边应对齐（先改此处，再同步进 JSON，或反过来后回写此处）。
- * - 舞台坐标类 / 血条（floatText / dialogue / transition / battleHpBar）的 OverlayChild.layout
- *   须铺满舞台（`STAGE_FILL_LAYOUT`）；挂到节点时 OverlayNode.layout 同样铺满（见 `nodia.graph.json`）。
+ * - 舞台坐标类 / 血条 / 交互皮（floatText / dialogue / transition / battleHpBar /
+ *   inkKou / inkYingMo / battleParry / battleSkillBar…）的 OverlayChild.layout 须铺满舞台
+ *   （`STAGE_FILL_LAYOUT`）；挂到节点时 OverlayNode.layout 同样铺满（见 `nodia.graph.json`）。
  */
 import type { Overlay } from '../../runtime/schema/graph-schema'
 import { STAGE_FILL_LAYOUT } from '../../runtime/schema/layout'
@@ -284,9 +285,11 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
             "targetAt": 100,
             "endAt": 200
           }
-        ]
+        ],
+        "defaultEvent": "fail"
       },
-      "component": "inkKou"
+      "component": "inkKou",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -313,9 +316,12 @@ export const NODIA_NODE_SCHEME_N_FOLLOW: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -342,9 +348,12 @@ export const NODIA_NODE_SCHEME_N_LAND: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -371,9 +380,12 @@ export const NODIA_NODE_SCHEME_N_NODRINK: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -400,9 +412,12 @@ export const NODIA_NODE_SCHEME_N_NOFOLLOW: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -429,9 +444,12 @@ export const NODIA_NODE_SCHEME_N_RIVER: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -484,9 +502,12 @@ export const NODIA_NODE_SCHEME_N_TEA: Overlay = {
             "label": "默"
           }
         ],
-        "defaultEvent": "mo"
+        "defaultEvent": "mo",
+        "x": 0.72,
+        "y": 0.78
       },
-      "component": "inkYingMo"
+      "component": "inkYingMo",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -586,7 +607,8 @@ export const NODIA_NODE_SCHEME_TELE: Overlay = {
           }
         ]
       },
-      "component": "battleParry"
+      "component": "battleParry",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -674,9 +696,12 @@ export const NODIA_NODE_SCHEME_WAIT: Overlay = {
               ]
             }
           }
-        ]
+        ],
+        "x": 0.5,
+        "y": 0.88
       },
-      "component": "battleSkillBar"
+      "component": "battleSkillBar",
+      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay

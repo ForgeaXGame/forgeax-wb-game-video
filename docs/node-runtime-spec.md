@@ -1,9 +1,13 @@
 # 节点运行时标准化：NodeKind 契约 + 注册表
 
-> 状态：🟢 SPEC（已定稿，实施中）· 2026-07-20
+> 状态：🟢 SPEC（已定稿）· 2026-07-20 · 修订 2026-07-21
 > 目标：把「节点如何执行」从引擎里一段硬编码分支流程，收敛成 **NodeKind 契约 + 注册表**；
 > 引擎只做**调度 + 跨节点状态**；新增节点类型 = 在 `runtime/nodes/` 加一个文件 + 注册，即按规范执行。
-> 与「组件 = manifest + 注册表」同构。
+> 与「组件 = ComponentDef + OverlayRenderer」同构。
+>
+> **2026-07-21**：组件层已去掉 `role`/`awaitInteraction`/`openInteraction`。`NextIntent.await` 仍表示
+> 「本节点继续停住等媒体/时钟/组件 event」，**不是**旧的 `GraphPhase.awaitInteraction`；相位只有
+> `idle | playing | ended`。
 
 ## 定稿决策（评审通过）
 - **契约 = `execute` + 可选 `next`**（合并原 enter/tick/onEnd）；`tick`(at/window) 留引擎通用层，不入契约。
@@ -30,13 +34,14 @@
   `NodeData` 的数据变体（`subFlow` / `subFlowPack`，用 `getSubFlow` / `getSubFlowPack` / `isSubflowContainer` 读）。
 - **执行流程散在引擎几个方法里，按 data 分支**（非按类型注册）：
   - `enterNode(id)`：防跑飞 → 分支（subFlowPack 下钻 / subFlow 下钻 / 容器弹回不重播）→ 普通节点：重置本节点态
-    （fired/windows/spawn/watch 基线）→ `playClip`（换片清叠层）→ `setPhase('playing')` → 跑 `enter` 元素（先表现层后交互）
-    → `enter` 相位 reactions 副作用 → 交互则挂起(`awaitInteraction`)；否则瞬时节点立即 `advanceAuto`。
+    （fired/windows/spawn/watch 基线）→ `playClip`（换片清叠层）→ `setPhase('playing')` → 跑 `enter` 元素
+    （一律 `renderOverlay`）→ `enter` 相位 reactions → 瞬时节点（无媒体/时长且无可 emit 的 children）立即
+    `advanceAuto`；否则返回 `NextIntent.await` 等 tick / performanceEnd / 组件 `emit`。
   - `tick(ms)`：`at` 反应 + `window` 时段显隐。
-  - `onPerformanceEnd()`：演出/时长结束 → `advanceAuto`。
+  - `onPerformanceEnd()`：演出/时长结束 → `advanceAuto`（若仅有事件出口边、无默认自动边则停住等 emit）。
   - `advanceAuto()`：`complete` 反应副作用 → `selectAutoEdge`（默认边，多条按权重）→ traverse / 弹栈返回 / `finishEnd`。
   - 跨节点调度态：`callStack`（子流程返回）、`redirect`+`consumeRedirect`（state 规则/交互 advance 的硬打断）、
-    `phase`、`returningTo`（容器弹回跳过再下钻）、`checkRules`（写屏障后求值 state 反应）。
+    `phase`（`idle|playing|ended`）、`returningTo`（容器弹回跳过再下钻）、`checkRules`（写屏障后求值 state 反应）。
 
 **痛点**：加一种「新节点行为」要改 `enterNode` 的 `if` 分支，不是「注册即用」；节点行为与引擎调度耦合在一起。
 
@@ -59,16 +64,16 @@ interface NodeRuntimeCtx {
   node: GameNode
   state: MutableState
   elapsedMs: number
-  emit(d: RuntimeDirective): void          // 发 playClip / renderOverlay / openInteraction…
+  emit(d: RuntimeDirective): void          // 发 playClip / renderOverlay / removeOverlay…
   runElement(el: OverlayInstanceChild): void
   childrenOf(node): OverlayInstanceChild[]
   // 只读调度信息（不让节点直接改栈/相位）
 }
 
-/** next 的意图：由引擎据此走边 / 弹栈 / 挂起 / 结束（节点不自己动栈与相位）。 */
+/** next 的意图：由引擎据此走边 / 弹栈 / 停住 / 结束（节点不自己动栈与相位）。 */
 type NextIntent =
   | { kind: 'advance' }       // 沿默认出边推进（引擎 selectAutoEdge → traverse）
-  | { kind: 'await' }         // 挂起等交互/时钟（awaitInteraction）
+  | { kind: 'await' }         // 停住：等媒体/时钟/组件 emit（相位仍为 playing）
   | { kind: 'descend'; entry: string; graph?: GameGraph }  // 下钻子流程/子蓝图（引擎压栈+切图）
   | { kind: 'return' }        // 弹回 caller（引擎 pop callStack）
   | { kind: 'end' }           // 结束本局
@@ -89,7 +94,7 @@ interface NodeKind {
 
 | type | enter | onEnd / next |
 |---|---|---|
-| `perf`（演出/交互） | 重置本节点态 → `playClip` → 跑 enter 元素 → 有交互 `{kind:'await'}`；瞬时(无 media/duration/interaction) `{kind:'advance'}` | onEnd → `{kind:'advance'}` |
+| `perf`（演出） | 重置本节点态 → `playClip` → 跑 enter 元素 → 瞬时(无 media/duration 且无可 emit children) `{kind:'advance'}`；否则 `{kind:'await'}` | onEnd → `{kind:'advance'}`（声明式等待时可能仍停住） |
 | `subflow`（同图子流程容器） | `{kind:'descend', entry: getSubFlow(data)}`；弹回态 → `{kind:'advance'}` | — |
 | `subflowPack`（跨图子蓝图容器） | `{kind:'descend', entry, graph: pack.graph}`；弹回态 → `{kind:'advance'}` | — |
 
@@ -100,7 +105,7 @@ interface NodeKind {
 | `enterNode` 防跑飞 / 认领当前节点 / 清弹回标记 / elapsedMs 原点 | **引擎调度层**（execute 前的公共入场） |
 | `enterNode` 重置态 / seedWatch / playClip / phase | 下放为 `ctx.beginPerform()`（perf 调）/ `ctx.beginResume()`（容器弹回调） |
 | `enterNode` 里 subFlowPack/subFlow 分支 | `subflowPack.execute` / `subflow.execute` 返回 `descend` |
-| `enterNode` 普通节点跑 enter 元素 + 瞬时判定 | `perf.execute`（跑元素 → 返回 await / advance） |
+| `enterNode` 普通节点跑 enter 元素 + 瞬时判定 | `perf.execute`（跑元素 → 返回 await / advance；无 role 分流） |
 | `tick` 的 at/window | 引擎通用 tick（保留）；NodeKind.tick 可选扩展（暂未加） |
 | `onPerformanceEnd → advanceAuto` | 引擎调 `NodeKind.next` → 得 NextIntent → `runIntent` 执行（缺省 advance） |
 | `advanceAuto`（complete 反应 + selectAutoEdge + 弹栈/finishEnd） | **引擎调度层**；`runIntent` 分发 NextIntent：advance→advanceAuto、descend→pushCall/switchGraph/enter、end→finishEnd |
@@ -129,10 +134,10 @@ interface NodeKind {
 
 ## 6. 风险与非目标
 
-- **风险**：`callStack` 弹回、`redirect` 抢占、`awaitInteraction` 挂起、`returningTo` 不重播——这几处跨节点状态最容易在拆分时出错；
+- **风险**：`callStack` 弹回、`redirect` 抢占、声明式等待（有事件边无自动边）、`returningTo` 不重播——这几处跨节点状态最容易在拆分时出错；
   务必**留在引擎调度层**，NodeKind 只返回意图，不直接改栈/相位。以现有 e2e 为护栏，逐阶段验证。
-- **非目标**：不改组件（kind/component）体系；不改 overlay/inputs 契约；不引入运行时对 `component`/`inputs` 的新读法。
-- **判定权**：交互判定仍在皮肤（emit 事件）——本方案只标准化「节点」这一层，不回退组件层的决策。
+- **非目标**：不改组件（ComponentDef）体系；不改 overlay/inputs 契约；不引入运行时对 `component`/`inputs` 的新读法。
+- **判定权**：交互判定在皮肤（`emit`）——本方案只标准化「节点」这一层。
 
 ## 7. 决策记录（已定）
 1. **路径 A**（`resolveNodeType` 从 `data` 派生 subflow/subflowPack，否则用 `node.type`，回退 `perf`）。`GameNodeType` 已改为**开放联合**、合法集合以 `NodeKindRegistry` 为 SSOT（详见 §8）——加节点无需回改 schema。

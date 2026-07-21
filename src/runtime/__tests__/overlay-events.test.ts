@@ -114,8 +114,8 @@ describe('overlay events / reactions', () => {
     }]
     const rt = new GraphRuntime(scn.graph, scn)
     rt.start()
-    expect(rt.state.phase).toBe('awaitInteraction')
-    rt.submitInteraction(rid('a', 'q'), 'pass')
+    expect(rt.state.phase).toBe('playing')
+    rt.emitComponentEvent(rid('a', 'q'), 'pass')
     expect(rt.state.currentNodeId).toBe('b')
     expect(rt.state.vars.qi).toBe(3)
   })

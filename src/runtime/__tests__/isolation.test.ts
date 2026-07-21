@@ -15,19 +15,17 @@ describe('multi-runtime isolation (B)', () => {
     const b = new GraphSession(scnOf({ nodes: [node('b')], edges: [] }))
     expect(a.runtime.components).not.toBe(b.runtime.components)
     expect(a.skins).not.toBe(b.skins)
-    expect(a.runtime.components.getComponent('qte')?.role).toBe('interaction')
-    expect(b.runtime.components.getComponent('qte')?.role).toBe('interaction')
+    expect(a.runtime.components.getComponent('qte')?.events?.length).toBeGreaterThan(0)
+    expect(b.runtime.components.getComponent('qte')?.events?.length).toBeGreaterThan(0)
   })
 
   it('custom component on one registry is invisible to another registry', () => {
     const onlyA = createDefaultComponentRegistry()
-    onlyA.registerComponent('secretView', {
-      role: 'presentation',
-    })
-    expect(onlyA.getComponent('secretView')?.role).toBe('presentation')
+    onlyA.registerComponent('secretView', {})
+    expect(onlyA.getComponent('secretView')).toBeDefined()
     expect(new ComponentRegistry().getComponent('secretView')).toBeUndefined()
     // 默认组件包在 A，裸表没有
-    expect(onlyA.getComponent('qte')?.role).toBe('interaction')
+    expect(onlyA.getComponent('qte')?.events?.length).toBeGreaterThan(0)
     expect(new ComponentRegistry().getComponent('qte')).toBeUndefined()
   })
 })

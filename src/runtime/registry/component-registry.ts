@@ -3,8 +3,9 @@
  *
  * 落盘字段只有 `OverlayChild.component`；注册键（`registerComponent(id, def)` 的 `id`）与之直接对应，
  * 一一对齐，无别名/分类折叠——皮肤（如 `inkKou`/`battleParry`）本身就是独立注册的顶层组件 id，
- * 不再经由「基础类型 + inputs.component 覆盖」这层间接。`role` 仅注册表内部，不进 OverlayChild。
+ * 不再经由「基础类型 + inputs.component 覆盖」这层间接。
  * 舞台坐标尺寸由 OverlayNode.layout / OverlayChild.layout 配置（见 `STAGE_FILL_LAYOUT`），不在组件上挂标记。
+ * 全部组件统一 renderOverlay + emit(event)；无 role / surface 调度标签。
  * 没有「组件种类」这层概念——只有一个个独立组件，各自的能力由自己 `inputs` 里声明了什么结构化打（如
  * `component: 'qteCues'`）决定；要不要按某种专属交互对待，永远问 inputs 长什么样，不查任何分类标签。
  *
@@ -12,7 +13,7 @@
  * 模块级 `registerComponent` / `getComponent` 仍指向默认表。
  */
 import type { ComponentEvent, ComponentInput, ComponentManifest, Overlay } from '../schema/node-config-schema'
-import type { ElementRole, GameNode, NodeHandle } from '../schema/graph-schema'
+import type { GameNode, NodeHandle } from '../schema/graph-schema'
 import type { OverlayInstanceChild } from '../schema/node-config-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
 import { eventsFromParams } from '../schema/overlay-events'
@@ -29,8 +30,6 @@ export interface RuntimeCtx {
 }
 
 export interface ComponentDef<P = Record<string, unknown>> {
-  /** 引擎调度用（不进落盘 OverlayChild）。 */
-  role: ElementRole
   /**
    * 组件会抛出的**事件**（= 出口 handle 来源）。
    * 静态出口写这里（如 qte 的 pass/good/fail）；随实例变化的（choice/hotspot 的选项）写在 `inputs.events`，

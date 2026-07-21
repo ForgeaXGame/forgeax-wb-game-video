@@ -19,7 +19,6 @@ export interface FxParams {
 }
 
 export const fxComponent: ComponentDef<FxParams> = {
-  role: 'presentation',
   label: '特效',
   inputs: [
     { key: 'fx', label: '特效', valueType: 'string', default: 'flash', options: FX_OPTIONS },

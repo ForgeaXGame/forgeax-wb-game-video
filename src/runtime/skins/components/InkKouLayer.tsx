@@ -6,18 +6,18 @@
  *  - 预览态：播放头 previewTimeMs 驱动显隐 + CSS 负 delay 冻结入场动画。
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
+import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import type { OverlayChild } from '../../schema/graph-schema'
 import type { ComponentDef } from '../../registry/component-registry'
 import { QTE_DEFAULT_EVENTS, QTE_INPUTS, type QteFullParams } from '../../registry/core-components'
-import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle } from './skinRuntime'
+import { STAGE_FILL_LAYOUT } from '../../schema/layout'
+import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle, resolveTimeoutMs, useDefaultEventTimeout } from './skinRuntime'
 
 /**
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  * inputs 复用 qte 系共享表；出口缺省回退 QTE_DEFAULT_EVENTS（preset 会写入 inputs.events）。
  */
 export const inkKouComponent: ComponentDef<QteFullParams> = {
-  role: 'interaction',
   label: '叩击 QTE',
   events: QTE_DEFAULT_EVENTS,
   inputs: QTE_INPUTS,
@@ -39,6 +39,7 @@ export function inkKouPreset(id: string): OverlayChild {
   return {
     id,
     component: 'inkKou',
+    layout: { ...STAGE_FILL_LAYOUT },
     trigger: { when: 'enter' },
     inputs: { ...inkKouDefaults },
   }
@@ -65,12 +66,12 @@ interface KouItem {
 }
 type HitTier = 'perfect' | 'good'
 
-export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: InteractionProps) {
+export function InkKouLayer({ overlay, emit, preview, previewTimeMs }: OverlayProps) {
   injectCss('ink-kou-layer', KOU_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const keyOk = usePlayerKeyGate()
-  const p = interaction.inputs as {
+  const p = overlay.inputs as {
     glyph?: string
     anchorX?: number
     anchorY?: number
@@ -78,6 +79,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     timeoutMs?: number
     windowMs?: number
     perfectMs?: number
+    defaultEvent?: string
     cues?: KouCueParam[]
     passingHits?: number
     events?: Array<{ id: string; label?: string }>
@@ -86,6 +88,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
   const passLabel = p.events?.find((e) => e.id === 'pass')?.label
   const passHint = passLabel ?? `${glyph}，空格键或点击确认`
   const hasCues = Array.isArray(p.cues) && p.cues.length > 0
+  useDefaultEventTimeout(emit, hasCues ? undefined : (p as Record<string, unknown>), preview)
   const perfectMs = typeof p.perfectMs === 'number' && p.perfectMs > 0 ? p.perfectMs : undefined
 
   const items = useMemo<KouItem[]>(() => {
@@ -113,17 +116,15 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
 
   const baseAbs = useMemo(() => Math.min(...items.map((c) => c.absAppear)), [items])
   const need = p.passingHits ?? items.length
-  const engineTimeout = interaction.timeoutMs
+  const timeoutCap = resolveTimeoutMs(p as Record<string, unknown>)
   const maxEnd = useMemo(() => {
     const skinEnd = Math.max(...items.map((c) => c.end))
-    return engineTimeout ? Math.min(skinEnd, Math.max(200, engineTimeout)) : skinEnd
-  }, [items, engineTimeout])
+    return timeoutCap ? Math.min(skinEnd, Math.max(200, timeoutCap)) : skinEnd
+  }, [items, timeoutCap])
   const startRef = useRef(0)
   const hitRef = useRef<Map<string, HitTier>>(new Map())
   const resolvedRef = useRef(false)
   const [nowMs, setNowMs] = useState(0)
-
-  const engineOwnsTimeout = !preview && !hasCues && engineTimeout != null
 
   function classifyHit(tAbs: number, c: KouItem): HitTier | null {
     if (tAbs < c.absAppear || tAbs > c.absEnd) return null
@@ -132,10 +133,24 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     return 'perfect'
   }
 
-  function finish(outcome: 'pass' | 'good' | 'fail'): void {
+  /** 档位映射到已声明 events（inkKou 默认只有 pass/fail；无 good 时半成功落 pass）。 */
+  function finish(tier: 'pass' | 'good' | 'fail'): void {
     if (resolvedRef.current) return
     resolvedRef.current = true
-    submit(outcome)
+    const declared = new Set(
+      (Array.isArray(p.events) ? p.events : [])
+        .map((e) => (e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string' ? (e as { id: string }).id : ''))
+        .filter(Boolean),
+    )
+    let outcome: string = tier
+    if (tier === 'good' && !declared.has('good')) {
+      outcome = declared.has('pass') ? 'pass' : (typeof p.defaultEvent === 'string' && p.defaultEvent ? p.defaultEvent : 'fail')
+    } else if (tier === 'pass' && declared.size > 0 && !declared.has('pass')) {
+      outcome = [...declared][0]!
+    } else if (tier === 'fail' && declared.size > 0 && !declared.has('fail')) {
+      outcome = typeof p.defaultEvent === 'string' && p.defaultEvent ? p.defaultEvent : [...declared][declared.size - 1]!
+    }
+    emit?.(outcome)
   }
 
   function resolveOutcome(hits: Map<string, HitTier>): void {
@@ -150,7 +165,6 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     if (preview) return
     resolvedRef.current = false
     hitRef.current = new Map()
-    if (engineOwnsTimeout) return
     startRef.current = performance.now()
     let raf = 0
     const tick = (): void => {
@@ -165,14 +179,10 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxEnd, engineOwnsTimeout, preview])
+  }, [maxEnd, preview])
 
   function hitCue(key: string, tAbs: number): void {
     if (preview || resolvedRef.current) return
-    if (engineOwnsTimeout) {
-      finish('pass')
-      return
-    }
     const c = items.find((x) => x.key === key)
     if (!c || hitRef.current.has(key)) return
     const tier = classifyHit(tAbs, c)
@@ -188,10 +198,6 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
       if (!keyOk()) return
       if (e.key !== ' ' && e.key !== 'Enter') return
       e.preventDefault()
-      if (engineOwnsTimeout) {
-        finish('pass')
-        return
-      }
       const tRel = performance.now() - startRef.current
       const tAbs = baseAbs + tRel
       const c = items.find((x) => {
@@ -203,7 +209,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, engineOwnsTimeout, preview, perfectMs, baseAbs])
+  }, [items, preview, perfectMs, baseAbs])
 
   const t = preview ? (previewTimeMs ?? 0) : 0
   return (
@@ -212,9 +218,7 @@ export function InkKouLayer({ interaction, submit, preview, previewTimeMs }: Int
         const hit = hitRef.current.has(c.key)
         const active = preview
           ? t >= c.absAppear && t <= c.absEnd
-          : engineOwnsTimeout
-            ? !hit
-            : nowMs >= c.appear && nowMs <= c.end && !hit
+          : nowMs >= c.appear && nowMs <= c.end && !hit
         if (!active) return null
         const anchorStyle: Record<string, string> = {
           ['--pvn-opt-x']: `${c.x * 100}%`,

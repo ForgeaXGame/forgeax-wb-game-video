@@ -1,11 +1,11 @@
 /**
  * 战斗技能条皮肤（component id: `battleSkillBar`）—— 从旧 player/BattleSkillLayer 迁移。
  *
- * 读 InteractionSnap.inputs.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
+ * 读 OverlaySnap.inputs.events；门控用 ChoiceOption.condition + 实时 SkinCtx（方案 B）。
  * 含 'ult' 的 id 用金色高亮。
  */
 import { useEffect, useState } from 'react'
-import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
+import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
 import {
   CHOICE_INPUTS,
@@ -14,7 +14,8 @@ import {
 } from '../../registry/core-components'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayChild } from '../../schema/graph-schema'
-import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+import { STAGE_FILL_LAYOUT } from '../../schema/layout'
+import { injectCss, ensureInkFilters, ensureBrushFont, useDefaultEventTimeout } from './skinRuntime'
 
 const SKILL_KEYS = ['X', 'A', 'Y', 'B'] as const
 
@@ -22,7 +23,6 @@ const SKILL_KEYS = ['X', 'A', 'Y', 'B'] as const
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  */
 export const battleSkillBarComponent: ComponentDef<ChoiceParams> = {
-  role: 'interaction',
   label: '战斗技能条',
   inputs: CHOICE_INPUTS,
   validate: validateChoiceEvents,
@@ -44,17 +44,19 @@ export function battleSkillBarPreset(id: string): OverlayChild {
   return {
     id,
     component: 'battleSkillBar',
+    layout: { ...STAGE_FILL_LAYOUT },
     trigger: { when: 'enter' },
     inputs: { ...battleSkillBarDefaults },
   }
 }
 
-export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps) {
+export function BattleSkillLayer({ overlay, emit, ctx, preview }: OverlayProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()
+  useDefaultEventTimeout(emit, overlay.inputs as Record<string, unknown>, preview)
   const keyOk = usePlayerKeyGate()
-  const inputs = interaction.inputs as unknown as ChoiceParams
+  const inputs = overlay.inputs as unknown as ChoiceParams
   const events = inputs.events ?? []
   const x = typeof inputs.x === 'number' ? inputs.x : battleSkillBarDefaults.x!
   const y = typeof inputs.y === 'number' ? inputs.y : battleSkillBarDefaults.y!
@@ -63,7 +65,7 @@ export function BattleSkillLayer({ interaction, submit, ctx }: InteractionProps)
   function pick(id: string, locked: boolean): void {
     if (picked || locked) return
     setPicked(id)
-    submit(id)
+    emit?.(id)
   }
 
   useEffect(() => {

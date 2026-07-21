@@ -13,6 +13,7 @@ import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { PlayerRootContext, type SkinCtx } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
+import { getComponent } from '../../runtime/registry/component-registry'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc, videoDurationCapReached } from './media'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
@@ -20,9 +21,19 @@ import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 
-function autoInput(handles: string[]): unknown {
-  // handle === event id（无前缀）；auto 演示直接提交首个非默认出口。
-  return handles.find((h) => h !== 'default') ?? handles[0] ?? ''
+function autoEmitTarget(snap: SessionSnapshot): { elementId: string; key: string } | null {
+  // 自动演示：找首个可 emit 的挂载组件，抛其首个非 default 事件。
+  for (const m of snap.overlayMounts) {
+    for (const c of m.children) {
+      const events = (c.inputs as { events?: Array<{ id: string }> }).events
+      const ids = Array.isArray(events) && events.length
+        ? events.map((e) => e.id)
+        : (getComponent(c.component)?.events ?? []).map((e) => e.id)
+      const key = ids.find((h) => h !== 'default') ?? ids[0]
+      if (key) return { elementId: c.elementId, key }
+    }
+  }
+  return null
 }
 
 // ── 可拖拽 + 可缩放浮层（对齐旧 BlueprintPlayer DraggablePanel）──────────────────
@@ -107,25 +118,19 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
 
   useEffect(() => {
     // 无视频：durationMs 到点推进；有视频：durationMs 作播放时长上限，走 <video> onTimeUpdate。
-    if (!snap || snap.interaction || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
+    if (!snap || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
     const t = setTimeout(() => setSnap(sessionRef.current!.performanceEnd()), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap?.clip?.nodeId, snap?.interaction, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId])
+  }, [snap?.clip?.nodeId, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId])
 
   useEffect(() => {
-    if (!snap?.interaction?.timeoutMs) return
-    const t = setTimeout(() => setSnap(sessionRef.current!.submit(undefined)), snap.interaction.timeoutMs)
+    if (!auto || !snap) return
+    const target = autoEmitTarget(snap)
+    if (!target) return
+    const t = setTimeout(() => setSnap(sessionRef.current!.emitEvent(target.elementId, target.key)), 700)
     return () => clearTimeout(t)
-  }, [snap?.interaction?.elementId, snap?.interaction?.timeoutMs])
+  }, [auto, snap?.currentNodeId, snap?.overlayMounts])
 
-  useEffect(() => {
-    if (!auto || !snap?.interaction) return
-    const handles = snap.interaction.handles
-    const t = setTimeout(() => setSnap(sessionRef.current!.submit(autoInput(handles))), 700)
-    return () => clearTimeout(t)
-  }, [auto, snap?.interaction?.elementId, snap?.interaction])
-
-  const submit = (input: unknown) => setSnap(sessionRef.current!.submit(input))
   const doJump = (nodeId: string) => setSnap(sessionRef.current!.jump(nodeId))
   const traversed = useMemo(() => new Set(snap?.traversedEdgeIds ?? []), [snap?.traversedEdgeIds])
   const currentNode = useMemo(() => graph.nodes.find((n) => n.id === snap?.currentNodeId), [graph, snap?.currentNodeId])
@@ -173,8 +178,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
           onTimeUpdate={(e) => {
             const el = e.currentTarget
             const nowMs = Math.floor(el.currentTime * 1000)
-            // 播放时长上限：到点提前收演出（awaitInteraction 下 performanceEnd 为 no-op，故加 interaction 卫护省无谓渲染）。
-            if (!snap?.interaction && videoDurationCapReached(nowMs, snap?.clip?.durationMs, el.duration)) {
+            if (videoDurationCapReached(nowMs, snap?.clip?.durationMs, el.duration)) {
               setSnap(sessionRef.current!.performanceEnd())
               return
             }
@@ -191,7 +195,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {/* 游戏 overlay 舞台：锚定视频实际显示矩形（object-fit:contain 后带黑边的那块）。
           HUD / QTE / 交互 / 结局横幅都相对这块定位，视频缩放/换比例时跟着视频走。 */}
       <VideoOverlayStage contentRect={contentRect}>
-      {/* 表现叠层（含 battleHpBar）：传 skinCtx 供绘制时 resolve bind→value。 */}
+      {/* 全部叠层（含 QTE/选项/血条）：传 skinCtx；事件经 emitEvent。 */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         {(snap?.overlayMounts ?? []).map((m) => (
           <span key={m.mountId} style={{ display: 'contents' }}>
@@ -203,12 +207,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
           </span>
         ))}
       </div>
-
-      {/* 交互层：铺满舞台=视频显示区。皮肤（防反/技能条）与默认按钮行各自绝对定位到
-          自己的位置（防反=右侧居中、技能条/默认=底部），故这里只做全区容器、点击穿透。 */}
-      {snap?.interaction && skins && (
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>{skins.renderInteraction(snap.interaction, submit, skinCtx)}</div>
-      )}
       </VideoOverlayStage>
 
       {/* 控制条：右上角悬浮 */}

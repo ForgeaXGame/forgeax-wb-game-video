@@ -1,14 +1,14 @@
 /**
  * 應/默 限时抉择皮肤（component id: `inkYingMo`）—— 从旧 player/InkYingMoLayer 迁移。
  *
- * 读 InteractionSnap.inputs.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → submit(id)。
- * 超时默认由引擎按 inputs.timeoutMs/defaultEvent 自动 submit(undefined) 处理，皮肤不再自管计时。
+ * 读 OverlaySnap.inputs.events（水墨字形取 event.label，如「應」「默」）；点击/键盘(A/E=第0项, B/Q=第1项) → emit(id)。
+ * 超时由 useDefaultEventTimeout 到点 emit(defaultEvent)。
  *
  * 预览态：与 inkKou 同一套 --preview-t 负 delay 冻结契约——preview 时加 is-frozen，
  * 入场动画按播放头定帧，且禁键/禁点（不吃提交）。
  */
 import { useEffect, useRef, type CSSProperties } from 'react'
-import { usePlayerKeyGate, type InteractionProps } from '../rendererRegistry'
+import { usePlayerKeyGate, type OverlayProps } from '../rendererRegistry'
 import { isOptionLocked } from '../optionLock'
 import {
   CHOICE_INPUTS,
@@ -17,7 +17,8 @@ import {
 } from '../../registry/core-components'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayChild } from '../../schema/graph-schema'
-import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle } from './skinRuntime'
+import { STAGE_FILL_LAYOUT } from '../../schema/layout'
+import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle, useDefaultEventTimeout } from './skinRuntime'
 
 const KEY_LABELS = ['A', 'B'] as const
 
@@ -25,20 +26,21 @@ const KEY_LABELS = ['A', 'B'] as const
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
  */
 export const inkYingMoComponent: ComponentDef<ChoiceParams> = {
-  role: 'interaction',
   label: '應/默 抉择',
   inputs: CHOICE_INPUTS,
   validate: validateChoiceEvents,
 }
 
 /** 皮肤默认玩法参数（样式锁选项 / 新建预设 / 锚点共用）。 */
-export const inkYingMoDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y'> = {
+export const inkYingMoDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y' | 'timeoutMs' | 'defaultEvent'> = {
   events: [
     { id: 'ying', label: '應' },
     { id: 'mo', label: '默' },
   ],
   x: 0.72,
   y: 0.78,
+  timeoutMs: 8000,
+  defaultEvent: 'mo',
 }
 
 /** OverlayChild 预设（顶栏 component = 皮肤 id）。 */
@@ -46,17 +48,19 @@ export function inkYingMoPreset(id: string): OverlayChild {
   return {
     id,
     component: 'inkYingMo',
+    layout: { ...STAGE_FILL_LAYOUT },
     trigger: { when: 'enter' },
     inputs: { ...inkYingMoDefaults },
   }
 }
 
-export function InkYingMoLayer({ interaction, submit, ctx, preview, previewTimeMs }: InteractionProps) {
+export function InkYingMoLayer({ overlay, emit, ctx, preview, previewTimeMs }: OverlayProps) {
   injectCss('ink-yingmo-layer', YINGMO_CSS)
   ensureInkFilters()
   ensureBrushFont()
+  useDefaultEventTimeout(emit, overlay.inputs as Record<string, unknown>, preview)
   const keyOk = usePlayerKeyGate()
-  const inputs = interaction.inputs as unknown as ChoiceParams
+  const inputs = overlay.inputs as unknown as ChoiceParams
   const events = (inputs.events ?? []).slice(0, 2)
   const x = typeof inputs.x === 'number' ? inputs.x : inkYingMoDefaults.x!
   const y = typeof inputs.y === 'number' ? inputs.y : inkYingMoDefaults.y!
@@ -65,7 +69,7 @@ export function InkYingMoLayer({ interaction, submit, ctx, preview, previewTimeM
   function pick(id: string, locked: boolean): void {
     if (preview || pickedRef.current || locked) return
     pickedRef.current = true
-    submit(id)
+    emit?.(id)
   }
 
   useEffect(() => {

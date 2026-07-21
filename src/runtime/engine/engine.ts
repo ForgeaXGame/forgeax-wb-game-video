@@ -2,17 +2,17 @@
  * GraphRuntime —— 纯 TS 状态机，**直接执行 GameGraph**（无 Scene/branches/编译层）。
  *
  * 走法（spec §3）：进入节点 → 跑 enter reactions + emit playClip → tick 时按 trigger 触发 overlay 子件
- * → 按 role 派发（presentation 出画面 / interaction 挂起等输入）→ 演出结束/交互判定
- * → 选出口 handle → 沿 edge → 进入下一节点。产**泛型 directive**，Player 消费。
+ * → 到 trigger 时机 renderOverlay → 组件 emit(event) → reactions / 出边 → 下一节点。
+ * 产**泛型 directive**，Player 消费。无 openInteraction / awaitInteraction；等待为声明式
+ * （无 default 出边且仅有 event 出边时，演出结束不自动推进）。
  *
  * 关键机制：
  *  - 触发时机 Trigger：enter / at(ms)。
  *  - 出口=handle：sourceHandle === 出口 event id（default = 保留字/默认推进），edge 只管连接 + 条件/权重。
  *  - 条件网关：同 handle 多边，有条件者按序求值、无条件兜底；加权随机：候选皆带 weight → rng 加权。
- *  - 交互：openInteraction 挂起 → 皮肤自判定后 submit（=emit 已声明 event id）→ outcome=event id →
- *    reactions.do（effect/spawn/advance）→ 有边则默认 advance（无匹配边则只做副作用、不换节点）。
- *  - 副作用：一律走 reactions（边与皮肤 submit 都不带 effects）。
- *  - 换节点：只经边；reactions.do 的 advance(edgeId) 或引擎默认推进。
+ *  - 组件事件：emitComponentEvent → reactions.do（effect/spawn/advance）→ 无显式 advance 则按 handle 找边。
+ *  - 副作用：一律走 reactions。
+ *  - 换节点：只经边；reactions.do 的 advance(edgeId) 或引擎默认推进 / handle 出边。
  *  - jumpToNode：seek 到任意节点（默认保留全局态）。
  */
 import type {
@@ -44,7 +44,7 @@ import {
   type NodeRuntimeCtx,
 } from '../nodes'
 
-export type GraphPhase = 'idle' | 'playing' | 'awaitInteraction' | 'ended'
+export type GraphPhase = 'idle' | 'playing' | 'ended'
 
 /** call/return 栈帧：弹回时恢复 caller 所在图（同图 subflow 时 returnGraph === 当前图）。 */
 export interface CallFrame {
@@ -84,7 +84,6 @@ export class GraphRuntime {
   private firedAtReactions = new Set<number>() // 已触发的 at reaction 下标（按 node.data.reactions 顺序）
   private windowShown = new Set<string>() // 已按 window.startMs 显示的元素 id
   private windowRemoved = new Set<string>() // 已按 window.endMs 移除的元素 id
-  private pending: string | null = null // 挂起中的 interaction 元素 id
   private chain = 0 // 同步穿链计数（anti-runaway）
 
   // 局级 state reactions（即时判负/判胜）：命中即设 redirect，在安全边界消费为一次跳转。
@@ -193,18 +192,44 @@ export class GraphRuntime {
   }
 
   /**
-   * 组件**非阻塞**事件：点击某展示组件的按钮 → 跑其所属挂载的 event 反应（effect/spawn/advance）。
-   * 不进 awaitInteraction、不占 pending——与主交互（技能/QTE）并存；advance = 硬打断到边 target。
+   * 组件事件（点击 / 判定 / 超时 defaultEvent）：跑挂载 event 反应；
+   * 无显式 advance 时按 handle 找边默认推进（与旧 submitInteraction 对齐）。
    */
   emitComponentEvent(elementId: string, key: string): RuntimeDirective[] {
-    const el = this.childrenOf(this.node(this.state.currentNodeId)).find((e) => e.id === elementId)
-    if (!el) return this.drain()
-    const evs = resolveEventReactions(this.mountReactionsFor(el), key, el.source.childId, el.source.mountId)
-    for (const r of evs) {
-      this.runReactiveActions(r.do)
+    const node = this.node(this.state.currentNodeId)
+    const el = this.childrenOf(node).find((e) => e.id === elementId)
+    if (!node || !el) return this.drain()
+    const outcome =
+      typeof key === 'string' && key
+        ? key
+        : ((el.inputs as { defaultEvent?: unknown }).defaultEvent as string) ?? 'fail'
+    this.chain = 0
+    if (this.consumeRedirect()) return this.drain()
+
+    const mountReactions = this.mountReactionsFor(el)
+    const evReactions = resolveEventReactions(mountReactions, outcome, el.source.childId, el.source.mountId)
+    let advanced = false
+    for (const r of evReactions) {
+      if (this.runEventActions(r.do, el)) {
+        advanced = true
+        break
+      }
       if (this.redirect) break
     }
-    this.consumeRedirect()
+    if (this.consumeRedirect()) return this.drain()
+    if (advanced) return this.drain()
+
+    for (const srcId of this.eventRoutingNodeIds(el)) {
+      const edge = this.selectHandleEdge(srcId, outcome)
+      if (edge) {
+        if (srcId !== node.id) {
+          this.state.callStack = []
+          this.returningTo.clear()
+        }
+        this.traverse(edge)
+        break
+      }
+    }
     return this.drain()
   }
 
@@ -294,8 +319,6 @@ export class GraphRuntime {
     this.state.elapsedMs = 0
     this.state.visited.add(id)
     const intent = kind.execute(this.nodeCtx(node, returning))
-    // 交互挂起优先于消费 redirect（与旧逻辑一致：await 期间 redirect 暂存，不在本次跳）。
-    if (this.state.phase === 'awaitInteraction') return
     if (this.consumeRedirect()) return
     this.runIntent(intent, node)
   }
@@ -326,16 +349,12 @@ export class GraphRuntime {
       state: self.state,
       elapsedMs: self.state.elapsedMs,
       returning,
-      get awaiting() {
-        return self.state.phase === 'awaitInteraction'
-      },
       get redirected() {
         return self.redirect !== null
       },
       emit: (d) => self.emit(d),
       childrenOf: (n) => self.childrenOf(n),
       runElement: (el) => self.runElement(el),
-      roleOf: (component) => self.getComponent(component)?.role ?? 'presentation',
       beginPerform: () => self.beginPerform(node),
       beginResume: () => self.beginResume(),
       applyEnterReactions: (n) => self.applyPhaseReactionEffects(n, 'enter'),
@@ -350,7 +369,6 @@ export class GraphRuntime {
     this.firedAtReactions = new Set()
     this.windowShown = new Set()
     this.windowRemoved = new Set()
-    this.pending = null
     // 组件生命周期 / spawn 游标随节点重置；watch 基线按当前态重建（本节点内的变化才 fire）。
     this.shownChildren = new Set()
     this.hiddenFired = new Set()
@@ -371,15 +389,16 @@ export class GraphRuntime {
   /** 容器弹回：不重播演出、不跑 enter 元素，只重置 fired/pending + 相位置 playing，随后沿 out 续走。 */
   private beginResume(): void {
     this.fired = new Set()
-    this.pending = null
     this.setPhase('playing')
   }
 
-  /** 瞬时节点：无 media、无 durationMs、无 interaction → 进入即可推进（逻辑穿链）。 */
+  /** 瞬时节点：无 media、无 durationMs、无可 emit 事件的组件 → 进入即可推进（逻辑穿链）。 */
   private isInstantNode(node: GameNode): boolean {
     if (node.data.media?.ref) return false
     if (node.data.durationMs) return false
-    return !this.childrenOf(node).some((el) => this.getComponent(el.component)?.role === 'interaction')
+    return !this.childrenOf(node).some(
+      (el) => this.components.handlesOf(el.component, el.inputs).length > 0,
+    )
   }
 
   /** 解析子蓝图包入口 + 其图（subflowPack 用）；非 pack 返回 undefined。 */
@@ -392,27 +411,20 @@ export class GraphRuntime {
   }
 
   // ── tick / 演出结束 ─────────────────────────────────────────────────────────
-  /**
-   * 推进节点时钟：触发到点的 at 元素 + window 时段叠层。
-   * 交互挂起（awaitInteraction）时仍推进 window（时间轴飘字/字幕），否则试玩里选项一出叠层全灭。
-   */
+  /** 推进节点时钟：触发到点的 at 元素 + window 时段叠层。 */
   tick(elapsedMs: number): RuntimeDirective[] {
     this.state.elapsedMs = elapsedMs
     const node = this.node(this.state.currentNodeId)
     if (!node) return this.drain()
-    const phase = this.state.phase as GraphPhase
-    if (phase !== 'playing' && phase !== 'awaitInteraction') return this.drain()
+    if (this.state.phase !== 'playing') return this.drain()
 
-    if (phase === 'playing') {
-      for (const el of this.childrenOf(node)) {
-        if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
-          this.runElement(el)
-          if ((this.state.phase as GraphPhase) === 'awaitInteraction' || this.redirect) break
-        }
+    for (const el of this.childrenOf(node)) {
+      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
+        this.runElement(el)
+        if (this.redirect) break
       }
-      // at 相位 reactions 的副作用（到点施加）。
-      if (this.state.phase === 'playing' && !this.redirect) this.applyAtReactionEffects(node, elapsedMs)
     }
+    if (!this.redirect) this.applyAtReactionEffects(node, elapsedMs)
 
     this.tickWindows(node, elapsedMs)
     this.reapSpawns(elapsedMs)
@@ -428,7 +440,7 @@ export class GraphRuntime {
       const end = el.window.endMs
       if (!this.windowShown.has(el.id) && elapsedMs >= start && (end == null || elapsedMs < end)) {
         this.windowShown.add(el.id)
-        this.runElement(el) // 按 role 派发（presentation→emit overlay / logic→apply）
+        this.runElement(el)
       }
       if (!this.windowRemoved.has(el.id) && end != null && elapsedMs >= end) {
         this.windowRemoved.add(el.id)
@@ -457,48 +469,6 @@ export class GraphRuntime {
     return this.drain()
   }
 
-  // ── 交互 ────────────────────────────────────────────────────────────────────
-  /**
-   * 玩家对挂起的 interaction 提交输入：皮肤已自行判定，`input` 即最终 outcome（event id）——
-   * 命中的 event reaction 的 do（effect/spawn/advance）；无显式 advance 则有匹配出边默认推进。
-   */
-  submitInteraction(elementId: string, input: unknown): RuntimeDirective[] {
-    const node = this.node(this.state.currentNodeId)
-    const el = this.childrenOf(node).find((e) => e.id === elementId)
-    if (!node || !el) return this.drain()
-    if (this.state.phase !== 'awaitInteraction' || this.pending !== elementId) return this.drain()
-    // 皮肤自判定后 emit 的**最终 event id** 即 outcome；缺省（超时 submit(undefined)）落 inputs.defaultEvent（兜底 'fail'）。
-    const outcome =
-      typeof input === 'string' && input
-        ? input
-        : ((el.inputs as { defaultEvent?: unknown }).defaultEvent as string) ?? 'fail'
-    this.pending = null
-    this.setPhase('playing')
-    this.chain = 0
-    if (this.consumeRedirect()) return this.drain()
-
-    // 命中 outcome 的 event reaction：do 同级跑 effect/spawn/advance（副作用一律在此）。
-    const mountReactions =
-      nodeOverlayMounts(node).find((m) => overlayMountId(m) === el.source.mountId)?.reactions
-      ?? nodeOverlayMounts(node)[0]?.reactions
-    const evReactions = resolveEventReactions(mountReactions, outcome, el.source.childId, el.source.mountId)
-    let advanced = false
-    for (const r of evReactions) {
-      if (this.runEventActions(r.do)) {
-        advanced = true
-        break
-      }
-      if (this.redirect) break
-    }
-    if (this.consumeRedirect()) return this.drain()
-    if (advanced) return this.drain()
-
-    // 无显式 advance：有匹配出边则默认推进；无匹配边 → 只做副作用、不换节点（演出续播/收尾时再默认推进）。
-    const edge = this.selectHandleEdge(node.id, outcome)
-    if (edge) this.traverse(edge)
-    return this.drain()
-  }
-
   /** 施加 reaction.do 中的 effect（生命周期相位：enter/at/exit/complete，只改状态、不换节点）。 */
   private runEffectActions(actions: NodeAction[]): void {
     for (const a of actions) {
@@ -506,8 +476,20 @@ export class GraphRuntime {
     }
   }
 
+  /** 事件路由可匹配的节点 id：当前节点 + 调用栈容器 + 元素所属节点。 */
+  private eventRoutingNodeIds(el?: OverlayInstanceChild): string[] {
+    const ids: string[] = []
+    const cur = this.state.currentNodeId
+    if (cur) ids.push(cur)
+    for (const f of this.state.callStack) {
+      if (!ids.includes(f.callerNodeId)) ids.push(f.callerNodeId)
+    }
+    if (el?.source.nodeId && !ids.includes(el.source.nodeId)) ids.push(el.source.nodeId)
+    return ids
+  }
+
   /** 交互事件 do：effect/spawn/advance；advance = 沿当前图的边软推进。返回是否已换节点。 */
-  private runEventActions(actions: NodeAction[]): boolean {
+  private runEventActions(actions: NodeAction[], el?: OverlayInstanceChild): boolean {
     for (const a of actions) {
       if (a.kind === 'effect') {
         if (a.effects.length) this.applyAndReact(a.effects)
@@ -515,7 +497,11 @@ export class GraphRuntime {
         this.doSpawn(a)
       } else if (a.kind === 'advance') {
         const edge = this.edgeById(a.edgeId)
-        if (edge && edge.source === this.state.currentNodeId) {
+        if (edge && this.eventRoutingNodeIds(el).includes(edge.source)) {
+          if (edge.source !== this.state.currentNodeId) {
+            this.state.callStack = []
+            this.returningTo.clear()
+          }
           this.traverse(edge)
           return true
         }
@@ -529,7 +515,7 @@ export class GraphRuntime {
   private applyPhaseReactionEffects(node: GameNode, phase: 'enter' | 'exit'): void {
     for (const r of node.data.reactions ?? []) {
       if (r.when.type === phase) this.runEffectActions(r.do)
-      if (this.state.phase === 'awaitInteraction' || this.redirect) return
+      if (this.redirect) return
     }
   }
 
@@ -541,7 +527,7 @@ export class GraphRuntime {
       if (r.when.type !== 'at' || this.firedAtReactions.has(i) || r.when.ms > elapsedMs) continue
       this.firedAtReactions.add(i)
       this.runEffectActions(r.do)
-      if ((this.state.phase as GraphPhase) === 'awaitInteraction' || this.redirect) return
+      if (this.redirect) return
     }
   }
 
@@ -578,64 +564,28 @@ export class GraphRuntime {
   // ── 元素派发 ────────────────────────────────────────────────────────────────
   private runElement(el: OverlayInstanceChild): void {
     const plugin = this.getComponent(el.component)
-    const role = plugin?.role ?? 'presentation'
     this.fired.add(el.id)
     // 组件出现（mount）→ 触发 shown 生命周期反应（每节点访问首次）。
-    // 注意：已在 awaitInteraction 时仍要继续渲表现层（window 飘字/字幕）；
-    // 仅当「本次 shown 反应新打开交互 / 改道」才中断后续派发。
-    const phaseBeforeShown = this.state.phase as GraphPhase
     if (!this.shownChildren.has(el.id)) {
       this.shownChildren.add(el.id)
       this.fireLifecycle('shown', el)
       if (this.redirect) return
-      if (
-        role !== 'presentation'
-        && phaseBeforeShown !== 'awaitInteraction'
-        && this.state.phase === 'awaitInteraction'
-      ) {
-        return
-      }
     }
     const ctx = { ...this.ctx(), elementId: el.id }
     const inputs = el.inputs
-    if (role === 'presentation') {
-      if (plugin?.render) {
-        for (const d of plugin.render(ctx, inputs)) {
-          if (d.type === 'renderOverlay') this.emitRenderOverlay(d, el)
-          else this.emit(d)
-        }
-      } else {
-        this.emitRenderOverlay({
-          type: 'renderOverlay',
-          nodeId: this.state.currentNodeId ?? '',
-          elementId: el.id,
-          component: el.component,
-          inputs,
-        }, el)
+    if (plugin?.render) {
+      for (const d of plugin.render(ctx, inputs)) {
+        if (d.type === 'renderOverlay') this.emitRenderOverlay(d, el)
+        else this.emit(d)
       }
-    } else if (role === 'interaction') {
-      if (!plugin) return
-      // 已有主交互挂起时不再叠开第二个（window 触发的交互元素不受 enter/tick 外层循环 break 约束，需要本地兜底）。
-      if (this.state.phase === 'awaitInteraction') return
-      // 限时：timeoutMs（choice）/ windowMs（QTE 窗口）/ durationMs（皮肤时限）同源。
-      const timeoutRaw =
-        (typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined)
-        ?? (typeof inputs.windowMs === 'number' ? inputs.windowMs : undefined)
-        ?? (typeof inputs.durationMs === 'number' ? inputs.durationMs : undefined)
-      const timeoutMs = typeof timeoutRaw === 'number' && timeoutRaw > 0 ? timeoutRaw : undefined
-      // 选项门控由皮肤用 inputs.events[].condition + SkinCtx 时时求值（不注入 _locked）。
-      this.emit({
-        type: 'openInteraction',
+    } else {
+      this.emitRenderOverlay({
+        type: 'renderOverlay',
         nodeId: this.state.currentNodeId ?? '',
         elementId: el.id,
         component: el.component,
         inputs,
-        handles: this.components.handlesOf(el.component, inputs).map((h) => h.id),
-        ...(timeoutMs ? { timeoutMs } : {}),
-      })
-      this.setPhase('awaitInteraction')
-      this.pending = el.id
-      return
+      }, el)
     }
   }
 
@@ -678,7 +628,6 @@ export class GraphRuntime {
     this.redirect = null
     const cur = this.node(this.state.currentNodeId)
     if (cur) this.runExit(cur)
-    this.pending = null
     this.setPhase('playing')
     if (resetGlobals) this.resetGlobalsState()
     // 图级规则是硬打断（判胜/判负等）：清调用栈并回到主图，再进目标节点。
@@ -921,6 +870,13 @@ export class GraphRuntime {
     return pool[0]
   }
 
+  /** 是否存在非 default 的 event 出边（声明式等待：演出结束不自动推进）。 */
+  private hasEventHandleOutEdges(nodeId: string): boolean {
+    return (this.outgoing.get(nodeId) ?? []).some(
+      (e) => e.sourceHandle != null && e.sourceHandle !== 'default',
+    )
+  }
+
   /** 自动推进：默认出口（sourceHandle === 'default' 或缺省）。 */
   private selectAutoEdge(nodeId: string): GameEdge | undefined {
     return this.pickEdge(
@@ -954,6 +910,8 @@ export class GraphRuntime {
     }
     const edge = this.selectAutoEdge(nodeId)
     if (!edge) {
+      // 声明式等待：仅有 event 出边、无 default → 停在本节点等组件 emit（不结束本局）。
+      if (this.hasEventHandleOutEdges(nodeId)) return
       // 无自动出边 + 调用栈非空 → 弹回 caller（subFlow / subFlowPack）；回环用显式边。
       const node = this.nodes.get(nodeId)
       if (this.state.callStack.length > 0) {

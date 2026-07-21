@@ -33,7 +33,6 @@ interface ResolvedHpBar {
 }
 
 export const battleHpBarComponent: ComponentDef<BattleHpBarParams> = {
-  role: 'presentation',
   label: '水墨血条',
   inputs: [
     { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-player', component: 'entity' },

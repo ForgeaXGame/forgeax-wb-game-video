@@ -15,7 +15,6 @@ function ensureTransitionStyle(): void {
 }
 
 export const transitionComponent: ComponentDef<TransitionParams> = {
-  role: 'presentation',
   label: '转场',
   inputs: [
     { key: 'durationMs', label: '时长ms', valueType: 'number', default: 600 },

@@ -17,7 +17,6 @@ export interface FilterParams {
 }
 
 export const filterComponent: ComponentDef<FilterParams> = {
-  role: 'presentation',
   label: '滤镜',
   inputs: [
     { key: 'filter', label: '滤镜', valueType: 'string', default: 'warm', options: FILTER_OPTIONS },

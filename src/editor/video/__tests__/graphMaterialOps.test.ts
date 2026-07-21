@@ -233,9 +233,11 @@ describe('graphMaterialOps · QTE 新建（默认样式固定为叩击 inkKou，
     const el = qteEl(res.scenario, 'a')
     expect(el).toBeDefined()
     expect(el!.component).toBe('inkKou')
+    expect(el!.layout).toMatchObject({ left: 0, top: 0, width: 1, height: 1 })
+    expect((el!.inputs as { defaultEvent?: string }).defaultEvent).toBe('fail')
   })
 
-  it('时间轴分类看 inputs 是否有多拍点结构，不看字面 component === \'qte\'：新建的 inkKou 仍归为 qte 槽（回归：曾错落进通用 component 槏，拖拽不驱动动画）', () => {
+  it('新建 inkKou 仍归为 qte 时间轴槽（看 cues 结构，不看字面 component === qte）', () => {
     const n = node('a', { durationMs: 8000 })
     const scenario = scnOf({ nodes: [n], edges: [] })
     const nodeRef = scenario.graph.nodes[0]!
@@ -387,6 +389,16 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
     const res = addMaterialGraph(scenario, scenario.graph.nodes[0]!, 8000, 'option', undefined, 0)
     const n1 = findNode(res.scenario.graph, 'a')!
     expect(choiceSkinPreviewInteractions(res.scenario, n1, 100, 8000)).toHaveLength(0)
+  })
+
+  it('新建选项落盘 STAGE_FILL + defaultEvent=opt0（试玩与超时 emit 对齐）', () => {
+    const n = node('a', { durationMs: 8000 })
+    const scenario = scnOf({ nodes: [n], edges: [] })
+    const res = addMaterialGraph(scenario, scenario.graph.nodes[0]!, 8000, 'option', undefined, 0)
+    const el = choiceElement(res.scenario, findNode(res.scenario.graph, 'a')!)
+    expect(el).toBeDefined()
+    expect(el!.layout).toMatchObject({ left: 0, top: 0, width: 1, height: 1 })
+    expect((el!.inputs as { defaultEvent?: string }).defaultEvent).toBe('opt0')
   })
 
   it('选项预览可拖空间锚点：movable + 写回 inputs.x/y', () => {

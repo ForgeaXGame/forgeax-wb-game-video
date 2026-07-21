@@ -10,25 +10,25 @@ import {
   type ChoiceParams,
 } from '../../registry/core-components'
 import { isOptionLocked } from '../optionLock'
-import type { InteractionProps } from '../rendererRegistry'
+import type { OverlayProps } from '../rendererRegistry'
 import { anchorStyle, bottomRow, defaultBtn, hasAnchor } from './defaultUi'
+import { useDefaultEventTimeout } from './skinRuntime'
 
 export const choiceComponent: ComponentDef<ChoiceParams> = {
-  role: 'interaction',
   label: '选项',
   inputs: CHOICE_INPUTS,
   validate: validateChoiceEvents,
 }
 
 export const skillComponent: ComponentDef<ChoiceParams> = {
-  role: 'interaction',
   label: '技能',
   inputs: CHOICE_INPUTS,
   validate: validateChoiceEvents,
 }
 
-export function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): ReactNode {
-  const inputs = interaction.inputs as unknown as ChoiceParams
+export function ChoiceButtons({ overlay, emit, ctx, preview }: OverlayProps): ReactNode {
+  useDefaultEventTimeout(emit, overlay.inputs as Record<string, unknown>, preview)
+  const inputs = overlay.inputs as unknown as ChoiceParams
   const rowStyle = hasAnchor(inputs.x, inputs.y)
     ? anchorStyle(inputs.x as number, inputs.y as number, {
         display: 'flex',
@@ -48,7 +48,7 @@ export function ChoiceButtons({ interaction, submit, ctx }: InteractionProps): R
             style={{ ...defaultBtn('#2563eb'), ...(locked ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}
             disabled={locked}
             onClick={() => {
-              if (!locked) submit(e.id)
+              if (!locked) emit?.(e.id)
             }}
           >
             {e.label ?? e.id}

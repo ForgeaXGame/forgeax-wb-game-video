@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { GraphRuntime } from '../engine/engine'
 import { registerComponent, unregisterComponent } from '../registry/component-registry'
-import { isOpenInteraction, isRenderOverlay } from '../engine/directives'
+import { isRenderOverlay } from '../engine/directives'
 import type { GameGraph, GameNode, GameScenario } from '../schema/graph-schema'
 import { node, scnOf, rid } from './test-fixtures'
 
@@ -9,9 +9,8 @@ const COMPONENT_IDS = ['floatT', 'qteT']
 afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 function registerCore() {
-  registerComponent('floatT', { role: 'presentation' })
+  registerComponent('floatT', {})
   registerComponent('qteT', {
-    role: 'interaction',
     events: [{ id: 'pass' }, { id: 'good' }, { id: 'fail' }],
   })
 }
@@ -73,7 +72,7 @@ describe('GraphRuntime advance', () => {
             { when: { type: 'at', ms: 500 }, do: [{ kind: 'effect', effects: [{ id: 'q', kind: 'var', varId: 'qi', op: 'add', value: 1 }] }] },
           ],
           timeline: [
-            { id: 'f', role: 'presentation', kind: 'floatT', trigger: { when: 'at', ms: 1000 }, inputs: { text: '+1' } },
+            { id: 'f', kind: 'floatT', trigger: { when: 'at', ms: 1000 }, inputs: { text: '+1' } },
           ],
         }),
       ],
@@ -93,7 +92,7 @@ describe('GraphRuntime advance', () => {
     registerCore()
     const graph: GameGraph = {
       nodes: [
-        node('a', { timeline: [{ id: 'q', role: 'interaction', kind: 'qteT', trigger: { when: 'enter' }, inputs: {} }] }),
+        node('a', { timeline: [{ id: 'q', kind: 'qteT', trigger: { when: 'enter' }, inputs: {} }] }),
         node('win', { }),
         node('lose', { }),
       ],
@@ -105,9 +104,9 @@ describe('GraphRuntime advance', () => {
     const scn = scnOf(graph)
     const rt = new GraphRuntime(scn.graph, scn)
     const dirs = rt.start()
-    expect(dirs.some(isOpenInteraction)).toBe(true)
-    expect(rt.state.phase).toBe('awaitInteraction')
-    rt.submitInteraction(rid('a', 'q'), 'pass') // 皮肤自判定后 emit 最终 event id
+    expect(dirs.some((d) => isRenderOverlay(d) && d.component === 'qteT')).toBe(true)
+    expect(rt.state.phase).toBe('playing')
+    rt.emitComponentEvent(rid('a', 'q'), 'pass')
     expect(rt.state.currentNodeId).toBe('win')
   })
 
