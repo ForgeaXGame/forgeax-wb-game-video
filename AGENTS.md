@@ -65,6 +65,13 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 
 ## 硬性规则（改动前必读，不要违反）
 
+### R0 · Standalone HTTP
+- 浏览器侧访问插件自有端点（`/__graph__` / `/__gva__` / 媒体 URL 等）必须走
+  `src/lib/plugin-http.ts` 的 `pluginUrl()` / `pluginFetch()`；不要直接写
+  `fetch('/__graph__/...')` 或把裸 `/__gva__/...` 塞进 `<img>/<video>`。
+- 原因：本地 dev 直连插件端口，但 anydev 里插件 iframe 走 Studio 同源 HTTPS
+  `/__fx-plugin/wb-game-video/` 代理；裸根路径会绕到 Studio 根导致 404 / mixed-content。
+
 ### R1 · Schema（`src/runtime/schema/graph-schema.ts` 是 SSOT 形态；）
 - **一张图 = `GameScenario`**：`{ schemaVersion, variables, entities, ui:{overlays}, rng, reactions?, graph:{nodes,edges} }`。
 - **只有一种节点类型「演出节点」(`type:'perf'`)**：每个节点**都绑视频**(`data.media`)。**判断（出手/血量/回合/胜负/变招…）

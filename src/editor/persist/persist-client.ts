@@ -8,6 +8,7 @@
  *   · **重置** = 用 demo 替换当前编辑内容。
  */
 import type { GameScenario } from '../../runtime/schema/graph-schema'
+import { pluginFetch } from '../../lib/plugin-http'
 
 export interface VersionEntry {
   id: string
@@ -54,7 +55,7 @@ export async function loadStore(game?: string): Promise<GraphStore> {
   let scenario: GameScenario | null = null
   let versions: VersionEntry[] = []
   try {
-    const r = await fetch(`${BASE}/store${gq(game)}`)
+    const r = await pluginFetch(`${BASE}/store${gq(game)}`)
     if (r.ok) {
       const j = (await r.json()) as { scenario?: GameScenario | null; versions?: VersionEntry[] }
       scenario = j.scenario ?? null
@@ -72,7 +73,7 @@ export async function loadStore(game?: string): Promise<GraphStore> {
  */
 export async function saveScenario(scenario: GameScenario, game?: string): Promise<VersionEntry[]> {
   try {
-    const r = await fetch(`${BASE}/store${gq(game)}`, {
+    const r = await pluginFetch(`${BASE}/store${gq(game)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ scenario, id: 'nodia-graph', title: '战斗蓝图(graph)' }),
@@ -107,7 +108,7 @@ export function loadDraft(game?: string): GameScenario | null {
 export async function loadVersion(id: string, game?: string): Promise<GameScenario | null> {
   try {
     const qs = new URLSearchParams({ ...(game ? { game } : {}), id }).toString()
-    const r = await fetch(`${BASE}/version?${qs}`)
+    const r = await pluginFetch(`${BASE}/version?${qs}`)
     if (r.ok) return ((await r.json()) as { scenario?: GameScenario | null }).scenario ?? null
   } catch {
     /* best-effort */
