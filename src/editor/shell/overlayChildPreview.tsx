@@ -6,13 +6,21 @@
  *
  * timeMs 统一转成 `localMsForChild` 本地时刻再传给皮肤的 preview/previewTimeMs——
  * 供支持预览态的皮肤（如 inkKou / inkYingMo）驱动动画/显隐。
+ *
+ * 尺寸/位置盒子与 runtime `renderOverlayMount`（见 rendererRegistry.tsx）复用同一份
+ * `childWrapStyle` SSOT（layout.ts）：selfPositioned（stageRelative）组件铺满舞台，
+ * 否则按 `child.layout` 换算盒子——预览和全屏试玩对同一份 layout 配置必须算出同一个盒子，
+ * 不能各写一套换算，否则又会出现"预览忽略配置"的分叉。
  */
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { OverlayChild } from '../../runtime/schema/graph-schema'
 import { defaultsForComponent, getComponent } from '../../runtime/registry/component-registry'
 import type { HudElementView, SkinCtx, SkinRegistry } from '../../runtime/skins/rendererRegistry'
+import { childWrapStyle } from '../../runtime/schema/layout'
 import { applyStyleLockedEventParams } from '../video/graphMaterialOps'
 import { localMsForChild } from './previewClock'
+
+const STAGE_FILL_WRAP: CSSProperties = { position: 'absolute', inset: 0, pointerEvents: 'none' }
 
 /**
  * 渲染单个 overlay child 到预览。timeMs = 当前播放头（相对整段素材）；未知 component 返回 null（不炸）。
@@ -40,14 +48,17 @@ export function renderOverlayChildPreview(
 
   if (plugin?.surface === 'hud') {
     const bind = typeof inputs.bind === 'string' ? inputs.bind : child.id
+    const attr = typeof inputs.attr === 'string' ? inputs.attr : undefined
     const label = typeof inputs.label === 'string' ? inputs.label : undefined
     const accent = typeof inputs.accent === 'string' ? inputs.accent : undefined
-    const el: HudElementView = { element: bind, component: child.component, bind, label, accent, layout: child.layout }
+    const el: HudElementView = { element: bind, component: child.component, bind, attr, label, accent, layout: child.layout }
     return reg.renderHudElement(el, ctx, preview)
   }
 
   if (plugin?.role === 'interaction') {
-    return reg.renderInteraction(
+    // 交互层不走 mount/child layout（runtime 侧同样把整个 interaction 单独铺一层 inset:0，
+    // 不按 Layout 摆放——见 GraphPlaySurface.tsx），锚点交给组件自己的 inputs.x/y。
+    const body = reg.renderInteraction(
       {
         elementId: child.id,
         component: child.component,
@@ -59,10 +70,11 @@ export function renderOverlayChildPreview(
       ctx,
       preview,
     )
+    return body ? <div style={STAGE_FILL_WRAP}>{body}</div> : null
   }
 
   // 表现层（dialogue / floatText / transition …）
-  return reg.renderOverlay(
+  const body = reg.renderOverlay(
     {
       elementId: child.id,
       component: child.component,
@@ -71,4 +83,14 @@ export function renderOverlayChildPreview(
     undefined,
     preview,
   )
+  if (!body) return null
+  // stageRelative 组件（floatText 等靠自己 inputs.x/y 定位）铺满舞台；其余套 childWrapStyle，
+  // 让 `child.layout.width/height/left/top` 在预览里也生效（mountHasSize 恒为 false：当前
+  // 没有任何 UI 会写 mount 级 layout，见 graphMaterialOps.ts 里对 layout 的写入点）。尺寸/位置
+  // 换算完全复用 runtime 同一函数；但预览层始终是被动展示（拖拽走独立的手柄层），
+  // 固定 pointerEvents:'none'，不采用 childWrapStyle 给试玩场景准备的 'auto'。
+  const wrapStyle: CSSProperties = plugin?.stageRelative
+    ? STAGE_FILL_WRAP
+    : { ...childWrapStyle(child.layout, false), pointerEvents: 'none' }
+  return <div style={wrapStyle}>{body}</div>
 }

@@ -12,11 +12,14 @@ import type {
   GraphClause,
   GraphCondition,
   GraphEffect,
+  Layout,
   NumericEffectOp,
   NumOrExpr,
   Variable,
 } from '../../runtime/schema/graph-schema'
+import type { Formula } from '../persist/formula-authoring'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
+import { getComponent } from '../../runtime/registry/component-registry'
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
 import { ValueExprEditor } from './ValueExprEditor'
 
@@ -36,6 +39,8 @@ export type EventsEditorVariant = 'plain' | 'choice' | 'hotspot'
 export type MetaCatalogProps = {
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
+  /** 公式库（「规则 → 公式」维护）；数值字段（ValueInput）借它开出「应用公式」模式。 */
+  formulas?: Record<string, Formula>
 }
 
 /** 兼容包装：entities/variables + 节点下拉展示。 */
@@ -52,11 +57,13 @@ type CatalogArgs = MetaCatalogProps & {
 function resolveCatalog(args: CatalogArgs): {
   entities: Record<string, Entity> | undefined
   variables: Record<string, Variable> | undefined
+  formulas: Record<string, Formula> | undefined
   nodeLabel?: (id: string) => string
 } {
   return {
     entities: args.entities ?? args.pickers?.entities,
     variables: args.variables ?? args.pickers?.variables,
+    formulas: args.formulas ?? args.pickers?.formulas,
     nodeLabel: args.nodeLabel ?? args.pickers?.nodeLabel,
   }
 }
@@ -64,14 +71,7 @@ function resolveCatalog(args: CatalogArgs): {
 const CMP_OPS: CmpOp[] = ['gte', 'lte', 'gt', 'lt', 'eq', 'neq']
 const CMP_LABEL: Record<CmpOp, string> = { gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '=', neq: '≠' }
 const EFFECT_KIND_LABEL: Record<string, string> = { attr: '属性', var: '变量', flag: '标记', item: '道具' }
-const NUMERIC_OPS: NumericEffectOp[] = ['add', 'mul', 'set']
-const OP_LABEL: Record<string, string> = {
-  add: '增加',
-  mul: '乘以',
-  set: '设为',
-  give: '给予',
-  take: '取走',
-}
+const OP_LABEL: Record<string, string> = { give: '给予', take: '取走' }
 const CLAUSE_LABEL: Record<string, string> = {
   attrRatio: '属性比例', attr: '属性值', attrCompare: '属性比较', var: '变量', flag: '标记', visited: '到过节点', score: '分数', hasItem: '拥有道具',
 }
@@ -157,19 +157,124 @@ export function PositionEditor({
   )
 }
 
+/**
+ * 该组件是否支持「自由拖拽定位」——编辑器侧判定，**唯一官方入口**，纯结构化推导，不设独立开关字段：
+ * 组件 `inputs` 里同时声明了 `x` 和 `y` 才算支持（渲染端才有地方读、写回才有地方落）；
+ * 缺其一 → 不支持（HUD 类血条/气力条按角色/规则锚定固定屏幕位置，inputs 里本就没有 x/y）。
+ * 未注册组件默认 `true`（保持编辑器旧行为，宁可给手柄不误判）。
+ * 新增组件只需在自己 `inputs` 里老实声明 x/y——不必回来改这个函数，也不必再加一个平行的
+ * `positionable` 标记跟 inputs 保持同步（那样两处数据源迟早会漂移）。
+ * 编辑器预览手柄生成处（`activePreviewOverlaysFromNode`）/ 素材属性面板置灰逻辑均调用此函数。
+ * 只读 `getComponent`（registry 对外暴露的查询 API），运行时执行路径（engine.ts / session.ts /
+ * rendererRegistry.tsx）从未调用过这个判断——「能不能拖手柄」纯粹是编辑器概念，不是 runtime 关心的事。
+ */
+export function isPositionable(componentId: string): boolean {
+  const inputs = getComponent(componentId)?.inputs
+  if (!inputs) return true
+  return inputs.some((i) => i.key === 'x') && inputs.some((i) => i.key === 'y')
+}
+
+/**
+ * 该组件是否读取 `Layout.width/height` 这个整体尺寸盒子——编辑器侧判定，**唯一官方入口**：
+ * - `role: 'interaction'` 完全绕开 mount/child layout，走独立的 `InteractionSnap` 渲染路径
+ *   （见 rendererRegistry.tsx 里交互专属分支 / GraphPlaySurface 对 interaction 单独铺一层
+ *   inset:0），不管 layout 写了什么都没地方读。
+ * - `stageRelative: true` 的表现层组件（字幕/飘字/转场…）engine.ts 里 `selfPositioned` 恒真，
+ *   渲染时套的是铺满舞台的 `inset:0` 盒（自身按 inputs.x/y 或固定百分比再定位），不会去读
+ *   `childWrapStyle` 换算出的盒子——配了宽高也不会被消费。
+ * 其余（HUD 走 `renderHudElement` 自己的 `layoutToCss`；通用/未来组件走 `childWrapStyle`）才真
+ * 读这个盒子。素材属性面板据此把下面的 `SizeEditor` 置灰——不能让「拖了没反应」被当成 bug。
+ * 只读 `getComponent`（registry 对外暴露的查询 API），不新增/改动 runtime 侧任何东西。
+ */
+export function isSizable(componentId: string): boolean {
+  const plugin = getComponent(componentId)
+  if (!plugin) return true
+  return plugin.role !== 'interaction' && !plugin.stageRelative
+}
+
+// ── 尺寸（width/height 归一化 0~1，相对舞台）——对所有组件通用，对应 `Layout.width/height` ──────
+// 与 PositionEditor 同一套「slider + 百分比读数」范式；未开启时 = undefined（沿用皮肤自身尺寸/
+// fit-content），开启后写入 Layout.width/height——预览与全屏试玩共用同一份 childWrapStyle 换算
+// SSOT（见 runtime/schema/layout.ts），两边看到的百分比含义完全一致。
+export function SizeEditor({
+  width,
+  height,
+  onChange,
+  disabled,
+}: {
+  width: number | undefined
+  height: number | undefined
+  onChange: (next: Pick<Layout, 'width' | 'height'>) => void
+  /**
+   * 该组件不读 Layout 盒子（`isSizable()` 为 false，如字幕/飘字/转场按 stageRelative 铺满整个
+   * 舞台自定位、交互类完全绕开 mount/child layout 走独立锚点——见 engine.ts 的
+   * `plugin?.stageRelative` / rendererRegistry.tsx 的交互专属渲染路径）时置灰：拖动滑杆预览/试玩
+   * 都不会有任何变化，不能悄悄啥都不做，得显式说明，否则会被当成「拖了没反应，是不是坏了」的 bug。
+   */
+  disabled?: boolean
+}): JSX.Element {
+  const hasW = typeof width === 'number'
+  const hasH = typeof height === 'number'
+  return (
+    <>
+      <div className="gc-field-row">
+        <label>
+          <span>
+            <input type="checkbox" checked={hasW} disabled={disabled} onChange={(e) => onChange({ width: e.target.checked ? (width ?? 0.3) : undefined })} />
+            {' '}宽 {hasW ? `${Math.round(width! * 100)}%` : '自适应'}
+          </span>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            disabled={disabled || !hasW}
+            value={hasW ? Math.round(width! * 100) : 30}
+            onChange={(e) => onChange({ width: Number(e.target.value) / 100 })}
+          />
+        </label>
+        <label>
+          <span>
+            <input type="checkbox" checked={hasH} disabled={disabled} onChange={(e) => onChange({ height: e.target.checked ? (height ?? 0.3) : undefined })} />
+            {' '}高 {hasH ? `${Math.round(height! * 100)}%` : '自适应'}
+          </span>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            disabled={disabled || !hasH}
+            value={hasH ? Math.round(height! * 100) : 30}
+            onChange={(e) => onChange({ height: Number(e.target.value) / 100 })}
+          />
+        </label>
+      </div>
+      {disabled ? (
+        <div className="gc-inspector-hint" title="该组件按自身锚点/铺满舞台呈现，不读取宽高盒子，拖动无效果">
+          该组件按锚点自身定位/铺满舞台，不支持配置整体尺寸
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 // ── NumOrExpr（常量 / 选取公式）───────────────────────────────────────────────
 export function ValueInput({
   value,
   onChange,
   entities,
   variables,
+  formulas,
+  effectOp,
 }: {
   value: NumOrExpr | undefined
   onChange: (v: NumOrExpr) => void
+  /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
+  effectOp?: { op: NumericEffectOp; onOpChange: (next: { op: NumericEffectOp; value?: NumOrExpr }) => void }
 } & MetaCatalogProps): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <ValueExprEditor value={value} entities={entities} variables={variables} onChange={onChange} />
+      <ValueExprEditor value={value} entities={entities} variables={variables} formulas={formulas} onChange={onChange} effectOp={effectOp} />
     </div>
   )
 }
@@ -313,6 +418,7 @@ function EffectRow({
   eff,
   entities,
   variables,
+  formulas,
   onChange,
   onDelete,
 }: {
@@ -365,19 +471,14 @@ function EffectRow({
               onChange={(attr) => onChange({ ...eff, attr })}
             />
           ))}
-          {field('运算', (
-            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as NumericEffectOp })}>
-              {NUMERIC_OPS.map((op) => (
-                <option key={op} value={op}>{OP_LABEL[op]}</option>
-              ))}
-            </select>
-          ))}
           {field('值', (
             <ValueInput
               value={eff.value}
               entities={entities}
               variables={variables}
+              formulas={formulas}
               onChange={(v) => onChange({ ...eff, value: v })}
+              effectOp={{ op: eff.op, onOpChange: (next) => onChange({ ...eff, ...next }) }}
             />
           ))}
         </>
@@ -393,19 +494,14 @@ function EffectRow({
               onChange={(varId) => onChange({ ...eff, varId })}
             />
           ))}
-          {field('运算', (
-            <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as NumericEffectOp })}>
-              {NUMERIC_OPS.map((op) => (
-                <option key={op} value={op}>{OP_LABEL[op]}</option>
-              ))}
-            </select>
-          ))}
           {field('值', (
             <ValueInput
               value={eff.value}
               entities={entities}
               variables={variables}
+              formulas={formulas}
               onChange={(v) => onChange({ ...eff, value: v })}
+              effectOp={{ op: eff.op, onOpChange: (next) => onChange({ ...eff, ...next }) }}
             />
           ))}
         </>
@@ -450,13 +546,14 @@ export function EffectsEditor({
   onChange,
   entities,
   variables,
+  formulas,
   pickers,
 }: {
   value: GraphEffect[] | undefined
   onChange: (v: GraphEffect[]) => void
   pickers?: EditorPickerCtx
 } & MetaCatalogProps): JSX.Element {
-  const cat = resolveCatalog({ entities, variables, pickers })
+  const cat = resolveCatalog({ entities, variables, formulas, pickers })
   const list = value ?? []
   return (
     <div>
@@ -466,6 +563,7 @@ export function EffectsEditor({
           eff={eff}
           entities={cat.entities}
           variables={cat.variables}
+          formulas={cat.formulas}
           onChange={(next) => onChange(list.map((e, idx) => (idx === i ? next : e)))}
           onDelete={() => onChange(list.filter((_, idx) => idx !== i))}
         />

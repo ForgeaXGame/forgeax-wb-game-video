@@ -6,7 +6,7 @@
  * 读投影 + 写映射都在 `./video/graphMaterialOps` 上，写回 `graphScenarioStore.setGraph`。
  * 旧 VideoCatalogTab 仍被旧侧栏「视频」tab 使用、保持零 diff；这里是端口化的一份并存实现。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useGraphScenario, useGraphHistory, graphUndo, graphRedo, graphHistoryClear } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
@@ -57,19 +57,19 @@ import { DEFAULT_STYLE_SLOTS, ICON_COMPONENT, type DefaultStyleSlot } from './de
 import { fxNeedsColor, resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { resolveGraphTextCss } from '../text/text-css'
 import { GraphTextStylePicker } from './GraphTextStylePicker'
-import { EffectsEditor, PositionEditor } from './editors'
+import { EffectsEditor, isSizable, PositionEditor, SizeEditor, ValueInput } from './editors'
 import { ComponentFormFields } from './component-form-fields'
 import { SettlementEditor } from './SettlementEditor'
 import { renderOverlayChildPreview } from './overlayChildPreview'
 import { PreviewClockProvider, previewClockLayerClassName } from './previewClock'
 import type { SkinCtx } from '../../runtime/skins/rendererRegistry'
 import { initState } from '../../runtime/engine/engine-init'
-import { FloatValuePickEditor } from './ValueExprEditor'
 import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { createCoreSkinRegistry, skinPositioning, skinDefaultAnchor } from '../../runtime/skins/components'
 import { CATALOG_CSS } from './catalogCss'
-import type { Entity, GameNode, GameScenario, GraphTextStyle } from '../../runtime/schema/graph-schema'
+import type { Entity, GameNode, GameScenario, GraphTextStyle, Layout, NumOrExpr } from '../../runtime/schema/graph-schema'
+import type { Formula } from '../persist/formula-authoring'
 import type { QteCue } from '../../runtime/registry/core-components'
 import { getComponent, getComponentManifest } from '../../runtime/registry/component-registry'
 import {
@@ -103,6 +103,7 @@ import {
   patchOverlayGraph,
   patchOverlayPositionGraph,
   patchSelectedGraph,
+  patchSelectedLayoutGraph,
   qteElement,
   qteElementOfCue,
   removeOptionBranchGraph,
@@ -271,6 +272,7 @@ export function GraphVideoView(): JSX.Element {
   const setScenario = useGraphScenario((s) => s.setScenario)
   const entities = useGraphScenario((s) => s.meta.entities)
   const variables = useGraphScenario((s) => s.meta.variables)
+  const formulas = useGraphScenario((s) => s.meta.formulas)
   // 选中节点来自 graph 共享 store（不再依赖旧 scenarioStore）；无选中则落到首个节点。
   const selectedNodeId = useGraphScenario((s) => s.selectedNodeId)
   const selectedSceneId = selectedNodeId ?? graph.nodes[0]?.id ?? ''
@@ -500,7 +502,7 @@ export function GraphVideoView(): JSX.Element {
 
   // ── scenario 写入封装：始终以最新 scenario re-find 节点（overlay children 住在 ui.overlays）。
   function editScenario(fn: (s: GameScenario, n: GameNode) => GameScenario): void {
-    const s = useGraphScenario.getState().scn()
+    const s = useGraphScenario.getState().authoringScenario()
     const n = findNode(s.graph, selectedSceneId)
     if (!n) return
     setScenario(fn(s, n))
@@ -664,6 +666,12 @@ export function GraphVideoView(): JSX.Element {
     } else {
       editScenario((s, n) => patchSelectedGraph(s, n, selectedMaterial, patch))
     }
+  }
+  // 尺寸盒子（Layout.width/height）与 kind 无关，走统一写路径——不用像 patchSelected 那样按
+  // kind 分流进 inputs（见 patchSelectedLayoutGraph 注释）。
+  function patchSelectedLayout(patch: Partial<Layout>): void {
+    if (!node || !selectedMaterial) return
+    editScenario((s, n) => patchSelectedLayoutGraph(s, n, selectedMaterial, patch))
   }
 
   // ── 预览叠层拖拽定位 ─────────────────────────────────────────────────────────
@@ -869,9 +877,11 @@ export function GraphVideoView(): JSX.Element {
                         <PreviewClockProvider value={previewClockValue}>
                           <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
                             {previewSkinChildren.map((child) => (
-                              <div key={child.id} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                              // 尺寸/位置盒子已经在 renderOverlayChildPreview 内部按 childWrapStyle 换算好，
+                              // 这里不再重复套一层写死的 inset:0（否则会覆盖掉换算出的 layout 盒子）。
+                              <Fragment key={child.id}>
                                 {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs)}
-                              </div>
+                              </Fragment>
                             ))}
                           </div>
                         </PreviewClockProvider>
@@ -931,7 +941,9 @@ export function GraphVideoView(): JSX.Element {
                     item={selectedMaterial}
                     entities={entities}
                     variables={variables}
+                    formulas={formulas}
                     onPatch={patchSelected}
+                    onPatchLayout={patchSelectedLayout}
                     onTiming={(item, start, end) => patchMaterial(item, { startMs: start, endMs: end })}
                     onResetOverride={resetMaterialOverride}
                     onRemoveQteCue={removeQteCue}
@@ -1129,7 +1141,9 @@ function GraphMaterialInspector({
   item,
   entities,
   variables,
+  formulas,
   onPatch,
+  onPatchLayout,
   onTiming,
   onResetOverride,
   onRemoveQteCue,
@@ -1151,7 +1165,9 @@ function GraphMaterialInspector({
   item: MaterialItem | null
   entities: Record<string, Entity> | undefined
   variables: GameScenario['variables']
+  formulas: Record<string, Formula> | undefined
   onPatch: (patch: Record<string, unknown>) => void
+  onPatchLayout: (patch: Partial<Layout>) => void
   onTiming: (item: MaterialItem, startMs: number, endMs: number) => void
   onResetOverride: (item: MaterialItem) => void
   onRemoveQteCue: (cueId: string) => void
@@ -1203,7 +1219,7 @@ function GraphMaterialInspector({
   }
   const cue = item.kind === 'qte' ? cuesOfEl(el)?.find((c) => c.id === item.id) : undefined
   const overlayFx = item.kind === 'overlay' ? overlayEffects(scenario, node, item.id) : []
-  const overlayDisplayCustom = item.kind === 'overlay' && typeof inputs.expr === 'string' && inputs.expr.length > 0
+  const overlayDisplayCustom = item.kind === 'overlay' && inputs.expr != null
   const branches = item.kind === 'option' ? listOptionBranches(scenario, node) : []
   const qteOutcomes = item.kind === 'qte' ? listQteOutcomeViews(scenario, node) : []
   const qteAvailable = item.kind === 'qte' ? listAvailableQteOutcomes(scenario, node) : []
@@ -1291,13 +1307,27 @@ function GraphMaterialInspector({
         </div>
       ) : null}
 
+      {/* 尺寸盒子对所有 kind 通用（Layout.width/height），不按组件类型分支——新组件天然获得该控件。
+          字幕/飘字/转场/交互类不读这个盒子（见 isSizable 注释），置灰而不是让它悄悄没反应。 */}
+      {el && (
+        <div className="gc-field">
+          <span>组件尺寸（相对画面）</span>
+          <SizeEditor
+            width={typeof el.layout?.width === 'number' ? el.layout.width : undefined}
+            height={typeof el.layout?.height === 'number' ? el.layout.height : undefined}
+            onChange={onPatchLayout}
+            disabled={!isSizable(el.component)}
+          />
+        </div>
+      )}
+
       {item.kind === 'subtitle' && el && (
         <>
           <ComponentFormFields
             componentId={el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
             excludeKeys={['speaker', 'style', 'x', 'y']}
           />
           <div className="gc-field"><span>样式预设</span>
@@ -1330,36 +1360,33 @@ function GraphMaterialInspector({
             componentId={el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
             excludeKeys={['style', 'x', 'y', 'expr']}
           />
           <div className="gc-field"><span>样式预设</span>
             <GraphTextStylePicker group="overlay" value={inputs.style as GraphTextStyle | undefined} onChange={(style) => onPatch({ style })} />
           </div>
           <div className="gc-field"><span>到点效果</span>
-            <EffectsEditor value={overlayFx} entities={entities} variables={variables} onChange={(effects) => onPatch({ effects })} />
+            <EffectsEditor value={overlayFx} entities={entities} variables={variables} formulas={formulas} onChange={(effects) => onPatch({ effects })} />
           </div>
           <p className="gc-inspector-hint">飘字出现时把这些效果广播出去（如给 Boss 的 hp 加负值＝扣血）。留空＝纯展示、不改数值。文案里的 {'{v}'} 默认显示第一条效果的数值。</p>
           <label className="gc-tsp-check">
             <input
               type="checkbox"
               checked={overlayDisplayCustom}
-              onChange={(e) => (e.target.checked
-                ? onPatch({ expr: str(inputs.expr) || '0' })
-                : onPatch({ expr: undefined, valuePick: undefined }))}
+              onChange={(e) => onPatch({ expr: e.target.checked ? (typeof inputs.expr === 'string' ? inputs.expr : '0') : undefined })}
             />
             <span>自定义显示数值（默认＝效果值）</span>
           </label>
           {overlayDisplayCustom && (
             <div className="gc-field">
               <span>显示数值</span>
-              <FloatValuePickEditor
-                valuePick={inputs.valuePick}
-                damageValue={str(inputs.expr) ? { expr: str(inputs.expr) } : 0}
+              <ValueInput
+                value={typeof inputs.expr === 'string' ? { expr: inputs.expr } : 0}
                 entities={entities}
                 variables={variables}
-                onChange={({ valuePick, damageValue }) =>
-                  onPatch({ valuePick, expr: typeof damageValue === 'number' ? String(damageValue) : damageValue.expr })}
+                formulas={formulas}
+                onChange={(expr) => onPatch({ expr: typeof expr === 'number' ? String(expr) : expr.expr })}
               />
             </div>
           )}
@@ -1394,10 +1421,6 @@ function GraphMaterialInspector({
             </p>
           ) : null}
           {qteConfigInputs.map((input) => {
-            if (input.key === 'windowMs') {
-              // 时长与「出现 ms」并排，见下方时间区
-              return null
-            }
             if (input.key === 'perfectMs') {
               return (
                 <div key={input.key}>
@@ -1456,6 +1479,7 @@ function GraphMaterialInspector({
             nodeDurMs={nodeDurMs}
             entities={entities}
             variables={variables}
+            formulas={formulas}
             onSetTarget={onSetQteOutcomeTarget}
             onSetEffects={onSetQteOutcomeEffects}
             onSetSpawn={onSetQteOutcomeSpawn}
@@ -1469,21 +1493,21 @@ function GraphMaterialInspector({
           />
           {styleLocksQteEvents ? (
             <>
-              <p className="gc-inspector-hint">出现=整段出现（左缘）· 时长=收圈总时长（超过未按任一键＝超时/未命中档）。</p>
+              <p className="gc-inspector-hint">出现=整段出现（左缘）· 时长=收圈总时长（超过未按任一键＝超时/未命中档）。两者也可在时间轴上直接拖左右缘。</p>
               <div className="gc-field-row">
                 <label><span>出现 ms</span>
                   <input type="number" min={0} step={100} value={cue.appearAt ?? 0}
                     onChange={(e) => {
                       const appearAt = Math.max(0, Number(e.target.value) || 0)
-                      const windowMs = num(inputs.windowMs, 2600)
-                      onPatch({ appearAt, endAt: appearAt + windowMs })
+                      const durationMs = Math.max(200, (cue.endAt ?? (cue.appearAt ?? 0) + 2600) - (cue.appearAt ?? 0))
+                      onPatch({ appearAt, endAt: appearAt + durationMs })
                     }} />
                 </label>
-                <label><span>{qteConfigInputs.find((i) => i.key === 'windowMs')?.label ?? '时长 ms'}</span>
-                  <input type="number" min={200} step={100} value={num(inputs.windowMs, 2600)}
+                <label><span>时长 ms</span>
+                  <input type="number" min={200} step={100} value={Math.max(200, (cue.endAt ?? (cue.appearAt ?? 0) + 2600) - (cue.appearAt ?? 0))}
                     onChange={(e) => {
-                      const windowMs = Math.max(200, Number(e.target.value) || 2600)
-                      onPatch({ windowMs, endAt: (cue.appearAt ?? 0) + windowMs })
+                      const durationMs = Math.max(200, Number(e.target.value) || 2600)
+                      onPatch({ endAt: (cue.appearAt ?? 0) + durationMs })
                     }} />
                 </label>
               </div>
@@ -1552,7 +1576,7 @@ function GraphMaterialInspector({
             componentId={el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
           />
         </>
       )}
@@ -1564,7 +1588,7 @@ function GraphMaterialInspector({
             componentId={el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
             excludeKeys={fxNeedsColor(str(inputs.fx) || 'flash') ? undefined : ['color']}
           />
         </>
@@ -1576,7 +1600,7 @@ function GraphMaterialInspector({
             componentId={el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
             excludeKeys={['presentation', 'x', 'y', 'timeoutMs', 'defaultEvent', 'events']}
           />
           <PositionEditor
@@ -1606,6 +1630,7 @@ function GraphMaterialInspector({
             nodeDurMs={nodeDurMs}
             entities={entities}
             variables={variables}
+            formulas={formulas}
             onSetTarget={onSetBranchTarget}
             onSetEffects={onSetBranchEffects}
             onSetSpawn={onSetBranchSpawn}
@@ -1637,7 +1662,7 @@ function GraphMaterialInspector({
             componentId={item.componentId || el.component}
             values={inputs}
             onChange={(next) => onPatch(next)}
-            pickers={{ entities, variables }}
+            pickers={{ entities, variables, formulas }}
             excludeKeys={['x', 'y', 'events', 'defaultEvent']}
           />
           {componentEvents.length > 0 ? (
@@ -1649,6 +1674,7 @@ function GraphMaterialInspector({
               nodeDurMs={nodeDurMs}
               entities={entities}
               variables={variables}
+              formulas={formulas}
               labelColumnWidth={72}
               onSetTarget={onSetBranchTarget}
               onSetEffects={onSetBranchEffects}

@@ -12,8 +12,10 @@
  */
 import type { CSSProperties, JSX } from 'react'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
+import type { NumOrExpr } from '../../runtime/schema/graph-schema'
 import { getComponentManifest, hasOptionEventsInput } from '../../runtime/registry/component-registry'
-import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, type ComponentEventLike, type EditorPickerCtx } from './editors'
+import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
+import { ColorPicker } from './ColorPicker'
 
 /**
  * events 编辑器的 variant 由触发的输入标记本身决定，不查组件 id 也不查任何跨组件分类表：
@@ -186,15 +188,26 @@ function renderInput(
     return (
       <span key={inp.key}>
         {wrap(
-          <input
-            value={typeof val === 'string' ? val : ''}
-            placeholder="#ffffff"
-            onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
-            style={{ width: compact ? 72 : undefined, flex: compact ? undefined : 1, fontSize: 12, fontFamily: 'monospace' }}
-            title={hint}
+          <ColorPicker
+            value={typeof val === 'string' ? val : undefined}
+            onChange={(next) => onPatch(inp.key, next)}
           />,
         )}
       </span>
+    )
+  }
+  if (inp.component === 'numberExpr') {
+    return (
+      <div key={inp.key} style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{label}</div>
+        <ValueInput
+          value={val as NumOrExpr | undefined}
+          entities={pickers?.entities}
+          variables={pickers?.variables}
+          formulas={pickers?.formulas}
+          onChange={(next) => onPatch(inp.key, next)}
+        />
+      </div>
     )
   }
   if (inp.component === 'entity') {

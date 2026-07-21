@@ -90,6 +90,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const overlays = useGraphScenario((s) => s.meta.ui?.overlays)
   const entities = useGraphScenario((s) => s.meta.entities)
   const variables = useGraphScenario((s) => s.meta.variables)
+  const formulas = useGraphScenario((s) => s.meta.formulas)
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   const doSave = useGraphScenario((s) => s.save)
   const reset = useGraphScenario((s) => s.reset)
@@ -541,6 +542,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               overlays={overlays}
               entities={entities}
               variables={variables}
+              formulas={formulas}
               onChange={setCanvasGraph}
               onPacksChange={setPacks}
               onEnsureOverlay={(overlay) => {
@@ -553,7 +555,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               onDropOverlayIfOrphan={(oid) => {
                 // 卸载已同步写入 store；用最新完整 scenario（主图 + 所有 packs）判断是否孤儿再清。
                 const st = useGraphScenario.getState()
-                const scn = st.scn()
+                const scn = st.authoringScenario()
                 const cleaned = dropOverlayIfUnreferenced(scn, oid)
                 if (cleaned !== scn) st.setScenario(cleaned)
               }}

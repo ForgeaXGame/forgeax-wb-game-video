@@ -4,7 +4,7 @@
  * 全部为纯函数：入参 GraphEffect / 选项预览项 / QteCue + 一个求值上下文（由 initState 建）。
  * 表达式失败绝不抛错（编辑器随时半成品），回退「无法求值 / ?」。运行时消费见 core-components 各 render。
  */
-import type { Entity, GraphCondition, GraphEffect, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, GraphCondition, GraphEffect, NumOrExpr, Variable } from '../../runtime/schema/graph-schema'
 import type { FloatTextParams, QteCue } from '../../runtime/registry/core-components'
 import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import type { MutableState } from '../../runtime/engine/apply-effects'
@@ -121,13 +121,18 @@ export function summarizeEffects(
     .join('；')
 }
 
+/** `NumOrExpr` → `tryEvalExpr` 认的源码（常量数字转字面量）；空值给 `''`。 */
+function exprSrc(v: NumOrExpr | string | undefined): string {
+  return v == null ? '' : typeof v === 'string' ? v : typeof v === 'number' ? String(v) : v.expr
+}
+
 /** 飘字预览主文案：有 expr 时按初始态求值替换 `{v}`（signed）；失败回退 `?`。 */
 export function resolveFloatTextPreviewLabel(
   inputs: FloatTextParams,
   ctx: PreviewEvalContext,
 ): string {
   const text = (inputs.text ?? '').trim()
-  const expr = (inputs.expr ?? '').trim()
+  const expr = exprSrc(inputs.expr).trim()
   if (!text && !expr) return ''
   if (!expr) return text
   const v = tryEvalExpr(expr, ctx.evalCtx)

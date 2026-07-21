@@ -37,7 +37,6 @@ import {
   setQteOutcomeTargetGraph,
 } from '../graphMaterialOps'
 import type { MaterialItem } from '../materialTimelineShared'
-import { registerCoreSkins } from '../../../runtime/skins/components'
 
 // `hasCuePointsInput`/`hasOptionEventsInput` 都查 registry 里各组件自己的 inputs，任何用到
 // qteElement/choiceElement 的用例（含本文件顶部几个 describe）都需要先注册核心组件——放在文件级
@@ -304,7 +303,7 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
     expect((el.inputs as { cues?: QteCue[] }).cues).toHaveLength(2)
   })
 
-  it('拖时间轴边缘：同步 cue 窗 + windowMs（检视器时长 SSOT）', () => {
+  it('拖时间轴边缘：只改 cue 窗（appearAt/endAt 即时长 SSOT），不再另外维护 windowMs 影子字段', () => {
     const { scenario, node: n, cueId } = seedBattleParryQte(1000, 2600)
     const item: MaterialItem = {
       key: `qte:x:${cueId}`,
@@ -320,7 +319,9 @@ describe('graphMaterialOps · battleParry 时间轴 ↔ 预览时钟对齐', () 
     const cue = ((el.inputs as { cues?: QteCue[] }).cues ?? []).find((c) => c.id === cueId)!
     expect(cue.appearAt).toBe(1500)
     expect(cue.endAt).toBe(3000)
-    expect((el.inputs as { windowMs?: number }).windowMs).toBe(1500)
+    // 旧的 windowMs 影子字段维持原值（不再被拖拽同步）——运行时已改成直接读 cue.appearAt/endAt，
+    // 不会再看这个字段，留着不影响正确性。
+    expect((el.inputs as { windowMs?: number }).windowMs).toBe(2600)
   })
 
   it('qteSkinPreviewInteraction：播放头在 cue 窗外返回 null，窗内返回 snap', () => {
@@ -819,7 +820,7 @@ function seedFloat(): { scenario: GameScenario; node: GameNode; floatId: string 
   return { scenario, node: scenario.graph.nodes[0]!, floatId }
 }
 
-describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.data.reactions，前端表现对齐旧「选取式」）', () => {
+describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.reactions，前端表现对齐旧「选取式」）', () => {
   it('新建飘字自带默认到点效果（Boss hp −100）', () => {
     const { scenario, node: n, floatId } = seedFloat()
     const fx = overlayEffects(scenario, n, floatId)
@@ -850,32 +851,27 @@ describe('graphMaterialOps · 飘字 effects/valuePick/expr（结算写回 node.
     expect(curNode.data.reactions).toBeUndefined()
   })
 
-  it('valuePick/expr 往返：勾选自定义显示数值后写回 inputs，取消勾选清空二者', () => {
+  it('expr 往返：勾选自定义显示数值后写回 inputs（NumOrExpr），取消勾选清空', () => {
     const { scenario, node: n, floatId } = seedFloat()
     const withExpr = patchOverlayGraph(
       scenario,
       n,
       floatId,
-      {
-        expr: 'entity.ent-boss.attr.hp',
-        valuePick: { mode: 'pick', terms: [{ op: '-', source: 'entity', refId: 'ent-boss', attr: 'hp' }] },
-      },
+      { expr: { expr: 'entity.ent-boss.attr.hp' } },
       undefined,
     )
     const el = findElement(withExpr, findNode(withExpr.graph, n.id), floatId)!
-    expect(el.inputs?.expr).toBe('entity.ent-boss.attr.hp')
-    expect(el.inputs?.valuePick).toBeDefined()
+    expect(el.inputs?.expr).toEqual({ expr: 'entity.ent-boss.attr.hp' })
 
     const cleared = patchOverlayGraph(
       withExpr,
       findNode(withExpr.graph, n.id)!,
       floatId,
-      { expr: undefined, valuePick: undefined },
+      { expr: undefined },
       undefined,
     )
     const el2 = findElement(cleared, findNode(cleared.graph, n.id), floatId)!
     expect(el2.inputs?.expr).toBeUndefined()
-    expect(el2.inputs?.valuePick).toBeUndefined()
   })
 
   it('content 只改显示文案，不影响结算 effects', () => {

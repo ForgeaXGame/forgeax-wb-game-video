@@ -200,7 +200,7 @@ export class SkinRegistry {
           }
           // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
           if (ctx) {
-            const inputs = child.inputs as { bind?: string; label?: string; accent?: string }
+            const inputs = child.inputs as { bind?: string; attr?: string; label?: string; accent?: string }
             const Hud = this.hud.get(child.component)
             if (Hud) {
               const bind = typeof inputs.bind === 'string' ? inputs.bind : child.elementId
@@ -208,6 +208,7 @@ export class SkinRegistry {
                 element: bind,
                 component: child.component,
                 bind,
+                attr: typeof inputs.attr === 'string' ? inputs.attr : undefined,
                 label: typeof inputs.label === 'string' ? inputs.label : undefined,
                 accent: typeof inputs.accent === 'string' ? inputs.accent : undefined,
                 layout: child.childLayout,
