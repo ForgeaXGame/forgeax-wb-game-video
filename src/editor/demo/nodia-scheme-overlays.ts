@@ -4,8 +4,11 @@
  * - 挂载与目录均用方案 id（`n_door` / `tele` / `battleHud`…），不再使用 `node:*` 本地桶 id。
  * - JSON 内嵌同一份正文，便于整图自洽；本文件供「＋ 挂载」预设与 `ensureBuiltinSchemes` 缺失补齐。
  * - 改方案内容时两边应对齐（先改此处，再同步进 JSON，或反过来后回写此处）。
+ * - 舞台坐标类组件（floatText / dialogue / transition）的 OverlayChild.layout 须铺满舞台；
+ *   挂到节点时 OverlayNode.layout 同样铺满（见 `nodia.graph.json`）。
  */
 import type { Overlay } from '../../runtime/schema/graph-schema'
+import { STAGE_FILL_LAYOUT } from '../../runtime/schema/layout'
 
 export const NODIA_SCHEME_BATTLE_HUD: Overlay = {
   id: 'battleHud',
@@ -68,14 +71,14 @@ export const NODIA_SCHEME_READOUTS: Overlay = {
     {
       id: 'bossHp',
       component: 'floatText',
-      layout: {},
+      layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
       inputs: { x: 0.08, y: 0.16 },
     },
     {
       id: 'heroHp',
       component: 'floatText',
-      layout: {},
+      layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
       inputs: { x: 0.92, y: 0.16 },
     },
@@ -99,6 +102,12 @@ export const NODIA_NODE_SCHEME_BLOCK: Overlay = {
         "y": 0.42,
         "color": "#ffd54a",
         "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "floatText"
     }
@@ -147,6 +156,12 @@ export const NODIA_NODE_SCHEME_DODGEP: Overlay = {
         "color": "#ffd54a",
         "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
       },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
+      },
       "component": "floatText"
     }
   ]
@@ -166,6 +181,12 @@ export const NODIA_NODE_SCHEME_ENTER: Overlay = {
         "durationMs": 700,
         "style": "fade",
         "color": "#000"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "transition"
     }
@@ -189,6 +210,12 @@ export const NODIA_NODE_SCHEME_FUZHU: Overlay = {
         "y": 0.42,
         "color": "#5fbf7f"
       },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
+      },
       "component": "floatText"
     }
   ]
@@ -211,6 +238,12 @@ export const NODIA_NODE_SCHEME_HURT: Overlay = {
         "y": 0.42,
         "color": "#ff5a5a",
         "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "floatText"
     }
@@ -416,6 +449,12 @@ export const NODIA_NODE_SCHEME_N_SOUL: Overlay = {
         "text": "……你也是来渡河的吗？",
         "color": "#ffd54a"
       },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
+      },
       "component": "dialogue"
     }
   ]
@@ -468,6 +507,12 @@ export const NODIA_NODE_SCHEME_PU: Overlay = {
         "color": "#ffd54a",
         "expr": "-(entity.ent-player.attr.attack)"
       },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
+      },
       "component": "floatText"
     }
   ]
@@ -490,6 +535,12 @@ export const NODIA_NODE_SCHEME_PU2: Overlay = {
         "y": 0.42,
         "color": "#ffd54a",
         "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "floatText"
     }
@@ -555,6 +606,12 @@ export const NODIA_NODE_SCHEME_ULT: Overlay = {
         "y": 0.42,
         "color": "#ffd54a",
         "expr": "-(entity.ent-player.attr.attack * 3)"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "floatText"
     }
@@ -640,6 +697,12 @@ export const NODIA_NODE_SCHEME_Z2: Overlay = {
         "color": "#ffd54a",
         "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
       },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
+      },
       "component": "floatText"
     }
   ]
@@ -662,6 +725,12 @@ export const NODIA_NODE_SCHEME_ZHONG: Overlay = {
         "y": 0.42,
         "color": "#ffd54a",
         "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+      },
+      "layout": {
+        "left": 0,
+        "top": 0,
+        "width": 1,
+        "height": 1
       },
       "component": "floatText"
     }

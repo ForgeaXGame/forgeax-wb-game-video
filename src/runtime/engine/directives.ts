@@ -30,13 +30,8 @@ export interface RenderOverlayDirective {
   elementId: string
   component: string
   inputs: Record<string, unknown>
-  /** 子组件级排版：相对挂载盒；挂载有尺寸时缺省 = 左上角。 */
+  /** 子组件级排版：相对挂载盒；有则映射为 CSS，无且挂载有尺寸 → 铺满挂载盒。 */
   childLayout?: Layout
-  /**
-   * 组件自定位：内部用 %/inset 相对父框摆放（如 floatText 用 x/y）。
-   * 为真时子盒需铺满挂载盒且点击穿透，否则组件的百分比会相对零尺寸盒塌成左上角。
-   */
-  selfPositioned?: boolean
 }
 
 /** 交互层元素（qte/choice/skill/hotspot…）→ 呈现并等待玩家输入；handles = 可产出的出口。 */

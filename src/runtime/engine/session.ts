@@ -58,10 +58,8 @@ export interface OverlayChildSnap {
   elementId: string
   component: string
   inputs: Record<string, unknown>
-  /** 子组件级排版（相对挂载盒）。 */
+  /** 子组件级排版（相对挂载盒）→ CSS。 */
   childLayout?: Layout
-  /** 组件自定位（内部 %/inset 摆放）：子盒需铺满挂载盒且点击穿透。 */
-  selfPositioned?: boolean
 }
 
 /** 一份 overlay 挂载的运行态视图（挂载盒 + 其内可见子组件）。 */
@@ -222,7 +220,6 @@ export class GraphSession {
             component: d.component,
             inputs: d.inputs,
             childLayout: d.childLayout,
-            selfPositioned: d.selfPositioned,
           }
           const idx = mount.children.findIndex((c) => c.elementId === d.elementId)
           if (idx >= 0) mount.children[idx] = child

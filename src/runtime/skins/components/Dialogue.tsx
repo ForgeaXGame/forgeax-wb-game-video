@@ -19,7 +19,6 @@ const dialogueBoxStyle: CSSProperties = {
 
 export const dialogueComponent: ComponentDef<DialogueParams> = {
   role: 'presentation',
-  stageRelative: true,
   label: '字幕/对白',
   inputs: [
     { key: 'speaker', label: '说话人', valueType: 'string', default: '' },

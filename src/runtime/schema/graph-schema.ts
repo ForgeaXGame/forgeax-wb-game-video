@@ -36,7 +36,16 @@ export type {
 
 export { overlayMountId } from './node-config-schema'
 
-export { layoutValueToCss, layoutToCss, layoutWrapStyle, layoutHasExplicitSize, layoutIsEffectivelyEmpty, mountWrapStyle, childWrapStyle } from './layout'
+export {
+  STAGE_FILL_LAYOUT,
+  layoutValueToCss,
+  layoutToCss,
+  layoutWrapStyle,
+  layoutHasExplicitSize,
+  layoutIsEffectivelyEmpty,
+  mountWrapStyle,
+  childWrapStyle,
+} from './layout'
 
 export {
   expandOverlayMount,

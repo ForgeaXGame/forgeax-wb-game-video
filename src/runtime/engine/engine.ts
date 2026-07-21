@@ -44,9 +44,6 @@ import {
   type NodeRuntimeCtx,
 } from '../nodes'
 
-const STAGE_FILL: Layout = { left: 0, top: 0, width: 1, height: 1 }
-
-
 export type GraphPhase = 'idle' | 'playing' | 'awaitInteraction' | 'ended'
 
 /** call/return 栈帧：弹回时恢复 caller 所在图（同图 subflow 时 returnGraph === 当前图）。 */
@@ -566,19 +563,15 @@ export class GraphRuntime {
     const node = this.nodes.get(el.source.nodeId)
     const mount = nodeOverlayMounts(node).find((m) => overlayMountId(m) === el.source.mountId)
     if (mount?.layout && !layoutIsEffectivelyEmpty(mount.layout)) return mount.layout
-    const plugin = this.getComponent(el.component)
-    if (plugin?.stageRelative) return STAGE_FILL
     return undefined
   }
 
   private emitRenderOverlay(d: RenderOverlayDirective, el: OverlayInstanceChild): void {
-    const plugin = this.getComponent(el.component)
     this.emit({
       ...d,
       mountId: d.mountId ?? el.source.mountId,
       mountLayout: d.mountLayout ?? this.mountLayoutFor(el),
       childLayout: d.childLayout ?? el.layout,
-      selfPositioned: d.selfPositioned ?? plugin?.stageRelative,
     } as RenderOverlayDirective & { mountId: string })
   }
 
@@ -845,18 +838,16 @@ export class GraphRuntime {
     for (const [k, v] of Object.entries(merged)) inputs[k] = this.resolveBind(v, locals)
     const component = tpl?.component ?? overlayId
     const layout: Layout | undefined = action.layout ?? (tpl?.layout && !layoutIsEffectivelyEmpty(tpl.layout) ? tpl.layout : undefined)
-    const plugin = this.getComponent(component)
-    const mountLayout = layout ?? (plugin?.stageRelative ? STAGE_FILL : undefined)
     const elementId = `spawn:${++this.spawnSeq}`
     this.emit({
       type: 'renderOverlay',
       nodeId,
       mountId: elementId,
-      mountLayout,
+      mountLayout: layout,
+      childLayout: layout,
       elementId,
       component,
       inputs,
-      selfPositioned: plugin?.stageRelative,
     })
     if (action.ttlMs && action.ttlMs > 0) {
       this.pendingSpawns.push({ elementId, nodeId, removeAtMs: this.state.elapsedMs + action.ttlMs })

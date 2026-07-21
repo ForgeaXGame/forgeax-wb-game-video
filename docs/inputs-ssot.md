@@ -38,9 +38,8 @@ interface ComponentEvent {          // 组件会吐哪些事件（= 出口 handl
 interface ComponentManifest {
   id: string
   label?: string
-  role: 'presentation' | 'interaction'   // 仅用于编辑器分类/默认 UI；运行时不再据此分派判定
+  role: 'presentation' | 'interaction'   // 引擎调度分派（presentation→overlay / interaction→挂起）
   surface?: 'hud'
-  stageRelative?: boolean
   inputs: ComponentInput[]        // 唯一输入声明（SSOT）
   events: ComponentEvent[]        // 组件吐出的事件；出口 handle = events（不再有 outputs()）
 }
@@ -93,7 +92,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 - ✅ 阶段 5/6（值键 `params→inputs`；demo `nodia.graph.json` 数据迁移）
 - ✅ **B（resolve 下沉）**：删 `resolve`/`continue`/`ResolveResult`；交互皮肤自判定后 `submit`(=emit) 最终 event id，
   引擎 `submitInteraction` 直接把它当 outcome 路由（超时 `submit(undefined)` 落 `inputs.defaultEvent`，兜底 `'fail'`）。
-- ✅ **manifest 化（吸收 C）**：`KindPlugin` 收敛为「manifest 数据（id/label/role/surface/stageRelative/aliases/inputs/events）
+- ✅ **manifest 化（吸收 C）**：`KindPlugin` 收敛为「manifest 数据（id/label/role/surface/inputs/events）
   + 少量可选逃生舱（`render?`/`validate?`）」。**删掉 `outputs()`/`defaults()`/`present()` 方法**：
   - 出口 handle 由 `registry.handlesOf`（实例 `inputs.events` 优先，否则组件静态 `events`）派生；
   - 新建初值由 `buildDefaults(inputs)`（读 `inputs[].default`）组装；

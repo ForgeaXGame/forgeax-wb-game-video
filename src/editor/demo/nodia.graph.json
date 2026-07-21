@@ -164,7 +164,12 @@
           {
             "id": "bossHp",
             "component": "floatText",
-            "layout": {},
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            },
             "trigger": {
               "when": "enter"
             },
@@ -176,7 +181,12 @@
           {
             "id": "heroHp",
             "component": "floatText",
-            "layout": {},
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            },
             "trigger": {
               "when": "enter"
             },
@@ -204,7 +214,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -247,7 +263,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -265,7 +287,13 @@
               "style": "fade",
               "color": "#000"
             },
-            "component": "transition"
+            "component": "transition",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -285,7 +313,13 @@
               "y": 0.42,
               "color": "#5fbf7f"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -306,7 +340,13 @@
               "color": "#ff5a5a",
               "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -496,7 +536,13 @@
               "text": "……你也是来渡河的吗？",
               "color": "#ffd54a"
             },
-            "component": "dialogue"
+            "component": "dialogue",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -544,7 +590,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-player.attr.attack)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -565,7 +617,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -626,7 +684,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-player.attr.attack * 3)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -706,7 +770,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       },
@@ -727,7 +797,13 @@
               "color": "#ffd54a",
               "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
             },
-            "component": "floatText"
+            "component": "floatText",
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
+            }
           }
         ]
       }
@@ -824,7 +900,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_soul"
+              "overlay": "n_soul",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -1373,7 +1455,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "enter"
+              "overlay": "enter",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -1795,7 +1883,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "pu"
+              "overlay": "pu",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -1846,7 +1940,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "pu2"
+              "overlay": "pu2",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -1897,7 +1997,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "zhong"
+              "overlay": "zhong",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -1948,7 +2054,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "z2"
+              "overlay": "z2",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -1999,7 +2111,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "fuzhu"
+              "overlay": "fuzhu",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -2055,7 +2173,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "ult"
+              "overlay": "ult",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -2194,7 +2318,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "block"
+              "overlay": "block",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -2245,7 +2375,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "dodgeP"
+              "overlay": "dodgeP",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [
@@ -2296,7 +2432,13 @@
               "overlay": "battleHud"
             },
             {
-              "overlay": "hurt"
+              "overlay": "hurt",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ],
           "reactions": [

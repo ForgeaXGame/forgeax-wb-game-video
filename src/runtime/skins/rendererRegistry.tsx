@@ -160,9 +160,8 @@ export class SkinRegistry {
    * - **HUD（battleHpBar 等）走 hud 表**：引擎仍把它们放进 overlayMounts（enter 即发射），
    *   但皮肤注册在 hud registry——无 ctx 时只能静默跳过，试玩必须传入 `{ hud }`。
    */
-  /** 子项是否「舞台锚定」：自定位表现层（floatText 用 x/y）或走 hud 表的皮肤（血条按 CSS 角锚定舞台）。 */
-  private isStageAnchoredChild(child: OverlayChildSnap): boolean {
-    if (this.overlay.get(child.component)) return !!child.selfPositioned
+  /** HUD 子项无 mount layout 时需铺满舞台（血条按 CSS 角锚定）；普通 overlay 只认配置的 layout→CSS。 */
+  private isHudChild(child: OverlayChildSnap): boolean {
     return !!this.hud.get(child.component)
   }
 
@@ -172,11 +171,11 @@ export class SkinRegistry {
     ctx?: SkinCtx,
   ): ReactNode {
     const mountHasSize = layoutHasExplicitSize(mount.mountLayout)
-    // 无显式 layout 且含舞台锚定子项（HUD 血条 / 自定位飘字）→ 挂载盒必须铺满舞台，否则 fit-content 会塌成
-    // 左上角 0×0，子项的角锚定（right/bottom/left:50%…）相对 0×0 盒解析 → 跑到屏幕外/挤到左上角。
-    const stageAnchored =
-      layoutIsEffectivelyEmpty(mount.mountLayout) && mount.children.some((c) => this.isStageAnchoredChild(c))
-    const wrapStyle: CSSProperties = stageAnchored
+    // HUD 常不配 mount layout：无显式尺寸时铺满舞台，否则角锚定相对 0×0 盒会跑飞。
+    // 普通 overlay 不走这条——作者在 OverlayNode.layout 配好宽高即可。
+    const hudNeedsStage =
+      layoutIsEffectivelyEmpty(mount.mountLayout) && mount.children.some((c) => this.isHudChild(c))
+    const wrapStyle: CSSProperties = hudNeedsStage
       ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
       : mountWrapStyle(mount.mountLayout)
     return (
@@ -189,11 +188,8 @@ export class SkinRegistry {
               component: child.component,
               inputs: child.inputs,
             }
-            // 自定位组件（floatText 等用 x/y）：子盒铺满挂载盒且点击穿透，
-            // 让组件内部的百分比相对完整父框解析（否则会塌成左上角、被裁切）。
-            const wrapStyle: CSSProperties = child.selfPositioned
-              ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
-              : childWrapStyle(child.childLayout, mountHasSize)
+            // layout → CSS 透传；无 child layout 且 mount 有尺寸 → 铺满挂载盒。
+            const wrapStyle: CSSProperties = childWrapStyle(child.childLayout, mountHasSize || hudNeedsStage)
             return (
               <div key={child.elementId} style={wrapStyle}>
                 <SkinErrorBoundary name={child.component}>

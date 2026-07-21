@@ -23,7 +23,6 @@ function ensureFloatStyle(): void {
 /** 组件的注册契约（引擎/编辑器识别用）——与渲染同文件，经 EXTRA_COMPONENTS 注册。 */
 export const floatTextComponent: ComponentDef<FloatTextParams> = {
   role: 'presentation',
-  stageRelative: true,
   label: '花字/飘字',
   inputs: [
     { key: 'text', label: '文案', valueType: 'string', default: '' },
