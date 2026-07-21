@@ -61,7 +61,7 @@ interface ComponentManifest {
 | `outputs(params)` | **删**。出口 handle 由 `events` 派生（choice/qte 的选项即 events） |
 | `resolve()` / `continue` | **删**。判定搬进组件内部，自行 `emit` 最终 event |
 | `present()` | **删**。组件自己渲染 |
-| `render()`（floatText 的 expr 求值） | 可选逃生舱：仅少数组件（如 floatText）保留 `ComponentDef.render?` |
+| `render()`（floatText 的 expr 求值） | **删**。绘制时由 OverlayComponent + SkinCtx resolve（同 battleHpBar） |
 | `validate(params)` | 必填/类型 → 由 `inputs.required/valueType` 校验；跨字段校验（如 floatText `text\|\|expr`）留可选作者期钩子 |
 | `ComponentEvent.payload` | **删**（无人用；将来需要再定义） |
 
@@ -101,8 +101,8 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 - ✅ **判定下沉**：删 `resolve`/`continue`/`ResolveResult`；皮肤自判定后 `emit(eventId)`；
   引擎 `emitComponentEvent` 跑 mount `reactions`，无显式 advance 时按 handle 找边；
   超时由皮肤 `useDefaultEventTimeout` → `emit(defaultEvent ?? 'fail')`（不再 Player `submit(undefined)`）。
-- ✅ **manifest 化**：`ComponentDef` = 数据契约 + 少量可选逃生舱（`render?`/`validate?`）。
-  出口由 `handlesOf` 派生；新建初值由 `buildDefaults`；`render?` 仅 floatText 等少数保留。
+- ✅ **manifest 化**：`ComponentDef` = 数据契约 + 可选 `validate?`；出口由 `handlesOf` 派生；新建初值由 `buildDefaults`。
+- ✅ **删 `ComponentDef.render`**（2026-07-21）：floatText expr 改绘制时 `resolveFloatTextDisplay(ctx)`；引擎一律 `renderOverlay`。
 - ✅ **删 `role` / `surface` / 独立 interaction 层**（2026-07-21）：全部 `registerOverlayRenderer`；
   demo 交互皮补 `STAGE_FILL_LAYOUT` + `timeoutMs`/`defaultEvent`。
 - ✅ **inputs 面板**：挂载 children 按 manifest.inputs 编辑。

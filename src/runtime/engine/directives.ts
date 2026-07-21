@@ -21,7 +21,7 @@ export interface PlayClipDirective {
 export interface RenderOverlayDirective {
   type: 'renderOverlay'
   nodeId: string
-  /** 挂载键（节点 overlayNodes 或 spawn 瞬态 id）；kind.render 可省略，由引擎补齐。 */
+  /** 挂载键（节点 overlayNodes 或 spawn 瞬态 id）；可省略，由引擎补齐。 */
   mountId?: string
   /** 挂载级排版：相对视频舞台；无显式尺寸 → 自适应内容。 */
   mountLayout?: Layout

@@ -1,11 +1,12 @@
 /**
- * 花字/飘字（component id: `floatText`）—— 契约 + 渲染同文件。
+ * 花字/飘字（component id: `floatText`）—— OverlayComponent。
+ * 作者配置 text/expr；绘制时用 SkinCtx 求值（与 battleHpBar 同构），引擎只发原样 renderOverlay。
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { FloatTextParams } from '../../registry/core-components'
-import { evalExpr } from '../../engine/expr'
-import type { OverlayProps } from '../rendererRegistry'
+import { evalExpr, type EvalCtx } from '../../engine/expr'
+import type { OverlayProps, SkinCtx } from '../rendererRegistry'
 
 function signed(v: number): string {
   return v > 0 ? `+${v}` : String(v)
@@ -18,6 +19,55 @@ function ensureFloatStyle(): void {
   s.textContent =
     '@keyframes gv-floatup{0%{opacity:0;transform:translate(-50%,-20%) scale(0.9)}15%{opacity:1;transform:translate(-50%,-60%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-140%) scale(1)}}'
   document.head.appendChild(s)
+}
+
+/** 作者配置的入参（落盘）；expr 可为字符串或 `{ expr }`。 */
+function exprSource(expr: unknown): string | undefined {
+  if (typeof expr === 'string' && expr) return expr
+  if (expr && typeof expr === 'object' && typeof (expr as { expr?: unknown }).expr === 'string') {
+    const s = (expr as { expr: string }).expr
+    return s || undefined
+  }
+  return undefined
+}
+
+function evalCtxFromSkin(ctx: SkinCtx | undefined): EvalCtx | undefined {
+  const st = ctx?.condition?.state
+  if (st) {
+    return {
+      vars: st.vars,
+      entities: st.entities,
+      flags: st.flags,
+      score: st.score,
+      rng: st.rng,
+    }
+  }
+  const hud = ctx?.hud
+  if (!hud) return undefined
+  return {
+    vars: hud.vars,
+    entities: Object.fromEntries(Object.entries(hud.entities).map(([id, e]) => [id, { attrs: e.attrs }])),
+    flags: hud.flags,
+    score: hud.score,
+  }
+}
+
+/** 绘制时：expr + text/`{v}` → 展示文案。 */
+export function resolveFloatTextDisplay(
+  inputs: FloatTextParams & { expr?: unknown },
+  ctx: SkinCtx | undefined,
+): string {
+  const text = typeof inputs.text === 'string' ? inputs.text : ''
+  const src = exprSource(inputs.expr)
+  if (!src) return text
+  const evalCtx = evalCtxFromSkin(ctx)
+  if (!evalCtx) return text
+  try {
+    const v = evalExpr(src, evalCtx)
+    return text ? text.replace('{v}', signed(v)) : signed(v)
+  } catch {
+    return text
+  }
 }
 
 /** 组件的注册契约（引擎/编辑器识别用）——与渲染同文件，经 EXTRA_COMPONENTS 注册。 */
@@ -33,39 +83,14 @@ export const floatTextComponent: ComponentDef<FloatTextParams> = {
     { key: 'color', label: '兜底色', valueType: 'string', component: 'color' },
   ],
   validate: (p) => (p.text || p.expr ? [] : ['floatText 需要 text 或 expr']),
-  render: (ctx, p) => {
-    let display = p.text ?? ''
-    if (p.expr) {
-      const v = evalExpr(p.expr, ctx.state)
-      display = p.text ? p.text.replace('{v}', signed(v)) : signed(v)
-    }
-    return [
-      {
-        type: 'renderOverlay',
-        nodeId: ctx.nodeId,
-        elementId: ctx.elementId ?? 'float',
-        component: 'floatText',
-        inputs: {
-          text: display,
-          x: p.x,
-          y: p.y,
-          color: p.color,
-          style: p.style,
-          durationMs: p.durationMs,
-          enter: p.enter,
-          exit: p.exit,
-          float: true,
-        },
-      },
-    ]
-  },
 }
 
-export function FloatTextOverlay({ overlay }: OverlayProps): ReactNode {
+export function FloatTextOverlay({ overlay, ctx }: OverlayProps): ReactNode {
   ensureFloatStyle()
-  const p = overlay.inputs as { text?: string; x?: number; y?: number; color?: string; durationMs?: number }
-  const dur = p.durationMs ?? 1100
-  const neg = typeof p.text === 'string' && p.text.trim().startsWith('-')
+  const p = overlay.inputs as FloatTextParams & { expr?: unknown }
+  const display = resolveFloatTextDisplay(p, ctx)
+  const dur = typeof p.durationMs === 'number' ? p.durationMs : 1100
+  const neg = display.trim().startsWith('-')
   return (
     <div
       className="gv-float-text"
@@ -82,7 +107,7 @@ export function FloatTextOverlay({ overlay }: OverlayProps): ReactNode {
         animation: `gv-floatup ${dur}ms ease-out forwards`,
       }}
     >
-      {p.text}
+      {display}
     </div>
   )
 }

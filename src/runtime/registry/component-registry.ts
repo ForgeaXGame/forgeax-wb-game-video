@@ -17,18 +17,6 @@ import type { GameNode, NodeHandle } from '../schema/graph-schema'
 import type { OverlayInstanceChild } from '../schema/node-config-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
 import { eventsFromParams } from '../schema/overlay-events'
-import type { MutableState } from '../engine/apply-effects'
-import type { RuntimeDirective } from '../engine/directives'
-
-/** 引擎给运行时契约的上下文（纯数据，模块不摸 DOM、不反读引擎内部）。 */
-export interface RuntimeCtx {
-  state: MutableState
-  nodeId: string
-  elapsedMs: number
-  /** 当前正在执行的时间线元素 id（render/present 构造 directive 用）。 */
-  elementId?: string
-}
-
 export interface ComponentDef<P = Record<string, unknown>> {
   /**
    * 组件会抛出的**事件**（= 出口 handle 来源）。
@@ -45,15 +33,11 @@ export interface ComponentDef<P = Record<string, unknown>> {
    */
   inputs?: ComponentInput[]
 
-  // ── 可选行为逃生舱（默认数据驱动；仅少数组件需要）──────────────────────────────
-  /** 作者期跨字段校验（如 floatText 需 text||expr）；必填/类型由 inputs.required/valueType 兜底。 */
-  validate?(inputs: P): string[]
   /**
-   * 到触发时机按当前态**算出要发的 overlay 指令**（唯一命令式钩子，供 floatText 之类按 expr 求值）。
-   * 多数 presentation 无 render：走引擎泛型 renderOverlay，Player 按 inputs 直接画。
-   * interaction 无判定钩子：皮肤自判定后经 emit 抛已声明 event id，引擎按事件路由。
+   * 作者期跨字段校验（如 floatText 需 text||expr）；必填/类型由 inputs.required/valueType 兜底。
+   * 运行时绘制时 resolve（expr / hud bind）在 OverlayComponent + SkinCtx，不经本字段。
    */
-  render?(ctx: RuntimeCtx, inputs: P): RuntimeDirective[]
+  validate?(inputs: P): string[]
 }
 
 /** 从 inputs[].default 组装新建实例默认值（取代旧 `defaults()` 方法）。 */

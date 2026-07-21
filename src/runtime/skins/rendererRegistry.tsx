@@ -23,7 +23,7 @@ export interface OverlayProps {
   overlay: OverlaySnap
   /** 组件事件（点击 / 判定 / 超时）；由试玩面注入，路由到 session.emitEvent。 */
   emit?: (key: string) => void
-  /** 绘制时 resolve（如 battleHpBar）与选项门控。 */
+  /** 绘制时 resolve（battleHpBar / floatText expr）与选项门控。 */
   ctx?: SkinCtx
   /** 编辑器预览。 */
   preview?: boolean

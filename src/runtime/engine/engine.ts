@@ -32,7 +32,7 @@ import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../sche
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
 import { initState } from './engine-init'
-import { defaultComponentRegistry, type ComponentRegistry, type RuntimeCtx } from '../registry/component-registry'
+import { defaultComponentRegistry, type ComponentRegistry } from '../registry/component-registry'
 import type { RuntimeDirective, RenderOverlayDirective } from './directives'
 import { evaluateCondition, describeCondition, type ConditionTarget } from './condition'
 import { evalExpr, type EvalCtx } from './expr'
@@ -245,9 +245,6 @@ export class GraphRuntime {
   // 经方法赋值，避免 TS 把 this.state.phase 的类型窄化成某个字面量（跨方法可被 runElement 改写）。
   private setPhase(p: GraphPhase): void {
     this.state.phase = p
-  }
-  private ctx(): RuntimeCtx {
-    return { state: this.state, nodeId: this.state.currentNodeId ?? '', elapsedMs: this.state.elapsedMs }
   }
   private condTarget(): ConditionTarget {
     return { state: this.state, visited: this.state.visited }
@@ -563,7 +560,6 @@ export class GraphRuntime {
 
   // ── 元素派发 ────────────────────────────────────────────────────────────────
   private runElement(el: OverlayInstanceChild): void {
-    const plugin = this.getComponent(el.component)
     this.fired.add(el.id)
     // 组件出现（mount）→ 触发 shown 生命周期反应（每节点访问首次）。
     if (!this.shownChildren.has(el.id)) {
@@ -571,22 +567,14 @@ export class GraphRuntime {
       this.fireLifecycle('shown', el)
       if (this.redirect) return
     }
-    const ctx = { ...this.ctx(), elementId: el.id }
-    const inputs = el.inputs
-    if (plugin?.render) {
-      for (const d of plugin.render(ctx, inputs)) {
-        if (d.type === 'renderOverlay') this.emitRenderOverlay(d, el)
-        else this.emit(d)
-      }
-    } else {
-      this.emitRenderOverlay({
-        type: 'renderOverlay',
-        nodeId: this.state.currentNodeId ?? '',
-        elementId: el.id,
-        component: el.component,
-        inputs,
-      }, el)
-    }
+    // 全部组件统一 renderOverlay；expr 等绘制时 resolve（见 floatText / battleHpBar）。
+    this.emitRenderOverlay({
+      type: 'renderOverlay',
+      nodeId: this.state.currentNodeId ?? '',
+      elementId: el.id,
+      component: el.component,
+      inputs: el.inputs,
+    }, el)
   }
 
   /** 离开节点前跑 exit 相位 reactions（副作用）+ 仍可见组件的 hidden 生命周期。 */
