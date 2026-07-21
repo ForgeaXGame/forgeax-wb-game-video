@@ -4,8 +4,8 @@
  * - 挂载与目录均用方案 id（`n_door` / `tele` / `battleHud`…），不再使用 `node:*` 本地桶 id。
  * - JSON 内嵌同一份正文，便于整图自洽；本文件供「＋ 挂载」预设与 `ensureBuiltinSchemes` 缺失补齐。
  * - 改方案内容时两边应对齐（先改此处，再同步进 JSON，或反过来后回写此处）。
- * - 舞台坐标类组件（floatText / dialogue / transition）的 OverlayChild.layout 须铺满舞台；
- *   挂到节点时 OverlayNode.layout 同样铺满（见 `nodia.graph.json`）。
+ * - 舞台坐标类 / 血条（floatText / dialogue / transition / battleHpBar）的 OverlayChild.layout
+ *   须铺满舞台（`STAGE_FILL_LAYOUT`）；挂到节点时 OverlayNode.layout 同样铺满（见 `nodia.graph.json`）。
  */
 import type { Overlay } from '../../runtime/schema/graph-schema'
 import { STAGE_FILL_LAYOUT } from '../../runtime/schema/layout'
@@ -17,12 +17,14 @@ export const NODIA_SCHEME_BATTLE_HUD: Overlay = {
     {
       id: 'playerHp',
       component: 'battleHpBar',
+      layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
       inputs: { bind: 'ent-player', label: '空藏' },
     },
     {
       id: 'bossHp',
       component: 'battleHpBar',
+      layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
       inputs: { bind: 'ent-boss', label: '小怪' },
     },

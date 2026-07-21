@@ -2,7 +2,7 @@
  * GraphPlayer —— 试玩运行时 React 组件。**只订阅 GraphSession 的 snapshot 渲染 + 回灌输入**，
  * 不含任何游戏逻辑（逻辑全在纯 TS 引擎/会话里，已 headless 单测）。
  *
- * HUD 与 GraphPlaySurface 同源：挂载的 battleHpBar 等经 overlayMounts + skinCtx 渲染。
+ * 与 GraphPlaySurface 同源：battleHpBar 等经 overlayMounts + skinCtx（绘制时 resolve）渲染。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GameScenario } from '../../runtime/schema/graph-schema'
@@ -28,7 +28,7 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
   const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
-  // 挂载 HUD 走 overlayMounts + skinCtx；选项门控需要 condition（PR #77 optionLock）。
+  // overlayMounts + skinCtx（血条绘制时 resolve）；选项门控需要 condition（PR #77 optionLock）。
   const skinCtx: SkinCtx = {
     hud: snap.hud,
     condition: { state: session.runtime.state, visited: session.runtime.state.visited },
@@ -101,7 +101,7 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
         )}
 
         <VideoOverlayStage contentRect={contentRect}>
-          {/* 表现叠层 + 挂载 HUD：传 skinCtx，否则 battleHpBar 等会在 overlay 表查不到而静默丢弃。 */}
+          {/* 表现叠层：传 skinCtx 供 battleHpBar 等绘制时 resolve。 */}
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
             {snap.overlayMounts.map((m) => (
               <span key={m.mountId} style={{ display: 'contents' }}>

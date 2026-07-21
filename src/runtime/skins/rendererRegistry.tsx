@@ -3,15 +3,16 @@
  *
  * 多局并行：每个 GraphSession 持有自己的 `SkinRegistry`；模块级 `register*` / `render*`
  * 仍指向 `defaultSkinRegistry`（编辑器兼容）。
+ *
+ * 表现层统一走 overlay 表（含原 HUD 血条）；交互仍走 interaction 表（B 阶段再并轨）。
  */
 import { Component, createContext, useContext, type ComponentType, type CSSProperties, type ErrorInfo, type ReactNode } from 'react'
-import type { OverlaySnap, OverlayChildSnap, OverlayMountSnap, InteractionSnap, HudSnap } from '../engine/session'
+import type { OverlaySnap, OverlayMountSnap, InteractionSnap, HudSnap } from '../engine/session'
 import type { ConditionTarget } from '../engine/condition'
-import type { Layout } from '../schema/node-config-schema'
-import { childWrapStyle, layoutHasExplicitSize, layoutIsEffectivelyEmpty, layoutToCss, mountWrapStyle } from '../schema/layout'
+import { childWrapStyle, layoutHasExplicitSize, mountWrapStyle } from '../schema/layout'
 import { isPlayerFocused } from '../input/playerFocus'
 
-/** 皮肤/HUD 组件渲染时可读的游戏态上下文（vars/entities/score/flags）。 */
+/** 皮肤组件渲染时可读的游戏态上下文（vars/entities/score/flags）。 */
 export interface SkinCtx {
   hud: HudSnap
   /**
@@ -21,32 +22,13 @@ export interface SkinCtx {
   condition?: ConditionTarget
 }
 
-/** HUD 元素在屏幕上的锚点位置（皮肤自定位用；缺省由皮肤按角色推断）。 */
-export type HudPos = 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right'
-
-/** 单个 HUD 元素定义 —— 渲染层视图。 */
-export interface HudElementView {
-  element: string
-  show?: 'always' | 'never' | 'battle' | 'qte'
-  /** 渲染皮肤组件 id（HUD 皮肤 registry），缺省=内置通用血条/数值。 */
-  component?: string
-  /** 可选：绑定的实体/变量 id（缺省用 element 本身）。 */
-  bind?: string
-  /** 绑定的属性名（缺省 hp；来自 OverlayChild.inputs.attr）。 */
-  attr?: string
-  label?: string
-  accent?: string
-  /** @deprecated 用 layout（CSS inset）；皮肤内硬编码定位的遗留字段。 */
-  pos?: HudPos
-  /** OverlayChild.layout；有则外包一层绝对定位。 */
-  layout?: Layout
-}
-
-// ── 组件 props 契约（每类渲染组件的统一入参）──────────────────────────────────────
+// ── 组件 props 契约 ──────────────────────────────────────────────────────────
 export interface OverlayProps {
   overlay: OverlaySnap
   /** 展示组件的非阻塞事件回调（按钮点击等）；由试玩面注入，路由到 session.emitEvent。 */
   emit?: (key: string) => void
+  /** 绘制时 resolve（如 battleHpBar 的 bind→value）与选项门控。 */
+  ctx?: SkinCtx
   /** 编辑器预览：纯 CSS 动画已由宿主 `.gc-preview-clock.is-paused` 统一冻住，多数皮肤无需接这两个。 */
   preview?: boolean
   previewTimeMs?: number
@@ -59,16 +41,8 @@ export interface InteractionProps {
   preview?: boolean
   previewTimeMs?: number
 }
-export interface HudProps {
-  element: HudElementView
-  ctx: SkinCtx
-  /** 编辑器预览：同 OverlayProps，多数 HUD 皮肤（常驻血条等）无需接。 */
-  preview?: boolean
-  previewTimeMs?: number
-}
 export type OverlayComponent = ComponentType<OverlayProps>
 export type InteractionComponent = ComponentType<InteractionProps>
-export type HudComponent = ComponentType<HudProps>
 
 /** Player 根节点（供交互皮做焦点门控）。由 GraphPlayer / PlaySurface 注入。 */
 export const PlayerRootContext = createContext<HTMLElement | null>(null)
@@ -123,11 +97,10 @@ function safe(name: string, submit: (input: unknown) => void): (input: unknown) 
   }
 }
 
-/** 可注入的 Overlay / Interaction / HUD 渲染表（每局 Session 一份）。 */
+/** 可注入的 Overlay / Interaction 渲染表（每局 Session 一份）。 */
 export class SkinRegistry {
   private readonly overlay = new Map<string, OverlayComponent>()
   private readonly interaction = new Map<string, InteractionComponent>()
-  private readonly hud = new Map<string, HudComponent>()
 
   registerOverlayRenderer(kind: string, c: OverlayComponent): void {
     this.overlay.set(kind, c)
@@ -137,13 +110,6 @@ export class SkinRegistry {
   }
   registerInteractionSkin(id: string, c: InteractionComponent): void {
     this.interaction.set(id, c)
-  }
-  registerHudRenderer(id: string, c: HudComponent): void {
-    this.hud.set(id, c)
-  }
-  /** 是否已注册 HUD 皮肤（预览分流用；与 ComponentDef.surface 解耦）。 */
-  hasHudRenderer(id: string): boolean {
-    return this.hud.has(id)
   }
   /** 是否已注册表现层 overlay 渲染器。 */
   hasOverlayRenderer(id: string): boolean {
@@ -155,84 +121,61 @@ export class SkinRegistry {
   }
 
   /**
-   * 渲染一份挂载的全部 children。
-   * - 表现层（dialogue / floatText …）走 overlay 表；
-   * - **HUD（battleHpBar 等）走 hud 表**：引擎仍把它们放进 overlayMounts（enter 即发射），
-   *   但皮肤注册在 hud registry——无 ctx 时只能静默跳过，试玩必须传入 `{ hud }`。
+   * 渲染一份挂载的全部 children（统一 overlay 表）。
+   * 舞台尺寸由 OverlayNode.layout / OverlayChild.layout 配置（如 `STAGE_FILL_LAYOUT`）。
    */
-  /** HUD 子项无 mount layout 时需铺满舞台（血条按 CSS 角锚定）；普通 overlay 只认配置的 layout→CSS。 */
-  private isHudChild(child: OverlayChildSnap): boolean {
-    return !!this.hud.get(child.component)
-  }
-
   renderOverlayMount(
     mount: OverlayMountSnap,
     emit?: (elementId: string, key: string) => void,
     ctx?: SkinCtx,
   ): ReactNode {
     const mountHasSize = layoutHasExplicitSize(mount.mountLayout)
-    // HUD 常不配 mount layout：无显式尺寸时铺满舞台，否则角锚定相对 0×0 盒会跑飞。
-    // 普通 overlay 不走这条——作者在 OverlayNode.layout 配好宽高即可。
-    const hudNeedsStage =
-      layoutIsEffectivelyEmpty(mount.mountLayout) && mount.children.some((c) => this.isHudChild(c))
-    const wrapStyle: CSSProperties = hudNeedsStage
-      ? { position: 'absolute', inset: 0, pointerEvents: 'none' }
-      : mountWrapStyle(mount.mountLayout)
+    const wrapStyle: CSSProperties = mountWrapStyle(mount.mountLayout)
     return (
       <div key={mount.mountId} style={wrapStyle}>
         {mount.children.map((child) => {
           const C = this.overlay.get(child.component)
-          if (C) {
-            const snap: OverlaySnap = {
-              elementId: child.elementId,
-              component: child.component,
-              inputs: child.inputs,
-            }
-            // layout → CSS 透传；无 child layout 且 mount 有尺寸 → 铺满挂载盒。
-            const wrapStyle: CSSProperties = childWrapStyle(child.childLayout, mountHasSize || hudNeedsStage)
-            return (
-              <div key={child.elementId} style={wrapStyle}>
-                <SkinErrorBoundary name={child.component}>
-                  <C overlay={snap} emit={(key) => emit?.(child.elementId, key)} />
-                </SkinErrorBoundary>
-              </div>
-            )
+          if (!C) return null
+          const snap: OverlaySnap = {
+            elementId: child.elementId,
+            component: child.component,
+            inputs: child.inputs,
           }
-          // HUD 回退：挂载的静态方案（血条/气力）等 surface:'hud' 组件不在 overlay 表。
-          if (ctx) {
-            const inputs = child.inputs as { bind?: string; attr?: string; label?: string; accent?: string }
-            const Hud = this.hud.get(child.component)
-            if (Hud) {
-              const bind = typeof inputs.bind === 'string' ? inputs.bind : child.elementId
-              const el: HudElementView = {
-                element: bind,
-                component: child.component,
-                bind,
-                attr: typeof inputs.attr === 'string' ? inputs.attr : undefined,
-                label: typeof inputs.label === 'string' ? inputs.label : undefined,
-                accent: typeof inputs.accent === 'string' ? inputs.accent : undefined,
-                layout: child.childLayout,
-              }
-              return (
-                <span key={child.elementId} style={{ display: 'contents' }}>
-                  {this.renderHudElement(el, ctx)}
-                </span>
-              )
-            }
-          }
-          return null
+          const childWrap: CSSProperties = childWrapStyle(child.childLayout, mountHasSize)
+          return (
+            <div key={child.elementId} style={childWrap}>
+              <SkinErrorBoundary name={child.component}>
+                <C
+                  overlay={snap}
+                  emit={(key) => emit?.(child.elementId, key)}
+                  ctx={ctx}
+                />
+              </SkinErrorBoundary>
+            </div>
+          )
         })}
       </div>
     )
   }
 
   /** @deprecated 用 renderOverlayMount */
-  renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void, preview?: { timeMs?: number }): ReactNode {
+  renderOverlay(
+    overlay: OverlaySnap,
+    emit?: (key: string) => void,
+    preview?: { timeMs?: number },
+    ctx?: SkinCtx,
+  ): ReactNode {
     const C = this.overlay.get(overlay.component)
     if (!C) return null
     return (
       <SkinErrorBoundary key={overlay.elementId} name={overlay.component}>
-        <C overlay={overlay} emit={emit} preview={!!preview} previewTimeMs={preview?.timeMs} />
+        <C
+          overlay={overlay}
+          emit={emit}
+          ctx={ctx}
+          preview={!!preview}
+          previewTimeMs={preview?.timeMs}
+        />
       </SkinErrorBoundary>
     )
   }
@@ -255,24 +198,6 @@ export class SkinRegistry {
     )
   }
 
-  renderHudElement(element: HudElementView, ctx: SkinCtx, preview?: { timeMs?: number }): ReactNode {
-    const C = element.component ? this.hud.get(element.component) : undefined
-    if (!C) return null
-    const body = (
-      <SkinErrorBoundary key={element.element} name={element.component ?? element.element}>
-        <C element={element} ctx={ctx} preview={!!preview} previewTimeMs={preview?.timeMs} />
-      </SkinErrorBoundary>
-    )
-    if (!element.layout) return body
-    const hasBox = element.layout.width != null || element.layout.height != null
-      || (element.layout.left != null && element.layout.right != null)
-      || (element.layout.top != null && element.layout.bottom != null)
-    const wrapStyle: CSSProperties = hasBox
-      ? { ...layoutToCss(element.layout), pointerEvents: 'none' }
-      : { position: 'absolute', inset: 0, pointerEvents: 'none' }
-    return <div style={wrapStyle}>{body}</div>
-  }
-
   /**
    * @deprecated 默认渲染器已迁到 `skins/components/*`，由 `createCoreSkinRegistry` /
    * `registerCoreSkins` 安装。保留为空操作以免旧调用方炸。
@@ -292,8 +217,13 @@ export function renderOverlayMount(
 ): ReactNode {
   return defaultSkinRegistry.renderOverlayMount(mount, emit, ctx)
 }
-export function renderOverlay(overlay: OverlaySnap, emit?: (key: string) => void, preview?: { timeMs?: number }): ReactNode {
-  return defaultSkinRegistry.renderOverlay(overlay, emit, preview)
+export function renderOverlay(
+  overlay: OverlaySnap,
+  emit?: (key: string) => void,
+  preview?: { timeMs?: number },
+  ctx?: SkinCtx,
+): ReactNode {
+  return defaultSkinRegistry.renderOverlay(overlay, emit, preview, ctx)
 }
 export function registerInteractionRenderer(kind: string, c: InteractionComponent): void {
   defaultSkinRegistry.registerInteractionRenderer(kind, c)
@@ -308,12 +238,6 @@ export function renderInteraction(
   preview?: { timeMs?: number },
 ): ReactNode {
   return defaultSkinRegistry.renderInteraction(interaction, submit, ctx, preview)
-}
-export function registerHudRenderer(id: string, c: HudComponent): void {
-  defaultSkinRegistry.registerHudRenderer(id, c)
-}
-export function renderHudElement(element: HudElementView, ctx: SkinCtx, preview?: { timeMs?: number }): ReactNode {
-  return defaultSkinRegistry.renderHudElement(element, ctx, preview)
 }
 /** @deprecated 见 `SkinRegistry.registerCoreRenderers`；请用 `registerCoreSkins()`。 */
 export function registerCoreRenderers(): void {

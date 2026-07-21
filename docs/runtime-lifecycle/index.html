@@ -405,7 +405,7 @@ flowchart LR
         </div>
         <div class="kv">
           <h4>HUD 特例</h4>
-          <p>血条等 <code>surface:'hud'</code> 不走 session.overlays 列表；PlaySurface 对当前节点再 expand 一次，用 <code>renderHudElement</code> 画。数值来自 <code>snapshot.hud</code>（entities.attrs.hp 等）。</p>
+          <p>血条（<code>battleHpBar</code>）走 <code>overlayMounts</code> + OverlayComponent；绘制时用 <code>skinCtx.hud</code> resolve <code>bind</code>→数值。</p>
         </div>
         <div class="kv">
           <h4>编辑侧对称</h4>

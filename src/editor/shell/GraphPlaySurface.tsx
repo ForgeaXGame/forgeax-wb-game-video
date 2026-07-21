@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import type { GameScenario } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
-import { PlayerRootContext, type HudElementView, type SkinCtx } from '../../runtime/skins/rendererRegistry'
+import { PlayerRootContext, type SkinCtx } from '../../runtime/skins/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc, videoDurationCapReached } from './media'
@@ -19,8 +19,6 @@ import { VideoOverlayStage } from '../video/VideoOverlayStage'
 import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
-import { expandNodeOverlays } from '../../runtime/schema/expand-overlay'
-import { getComponent } from '../../runtime/registry/component-registry'
 
 function autoInput(handles: string[]): unknown {
   // handle === event id（无前缀）；auto 演示直接提交首个非默认出口。
@@ -131,26 +129,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const doJump = (nodeId: string) => setSnap(sessionRef.current!.jump(nodeId))
   const traversed = useMemo(() => new Set(snap?.traversedEdgeIds ?? []), [snap?.traversedEdgeIds])
   const currentNode = useMemo(() => graph.nodes.find((n) => n.id === snap?.currentNodeId), [graph, snap?.currentNodeId])
-  // 皮肤 HUD：从当前节点 overlay 展开后取 surface:'hud' 的组件。
-  const hudComp = useMemo(() => {
-    const m = new Map<string, HudElementView>()
-    if (!currentNode) return m
-    const children = expandNodeOverlays(overlays, currentNode).flatMap((i) => i.children)
-    for (const c of children) {
-      const plugin = getComponent(c.component)
-      if (plugin?.surface !== 'hud') continue
-      const inputs = c.inputs as { bind?: string; label?: string; accent?: string }
-      const bind = inputs.bind ?? c.id
-      m.set(bind, {
-        element: bind,
-        component: c.component,
-        label: inputs.label,
-        accent: inputs.accent,
-        layout: c.layout,
-      })
-    }
-    return m
-  }, [overlays, currentNode])
   const rt = sessionRef.current?.runtime
   const skinCtx: SkinCtx | undefined = snap && rt
     ? {
@@ -213,7 +191,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {/* 游戏 overlay 舞台：锚定视频实际显示矩形（object-fit:contain 后带黑边的那块）。
           HUD / QTE / 交互 / 结局横幅都相对这块定位，视频缩放/换比例时跟着视频走。 */}
       <VideoOverlayStage contentRect={contentRect}>
-      {/* 表现叠层 + 挂载 HUD（battleHpBar 等）：必须传 skinCtx，否则 HUD 皮肤在 overlay 表里找不到会静默丢弃。 */}
+      {/* 表现叠层（含 battleHpBar）：传 skinCtx 供绘制时 resolve bind→value。 */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         {(snap?.overlayMounts ?? []).map((m) => (
           <span key={m.mountId} style={{ display: 'contents' }}>
@@ -224,24 +202,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
             )}
           </span>
         ))}
-      </div>
-
-      {/* 内置 HUD 列：节点挂了 surface:'hud'、但实体未配已注册皮肤时兜底（有 battleHpBar 时走上方 overlayMounts）。 */}
-      <div style={{ position: 'absolute', top: 10, left: 12, width: 220, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {hudComp.size > 0 && Object.entries(snap?.hud.entities ?? {}).filter(([id]) => !hudComp.get(id)?.component).map(([id, e]) => {
-          const ratio = e.maxHp > 0 ? Math.max(0, Math.min(1, e.hp / e.maxHp)) : 0
-          const col = ratio > 0.5 ? '#22c55e' : ratio > 0.2 ? '#eab308' : '#ef4444'
-          return (
-            <div key={id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#fff', textShadow: '0 1px 3px #000' }}>
-                <span>{id}</span><span>{e.hp}/{e.maxHp}</span>
-              </div>
-              <div style={{ height: 9, background: 'rgba(0,0,0,0.55)', borderRadius: 5, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)' }}>
-                <div style={{ width: `${ratio * 100}%`, height: '100%', background: col, transition: 'width .25s' }} />
-              </div>
-            </div>
-          )
-        })}
       </div>
 
       {/* 交互层：铺满舞台=视频显示区。皮肤（防反/技能条）与默认按钮行各自绝对定位到

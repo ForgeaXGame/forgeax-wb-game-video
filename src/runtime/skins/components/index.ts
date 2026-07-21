@@ -3,12 +3,11 @@
  *
  * 默认表现/交互：floatText / dialogue / transition / choice / skill / qte / hotspot / filter / fx
  * 专属皮肤：battleParry / inkKou / inkYingMo / battleSkillBar
- * HUD / overlay：battleHpBar / bossHitCheer / panelA / panelB
+ * overlay：battleHpBar / bossHitCheer / panelA / panelB
  *
  * 加新组件 = 同文件导出契约+渲染，并在 EXTRA_COMPONENTS + installCoreSkins 各挂一行。
  */
 import {
-  registerHudRenderer,
   registerInteractionRenderer,
   registerInteractionSkin,
   registerOverlayRenderer,
@@ -141,8 +140,10 @@ export function skinDefaultAnchor(id: string | undefined): { x: number; y: numbe
   return INTERACTION_SKINS.find((s) => s.id === id)?.defaultAnchor
 }
 
-/** 可选 HUD 皮肤（供编辑器下拉）。 */
-export const HUD_SKINS: Array<{ id: string; label: string }> = [{ id: 'battleHpBar', label: '水墨血条' }]
+/** 血条类 overlay 组件（供编辑器下拉）。 */
+export const HP_BAR_COMPONENTS: Array<{ id: string; label: string }> = [
+  { id: 'battleHpBar', label: '水墨血条' },
+]
 
 function installCoreSkins(reg: SkinRegistry): void {
   reg.registerInteractionRenderer('choice', ChoiceButtons)
@@ -158,7 +159,7 @@ function installCoreSkins(reg: SkinRegistry): void {
   reg.registerInteractionSkin('inkKou', InkKouLayer)
   reg.registerInteractionSkin('inkYingMo', InkYingMoLayer)
   reg.registerInteractionSkin('battleSkillBar', BattleSkillLayer)
-  reg.registerHudRenderer('battleHpBar', BattleHpBar)
+  reg.registerOverlayRenderer('battleHpBar', BattleHpBar)
   reg.registerOverlayRenderer('bossHitCheer', BossHitCheer)
   reg.registerOverlayRenderer('panelA', PanelA)
   reg.registerOverlayRenderer('panelB', PanelB)
@@ -183,7 +184,7 @@ export function registerCoreSkins(): void {
   registerInteractionSkin('inkKou', InkKouLayer)
   registerInteractionSkin('inkYingMo', InkYingMoLayer)
   registerInteractionSkin('battleSkillBar', BattleSkillLayer)
-  registerHudRenderer('battleHpBar', BattleHpBar)
+  registerOverlayRenderer('battleHpBar', BattleHpBar)
   registerOverlayRenderer('bossHitCheer', BossHitCheer)
   registerOverlayRenderer('panelA', PanelA)
   registerOverlayRenderer('panelB', PanelB)

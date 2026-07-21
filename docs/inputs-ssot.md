@@ -38,8 +38,7 @@ interface ComponentEvent {          // 组件会吐哪些事件（= 出口 handl
 interface ComponentManifest {
   id: string
   label?: string
-  role: 'presentation' | 'interaction'   // 引擎调度分派（presentation→overlay / interaction→挂起）
-  surface?: 'hud'
+  role: 'presentation' | 'interaction'   // 引擎调度分派（presentation→overlay / interaction→挂起；B 阶段再收）
   inputs: ComponentInput[]        // 唯一输入声明（SSOT）
   events: ComponentEvent[]        // 组件吐出的事件；出口 handle = events（不再有 outputs()）
 }
@@ -77,7 +76,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 ## 4. 落地阶段（每阶段 tsc + vitest 必须绿）
 
 1. **Schema**：删 `ComponentEvent.payload`（✅ 已做）；`ComponentInput.default` 放宽为 `unknown`、加可选 `component`。
-2. **Registry**：`KindPlugin` 收敛为 manifest（`id/label/role/surface/inputs/events`）+ 渲染引用；删 `form/deriveInputsFromForm`；`getManifest` 直接投影；`deriveOutputs` 改为「events → handles」；`defaults` 由 `inputs[].default` 组装。
+2. **Registry**：`KindPlugin` 收敛为 manifest（`id/label/role/inputs/events`）+ 渲染引用；删 `form/deriveInputsFromForm`；`getManifest` 直接投影；`deriveOutputs` 改为「events → handles」；`defaults` 由 `inputs[].default` 组装。
 3. **core-kinds / 组件**：各 kind 的 `form:[...]` → `inputs:[...]`（复合项标 `component`）；补 `battleHpBar.inputs`（✅ 已做）。判定型（qte）把 `resolve` 逻辑下沉到皮肤 `emit`。
 4. **编辑器**：`KindFormFields` 改读 `manifest.inputs` 按 `valueType/options/component` 出控件并挂到 NodeInspector；spawn/QTE 检视器对齐 `inputs`。
 5. **值键 rename**：`params → inputs`（语义替换，避开 `URLSearchParams` 等无关词）。
@@ -92,7 +91,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 - ✅ 阶段 5/6（值键 `params→inputs`；demo `nodia.graph.json` 数据迁移）
 - ✅ **B（resolve 下沉）**：删 `resolve`/`continue`/`ResolveResult`；交互皮肤自判定后 `submit`(=emit) 最终 event id，
   引擎 `submitInteraction` 直接把它当 outcome 路由（超时 `submit(undefined)` 落 `inputs.defaultEvent`，兜底 `'fail'`）。
-- ✅ **manifest 化（吸收 C）**：`KindPlugin` 收敛为「manifest 数据（id/label/role/surface/inputs/events）
+- ✅ **manifest 化（吸收 C）**：`KindPlugin` 收敛为「manifest 数据（id/label/role/inputs/events）
   + 少量可选逃生舱（`render?`/`validate?`）」。**删掉 `outputs()`/`defaults()`/`present()` 方法**：
   - 出口 handle 由 `registry.handlesOf`（实例 `inputs.events` 优先，否则组件静态 `events`）派生；
   - 新建初值由 `buildDefaults(inputs)`（读 `inputs[].default`）组装；

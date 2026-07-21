@@ -99,7 +99,7 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 ### R4 · 盖在视频上的组件（皮肤：QTE/选择/血条/漂字/转场/对话）
 - 都是 **`src/runtime/skins/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
   `src/runtime/skins/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
-- **配置只记组件名**：交互元素 `params.component`、HUD 用 overlay child（`surface:'hud'`，如 `battleHpBar`）。契约见
+- **配置只记组件名**：交互 / 表现（含 `battleHpBar`）均为 overlay child 的 `component`。契约见
   `src/runtime/skins/components/CONTRACT.md`（只 import `react` + `./skinRuntime`，样式/滤镜/字体自注入）。
 
 ---

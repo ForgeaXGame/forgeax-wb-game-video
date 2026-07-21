@@ -306,12 +306,14 @@ export const OVERLAY_DEMO = {
           {
             id: 'playerHp',
             component: 'battleHpBar',
+            layout: { left: 0, top: 0, width: 1, height: 1 },
             trigger: { when: 'enter' },
             inputs: { bind: 'ent-player', label: '少主' },
           },
           {
             id: 'bossHp',
             component: 'battleHpBar',
+            layout: { left: 0, top: 0, width: 1, height: 1 },
             trigger: { when: 'enter' },
             inputs: { bind: 'ent-boss', label: '刀狂' },
           },
@@ -445,6 +447,7 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
     {
       id: 'battleHud/playerHp',
       component: 'battleHpBar',
+      layout: { left: 0, top: 0, width: 1, height: 1 },
       trigger: { when: 'enter' },
       inputs: { bind: 'ent-player', label: '少主' },
       source: { mountId: 'battleHud', overlayId: 'battleHud', childId: 'playerHp', nodeId: 'n-boss-slash' },
@@ -452,6 +455,7 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
     {
       id: 'battleHud/bossHp',
       component: 'battleHpBar',
+      layout: { left: 0, top: 0, width: 1, height: 1 },
       trigger: { when: 'enter' },
       inputs: { bind: 'ent-boss', label: '刀狂' },
       source: { mountId: 'battleHud', overlayId: 'battleHud', childId: 'bossHp', nodeId: 'n-boss-slash' },

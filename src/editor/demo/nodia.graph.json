@@ -90,6 +90,12 @@
             "inputs": {
               "bind": "ent-player",
               "label": "空藏"
+            },
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
             }
           },
           {
@@ -101,6 +107,12 @@
             "inputs": {
               "bind": "ent-boss",
               "label": "小怪"
+            },
+            "layout": {
+              "left": 0,
+              "top": 0,
+              "width": 1,
+              "height": 1
             }
           }
         ]
@@ -1452,7 +1464,13 @@
           "mediaPlayMode": "once",
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "enter",
@@ -1751,7 +1769,13 @@
           "mediaPlayMode": "loop",
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "wait",
@@ -1880,7 +1904,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "pu",
@@ -1937,7 +1967,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "pu2",
@@ -1994,7 +2030,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "zhong",
@@ -2051,7 +2093,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "z2",
@@ -2108,7 +2156,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "fuzhu",
@@ -2170,7 +2224,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "ult",
@@ -2227,7 +2287,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "tele",
@@ -2315,7 +2381,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "block",
@@ -2372,7 +2444,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "dodgeP",
@@ -2429,7 +2507,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             },
             {
               "overlay": "hurt",
@@ -2486,7 +2570,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }
@@ -2509,7 +2599,13 @@
           },
           "overlayNodes": [
             {
-              "overlay": "battleHud"
+              "overlay": "battleHud",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }

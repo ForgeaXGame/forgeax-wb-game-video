@@ -179,17 +179,16 @@ export function isPositionable(componentId: string): boolean {
  * - `role: 'interaction'` 完全绕开 mount/child layout，走独立的 `InteractionSnap` 渲染路径
  *   （见 rendererRegistry.tsx 里交互专属分支 / GraphPlaySurface 对 interaction 单独铺一层
  *   inset:0），不管 layout 写了什么都没地方读。
- * - `stageRelative: true` 的表现层组件（字幕/飘字/转场…）engine.ts 里 `selfPositioned` 恒真，
- *   渲染时套的是铺满舞台的 `inset:0` 盒（自身按 inputs.x/y 或固定百分比再定位），不会去读
- *   `childWrapStyle` 换算出的盒子——配了宽高也不会被消费。
- * 其余（HUD 走 `renderHudElement` 自己的 `layoutToCss`；通用/未来组件走 `childWrapStyle`）才真
- * 读这个盒子。素材属性面板据此把下面的 `SizeEditor` 置灰——不能让「拖了没反应」被当成 bug。
- * 只读 `getComponent`（registry 对外暴露的查询 API），不新增/改动 runtime 侧任何东西。
+ * - 声明了 `inputs.x/y` 的表现层（字幕/飘字等）自定位，通常配合 `STAGE_FILL_LAYOUT`，
+ *   不消费 Layout 宽高滑杆。
+ * 其余（通用组件走 `childWrapStyle` / layout→CSS）才真读这个盒子。
  */
 export function isSizable(componentId: string): boolean {
   const plugin = getComponent(componentId)
   if (!plugin) return true
-  return plugin.role !== 'interaction' && !plugin.stageRelative
+  if (plugin.role === 'interaction') return false
+  const keys = new Set((plugin.inputs ?? []).map((i) => i.key))
+  return !(keys.has('x') && keys.has('y'))
 }
 
 // ── 尺寸（width/height 归一化 0~1，相对舞台）——对所有组件通用，对应 `Layout.width/height` ──────
@@ -206,9 +205,7 @@ export function SizeEditor({
   height: number | undefined
   onChange: (next: Pick<Layout, 'width' | 'height'>) => void
   /**
-   * 该组件不读 Layout 盒子（`isSizable()` 为 false，如字幕/飘字/转场按 stageRelative 铺满整个
-   * 舞台自定位、交互类完全绕开 mount/child layout 走独立锚点——见 engine.ts 的
-   * `plugin?.stageRelative` / rendererRegistry.tsx 的交互专属渲染路径）时置灰：拖动滑杆预览/试玩
+   * 该组件不读 Layout 盒子（`isSizable()` 为 false）时置灰：拖动滑杆预览/试玩
    * 都不会有任何变化，不能悄悄啥都不做，得显式说明，否则会被当成「拖了没反应，是不是坏了」的 bug。
    */
   disabled?: boolean

@@ -1,4 +1,4 @@
-# 皮肤组件契约（overlay / interaction / HUD）
+# 皮肤组件契约（overlay / interaction）
 
 盖在视频上的展示层组件（QTE、选择、血条、漂字、转场…）都是**独立、自闭环、可替换**的 React 组件：
 按 `component`（顶层组件 id）注册进 registry，运行时以 `<Comp key=… {...props}/>` 挂成子元素（各自独立 fiber / hook 作用域），
@@ -9,7 +9,7 @@
 入口。要不要走某种专属交互（如时间轴多拍点），永远看各自 `inputs` 里声明了什么结构，没有跨组件的
 分类/家族标签。
 
-## 三类组件的 props（输入）与 submit（输出/事件）
+## 两类组件的 props（输入）与事件
 
 ### 1) interaction（交互层：QTE / 选择 / 技能条 / 热点）
 ```ts
@@ -25,21 +25,20 @@ function MySkin({ interaction, submit, ctx }: InteractionProps) { … }
   - 传 `undefined` = 走超时/缺省出口（引擎按 `inputs.defaultEvent` 处理）。
 - `ctx?.hud`：只读游戏态 `{ entities:{[id]:{hp,maxHp}}, vars:{[id]:number}, flags, score }`（做条件显隐/数值展示用）。
 
-### 2) overlay（表现层：漂字 / 转场 / 对话，纯展示无输入）
+### 2) overlay（表现层：漂字 / 转场 / 对话 / 血条）
 ```ts
-function MyOverlay({ overlay }: OverlayProps) { … }   // overlay = { elementId, component, inputs }
+function MyOverlay({ overlay, emit, ctx }: OverlayProps) { … }
+// overlay = { elementId, component, inputs }
 ```
-
-### 3) HUD（血条 / 数值，挂在 overlay 的 `surface:'hud'` 子件）
-```ts
-function MyBar({ element, ctx }: HudProps) { … }
-// element = { element, show?, component?, bind?, label?, accent?, layout? }；实体数值取 ctx.hud.entities[element.bind ?? element.element]
-```
+- 纯展示：读 `overlay.inputs`。
+- 血条等：作者配 `bind/attr/label`；绘制时用 `ctx.hud` resolve 出 value/max（见 `battleHpBar`）。
+- 非阻塞按钮：`emit(eventId)` → `session.emitEvent` → 挂载 `reactions`。
+- 子件/挂载需铺满舞台时配 `STAGE_FILL_LAYOUT`（`layout.ts`），不另挂 surface 标签。
 
 ## 注册 + 配置
 1. 写组件（见下"自闭环规则"）。
-2. 在 `skins/index.ts` 注册：`registerInteractionSkin('myId', MySkin)` 或 `registerHudRenderer('myBar', MyBar)`；
-   并加进 `INTERACTION_SKINS` / `HUD_SKINS` 以出现在编辑器下拉。
+2. 在 `skins/components/index.ts` 注册：`registerOverlayRenderer` / `registerInteractionSkin`；
+   交互皮进 `INTERACTION_SKINS`，血条进 `HP_BAR_COMPONENTS`（编辑器下拉）。
 3. json 对齐名字：`OverlayChild.component = 'myId'`（与 `id` 同级，**不要**写进 `inputs.component`——顶层
    `component` 字段就是唯一来源）。进 demo：`demo/nodia.graph.json`。
 
