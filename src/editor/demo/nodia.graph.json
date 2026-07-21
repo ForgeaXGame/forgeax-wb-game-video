@@ -187,7 +187,8 @@
             },
             "inputs": {
               "x": 0.08,
-              "y": 0.16
+              "y": 0.16,
+              "text": "{v}"
             }
           },
           {
@@ -204,7 +205,8 @@
             },
             "inputs": {
               "x": 0.92,
-              "y": 0.16
+              "y": 0.16,
+              "text": "{v}"
             }
           }
         ]
@@ -372,10 +374,7 @@
               "when": "enter"
             },
             "inputs": {
-              "qteKind": "parry",
-              "windowMs": 200,
               "glyph": "叩",
-              "timeoutMs": 200,
               "events": [
                 {
                   "id": "pass",
@@ -389,9 +388,11 @@
               "cues": [
                 {
                   "id": "kou-0",
+                  "x": 0.5,
+                  "y": 0.45,
                   "appearAt": 0,
-                  "targetAt": 100,
-                  "endAt": 200
+                  "targetAt": 400,
+                  "endAt": 1000
                 }
               ],
               "defaultEvent": "fail"
@@ -1692,7 +1693,8 @@
               "layout": {
                 "left": 0,
                 "top": 0,
-                "width": 1
+                "width": 1,
+                "height": 1
               },
               "reactions": [
                 {
@@ -1705,9 +1707,8 @@
                       "kind": "spawn",
                       "from": "readouts/bossHp",
                       "inputs": {
-                        "text": {
-                          "expr": "entity.ent-boss.attr.hp"
-                        }
+                        "text": "{v}",
+                        "expr": "entity.ent-boss.attr.hp"
                       },
                       "ttlMs": 1500
                     }
@@ -1723,9 +1724,8 @@
                       "kind": "spawn",
                       "from": "readouts/heroHp",
                       "inputs": {
-                        "text": {
-                          "expr": "entity.ent-player.attr.hp"
-                        }
+                        "text": "{v}",
+                        "expr": "entity.ent-player.attr.hp"
                       },
                       "ttlMs": 1500
                     }
@@ -1786,7 +1786,8 @@
               "layout": {
                 "left": 0,
                 "top": 0,
-                "width": 1
+                "width": 1,
+                "height": 1
               },
               "reactions": [
                 {
@@ -1799,9 +1800,8 @@
                       "kind": "spawn",
                       "from": "readouts/bossHp",
                       "inputs": {
-                        "text": {
-                          "expr": "entity.ent-boss.attr.hp"
-                        }
+                        "text": "{v}",
+                        "expr": "entity.ent-boss.attr.hp"
                       },
                       "ttlMs": 1500
                     }
@@ -1817,9 +1817,8 @@
                       "kind": "spawn",
                       "from": "readouts/heroHp",
                       "inputs": {
-                        "text": {
-                          "expr": "entity.ent-player.attr.hp"
-                        }
+                        "text": "{v}",
+                        "expr": "entity.ent-player.attr.hp"
                       },
                       "ttlMs": 1500
                     }
@@ -1998,7 +1997,13 @@
                     }
                   ]
                 }
-              ]
+              ],
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              }
             }
           ]
         }

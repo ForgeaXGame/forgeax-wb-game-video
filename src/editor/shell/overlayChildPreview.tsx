@@ -5,7 +5,7 @@
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type { OverlayChild } from '../../runtime/schema/graph-schema'
-import { defaultsForComponent } from '../../runtime/registry/component-registry'
+import { defaultsForComponent } from './editors'
 import type { SkinCtx, SkinRegistry } from '../../runtime/skins/rendererRegistry'
 import { childWrapStyle, layoutHasExplicitSize } from '../../runtime/schema/layout'
 import { applyStyleLockedEventParams } from '../video/graphMaterialOps'

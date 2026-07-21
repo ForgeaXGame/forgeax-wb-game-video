@@ -19,7 +19,7 @@ import type {
 } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
-import { getComponent, hasCuePointsInput, hasOptionEventsInput } from '../../runtime/registry/component-registry'
+import { buildDefaults, getComponent } from '../../runtime/registry/component-registry'
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
 import { ValueExprEditor } from './ValueExprEditor'
 
@@ -172,6 +172,35 @@ export function isPositionable(componentId: string): boolean {
   const inputs = getComponent(componentId)?.inputs
   if (!inputs) return true
   return inputs.some((i) => i.key === 'x') && inputs.some((i) => i.key === 'y')
+}
+
+/** 编辑器展示名：读组件 `label`；未注册则退回 id。 */
+export function componentTypeLabel(componentId: string): string {
+  return getComponent(componentId)?.label || componentId
+}
+
+/** 编辑器新建实例：由组件 inputs[].default 组装初值。 */
+export function defaultsForComponent(componentId: string): Record<string, unknown> {
+  return buildDefaults(getComponent(componentId)?.inputs)
+}
+
+/**
+ * 编辑器：组件 inputs 是否声明了多拍点结构（`component: 'qteCues'`）。
+ * 有 ⇒ 时间轴走拍点交互；组件侧只需在 inputs 里声明该项，不必另加分类标签。
+ */
+export function hasCuePointsInput(componentId: string): boolean {
+  const inputs = getComponent(componentId)?.inputs
+  return !!inputs?.some((i) => i.component === 'qteCues')
+}
+
+/**
+ * 编辑器：组件 inputs 是否声明了选项出口清单（`component: 'events'`）。
+ * 已有拍点结构的走拍点分支，不落进本分支。
+ */
+export function hasOptionEventsInput(componentId: string): boolean {
+  if (hasCuePointsInput(componentId)) return false
+  const inputs = getComponent(componentId)?.inputs
+  return !!inputs?.some((i) => i.component === 'events')
 }
 
 /**

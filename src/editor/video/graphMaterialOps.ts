@@ -32,8 +32,14 @@ import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/skins/components/Choice'
 import type { FloatTextParams } from '../../runtime/skins/components/FloatText'
 import type { QteCue } from '../../runtime/skins/components/Qte'
-import { componentHandles, componentTypeLabel, defaultsForComponent, getComponent, hasCuePointsInput, hasOptionEventsInput } from '../../runtime/registry/component-registry'
-import { isPositionable } from '../shell/editors'
+import { componentHandles, getComponent } from '../../runtime/registry/component-registry'
+import {
+  componentTypeLabel,
+  defaultsForComponent,
+  hasCuePointsInput,
+  hasOptionEventsInput,
+  isPositionable,
+} from '../shell/editors'
 import { INTERACTION_SKINS } from '../../runtime/skins/components'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'

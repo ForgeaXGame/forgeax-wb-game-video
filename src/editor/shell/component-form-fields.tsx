@@ -13,7 +13,8 @@
 import type { CSSProperties, JSX } from 'react'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
 import type { NumOrExpr } from '../../runtime/schema/graph-schema'
-import { getComponentManifest, hasOptionEventsInput } from '../../runtime/registry/component-registry'
+import { getComponentManifest } from '../../runtime/registry/component-registry'
+import { hasOptionEventsInput } from './editors'
 import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
 import { ColorPicker } from './ColorPicker'
 

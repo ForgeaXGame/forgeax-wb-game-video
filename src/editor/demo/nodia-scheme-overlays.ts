@@ -76,14 +76,14 @@ export const NODIA_SCHEME_READOUTS: Overlay = {
       component: 'floatText',
       layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
-      inputs: { x: 0.08, y: 0.16 },
+      inputs: { text: '{v}', x: 0.08, y: 0.16 },
     },
     {
       id: 'heroHp',
       component: 'floatText',
       layout: { ...STAGE_FILL_LAYOUT },
       trigger: { when: 'enter' },
-      inputs: { x: 0.92, y: 0.16 },
+      inputs: { text: '{v}', x: 0.92, y: 0.16 },
     },
   ],
 }
@@ -264,10 +264,7 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
         "when": "enter"
       },
       "inputs": {
-        "qteKind": "parry",
-        "windowMs": 200,
         "glyph": "叩",
-        "timeoutMs": 200,
         "events": [
           {
             "id": "pass",
@@ -281,9 +278,11 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
         "cues": [
           {
             "id": "kou-0",
+            "x": 0.5,
+            "y": 0.45,
             "appearAt": 0,
-            "targetAt": 100,
-            "endAt": 200
+            "targetAt": 400,
+            "endAt": 1000
           }
         ],
         "defaultEvent": "fail"

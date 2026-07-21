@@ -37,9 +37,8 @@ import {
 } from '../graphMaterialOps'
 import type { MaterialItem } from '../materialTimelineShared'
 
-// `hasCuePointsInput`/`hasOptionEventsInput` 都查 registry 里各组件自己的 inputs，任何用到
-// qteElement/choiceElement 的用例（含本文件顶部几个 describe）都需要先注册核心组件——放在文件级
-// beforeAll，不依赖某个 describe 恰好排在后面的顺序。
+// `hasCuePointsInput`/`hasOptionEventsInput`（editors）按组件 inputs 结构判定，任何用到
+// qteElement/choiceElement 的用例都需要先注册核心组件——放在文件级 beforeAll。
 beforeAll(() => {
     registerCoreSkins()
 })
