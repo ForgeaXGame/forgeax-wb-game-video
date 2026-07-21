@@ -261,7 +261,8 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
     {
       "id": "kou",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 9000
       },
       "inputs": {
         "glyph": "叩",
@@ -278,13 +279,14 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
         "cues": [
           {
             "id": "kou-0",
-            "x": 0.5,
-            "y": 0.45,
+            "x": 0.58,
+            "y": 0.39,
             "appearAt": 0,
-            "targetAt": 400,
-            "endAt": 1000
+            "targetAt": 1000,
+            "endAt": 6100
           }
         ],
+        "timeoutMs": 6100,
         "defaultEvent": "fail"
       },
       "component": "inkKou",
@@ -301,7 +303,8 @@ export const NODIA_NODE_SCHEME_N_FOLLOW: Overlay = {
     {
       "id": "n_follow-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 15093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -333,7 +336,8 @@ export const NODIA_NODE_SCHEME_N_LAND: Overlay = {
     {
       "id": "n_land-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 16200
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -365,7 +369,8 @@ export const NODIA_NODE_SCHEME_N_NODRINK: Overlay = {
     {
       "id": "n_nodrink-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 15093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -397,7 +402,8 @@ export const NODIA_NODE_SCHEME_N_NOFOLLOW: Overlay = {
     {
       "id": "n_nofollow-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 15093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -429,7 +435,8 @@ export const NODIA_NODE_SCHEME_N_RIVER: Overlay = {
     {
       "id": "n_river-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 15069
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -487,7 +494,8 @@ export const NODIA_NODE_SCHEME_N_TEA: Overlay = {
     {
       "id": "n_tea-c",
       "trigger": {
-        "when": "enter"
+        "when": "at",
+        "ms": 15093
       },
       "inputs": {
         "timeoutMs": 8000,

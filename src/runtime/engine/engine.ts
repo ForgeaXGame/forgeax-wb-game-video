@@ -410,10 +410,18 @@ export class GraphRuntime {
   // ── tick / 演出结束 ─────────────────────────────────────────────────────────
   /** 推进节点时钟：触发到点的 at 元素 + window 时段叠层。 */
   tick(elapsedMs: number): RuntimeDirective[] {
+    this.flushTimeline(elapsedMs)
+    return this.drain()
+  }
+
+  /**
+   * 把节点时钟推到 elapsedMs，并补跑到点的 at / window / spawn 收割。
+   * 不 drain——供 tick 与 onPerformanceEnd 共用（片尾也必须先冲刷 at，再决定是否 advance）。
+   */
+  private flushTimeline(elapsedMs: number): void {
     this.state.elapsedMs = elapsedMs
     const node = this.node(this.state.currentNodeId)
-    if (!node) return this.drain()
-    if (this.state.phase !== 'playing') return this.drain()
+    if (!node || this.state.phase !== 'playing') return
 
     for (const el of this.childrenOf(node)) {
       if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
@@ -426,7 +434,6 @@ export class GraphRuntime {
     this.tickWindows(node, elapsedMs)
     this.reapSpawns(elapsedMs)
     this.consumeRedirect()
-    return this.drain()
   }
 
   /** window 时段：到 startMs 显示、到 endMs 移除（表现层叠层的可见时段，如漂字/计时器只显示某段）。 */
@@ -453,11 +460,18 @@ export class GraphRuntime {
     }
   }
 
-  /** 演出（视频/时长）结束：若未挂起则自动沿出口推进（收尾副作用见 complete reactions）。 */
+  /**
+   * 演出（视频/时长）结束：先把时钟冲到节点时长并补挂 `trigger.at`（如 video_end 才出现的應/默），
+   * 再交给 NodeKind.next（缺省 advance；仅有 event 边时 advanceAuto 会停住等待 emit）。
+   */
   onPerformanceEnd(): RuntimeDirective[] {
     const node = this.node(this.state.currentNodeId)
     if (!node || this.state.phase !== 'playing') return this.drain()
     this.chain = 0
+    const dur = typeof node.data.durationMs === 'number' ? node.data.durationMs : undefined
+    const endMs = Math.max(this.state.elapsedMs, dur ?? this.state.elapsedMs)
+    this.flushTimeline(endMs)
+    if (this.state.phase !== 'playing') return this.drain()
     if (this.consumeRedirect()) return this.drain()
     // 时间驱动唤醒（媒体播完/时长到点）→ 交由 NodeKind.next 决定走向（缺省 advance）。
     const kind = this.nodeKinds.resolve(node)

@@ -31,6 +31,59 @@ describe('GraphRuntime advance', () => {
     expect(rt.state.traversedEdgeIds.has('e')).toBe(true)
   })
 
+  it('performanceEnd 先冲刷 trigger.at=durationMs（video_end 选项才会挂上）', () => {
+    registerComponent('choice', {
+      events: [{ id: 'ying' }, { id: 'mo' }],
+    })
+    const graph: GameGraph = {
+      nodes: [
+        node('river', {
+          durationMs: 1500,
+          media: { kind: 'VIDEO', ref: 'clip' },
+          overlayNodes: [{ overlay: 'ov-river' }],
+        }),
+        node('next', {}),
+      ],
+      edges: [
+        { id: 'e-ying', source: 'river', target: 'next', sourceHandle: 'ying', targetHandle: 'in' },
+        { id: 'e-mo', source: 'river', target: 'next', sourceHandle: 'mo', targetHandle: 'in' },
+      ],
+    }
+    const scn = scnOf(graph, {
+      ui: {
+        overlays: {
+          'ov-river': {
+            id: 'ov-river',
+            children: [
+              {
+                id: 'ym',
+                component: 'choice',
+                trigger: { when: 'at', ms: 1500 },
+                inputs: {
+                  events: [
+                    { id: 'ying', label: '應' },
+                    { id: 'mo', label: '默' },
+                  ],
+                  timeoutMs: 8000,
+                  defaultEvent: 'mo',
+                },
+              },
+            ],
+          },
+        },
+      },
+    })
+    const rt = new GraphRuntime(scn.graph, scn)
+    const dirsStart = rt.start()
+    // 进节点时 at=1500 尚未触发
+    expect(dirsStart.filter(isRenderOverlay).some((d) => d.elementId === 'ov-river/ym' || d.elementId === 'ym')).toBe(false)
+    // 模拟视频 onEnded：不经过 tick(1500)，直接 performanceEnd
+    const dirsEnd = rt.onPerformanceEnd()
+    expect(rt.state.currentNodeId).toBe('river') // 仅有 event 边 → 停住等待
+    expect(dirsEnd.filter(isRenderOverlay).some((d) => d.elementId.endsWith('/ym') || d.elementId === 'ym')).toBe(true)
+    unregisterComponent('choice')
+  })
+
   it('conditional gateway routes by hp (instant node)', () => {
     const bothAlive = { all: [
       { type: 'attrRatio' as const, entityId: 'ent-player', attr: 'hp', op: 'gt' as const, value: 0 },
