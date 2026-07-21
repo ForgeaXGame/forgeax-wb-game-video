@@ -21,6 +21,7 @@ import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { listVideoAssetInfos, resolveMediaSrc, videoDurationCapReached } from './media'
+import { useClipPerformanceEnd } from './useClipPerformanceEnd'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode, insertSubFlowPackAfter, makeEmptySubFlowPack, makeSubFlowPackContainer } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
@@ -238,6 +239,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // overlay 舞台锚视频实际画面矩形（object-fit:contain），与 GraphPlaySurface/GraphPlayer 同源，避免有黑边时叠层错位。
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
+  // playEpoch：同节点 jump 重播时清闸（clip.nodeId 不变）
+  const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap.clip?.nodeId, `${runKey}:${playEpoch}`)
 
   useEffect(() => {
     setSnap(sessionRef.current.start())
@@ -249,9 +252,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
     // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
     if (snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
-    const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
+    const t = setTimeout(() => endPerformance(), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
+  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId, endPerformance])
 
   /** 从此试玩：打开试玩浮层 + 强制视频 remount，再 seek 到该节点（末节点同 id 再点也能重播）。 */
   const jump = useCallback((nodeId: string) => {
@@ -447,13 +450,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   onLoadedMetadata={recomputeRect}
                   onEnded={() => {
                     if (snap.clip?.loop) return
-                    setSnap(sessionRef.current.performanceEnd())
+                    endPerformance()
                   }}
                   onTimeUpdate={(e) => {
                     const el = e.currentTarget
                     const nowMs = Math.floor(el.currentTime * 1000)
                     if (videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
-                      setSnap(sessionRef.current.performanceEnd())
+                      el.pause()
+                      endPerformance()
                       return
                     }
                     setSnap(sessionRef.current.tick(nowMs))

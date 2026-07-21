@@ -8,7 +8,7 @@
  *   - setBrushFontUrl / ensureBrushFont：书法字体 URL 由 **editor** 在 init 注入（runtime 不依赖 assets）。
  *   - useDefaultEventTimeout：限时组件到点自 emit(defaultEvent)。
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 const injected = new Map<string, HTMLStyleElement>()
 
@@ -22,7 +22,12 @@ export function resolveTimeoutMs(inputs: Record<string, unknown> | undefined): n
   return typeof raw === 'number' && raw > 0 ? raw : undefined
 }
 
-/** 组件挂载后计时，到点 emit(defaultEvent ?? 'fail')；preview 不跑。 */
+/**
+ * 组件挂载后计时，到点 emit(defaultEvent ?? 'fail')；preview 不跑。
+ *
+ * emit 用 ref 持有——试玩面每帧 setSnap 会换新的内联 emit，若进 effect deps
+ * 会把 timeout 清掉重开，限时默认选项（如應/默 8s→默）永远到不了点。
+ */
 export function useDefaultEventTimeout(
   emit: ((key: string) => void) | undefined,
   inputs: Record<string, unknown> | undefined,
@@ -33,11 +38,13 @@ export function useDefaultEventTimeout(
     typeof inputs?.defaultEvent === 'string' && inputs.defaultEvent
       ? inputs.defaultEvent
       : 'fail'
+  const emitRef = useRef(emit)
+  emitRef.current = emit
   useEffect(() => {
-    if (preview || !emit || timeoutMs == null) return
-    const t = setTimeout(() => emit(defaultEvent), timeoutMs)
+    if (preview || !emitRef.current || timeoutMs == null) return
+    const t = setTimeout(() => emitRef.current?.(defaultEvent), timeoutMs)
     return () => clearTimeout(t)
-  }, [emit, timeoutMs, defaultEvent, preview])
+  }, [timeoutMs, defaultEvent, preview])
 }
 
 export function injectCss(id: string, css: string): void {

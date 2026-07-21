@@ -417,7 +417,7 @@
             "id": "n_follow-c",
             "trigger": {
               "when": "at",
-              "ms": 15093
+              "ms": 12093
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -432,8 +432,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -453,7 +453,7 @@
             "id": "n_land-c",
             "trigger": {
               "when": "at",
-              "ms": 16200
+              "ms": 13200
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -468,8 +468,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -489,7 +489,7 @@
             "id": "n_nodrink-c",
             "trigger": {
               "when": "at",
-              "ms": 15093
+              "ms": 12093
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -504,8 +504,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -525,7 +525,7 @@
             "id": "n_nofollow-c",
             "trigger": {
               "when": "at",
-              "ms": 15093
+              "ms": 12093
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -540,8 +540,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -561,7 +561,7 @@
             "id": "n_river-c",
             "trigger": {
               "when": "at",
-              "ms": 15069
+              "ms": 12069
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -576,8 +576,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -621,7 +621,7 @@
             "id": "n_tea-c",
             "trigger": {
               "when": "at",
-              "ms": 15093
+              "ms": 12093
             },
             "inputs": {
               "timeoutMs": 8000,
@@ -636,8 +636,8 @@
                 }
               ],
               "defaultEvent": "mo",
-              "x": 0.72,
-              "y": 0.78
+              "x": 0.5,
+              "y": 0.88
             },
             "component": "inkYingMo",
             "layout": {
@@ -1248,7 +1248,7 @@
           "reactions": [
             {
               "when": {
-                "type": "complete"
+                "type": "enter"
               },
               "do": [
                 {
@@ -1495,34 +1495,6 @@
             "kind": "VIDEO",
             "ref": "narr-lotus"
           },
-          "reactions": [
-            {
-              "when": {
-                "type": "complete"
-              },
-              "do": [
-                {
-                  "kind": "effect",
-                  "effects": [
-                    {
-                      "id": "lotus-clue",
-                      "kind": "var",
-                      "varId": "lotusClue",
-                      "op": "set",
-                      "value": 1
-                    },
-                    {
-                      "id": "lotus-qi",
-                      "kind": "var",
-                      "varId": "qi",
-                      "op": "add",
-                      "value": 1
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "overlayNodes": []
         }
       },
@@ -1545,7 +1517,7 @@
           "reactions": [
             {
               "when": {
-                "type": "complete"
+                "type": "enter"
               },
               "do": [
                 {
@@ -1556,7 +1528,7 @@
                       "kind": "var",
                       "varId": "lotusClue",
                       "op": "set",
-                      "value": 0
+                      "value": 1
                     }
                   ]
                 }

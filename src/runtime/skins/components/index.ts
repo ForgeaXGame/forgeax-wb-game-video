@@ -132,7 +132,7 @@ export const INTERACTION_SKINS: Array<{
 }> = [
   { id: 'battleParry', label: '防反 QTE（A/B 收圈）', positioning: 'fixed', defaultEvents: battleParryDefaults.events },
   { id: 'inkKou', label: '叩击 QTE（单点）', positioning: 'point', defaultAnchor: { x: 0.58, y: 0.39 }, defaultEvents: inkKouDefaults.events },
-  { id: 'inkYingMo', label: '應/默 抉择', positioning: 'point', defaultAnchor: { x: 0.72, y: 0.78 }, defaultEvents: inkYingMoDefaults.events },
+  { id: 'inkYingMo', label: '應/默 抉择', positioning: 'point', defaultAnchor: { x: 0.5, y: 0.88 }, defaultEvents: inkYingMoDefaults.events },
   { id: 'battleSkillBar', label: '战斗技能条', positioning: 'point', defaultAnchor: { x: 0.5, y: 0.88 }, defaultEvents: battleSkillBarDefaults.events },
 ]
 
