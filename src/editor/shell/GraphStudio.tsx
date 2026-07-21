@@ -102,6 +102,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const selected = useGraphScenario((s) => s.selectedNodeId)
   const setSelected = useGraphScenario((s) => s.setSelectedNode)
   const [playOpen, setPlayOpen] = useState(false)
+  /** 「从此试玩」钉住的入口；浮层「重开」始终回到此节点（可随后沿边/事件前进）。 */
+  const [playFromNodeId, setPlayFromNodeId] = useState<string | null>(null)
   /** 每次 start / 从此试玩 递增，强制 <video> remount——末节点同 id 再 jump 时否则 key 不变、播完不重开。 */
   const [playEpoch, setPlayEpoch] = useState(0)
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
@@ -256,12 +258,22 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     return () => clearTimeout(t)
   }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId, endPerformance])
 
-  /** 从此试玩：打开试玩浮层 + 强制视频 remount，再 seek 到该节点（末节点同 id 再点也能重播）。 */
+  /** 从此试玩：钉住入口 + 打开浮层 + remount 视频，再 seek 到该节点（末节点同 id 再点也能重播）。 */
   const jump = useCallback((nodeId: string) => {
+    setPlayFromNodeId(nodeId)
     setPlayOpen(true)
     setPlayEpoch((n) => n + 1)
     setSnap(sessionRef.current.jump(nodeId))
   }, [])
+  /** 浮层重开：回到钉住的入口节点；无钉住时回退整局 bumpRun。 */
+  const restartPlayFrom = useCallback(() => {
+    if (!playFromNodeId) {
+      bumpRun()
+      return
+    }
+    setPlayEpoch((n) => n + 1)
+    setSnap(sessionRef.current.jump(playFromNodeId))
+  }, [playFromNodeId, bumpRun])
   const traversed = useMemo(() => new Set(snap.traversedEdgeIds), [snap.traversedEdgeIds])
 
   const visibleNodeIds = useMemo(() => {
@@ -426,7 +438,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 {snap.currentNodeId ? ` · ${snap.clip?.name || nameOf(snap.currentNodeId)}` : ''}
               </span>
               <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button onClick={bumpRun} title="重开" style={{ background: 'none', border: 'none', color: '#f08840', cursor: 'pointer', padding: 0 }}>▶ 重开</button>
+                <button onClick={restartPlayFrom} title={playFromNodeId ? `重开 · 回到 ${nameOf(playFromNodeId)}` : '重开'} style={{ background: 'none', border: 'none', color: '#f08840', cursor: 'pointer', padding: 0 }}>▶ 重开</button>
                 <button onClick={() => setPlayOpen(false)} title="隐藏" style={{ background: 'none', border: 'none', color: '#9aa2b1', cursor: 'pointer', padding: 0 }}>✕</button>
               </span>
             </div>
@@ -488,29 +500,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               </VideoOverlayStage>
             </div>
             </PlayerRootContext.Provider>
-            <div style={{ padding: 8, borderTop: '1px solid #2e2924', fontSize: 12, background: '#121316' }}>
-              {Object.entries(snap.hud.entities).map(([id, e]) => {
-                const ratio = e.maxHp > 0 ? Math.max(0, Math.min(1, e.hp / e.maxHp)) : 0
-                const col = ratio > 0.5 ? '#22c55e' : ratio > 0.2 ? '#eab308' : '#ef4444'
-                return (
-                  <div key={id} style={{ marginBottom: 5 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, opacity: 0.85 }}>
-                      <span>{id}</span>
-                      <span>{e.hp}/{e.maxHp}</span>
-                    </div>
-                    <div style={{ height: 6, background: '#2a2d33', borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: `${ratio * 100}%`, height: '100%', background: col, transition: 'width .25s' }} />
-                    </div>
-                  </div>
-                )
-              })}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4, opacity: 0.85, fontSize: 11 }}>
-                {Object.entries(snap.hud.vars).map(([k, v]) => (
-                  <span key={k} style={{ padding: '1px 8px', background: '#2a2d33', borderRadius: 8 }}>{k} {v}</span>
-                ))}
-                <span style={{ padding: '1px 8px', background: '#2a2d33', borderRadius: 8 }}>score {snap.hud.score}</span>
-              </div>
-            </div>
           </div>
         )}
       </div>
