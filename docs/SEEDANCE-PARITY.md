@@ -23,7 +23,7 @@
 | 限时选择 / QTE | `timeoutMs`/`windowMs`/`durationMs` 归一 | 🟢 |
 | call/return | `subFlow` / `subFlowPack`；叶子无出边自动弹栈 | 🟢 |
 | 回环 | 显式边（不用 `returnsToCaller`） | 🟢 |
-| Boss / 血条 | overlay `surface:'hud'` + skins | 🟢 |
+| Boss / 血条 | overlay `battleHpBar` + skins（绘制时 resolve） | 🟢 |
 | 结算扣血 | node/mount `reactions` effect（可 `{expr}`） | 🟢 |
 | 条件分支 | `edge.data.condition` + 局级 `scenario.reactions`（state→goto） | 🟢 |
 | 结局标记 | **无** `data.end`；无出边且栈空 → ended | 🟢 |
@@ -44,4 +44,4 @@
 |---|---|
 | Overlay 契约 | `docs/superpowers/specs/2026-07-13-wb-game-video-screen-slot-contract-design.md` |
 | 类型 SSOT | `src/runtime/schema/node-config-schema.ts` + `graph-schema.ts` |
-| 皮肤契约 | `src/runtime/skins/components/CONTRACT.md` |
+| 皮肤 props / 注册 | `src/runtime/skins/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |

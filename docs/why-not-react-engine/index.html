@@ -314,7 +314,7 @@
           </tr>
           <tr>
             <td class="cap">交互出边</td>
-            <td class="engine">Skin <code>submit(key)</code> → Kind.resolve → handle → edge</td>
+            <td class="engine">Skin <code>emit(key)</code> → emitComponentEvent → reactions / handle → edge</td>
             <td class="react">onClick 里直接改血 / navigate</td>
             <td>玩法绑死在组件；换皮、复用 overlay、图边 SSOT 全崩</td>
           </tr>
@@ -434,7 +434,7 @@
           <tr>
             <td class="cap">Skin</td>
             <td>React 组件（如 <code>BossHitCheer</code>）</td>
-            <td>长相、本地 UI 态、按 params 画、submit(event)</td>
+            <td>长相、本地 UI 态、按 inputs 画、emit(event)</td>
             <td>扣血、goto、读全局 store 改世界</td>
           </tr>
           <tr>
@@ -455,14 +455,14 @@
   ├─ ui.overlays.*          ← 界面包（children / layout / 默认 params）
   ├─ nodes[].overlayNodes   ← 挂到视频上
   ├─ nodes[].reactions      ← watch / shown / hidden / event …
-  └─ edges                  ← sourceHandle ↔ exits / submit
+  └─ edges                  ← sourceHandle ↔ events / emit
         │
         ▼
    GraphRuntime（纯 TS，无 React）
         │  enter / tick(ms) / applyEffects
         │  写屏障 → checkWatch（pull-diff）
         │  spawn → renderOverlay(+ttl) / removeOverlay
-        │  submit → resolve → 选边 → jump/enter
+        │  emitEvent → reactions / 选边 → jump/enter
         ▼
    RuntimeDirective[]
         │
@@ -471,8 +471,8 @@
                                         │
                                         ▼
                                    Skin 组件树（React）
-                                   只读 params / ctx.hud
-                                   只出 submit(key)</div>
+                                   只读 inputs / ctx.hud
+                                   只出 emit(key)</div>
       <p class="muted" style="margin-top:12px">
         若把中间「GraphRuntime」整段换成 React 树，箭头会变成：
         JSON → fiber mount → useEffect 改世界 → 再渲染。

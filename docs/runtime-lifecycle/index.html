@@ -227,6 +227,13 @@
     </header>
 
     <section id="layers">
+      <div class="callout" style="margin-bottom:18px">
+        <strong>2026-07-21 修订：</strong>已删除 <code>role</code> / <code>surface</code>、
+        <code>openInteraction</code> / <code>submitInteraction</code> / <code>awaitInteraction</code> /
+        独立 <code>snapshot.interaction</code>。全部组件 = <code>renderOverlay</code> →
+        <code>overlayMounts</code>；玩家结果 = 皮肤 <code>emit</code> → <code>emitComponentEvent</code>；
+        相位仅 <code>idle | playing | ended</code>；超时由皮肤自 emit <code>defaultEvent</code>。
+      </div>
       <h2>1. 分层：谁管什么</h2>
       <p class="lead">引擎只发<strong>指令</strong>；Session 合成<strong>快照</strong>；Player 负责媒体时钟与皮肤渲染。</p>
       <div class="layers">
@@ -236,19 +243,19 @@
         </div>
         <div class="layer">
           <div class="name">GraphRuntime</div>
-          <div class="desc">纯状态机。读 scenario、推进 phase、展开 overlay children、resolve 交互、选边、施加 effects。输出 <code>RuntimeDirective[]</code>。</div>
+          <div class="desc">纯状态机。读 scenario、推进 phase、展开 overlay children、收组件 <code>emit</code>、选边、施加 effects。输出 <code>RuntimeDirective[]</code>。</div>
         </div>
         <div class="layer">
           <div class="name">GraphSession</div>
-          <div class="desc"><code>apply(directives)</code> → <code>SessionSnapshot</code>（clip / overlays / interaction / hud / banner / log）。</div>
+          <div class="desc"><code>apply(directives)</code> → <code>SessionSnapshot</code>（clip / overlayMounts / hud / banner / log）。</div>
         </div>
         <div class="layer">
           <div class="name">PlaySurface / Player</div>
-          <div class="desc">播视频；<code>onTimeUpdate → tick</code>；<code>onEnded → performanceEnd</code>；皮肤 <code>submit(input)</code>；HUD 从节点 overlay 里筛 <code>surface:'hud'</code>。</div>
+          <div class="desc">播视频；<code>onTimeUpdate → tick</code>；<code>onEnded → performanceEnd</code>；皮肤 <code>emit(event)</code> → <code>session.emitEvent</code>；HUD/交互均在 <code>overlayMounts</code> 里画。</div>
         </div>
         <div class="layer">
-          <div class="name">Kind / Skin</div>
-          <div class="desc"><code>KindRegistry</code>：role + resolve 出 outcome；<code>SkinRegistry</code>：React 呈现（parry / kou / choice / hpBar…）。</div>
+          <div class="name">Component / Skin</div>
+          <div class="desc"><code>ComponentRegistry</code>：inputs + events；<code>SkinRegistry</code>：统一 <code>OverlayProps</code>（parry / kou / choice / hpBar…），无 role/surface。</div>
         </div>
       </div>
       <div class="card" style="margin-top:16px">
@@ -260,7 +267,7 @@ flowchart LR
   Session --> RT["GraphRuntime"]
   RT -->|"RuntimeDirective[]"| Session
   Session -->|"SessionSnapshot"| UI["PlaySurface / Player"]
-  UI -->|"tick / performanceEnd / submit"| Session
+  UI -->|"tick / performanceEnd / emitEvent"| Session
   UI --> Skins["SkinRegistry"]
   RT --> Expand["expand-overlay"]
   Expand --> Catalog["ui.overlays ⊕ overlayNodes"]
@@ -287,8 +294,8 @@ sequenceDiagram
   App->>Store: ensureBoot(game, demo)（试玩）
   Store-->>App: scn() → GameScenario
   App->>S: new GraphSession(scenario)
-  S->>S: createCoreKindRegistry / SkinRegistry
-  S->>RT: new GraphRuntime(graph, scenario, kinds, packs)
+  S->>S: createDefaultComponentRegistry / SkinRegistry
+  S->>RT: new GraphRuntime(graph, scenario, components, packs)
   RT->>Init: initState(scenario)
   Note over Init: vars / entities / flags / score / items / rng
   RT-->>S: phase = idle
@@ -306,29 +313,28 @@ sequenceDiagram
 
     <section id="phases">
       <h2>3. 相位状态机</h2>
-      <p class="lead"><code>GraphPhase</code>：<span class="pill idle">idle</span> → <span class="pill playing">playing</span> → <span class="pill await">awaitInteraction</span> → <span class="pill ended">ended</span></p>
+      <p class="lead"><code>GraphPhase</code>：<span class="pill idle">idle</span> → <span class="pill playing">playing</span> → <span class="pill ended">ended</span>（无 awaitInteraction）</p>
       <div class="card">
         <h3>Phase 转移</h3>
         <pre class="mermaid">
 stateDiagram-v2
   [*] --> idle: ctor
   idle --> playing: start / enterNode → playClip
-  playing --> awaitInteraction: runElement(interaction)
-  awaitInteraction --> playing: submit → outcome（清 pending）
-  playing --> playing: tick / traverse → enterNode
+  playing --> playing: tick / emitEvent → traverse / enterNode
   playing --> ended: 无自动边 & 栈空 / finishEnd
-  awaitInteraction --> ended: redirect / 链终止（少见）
   ended --> [*]
         </pre>
       </div>
       <div class="grid-2">
         <div class="kv">
           <h4>playing</h4>
-          <p>媒体时钟前进；触发 <code>at</code> / window / spawn；等视频结束或 duration 到点后 <code>advanceAuto</code>。</p>
+          <p>媒体时钟前进；触发 <code>at</code> / window / spawn；组件挂在 <code>overlayMounts</code>。
+          若只有事件出口边，则声明式停住等皮肤 <code>emit</code>（含超时自 emit）。</p>
         </div>
         <div class="kv">
-          <h4>awaitInteraction</h4>
-          <p>已 <code>openInteraction</code>；等皮肤 <code>submit</code> 或 timeout（Player 侧 <code>submit(undefined)</code>）。</p>
+          <h4>声明式等待</h4>
+          <p>不再切相位挂起。节点无默认自动边、走向靠 event → reactions/边时，
+          <code>advanceAuto</code> 不误跳；超时由皮肤 <code>emit(defaultEvent)</code>。</p>
         </div>
         <div class="kv">
           <h4>ended</h4>
@@ -351,17 +357,15 @@ flowchart TD
   A["enterNode(id)"] --> B{"SubFlowPack / SubFlow?"}
   B -->|是且非返回| C["压 callStack → 切图/入口 → 递归 enterNode"]
   B -->|否| D["重置 fired / windows / pending / spawns / watch"]
-  D --> E["emit playClip<br/>Session 清空 overlays + interaction"]
+  D --> E["emit playClip<br/>Session 清空 overlayMounts"]
   E --> F["phase = playing"]
-  F --> G["跑 trigger.when=enter 且无 window 的 children → runElement"]
-  G --> H{"开了交互?"}
-  H -->|是| I["phase = awaitInteraction · return"]
-  H -->|否| J["applyPhaseReactionEffects(enter)"]
+  F --> G["跑 trigger.when=enter 且无 window 的 children → runElement → renderOverlay"]
+  G --> J["applyPhaseReactionEffects(enter)"]
   J --> K{"consumeRedirect?"}
   K -->|是| L["跳转目标节点"]
-  K -->|否| M{"无 duration 且无 interaction?"}
+  K -->|否| M{"瞬时节点?<br/>无 media/duration 且无可 emit children"}
   M -->|是| N["advanceAuto → 选边 traverse"]
-  M -->|否| O["等 tick / performanceEnd"]
+  M -->|否| O["等 tick / performanceEnd / emitEvent"]
         </pre>
       </div>
     </section>
@@ -376,13 +380,10 @@ flowchart LR
   O["ui.overlays[id]<br/>Overlay 模板 + children"] --> E["expandOverlayMount"]
   M["node.data.overlayNodes[]<br/>{ overlay, layout?, reactions? }"] --> E
   E --> C["OverlayInstanceChild<br/>component / trigger / window / params / source"]
-  C --> R["runElement by role"]
-  R -->|presentation| RO["emit renderOverlay"]
-  R -->|interaction| OI["emit openInteraction"]
-  RO --> Snap["snapshot.overlays"]
-  OI --> Inter["snapshot.interaction"]
-  Snap --> Skin["skins.renderOverlay(component)"]
-  Inter --> Skin2["skins.renderInteraction(...)"]
+  C --> R["runElement"]
+  R --> RO["emit renderOverlay"]
+  RO --> Snap["snapshot.overlayMounts"]
+  Snap --> Skin["skins.renderOverlayMount / OverlayProps"]
         </pre>
       </div>
       <div class="grid-2">
@@ -405,7 +406,7 @@ flowchart LR
         </div>
         <div class="kv">
           <h4>HUD 特例</h4>
-          <p>血条等 <code>surface:'hud'</code> 不走 session.overlays 列表；PlaySurface 对当前节点再 expand 一次，用 <code>renderHudElement</code> 画。数值来自 <code>snapshot.hud</code>（entities.attrs.hp 等）。</p>
+          <p>血条（<code>battleHpBar</code>）走 <code>overlayMounts</code> + OverlayComponent；绘制时用 <code>skinCtx.hud</code> resolve <code>bind</code>→数值。</p>
         </div>
         <div class="kv">
           <h4>编辑侧对称</h4>
@@ -438,34 +439,30 @@ flowchart TD
     </section>
 
     <section id="submit">
-      <h2>7. 交互提交与事件响应</h2>
-      <p class="lead">QTE / 选项 / 热点：皮肤收集输入 → Session.submit → Runtime.submitInteraction。</p>
+      <h2>7. 组件事件（emit）与响应</h2>
+      <p class="lead">QTE / 选项 / 热点 / 面板：皮肤判定后 <code>emit(eventId)</code> → Session.emitEvent → Runtime.emitComponentEvent。</p>
       <div class="card">
-        <h3>submitInteraction</h3>
+        <h3>emitComponentEvent</h3>
         <pre class="mermaid">
 sequenceDiagram
   participant Skin as Skin（Parry / Kou / Choice…）
   participant UI as PlaySurface
   participant S as GraphSession
   participant RT as GraphRuntime
-  participant Kind as KindPlugin.resolve
 
-  Skin->>UI: submit(input)
-  UI->>S: submit(input)
-  S->>RT: submitInteraction(elementId, input)
-  RT->>Kind: resolve(ctx, params, input)
-  alt continue:true
-    Kind-->>RT: 可选 effects，保持 awaitInteraction
-  else outcome
-    Kind-->>RT: { outcome, effects? }
-    RT->>RT: applyAndReact(effects)
-    RT->>RT: resolveEventReactions(mount.reactions, outcome)
-    Note over RT: reaction.do 只跑 effect，忽略 goto
-    RT->>RT: selectHandleEdge(outcome) 或 advanceAuto
+  Skin->>UI: emit(eventId)
+  Note over Skin: 超时亦自 emit(defaultEvent)
+  UI->>S: emitEvent(elementId, eventId)
+  S->>RT: emitComponentEvent(elementId, eventId)
+  RT->>RT: resolveEventReactions(mount.reactions, outcome)
+  alt reaction 含 advance
+    RT->>RT: traverse → enterNode(next)
+  else 无显式 advance
+    RT->>RT: selectHandleEdge(outcome) 默认找边
     RT->>RT: traverse → enterNode(next)
   end
   RT-->>S: directives
-  S-->>UI: 新 snapshot
+  S-->>UI: 新 snapshot（overlayMounts）
         </pre>
       </div>
       <div class="callout">
@@ -482,7 +479,7 @@ sequenceDiagram
           <tbody>
             <tr><td><code>enter</code> / <code>at</code> / <code>exit</code></td><td>节点 <code>data.reactions</code></td><td>进节点 / tick / 离节点</td><td>仅 effect</td></tr>
             <tr><td><code>complete</code></td><td>节点</td><td>advanceAuto 前</td><td>仅 effect（首个 if 命中）</td></tr>
-            <tr><td><code>event</code></td><td>mount <code>overlayNodes[].reactions</code></td><td>submit 出 outcome 后</td><td>仅 effect；走向看边</td></tr>
+            <tr><td><code>event</code></td><td>mount <code>overlayNodes[].reactions</code></td><td>emit 出 outcome 后</td><td>effect + 可选 advance；否则默认找边</td></tr>
             <tr><td><code>shown</code> / <code>hidden</code></td><td>节点 / mount</td><td>组件挂载 / 卸载</td><td>仅 effect</td></tr>
             <tr><td><code>state</code></td><td><code>scenario.reactions</code></td><td>每次 applyAndReact 后 checkRules</td><td><strong>goto → redirect</strong></td></tr>
             <tr><td><code>watch</code></td><td>scenario / 节点 / mount</td><td>写屏障后 pull-diff</td><td>effect（可配）</td></tr>
@@ -534,10 +531,9 @@ flowchart LR
             <tr><th>指令</th><th>Session 做什么</th><th>UI 响应</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>playClip</code></td><td>换 clip；<strong>清空</strong> overlays / interaction</td><td>换视频 src；叠层重置</td></tr>
-            <tr><td><code>renderOverlay</code></td><td>push 到 <code>snapshot.overlays</code></td><td>皮肤画 presentation</td></tr>
+            <tr><td><code>playClip</code></td><td>换 clip；<strong>清空</strong> overlayMounts</td><td>换视频 src；叠层重置</td></tr>
+            <tr><td><code>renderOverlay</code></td><td>push 到 <code>snapshot.overlayMounts</code></td><td>皮肤画 OverlayComponent（含原交互/HUD）</td></tr>
             <tr><td><code>removeOverlay</code></td><td>按 elementId 过滤</td><td>卸层</td></tr>
-            <tr><td><code>openInteraction</code></td><td>设 <code>snapshot.interaction</code></td><td>交互皮肤 + 可选 timeout</td></tr>
             <tr><td><code>routeInfo</code></td><td>暂存为下一节点 <code>entryReason</code></td><td>调试/日志展示</td></tr>
             <tr><td><code>stateChanged</code></td><td>刷新 <code>hud</code></td><td>血条 / 变量 HUD</td></tr>
             <tr><td><code>banner</code></td><td>结束文案</td><td>结局 UI</td></tr>
@@ -557,14 +553,12 @@ flowchart TD
   B --> S["③ start → enterNode(入口)"]
   S --> P["④ playClip → 播媒体"]
   P --> E["⑤ enter overlays / enter reactions"]
-  E --> Q{"⑥ 有交互?"}
-  Q -->|有| W["awaitInteraction<br/>皮肤 submit / timeout"]
-  W --> X["resolve → event effects → 边 outcome"]
-  Q -->|无| T["tick：at / window / spawn"]
-  T --> F["performanceEnd"]
-  F --> C["complete effects + selectAutoEdge"]
+  E --> T["⑥ tick：at / window / spawn · 全部 renderOverlay"]
+  T --> W{"⑦ 组件 emit?<br/>或 performanceEnd"}
+  W -->|emit| X["emitComponentEvent → reactions / 边"]
+  W -->|播完| F["performanceEnd → advanceAuto<br/>（有事件边无默认边则停住）"]
   X --> N["traverse → enterNode(下一节点)"]
-  C --> N
+  F --> N
   N --> P
   N --> Z["无边 & 栈空 → finishEnd → ended"]
         </pre>

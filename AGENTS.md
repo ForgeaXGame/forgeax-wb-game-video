@@ -82,18 +82,23 @@ npx tsc --noEmit       # 类型检查（当前全绿）
   副作用 `GraphEffect`(`attr/var/flag/item`，`value` 可为常量或 `{expr}` 表达式，见 `expr.ts`)。**不准把函数/代码塞进数据。**
 - **实体无 hp 特权**：`entities[id].attrs` 是开放数值袋，`hp` 只是"名为 hp、attrMeta 带 max/initial 的一个 attr"的约定；
   死亡 = `attrRatio hp lte 0`。换品类（竞速等）只换 attrs，不改引擎。
-- **handle 派生**：`node.inputs/outputs` 不手写、由各 kind 的 `outputs(params)` 依 `node.data` 算出；`position` 才存 json。
+- **handle 派生**：`node.inputs/outputs` 不手写、由组件 `events` / 实例 `inputs.events` 派生；`position` 才存 json。
+- **已删调度标签**：`ComponentDef.role` / `ComponentDef.surface`、独立 interaction 层（`openInteraction` / `submitInteraction` / `snapshot.interaction`）一律不存在；
+  全部组件 = `renderOverlay` + `emit(event) → reactions`。
 
 ### R2 · Runtime（`src/runtime/engine/engine.ts` = 纯 TS 状态机，零 DOM）
-- 引擎 `GraphRuntime` 吃 `GameGraph+GameScenario` → 产**泛型 directive**（playClip/openInteraction/renderOverlay/hudUpdate/…）；
+- 引擎 `GraphRuntime` 吃 `GameGraph+GameScenario` → 产**泛型 directive**（`playClip` / `renderOverlay` / `removeOverlay` / `hudUpdate` / …）；
+  **相位只有** `idle | playing | ended`（无 `awaitInteraction` / `openInteraction` / 独立 interaction 快照）。
   **无出边且调用栈空 → 相位切 `ended`，不强制任何结局文案**（胜负/结局表现完全走节点 overlay 与图规则，配了才演）；
   **有视频节点按素材播完推进**（Player `onEnded`；`once`=播完走 / `loop`=循环到交互或规则改道）；`durationMs` 不面向作者配置、不截断视频。
-  **引擎绝不碰 DOM/React**。`GraphSession`(视图模型) 消费 directive 成 `SessionSnapshot`；工坊 `GraphPlaySurface` 只订阅 snapshot 渲染。
-- 入口：`start()`（从 `nodes[0]`）/ `onPerformanceEnd()` / `tick(ms)` / `submitInteraction(elId,input)` / `jumpToNode(id)`。
-- **`resolve` 可 `continue:true`**：多步会话保持 `awaitInteraction`；中途 `effects` 仍走 `applyAndReact`（rules 可 redirect）。结束才返回 `outcome`。
+  **引擎绝不碰 DOM/React**。`GraphSession`(视图模型) 消费 directive 成 `SessionSnapshot`（`overlayMounts` + hud）；工坊 `GraphPlaySurface` 只订阅 snapshot 渲染。
+- 入口：`start()`（从 `nodes[0]`）/ `onPerformanceEnd()` / `tick(ms)` / `emitComponentEvent(elId, eventId)` / `jumpToNode(id)`。
+  Player 侧对应 `session.emitEvent`；**不要**再写 `submit` / `submitInteraction`。
+- **等待是声明式的**：节点若没有无条件自动出边、走向靠组件 `emit → reactions`/事件边，则 `advanceAuto` 会停住等事件；超时由皮肤 `useDefaultEventTimeout` 自 `emit(defaultEvent)`。
 - **`requiredPlugins`**：scenario 头声明依赖；`registerPlugin` + `validateScenario` / ctor fail-loud。
 - **RNG 必须走 `state.rng`（seed+step，`rng.ts`）**，同 seed 同输入必同结果（回放/测试依赖）；不准 `Math.random`。
-- 加新玩法 = 注册一个 **KindPlugin**（`src/runtime/registry/kind-registry.ts`，`role: presentation|interaction` + validate/outputs/run|render|present|resolve），核心/引擎/Player 都不改。
+- 加新玩法 = 注册一个 **ComponentDef**（`component-registry.ts`：`label` / `inputs` / `events` + 可选 `validate?`/`render?`）+
+  `registerOverlayRenderer` 皮肤；**无 `role` / `surface` 调度标签**；核心/引擎/Player 都不改。
 - **依赖铁律**：`runtime` 不得 import `graph/` 或工坊壳（Studio/persist/demo）。
 
 ### R3 · 持久化 / demo（v4，2026-07-09）
@@ -106,8 +111,8 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 ### R4 · 盖在视频上的组件（皮肤：QTE/选择/血条/漂字/转场/对话）
 - 都是 **`src/runtime/skins/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
   `src/runtime/skins/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
-- **配置只记组件名**：交互元素 `params.component`、HUD 用 overlay child（`surface:'hud'`，如 `battleHpBar`）。契约见
-  `src/runtime/skins/components/CONTRACT.md`（只 import `react` + `./skinRuntime`，样式/滤镜/字体自注入）。
+- **配置只记组件名**：全部为 overlay child 的 `component`；统一 `OverlayProps`（`overlay` / `emit` / `ctx`），
+  在 `rendererRegistry.tsx` 注册；自闭环辅助见 `skinRuntime.ts`（CSS/滤镜/字体/超时自 emit）。
 
 ---
 
@@ -131,7 +136,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | 图 schema / 类型 SSOT | `src/runtime/schema/graph-schema.ts` |
 | 状态机引擎 | `src/runtime/engine/engine.ts` |
 | 视图模型（引擎↔UI） | `src/runtime/engine/session.ts` |
-| 核心 kind / 注册 | `src/runtime/registry/core-kinds.ts` / `kind-registry.ts` |
+| 组件契约 / 注册 | `src/runtime/skins/components/*` + `src/runtime/registry/component-registry.ts` |
 | 表达式 / 随机 / 效果 / 条件 | `src/runtime/engine/{expr,rng,apply-effects,condition}.ts` |
 | 校验 | `src/runtime/validate/validate.ts` |
 | 皮肤 / renderer registry | `src/runtime/skins/` |
@@ -182,7 +187,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 
 | 你要 | 看 |
 |---|---|
-| 皮肤/HUD/QTE 组件契约（props/submit/ctx/自闭环/错误隔离） | `src/runtime/skins/components/CONTRACT.md` |
+| 皮肤 props / 注册 / 自闭环工具 | `src/runtime/skins/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |
 | 引擎设计规格 + 分期 + 实施状态（含 2026-07-09 增补） | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-blueprint-orchestration-design.md` |
 | 三态 schema（scenario/graph/…）说明 | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-schemas.md` |
 | **QTE / 数值填表 Schema + 扩展协议**（🟢 SPEC） | `<repo>/docs/superpowers/specs/2026-07-09-wb-game-video-plugin-extension-protocol-design.md` §7 |
