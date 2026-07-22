@@ -1,13 +1,14 @@
 /**
  * OverlaySchemeEditor —— 单个「界面方案」（overlay）的展示 + 编辑。
- * 从 ScenarioInspector 的 overlays 分支抽出：标题 / 引用角标 / 删除 / 预览 / 组件列表。
+ * 右栏两列：左 = 画布（可拖拽定位/缩放）+ 组件参数列表；右 = 组件库（拖 chip 落地）。
  * 纯展示组件——所有增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
+import { useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
-import { NEW_COMPONENT_PRESETS } from '../demo/builtin-schemes'
+import { ComponentLibrary } from './ComponentLibrary'
 
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
 /** 移除组件的 × 按钮——比默认删除文案更醒目、点击区更大。 */
@@ -52,7 +53,8 @@ export interface OverlaySchemeEditorProps {
   usageCount: number
   onRename: (title: string) => void
   onRemove: () => void
-  onAddChild: (presetId: string) => void
+  /** 组件库拖到画布落地：presetId + 归一落点；返回新 child id（用于选中）。 */
+  onAddChild: (presetId: string, layout?: Partial<Layout>) => string | undefined | void
   onRemoveChild: (childId: string) => void
   onPatchChild: (
     childId: string,
@@ -72,54 +74,77 @@ export function OverlaySchemeEditor({
   onRemoveChild,
   onPatchChild,
 }: OverlaySchemeEditorProps): JSX.Element {
+  const [selectedChildId, setSelectedChildId] = useState('')
+
   return (
-    <div style={{ padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-        <input
-          value={overlay.title ?? ''}
-          placeholder={overlayId}
-          onChange={(e) => onRename(e.target.value)}
-          style={{ flex: 1, fontWeight: 600 }}
-        />
-        <UsageBadge count={usageCount} />
-        <button style={del} onClick={onRemove}>删除</button>
-      </div>
-      <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>{overlayId}</div>
-      <OverlayCatalogPreview overlay={overlay} entities={entities} variables={variables} />
-      <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600 }}>组件（{overlay.children.length}）</span>
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value) onAddChild(e.target.value)
-            }}
-            style={{ fontSize: 11 }}
-          >
-            <option value="">+ 添加组件…</option>
-            {NEW_COMPONENT_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+    <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
+      {/* ── 左列：标题 + 画布 + 参数列表 ── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+          <input
+            value={overlay.title ?? ''}
+            placeholder={overlayId}
+            onChange={(e) => onRename(e.target.value)}
+            style={{ flex: 1, fontWeight: 600 }}
+          />
+          <UsageBadge count={usageCount} />
+          <button style={del} onClick={onRemove}>删除</button>
         </div>
-        {overlay.children.map((child) => (
-          <div key={child.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <OverlayChildStyleEditor
-                child={child}
-                onPatchParams={(patch) => onPatchChild(child.id, { inputs: patch })}
-                onPatchComponent={(component) => onPatchChild(child.id, { component })}
-                onPatchLayout={(patch) => onPatchChild(child.id, { layout: patch })}
-              />
-            </div>
-            <button style={removeChildBtn} onClick={() => onRemoveChild(child.id)} title="移除组件">
-              ×
-            </button>
-          </div>
-        ))}
+        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>{overlayId}</div>
+
+        <OverlayCatalogPreview
+          overlay={overlay}
+          entities={entities}
+          variables={variables}
+          selectedChildId={selectedChildId}
+          onSelectChild={setSelectedChildId}
+          onAddChild={(presetId, layout) => {
+            const id = onAddChild(presetId, layout)
+            if (typeof id === 'string') setSelectedChildId(id)
+          }}
+          onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
+        />
+
+        <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>组件（{overlay.children.length}）</div>
+          {overlay.children.length === 0 && (
+            <div style={{ fontSize: 11, opacity: 0.5 }}>从右侧组件库拖组件到画布添加。</div>
+          )}
+          {overlay.children.map((child) => {
+            const selected = child.id === selectedChildId
+            return (
+              <div
+                key={child.id}
+                onPointerDown={() => setSelectedChildId(child.id)}
+                style={{
+                  display: 'flex',
+                  gap: 6,
+                  alignItems: 'flex-start',
+                  padding: '4px 6px',
+                  borderRadius: 6,
+                  border: `1px solid ${selected ? 'var(--gc-accent, #c8955a)' : 'transparent'}`,
+                  background: selected ? 'rgba(200,149,90,0.08)' : 'transparent',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <OverlayChildStyleEditor
+                    child={child}
+                    onPatchParams={(patch) => onPatchChild(child.id, { inputs: patch })}
+                    onPatchComponent={(component) => onPatchChild(child.id, { component })}
+                    onPatchLayout={(patch) => onPatchChild(child.id, { layout: patch })}
+                  />
+                </div>
+                <button style={removeChildBtn} onClick={() => onRemoveChild(child.id)} title="移除组件">
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </div>
       </div>
+
+      {/* ── 右列：组件库 ── */}
+      <ComponentLibrary />
     </div>
   )
 }

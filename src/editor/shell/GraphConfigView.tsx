@@ -14,7 +14,7 @@ import { CatalogShell, type CatalogItem } from './CatalogShell'
 import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
 import { OverlaySchemeEditor, UsageBadge } from './OverlaySchemeEditor'
 import { VersionPicker } from './VersionPicker'
-import { useGraphScenario } from '../persist/graphScenarioStore'
+import { useGraphScenario, graphUndo, graphRedo } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
 
@@ -47,6 +47,21 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
+
+  // 键盘撤销/重做：Ctrl/⌘+Z 撤销，Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做；输入框内不拦截（留给原生文本撤销）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); graphUndo() }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); graphRedo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [active, setActive] = useState<ScenarioSection>(tabs[0]?.section ?? 'entities')
   const nodeIds = graph.nodes.map((n) => n.id)
   // overlay 资源池「已用/未用」：统计每个 overlay 被多少节点挂载引用。
@@ -101,12 +116,16 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     const { [oid]: _drop, ...rest } = allOverlays
     setOverlays(rest)
   }
-  const addSchemeChild = (oid: string, presetId: string) => {
+  const addSchemeChild = (oid: string, presetId: string, layout?: Partial<Layout>): string | undefined => {
     const ov = allOverlays[oid]
     const preset = NEW_COMPONENT_PRESETS.find((p) => p.id === presetId)
-    if (!ov || !preset) return
+    if (!ov || !preset) return undefined
     const childId = `${presetId}-${Object.keys(ov.children).length}-${Date.now().toString(36)}`
-    setOverlays({ ...allOverlays, [oid]: { ...ov, children: [...ov.children, preset.make(childId)] } })
+    const made = preset.make(childId)
+    // 画布落点：把归一 left/top（及可能的尺寸）并进 preset 自带 layout。
+    const child = layout ? { ...made, layout: { ...made.layout, ...layout } } : made
+    setOverlays({ ...allOverlays, [oid]: { ...ov, children: [...ov.children, child] } })
+    return childId
   }
   const removeSchemeChild = (oid: string, childId: string) => {
     const ov = allOverlays[oid]
@@ -189,7 +208,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   usageCount={overlayUsage[selOverlay] ?? 0}
                   onRename={(t) => renameScheme(selOverlay, t)}
                   onRemove={() => removeScheme(selOverlay)}
-                  onAddChild={(p) => addSchemeChild(selOverlay, p)}
+                  onAddChild={(p, layout) => addSchemeChild(selOverlay, p, layout)}
                   onRemoveChild={(c) => removeSchemeChild(selOverlay, c)}
                   onPatchChild={(c, patch) => patchOverlayChild(selOverlay, c, patch)}
                 />
