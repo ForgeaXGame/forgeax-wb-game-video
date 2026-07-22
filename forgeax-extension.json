@@ -161,7 +161,7 @@
     "frontend": "./dist/index.html",
     "backend": "./server/tool-handlers.ts",
     "standalone": {
-      "start": "npm run dev",
+      "start": "bun run dev",
       "port": 15185,
       "readyProbe": "/",
       "embeddedAlso": false
