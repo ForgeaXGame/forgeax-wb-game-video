@@ -3,7 +3,7 @@
  * 右栏两列：左 = 画布（可拖拽定位/缩放）+ 组件参数列表；右 = 组件库（拖 chip 落地）。
  * 纯展示组件——所有增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
@@ -75,6 +75,25 @@ export function OverlaySchemeEditor({
   onPatchChild,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
+  // 交互热区重叠冲突（DOM 实测，来自 preview 回调）——画布红框 + 参数列表标红提示。
+  const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
+
+  // 画布选中组件后按 Backspace/Delete 删除当前组件；删除经 onRemoveChild→setMeta，天然进 zundo 撤销历史。
+  // 输入框/下拉内不拦截（留给原生文本编辑）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return
+      if (!selectedChildId) return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return
+      e.preventDefault()
+      onRemoveChild(selectedChildId)
+      setSelectedChildId('')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedChildId, onRemoveChild])
 
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
@@ -103,15 +122,22 @@ export function OverlaySchemeEditor({
             if (typeof id === 'string') setSelectedChildId(id)
           }}
           onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
+          onWarnChange={setWarnIds}
         />
 
         <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>组件（{overlay.children.length}）</div>
+          {warnIds.size > 0 && (
+            <div style={{ fontSize: 11, color: '#ffd9d9', background: '#7a2020', border: '1px solid #ff6b6b', borderRadius: 4, padding: '4px 8px', marginBottom: 6 }}>
+              ⚠ 有 {warnIds.size} 个交互组件热区重叠，运行时同一点击只会命中最上层、下层收不到。请错开位置，或右键画布「置顶/置底」调层级。
+            </div>
+          )}
           {overlay.children.length === 0 && (
             <div style={{ fontSize: 11, opacity: 0.5 }}>从右侧组件库拖组件到画布添加。</div>
           )}
           {overlay.children.map((child) => {
             const selected = child.id === selectedChildId
+            const warn = warnIds.has(child.id)
             return (
               <div
                 key={child.id}
@@ -122,8 +148,8 @@ export function OverlaySchemeEditor({
                   alignItems: 'flex-start',
                   padding: '4px 6px',
                   borderRadius: 6,
-                  border: `1px solid ${selected ? 'var(--gc-accent, #c8955a)' : 'transparent'}`,
-                  background: selected ? 'rgba(200,149,90,0.08)' : 'transparent',
+                  border: `1px solid ${warn ? '#ff6b6b' : selected ? 'var(--gc-accent, #c8955a)' : 'transparent'}`,
+                  background: warn ? 'rgba(255,107,107,0.08)' : selected ? 'rgba(200,149,90,0.08)' : 'transparent',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
