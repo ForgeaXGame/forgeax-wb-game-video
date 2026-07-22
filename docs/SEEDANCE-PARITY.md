@@ -25,7 +25,7 @@
 | 回环 | 显式边（不用 `returnsToCaller`） | 🟢 |
 | Boss / 血条 | overlay `battleHpBar` + skins（绘制时 resolve） | 🟢 |
 | 结算扣血 | node/mount `reactions` effect（可 `{expr}`） | 🟢 |
-| 条件分支 | `edge.data.condition` + 局级 `scenario.reactions`（state→goto） | 🟢 |
+| 条件分支 | `edge.data.condition` + 节点/挂载 reactions（无局级 scenario.reactions） | 🟢 |
 | 结局标记 | **无** `data.end`；无出边且栈空 → ended | 🟢 |
 
 ## 3. 编辑器验收

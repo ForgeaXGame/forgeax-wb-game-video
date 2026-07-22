@@ -33,22 +33,36 @@ function Leaf({
   selectedId,
   onSelect,
   indented = false,
+  renderRowActions,
 }: {
   item: CatalogItem
   selectedId: string
   onSelect: (id: string) => void
   indented?: boolean
+  renderRowActions?: (id: string) => ReactNode
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`gc-row${indented ? ' is-leaf' : ''}${item.id === selectedId ? ' is-on' : ''}`}
       onClick={() => onSelect(item.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(item.id)
+        }
+      }}
     >
       <span className="gc-row-mark" aria-hidden>✓</span>
       <span className="gc-row-label">{item.label}</span>
       {item.badge != null ? <span className="gc-row-badge">{item.badge}</span> : null}
-    </button>
+      {renderRowActions && (
+        <span className="gc-row-actions" onClick={(e) => e.stopPropagation()}>
+          {renderRowActions(item.id)}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -56,10 +70,12 @@ function Group({
   group,
   selectedId,
   onSelect,
+  renderRowActions,
 }: {
   group: CatalogItem
   selectedId: string
   onSelect: (id: string) => void
+  renderRowActions?: (id: string) => ReactNode
 }): JSX.Element {
   const [open, setOpen] = useState(true)
   const children = group.children ?? []
@@ -84,7 +100,7 @@ function Group({
             <div className="gc-group-empty">暂无方案</div>
           ) : (
             children.map((c) => (
-              <Leaf key={c.id} item={c} selectedId={selectedId} onSelect={onSelect} indented />
+              <Leaf key={c.id} item={c} selectedId={selectedId} onSelect={onSelect} renderRowActions={renderRowActions} indented />
             ))
           )}
         </div>
@@ -100,6 +116,8 @@ export function CatalogShell({
   selectedId,
   onSelect,
   renderPreview,
+  headAction,
+  renderRowActions,
 }: {
   icon: string
   title: string
@@ -107,6 +125,10 @@ export function CatalogShell({
   selectedId: string
   onSelect: (id: string) => void
   renderPreview: (item: CatalogItem | undefined) => ReactNode
+  /** 列表标题栏右侧动作槽（如「＋新建」入口）。 */
+  headAction?: ReactNode
+  /** 每行右侧的行内动作（hover/选中才显）；返回 null 则该行无动作。 */
+  renderRowActions?: (id: string) => ReactNode
 }): JSX.Element {
   injectStyleOnce('graph-catalog', CATALOG_CSS)
   const leaves = leavesOf(items)
@@ -118,13 +140,14 @@ export function CatalogShell({
           <span className="gc-list-ico" aria-hidden>{icon}</span>
           <span className="gc-list-title">{title}</span>
           <span className="gc-list-count">{leaves.length}</span>
+          {headAction && <span className="gc-list-head-action">{headAction}</span>}
         </div>
         <div className="gc-list-body">
           {items.map((it) =>
             it.children ? (
-              <Group key={it.id} group={it} selectedId={selectedId} onSelect={onSelect} />
+              <Group key={it.id} group={it} selectedId={selectedId} onSelect={onSelect} renderRowActions={renderRowActions} />
             ) : (
-              <Leaf key={it.id} item={it} selectedId={selectedId} onSelect={onSelect} />
+              <Leaf key={it.id} item={it} selectedId={selectedId} onSelect={onSelect} renderRowActions={renderRowActions} />
             ),
           )}
         </div>

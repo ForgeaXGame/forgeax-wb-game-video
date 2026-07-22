@@ -2,7 +2,7 @@
 
 > 你（AI agent）被丢进 `packages/marketplace/extensions/wb-game-video/` 时，先读这份。
 > 比 `README.md` / `SKILL.md` 浓缩，按你查信息的优先级排版。深入细节再翻那两份。
-> 最后更新：2026-07-09（旧蓝图引擎已退役，全面转向 graph 引擎）。
+> 最后更新：2026-07-22（蓝图库方案 A：单文件 + manifest.packs；开跑根 graph / 依赖查 packs）。
 
 ---
 
@@ -22,9 +22,9 @@
 
 ## 它是什么
 
-`@forgeax-extension/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 把一张
-**声明式图（GameGraph）**——演出节点(视频) + 条件/效果出边——拼成可序列化的 `GameScenario`
-JSON；纯 TS 状态机引擎直接吃这张图确定性回放，视频上叠血条/QTE/选择等可插拔组件。
+`@forgeax-extension/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 编辑
+**`GraphLibraryDocument`**（原 scenario 根字段 + `manifest.packs` 含主/子蓝图）；纯 TS
+状态机开跑吃根 `graph`，执行中依赖查 `manifest.packs`。视频上叠血条/QTE/选择等可插拔组件。
 
 代码已按三分模块落地：
 - **`src/runtime/`** — schema / 引擎 / Kind·Skin 注册 / 校验（可独立单测；**不** import editor/assets）
@@ -46,11 +46,13 @@ JSON；纯 TS 状态机引擎直接吃这张图确定性回放，视频上叠血
 > `gvid:*-scenario`/`generate-*` 工具全部作废。
 
 ### AI 工具（graph-native，`server/tool-handlers.ts` = `entry.backend`）
-AI/agent 与工坊沟通的唯一契约 = **直接读/改 GameGraph**，只有三个瘦工具（fs 直读写 `.forgeax/games/<slug>/game-video/scenarios.graph.json`，与 `/__graph__` 同一盘上格式）：
-- `gvid:get-graph` `({gameSlug?})` — 读当前 game 的 GameGraph（无盘回退 demo）。
-- `gvid:save-graph` `({scenario,title?,gameSlug?})` — 结构校验（节点 id 唯一、边 source/target 存在）后整本落盘 + 版本快照（留10）。
+契约 = **读写 `GraphLibraryDocument`（字段名 `project`）**，落盘
+`.forgeax/games/<slug>/game-video/scenarios.graph.json`（与 `/__graph__` 同格式；**无** `blueprints/` 文件夹）：
+- `gvid:get-graph` `({gameSlug?})` — `{ project }`（无盘 `project: null`）。
+- `gvid:save-graph` `({project,title?,gameSlug?})` — 整本覆盖 + 版本快照（留10）。
 - `gvid:list-videos` — 列内置演出视频库可绑的 `media.ref`。
-驱动这套的 agent = `agent-nodia`（persona 已改写到 GameGraph）。
+蓝图库设计：`docs/superpowers/specs/2026-07-21-blueprint-library-folder-management.md`。
+驱动 agent = `agent-nodia`。
 
 ## 1 分钟跑起来
 
@@ -65,12 +67,19 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 
 ## 硬性规则（改动前必读，不要违反）
 
+### R0 · Standalone HTTP
+- 浏览器侧访问插件自有端点（`/__graph__` / `/__gva__` / 媒体 URL 等）必须走
+  `src/lib/plugin-http.ts` 的 `pluginUrl()` / `pluginFetch()`；不要直接写
+  `fetch('/__graph__/...')` 或把裸 `/__gva__/...` 塞进 `<img>/<video>`。
+- 原因：本地 dev 直连插件端口，但 anydev 里插件 iframe 走 Studio 同源 HTTPS
+  `/__fx-plugin/wb-game-video/` 代理；裸根路径会绕到 Studio 根导致 404 / mixed-content。
+
 ### R1 · Schema（`src/runtime/schema/graph-schema.ts` 是 SSOT 形态；）
-- **一张图 = `GameScenario`**：`{ schemaVersion, variables, entities, ui:{overlays}, rng, reactions?, graph:{nodes,edges} }`。
-- **只有一种节点类型「演出节点」(`type:'perf'`)**：每个节点**都绑视频**(`data.media`)。**判断（出手/血量/回合/胜负/变招…）
-  绝不做成独立网关节点**——一律折进演出节点的**条件/加权出边**（handle `cond:N`/`else`/`opt:*`/`pass|good|fail`/`out`，边带 `weight` 即加权随机）。
-  需要跨节点记忆（如先手）用变量 + 条件边表达（见 nodia 的 `mineFirst`）。
-- **心智三层**：`edges` = 路由；`reactions` = 副作用（effect；局级 `state` 可 goto 硬打断）；`ui.overlays` + `overlayNodes` = UI。
+- **落盘文档 = `GraphLibraryDocument`** = 原 `GameScenario` 根字段 + `manifest{ mainPackId, packs }`。
+  根 `graph` = 开跑入口（主蓝图镜像）；子蓝图本体只在 `manifest.packs`；**无根级 `packs` 数组**。
+- **只有一种节点类型「演出节点」(`type:'perf'`)**：可绑视频；判断折进出边（勿做独立网关节点）。
+  跨节点记忆用变量 + 条件边（见 nodia 的 `mineFirst`）。
+- **心智三层**：`edges` = 路由；节点/挂载 `reactions` = 副作用（无局级 scenario.reactions）；`ui.overlays` + `overlayNodes` = UI。
 - **一切逻辑声明式、可序列化、无函数入库**：条件 `GraphCondition`(`var/flag/attr/attrRatio/attrCompare/score/hasItem/visited`)、
   副作用 `GraphEffect`(`attr/var/flag/item`，`value` 可为常量或 `{expr}` 表达式，见 `expr.ts`)。**不准把函数/代码塞进数据。**
 - **实体无 hp 特权**：`entities[id].attrs` 是开放数值袋，`hp` 只是"名为 hp、attrMeta 带 max/initial 的一个 attr"的约定；
@@ -89,7 +98,7 @@ npx tsc --noEmit       # 类型检查（当前全绿）
   Player 侧对应 `session.emitEvent`；**不要**再写 `submit` / `submitInteraction`。
 - **等待是声明式的**：节点若没有无条件自动出边、走向靠组件 `emit → reactions`/事件边，则 `advanceAuto` 会停住等事件；超时由皮肤 `useDefaultEventTimeout` 自 `emit(defaultEvent)`。
 - **`requiredPlugins`**：scenario 头声明依赖；`registerPlugin` + `validateScenario` / ctor fail-loud。
-- **RNG 必须走 `state.rng`（seed+step，`rng.ts`）**，同 seed 同输入必同结果（回放/测试依赖）；不准 `Math.random`。
+- **RNG 必须走 `state.rng`（`rng.ts`）**，不准 `Math.random`。落盘不再带 `rng.seed`（init 固定 seed 0）；需要可配置时再补回。
 - 加新玩法 = 注册一个 **ComponentDef**（`component-registry.ts`：`label` / `inputs` / `events` + 可选 `validate?`/`render?`）+
   `registerOverlayRenderer` 皮肤；**无 `role` / `surface` 调度标签**；核心/引擎/Player 都不改。
 - **依赖铁律**：`runtime` 不得 import `graph/` 或工坊壳（Studio/persist/demo）。

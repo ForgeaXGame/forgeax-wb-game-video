@@ -20,7 +20,7 @@ import type { OverlayChild } from '../../schema/graph-schema'
 import { STAGE_FILL_LAYOUT } from '../../schema/layout'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass, previewTStyle, useDefaultEventTimeout } from './skinRuntime'
 
-const KEY_LABELS = ['A', 'B'] as const
+const KEY_LABELS = ['E', 'Q'] as const
 
 /**
  * 组件的注册契约（引擎/编辑器识别用）——与渲染实现同文件，经 EXTRA_COMPONENTS 注册。
@@ -37,8 +37,8 @@ export const inkYingMoDefaults: Pick<ChoiceParams, 'events' | 'x' | 'y' | 'timeo
     { id: 'ying', label: '應' },
     { id: 'mo', label: '默' },
   ],
-  x: 0.72,
-  y: 0.78,
+  x: 0.5,
+  y: 0.88,
   timeoutMs: 8000,
   defaultEvent: 'mo',
 }

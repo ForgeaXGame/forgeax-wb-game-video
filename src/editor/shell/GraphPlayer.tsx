@@ -11,6 +11,7 @@ import { PlayerRootContext, type SkinCtx } from '../../runtime/skins/rendererReg
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc, videoDurationCapReached } from './media'
+import { useClipPerformanceEnd } from './useClipPerformanceEnd'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
 import { useVideoContentRect } from '../video/useVideoContentRect'
 import { getGameSlug } from '../persist/gameScope'
@@ -26,6 +27,7 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const [rootEl, setRootEl] = useState<HTMLElement | null>(null)
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
+  const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap.clip?.nodeId)
   const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
   const skinCtx: SkinCtx = {
@@ -43,9 +45,9 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
   useEffect(() => {
     // 无视频：durationMs 到点推进；有视频：durationMs 作播放时长上限，走 <video> onTimeUpdate。
     if (snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
-    const t = setTimeout(() => setSnap(sessionRef.current.performanceEnd()), snap.clip.durationMs)
+    const t = setTimeout(() => endPerformance(), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId])
+  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId, endPerformance])
 
   const skins = session.skins
 
@@ -71,13 +73,14 @@ export function GraphPlayer({ scenario }: { scenario: GameScenario }): JSX.Eleme
             onLoadedMetadata={recomputeRect}
             onEnded={() => {
               if (snap.clip?.loop) return
-              setSnap(sessionRef.current.performanceEnd())
+              endPerformance()
             }}
             onTimeUpdate={(e) => {
               const el = e.currentTarget
               const nowMs = Math.floor(el.currentTime * 1000)
               if (videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
-                setSnap(sessionRef.current.performanceEnd())
+                el.pause()
+                endPerformance()
                 return
               }
               setSnap(sessionRef.current.tick(nowMs))

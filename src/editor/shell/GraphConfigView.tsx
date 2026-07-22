@@ -6,9 +6,9 @@
  *  - **界面**（overlays）：左栏为**树**——「全局 HUD」组头（带「＋方案」）→ 各方案叶子；
  *    点叶子右栏只渲染**那一个方案**（OverlaySchemeEditor）。方案增删改在本组件持有并写回
  *    scenario.ui.overlays。
- *  - **规则**（实体/变量/场景设置/reactions）：左栏多行扁平切换，右栏渲染 ScenarioInspector。
+ *  - **规则**（实体/变量/公式）：左栏多行扁平切换，右栏渲染 ScenarioInspector。
  */
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { GameScenario, Layout, Overlay } from '../../runtime/schema/graph-schema'
 import { CatalogShell, type CatalogItem } from './CatalogShell'
 import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
@@ -17,6 +17,7 @@ import { VersionPicker } from './VersionPicker'
 import { useGraphScenario, graphUndo, graphRedo } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
+import type { Formula } from '../persist/formula-authoring'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -63,7 +64,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const [active, setActive] = useState<ScenarioSection>(tabs[0]?.section ?? 'entities')
-  const nodeIds = graph.nodes.map((n) => n.id)
   // overlay 资源池「已用/未用」：统计每个 overlay 被多少节点挂载引用。
   const overlayUsage = useMemo(() => {
     const m: Record<string, number> = {}
@@ -74,20 +74,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     }
     return m
   }, [graph.nodes])
-  const nodeLabel = useCallback((id: string) => {
-    const n = graph.nodes.find((x) => x.id === id)
-    const name = n?.data.name?.trim()
-    if (!name || name === id) return id
-    return `${name} (${id})`
-  }, [graph.nodes])
-  const edgeOptions = useMemo(
-    () =>
-      graph.edges.map((e) => ({
-        value: e.id,
-        label: `${nodeLabel(e.source)} ─${e.sourceHandle ?? 'default'}→ ${nodeLabel(e.target)}`,
-      })),
-    [graph.edges, nodeLabel],
-  )
 
   // ── 界面（overlays）形态：树 + 单方案编辑 ──
   const overlaysMode = tabs.length === 1 && tabs[0]?.section === 'overlays'
@@ -224,7 +210,13 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
             onSelect={(id) => setActive(id as ScenarioSection)}
             renderPreview={() => (
               <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
-                <ScenarioInspector value={meta} nodeIds={nodeIds} nodeLabel={nodeLabel} edgeOptions={edgeOptions} section={active} onChange={setMeta} />
+                {/* meta.formulas 在 schema 里存为 `Record<string, unknown>`（runtime ↛ editor）；这里窄化回 Formula 给 ScenarioInspector。 */}
+                <ScenarioInspector
+                  value={{ ...meta, formulas: meta.formulas as Record<string, Formula> | undefined }}
+                  section={active}
+                  overlayUsage={overlayUsage}
+                  onChange={setMeta}
+                />
               </div>
             )}
           />

@@ -16,6 +16,7 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { getComponent } from '../../runtime/registry/component-registry'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc, videoDurationCapReached } from './media'
+import { useClipPerformanceEnd } from './useClipPerformanceEnd'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
 import { useVideoContentRect } from '../video/useVideoContentRect'
 import { useGraphScenario } from '../persist/graphScenarioStore'
@@ -115,13 +116,14 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   }, [restartKey, ready, entitySig])
 
   const videoSrc = resolveMediaSrc(snap?.clip?.mediaId, game)
+  const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap?.clip?.nodeId, restartKey)
 
   useEffect(() => {
     // 无视频：durationMs 到点推进；有视频：durationMs 作播放时长上限，走 <video> onTimeUpdate。
     if (!snap || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
-    const t = setTimeout(() => setSnap(sessionRef.current!.performanceEnd()), snap.clip.durationMs)
+    const t = setTimeout(() => endPerformance(), snap.clip.durationMs)
     return () => clearTimeout(t)
-  }, [snap?.clip?.nodeId, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId])
+  }, [snap?.clip?.nodeId, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId, endPerformance])
 
   useEffect(() => {
     if (!auto || !snap) return
@@ -173,13 +175,14 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
           onLoadedMetadata={recomputeRect}
           onEnded={() => {
             if (snap?.clip?.loop) return
-            setSnap(sessionRef.current!.performanceEnd())
+            endPerformance()
           }}
           onTimeUpdate={(e) => {
             const el = e.currentTarget
             const nowMs = Math.floor(el.currentTime * 1000)
             if (videoDurationCapReached(nowMs, snap?.clip?.durationMs, el.duration)) {
-              setSnap(sessionRef.current!.performanceEnd())
+              el.pause()
+              endPerformance()
               return
             }
             setSnap(sessionRef.current!.tick(nowMs))

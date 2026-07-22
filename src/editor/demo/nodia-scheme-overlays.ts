@@ -304,7 +304,7 @@ export const NODIA_NODE_SCHEME_N_FOLLOW: Overlay = {
       "id": "n_follow-c",
       "trigger": {
         "when": "at",
-        "ms": 15093
+        "ms": 12093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -319,8 +319,8 @@ export const NODIA_NODE_SCHEME_N_FOLLOW: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
@@ -337,7 +337,7 @@ export const NODIA_NODE_SCHEME_N_LAND: Overlay = {
       "id": "n_land-c",
       "trigger": {
         "when": "at",
-        "ms": 16200
+        "ms": 13200
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -352,8 +352,8 @@ export const NODIA_NODE_SCHEME_N_LAND: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
@@ -370,7 +370,7 @@ export const NODIA_NODE_SCHEME_N_NODRINK: Overlay = {
       "id": "n_nodrink-c",
       "trigger": {
         "when": "at",
-        "ms": 15093
+        "ms": 12093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -385,8 +385,8 @@ export const NODIA_NODE_SCHEME_N_NODRINK: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
@@ -403,7 +403,7 @@ export const NODIA_NODE_SCHEME_N_NOFOLLOW: Overlay = {
       "id": "n_nofollow-c",
       "trigger": {
         "when": "at",
-        "ms": 15093
+        "ms": 12093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -418,8 +418,8 @@ export const NODIA_NODE_SCHEME_N_NOFOLLOW: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
@@ -436,7 +436,7 @@ export const NODIA_NODE_SCHEME_N_RIVER: Overlay = {
       "id": "n_river-c",
       "trigger": {
         "when": "at",
-        "ms": 15069
+        "ms": 12069
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -451,8 +451,8 @@ export const NODIA_NODE_SCHEME_N_RIVER: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
@@ -495,7 +495,7 @@ export const NODIA_NODE_SCHEME_N_TEA: Overlay = {
       "id": "n_tea-c",
       "trigger": {
         "when": "at",
-        "ms": 15093
+        "ms": 12093
       },
       "inputs": {
         "timeoutMs": 8000,
@@ -510,8 +510,8 @@ export const NODIA_NODE_SCHEME_N_TEA: Overlay = {
           }
         ],
         "defaultEvent": "mo",
-        "x": 0.72,
-        "y": 0.78
+        "x": 0.5,
+        "y": 0.88
       },
       "component": "inkYingMo",
       "layout": { ...STAGE_FILL_LAYOUT }
