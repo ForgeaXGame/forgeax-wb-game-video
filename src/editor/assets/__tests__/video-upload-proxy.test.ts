@@ -1,3 +1,7 @@
+import { execSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Readable, PassThrough } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
@@ -11,35 +15,75 @@ import {
   resolveUploadTransportUrl,
 } from '../video-upload'
 
-const COS_SIGNED =
-  'https://bucket.cos.ap-guangzhou.myqcloud.com/path/to/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
+const Q_SIGN_QUERY =
+  'q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
+
+const CUSTOM_STORAGE_HOST = 'bucket.storage.example.com'
+const CUSTOM_STORAGE_SIGNED = `https://${CUSTOM_STORAGE_HOST}/path/to/key.mp4?${Q_SIGN_QUERY}`
+
+const INTERNAL_STYLE_HOST = 'bucket.object-internal.ap-region.storage.example.com'
+const INTERNAL_STYLE_SIGNED = `https://${INTERNAL_STYLE_HOST}/videos/demo/key.mp4?${Q_SIGN_QUERY}`
+
+const BARE_SERVICE_HOST = 'object.ap-region.storage.example.com'
+const BARE_SERVICE_SIGNED = `https://${BARE_SERVICE_HOST}/bucket/key.mp4?${Q_SIGN_QUERY}`
 
 const CUSTOM_ENDPOINT_SIGNED =
   'https://bucket.example.internal/videos/demo/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
 
-const COS_TENCENTCOS_PUBLIC_SIGNED =
-  'https://bucket.cos.ap-guangzhou.tencentcos.cn/path/to/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
-
 const S3_SIGNED =
   'https://bucket.s3.us-east-1.amazonaws.com/key.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAxxx%2F20260101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=deadbeef&X-Amz-Date=20260101T000000Z'
 
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+
 describe('validateVideoUploadTargetUrl', () => {
-  it('accepts signed public Tencent COS HTTPS URLs', () => {
-    expect(validateVideoUploadTargetUrl(COS_SIGNED, []).ok).toBe(true)
-    expect(validateVideoUploadTargetUrl(COS_TENCENTCOS_PUBLIC_SIGNED, []).ok).toBe(true)
-  })
-
-  it('does not treat internal-style tencentcos hostnames as built-in public COS', () => {
-    const internalStyleHost = `bucket.${['cos', 'internal'].join('-')}.ap-guangzhou.tencentcos.cn`
-    const signedUrl = `https://${internalStyleHost}/videos/demo/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123`
-
-    const rejected = validateVideoUploadTargetUrl(signedUrl, [])
+  it('rejects custom object storage hosts unless explicitly allowlisted', () => {
+    const rejected = validateVideoUploadTargetUrl(CUSTOM_STORAGE_SIGNED, [])
     expect(rejected.ok).toBe(false)
     if (!rejected.ok) {
       expect(rejected.reason).toBe('host_not_allowed')
     }
 
-    expect(validateVideoUploadTargetUrl(signedUrl, [internalStyleHost]).ok).toBe(true)
+    expect(
+      validateVideoUploadTargetUrl(CUSTOM_STORAGE_SIGNED, [CUSTOM_STORAGE_HOST]).ok,
+    ).toBe(true)
+  })
+
+  it('accepts allowlisted hosts only when q-sign or X-Amz signatures are present', () => {
+    expect(validateVideoUploadTargetUrl(CUSTOM_STORAGE_SIGNED, [CUSTOM_STORAGE_HOST]).ok).toBe(
+      true,
+    )
+
+    const s3Custom =
+      'https://uploads.example.com/file?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=x&X-Amz-Signature=y'
+    expect(validateVideoUploadTargetUrl(s3Custom, ['uploads.example.com']).ok).toBe(true)
+  })
+
+  it('rejects allowlisted hosts without a signature (no open SSRF proxy)', () => {
+    const unsignedCustom = 'https://uploads.example.com/file'
+    const unsignedResult = validateVideoUploadTargetUrl(unsignedCustom, ['uploads.example.com'])
+    expect(unsignedResult.ok).toBe(false)
+    if (!unsignedResult.ok) {
+      expect(unsignedResult.reason).toBe('missing_signature')
+    }
+
+    const unsignedAllowlisted = `https://${CUSTOM_STORAGE_HOST}/path/to/key.mp4`
+    const unsignedStorage = validateVideoUploadTargetUrl(unsignedAllowlisted, [CUSTOM_STORAGE_HOST])
+    expect(unsignedStorage.ok).toBe(false)
+    if (!unsignedStorage.ok) {
+      expect(unsignedStorage.reason).toBe('missing_signature')
+    }
+  })
+
+  it('does not treat internal-style storage hostnames as built-in public endpoints', () => {
+    const rejected = validateVideoUploadTargetUrl(INTERNAL_STYLE_SIGNED, [])
+    expect(rejected.ok).toBe(false)
+    if (!rejected.ok) {
+      expect(rejected.reason).toBe('host_not_allowed')
+    }
+
+    expect(validateVideoUploadTargetUrl(INTERNAL_STYLE_SIGNED, [INTERNAL_STYLE_HOST]).ok).toBe(
+      true,
+    )
   })
 
   it('rejects custom-endpoint signed hosts unless explicitly allowlisted', () => {
@@ -54,39 +98,37 @@ describe('validateVideoUploadTargetUrl', () => {
     ).toBe(true)
   })
 
-  it('rejects bare COS service endpoints and unsigned tencentcos hosts', () => {
+  it('rejects bare service endpoints even when signed', () => {
+    expect(validateVideoUploadTargetUrl(BARE_SERVICE_SIGNED, []).ok).toBe(false)
+
     const bareCustomEndpoint =
       'https://storage.example.com/videos/demo/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
     expect(validateVideoUploadTargetUrl(bareCustomEndpoint, []).ok).toBe(false)
 
-    const barePublicEndpoint =
-      'https://cos.ap-guangzhou.tencentcos.cn/bucket/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-sign-time=1;2&q-key-time=1;2&q-header-list=host&q-url-param-list=&q-signature=abc123'
-    expect(validateVideoUploadTargetUrl(barePublicEndpoint, []).ok).toBe(false)
-
     expect(
       validateVideoUploadTargetUrl(
-        'https://evil.tencentcos.cn/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-signature=abc123',
+        'https://evil.storage.example.com/key.mp4?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-signature=abc123',
         [],
       ).ok,
     ).toBe(false)
   })
 
-  it('accepts signed AWS S3 HTTPS URLs', () => {
+  it('accepts signed AWS S3 HTTPS URLs without env allowlist', () => {
     expect(validateVideoUploadTargetUrl(S3_SIGNED, []).ok).toBe(true)
   })
 
   it('rejects HTTP, missing signature params, userinfo, fragment, and unknown hosts', () => {
-    const httpCos = COS_SIGNED.replace('https://', 'http://')
-    expect(validateVideoUploadTargetUrl(httpCos, []).ok).toBe(false)
+    const httpTarget = CUSTOM_STORAGE_SIGNED.replace('https://', 'http://')
+    expect(validateVideoUploadTargetUrl(httpTarget, [CUSTOM_STORAGE_HOST]).ok).toBe(false)
 
-    const missingSig = COS_SIGNED.replace('q-signature=abc123', '')
-    expect(validateVideoUploadTargetUrl(missingSig, []).ok).toBe(false)
+    const missingSig = CUSTOM_STORAGE_SIGNED.replace('q-signature=abc123', '')
+    expect(validateVideoUploadTargetUrl(missingSig, [CUSTOM_STORAGE_HOST]).ok).toBe(false)
 
-    const userinfo = COS_SIGNED.replace('https://', 'https://user:pass@')
-    expect(validateVideoUploadTargetUrl(userinfo, []).ok).toBe(false)
+    const userinfo = CUSTOM_STORAGE_SIGNED.replace('https://', 'https://user:pass@')
+    expect(validateVideoUploadTargetUrl(userinfo, [CUSTOM_STORAGE_HOST]).ok).toBe(false)
 
-    const fragment = `${COS_SIGNED}#frag`
-    expect(validateVideoUploadTargetUrl(fragment, []).ok).toBe(false)
+    const fragment = `${CUSTOM_STORAGE_SIGNED}#frag`
+    expect(validateVideoUploadTargetUrl(fragment, [CUSTOM_STORAGE_HOST]).ok).toBe(false)
 
     expect(
       validateVideoUploadTargetUrl('https://evil.example.com/upload?q-sign-algorithm=x&q-ak=a&q-signature=b', [])
@@ -94,34 +136,14 @@ describe('validateVideoUploadTargetUrl', () => {
     ).toBe(false)
   })
 
-  it('rejects private and localhost hosts unless explicitly allowlisted', () => {
-    const localCos =
-      'https://127.0.0.1/path?q-sign-algorithm=sha1&q-ak=a&q-signature=b'
-    expect(validateVideoUploadTargetUrl(localCos, []).ok).toBe(false)
+  it('rejects private and localhost hosts unless explicitly allowlisted with signature', () => {
+    const localSigned = 'https://127.0.0.1/path?q-sign-algorithm=sha1&q-ak=a&q-signature=b'
+    expect(validateVideoUploadTargetUrl(localSigned, []).ok).toBe(false)
 
-    const privateCos =
-      'https://10.0.0.5/path?q-sign-algorithm=sha1&q-ak=a&q-signature=b'
-    expect(validateVideoUploadTargetUrl(privateCos, []).ok).toBe(false)
+    const privateSigned = 'https://10.0.0.5/path?q-sign-algorithm=sha1&q-ak=a&q-signature=b'
+    expect(validateVideoUploadTargetUrl(privateSigned, []).ok).toBe(false)
 
-    expect(validateVideoUploadTargetUrl(localCos, ['127.0.0.1']).ok).toBe(true)
-  })
-
-  it('allows exact custom hosts from VIDEO_UPLOAD_PROXY_ALLOWED_HOSTS with COS or S3 signatures', () => {
-    const s3Custom =
-      'https://uploads.example.com/file?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=x&X-Amz-Signature=y'
-    expect(validateVideoUploadTargetUrl(s3Custom, ['uploads.example.com']).ok).toBe(true)
-    expect(validateVideoUploadTargetUrl(s3Custom, ['other.example.com']).ok).toBe(false)
-
-    const cosCustom =
-      'https://uploads.example.com/file?q-sign-algorithm=sha1&q-ak=AKIDxxx&q-signature=abc123'
-    expect(validateVideoUploadTargetUrl(cosCustom, ['uploads.example.com']).ok).toBe(true)
-
-    const unsignedCustom = 'https://uploads.example.com/file'
-    const unsignedResult = validateVideoUploadTargetUrl(unsignedCustom, ['uploads.example.com'])
-    expect(unsignedResult.ok).toBe(false)
-    if (!unsignedResult.ok) {
-      expect(unsignedResult.reason).toBe('missing_signature')
-    }
+    expect(validateVideoUploadTargetUrl(localSigned, ['127.0.0.1']).ok).toBe(true)
   })
 
   it('parseAllowedExtraHosts splits comma-separated exact hostnames', () => {
@@ -130,6 +152,52 @@ describe('validateVideoUploadTargetUrl', () => {
       'b.example.com',
     ])
     expect(parseAllowedExtraHosts(undefined)).toEqual([])
+  })
+})
+
+describe('public mirror vocabulary guard', () => {
+  it('tracked wb-game-video source/tests contain no vendor-specific host literals', () => {
+    const rgBinary = process.platform === 'win32' ? 'rg.exe' : 'rg'
+    let rgPath = rgBinary
+    for (const candidate of [
+      rgBinary,
+      '/opt/homebrew/bin/rg',
+      '/usr/local/bin/rg',
+    ]) {
+      try {
+        execSync(`"${candidate}" --version`, { stdio: 'pipe' })
+        rgPath = candidate
+        break
+      } catch {
+        // try next candidate
+      }
+    }
+
+    const scanRoots = ['server', 'src', 'scripts'].filter((dir) =>
+      existsSync(resolve(PACKAGE_ROOT, dir)),
+    )
+    expect(scanRoots.length).toBeGreaterThan(0)
+
+    const pattern = ['ten', 'cent'].join('') + '|' + ['ten', 'cent', 'cos'].join('') + '|' + ['cos', '-', 'internal'].join('')
+    const excludes = ['--glob', '!**/node_modules/**', '--glob', '!**/bun.lock', '--glob', '!**/package-lock.json', '--glob', '!**/pnpm-lock.yaml']
+
+    for (const root of scanRoots) {
+      let hits = ''
+      try {
+        hits = execSync(
+          `"${rgPath}" -ni ${excludes.map((part) => `'${part}'`).join(' ')} '${pattern}' ${root}`,
+          { cwd: PACKAGE_ROOT, encoding: 'utf8' },
+        ).trim()
+      } catch (error) {
+        const status = (error as NodeJS.ErrnoException & { status?: number }).status
+        if (status === 1) {
+          hits = ''
+        } else {
+          throw error
+        }
+      }
+      expect(hits, `forbidden vocabulary under ${root}:\n${hits}`).toBe('')
+    }
   })
 })
 
@@ -148,7 +216,7 @@ describe('createVideoUploadProxyHandler', () => {
     const passthrough = new PassThrough()
     const stream = passthrough as unknown as IncomingMessage
     stream.method = options.method ?? 'PUT'
-    stream.url = options.url ?? `/?url=${encodeURIComponent(COS_SIGNED)}`
+    stream.url = options.url ?? `/?url=${encodeURIComponent(S3_SIGNED)}`
     stream.headers = options.headers ?? { 'content-type': 'video/mp4' }
 
     queueMicrotask(() => {
@@ -221,8 +289,12 @@ describe('createVideoUploadProxyHandler', () => {
       })
     })
 
-    const handler = createVideoUploadProxyHandler({ fetchImpl: fetchImpl as typeof fetch })
+    const handler = createVideoUploadProxyHandler({
+      fetchImpl: fetchImpl as typeof fetch,
+      allowedExtraHosts: [CUSTOM_STORAGE_HOST],
+    })
     const req = mockReq({
+      url: `/?url=${encodeURIComponent(CUSTOM_STORAGE_SIGNED)}`,
       body: ['chunk-a', 'chunk-b'],
       headers: {
         'content-type': 'video/mp4',
@@ -249,7 +321,7 @@ describe('createVideoUploadProxyHandler', () => {
     expect(next).not.toHaveBeenCalled()
     expect(bodyWasStream).toBe(true)
     expect(fetchCalls).toHaveLength(1)
-    expect(fetchCalls[0]!.url).toBe(COS_SIGNED)
+    expect(fetchCalls[0]!.url).toBe(CUSTOM_STORAGE_SIGNED)
     expect(fetchCalls[0]!.init.method).toBe('PUT')
     expect(fetchCalls[0]!.init.redirect).toBe('manual')
     expect(fetchCalls[0]!.init.credentials).toBe('omit')
@@ -300,7 +372,7 @@ describe('createVideoUploadProxyHandler', () => {
   it('rejects non-PUT, invalid targets, and returns 502 on network errors without leaking signed URLs', async () => {
     const handler = createVideoUploadProxyHandler({
       fetchImpl: vi.fn(async () => {
-        throw new Error(`network down ${COS_SIGNED}`)
+        throw new Error(`network down ${S3_SIGNED}`)
       }) as typeof fetch,
     })
 
@@ -332,7 +404,7 @@ describe('createVideoUploadProxyHandler', () => {
     expect(badTargetRes.statusCode).toBe(400)
     expect(badTargetRes.body.toString()).not.toContain('evil.example.com')
 
-    const networkReq = mockReq({ url: `/?url=${encodeURIComponent(COS_SIGNED)}` })
+    const networkReq = mockReq({ url: `/?url=${encodeURIComponent(S3_SIGNED)}` })
     const networkRes = mockRes()
     await new Promise<void>((resolve) => {
       handler(networkReq, networkRes, vi.fn())
@@ -340,16 +412,16 @@ describe('createVideoUploadProxyHandler', () => {
     })
     expect(networkRes.statusCode).toBe(502)
     expect(networkRes.body.toString()).not.toContain('q-signature')
-    expect(networkRes.body.toString()).not.toContain(COS_SIGNED)
+    expect(networkRes.body.toString()).not.toContain(S3_SIGNED)
   })
 })
 
 describe('resolveUploadTransportUrl', () => {
   it('rewrites cross-origin signed URLs on dev port 15185 to the local proxy', () => {
     const origin = 'http://localhost:15185'
-    const resolved = resolveUploadTransportUrl(COS_SIGNED, { origin })
+    const resolved = resolveUploadTransportUrl(CUSTOM_STORAGE_SIGNED, { origin })
     expect(resolved).toBe(
-      `${origin}/__video-upload-proxy?url=${encodeURIComponent(COS_SIGNED)}`,
+      `${origin}/__video-upload-proxy?url=${encodeURIComponent(CUSTOM_STORAGE_SIGNED)}`,
     )
   })
 
@@ -362,7 +434,9 @@ describe('resolveUploadTransportUrl', () => {
     expect(resolveUploadTransportUrl(eaUrl, { origin: devOrigin })).toBe(eaUrl)
 
     const studioOrigin = 'http://localhost:18920'
-    expect(resolveUploadTransportUrl(COS_SIGNED, { origin: studioOrigin })).toBe(COS_SIGNED)
+    expect(resolveUploadTransportUrl(CUSTOM_STORAGE_SIGNED, { origin: studioOrigin })).toBe(
+      CUSTOM_STORAGE_SIGNED,
+    )
   })
 
   it('encodes query parameters in the proxy url parameter', () => {
@@ -423,7 +497,7 @@ describe('default XHR transport with upload proxy resolver', () => {
     const file = new File([new Uint8Array([1, 2])], 'clip.mp4', { type: 'video/mp4' })
     const instruction = {
       method: 'PUT' as const,
-      url: COS_SIGNED,
+      url: CUSTOM_STORAGE_SIGNED,
       headers: { 'content-type': 'video/mp4' },
       expires_at: '2099-01-01T00:00:00.000Z',
     }
@@ -435,7 +509,7 @@ describe('default XHR transport with upload proxy resolver', () => {
 
     expect(xhr.open).toHaveBeenCalledWith(
       'PUT',
-      `http://localhost:15185/__video-upload-proxy?url=${encodeURIComponent(COS_SIGNED)}`,
+      `http://localhost:15185/__video-upload-proxy?url=${encodeURIComponent(CUSTOM_STORAGE_SIGNED)}`,
       true,
     )
     expect(xhr.setRequestHeader).toHaveBeenCalledWith('content-type', 'video/mp4')

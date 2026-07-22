@@ -71,37 +71,6 @@ function hasQueryParam(url: URL, name: string): boolean {
   return false
 }
 
-function isTencentCosHost(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-
-  const myqcloudSuffix = '.myqcloud.com'
-  if (host.endsWith(myqcloudSuffix)) {
-    const prefix = host.slice(0, -myqcloudSuffix.length)
-    const cosMarker = '.cos.'
-    const cosIndex = prefix.lastIndexOf(cosMarker)
-    if (cosIndex <= 0) {
-      return false
-    }
-    const region = prefix.slice(cosIndex + cosMarker.length)
-    return region.length > 0 && !region.includes('.')
-  }
-
-  const tencentcosSuffix = '.tencentcos.cn'
-  if (!host.endsWith(tencentcosSuffix)) {
-    return false
-  }
-
-  const prefix = host.slice(0, -tencentcosSuffix.length)
-  const cosMarker = '.cos.'
-  const cosIndex = prefix.lastIndexOf(cosMarker)
-  if (cosIndex > 0) {
-    const region = prefix.slice(cosIndex + cosMarker.length)
-    return region.length > 0 && !region.includes('.')
-  }
-
-  return false
-}
-
 function isAwsS3Host(hostname: string): boolean {
   return hostname.toLowerCase().endsWith('.amazonaws.com')
 }
@@ -168,12 +137,8 @@ export function validateVideoUploadTargetUrl(
     return { ok: false, reason: 'missing_signature' }
   }
 
-  if (isTencentCosHost(hostname)) {
-    return hasCosSignature(url)
-      ? { ok: true, url }
-      : { ok: false, reason: 'missing_cos_signature' }
-  }
-
+  // Built-in public object storage allowlist: AWS S3 only. Every other upload
+  // host must be configured explicitly via VIDEO_UPLOAD_PROXY_ALLOWED_HOSTS.
   if (isAwsS3Host(hostname)) {
     return hasS3Signature(url)
       ? { ok: true, url }
