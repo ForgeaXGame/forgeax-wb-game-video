@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import * as videoUpload from '../video-upload'
 import {
   completePreparedVideoUpload,
   createDefaultXhrUploadTransport,
@@ -143,6 +144,85 @@ describe('uploadVideoResource flow', () => {
     expect(resource.resource_id).toBe('res-new')
     expect(progress.at(-1)).toBe(100)
     expect(progress.every((value, index) => index === 0 || value >= progress[index - 1]!)).toBe(true)
+  })
+
+  it('replaces through the shared prepare, transfer, and complete flow', async () => {
+    const replaceVideoResource = (
+      videoUpload as unknown as {
+        replaceVideoResource?: (options: {
+          client: import('../kino-api').KinoVideoClient
+          transport: UploadTransport
+          gameId: string
+          resourceId: string
+          file: File
+        }) => Promise<KinoResourceDTO>
+      }
+    ).replaceVideoResource
+    expect(replaceVideoResource).toBeTypeOf('function')
+    if (!replaceVideoResource) return
+
+    const prepareUpload = vi.fn(async () => preparedResponse())
+    const create = vi.fn(async (input) => ({
+      ...createdResource(),
+      resource_id: 'res-existing',
+      url: input.url,
+      updated_at: 30,
+    }))
+    const transport: UploadTransport = { put: vi.fn(async () => {}) }
+    const client = {
+      prepareUpload,
+      create,
+    } as unknown as import('../kino-api').KinoVideoClient
+
+    const resource = await replaceVideoResource({
+      client,
+      transport,
+      gameId: 'demo',
+      resourceId: 'res-existing',
+      file: makeMp4File('replacement.mp4'),
+    })
+
+    expect(prepareUpload).toHaveBeenCalledWith({
+      game_id: 'demo',
+      file_name: 'replacement.mp4',
+      mime_type: 'video/mp4',
+      bytes: FIXTURE.byteLength,
+      client_resource_id: 'res-existing',
+      replace_existing: true,
+    }, { signal: undefined })
+    expect(transport.put).toHaveBeenCalledOnce()
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      game_id: 'demo',
+      media_type: 'video',
+      url: preparedResponse().object_url,
+    }), { signal: undefined })
+    expect(resource.resource_id).toBe('res-existing')
+  })
+
+  it('keeps the replacement id in retry state when completion fails', async () => {
+    const client = {
+      prepareUpload: vi.fn(async () => preparedResponse()),
+      create: vi.fn(async () => {
+        throw new Error('complete failed')
+      }),
+    } as unknown as import('../kino-api').KinoVideoClient
+
+    await expect(
+      videoUpload.replaceVideoResource({
+        client,
+        transport: { put: vi.fn(async () => {}) },
+        gameId: 'demo',
+        resourceId: 'res-existing',
+        file: makeMp4File('replacement.mp4'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'complete_failed',
+      retryState: {
+        replacementResourceId: 'res-existing',
+        objectUrl: preparedResponse().object_url,
+        uploaded: true,
+      },
+    })
   })
 
   it('does not create when transport PUT fails', async () => {

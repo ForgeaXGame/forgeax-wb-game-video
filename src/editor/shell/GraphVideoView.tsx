@@ -11,7 +11,11 @@ import type { CSSProperties } from 'react'
 import { useGraphScenario, useGraphHistory, graphUndo, graphRedo, graphHistoryClear } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
-import { VideoAssetLibrary, type VideoLibraryEntry } from '../assets/VideoAssetLibrary'
+import {
+  VideoAssetLibrary,
+  VideoReplaceUpload,
+  type VideoLibraryEntry,
+} from '../assets/VideoAssetLibrary'
 import { useVideoAssets } from '../assets/useVideoAssets'
 import {
   listRegistryAssets,
@@ -177,16 +181,36 @@ injectStyleOnce(
 .gvv-gen button:disabled { opacity: 0.5; cursor: default; }
 .gvv-gen-hint { font-size: 11px; color: var(--gc-faint); line-height: 1.5; }
 .gvv-gen-hint.is-error { color: #ff8f8f; }
-.val-head-actions { margin-left: auto; display: inline-flex; gap: 4px; }
-.val-head-actions button { border: 1px solid var(--gc-line-soft); background: var(--gc-panel2); color: var(--gc-text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
-.val-error, .val-upload-error { color: #ff8f8f; font-size: 12px; padding: 6px 10px; }
-.val-upload { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 11px; color: var(--gc-faint); }
-.val-upload progress { flex: 1; }
+.val-head-upload, .val-head-refresh { border: 1px solid var(--gc-line-soft); background: var(--gc-panel2); color: var(--gc-text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+.val-head-upload { position: relative; display: inline-flex; flex: none; min-width: 30px; min-height: 28px; padding: 2px 8px; align-items: center; justify-content: center; overflow: hidden; }
+.val-head-upload > span { pointer-events: none; }
+.val-head-upload-input { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.val-head-upload-input::file-selector-button { width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.val-head-upload[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.val-head-upload-input:disabled, .val-head-upload-input:disabled::file-selector-button { cursor: default; }
+.val-head-refresh { margin-left: auto; }
+.gvv-replace-upload { position: absolute; top: 10px; right: 10px; z-index: 35; display: inline-flex; align-items: center; justify-content: center; min-width: 80px; min-height: 30px; padding: 4px 10px; border: 1px solid var(--gc-line-soft); border-radius: 7px; background: rgba(20,20,20,.82); color: var(--gc-text); font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+.gc-frame:hover > .gvv-replace-upload, .gc-frame:focus-within > .gvv-replace-upload { opacity: 1; pointer-events: auto; }
+.gvv-replace-upload > span { pointer-events: none; }
+.gvv-replace-upload-input { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.gvv-replace-upload-input::file-selector-button { width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.gvv-replace-upload[aria-disabled="true"] { cursor: default; opacity: 1; }
+.gvv-replace-upload-input:disabled, .gvv-replace-upload-input:disabled::file-selector-button { cursor: default; }
+.val-head-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gc-faint); white-space: nowrap; }
+.val-head-status button { border: 1px solid var(--gc-line-soft); background: transparent; color: var(--gc-text); border-radius: 6px; padding: 1px 6px; cursor: pointer; font-size: 11px; }
+.val-head-fail { color: #ff8f8f; }
+.val-error { color: #ff8f8f; font-size: 12px; padding: 6px 10px; }
 .val-empty { color: var(--gc-faint); font-size: 12px; padding: 12px 10px; }
-.val-row-actions { display: flex; gap: 6px; padding: 0 10px 6px; }
-.val-row-actions button { font-size: 10px; border: 1px solid var(--gc-line-soft); background: transparent; color: var(--gc-muted); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
-.val-rename { display: flex; gap: 6px; padding: 6px 10px; align-items: center; }
-.val-rename input { flex: 1; min-width: 0; }
+.val-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.val-row > .gc-row { width: 100%; min-width: 0; }
+.val-row .gc-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.val-row-delete { width: 44px; min-width: 44px; height: 28px; min-height: 28px; margin-right: 8px; padding: 0 6px; border: 1px solid var(--gc-line-soft); background: transparent; color: var(--gc-muted); border-radius: 999px; font-size: 10px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .15s ease, color .15s ease, border-color .15s ease; }
+.val-row:hover .val-row-delete { opacity: 1; pointer-events: auto; }
+.val-row:focus-within .val-row-delete { opacity: 1; pointer-events: auto; }
+.val-row.is-on .val-row-delete { opacity: 1; pointer-events: auto; }
+.val-row-delete:hover:not(:disabled), .val-row-delete:focus-visible { color: var(--gc-text); border-color: var(--gc-accent-line); }
+.val-row-delete:disabled { cursor: default; opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) { .val-row-delete { transition: none; } }
 .val-load-more { margin: 8px 10px 12px; border: 1px solid var(--gc-accent-line); background: var(--gc-accent-soft); color: var(--gc-text); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
 .val-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 40; }
 .val-dialog { background: var(--gc-panel2); border: 1px solid var(--gc-line-soft); border-radius: 12px; padding: 16px; max-width: 420px; width: calc(100% - 32px); color: var(--gc-text); }
@@ -378,6 +402,7 @@ export function GraphVideoView(): JSX.Element {
         fromApi: true,
         durMs: item.durMs,
         type: item.type,
+        updatedAt: item.updatedAt,
       })
     }
     for (const entry of supplementalEntries) push(entry)
@@ -868,7 +893,7 @@ export function GraphVideoView(): JSX.Element {
                     {timelineEntry.type ? <em>{timelineEntry.type}</em> : null}
                   </span>
                   <video
-                    key={timelineEntry.id}
+                    key={`${timelineEntry.id}:${timelineEntry.updatedAt ?? ''}`}
                     ref={videoRef}
                     className="gc-video"
                     src={previewSrc}
@@ -899,6 +924,11 @@ export function GraphVideoView(): JSX.Element {
                     onTimeUpdate={(e) => setPlayheadMs(Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000))))}
                     onSeeked={(e) => setPlayheadMs(Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000))))}
                     onEnded={() => { setIsVideoPlaying(false); setPlayheadMs(maxMs) }}
+                  />
+                  <VideoReplaceUpload
+                    entry={previewEntry}
+                    uploading={videoController.uploading}
+                    onReplace={videoController.replaceResource}
                   />
                   {missingPreviewId ? (
                     <div className="val-missing-overlay">

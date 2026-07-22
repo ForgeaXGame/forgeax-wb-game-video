@@ -109,6 +109,42 @@ describe('createKinoVideoClient', () => {
     expect(prepared.upload_token).toBe('token')
   })
 
+  it('serializes replacement fields when preparing an upload', async () => {
+    const fetchImpl = makeFetch((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        game_id: 'demo',
+        file_name: 'replacement.mp4',
+        mime_type: 'video/mp4',
+        bytes: FIXTURE_BYTES,
+        client_resource_id: 'res-existing',
+        replace_existing: true,
+      })
+      return new Response(
+        JSON.stringify(envelope({
+          upload: {
+            method: 'PUT',
+            url: 'http://127.0.0.1:18900/upload',
+            headers: {},
+            expires_at: '2099-01-01T00:00:00.000Z',
+          },
+          object_url: 'http://127.0.0.1:18900/object',
+          upload_token: 'token',
+        })),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    })
+    const client = createKinoVideoClient({ fetch: fetchImpl })
+
+    await client.prepareUpload({
+      game_id: 'demo',
+      file_name: 'replacement.mp4',
+      mime_type: 'video/mp4',
+      bytes: FIXTURE_BYTES,
+      client_resource_id: 'res-existing',
+      replace_existing: true,
+    })
+  })
+
   it('get/update/delete/playbackUrl append encoded game_id', async () => {
     const calls: string[] = []
     const fetchImpl = makeFetch((input, init) => {

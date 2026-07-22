@@ -137,6 +137,7 @@ export interface PreparedVideoCreateInput {
 
 export interface PreparedVideoUpload {
   gameId: string
+  replacementResourceId?: string
   fileIdentity: VideoFileIdentity
   response: DirectUploadResponse
   objectUrl: string
@@ -188,6 +189,10 @@ export interface UploadVideoResourceOptions {
   signal?: AbortSignal
 }
 
+export interface ReplaceVideoResourceOptions extends UploadVideoResourceOptions {
+  resourceId: string
+}
+
 export interface CompletePreparedVideoUploadOptions {
   client: KinoVideoClient
   prepared: PreparedVideoUpload
@@ -235,10 +240,14 @@ function fileIdentity(file: File): VideoFileIdentity {
   }
 }
 
-function uploadKey(gameId: string, file: File): string {
+function uploadKey(gameId: string, file: File, resourceId?: string): string {
+  if (resourceId) {
+    return JSON.stringify([gameId, 'replace', resourceId])
+  }
   const identity = fileIdentity(file)
   return JSON.stringify([
     gameId,
+    resourceId,
     identity.name,
     identity.size,
     identity.type,
@@ -402,16 +411,25 @@ async function prepareVideoUpload(
   gameId: string,
   file: File,
   createInput: PreparedVideoCreateInput,
+  replacementResourceId?: string,
+  signal?: AbortSignal,
 ): Promise<PreparedVideoUpload> {
   const response = await client.prepareUpload({
     game_id: gameId,
     file_name: file.name,
     mime_type: VIDEO_UPLOAD_MIME,
     bytes: file.size,
-  })
+    ...(replacementResourceId
+      ? {
+          client_resource_id: replacementResourceId,
+          replace_existing: true,
+        }
+      : {}),
+  }, { signal })
 
   return {
     gameId,
+    replacementResourceId,
     fileIdentity: fileIdentity(file),
     response,
     objectUrl: response.object_url,
@@ -455,13 +473,14 @@ function buildCreatePayload(prepared: PreparedVideoUpload): CreateKinoResourceIn
 async function completePreparedUpload(
   client: KinoVideoClient,
   prepared: PreparedVideoUpload,
+  signal?: AbortSignal,
 ): Promise<KinoResourceDTO> {
   if (!prepared.uploaded) {
     throw new VideoUploadError('Upload transfer is incomplete', 'invalid_upload_state', prepared)
   }
 
   try {
-    return await client.create(buildCreatePayload(prepared))
+    return await client.create(buildCreatePayload(prepared), { signal })
   } catch (error) {
     const message =
       error instanceof KinoClientError
@@ -478,13 +497,14 @@ export async function completePreparedVideoUpload(
 ): Promise<KinoResourceDTO> {
   assertNotAborted(options.signal)
   const report = createProgressReporter(options.onProgress)
-  const resource = await completePreparedUpload(options.client, options.prepared)
+  const resource = await completePreparedUpload(options.client, options.prepared, options.signal)
   report(100, true)
   return resource
 }
 
 async function runVideoResourceUpload(
   options: UploadVideoResourceOptions,
+  replacementResourceId?: string,
 ): Promise<KinoResourceDTO> {
   const transport = options.transport ?? createDefaultXhrUploadTransport()
   const report = createProgressReporter(options.onProgress)
@@ -498,7 +518,14 @@ async function runVideoResourceUpload(
     source_meta: options.source_meta,
   }
 
-  const prepared = await prepareVideoUpload(options.client, options.gameId, options.file, createInput)
+  const prepared = await prepareVideoUpload(
+    options.client,
+    options.gameId,
+    options.file,
+    createInput,
+    replacementResourceId,
+    options.signal,
+  )
   report(0)
 
   let uploaded: PreparedVideoUpload
@@ -523,7 +550,7 @@ async function runVideoResourceUpload(
 
   try {
     assertNotAborted(options.signal)
-    const resource = await completePreparedUpload(options.client, uploaded)
+    const resource = await completePreparedUpload(options.client, uploaded, options.signal)
     report(100, true)
     return resource
   } catch (error) {
@@ -538,19 +565,32 @@ async function runVideoResourceUpload(
   }
 }
 
-export async function uploadVideoResource(
+async function runLockedVideoResourceUpload(
   options: UploadVideoResourceOptions,
+  replacementResourceId?: string,
 ): Promise<KinoResourceDTO> {
   assertMp4File(options.file)
   assertNotAborted(options.signal)
-  const key = uploadKey(options.gameId, options.file)
+  const key = uploadKey(options.gameId, options.file, replacementResourceId)
   if (inFlightUploads.has(key)) {
     throw new VideoUploadError('Upload already in progress', 'upload_in_progress')
   }
   inFlightUploads.add(key)
   try {
-    return await runVideoResourceUpload(options)
+    return await runVideoResourceUpload(options, replacementResourceId)
   } finally {
     inFlightUploads.delete(key)
   }
+}
+
+export async function uploadVideoResource(
+  options: UploadVideoResourceOptions,
+): Promise<KinoResourceDTO> {
+  return runLockedVideoResourceUpload(options)
+}
+
+export async function replaceVideoResource(
+  options: ReplaceVideoResourceOptions,
+): Promise<KinoResourceDTO> {
+  return runLockedVideoResourceUpload(options, options.resourceId)
 }

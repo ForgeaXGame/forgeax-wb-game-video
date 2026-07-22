@@ -7,6 +7,10 @@ const uploadState = vi.hoisted(() => ({
   impl: undefined as undefined | ((options: {
     onProgress?: (value: number) => void
   }) => Promise<KinoResourceDTO>),
+  replaceImpl: undefined as undefined | ((options: {
+    resourceId: string
+    onProgress?: (value: number) => void
+  }) => Promise<KinoResourceDTO>),
 }))
 
 vi.mock('../video-upload', async (importOriginal) => {
@@ -17,6 +21,12 @@ vi.mock('../video-upload', async (importOriginal) => {
       uploadState.impl
         ? uploadState.impl(options)
         : actual.uploadVideoResource(options as Parameters<typeof actual.uploadVideoResource>[0]),
+    replaceVideoResource: (options: {
+      resourceId: string
+      onProgress?: (value: number) => void
+    }) => uploadState.replaceImpl
+      ? uploadState.replaceImpl(options)
+      : Promise.reject(new Error('replace implementation missing')),
   }
 })
 
@@ -53,32 +63,84 @@ function makeClient(overrides: Partial<KinoVideoClient> = {}): KinoVideoClient {
 }
 
 describe('useVideoAssets', () => {
-  it('rename sends full Kino update body from current resource', async () => {
+  it('adds updated_at as a playback URL revision', async () => {
     const client = makeClient()
     const { result } = renderHook(() => useVideoAssets('demo', { client }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.items[0]?.url).toBe(
+      '/api/v1/kino/resources/res-1/content?game_id=demo&v=2',
+    )
+  })
+
+  it('replaces the same item without changing total', async () => {
+    uploadState.replaceImpl = async ({ resourceId }) =>
+      makeResource({ resource_id: resourceId, name: 'Replacement', updated_at: 30 })
+    const client = makeClient({
+      list: vi.fn()
+        .mockResolvedValueOnce({
+          items: [makeResource()],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        })
+        .mockRejectedValueOnce(new Error('refresh unavailable')),
+    })
+    const { result } = renderHook(() => useVideoAssets('demo', { client }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const replaceResource = (
+      result.current as typeof result.current & {
+        replaceResource?: (resourceId: string, file: File) => Promise<KinoResourceDTO | undefined>
+      }
+    ).replaceResource
+    expect(replaceResource).toBeTypeOf('function')
+    if (!replaceResource) return
 
     await act(async () => {
-      await result.current.rename('res-1', 'New title')
+      await replaceResource(
+        'res-1',
+        new File(['video'], 'replacement.mp4', { type: 'video/mp4' }),
+      )
     })
 
-    expect(client.get).toHaveBeenCalledWith(
-      'res-1',
-      'demo',
-      { signal: expect.any(AbortSignal) },
-    )
-    expect(client.update).toHaveBeenCalledWith('res-1', {
-      resource_id: 'res-1',
-      game_id: 'demo',
-      media_type: 'video',
-      url: 'http://object/res-1',
-      name: 'New title',
-      type: 'UPLOAD',
-      remark: 'note',
-      source: 'upload',
-      source_meta: { duration_ms: 5000, mime_type: 'video/mp4' },
-    }, { signal: expect.any(AbortSignal) })
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.total).toBe(1)
+    expect(result.current.items[0]).toMatchObject({
+      id: 'res-1',
+      label: 'Replacement',
+      updatedAt: 30,
+      url: '/api/v1/kino/resources/res-1/content?game_id=demo&v=30',
+    })
+    uploadState.replaceImpl = undefined
+  })
+
+  it('keeps the old item when replacement fails', async () => {
+    uploadState.replaceImpl = async () => {
+      throw new Error('replacement failed')
+    }
+    const client = makeClient()
+    const { result } = renderHook(() => useVideoAssets('demo', { client }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const before = result.current.items[0]
+    const replaceResource = (
+      result.current as typeof result.current & {
+        replaceResource?: (resourceId: string, file: File) => Promise<KinoResourceDTO | undefined>
+      }
+    ).replaceResource
+    expect(replaceResource).toBeTypeOf('function')
+    if (!replaceResource) return
+
+    await act(async () => {
+      await replaceResource(
+        'res-1',
+        new File(['video'], 'replacement.mp4', { type: 'video/mp4' }),
+      )
+    })
+
+    expect(result.current.items).toEqual([before])
+    expect(result.current.total).toBe(1)
+    expect(result.current.uploadError).toBe('replacement failed')
+    uploadState.replaceImpl = undefined
   })
 
   it('surfaces list errors instead of returning empty items silently', async () => {
@@ -131,7 +193,7 @@ describe('useVideoAssets', () => {
     consoleError.mockRestore()
   })
 
-  it('keeps upload progress active while a CRUD mutation completes', async () => {
+  it('keeps upload progress active while a delete mutation completes', async () => {
     let finishUpload: ((resource: KinoResourceDTO) => void) | undefined
     let reportProgress: ((value: number) => void) | undefined
     uploadState.impl = (options) => {
@@ -156,7 +218,7 @@ describe('useVideoAssets', () => {
     expect(result.current.uploadProgress).toBe(35)
 
     await act(async () => {
-      await result.current.rename('res-1', 'Renamed while uploading')
+      await result.current.deleteResource('res-1')
     })
     await act(async () => {
       reportProgress?.(70)
@@ -197,36 +259,6 @@ describe('useVideoAssets', () => {
       'res-3',
     ])
     expect(result.current.hasMore).toBe(false)
-  })
-
-  it('keeps optimistic rename when background refresh fails', async () => {
-    const updated = makeResource({ name: 'New title', updated_at: 99 })
-    const list = vi.fn()
-      .mockResolvedValueOnce({
-        items: [makeResource()],
-        total: 1,
-        page: 1,
-        page_size: 20,
-      })
-      .mockRejectedValueOnce(new Error('refresh failed'))
-    const client = makeClient({
-      list,
-      update: vi.fn(async () => updated),
-    })
-    const { result } = renderHook(() => useVideoAssets('demo', { client }))
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    await act(async () => {
-      await result.current.rename('res-1', 'New title')
-    })
-
-    expect(result.current.items[0]).toMatchObject({
-      id: 'res-1',
-      label: 'New title',
-      updatedAt: 99,
-    })
-    await waitFor(() => expect(result.current.error).toBe('refresh failed'))
-    expect(result.current.items[0]?.label).toBe('New title')
   })
 
   it('keeps optimistic delete when background refresh fails', async () => {

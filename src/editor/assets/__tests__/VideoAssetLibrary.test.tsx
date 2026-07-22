@@ -1,7 +1,8 @@
 import { createRef } from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import type { GameScenario } from '../../../runtime/schema/graph-schema'
+import * as videoAssetLibraryModule from '../VideoAssetLibrary'
 import { VideoAssetLibrary, type VideoAssetsController, type VideoLibraryEntry } from '../VideoAssetLibrary'
 
 const EMPTY_SCENARIO: GameScenario = {
@@ -46,8 +47,8 @@ function makeController(
     loadPage: vi.fn(async () => {}),
     loadMore: vi.fn(async () => {}),
     upload: vi.fn(async () => undefined),
+    replaceResource: vi.fn(async () => undefined),
     retryComplete: vi.fn(async () => undefined),
-    rename: vi.fn(async () => {}),
     deleteResource: vi.fn(async () => {}),
     ...overrides,
   }
@@ -87,6 +88,147 @@ describe('VideoAssetLibrary', () => {
     expect(screen.getByRole('button', { name: '上传 · Clip one' })).toHaveClass('is-on')
   })
 
+  it('orders header controls as title, upload, status, count, refresh', () => {
+    const controller = makeController({
+      uploadProgress: 42,
+      uploadError: 'Failed to finalize upload',
+      canRetryComplete: true,
+    })
+    const { container } = render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const head = container.querySelector('.gc-list-head')
+    expect(head).toBeTruthy()
+    const children = [...head!.children]
+    const title = head!.querySelector('.gc-list-title')
+    const upload = head!.querySelector('.val-head-upload')
+    const status = head!.querySelector('.val-head-status')
+    const count = head!.querySelector('.gc-list-count')
+    const refresh = head!.querySelector('.val-head-refresh')
+
+    expect(children.indexOf(upload!)).toBe(children.indexOf(title!) + 1)
+    expect(children.indexOf(status!)).toBeGreaterThan(children.indexOf(upload!))
+    expect(children.indexOf(count!)).toBeGreaterThan(children.indexOf(status!))
+    expect(children.indexOf(refresh!)).toBeGreaterThan(children.indexOf(count!))
+  })
+
+  it('uses the file input itself as the single accessible upload control', () => {
+    const { container } = render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={makeController()}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const uploadControls = screen.getAllByLabelText('上传视频')
+    expect(uploadControls).toHaveLength(1)
+    const input = uploadControls[0] as HTMLInputElement
+    const label = input.closest('label')
+
+    expect(input).toHaveAttribute('type', 'file')
+    expect(input).toHaveAttribute('accept', 'video/mp4')
+    expect(input).not.toHaveAttribute('hidden')
+    expect(input).not.toHaveStyle({ display: 'none' })
+    expect(input).toHaveClass('val-head-upload-input')
+    expect(label).toHaveClass('val-head-upload')
+    expect(label).toContainElement(input)
+    expect(container.querySelector('.gc-list-title')?.nextElementSibling).toBe(label)
+    expect(input.tabIndex).toBe(0)
+  })
+
+  it('keeps the upload input above a 30 by 28 pixel hit area', async () => {
+    await import('../../shell/GraphVideoView')
+    const css = document.querySelector<HTMLStyleElement>(
+      'style[data-reel-style="graph-video-view"]',
+    )?.textContent ?? ''
+
+    expect(css).toMatch(/\.val-head-upload\s*\{[^}]*min-width:\s*30px/)
+    expect(css).toMatch(/\.val-head-upload\s*\{[^}]*min-height:\s*28px/)
+    expect(css).toMatch(/\.val-head-upload-input\s*\{[^}]*display:\s*block/)
+    expect(css).toMatch(/\.val-head-upload-input\s*\{[^}]*z-index:\s*1/)
+    expect(css).toMatch(/\.val-head-upload-input::file-selector-button\s*\{[^}]*width:\s*100%/)
+    expect(css).toMatch(/\.val-head-upload-input::file-selector-button\s*\{[^}]*height:\s*100%/)
+  })
+
+  it('uploads the selected file from the real file input', async () => {
+    const controller = makeController()
+    render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const input = screen.getByLabelText('上传视频') as HTMLInputElement
+    const file = new File(['video'], 'clip.mp4', { type: 'video/mp4' })
+
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(controller.upload).toHaveBeenCalledWith(file))
+    expect(input.value).toBe('')
+  })
+
+  it('shows compact upload status and retry in the header', async () => {
+    const controller = makeController({
+      uploadProgress: 42,
+      uploadError: 'Failed to finalize upload',
+      canRetryComplete: true,
+    })
+    const { container } = render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const head = container.querySelector('.gc-list-head')
+    const status = within(head as HTMLElement).getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status).toHaveTextContent('上传 42%')
+    expect(status).toHaveTextContent('完成失败')
+    expect(within(head as HTMLElement).getByRole('button', { name: '重试完成上传' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '重试完成上传' }))
+    await waitFor(() => expect(controller.retryComplete).toHaveBeenCalledOnce())
+  })
+
+  it('keeps upload status out of the list body', () => {
+    const { container } = render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={makeController({
+          uploadProgress: 42,
+          uploadError: 'Failed to finalize upload',
+          canRetryComplete: true,
+        })}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const listBody = container.querySelector('.gc-list-body')
+    expect(listBody).toBeTruthy()
+    expect(within(listBody as HTMLElement).queryByRole('progressbar')).toBeNull()
+    expect(within(listBody as HTMLElement).queryByText(/完成失败/)).toBeNull()
+    expect(within(listBody as HTMLElement).queryByRole('button', { name: '重试完成上传' })).toBeNull()
+  })
+
   it('calls refresh from manual refresh button', async () => {
     const controller = makeController()
     render(
@@ -103,49 +245,49 @@ describe('VideoAssetLibrary', () => {
     await waitFor(() => expect(controller.refresh).toHaveBeenCalledOnce())
   })
 
-  it('shows upload progress and retry complete', async () => {
-    const controller = makeController({
-      uploadProgress: 42,
-      uploadError: 'Failed to finalize upload',
-      canRetryComplete: true,
-    })
-    render(
+  it('exposes delete but not rename for api entries', () => {
+    const onSelect = vi.fn()
+    const { container } = render(
       <VideoAssetLibrary
         gameId="demo"
         scenario={EMPTY_SCENARIO}
         bundledEntries={[]}
-        controller={controller}
-        selectedId=""
-        onSelect={() => {}}
+        controller={makeController({ items: [apiEntry('res-1', 'Clip one')] })}
+        selectedId="res-1"
+        onSelect={onSelect}
       />,
     )
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
-    expect(screen.getByText(/Failed to finalize upload/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '重试完成上传' }))
-    await waitFor(() => expect(controller.retryComplete).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('button', { name: /重命名/ })).toBeNull()
+    const deleteButton = screen.getByRole('button', { name: '删除 Clip one' })
+    const assetButton = screen.getByRole('button', { name: '上传 · Clip one' })
+    const row = deleteButton.closest('.val-row')
+
+    expect(row).toHaveClass('is-on')
+    expect(assetButton.parentElement).toBe(row)
+    expect(deleteButton.parentElement).toBe(row)
+    expect([...row!.children]).toEqual([assetButton, deleteButton])
+
+    fireEvent.click(deleteButton)
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(container.querySelector('.val-row-actions')).toBeNull()
   })
 
-  it('submits an inline rename through the controller', async () => {
-    const controller = makeController({
-      items: [apiEntry('res-1', 'Old name')],
-    })
-    render(
-      <VideoAssetLibrary
-        gameId="demo"
-        scenario={EMPTY_SCENARIO}
-        bundledEntries={[]}
-        controller={controller}
-        selectedId=""
-        onSelect={() => {}}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: '重命名 Old name' }))
-    const input = screen.getByLabelText('新名称')
-    fireEvent.change(input, { target: { value: 'New title' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存名称' }))
-    await waitFor(() =>
-      expect(controller.rename).toHaveBeenCalledWith('res-1', 'New title'),
-    )
+  it('keeps delete inline, compact, and discoverable for pointer and keyboard users', async () => {
+    await import('../../shell/GraphVideoView')
+    const css = document.querySelector<HTMLStyleElement>(
+      'style[data-reel-style="graph-video-view"]',
+    )?.textContent ?? ''
+
+    expect(css).toMatch(/\.val-row\s*\{[^}]*display:\s*grid/)
+    expect(css).toMatch(/\.val-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/)
+    expect(css).toMatch(/\.val-row\s*>\s*\.gc-row\s*\{[^}]*min-width:\s*0/)
+    expect(css).toMatch(/\.val-row\s+\.gc-row-label\s*\{[^}]*text-overflow:\s*ellipsis/)
+    expect(css).toMatch(/\.val-row-delete\s*\{[^}]*min-width:\s*44px/)
+    expect(css).toMatch(/\.val-row-delete\s*\{[^}]*min-height:\s*28px/)
+    expect(css).toMatch(/\.val-row:hover\s+\.val-row-delete[^}]*opacity:\s*1/)
+    expect(css).toMatch(/\.val-row:focus-within\s+\.val-row-delete[^}]*opacity:\s*1/)
+    expect(css).toMatch(/\.val-row\.is-on\s+\.val-row-delete[^}]*opacity:\s*1/)
   })
 
   it('delete with references shows graph and node names in confirm dialog', async () => {
@@ -201,35 +343,6 @@ describe('VideoAssetLibrary', () => {
     await waitFor(() => expect(controller.deleteResource).toHaveBeenCalledOnce())
     expect(onDeleted).toHaveBeenCalledWith('unused')
     expect(screen.queryByRole('dialog')).toBeNull()
-  })
-
-  it('keeps rename input open when rename fails', async () => {
-    const controller = makeController({
-      items: [apiEntry('res-1', 'Old name')],
-      error: 'Rename failed',
-      rename: vi.fn(async () => {
-        throw new Error('Rename failed')
-      }),
-    })
-    render(
-      <VideoAssetLibrary
-        gameId="demo"
-        scenario={EMPTY_SCENARIO}
-        bundledEntries={[]}
-        controller={controller}
-        selectedId=""
-        onSelect={() => {}}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: '重命名 Old name' }))
-    fireEvent.change(screen.getByLabelText('新名称'), {
-      target: { value: 'New title' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '保存名称' }))
-
-    await waitFor(() => expect(controller.rename).toHaveBeenCalledOnce())
-    expect(screen.getByLabelText('新名称')).toHaveValue('New title')
-    expect(screen.getByRole('alert')).toHaveTextContent('Rename failed')
   })
 
   it('keeps delete dialog open when delete fails', async () => {
@@ -303,8 +416,8 @@ describe('VideoAssetLibrary', () => {
         onSelect={() => {}}
       />,
     )
-    expect(screen.getByRole('button', { name: '上传视频' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '重命名 Clip' })).toBeDisabled()
+    expect(screen.getByLabelText('上传视频')).toBeDisabled()
+    expect(screen.getByLabelText('上传视频').closest('label')).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('button', { name: '删除 Clip' })).toBeDisabled()
 
     rerender(
@@ -321,11 +434,12 @@ describe('VideoAssetLibrary', () => {
         onSelect={() => {}}
       />,
     )
-    expect(screen.getByRole('button', { name: '上传视频' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '重命名 Clip' })).toBeDisabled()
+    expect(screen.getByLabelText('上传视频')).toBeDisabled()
+    expect(screen.getByLabelText('上传视频').closest('label')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: '删除 Clip' })).toBeDisabled()
   })
 
-  it('disables rename and delete for bundled entries', () => {
+  it('does not expose delete for bundled entries', () => {
     render(
       <VideoAssetLibrary
         gameId="demo"
@@ -410,5 +524,63 @@ describe('VideoAssetLibrary', () => {
       />,
     )
     expect(screen.getByText(/暂无视频素材/)).toBeTruthy()
+  })
+})
+
+describe('VideoReplaceUpload', () => {
+  const VideoReplaceUpload = (
+    videoAssetLibraryModule as typeof videoAssetLibraryModule & {
+      VideoReplaceUpload?: (props: {
+        entry?: VideoLibraryEntry
+        uploading: boolean
+        onReplace: (resourceId: string, file: File) => Promise<unknown>
+      }) => JSX.Element | null
+    }
+  ).VideoReplaceUpload
+
+  it('replaces an API preview through a real file input using the same resource id', async () => {
+    expect(VideoReplaceUpload).toBeTypeOf('function')
+    if (!VideoReplaceUpload) return
+    const onReplace = vi.fn(async () => undefined)
+    const entry = apiEntry('res-existing', 'Existing clip')
+    render(<VideoReplaceUpload entry={entry} uploading={false} onReplace={onReplace} />)
+    const input = screen.getByLabelText('重新上传 Existing clip') as HTMLInputElement
+    const file = new File(['video'], 'replacement.mp4', { type: 'video/mp4' })
+
+    expect(input).toHaveAttribute('type', 'file')
+    expect(input).toHaveAttribute('accept', 'video/mp4')
+    expect(input).not.toHaveAttribute('hidden')
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => expect(onReplace).toHaveBeenCalledWith('res-existing', file))
+    expect(input.value).toBe('')
+  })
+
+  it('does not render replacement for bundled or generated previews', () => {
+    expect(VideoReplaceUpload).toBeTypeOf('function')
+    if (!VideoReplaceUpload) return
+    const { rerender } = render(
+      <VideoReplaceUpload
+        entry={bundledEntry('idle01')}
+        uploading={false}
+        onReplace={vi.fn()}
+      />,
+    )
+    expect(screen.queryByLabelText(/重新上传/)).toBeNull()
+
+    rerender(
+      <VideoReplaceUpload
+        entry={{
+          id: 'generated',
+          label: 'Generated',
+          url: '/generated.mp4',
+          group: '生成',
+          fromRegistry: true,
+        }}
+        uploading={false}
+        onReplace={vi.fn()}
+      />,
+    )
+    expect(screen.queryByLabelText(/重新上传/)).toBeNull()
   })
 })

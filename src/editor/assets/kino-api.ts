@@ -75,6 +75,8 @@ export interface PrepareUploadInput {
   mime_type: 'video/mp4'
   bytes: number
   extension?: string
+  client_resource_id?: string
+  replace_existing?: boolean
 }
 
 export interface CreateKinoResourceInput {

@@ -7,6 +7,7 @@ import {
 } from './kino-api'
 import {
   completePreparedVideoUpload,
+  replaceVideoResource,
   uploadVideoResource,
   VideoUploadError,
   type PreparedVideoUpload,
@@ -40,8 +41,8 @@ export interface VideoAssetsController {
   loadPage: (page: number) => Promise<void>
   loadMore: () => Promise<void>
   upload: (file: File) => Promise<KinoResourceDTO | undefined>
+  replaceResource: (resourceId: string, file: File) => Promise<KinoResourceDTO | undefined>
   retryComplete: () => Promise<KinoResourceDTO | undefined>
-  rename: (resourceId: string, name: string) => Promise<void>
   deleteResource: (resourceId: string) => Promise<void>
 }
 
@@ -61,11 +62,19 @@ function safeErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
+export function appendVideoRevision(url: string, updatedAt: number): string {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${encodeURIComponent(String(updatedAt))}`
+}
+
 function toListItem(dto: KinoResourceDTO, client: KinoVideoClient): VideoAssetListItem {
   return {
     id: dto.resource_id,
     label: dto.name?.trim() || dto.resource_id,
-    url: client.playbackUrl(dto.resource_id, dto.game_id),
+    url: appendVideoRevision(
+      client.playbackUrl(dto.resource_id, dto.game_id),
+      dto.updated_at,
+    ),
     durMs: dto.source_meta?.duration_ms,
     type: dto.type,
     updatedAt: dto.updated_at,
@@ -179,27 +188,44 @@ export function useVideoAssets(
     void fetchPage(initialPage, 'replace')
   }, [fetchPage, gameId, initialPage])
 
-  const upload = useCallback(
-    async (file: File): Promise<KinoResourceDTO | undefined> => {
+  const runUpload = useCallback(
+    async (
+      file: File,
+      replacementResourceId?: string,
+    ): Promise<KinoResourceDTO | undefined> => {
       const generation = ++uploadGeneration.current
       setUploading(true)
       setUploadError(null)
       setUploadProgress(0)
       setRetryPrepared(null)
       try {
-        const resource = await uploadVideoResource({
+        const sharedOptions = {
           client,
           gameId,
           file,
-          onProgress: (value) => {
+          onProgress: (value: number) => {
             if (mountedRef.current && generation === uploadGeneration.current) {
               setUploadProgress(value)
             }
           },
           signal: abortRef.current?.signal,
-        })
+        }
+        const resource = replacementResourceId
+          ? await replaceVideoResource({
+              ...sharedOptions,
+              resourceId: replacementResourceId,
+            })
+          : await uploadVideoResource(sharedOptions)
         if (!mountedRef.current || generation !== uploadGeneration.current) {
           return undefined
+        }
+        if (replacementResourceId) {
+          const replacement = toListItem(
+            { ...resource, resource_id: replacementResourceId },
+            client,
+          )
+          setItems((currentItems) => currentItems.map((item) =>
+            item.id === replacementResourceId ? replacement : item))
         }
         await refresh()
         return resource
@@ -220,6 +246,19 @@ export function useVideoAssets(
       }
     },
     [client, gameId, refresh],
+  )
+
+  const upload = useCallback(
+    async (file: File): Promise<KinoResourceDTO | undefined> => runUpload(file),
+    [runUpload],
+  )
+
+  const replaceResource = useCallback(
+    async (
+      resourceId: string,
+      file: File,
+    ): Promise<KinoResourceDTO | undefined> => runUpload(file, resourceId),
+    [runUpload],
   )
 
   const retryComplete = useCallback(async (): Promise<KinoResourceDTO | undefined> => {
@@ -244,6 +283,15 @@ export function useVideoAssets(
       if (!mountedRef.current || generation !== uploadGeneration.current) {
         return undefined
       }
+      if (retryPrepared.replacementResourceId) {
+        const replacementId = retryPrepared.replacementResourceId
+        const replacement = toListItem(
+          { ...resource, resource_id: replacementId },
+          client,
+        )
+        setItems((currentItems) => currentItems.map((item) =>
+          item.id === replacementId ? replacement : item))
+      }
       setRetryPrepared(null)
       await refresh()
       return resource
@@ -263,53 +311,6 @@ export function useVideoAssets(
       }
     }
   }, [client, refresh, retryPrepared])
-
-  const rename = useCallback(
-    async (resourceId: string, name: string) => {
-      const generation = ++crudGeneration.current
-      setMutating(true)
-      setError(null)
-      try {
-        const current = await client.get(resourceId, gameId, {
-          signal: abortRef.current?.signal,
-        })
-        if (!mountedRef.current || generation !== crudGeneration.current) {
-          return
-        }
-        const updated = await client.update(resourceId, {
-          resource_id: resourceId,
-          game_id: gameId,
-          media_type: current.media_type,
-          url: current.url,
-          name: name.trim() || resourceId,
-          type: current.type,
-          remark: current.remark,
-          source: current.source,
-          source_meta: current.source_meta,
-        }, {
-          signal: abortRef.current?.signal,
-        })
-        if (!mountedRef.current || generation !== crudGeneration.current) {
-          return
-        }
-        const next = toListItem(updated, client)
-        setItems((currentItems) =>
-          currentItems.map((item) => (item.id === resourceId ? next : item)))
-        void refresh()
-      } catch (err) {
-        if (!mountedRef.current || generation !== crudGeneration.current) {
-          return
-        }
-        setError(safeErrorMessage(err))
-        throw err
-      } finally {
-        if (mountedRef.current && generation === crudGeneration.current) {
-          setMutating(false)
-        }
-      }
-    },
-    [client, gameId, refresh],
-  )
 
   const deleteResource = useCallback(
     async (resourceId: string) => {
@@ -361,8 +362,8 @@ export function useVideoAssets(
     loadPage,
     loadMore,
     upload,
+    replaceResource,
     retryComplete,
-    rename,
     deleteResource,
   }
 }
