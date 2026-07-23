@@ -17,14 +17,12 @@ import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
-import { VideoOverlayStage } from '../video/VideoOverlayStage'
-import { useVideoContentRect } from '../video/useVideoContentRect'
+import { GameStage } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
-import { listVideoAssetInfos, resolveMediaSrc, videoDurationCapReached } from './media'
-import { useClipPerformanceEnd } from './useClipPerformanceEnd'
-import { MissingVideoNotice } from './MissingVideoNotice'
+import { listVideoAssetInfos, resolveMediaSrc } from './media'
+import { useClipPerformanceEnd } from '../../runtime/play'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
@@ -347,9 +345,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const sessionRef = useRef(session)
   sessionRef.current = session
   const [snap, setSnap] = useState<SessionSnapshot>(() => session.start())
-  // overlay 舞台锚视频实际画面矩形（object-fit:contain），与 GraphPlaySurface/GraphPlayer 同源，避免有黑边时叠层错位。
-  const videoElRef = useRef<HTMLVideoElement | null>(null)
-  const { contentRect, recomputeRect } = useVideoContentRect(videoElRef, [snap.clip?.nodeId])
   // playEpoch：同节点 jump 重播时清闸（clip.nodeId 不变）
   const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap.clip?.nodeId, `${runKey}:${playEpoch}`)
 
@@ -366,11 +361,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [session])
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
-  const [missingVideoId, setMissingVideoId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setMissingVideoId(null)
-  }, [snap.clip?.nodeId, snap.clip?.mediaId, videoSrc])
 
   useEffect(() => {
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
@@ -550,69 +540,21 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               onFocus={() => claimPlayerFocus(playRootRef.current)}
               style={{ position: 'relative', height: 180, background: '#000', outline: 'none' }}
             >
-              {videoSrc ? (
-                <>
-                <video
-                  key={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
-                  ref={videoElRef}
-                  src={videoSrc}
-                  autoPlay
-                  muted
-                  playsInline
-                  loop={!!snap.clip?.loop}
-                  onLoadedMetadata={() => {
-                    setMissingVideoId(null)
-                    recomputeRect()
-                  }}
-                  onError={() => {
-                    if (snap.clip?.mediaId) {
-                      setMissingVideoId(snap.clip.mediaId)
-                    }
-                  }}
-                  onEnded={() => {
-                    if (snap.clip?.loop) return
-                    endPerformance()
-                  }}
-                  onTimeUpdate={(e) => {
-                    const el = e.currentTarget
-                    const nowMs = Math.floor(el.currentTime * 1000)
-                    if (videoDurationCapReached(nowMs, snap.clip?.durationMs, el.duration)) {
-                      el.pause()
-                      endPerformance()
-                      return
-                    }
-                    setSnap(sessionRef.current.tick(nowMs))
-                  }}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-                {missingVideoId ? (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.72)', padding: 12, zIndex: 2 }}>
-                    <MissingVideoNotice resourceId={missingVideoId} />
-                  </div>
-                ) : null}
-                </>
-              ) : (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.75, fontSize: 12 }}>
-                  {snap.clip?.name ?? '（无演出）'}
-                </div>
-              )}
-              {/* 全部叠层锚视频实际画面矩形（VideoOverlayStage）；contentRect 为空时回退整容器（inset:0）。 */}
-              <VideoOverlayStage contentRect={contentRect}>
-                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                  {snap.overlayMounts.map((m) => (
-                    <span key={m.mountId} style={{ display: 'contents' }}>
-                      {session.skins.renderOverlayMount(
-                        m,
-                        (elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key)),
-                        {
-                          hud: snap.hud,
-                          condition: { state: session.runtime.state, visited: session.runtime.state.visited },
-                        },
-                      )}
-                    </span>
-                  ))}
-                </div>
-              </VideoOverlayStage>
+              {/* 演出 + 叠层：共享 runtime/play 的 GameStage。videoKey 带 playEpoch → 同节点再 jump 强制 remount。 */}
+              <GameStage
+                videoSrc={videoSrc}
+                videoKey={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
+                clip={snap.clip}
+                overlayMounts={snap.overlayMounts}
+                skins={session.skins}
+                skinCtx={{
+                  hud: snap.hud,
+                  condition: { state: session.runtime.state, visited: session.runtime.state.visited },
+                }}
+                onEmit={(elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key))}
+                onTick={(nowMs) => setSnap(sessionRef.current.tick(nowMs))}
+                onPerformanceEnd={endPerformance}
+              />
             </div>
             </PlayerRootContext.Provider>
           </div>
