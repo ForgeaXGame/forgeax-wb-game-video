@@ -397,7 +397,6 @@ export function GraphVideoView(): JSX.Element {
       seen.add(entry.id)
       out.push(entry)
     }
-    for (const entry of bundledEntries) push(entry)
     for (const item of videoController.items) {
       push({
         id: item.id,
@@ -410,6 +409,7 @@ export function GraphVideoView(): JSX.Element {
         updatedAt: item.updatedAt,
       })
     }
+    for (const entry of bundledEntries) push(entry)
     for (const entry of supplementalEntries) push(entry)
     return out
   }, [bundledEntries, supplementalEntries, videoController.items])
@@ -502,8 +502,8 @@ export function GraphVideoView(): JSX.Element {
     setContentRect(null)
   }, [timelineEntry?.id, selectedSceneId, editingBoundClip])
 
-  // 换节点 → 清选中 + 右列回到「添加控件」默认视图 + 时间轴回「组件」模式。
-  useEffect(() => { setSelectedMaterialKey(null); setTopPanel('library'); setTimelineMode('material') }, [selectedSceneId])
+  // 换节点 → 清选中 + 回到提示词面板；遗留「添加控件」页不再作为默认入口。
+  useEffect(() => { setSelectedMaterialKey(null); setTopPanel('prompt'); setTimelineMode('material') }, [selectedSceneId])
 
   // 载入新内容（boot / 切版本 / 重置）后清空撤销历史，避免撤销穿越到别的版本/空图。
   useEffect(() => { graphHistoryClear() }, [loadEpoch])
@@ -677,7 +677,7 @@ export function GraphVideoView(): JSX.Element {
     editScenario((s, n) => deleteMaterialGraph(s, n, item))
     if (selectedMaterialKey === item.key) {
       setSelectedMaterialKey(null)
-      setTopPanel('library')
+      setTopPanel('prompt')
     }
   }
 
@@ -720,7 +720,7 @@ export function GraphVideoView(): JSX.Element {
       if (cueItem && !confirmMaterialDelete(scenario, node, cueItem)) return
       editScenario((s, n) => removeQteCueGraph(s, n, cueId))
       setSelectedMaterialKey(null)
-      setTopPanel('library')
+      setTopPanel('prompt')
       return
     }
     editScenario((s, n) => removeQteCueGraph(s, n, cueId))
