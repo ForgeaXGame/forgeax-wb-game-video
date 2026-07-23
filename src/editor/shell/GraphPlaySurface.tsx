@@ -244,7 +244,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       {/* 蓝图浮层：可拖拽 + 可缩放，复用 GraphCanvas */}
       {showBlueprint && (
         <DraggablePanel title="蓝图状态机 · 点节点跳转执行" initial={{ x: 40, y: 56, w: 540, h: 420 }} onClose={() => setShowBlueprint(false)}>
-          <GraphCanvas graph={graph} onChange={() => {}} overlays={overlays} activeNodeId={snap?.currentNodeId} traversedEdgeIds={traversed} onJump={doJump} />
+          <GraphCanvas graph={graph} onChange={() => {}} overlays={overlays} activeNodeId={snap?.currentNodeId} traversedEdgeIds={traversed} onJump={doJump} readOnly />
         </DraggablePanel>
       )}
 
