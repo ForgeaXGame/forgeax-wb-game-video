@@ -50,6 +50,8 @@ export interface OverlaySchemeEditorProps {
   entities: Record<string, Entity>
   variables: Record<string, Variable>
   usageCount: number
+  /** 锁定态（基础覆盖物单组件方案）：只可编辑 layout，不允许增删组件、不显组件库/删除。 */
+  locked?: boolean
   onRename: (title: string) => void
   onRemove: () => void
   /** 组件库拖到画布落地：presetId + 归一落点；返回新 child id（用于选中）。 */
@@ -67,6 +69,7 @@ export function OverlaySchemeEditor({
   entities,
   variables,
   usageCount,
+  locked = false,
   onRename,
   onRemove,
   onAddChild,
@@ -77,22 +80,25 @@ export function OverlaySchemeEditor({
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
 
-  // 画布选中组件后按 Backspace/Delete 删除当前组件；删除经 onRemoveChild→setMeta，天然进 zundo 撤销历史。
-  // 输入框/下拉内不拦截（留给原生文本编辑）。
+  // Backspace/Delete 删除选中组件；经 onRemoveChild→setMeta 天然进 zundo 撤销历史。锁定态（基础覆盖物）不删。
+  // 护栏：输入框/下拉/可编辑区、以及焦点在左侧方案列表（.gc-list）内一律放行给它们。
+  // 选中组件的方向键 = 微调位置，由画布 OverlayCatalogPreview 处理；切换选中交回鼠标点选 / 左侧列表上下键。
   useEffect(() => {
+    if (locked) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Backspace' && e.key !== 'Delete') return
       if (!selectedChildId) return
       const t = e.target as HTMLElement | null
       const tag = t?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return
+      if (t?.closest?.('.gc-list')) return
       e.preventDefault()
       onRemoveChild(selectedChildId)
       setSelectedChildId('')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedChildId, onRemoveChild])
+  }, [selectedChildId, onRemoveChild, locked])
 
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
@@ -106,9 +112,12 @@ export function OverlaySchemeEditor({
             style={{ flex: 1, fontWeight: 600 }}
           />
           <UsageBadge count={usageCount} />
-          <button style={del} onClick={onRemove}>删除</button>
+          {!locked && <button style={del} onClick={onRemove}>删除</button>}
         </div>
-        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>{overlayId}</div>
+        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
+          {overlayId}
+          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础组件方案（单组件，不可增删）</span>}
+        </div>
 
         <OverlayCatalogPreview
           overlay={overlay}
@@ -116,10 +125,14 @@ export function OverlaySchemeEditor({
           variables={variables}
           selectedChildId={selectedChildId}
           onSelectChild={setSelectedChildId}
-          onAddChild={(presetId, layout) => {
-            const id = onAddChild(presetId, layout)
-            if (typeof id === 'string') setSelectedChildId(id)
-          }}
+          onAddChild={
+            locked
+              ? undefined
+              : (presetId, layout) => {
+                  const id = onAddChild(presetId, layout)
+                  if (typeof id === 'string') setSelectedChildId(id)
+                }
+          }
           onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
           onWarnChange={setWarnIds}
         />
@@ -165,25 +178,33 @@ export function OverlaySchemeEditor({
                   <span style={{ opacity: 0.45, marginLeft: 6 }}>· {child.id}</span>
                 </span>
                 {warn && <span style={{ flex: 'none', color: '#ff6b6b', fontSize: 11 }} title="与另一交互组件热区重叠，运行时点击会互相遮挡">⚠</span>}
-                <button
-                  style={rowDelBtn}
-                  title="移除组件"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRemoveChild(child.id)
-                    if (selected) setSelectedChildId('')
-                  }}
-                >
-                  ×
-                </button>
+                {!locked && (
+                  <button
+                    style={rowDelBtn}
+                    title="移除组件"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemoveChild(child.id)
+                      if (selected) setSelectedChildId('')
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             )
           })}
         </div>
       </div>
 
-      {/* ── 右列：组件库 ── */}
-      <ComponentLibrary />
+      {/* ── 右列：组件库（锁定态不显，改提示） ── */}
+      {locked ? (
+        <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
+          基础组件方案锁定为单组件，不可增删；可在画布上调整其位置 / 尺寸。
+        </div>
+      ) : (
+        <ComponentLibrary />
+      )}
     </div>
   )
 }

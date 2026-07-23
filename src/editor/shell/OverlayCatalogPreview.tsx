@@ -5,10 +5,12 @@
  * 两态（同一组件）：
  *  - **只读**：不传交互回调时 = 纯预览（规则/别处复用）。
  *  - **可交互**（界面 tab）：stage 作组件库拖拽落点；每个 child 叠一个「操作框」（layout 盒）。
- *    **拖动改位置**（layout.left/top）、**四角改尺寸**（layout.width/height）——对**所有** overlay 开放，
+ *    **拖动改位置**（layout.left/top）、**方向键微调位置**（选中态 ←↑↓→，Shift 粗调）、
+ *    **四角+四边改尺寸**（layout.width/height；边=整条边线可拖，角=对角双轴）
+ *    ——对**所有** overlay 开放，
  *    不按组件类型门控（isSizable 只服务视频 tab）。均归一 0~1，写回 schema。
  */
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import { bootEditorSkins } from '../init'
@@ -37,6 +39,11 @@ const HANDLES: Array<{ k: string; h?: HDir; v?: VDir }> = [
 
 /** 归一 stage 矩形。 */
 type NBox = { left: number; top: number; w: number; h: number }
+
+/** 方向键 → 位移方向（单位向量，y 向下为正）；选中组件时按此微调 left/top。 */
+const ARROW_DELTA: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+}
 
 const PREVIEW_CSS = `
 .ocp-root { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -96,8 +103,9 @@ const PREVIEW_CSS = `
   background: none; color: var(--gc-txt, #f6f1e9); cursor: pointer;
 }
 .ocp-menu button:hover { background: var(--gc-item-hover, rgba(255,255,255,.08)); }
+/* 四角把手：小方块，拖动双轴缩放。 */
 .ocp-resize {
-  position: absolute; width: 12px; height: 12px;
+  position: absolute; width: 12px; height: 12px; z-index: 2;
   border-radius: 2px; background: var(--gc-accent, #c8955a);
   border: 1px solid #fff; touch-action: none; pointer-events: auto;
 }
@@ -105,10 +113,19 @@ const PREVIEW_CSS = `
 .ocp-resize.ne { right: -5px; top: -5px; cursor: nesw-resize; }
 .ocp-resize.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
 .ocp-resize.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
-.ocp-resize.n { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.ocp-resize.s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.ocp-resize.w { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
-.ocp-resize.e { right: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+/* 四边把手：覆盖整条边线的高亮长条（两端让出角把手），沿边任意处可拖；hover 加粗发光。 */
+.ocp-edge {
+  position: absolute; z-index: 1; touch-action: none; pointer-events: auto;
+  background: rgba(200,149,90,.35); border-radius: 3px;
+  transition: background .1s ease, box-shadow .1s ease;
+}
+.ocp-edge:hover { background: rgba(200,149,90,.85); box-shadow: 0 0 7px rgba(200,149,90,.75); }
+.ocp-edge.n, .ocp-edge.s { left: 9px; right: 9px; height: 5px; cursor: ns-resize; }
+.ocp-edge.w, .ocp-edge.e { top: 9px; bottom: 9px; width: 5px; cursor: ew-resize; }
+.ocp-edge.n { top: -3px; }
+.ocp-edge.s { bottom: -3px; }
+.ocp-edge.w { left: -3px; }
+.ocp-edge.e { right: -3px; }
 /* 选中态：框**内侧**右下角显示 x,y · w×h 像素读数。 */
 .ocp-dim {
   position: absolute; right: 2px; bottom: 2px; white-space: nowrap;
@@ -264,6 +281,32 @@ export function OverlayCatalogPreview({
     return { left: clamp01((clientX - r.left) / r.width), top: clamp01((clientY - r.top) / r.height) }
   }
 
+  // 选中组件后方向键微调位置（left/top）：步长按像素换算成归一，Shift=粗调（10px）否则 1px。
+  // 输入框/下拉/可编辑区内、以及焦点在左侧方案列表（.gc-list）内一律让位。删除仍由 OverlaySchemeEditor 处理。
+  useEffect(() => {
+    if (!interactive || !onPatchChildLayout || !selectedChildId) return
+    const onKey = (e: KeyboardEvent): void => {
+      const d = ARROW_DELTA[e.key]
+      if (!d) return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return
+      if (t?.closest?.('.gc-list')) return
+      const child = overlay.children.find((c) => c.id === selectedChildId)
+      if (!child) return
+      const { w, h } = stageSize()
+      if (!w || !h) return
+      e.preventDefault()
+      const px = e.shiftKey ? 10 : 1
+      onPatchChildLayout(selectedChildId, {
+        left: clamp01(num(child.layout?.left, 0) + (d[0] * px) / w),
+        top: clamp01(num(child.layout?.top, 0) + (d[1] * px) / h),
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [interactive, onPatchChildLayout, selectedChildId, overlay.children])
+
   /** 事件点是否落在某 child 操作框内（用其真实屏幕 rect）。 */
   const rectContains = (childId: string, x: number, y: number): boolean => {
     const r = childRefs.current[childId]?.getBoundingClientRect()
@@ -333,7 +376,7 @@ export function OverlayCatalogPreview({
     const startL = num(target.layout?.left, 0)
     const startT = num(target.layout?.top, 0)
     const el = e.currentTarget as HTMLElement
-    el.setPointerCapture(e.pointerId)
+    try { el.setPointerCapture(e.pointerId) } catch { /* 无活动指针(合成事件/边缘态):捕获可选,监听照常绑 */ }
     let moved = false
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientX - startX) < 2 && Math.abs(ev.clientY - startY) < 2) return
@@ -382,7 +425,7 @@ export function OverlayCatalogPreview({
     const bottom = startT + startH
     const MIN = 0.02
     const el = e.currentTarget as HTMLElement
-    el.setPointerCapture(e.pointerId)
+    try { el.setPointerCapture(e.pointerId) } catch { /* 无活动指针(合成事件/边缘态):捕获可选,监听照常绑 */ }
     const move = (ev: PointerEvent) => {
       const dnx = (ev.clientX - startX) / w
       const dny = (ev.clientY - startY) / stageH
@@ -475,14 +518,18 @@ export function OverlayCatalogPreview({
                     <span className="ocp-dim">
                       {Math.round(pl * stagePx.w)},{Math.round(pt * stagePx.h)} · {Math.round(boxW * stagePx.w)}×{Math.round(boxH * stagePx.h)}
                     </span>
-                    {HANDLES.map((hd) => (
-                      <span
-                        key={hd.k}
-                        className={`ocp-resize ${hd.k}`}
-                        onPointerDown={(e) => beginResize(e, child.id, L, hd.h, hd.v)}
-                        title="拖动改尺寸"
-                      />
-                    ))}
+                    {HANDLES.map((hd) => {
+                      // 角（同时改水平+垂直）= 小方块；边（单轴）= 整条高亮边条。
+                      const corner = hd.h != null && hd.v != null
+                      return (
+                        <span
+                          key={hd.k}
+                          className={`${corner ? 'ocp-resize' : 'ocp-edge'} ${hd.k}`}
+                          onPointerDown={(e) => beginResize(e, child.id, L, hd.h, hd.v)}
+                          title="拖动改尺寸"
+                        />
+                      )
+                    })}
                   </>
                 )}
               </div>
@@ -495,11 +542,14 @@ export function OverlayCatalogPreview({
           <button type="button" onPointerDown={(e) => { e.stopPropagation(); reorder(menu.childId, 'back'); setMenu(null) }}>⬇ 置底</button>
         </div>
       )}
-      <label className="ocp-scrub">
-        <span>预览时刻</span>
-        <input type="range" min={0} max={3000} step={50} value={timeMs} onChange={(e) => setTimeMs(Number(e.target.value))} />
-        <span>{(timeMs / 1000).toFixed(2)}s</span>
-      </label>
+      {/* 预览时刻拖条：仅只读预览态显示（规则 tab 等）；界面 tab 可交互态不显，画布固定 t=400ms 渲染。 */}
+      {!interactive && (
+        <label className="ocp-scrub">
+          <span>预览时刻</span>
+          <input type="range" min={0} max={3000} step={50} value={timeMs} onChange={(e) => setTimeMs(Number(e.target.value))} />
+          <span>{(timeMs / 1000).toFixed(2)}s</span>
+        </label>
+      )}
     </div>
   )
 }
