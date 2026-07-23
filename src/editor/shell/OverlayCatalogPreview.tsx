@@ -26,9 +26,14 @@ const num = (v: unknown, d: number): number => (typeof v === 'number' ? v : d)
 const DEFAULT_BOX_W = 0.25
 const DEFAULT_BOX_H = 0.15
 
-/** 四角缩放把手位置。 */
-type Corner = 'nw' | 'ne' | 'sw' | 'se'
-const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se']
+/** 8 个缩放把手：4 角 + 4 边。h/v = 该把手拖动时影响的水平/垂直边（缺省=该轴不动）。 */
+type HDir = 'w' | 'e'
+type VDir = 'n' | 's'
+const HANDLES: Array<{ k: string; h?: HDir; v?: VDir }> = [
+  { k: 'nw', h: 'w', v: 'n' }, { k: 'n', v: 'n' }, { k: 'ne', h: 'e', v: 'n' },
+  { k: 'w', h: 'w' }, { k: 'e', h: 'e' },
+  { k: 'sw', h: 'w', v: 's' }, { k: 's', v: 's' }, { k: 'se', h: 'e', v: 's' },
+]
 
 /** 归一 stage 矩形。 */
 type NBox = { left: number; top: number; w: number; h: number }
@@ -100,6 +105,17 @@ const PREVIEW_CSS = `
 .ocp-resize.ne { right: -5px; top: -5px; cursor: nesw-resize; }
 .ocp-resize.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
 .ocp-resize.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.ocp-resize.n { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.ocp-resize.s { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.ocp-resize.w { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+.ocp-resize.e { right: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+/* 选中态：框**内侧**右下角显示 x,y · w×h 像素读数。 */
+.ocp-dim {
+  position: absolute; right: 2px; bottom: 2px; white-space: nowrap;
+  font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 3px;
+  background: var(--gc-accent, #c8955a); color: #1a1510; pointer-events: none;
+  font-variant-numeric: tabular-nums; font-weight: 600;
+}
 `
 
 function mockHudCtx(entities: Record<string, Entity> | undefined, variables: Record<string, Variable> | undefined): SkinCtx {
@@ -168,8 +184,21 @@ export function OverlayCatalogPreview({
   /** 各按钮真实事件热区（归一 stage 坐标）——画布叠加可视化。 */
   const [hotAreas, setHotAreas] = useState<Array<NBox & { warn: boolean }>>([])
   const hotSigRef = useRef('')
+  /** stage 当前像素尺寸——选中态显示 x,y · w×h 像素读数用。 */
+  const [stagePx, setStagePx] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
 
   const interactive = !!(onAddChild || onPatchChildLayout)
+
+  // 跟踪 stage 像素尺寸（缩放/换比例时更新），供选中框显示真实像素读数。
+  useLayoutEffect(() => {
+    const stage = stageRef.current
+    if (!stage || typeof ResizeObserver === 'undefined') return
+    const update = () => { const r = stage.getBoundingClientRect(); setStagePx({ w: r.width, h: r.height }) }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(stage)
+    return () => ro.disconnect()
+  }, [])
 
   // 重叠告警 + 事件热区可视化：量每个**可交互** child 的逐个按钮热区，两两相交则告警。
   useLayoutEffect(() => {
@@ -335,14 +364,14 @@ export function OverlayCatalogPreview({
     el.addEventListener('pointerup', up)
   }
 
-  /** 四角缩放：对角固定，拖动角改 width/height（左/上侧角同时改 left/top）。对所有 overlay 开放。 */
-  const beginResize = (e: ReactPointerEvent, childId: string, layout: Layout | undefined, corner: Corner) => {
+  /** 缩放：拖角(双轴)或拖边(单轴)。h='w'/'e' 动左/右边、v='n'/'s' 动上/下边；对角/对边固定。 */
+  const beginResize = (e: ReactPointerEvent, childId: string, layout: Layout | undefined, h?: HDir, v?: VDir) => {
     if (!onPatchChildLayout) return
     e.stopPropagation()
     e.preventDefault()
     onSelectChild?.(childId)
-    const { w, h } = stageSize()
-    if (!w || !h) return
+    const { w, h: stageH } = stageSize()
+    if (!w || !stageH) return
     const startX = e.clientX
     const startY = e.clientY
     const startL = num(layout?.left, 0)
@@ -351,19 +380,17 @@ export function OverlayCatalogPreview({
     const startH = num(layout?.height, DEFAULT_BOX_H)
     const right = startL + startW
     const bottom = startT + startH
-    const west = corner === 'nw' || corner === 'sw'
-    const north = corner === 'nw' || corner === 'ne'
     const MIN = 0.02
     const el = e.currentTarget as HTMLElement
     el.setPointerCapture(e.pointerId)
     const move = (ev: PointerEvent) => {
       const dnx = (ev.clientX - startX) / w
-      const dny = (ev.clientY - startY) / h
+      const dny = (ev.clientY - startY) / stageH
       let L = startL, T = startT, W = startW, H = startH
-      if (west) { L = Math.min(Math.max(0, startL + dnx), right - MIN); W = right - L }
-      else { W = Math.max(MIN, Math.min(startW + dnx, 1 - startL)) }
-      if (north) { T = Math.min(Math.max(0, startT + dny), bottom - MIN); H = bottom - T }
-      else { H = Math.max(MIN, Math.min(startH + dny, 1 - startT)) }
+      if (h === 'w') { L = Math.min(Math.max(0, startL + dnx), right - MIN); W = right - L }
+      else if (h === 'e') { W = Math.max(MIN, Math.min(startW + dnx, 1 - startL)) }
+      if (v === 'n') { T = Math.min(Math.max(0, startT + dny), bottom - MIN); H = bottom - T }
+      else if (v === 's') { H = Math.max(MIN, Math.min(startH + dny, 1 - startT)) }
       onPatchChildLayout(childId, { left: L, top: T, width: W, height: H })
     }
     const up = () => {
@@ -443,15 +470,21 @@ export function OverlayCatalogPreview({
               >
                 <span className="ocp-hit-tag">{child.component}</span>
                 {warn && <span className="ocp-warn-tag" title="与另一交互组件热区重叠，运行时点击会互相遮挡">⚠ 重叠</span>}
-                {selected &&
-                  CORNERS.map((c) => (
-                    <span
-                      key={c}
-                      className={`ocp-resize ${c}`}
-                      onPointerDown={(e) => beginResize(e, child.id, L, c)}
-                      title="拖动改尺寸"
-                    />
-                  ))}
+                {selected && (
+                  <>
+                    <span className="ocp-dim">
+                      {Math.round(pl * stagePx.w)},{Math.round(pt * stagePx.h)} · {Math.round(boxW * stagePx.w)}×{Math.round(boxH * stagePx.h)}
+                    </span>
+                    {HANDLES.map((hd) => (
+                      <span
+                        key={hd.k}
+                        className={`ocp-resize ${hd.k}`}
+                        onPointerDown={(e) => beginResize(e, child.id, L, hd.h, hd.v)}
+                        title="拖动改尺寸"
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             )
           })}

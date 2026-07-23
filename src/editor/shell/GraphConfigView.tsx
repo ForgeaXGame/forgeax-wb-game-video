@@ -9,7 +9,7 @@
  *  - **规则**（实体/变量/公式）：左栏多行扁平切换，右栏渲染 ScenarioInspector。
  */
 import { useEffect, useMemo, useState } from 'react'
-import type { GameScenario, Layout, Overlay } from '../../runtime/schema/graph-schema'
+import type { GameScenario, Layout, Overlay, OverlayChild } from '../../runtime/schema/graph-schema'
 import { CatalogShell, type CatalogItem } from './CatalogShell'
 import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
 import { OverlaySchemeEditor, UsageBadge } from './OverlaySchemeEditor'
@@ -17,6 +17,7 @@ import { VersionPicker } from './VersionPicker'
 import { useGraphScenario, graphUndo, graphRedo } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
+import { defaultsForComponent } from './editors'
 import type { Formula } from '../persist/formula-authoring'
 
 export interface ConfigTab {
@@ -102,13 +103,16 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     const { [oid]: _drop, ...rest } = allOverlays
     setOverlays(rest)
   }
-  const addSchemeChild = (oid: string, presetId: string, layout?: Partial<Layout>): string | undefined => {
+  const addSchemeChild = (oid: string, componentId: string, layout?: Partial<Layout>): string | undefined => {
     const ov = allOverlays[oid]
-    const preset = NEW_COMPONENT_PRESETS.find((p) => p.id === presetId)
-    if (!ov || !preset) return undefined
-    const childId = `${presetId}-${Object.keys(ov.children).length}-${Date.now().toString(36)}`
-    const made = preset.make(childId)
-    // 画布落点：把归一 left/top（及可能的尺寸）并进 preset 自带 layout。
+    if (!ov) return undefined
+    const childId = `${componentId}-${Object.keys(ov.children).length}-${Date.now().toString(36)}`
+    // 有精选 preset 用它（带更合适的默认 inputs/layout）；其余组件走通用 make（component + inputs 默认值）。
+    const preset = NEW_COMPONENT_PRESETS.find((p) => p.id === componentId)
+    const made: OverlayChild = preset
+      ? preset.make(childId)
+      : { id: childId, component: componentId, trigger: { when: 'enter' }, inputs: defaultsForComponent(componentId) }
+    // 画布落点：把归一 left/top（及可能的尺寸）并进自带 layout。
     const child = layout ? { ...made, layout: { ...made.layout, ...layout } } : made
     setOverlays({ ...allOverlays, [oid]: { ...ov, children: [...ov.children, child] } })
     return childId
