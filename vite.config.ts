@@ -6,6 +6,11 @@ import { resolve } from 'path'
 import { existsSync, createReadStream, statSync } from 'fs'
 import type { ServerResponse, IncomingMessage } from 'http'
 import { assetsDir, listAssets, getAsset, getStyleAxes, setStyleAxes, resolveAssetFilePath, mimeForPath } from './server/asset-registry'
+import {
+  createVideoUploadProxyHandler,
+  parseAllowedExtraHosts,
+  VIDEO_UPLOAD_PROXY_ROUTE_PREFIX,
+} from './server/video-upload-proxy'
 import { generateKeyframe, generateVideo, type OrchestrateCtx } from './server/generation/orchestrate'
 import { importCharacterRefs, importSceneRefs } from './server/intake'
 import type { MediaKind } from './src/editor/assets/registry-types'
@@ -20,8 +25,6 @@ import type { MediaKind } from './src/editor/assets/registry-types'
  * （见 docs/superpowers/specs/2026-07-22-game-host-api-design.md）；扩展不再自建
  * `/__graph__` 写盘端点。dev 下 `/api/*` 经下方 server.proxy 转发到 forgeax server。
  */
-
-const GAME_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}$/
 
 /** forgeax server 源（game-host `/api/*` 落点）；默认 :18900，可用 env 覆盖。 */
 const FORGEAX_SERVER =
@@ -64,6 +67,20 @@ function readGraphReqJson(req: { on: (ev: string, cb: (arg?: unknown) => void) =
     })
     req.on('error', rej)
   })
+}
+
+// ─── Dev-only signed upload reverse proxy (port 15185) ───────────────────
+function videoUploadProxyPlugin(): Plugin {
+  return {
+    name: 'gamevideo-video-upload-proxy',
+    configureServer(server) {
+      const allowedExtraHosts = parseAllowedExtraHosts(process.env.VIDEO_UPLOAD_PROXY_ALLOWED_HOSTS)
+      server.middlewares.use(
+        VIDEO_UPLOAD_PROXY_ROUTE_PREFIX,
+        createVideoUploadProxyHandler({ allowedExtraHosts }),
+      )
+    },
+  }
 }
 
 // ─── 游戏级共享素材层端点 ─────────────────────────────────────────────────
@@ -261,11 +278,11 @@ export default defineConfig(() => {
   // 子路径下，需要绝对 base；独立 dev/preview/standalone 用相对 './'。
   const pluginBase =
     process.env.VITE_PLUGIN_BASE
-      ?? (process.env.WB_GAMEVIDEO_PLUGIN_BUILD === '1' ? '/extensions/wb-game-video/' : './')
+    ?? (process.env.WB_GAMEVIDEO_PLUGIN_BUILD === '1' ? '/extensions/wb-game-video/' : './')
 
   return {
     base: pluginBase,
-    plugins: [react(), gameVideoAssetsPlugin(), gameComponentsDevPlugin()],
+    plugins: [react(), videoUploadProxyPlugin(), gameVideoAssetsPlugin(), gameComponentsDevPlugin()],
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),
@@ -285,15 +302,20 @@ export default defineConfig(() => {
         clientPort: process.env.VITE_PLUGIN_HMR_CLIENT_PORT
           ? Number(process.env.VITE_PLUGIN_HMR_CLIENT_PORT)
           : process.env.HMR_CLIENT_PORT
-          ? Number(process.env.HMR_CLIENT_PORT)
-          : process.env.PORT_GAMEVIDEO_STUDIO
-          ? Number(process.env.PORT_GAMEVIDEO_STUDIO)
-          : undefined,
+            ? Number(process.env.HMR_CLIENT_PORT)
+            : process.env.PORT_GAMEVIDEO_STUDIO
+              ? Number(process.env.PORT_GAMEVIDEO_STUDIO)
+              : undefined,
         ...(process.env.VITE_PLUGIN_HMR_PATH ? { path: process.env.VITE_PLUGIN_HMR_PATH } : {}),
       },
       // 落盘/打版本上收到宿主后，扩展 dev iframe 的 `/api/*`（含 game-host）转发到
       // forgeax server；prod 由 server 同源静态托管，无需代理。
       proxy: {
+        // kino 走独立 127.0.0.1 落点（更具体的前缀排在通配 /api 之前）。
+        '/api/v1/kino': {
+          target: `http://127.0.0.1:${process.env.FORGEAX_SERVER_PORT ?? 18900}`,
+          changeOrigin: true,
+        },
         '/api': { target: FORGEAX_SERVER, changeOrigin: true },
       },
     },
