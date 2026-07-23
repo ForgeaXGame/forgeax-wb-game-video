@@ -1,27 +1,26 @@
 /**
  * OverlaySchemeEditor —— 单个「界面方案」（overlay）的展示 + 编辑。
- * 右栏两列：左 = 画布（可拖拽定位/缩放）+ 组件参数列表；右 = 组件库（拖 chip 落地）。
- * 纯展示组件——所有增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
+ * 右栏两列：左 = 标题 + 画布（拖拽定位、选中）+ 组件清单（仅显示 + 选中联动，不含参数配置）；
+ * 右 = 组件库（拖 chip 落地）。组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
-import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
 import { ComponentLibrary } from './ComponentLibrary'
+import { componentTypeLabel } from './editors'
 
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
-/** 移除组件的 × 按钮——比默认删除文案更醒目、点击区更大。 */
-const removeChildBtn: CSSProperties = {
+/** 组件行的删除 × ——小而醒目。 */
+const rowDelBtn: CSSProperties = {
   flex: 'none',
-  marginTop: 2,
   color: '#ff6b6b',
   background: 'none',
   border: 'none',
   cursor: 'pointer',
-  fontSize: 20,
+  fontSize: 16,
   lineHeight: 1,
-  padding: '2px 8px',
+  padding: '0 4px',
 }
 
 /** 引用角标：被 N 个节点挂载引用；0 = 未被引用（灰）。 */
@@ -75,7 +74,7 @@ export function OverlaySchemeEditor({
   onPatchChild,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
-  // 交互热区重叠冲突（DOM 实测，来自 preview 回调）——画布红框 + 参数列表标红提示。
+  // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
 
   // 画布选中组件后按 Backspace/Delete 删除当前组件；删除经 onRemoveChild→setMeta，天然进 zundo 撤销历史。
@@ -97,7 +96,7 @@ export function OverlaySchemeEditor({
 
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
-      {/* ── 左列：标题 + 画布 + 参数列表 ── */}
+      {/* ── 左列：标题 + 画布 + 组件清单 ── */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
           <input
@@ -125,13 +124,9 @@ export function OverlaySchemeEditor({
           onWarnChange={setWarnIds}
         />
 
+        {/* 组件清单：仅显示画布里有哪些组件 + 与画布双向选中，不含参数配置。 */}
         <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>组件（{overlay.children.length}）</div>
-          {warnIds.size > 0 && (
-            <div style={{ fontSize: 11, color: '#ffd9d9', background: '#7a2020', border: '1px solid #ff6b6b', borderRadius: 4, padding: '4px 8px', marginBottom: 6 }}>
-              ⚠ 有 {warnIds.size} 个交互组件热区重叠，运行时同一点击只会命中最上层、下层收不到。请错开位置，或右键画布「置顶/置底」调层级。
-            </div>
-          )}
           {overlay.children.length === 0 && (
             <div style={{ fontSize: 11, opacity: 0.5 }}>从右侧组件库拖组件到画布添加。</div>
           )}
@@ -142,25 +137,43 @@ export function OverlaySchemeEditor({
               <div
                 key={child.id}
                 onPointerDown={() => setSelectedChildId(child.id)}
+                title={child.id}
                 style={{
                   display: 'flex',
-                  gap: 6,
-                  alignItems: 'flex-start',
-                  padding: '4px 6px',
+                  gap: 8,
+                  alignItems: 'center',
+                  padding: '5px 8px',
                   borderRadius: 6,
+                  cursor: 'pointer',
                   border: `1px solid ${warn ? '#ff6b6b' : selected ? 'var(--gc-accent, #c8955a)' : 'transparent'}`,
-                  background: warn ? 'rgba(255,107,107,0.08)' : selected ? 'rgba(200,149,90,0.08)' : 'transparent',
+                  background: selected ? 'rgba(200,149,90,0.12)' : warn ? 'rgba(255,107,107,0.08)' : 'transparent',
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <OverlayChildStyleEditor
-                    child={child}
-                    onPatchParams={(patch) => onPatchChild(child.id, { inputs: patch })}
-                    onPatchComponent={(component) => onPatchChild(child.id, { component })}
-                    onPatchLayout={(patch) => onPatchChild(child.id, { layout: patch })}
-                  />
-                </div>
-                <button style={removeChildBtn} onClick={() => onRemoveChild(child.id)} title="移除组件">
+                {/* 前方 active 标识：选中=实心强调点，未选中=暗点。 */}
+                <span
+                  style={{
+                    flex: 'none',
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: selected ? 'var(--gc-accent, #c8955a)' : 'rgba(255,255,255,0.2)',
+                    boxShadow: selected ? '0 0 0 3px rgba(200,149,90,0.25)' : 'none',
+                  }}
+                />
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? '#f6f1e9' : '#c9c0b2' }}>
+                  {componentTypeLabel(child.component)}
+                  <span style={{ opacity: 0.45, marginLeft: 6 }}>· {child.id}</span>
+                </span>
+                {warn && <span style={{ flex: 'none', color: '#ff6b6b', fontSize: 11 }} title="与另一交互组件热区重叠，运行时点击会互相遮挡">⚠</span>}
+                <button
+                  style={rowDelBtn}
+                  title="移除组件"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRemoveChild(child.id)
+                    if (selected) setSelectedChildId('')
+                  }}
+                >
                   ×
                 </button>
               </div>

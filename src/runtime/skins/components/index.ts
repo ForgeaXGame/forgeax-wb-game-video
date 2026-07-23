@@ -202,3 +202,6 @@ export function createCoreSkinRegistry(): SkinRegistry {
   installCoreSkins(reg)
   return reg
 }
+
+/** 可用的组件列表 */
+export const availableComponents: string[] = EXTRA_COMPONENTS.map(([id]) => id)
