@@ -40,16 +40,18 @@
 >   `forge/BlueprintTab.tsx`、`player/BlueprintPlayer.tsx`、旧战斗皮肤）同样不存在；
 > - 后端 17 个 `gvid:*` FMV 工具（forge-script/save-scenario/generate-video/…）+ 对应 schemas 已删，
 >   `server/tool-handlers.ts` 重写为 graph-native 三工具（见下）；
-> - `vite.config.ts` 只剩 react + `/__graph__` 存储端点（`/__reel__/*` 反代与队列、LLM/图像/TTS key 注入全删）。
+> - `vite.config.ts` 只剩 react + `/__gva__` 素材端点 + `/api` → forgeax server 代理
+>   （**落盘/打版本已上收宿主 `/api/game-host`**；旧 `/__graph__` 写盘端点已删）。
 >
 > **别再引用/复活以上任何东西**；Scene→Blueprint 编译、`USE_BLUEPRINT_RUNTIME`、`scene.ext.qteUi` 分派、
 > `gvid:*-scenario`/`generate-*` 工具全部作废。
 
 ### AI 工具（graph-native，`server/tool-handlers.ts` = `entry.backend`）
-契约 = **读写 `GraphLibraryDocument`（字段名 `project`）**，落盘
-`.forgeax/games/<slug>/game-video/scenarios.graph.json`（与 `/__graph__` 同格式；**无** `blueprints/` 文件夹）：
+契约 = **读写 `GraphLibraryDocument`（字段名 `project`）**，落盘游戏仓根
+`.forgeax/games/<slug>/blueprint.json`（+ `project.json`；与宿主 `/api/game-host` 同格式；
+**无** `game-video/` 子目录、**无** keep-10 版本夹——版本 = 游戏仓 git tag）：
 - `gvid:get-graph` `({gameSlug?})` — `{ project }`（无盘 `project: null`）。
-- `gvid:save-graph` `({project,title?,gameSlug?})` — 整本覆盖 + 版本快照（留10）。
+- `gvid:save-graph` `({project,title?,gameSlug?})` — 整本覆盖写 `blueprint.json`。
 - `gvid:list-videos` — 列内置演出视频库可绑的 `media.ref`。
 蓝图库设计：`docs/superpowers/specs/2026-07-21-blueprint-library-folder-management.md`。
 驱动 agent = `agent-nodia`。
@@ -105,14 +107,22 @@ npx tsc --noEmit       # 类型检查（当前全绿）
 
 ### R3 · 持久化 / demo（v4，2026-07-09）
 - **出厂 demo = 只读 `src/editor/demo/nodia.graph.json`**（`src/editor/demo/demo.ts` import；`NODIA_DEMO` 只读，副本用 `makeNodiaDemo`）。改 demo 直接改这份 json（无代码生成器）。
-- **主动保存的版本落盘**：`保存` → 服务端 `PUT /__graph__/store` 写 `.forgeax/games/<slug>/game-video/scenarios.graph.json`（权威最新）+ 版本快照 `scenarios.graph.versions/`（留最近 10）。见 `persist-client.ts` + `vite.config.ts graphStorePlugin`。
+- **主动保存走宿主 game-host**：`保存` → `PUT /api/game-host/games/<slug>/package`（写游戏仓根
+  `blueprint.json` + `project.json` + `assets/manifest.json`，权威最新）。见 `persist-client.ts`
+  （实现在 `@forgeax/platform-io` `api/game-host.ts`，由 cli/server 挂 `/api/game-host`）。
+  **不再有** `/__graph__` 写盘 / `game-video/` 子目录 / `scenarios.graph.versions/` keep-10。
+- **打版本**：`POST /api/game-host/games/<slug>/versions` → 游戏仓 **git annotated tag `vN`**
+  （产品只用最新、不做回退；`store.commit()` / `VersionPicker` 打版本按钮）。
+- **游戏专属组件**：游戏仓 `components/` → `bun scripts/build-game-components.mjs <gameDir>` 出
+  `dist/components/index.js`（`register(host)` 契约）→ 运行时 `component-host.loadGameComponents(slug)`
+  经 `GET /api/game-host/games/<slug>/components/*` 动态加载；未构建则回落平台内建集（`src/runtime/component-host/`）。
 - **未保存草稿只在 localStorage**（autosave，不落盘）。
 - **进入优先级：localStorage 草稿 > 磁盘最新已保存版本 > demo**；无数据=空蓝图；「重置」=回 demo。
 - 版本下拉从磁盘版本索引读；`loadVersion` 取磁盘快照。
 
 ### R4 · 盖在视频上的组件（皮肤：QTE/选择/血条/漂字/转场/对话）
-- 都是 **`src/runtime/skins/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
-  `src/runtime/skins/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
+- 都是 **`src/runtime/component-host/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
+  `src/runtime/component-host/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
 - **配置只记组件名**：全部为 overlay child 的 `component`；统一 `OverlayProps`（`overlay` / `emit` / `ctx`），
   在 `rendererRegistry.tsx` 注册；自闭环辅助见 `skinRuntime.ts`（CSS/滤镜/字体/超时自 emit）。
 
@@ -128,7 +138,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
         ▼  src/runtime  GraphRuntime → directive → GraphSession → SessionSnapshot
         ▼  src/graph    GraphCanvas（编辑/可视化）
   src/editor/shell GraphPlaySurface / GraphStudio（工坊壳）订阅 snapshot 渲染
-        └─ 皮肤从 src/runtime/skins 注册表取组件（错误边界隔离）
+        └─ 皮肤从 src/runtime/component-host 注册表取组件（错误边界隔离）
 ```
 
 ## 关键目录（改 X 看哪里）
@@ -138,10 +148,10 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | 图 schema / 类型 SSOT | `src/runtime/schema/graph-schema.ts` |
 | 状态机引擎 | `src/runtime/engine/engine.ts` |
 | 视图模型（引擎↔UI） | `src/runtime/engine/session.ts` |
-| 组件契约 / 注册 | `src/runtime/skins/components/*` + `src/runtime/registry/component-registry.ts` |
+| 组件契约 / 注册 | `src/runtime/component-host/components/*` + `src/runtime/registry/component-registry.ts` |
 | 表达式 / 随机 / 效果 / 条件 | `src/runtime/engine/{expr,rng,apply-effects,condition}.ts` |
 | 校验 | `src/runtime/validate/validate.ts` |
-| 皮肤 / renderer registry | `src/runtime/skins/` |
+| 皮肤 / renderer registry | `src/runtime/component-host/` |
 | 蓝图画布 / 图编辑 / 派生视图 | `src/graph/canvas/` / `src/graph/edit/` |
 | 试玩 / Studio / 节点面板（工坊壳） | `src/editor/shell/` |
 | demo / 持久化 / store | `src/editor/demo/` / `src/editor/persist/` |
@@ -189,7 +199,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 
 | 你要 | 看 |
 |---|---|
-| 皮肤 props / 注册 / 自闭环工具 | `src/runtime/skins/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |
+| 皮肤 props / 注册 / 自闭环工具 | `src/runtime/component-host/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |
 | 引擎设计规格 + 分期 + 实施状态（含 2026-07-09 增补） | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-blueprint-orchestration-design.md` |
 | 三态 schema（scenario/graph/…）说明 | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-schemas.md` |
 | **QTE / 数值填表 Schema + 扩展协议**（🟢 SPEC） | `<repo>/docs/superpowers/specs/2026-07-09-wb-game-video-plugin-extension-protocol-design.md` §7 |

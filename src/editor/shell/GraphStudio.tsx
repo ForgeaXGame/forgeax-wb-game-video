@@ -12,7 +12,7 @@ import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
 import { VersionPicker } from './VersionPicker'
-import { PlayerRootContext } from '../../runtime/skins/rendererRegistry'
+import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
 import { VideoOverlayStage } from '../video/VideoOverlayStage'
@@ -22,6 +22,7 @@ import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { listVideoAssetInfos, resolveMediaSrc, videoDurationCapReached } from './media'
 import { useClipPerformanceEnd } from './useClipPerformanceEnd'
+import { MissingVideoNotice } from './MissingVideoNotice'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
@@ -110,7 +111,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // meta.formulas 在 schema 里存为 `Record<string, unknown>`（runtime ↛ editor）；编辑器侧窄化回 Formula。
   const formulas = useGraphScenario((s) => s.meta.formulas) as Record<string, Formula> | undefined
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
-  const doSave = useGraphScenario((s) => s.save)
+  // 保存 = 打版本：一次性存 blueprint + 组件（服务端钩子）+ git tag vN。
+  const doCommit = useGraphScenario((s) => s.commit)
   const reset = useGraphScenario((s) => s.reset)
   const applyLayout = useGraphScenario((s) => s.applyLayout)
   const bumpRun = useGraphScenario((s) => s.bumpRun)
@@ -136,20 +138,26 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           id,
           label: id.startsWith('narr-') ? `叙事 · ${id}` : `战斗 · ${id}`,
         }))
-      const registry = await listVideoAssetInfos(game)
-      if (!alive) return
-      const seen = new Set(bundled.map((v) => v.id))
-      const fromReg: VideoOption[] = []
-      for (const a of registry) {
-        if (seen.has(a.id)) continue
-        seen.add(a.id)
-        const name = a.label?.trim()
-        fromReg.push({
-          id: a.id,
-          label: name && name !== a.id ? `素材 · ${name} (${a.id})` : `素材 · ${a.id}`,
-        })
+      try {
+        const registry = await listVideoAssetInfos(game)
+        if (!alive) return
+        const seen = new Set(bundled.map((v) => v.id))
+        const fromReg: VideoOption[] = []
+        for (const a of registry) {
+          if (seen.has(a.id)) continue
+          seen.add(a.id)
+          const name = a.label?.trim()
+          fromReg.push({
+            id: a.id,
+            label: name && name !== a.id ? `素材 · ${name} (${a.id})` : `素材 · ${a.id}`,
+          })
+        }
+        setVideoOptions([...bundled, ...fromReg])
+      } catch {
+        if (alive) {
+          setVideoOptions(bundled)
+        }
       }
-      setVideoOptions([...bundled, ...fromReg])
     })()
     return () => { alive = false }
   }, [game])
@@ -258,6 +266,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [session])
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
+  const [missingVideoId, setMissingVideoId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMissingVideoId(null)
+  }, [snap.clip?.nodeId, snap.clip?.mediaId, videoSrc])
+
   useEffect(() => {
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
     // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
@@ -334,7 +348,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}>
       {/* 顶部工具条：场景级动作（保存/版本/试玩），不含画布编辑手势 */}
       <div className="gv-graph-toolbar" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" onClick={doSave}>💾 保存</button>
+        <button type="button" onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
         <VersionPicker />
         <button type="button" onClick={bumpRun}>▶ 重开</button>
         <button type="button" onClick={resetToDemo} title="恢复为内置 demo 数据（丢弃当前未保存编辑）">↺ 重置</button>
@@ -435,6 +449,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               style={{ position: 'relative', height: 180, background: '#000', outline: 'none' }}
             >
               {videoSrc ? (
+                <>
                 <video
                   key={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
                   ref={videoElRef}
@@ -443,7 +458,15 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   muted
                   playsInline
                   loop={!!snap.clip?.loop}
-                  onLoadedMetadata={recomputeRect}
+                  onLoadedMetadata={() => {
+                    setMissingVideoId(null)
+                    recomputeRect()
+                  }}
+                  onError={() => {
+                    if (snap.clip?.mediaId) {
+                      setMissingVideoId(snap.clip.mediaId)
+                    }
+                  }}
                   onEnded={() => {
                     if (snap.clip?.loop) return
                     endPerformance()
@@ -460,6 +483,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   }}
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                 />
+                {missingVideoId ? (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.72)', padding: 12, zIndex: 2 }}>
+                    <MissingVideoNotice resourceId={missingVideoId} />
+                  </div>
+                ) : null}
+                </>
               ) : (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.75, fontSize: 12 }}>
                   {snap.clip?.name ?? '（无演出）'}
