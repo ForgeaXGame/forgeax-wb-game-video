@@ -499,11 +499,16 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           </div>
         )}
         <GraphCanvas
+          // 切蓝图 remount：清掉画布本地 selectedIds（store 已清 selectedNodeId，本地不跟会残留旧 id）。
+          // 节点剪贴板在 GraphCanvas 模块级，不跟 remount 走，故主↔子蓝图可粘贴。
+          key={activeBlueprintId}
           graph={canvasGraph}
           onChange={setCanvasGraph}
           overlays={overlays}
-          activeNodeId={snap.currentNodeId}
-          traversedEdgeIds={traversed}
+          // 试玩游标与编辑选中共用橙色描边；未开浮层时勿把 session 当前节点画成「选中」——
+          // 新建子蓝图后 session.start() 停在「入口」，否则入口会像永远选不掉。
+          activeNodeId={playOpen ? snap.currentNodeId : null}
+          traversedEdgeIds={playOpen ? traversed : undefined}
           visibleNodeIds={visibleNodeIds}
           fitSignal={fitSignal}
           drillFitKey={drillFitKey}
