@@ -1,5 +1,5 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useKinoVideoCache, useKinoVideoResources } from '../kinoVideoCacheStore'
 import type { KinoResourceDTO, KinoVideoClient } from '../kino-api'
 
@@ -12,20 +12,6 @@ vi.mock('../kino-api', async (importOriginal) => {
     createKinoVideoClient: () => client(defaultList),
   }
 })
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = []
-  readonly close = vi.fn()
-  readonly listeners = new Map<string, () => void>()
-
-  constructor(readonly url: string) {
-    FakeEventSource.instances.push(this)
-  }
-
-  addEventListener(type: string, listener: () => void): void {
-    this.listeners.set(type, listener)
-  }
-}
 
 function resource(id: string): KinoResourceDTO {
   return {
@@ -55,12 +41,6 @@ describe('kinoVideoCacheStore', () => {
   beforeEach(() => {
     useKinoVideoCache.setState({ byGame: {} })
     defaultList.mockReset()
-    FakeEventSource.instances = []
-    vi.stubGlobal('EventSource', FakeEventSource)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
   })
 
   it('loads every Kino page into only the requested project cache', async () => {
@@ -82,7 +62,7 @@ describe('kinoVideoCacheStore', () => {
     expect(useKinoVideoCache.getState().byGame['project-a']?.items).toEqual([])
   })
 
-  it('shares one SSE subscription between resource consumers and closes it after the final unmount', async () => {
+  it('shares one cache hydration between resource consumers', async () => {
     defaultList.mockResolvedValue({
       items: [resource('one')],
       total: 1,
@@ -94,39 +74,11 @@ describe('kinoVideoCacheStore', () => {
     const second = renderHook(() => useKinoVideoResources('project-a'))
 
     await waitFor(() => expect(first.result.current.items).toHaveLength(1))
+    expect(second.result.current.items).toHaveLength(1)
+    // ensure() dedupes: two consumers of the same project hydrate the cache once.
     expect(defaultList).toHaveBeenCalledTimes(1)
-    expect(FakeEventSource.instances).toHaveLength(1)
 
     first.unmount()
-    expect(FakeEventSource.instances[0]?.close).not.toHaveBeenCalled()
-
     second.unmount()
-    expect(FakeEventSource.instances[0]?.close).toHaveBeenCalledTimes(1)
-  })
-
-  it('refreshes the shared cache when Kino signals a video-resource change', async () => {
-    defaultList
-      .mockResolvedValueOnce({
-        items: [resource('one')],
-        total: 1,
-        page: 1,
-        page_size: 100,
-      })
-      .mockResolvedValueOnce({
-        items: [resource('two')],
-        total: 1,
-        page: 1,
-        page_size: 100,
-      })
-
-    const { result, unmount } = renderHook(() => useKinoVideoResources('project-a'))
-    await waitFor(() => expect(result.current.items.map((item) => item.resource_id)).toEqual(['one']))
-
-    await act(async () => {
-      FakeEventSource.instances[0]?.listeners.get('video-resource')?.()
-    })
-
-    await waitFor(() => expect(result.current.items.map((item) => item.resource_id)).toEqual(['two']))
-    unmount()
   })
 })

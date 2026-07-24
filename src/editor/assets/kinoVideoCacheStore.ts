@@ -25,7 +25,6 @@ interface KinoVideoCacheStore {
   ensure: (gameId: string, client?: KinoVideoClient) => Promise<void>
   upsert: (gameId: string, item: KinoResourceDTO) => void
   remove: (gameId: string, resourceId: string) => void
-  watch: (gameId: string) => () => void
 }
 
 const EMPTY: KinoVideoCacheEntry = {
@@ -36,7 +35,6 @@ const EMPTY: KinoVideoCacheEntry = {
   generation: 0,
 }
 
-const eventSources = new Map<string, { source: EventSource; refs: number }>()
 let defaultClient: KinoVideoClient | undefined
 
 function clientOf(client?: KinoVideoClient): KinoVideoClient {
@@ -126,49 +124,21 @@ export const useKinoVideoCache = create<KinoVideoCacheStore>((set, get) => ({
       }
     })
   },
-
-  watch(gameId) {
-    if (typeof EventSource === 'undefined') return () => {}
-    const existing = eventSources.get(gameId)
-    if (existing) {
-      existing.refs += 1
-      return () => {
-        if (--existing.refs === 0) {
-          existing.source.close()
-          eventSources.delete(gameId)
-        }
-      }
-    }
-    const source = new EventSource(`/api/v1/kino/resources/events?game_id=${encodeURIComponent(gameId)}`)
-    source.addEventListener('video-resource', () => {
-      void get().refresh(gameId)
-    })
-    eventSources.set(gameId, { source, refs: 1 })
-    return () => {
-      const active = eventSources.get(gameId)
-      if (active && --active.refs === 0) {
-        active.source.close()
-        eventSources.delete(gameId)
-      }
-    }
-  },
 }))
 
 /**
- * Project-scoped Kino resource consumer. It owns initial cache hydration and
- * the shared SSE subscription so editor surfaces only consume resource state.
+ * Project-scoped Kino resource consumer. It owns initial cache hydration so
+ * editor surfaces only consume resource state; call `refresh()` to re-pull.
  */
 export function useKinoVideoResources(gameId: string, enabled = true): KinoVideoResources {
   const entry = useKinoVideoCache((state) => state.byGame[gameId])
   const ensure = useKinoVideoCache((state) => state.ensure)
-  const watch = useKinoVideoCache((state) => state.watch)
   const refreshCache = useKinoVideoCache((state) => state.refresh)
 
   useEffect(() => {
     if (!enabled) return
     void ensure(gameId)
-    return watch(gameId)
-  }, [enabled, ensure, gameId, watch])
+  }, [enabled, ensure, gameId])
 
   const refresh = useCallback(() => refreshCache(gameId), [gameId, refreshCache])
   return { ...(entry ?? EMPTY), refresh }
