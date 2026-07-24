@@ -12,7 +12,13 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { assetsDir as resolveAssetsDir, getAsset, listAssets } from './asset-registry'
+import {
+  assetsDir as resolveAssetsDir,
+  deleteReferenceImage,
+  getAssetAsync,
+  listAssetsAsync,
+  registerReferenceImage,
+} from './asset-registry'
 import type { AssetFilter } from './asset-registry'
 import type { MediaKind, MediaProductionType, StyleAxes } from '../src/editor/assets/registry-types'
 import {
@@ -33,12 +39,16 @@ interface ToolCtx {
   toolId: string
   env?: Record<string, string | undefined>
   cwd?: string
+  projectRoot?: string
 }
 
 const GAME_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}$/
 
 /** 从 ctx.cwd（插件目录）向上找出含 `.forgeax/` 的工程根。找不到返回 null。 */
 function findProjectRoot(ctx: ToolCtx): string | null {
+  if (ctx.projectRoot && existsSync(resolve(ctx.projectRoot, '.forgeax'))) {
+    return ctx.projectRoot
+  }
   let dir = ctx.cwd ?? process.cwd()
   for (let i = 0; i < 8; i++) {
     if (existsSync(resolve(dir, '.forgeax'))) return dir
@@ -344,7 +354,7 @@ export const tools = {
     if (args.kind) filter.kind = args.kind
     if (args.productionType) filter.productionType = args.productionType
     if (args.sceneNodeId) filter.sceneNodeId = args.sceneNodeId
-    return { assets: listAssets(octx.dir, filter) }
+    return { assets: await listAssetsAsync(octx.dir, filter) }
   },
 
   /** 取单条素材资产。 */
@@ -352,7 +362,55 @@ export const tools = {
     const octx = orchestrateCtx(args, ctx)
     if (!octx) return { asset: null, error: NO_REGISTRY_ERR }
     if (!args.id) return { asset: null, error: '缺 id' }
-    return { asset: getAsset(octx.dir, args.id) }
+    return { asset: await getAssetAsync(octx.dir, args.id) }
+  },
+
+  /** UI 专用：上传角色/场景参考图并登记素材 manifest。 */
+  'gen:register-reference-image': async (
+    args: {
+      gameSlug?: string
+      id?: string
+      file?: string
+      fileName?: string
+      mime?: string
+      bytes?: number
+      referenceType?: 'character' | 'scene'
+    },
+    ctx: ToolCtx,
+  ) => {
+    const octx = orchestrateCtx(args, ctx)
+    if (!octx) return { asset: null, error: NO_REGISTRY_ERR }
+    if (!args.id || !args.file || !args.fileName || !args.mime || !args.bytes || !args.referenceType) {
+      return { asset: null, error: '缺 id / file / fileName / mime / bytes / referenceType' }
+    }
+    try {
+      return {
+        asset: await registerReferenceImage(octx.dir, {
+          id: args.id,
+          file: args.file,
+          fileName: args.fileName,
+          mime: args.mime,
+          bytes: args.bytes,
+          referenceType: args.referenceType,
+        }),
+      }
+    } catch (e) {
+      return { asset: null, error: (e as Error).message }
+    }
+  },
+
+  /** UI 专用：删除 wb-game-video 自己上传的参考图。 */
+  'gen:delete-reference-image': async (
+    args: { gameSlug?: string; id?: string },
+    ctx: ToolCtx,
+  ) => {
+    const octx = orchestrateCtx(args, ctx)
+    if (!octx) return { deleted: false, error: NO_REGISTRY_ERR }
+    if (!args.id) return { deleted: false, error: '缺 id' }
+    const result = await deleteReferenceImage(octx.dir, args.id)
+    return result === 'deleted'
+      ? { deleted: true }
+      : { deleted: false, reason: result }
   },
 
   /**

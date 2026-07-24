@@ -13,11 +13,21 @@
  * 指回对方目录（见 server/intake/*）。本 registry 只写带 productionType 的记录，并
  * 原样保留视频服务等其它资产域拥有的记录。
  */
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream, statSync, renameSync } from 'node:fs'
-import { resolve, extname } from 'node:path'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { AssetManifest, MediaAsset, MediaKind, MediaProductionType, StyleAxes } from '../src/editor/assets/registry-types'
 
 const GAME_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}$/
+const MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+}
+const mutationQueues = new Map<string, Promise<void>>()
 
 /** 从起点目录向上找含 `.forgeax/games` 的工程根（与 tool-handlers / vite 同一约定）。 */
 export function findProjectRoot(start: string): string | null {
@@ -92,6 +102,52 @@ export function readManifest(dir: string): AssetManifest {
   return { ...parsed, version: 2, assets: parsed.assets } as AssetManifest
 }
 
+/** HTTP/ToolRegistry 请求路径使用的异步 manifest 读取，避免阻塞主 server 事件循环。 */
+export async function readManifestAsync(dir: string): Promise<AssetManifest> {
+  const path = manifestPath(dir)
+  let parsed: Partial<AssetManifest>
+  try {
+    parsed = JSON.parse(await readFile(path, 'utf-8')) as Partial<AssetManifest>
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 2, assets: [] }
+    throw new Error(`Invalid shared asset manifest JSON: ${path}`, { cause: error })
+  }
+  if (parsed.version !== 2 || !Array.isArray(parsed.assets)) {
+    throw new Error(`Unsupported shared asset manifest: ${path}`)
+  }
+  validateAssetRecords(parsed.assets)
+  return { ...parsed, version: 2, assets: parsed.assets } as AssetManifest
+}
+
+async function mutateManifestAsync<T>(
+  dir: string,
+  mutation: (manifest: AssetManifest) => T,
+): Promise<T> {
+  const key = resolve(dir)
+  const previous = mutationQueues.get(key) ?? Promise.resolve()
+  let release!: () => void
+  const current = previous.then(() => new Promise<void>((resolveQueue) => { release = resolveQueue }))
+  mutationQueues.set(key, current)
+  await previous
+  try {
+    const manifest = await readManifestAsync(dir)
+    const result = mutation(manifest)
+    await mkdir(dir, { recursive: true })
+    const destination = manifestPath(dir)
+    const temporary = `${destination}.tmp-${randomUUID()}`
+    try {
+      await writeFile(temporary, JSON.stringify(manifest, null, 2))
+      await rename(temporary, destination)
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined)
+    }
+    return result
+  } finally {
+    release()
+    if (mutationQueues.get(key) === current) mutationQueues.delete(key)
+  }
+}
+
 function writeManifest(dir: string, manifest: AssetManifest): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const target = manifestPath(dir)
@@ -115,8 +171,22 @@ export function listAssets(dir: string, filter?: AssetFilter): MediaAsset[] {
   return out
 }
 
+export async function listAssetsAsync(dir: string, filter?: AssetFilter): Promise<MediaAsset[]> {
+  let out = (await readManifestAsync(dir)).assets.filter(isMediaAsset)
+  if (filter?.kind) out = out.filter((a) => a.kind === filter.kind)
+  if (filter?.productionType) out = out.filter((a) => a.productionType === filter.productionType)
+  if (filter?.sceneNodeId) out = out.filter((a) => a.sceneNodeId === filter.sceneNodeId)
+  return out
+}
+
 export function getAsset(dir: string, id: string): MediaAsset | null {
   return readManifest(dir).assets.find((a): a is MediaAsset => isMediaAsset(a) && a.id === id) ?? null
+}
+
+export async function getAssetAsync(dir: string, id: string): Promise<MediaAsset | null> {
+  return (await readManifestAsync(dir)).assets.find(
+    (a): a is MediaAsset => isMediaAsset(a) && a.id === id,
+  ) ?? null
 }
 
 /** upsert 一条资产（按 id 覆盖或追加），返回落盘后的资产。 */
@@ -153,6 +223,82 @@ export function deleteAsset(dir: string, id: string): boolean {
   return true
 }
 
+export interface RegisterReferenceImageInput {
+  id: string
+  file: string
+  fileName: string
+  mime: string
+  bytes: number
+  referenceType: 'character' | 'scene'
+}
+
+/** 登记已由宿主安全写入 assets/media 的参考图；manifest 业务仍由扩展持有。 */
+export async function registerReferenceImage(dir: string, input: RegisterReferenceImageInput): Promise<MediaAsset> {
+  if (!IMAGE_EXTENSIONS[input.mime]) throw new Error('Unsupported image type')
+  if (!Number.isSafeInteger(input.bytes) || input.bytes <= 0 || input.bytes > MAX_IMAGE_UPLOAD_BYTES) {
+    throw new Error('Invalid image size')
+  }
+  if (input.referenceType !== 'character' && input.referenceType !== 'scene') {
+    throw new Error('referenceType must be character or scene')
+  }
+
+  if (!/^a-img-[a-f0-9-]+$/.test(input.id)) throw new Error('Invalid image id')
+  const now = Date.now()
+  const label = basename(input.fileName || 'image').replace(/\.[^.]+$/, '').trim().slice(0, 160) || 'image'
+  const asset: MediaAsset = {
+    id: input.id,
+    kind: 'image',
+    productionType: input.referenceType === 'character' ? 'character_ref' : 'scene_ref',
+    status: 'ready',
+    label,
+    file: input.file,
+    sourceModule: 'wb-game-video',
+    mime: input.mime,
+    bytes: input.bytes,
+    createdAt: now,
+    updatedAt: now,
+    meta: { upload: true },
+  }
+  const filePath = resolveAssetFilePath(dir, asset)
+  if (!filePath) throw new Error('Invalid image file path')
+  const info = await stat(filePath)
+  if (!info.isFile() || info.size !== input.bytes) throw new Error('Image file does not match registration')
+
+  return mutateManifestAsync(dir, (manifest) => {
+    if (manifest.assets.some((candidate) => candidate.id === asset.id)) {
+      throw new Error('Image asset already exists')
+    }
+    manifest.assets.push(asset)
+    return asset
+  })
+}
+
+export type DeleteReferenceImageResult = 'deleted' | 'not-found' | 'forbidden'
+
+/** 只允许删除 wb-game-video 自己上传并托管于 assets/media 的参考图。 */
+export async function deleteReferenceImage(dir: string, id: string): Promise<DeleteReferenceImageResult> {
+  let filePath: string | null = null
+  const result = await mutateManifestAsync(dir, (manifest) => {
+    const index = manifest.assets.findIndex((candidate) => candidate.id === id)
+    if (index < 0) return 'not-found' as const
+    const asset = manifest.assets[index]!
+    if (
+      asset.kind !== 'image'
+      || asset.sourceModule !== 'wb-game-video'
+      || asset.meta?.upload !== true
+      || !asset.file
+    ) {
+      return 'forbidden' as const
+    }
+    filePath = resolveAssetFilePath(dir, asset)
+    if (!filePath) return 'forbidden' as const
+    manifest.assets.splice(index, 1)
+    return 'deleted' as const
+  })
+  if (result === 'deleted' && filePath) await rm(filePath, { force: true })
+  return result
+}
+
 /** 读游戏级风格三轴（manifest.styleAxes）；缺省 undefined。 */
 export function getStyleAxes(dir: string): StyleAxes | undefined {
   return readManifest(dir).styleAxes
@@ -181,8 +327,18 @@ export function writeMediaFile(dir: string, id: string, ext: string, bytes: Uint
 
 /** 解析一条资产的绝对磁盘文件路径（自产 file 优先，其次跨模块 externalPath）。 */
 export function resolveAssetFilePath(dir: string, asset: MediaAsset): string | null {
-  if (asset.file) return resolve(dir, asset.file)
-  if (asset.externalPath) return asset.externalPath
+  if (asset.file) {
+    const mediaRoot = resolve(dir, 'media')
+    const candidate = resolve(dir, asset.file)
+    const rel = relative(mediaRoot, candidate)
+    return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel) ? candidate : null
+  }
+  if (asset.externalPath && isAbsolute(asset.externalPath)) {
+    const gameRoot = resolve(dir, '..')
+    const candidate = resolve(asset.externalPath)
+    const rel = relative(gameRoot, candidate)
+    return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel) ? candidate : null
+  }
   return null
 }
 

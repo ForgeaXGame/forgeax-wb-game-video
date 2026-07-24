@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gen:delete-reference-image args",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gameSlug", "id"],
+  "properties": {
+    "gameSlug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+    "id": { "type": "string", "minLength": 1 }
+  }
+}

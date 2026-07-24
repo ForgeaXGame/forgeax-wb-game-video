@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gen:register-reference-image args",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gameSlug", "id", "file", "fileName", "mime", "bytes", "referenceType"],
+  "properties": {
+    "gameSlug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+    "id": { "type": "string", "pattern": "^a-img-[a-f0-9-]+$" },
+    "file": { "type": "string", "pattern": "^media/a-img-[a-f0-9-]+\\.(png|jpg|webp|gif)$" },
+    "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "mime": { "enum": ["image/png", "image/jpeg", "image/webp", "image/gif"] },
+    "bytes": { "type": "integer", "minimum": 1, "maximum": 20971520 },
+    "referenceType": { "enum": ["character", "scene"] }
+  }
+}
