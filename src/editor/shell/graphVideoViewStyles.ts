@@ -102,26 +102,27 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-reference-thumb button:hover:not(:disabled) { border-color: #ff8f8f; color: #ff8f8f; }
 .gvv-reference-thumb button:disabled { opacity: .55; cursor: default; }
 
-/* 横屏优先把有限高度分给三块实际内容：预览在上，提示词与图片参考在下并排。 */
+/* 横屏：提示词占右侧整列，图片参考留在视频下方，避免打断预览与参考素材的关联。 */
 @media (min-width: 981px) and (min-aspect-ratio: 16 / 10) {
   .gc-stage-video .gc-video-top {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: minmax(0, 1fr) minmax(180px, auto);
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+    grid-template-rows: minmax(0, 1fr) minmax(180px, 0.6fr);
   }
   .gc-stage-video .gvv-video-col {
-    grid-column: 1 / -1;
-    align-items: center;
-  }
-  .gc-stage-video .gvv-video-col .gc-frame,
-  .gc-stage-video .gvv-video-col .gvv-controls {
-    box-sizing: border-box;
-    width: min(100%, 103dvh);
+    grid-column: 1;
+    grid-row: 1;
   }
   .gc-stage-video .gvv-config-panels {
     display: contents;
   }
-  .gc-stage-video .gc-prompt,
+  .gc-stage-video .gc-prompt {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    min-height: 0;
+  }
   .gc-stage-video .gvv-reference-panel {
+    grid-column: 1;
+    grid-row: 2;
     min-height: 180px;
   }
 }
