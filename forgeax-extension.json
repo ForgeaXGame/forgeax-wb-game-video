@@ -136,26 +136,6 @@
         }
       },
       {
-        "id": "gen:register-reference-image",
-        "args": "./schemas/register-reference-image.args.json",
-        "returns": "./schemas/register-reference-image.returns.json",
-        "exposedToAI": false,
-        "description": {
-          "zh": "UI 内部能力：登记已由宿主写入的角色或场景参考图。",
-          "en": "Internal UI capability: register a host-stored character or scene reference image."
-        }
-      },
-      {
-        "id": "gen:delete-reference-image",
-        "args": "./schemas/delete-reference-image.args.json",
-        "returns": "./schemas/delete-reference-image.returns.json",
-        "exposedToAI": false,
-        "description": {
-          "zh": "UI 内部能力：删除 wb-game-video 自己上传的参考图。",
-          "en": "Internal UI capability: delete a reference image uploaded by wb-game-video."
-        }
-      },
-      {
         "id": "gen:import-character-refs",
         "args": "./schemas/import-character-refs.args.json",
         "returns": "./schemas/import-refs.returns.json",

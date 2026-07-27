@@ -4,7 +4,7 @@
  *  - Bundled zhandou basenames resolve first, including legacy `m-` refs.
  *  - Generated `a-vid-*` resources use the shared `/__gva__/media/:id` endpoint.
  *  - Remaining stable ids use the Kino content endpoint.
- * Image and generation registry operations continue to use `/__gva__`.
+ * Uploaded images use the shared resource API; generated registry assets remain on `/__gva__`.
  */
 import { zhandouUrl } from '../assets/catalog'
 import {
@@ -149,7 +149,7 @@ export async function listRegistryAssets(game?: string, kind?: 'video' | 'image'
     if (game) params.set('game', game)
     if (kind) params.set('kind', kind)
     const qs = params.toString()
-    const r = await fetch(`/api/gva/assets${qs ? `?${qs}` : ''}`)
+    const r = await pluginFetch(`/__gva__/assets${qs ? `?${qs}` : ''}`)
     if (!r.ok) return []
     const j = (await r.json()) as { assets?: MediaAsset[] }
     return Array.isArray(j.assets) ? j.assets : []
@@ -161,7 +161,7 @@ export async function listRegistryAssets(game?: string, kind?: 'video' | 'image'
 /** 取单条 registry 资产（轮询生成状态用）。 */
 export async function getRegistryAsset(game: string, id: string): Promise<MediaAsset | null> {
   try {
-    const r = await fetch(`/api/gva/assets/${encodeURIComponent(id)}?game=${encodeURIComponent(game)}`)
+    const r = await pluginFetch(`/__gva__/assets/${encodeURIComponent(id)}?game=${encodeURIComponent(game)}`)
     if (!r.ok) return null
     const j = (await r.json()) as { asset?: MediaAsset | null }
     return j.asset ?? null
