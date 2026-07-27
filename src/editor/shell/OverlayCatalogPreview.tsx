@@ -170,8 +170,11 @@ export interface OverlayCatalogPreviewProps {
   /** 传任一交互回调即进入「可交互」态；全缺省 = 只读预览（向后兼容）。 */
   selectedChildId?: string
   onSelectChild?: (childId: string) => void
-  /** 组件库 chip 拖到画布落地：presetId + 归一落点。 */
-  onAddChild?: (presetId: string, layout: Partial<Layout>) => void
+  /** 组件库 chip 拖到画布落地：presetId（可选带初始 place）；返回新 child id，供拖入吸附定位。 */
+  onAddChild?: (
+    presetId: string,
+    place?: { inputs?: Record<string, unknown>; layout?: Partial<Layout> },
+  ) => string | undefined | void
   /** 画布上拖动/缩放：写回 child.layout（归一 0~1）。 */
   onPatchChildLayout?: (childId: string, patch: Partial<Layout>) => void
   /** 画布上拖动锚点定位型组件：写回 child.inputs（如 x/y，是该组件的位置控件）。 */
@@ -217,6 +220,8 @@ export function OverlayCatalogPreview({
   /** 每个 child 真实渲染内容的最小包围盒（归一 stage 坐标，DOM 实测）——操作框贴合内容用。 */
   const [contentBoxes, setContentBoxes] = useState<Record<string, NBox>>({})
   const contentSigRef = useRef('')
+  /** 组件库拖入后待「吸附到落点」的 child：等它渲染 + 实测出内容盒，再把内容中心平移到鼠标点。 */
+  const pendingSnapRef = useRef<{ childId: string; left: number; top: number } | null>(null)
 
   const interactive = !!(onAddChild || onPatchChildLayout || onPatchChildInputs)
 
@@ -545,8 +550,29 @@ export function OverlayCatalogPreview({
     const presetId = e.dataTransfer.getData(OVERLAY_PRESET_MIME)
     if (!presetId) return
     e.preventDefault()
-    onAddChild(presetId, normPoint(e.clientX, e.clientY))
+    // 严格跟随鼠标：不猜落点字段（cue.x/y、CSS 边角锚定、满屏盒各不相同），先按预设默认加组件，
+    // 待其渲染 + 实测出内容盒后，走与画布拖动同一套（readPosBase→writePos）把**内容中心**平移到落点。
+    const p = normPoint(e.clientX, e.clientY)
+    const id = onAddChild(presetId)
+    if (typeof id === 'string') pendingSnapRef.current = { childId: id, left: p.left, top: p.top }
   }
+
+  // 拖入吸附：新 child 渲染并实测出内容盒后，把它的内容中心平移到落点（与画布拖动同源的
+  // readPosBase + clampMoveDelta + writePos，故 cue 型 / CSS 边角锚定 / 满屏盒都严格跟随鼠标）。
+  useEffect(() => {
+    const pend = pendingSnapRef.current
+    if (!pend) return
+    const child = overlay.children.find((c) => c.id === pend.childId)
+    const cb = contentBoxes[pend.childId]
+    if (!child || !cb) return // 尚未渲染/实测完 → 等下一次 contentBoxes 更新
+    pendingSnapRef.current = null
+    const base = readPosBase(child)
+    // 内容中心当前落在 (cb.left+w/2, cb.top+h/2)；要它落到 (pend.left, pend.top) → 施加对应位移。
+    const wantDx = pend.left - (cb.left + cb.w / 2)
+    const wantDy = pend.top - (cb.top + cb.h / 2)
+    const mv = clampMoveDelta(cb, wantDx, wantDy)
+    writePos(child.id, base.mode, base.x + mv.dx, base.y + mv.dy)
+  }, [contentBoxes, overlay.children])
 
   return (
     <div className="ocp-root">
