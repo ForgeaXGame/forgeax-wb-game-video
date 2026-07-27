@@ -1127,14 +1127,6 @@ function EdgeRouteEditor({
           title="与交互 outcome 同名才会被点选命中；否则播完仍走默认推进边"
         />
       )) : null}
-      {row('备注', (
-        <input
-          value={edge.data?.label ?? ''}
-          onChange={(ev) => onPatchData({ label: ev.target.value })}
-          style={{ flex: 1 }}
-          placeholder="画布连线上的说明（可选）"
-        />
-      ))}
       {row('权重', (
         <input
           type="number"
@@ -1282,7 +1274,7 @@ export function NodeInspector({
         .filter((e) => e.source === node.id)
         .map((e) => ({
           value: e.id,
-          label: `${flowHandleDisplay(e.sourceHandle ?? 'default', e.data?.label)} → ${nodeLabel(e.target)}`,
+          label: `${flowHandleDisplay(e.sourceHandle ?? 'default')} → ${nodeLabel(e.target)}`,
         })),
     [graph.edges, node.id, nodeLabel],
   )
@@ -1405,20 +1397,6 @@ export function NodeInspector({
           <option value="loop">循环</option>
         </select>
       ))}
-      {row('播放时长', (
-        <input
-          type="number"
-          min={0}
-          value={d.durationMs ?? ''}
-          onChange={(e) => {
-            const v = e.target.value.trim()
-            patchData({ durationMs: v === '' ? undefined : Math.max(0, Math.floor(Number(v)) || 0) })
-          }}
-          placeholder="留空 = 视频完整长度"
-          style={{ flex: 1 }}
-          title="毫秒。留空 / 0 / 超过视频本身长度 → 以视频完整长度为准；填 >0 且 ≤ 视频长度 → 到点提前收演出。无视频的逻辑节点用它作停留节拍。"
-        />
-      ))}
       {row('嵌套', (
         <select
           value={nestMode}
@@ -1432,17 +1410,9 @@ export function NodeInspector({
         </select>
       ))}
       {nestMode === 'subflow' && row('子流程入口', (
-        <select
-          value={nestRef ?? ''}
-          onChange={(e) => patchData({ subFlow: e.target.value || undefined, subFlowPack: undefined })}
-          style={{ flex: 1 }}
-          title="进入本容器后下钻到所选本图入口；子流程叶子无出边时弹回续 out"
-        >
-          <option value="">（选入口）</option>
-          {nodeIds.filter((id) => id !== node.id).map((id) => (
-            <option key={id} value={id}>{nodeLabel(id)}</option>
-          ))}
-        </select>
+        <span style={{ flex: 1, opacity: 0.85 }} title="由同图子流程自动创建/绑定，不可手改">
+          {nestRef ? nodeLabel(nestRef) : '（未绑定）'}
+        </span>
       ))}
       {nestMode === 'pack' && (
         <>
@@ -1493,24 +1463,6 @@ export function NodeInspector({
           ))}
         </>
       )}
-
-      {/* 默认样式方案：不挂载、不常驻渲染——只给本节点将来新增的字幕/飘字/滤镜/特效提供默认样式（同类型组件取方案里第一个，
-          多个同类型样式时在素材检视器「方案样式」下拉里切）。 */}
-      <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
-        {row('默认样式', (
-          <select
-            value={d.styleScheme ?? ''}
-            onChange={(e) => patchData({ styleScheme: e.target.value || undefined })}
-            style={{ flex: 1 }}
-            title="选一套方案作本节点默认样式：新增字幕/飘字/滤镜/特效时自动套用方案里同类型组件的参数（同类型有多个时取第一个，可在素材检视器里切换）；方案本身不挂载、不出现在时间轴/预览里"
-          >
-            <option value="">（无）</option>
-            {schemeOverlayIds.map((id) => (
-              <option key={id} value={id}>{overlayLabel(id)}</option>
-            ))}
-          </select>
-        ))}
-      </div>
 
       {/* 覆盖物挂载 + reactions（每挂载一份） */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
@@ -1734,10 +1686,6 @@ export function NodeInspector({
           >
             + 边
           </button>
-        </div>
-        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, lineHeight: 1.45 }}>
-          先连到目标即可跑通：不设条件时，播完会走<strong>第一条</strong>「默认推进」边（多条无条件时可调权重）。
-          「交互出口」只在选项 / QTE 结果分支时再改；画布拖线默认也是默认推进。
         </div>
         {graph.edges.filter((e) => e.source === node.id).map((e) => (
           <EdgeRouteEditor
