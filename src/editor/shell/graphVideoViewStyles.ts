@@ -4,10 +4,6 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-toolseg button + button { border-left: 1px solid var(--gc-accent-line); }
 .gvv-toolseg button:hover { background: rgba(240,136,64,.24); color: var(--gc-text); }
 .gvv-toolseg button.is-on { background: var(--gc-accent); color: #1a1206; font-weight: 700; }
-.gvv-toolpanel { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; background: var(--gc-panel2); border: 1px solid var(--gc-line-soft); border-radius: 12px; padding: 12px; }
-.gvv-toolpanel-head { color: var(--gc-faint); font-size: 11px; letter-spacing: 0.1em; }
-.gvv-toolpanel .gc-lib-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gvv-toolpanel .gc-lib-item { min-height: 84px; padding: 10px; }
 .gc-lib-empty { color: var(--gc-faint); font-size: 12px; padding: 12px 4px; }
 .gvv-video-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
 .gvv-controls { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--gc-panel2); border: 1px solid var(--gc-line-soft); flex: none; }
@@ -15,18 +11,6 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .gvv-time { color: var(--gc-faint); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gvv-controls .gvv-mute { margin-left: auto; }
-.gvv-head-actions { display: inline-flex; align-items: center; gap: 8px; }
-.gvv-history { display: inline-flex; border: 1px solid var(--gc-line-soft); border-radius: 8px; overflow: hidden; }
-.gvv-history button {
-  border: 0; background: var(--gc-panel2); color: var(--gc-text);
-  width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 15px; line-height: 1; cursor: pointer;
-}
-.gvv-history button + button { border-left: 1px solid var(--gc-line-soft); }
-.gvv-history button:hover:not(:disabled) { background: var(--gc-accent-soft); color: var(--gc-text); }
-.gvv-history button:disabled { opacity: 0.36; cursor: default; }
-.gvv-fx-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
-.gvv-fx-layer > div { position: absolute; inset: 0; }
 .gvv-row-status { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 999px; line-height: 1.6; white-space: nowrap; }
 .gvv-row-status.is-generating { background: rgba(240,136,64,.22); color: var(--gc-accent); }
 .gvv-row-status.is-failed { background: rgba(224,72,72,.2); color: #ff8f8f; }
@@ -117,4 +101,28 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-reference-thumb button { position: absolute; top: -5px; right: -5px; width: 18px; height: 18px; padding: 0; border: 1px solid var(--gc-line-soft); border-radius: 999px; background: var(--gc-panel2); color: var(--gc-text); font-size: 13px; line-height: 15px; cursor: pointer; }
 .gvv-reference-thumb button:hover:not(:disabled) { border-color: #ff8f8f; color: #ff8f8f; }
 .gvv-reference-thumb button:disabled { opacity: .55; cursor: default; }
+
+/* 横屏优先把有限高度分给三块实际内容：预览在上，提示词与图片参考在下并排。 */
+@media (min-width: 981px) and (min-aspect-ratio: 16 / 10) {
+  .gc-stage-video .gc-video-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) minmax(180px, auto);
+  }
+  .gc-stage-video .gvv-video-col {
+    grid-column: 1 / -1;
+    align-items: center;
+  }
+  .gc-stage-video .gvv-video-col .gc-frame,
+  .gc-stage-video .gvv-video-col .gvv-controls {
+    box-sizing: border-box;
+    width: min(100%, 103dvh);
+  }
+  .gc-stage-video .gvv-config-panels {
+    display: contents;
+  }
+  .gc-stage-video .gc-prompt,
+  .gc-stage-video .gvv-reference-panel {
+    min-height: 180px;
+  }
+}
 `
