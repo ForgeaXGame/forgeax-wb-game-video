@@ -220,7 +220,8 @@ export interface NodeData {
   media?: NodeMedia
   mediaPlayMode?: 'once' | 'loop'
   /**
-   * 可选播放时长上限（ms，作者可配）。
+   * 可选播放时长上限（ms）。Inspector 不再暴露编辑；字段仍由 bindVideo、既有图数据、
+   * 以及程序化写入保留，runtime 继续消费。
    * - 无视频节点：作停留节拍 / 时间轴标尺。
    * - 有视频节点：`>0` 且 `≤ 视频本身长度` 时，到点提前收演出；未填 / `≤0` / 超过视频长度
    *   → 视为无效、丢弃，以视频本身长度为准（不截断，交给 onEnded）。

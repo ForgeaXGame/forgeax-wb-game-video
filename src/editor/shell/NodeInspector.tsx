@@ -1225,7 +1225,7 @@ export function NodeInspector({
     if (!title || title === id) return id
     return `${title} (${id})`
   }
-  // 「默认样式 / ＋ 挂载」只列固化界面方案（画廊 + nodia），不混入草稿残留 ov-* 等。
+  // 「＋ 挂载」只列固化界面方案（画廊 + nodia），不混入草稿残留 ov-* 等。
   const schemeOverlayIds = PRESET_SCHEME_OVERLAYS.map((o) => o.id)
   const mediaRef = d.media?.ref ?? ''
   // 当前引用若不在资产清单里也要能显示（避免选中项丢失）。
