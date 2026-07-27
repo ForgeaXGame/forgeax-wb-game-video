@@ -111,6 +111,13 @@ export const GRAPH_VIDEO_VIEW_CSS = `
   .gc-stage-video .gvv-video-col {
     grid-column: 1;
     grid-row: 1;
+    height: 100%;
+  }
+  .gc-stage-video .gvv-video-col .gc-frame {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
   }
   .gc-stage-video .gvv-config-panels {
     display: contents;
@@ -123,6 +130,8 @@ export const GRAPH_VIDEO_VIEW_CSS = `
   .gc-stage-video .gvv-reference-panel {
     grid-column: 1;
     grid-row: 2;
+    box-sizing: border-box;
+    height: 100%;
     min-height: 180px;
   }
 }
