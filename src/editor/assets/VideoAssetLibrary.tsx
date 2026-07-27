@@ -232,7 +232,7 @@ export interface VideoAssetLibraryProps {
   /** Blueprint library used when resolving delete-reference warnings across packs. */
   blueprints?: Record<string, BlueprintDoc>
   mainPackId?: string
-  bundledEntries: VideoLibraryEntry[]
+  bundledEntries?: VideoLibraryEntry[]
   supplementalEntries?: VideoLibraryEntry[]
   selectedId: string
   boundId?: string
@@ -254,7 +254,7 @@ export function VideoAssetLibrary({
   scenario,
   blueprints,
   mainPackId,
-  bundledEntries,
+  bundledEntries = [],
   supplementalEntries = [],
   selectedId,
   boundId,

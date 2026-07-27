@@ -111,7 +111,7 @@ describe('missing video notices across play surfaces', () => {
     expect(screen.getByRole('status')).toHaveTextContent('missing-stable-id')
   })
 
-  it('GraphStudio exposes a Kino list failure while retaining bundled options', async () => {
+  it('GraphStudio does not expose Kino list failures after removing its video selector', () => {
     useKinoVideoResources.mockReturnValue({
       items: [],
       total: 0,
@@ -121,11 +121,12 @@ describe('missing video notices across play surfaces', () => {
       refresh: vi.fn(),
     })
 
-    render(<GraphStudio scenario={SCENARIO} />)
+    useGraphScenario.setState({ selectedNodeId: 'intro' })
+    const { container } = render(<GraphStudio scenario={SCENARIO} />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Kino 视频素材加载失败：invalid_page_size（仅显示内置视频）',
-    )
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(container.querySelector('select[title*="演出节点播放的视频"]')).toBeNull()
+    expect(screen.queryByText('（无演出）')).toBeNull()
   })
 
   it('returns to follow mode when the active breadcrumb is clicked', () => {
