@@ -161,7 +161,7 @@ export async function listRegistryAssets(game?: string, kind?: 'video' | 'image'
 /** 取单条 registry 资产（轮询生成状态用）。 */
 export async function getRegistryAsset(game: string, id: string): Promise<MediaAsset | null> {
   try {
-    const r = await pluginFetch(`/__gva__/assets/${encodeURIComponent(id)}?game=${encodeURIComponent(game)}`)
+    const r = await pluginFetch(`/__gva__/asset/${encodeURIComponent(id)}?game=${encodeURIComponent(game)}`)
     if (!r.ok) return null
     const j = (await r.json()) as { asset?: MediaAsset | null }
     return j.asset ?? null
