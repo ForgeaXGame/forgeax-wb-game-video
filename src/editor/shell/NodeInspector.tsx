@@ -1171,6 +1171,7 @@ export function NodeInspector({
   onPacksChange,
   onEnsureOverlay,
   onDropOverlayIfOrphan,
+  onRemoveMount,
   onJump,
 }: {
   graph: GameGraph
@@ -1209,6 +1210,11 @@ export function NodeInspector({
    * 无引用则清理孤儿副本。本组件只看得到 canvasGraph，无法自行判断跨图引用，故上抛。
    */
   onDropOverlayIfOrphan?: (overlayId: string) => void
+  /**
+   * 移除覆盖物挂载（优先走 scenario 级 `removeMountGraph`，级联清掉组件跳转边与结算）。
+   * 未传则回落为只改 `overlayNodes`（旧行为，边会残留）。
+   */
+  onRemoveMount?: (mountId: string) => void
   onJump?: (id: string) => void
 }): JSX.Element {
   const node = graph.nodes.find((n) => n.id === nodeId)
@@ -1582,11 +1588,16 @@ export function NodeInspector({
                           if (!ok) return
                         }
                         const removed = mount.overlay
-                        const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
-                        patchData({ overlayNodes: next.length ? next : undefined })
+                        if (onRemoveMount) {
+                          // scenario 级卸挂载：级联清掉應默等组件占用的跳转边与结算（含 node:* 孤儿清理）。
+                          onRemoveMount(mid)
+                        } else {
+                          const next = (d.overlayNodes ?? []).filter((_, j) => j !== i)
+                          patchData({ overlayNodes: next.length ? next : undefined })
+                          // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
+                          if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
+                        }
                         if (focused) onFocusMount?.(null)
-                        // 卸载节点专属副本（node:*）→ 交上层用完整 scenario 判断并清理孤儿。
-                        if (removed.startsWith('node:')) onDropOverlayIfOrphan?.(removed)
                       }}
                     >
                       移除

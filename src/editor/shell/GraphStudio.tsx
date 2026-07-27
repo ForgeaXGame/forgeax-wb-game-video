@@ -21,6 +21,7 @@ import { GameStage } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
+import { removeMountGraph } from '../video/graphMaterialOps'
 import { resolveMediaSrc } from './media'
 import { useKinoVideoResources } from '../assets/kinoVideoCacheStore'
 import { useClipPerformanceEnd, videoDurationCapReached, MissingVideoNotice } from '../../runtime/play'
@@ -680,6 +681,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   const scn = st.authoringScenario()
                   const cleaned = dropOverlayIfUnreferenced(scn, oid)
                   if (cleaned !== scn) st.setMeta(metaFromDocument(cleaned))
+                }}
+                onRemoveMount={(mountId) => {
+                  editPreviewScenario((s, n) => removeMountGraph(s, n, mountId))
                 }}
                 onJump={jump}
               />
