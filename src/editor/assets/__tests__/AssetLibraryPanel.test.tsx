@@ -23,12 +23,27 @@ function controller(overrides: Partial<AssetLibraryController> = {}): AssetLibra
 }
 
 describe('AssetLibraryPanel', () => {
-  it('renders image and BGM groups with their upload inputs', () => {
+  it('keeps asset kinds in the left tabs and active resources on the right', () => {
     render(<AssetLibraryPanel controller={controller()} />)
-    expect(screen.getByText('图片')).toBeTruthy()
-    expect(screen.getByText('BGM')).toBeTruthy()
-    expect(screen.getByLabelText('上传图片')).toHaveAttribute('accept', 'image/*')
-    expect(screen.getByLabelText('上传 BGM')).toHaveAttribute('accept', 'audio/*')
+    expect(screen.getByRole('navigation', { name: '资产类型' })).toHaveTextContent('图片')
+    expect(screen.getByRole('navigation', { name: '资产类型' })).toHaveTextContent('音频')
+    expect(screen.getByLabelText('图片资源列表')).toHaveTextContent('封面')
+    expect(screen.getByLabelText('上传图片')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif')
+    expect(screen.queryByRole('dialog', { name: '资产预览' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /音频 1/ }))
+    expect(screen.getByLabelText('BGM资源列表')).toHaveTextContent('主题曲')
+    expect(screen.getByLabelText('上传 BGM')).toHaveAttribute('accept', 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac')
+  })
+
+  it('opens asset details in a dialog from its list thumbnail', () => {
+    render(<AssetLibraryPanel controller={controller()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '查看 封面' }))
+    expect(screen.getByRole('dialog', { name: '资产预览' })).toHaveTextContent('封面')
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭预览' }))
+    expect(screen.queryByRole('dialog', { name: '资产预览' })).toBeNull()
   })
 
   it('shows the API-unavailable state without claiming the library is empty', () => {
@@ -45,6 +60,7 @@ describe('AssetLibraryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(api.rename).toHaveBeenCalledWith('image-1', '新封面'))
 
+    fireEvent.click(screen.getByRole('button', { name: /音频 1/ }))
     fireEvent.click(screen.getByRole('button', { name: '删除 主题曲' }))
     expect(screen.getByRole('dialog', { name: '删除资产' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))

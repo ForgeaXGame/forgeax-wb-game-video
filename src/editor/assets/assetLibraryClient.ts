@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  MAX_KINO_RESOURCE_PAGE_SIZE,
+  createKinoVideoClient,
+  type KinoResourceDTO,
+  type KinoVideoClient,
+} from './kino-api'
+import { createDefaultXhrUploadTransport, type UploadTransport } from './video-upload'
 
 export type ManagedAssetKind = 'image' | 'audio'
 
@@ -18,6 +25,151 @@ export interface AssetLibraryClient {
   upload(gameId: string, kind: ManagedAssetKind, file: File, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
   rename(gameId: string, id: string, name: string, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
   remove(gameId: string, id: string, options?: { signal?: AbortSignal }): Promise<void>
+}
+
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac'])
+const MAX_ASSET_UPLOAD_BYTES = 100 * 1024 * 1024
+const MAX_ASSET_LIBRARY_PAGES = 100
+
+export class AssetLibraryUploadError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AssetLibraryUploadError'
+  }
+}
+
+export interface CreateKinoAssetLibraryClientOptions {
+  client?: KinoVideoClient
+  transport?: UploadTransport
+}
+
+function mimeTypesFor(kind: ManagedAssetKind): Set<string> {
+  return kind === 'image' ? IMAGE_MIME_TYPES : AUDIO_MIME_TYPES
+}
+
+function assertUploadFile(kind: ManagedAssetKind, file: File): void {
+  if (!file.name.trim()) {
+    throw new AssetLibraryUploadError('请选择一个具有文件名的文件')
+  }
+  if (!mimeTypesFor(kind).has(file.type)) {
+    const supported = kind === 'image'
+      ? 'PNG、JPEG、WebP 或 GIF 图片'
+      : 'MP3、WAV、OGG、M4A/MP4 或 AAC 音频'
+    throw new AssetLibraryUploadError(`不支持的${kind === 'image' ? '图片' : '音频'}格式；仅支持${supported}`)
+  }
+  if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > MAX_ASSET_UPLOAD_BYTES) {
+    throw new AssetLibraryUploadError('文件大小必须在 100 MB 以内')
+  }
+}
+
+function extension(fileName: string): string | undefined {
+  const match = /\.([A-Za-z0-9]+)$/.exec(fileName)
+  return match?.[1]?.toLowerCase()
+}
+
+function displayName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, '') || fileName
+}
+
+function bytes(resource: KinoResourceDTO): number | undefined {
+  const value = resource.source_meta?.extra?.bytes
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+function toManagedAsset(
+  resource: KinoResourceDTO,
+  kind: ManagedAssetKind,
+  client: KinoVideoClient,
+): ManagedAsset {
+  return {
+    id: resource.resource_id,
+    kind,
+    name: resource.name || resource.resource_id,
+    url: client.playbackUrl(resource.resource_id, resource.game_id),
+    mime: resource.source_meta?.mime_type,
+    bytes: bytes(resource),
+    updatedAt: resource.updated_at,
+    source: resource.source,
+  }
+}
+
+/**
+ * Production adapter for assets in Kino's provider-backed resource API.
+ * Resources are always previewed through its authenticated content endpoint.
+ */
+export function createKinoAssetLibraryClient(
+  options: CreateKinoAssetLibraryClientOptions = {},
+): AssetLibraryClient {
+  const client = options.client ?? createKinoVideoClient()
+  const transport = options.transport ?? createDefaultXhrUploadTransport()
+
+  return {
+    async list(gameId, kind, requestOptions) {
+      const resources = new Map<string, ManagedAsset>()
+      for (let page = 1; page <= MAX_ASSET_LIBRARY_PAGES; page += 1) {
+        const response = await client.list({
+          game_id: gameId,
+          media_type: kind,
+          page,
+          page_size: MAX_KINO_RESOURCE_PAGE_SIZE,
+        }, requestOptions)
+        for (const resource of response.items) {
+          resources.set(resource.resource_id, toManagedAsset(resource, kind, client))
+        }
+        if (response.items.length === 0 || resources.size >= response.total) break
+      }
+      return [...resources.values()]
+    },
+
+    async upload(gameId, kind, file, requestOptions) {
+      assertUploadFile(kind, file)
+      const prepared = await client.prepareUpload({
+        game_id: gameId,
+        file_name: file.name,
+        mime_type: file.type as Parameters<KinoVideoClient['prepareUpload']>[0]['mime_type'],
+        bytes: file.size,
+        extension: extension(file.name),
+      }, requestOptions)
+      await transport.put(file, prepared.upload, undefined, requestOptions?.signal)
+      const resource = await client.create({
+        game_id: gameId,
+        media_type: kind,
+        url: prepared.object_url,
+        name: displayName(file.name),
+        type: 'UPLOAD',
+        source: 'wb-game-video',
+        source_meta: {
+          mime_type: file.type,
+          extra: { bytes: file.size },
+        },
+      }, requestOptions)
+      return toManagedAsset(resource, kind, client)
+    },
+
+    async rename(gameId, id, name, requestOptions) {
+      const resource = await client.get(id, gameId, requestOptions)
+      const updated = await client.update(id, {
+        resource_id: id,
+        game_id: gameId,
+        media_type: resource.media_type,
+        url: resource.url,
+        name,
+        type: resource.type,
+        remark: resource.remark,
+        source: resource.source,
+        source_meta: resource.source_meta,
+      }, requestOptions)
+      if (updated.media_type !== 'image' && updated.media_type !== 'audio') {
+        throw new AssetLibraryUploadError('只能重命名图片或音频资产')
+      }
+      return toManagedAsset(updated, updated.media_type, client)
+    },
+
+    async remove(gameId, id, requestOptions) {
+      await client.delete(id, gameId, requestOptions)
+    },
+  }
 }
 
 export interface AssetLibraryController {

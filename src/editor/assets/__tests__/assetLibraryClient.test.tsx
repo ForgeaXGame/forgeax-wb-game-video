@@ -1,6 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { type AssetLibraryClient, type ManagedAsset, useAssetLibrary } from '../assetLibraryClient'
+import {
+  AssetLibraryUploadError,
+  createKinoAssetLibraryClient,
+  type AssetLibraryClient,
+  type ManagedAsset,
+  useAssetLibrary,
+} from '../assetLibraryClient'
+import type { KinoResourceDTO, KinoVideoClient } from '../kino-api'
+import type { UploadTransport } from '../video-upload'
 
 function client(): AssetLibraryClient {
   return {
@@ -47,5 +55,93 @@ describe('useAssetLibrary', () => {
     expect(api.rename).toHaveBeenCalledWith('demo', 'image-new', '新封面')
     expect(api.remove).toHaveBeenCalledWith('demo', 'image-new')
     expect(result.current.items.find((item) => item.id === 'image-new')).toBeUndefined()
+  })
+})
+
+function resource(overrides: Partial<KinoResourceDTO> = {}): KinoResourceDTO {
+  return {
+    resource_id: 'audio-1',
+    game_id: 'demo',
+    media_type: 'audio',
+    name: '主题曲',
+    url: 'https://storage.example/theme.mp3',
+    source: 'wb-game-video',
+    source_meta: { mime_type: 'audio/mpeg', extra: { bytes: 12 } },
+    created_at: 1,
+    updated_at: 2,
+    ...overrides,
+  }
+}
+
+function kino(): KinoVideoClient {
+  return {
+    prepareUpload: vi.fn(async () => ({
+      upload: { method: 'PUT' as const, url: 'https://storage.example/upload', headers: {}, expires_at: '2099-01-01' },
+      object_url: 'https://storage.example/object',
+      upload_token: 'token',
+    })),
+    list: vi.fn(async () => ({ items: [resource()], total: 1, page: 1, page_size: 100 })),
+    get: vi.fn(async () => resource()),
+    create: vi.fn(async () => resource()),
+    batch: vi.fn(),
+    update: vi.fn(async () => resource({ name: '新主题曲' })),
+    delete: vi.fn(async () => {}),
+    playbackUrl: vi.fn((id, game) => `/api/v1/kino/resources/${id}/content?game_id=${game}`),
+  }
+}
+
+describe('createKinoAssetLibraryClient', () => {
+  it('maps audio list, upload, rename and deletion to Kino resource operations', async () => {
+    const kinoClient = kino()
+    const transport: UploadTransport = { put: vi.fn(async () => {}) }
+    const client = createKinoAssetLibraryClient({ client: kinoClient, transport })
+
+    await expect(client.list('demo', 'audio')).resolves.toEqual([{
+      id: 'audio-1',
+      kind: 'audio',
+      name: '主题曲',
+      url: '/api/v1/kino/resources/audio-1/content?game_id=demo',
+      mime: 'audio/mpeg',
+      bytes: 12,
+      updatedAt: 2,
+      source: 'wb-game-video',
+    }])
+
+    const file = new File(['music'], 'theme.mp3', { type: 'audio/mpeg' })
+    await client.upload('demo', 'audio', file)
+    await client.rename('demo', 'audio-1', '新主题曲')
+    await client.remove('demo', 'audio-1')
+
+    expect(kinoClient.prepareUpload).toHaveBeenCalledWith({
+      game_id: 'demo',
+      file_name: 'theme.mp3',
+      mime_type: 'audio/mpeg',
+      bytes: file.size,
+      extension: 'mp3',
+    }, undefined)
+    expect(transport.put).toHaveBeenCalledWith(file, expect.anything(), undefined, undefined)
+    expect(kinoClient.create).toHaveBeenCalledWith(expect.objectContaining({
+      game_id: 'demo',
+      media_type: 'audio',
+      name: 'theme',
+      source_meta: { mime_type: 'audio/mpeg', extra: { bytes: file.size } },
+    }), undefined)
+    expect(kinoClient.get).toHaveBeenCalledWith('audio-1', 'demo', undefined)
+    expect(kinoClient.update).toHaveBeenCalledWith('audio-1', expect.objectContaining({
+      game_id: 'demo',
+      media_type: 'audio',
+      name: '新主题曲',
+    }), undefined)
+    expect(kinoClient.delete).toHaveBeenCalledWith('audio-1', 'demo', undefined)
+  })
+
+  it('rejects unsupported audio formats before requesting an upload', async () => {
+    const kinoClient = kino()
+    const client = createKinoAssetLibraryClient({ client: kinoClient })
+
+    await expect(
+      client.upload('demo', 'audio', new File(['x'], 'theme.flac', { type: 'audio/flac' })),
+    ).rejects.toEqual(new AssetLibraryUploadError('不支持的音频格式；仅支持MP3、WAV、OGG、M4A/MP4 或 AAC 音频'))
+    expect(kinoClient.prepareUpload).not.toHaveBeenCalled()
   })
 })

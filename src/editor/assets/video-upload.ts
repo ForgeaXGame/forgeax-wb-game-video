@@ -72,25 +72,17 @@ function isCrossOriginHttpUrl(instructionUrl: string, origin: string): boolean {
   }
 }
 
-function localEaPortFromUrl(url: URL): string {
-  if (url.port) {
-    return url.port
-  }
-  return url.protocol === 'https:' ? '443' : '80'
-}
-
-/** Keep direct uploads to the local ForgeaX API dev server on the vite proxy path. */
-function isLocalEaUploadUrl(instructionUrl: string): boolean {
+/** A server-issued Kino upload must stay on the ordinary `/api` proxy, never the COS/S3 proxy. */
+function kinoUploadUrl(instructionUrl: string): URL | null {
   try {
     const target = new URL(instructionUrl)
     if (target.protocol !== 'http:' && target.protocol !== 'https:') {
-      return false
+      return null
     }
-    const host = target.hostname.toLowerCase()
-    const port = localEaPortFromUrl(target)
-    return (host === '127.0.0.1' || host === 'localhost') && port === '18900'
+    const kinoUploadPath = /^\/api\/v1\/kino\/uploads\/[^/]+$/.test(target.pathname)
+    return kinoUploadPath && target.searchParams.has('game_id') ? target : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -106,8 +98,12 @@ export function resolveUploadTransportUrl(
   ) {
     return instructionUrl
   }
-  if (isLocalEaUploadUrl(instructionUrl)) {
-    return instructionUrl
+  const kinoUpload = kinoUploadUrl(instructionUrl)
+  if (kinoUpload) {
+    if (!isCrossOriginHttpUrl(instructionUrl, origin)) {
+      return instructionUrl
+    }
+    return new URL(`${kinoUpload.pathname}${kinoUpload.search}`, origin).toString()
   }
   if (!isCrossOriginHttpUrl(instructionUrl, origin)) {
     return instructionUrl
