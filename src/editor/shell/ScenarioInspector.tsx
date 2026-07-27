@@ -7,7 +7,7 @@ import type { Formula } from '../persist/formula-authoring'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
-import { FormulaAstEditor } from './FormulaAstEditor'
+import { FormulaTextEditor } from './FormulaTextEditor'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -430,11 +430,10 @@ function FormulaRow({
         />,
       )}
       <div style={{ margin: '6px 0 2px', fontSize: 11, opacity: 0.7 }}>公式（留空位 = 应用时再填的参数/实体）</div>
-      <FormulaAstEditor
+      <FormulaTextEditor
         ast={formula.ast}
         entities={entities}
         variables={variables}
-        allowHoles
         onChange={(ast) => onChange({ ...formula, id: formulaKey, ast })}
       />
       <button style={{ ...del, marginTop: 6 }} onClick={onDelete}>

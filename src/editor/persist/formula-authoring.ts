@@ -73,24 +73,61 @@ function liftRef(path: string[]): FormulaRef {
   return { kind: 'var', varId: path.join('.') }
 }
 
-export function liftExprToFormulaAst(node: RuntimeExprNode, nextId: () => string = makeIdAlloc()): FormulaAstNode {
+export function liftExprToFormulaAst(
+  node: RuntimeExprNode,
+  nextId: () => string = makeIdAlloc(),
+  holeNames?: Map<string, string>,
+): FormulaAstNode {
   switch (node.t) {
     case 'num':
       return { t: 'num', id: nextId(), v: node.v }
-    case 'ref':
+    case 'ref': {
+      // 文本编辑回解：`__hole__.<序号>` ref（parseFormulaText 预扫描产物）→ hole 节点，按映射还原原名。
+      if (holeNames && node.path[0] === HOLE_REF_HEAD && node.path.length >= 2) {
+        const name = holeNames.get(node.path.slice(1).join('.')) ?? node.path.slice(1).join('.')
+        return { t: 'hole', id: nextId(), holeId: name, kind: 'number', label: name }
+      }
       return { t: 'ref', id: nextId(), ref: liftRef(node.path) }
+    }
     case 'unary':
-      return { t: 'unary', id: nextId(), op: node.op, x: liftExprToFormulaAst(node.x, nextId) }
+      return { t: 'unary', id: nextId(), op: node.op, x: liftExprToFormulaAst(node.x, nextId, holeNames) }
     case 'bin':
-      return { t: 'bin', id: nextId(), op: node.op, a: liftExprToFormulaAst(node.a, nextId), b: liftExprToFormulaAst(node.b, nextId) }
+      return { t: 'bin', id: nextId(), op: node.op, a: liftExprToFormulaAst(node.a, nextId, holeNames), b: liftExprToFormulaAst(node.b, nextId, holeNames) }
     case 'call':
-      return { t: 'call', id: nextId(), name: node.name, args: node.args.map((a) => liftExprToFormulaAst(a, nextId)) }
+      return { t: 'call', id: nextId(), name: node.name, args: node.args.map((a) => liftExprToFormulaAst(a, nextId, holeNames)) }
   }
 }
 
 /** 反向解析入口：任意 expr 串 → 可编辑 AST。解析失败抛 ExprError（调用方捕获提示）。 */
 export function parseExprToFormulaAst(src: string): FormulaAstNode {
   return liftExprToFormulaAst(parseExpr(src))
+}
+
+// ── 含 hole 的文本 ↔ AST（编辑器专属；runtime expr.ts 不认 hole，故 hole 语法只活在这一层）──
+/**
+ * hole 文本语法 = `?名字`（名字可含中文/字母/数字/下划线）。同名多次出现 = 同一个 holeId
+ * （应用时只填一次）。`?` 不是 runtime expr.ts 的 token，且其 tokenizer 只认 ASCII 标识符——
+ * 故预扫描时把每个唯一 `?名字` 编码成纯 ASCII 占位 ref（`__hole__.<序号>`）交 parseExpr，
+ * 同时记 序号→原名 映射，parse 后在 lift 里据映射还原成带原名的 hole 节点。
+ */
+const HOLE_TEXT_RE = /\?([\p{L}_][\p{L}\p{N}_]*)/gu
+const HOLE_REF_HEAD = '__hole__'
+
+/** 含 hole 的文本 → AST（供公式文本编辑器）。解析失败抛 ExprError。 */
+export function parseFormulaText(src: string, nextId: () => string = makeIdAlloc()): FormulaAstNode {
+  // 唯一 hole 名 → ASCII 序号占位（避免中文名进 runtime tokenizer 被拒）。
+  const nameToIdx = new Map<string, number>()
+  const idxToName = new Map<string, string>()
+  const substituted = src.replace(HOLE_TEXT_RE, (_m, name: string) => {
+    let idx = nameToIdx.get(name)
+    if (idx == null) {
+      idx = nameToIdx.size
+      nameToIdx.set(name, idx)
+      idxToName.set(String(idx), name)
+    }
+    return `${HOLE_REF_HEAD}.${idx}`
+  })
+  return liftExprToFormulaAst(parseExpr(substituted), nextId, idxToName)
 }
 
 // ── 正向：编辑器 AST → 运行时 Node（代入 holeBindings）→ serializeExpr ─────────────
@@ -100,24 +137,29 @@ function refToPath(ref: FormulaRef): string[] {
   return ['entity', ref.entityId, 'attr', ref.attr]
 }
 
+/** 空位占位串：`?名字`——既是只读预览展示，也是文本编辑时的可回解语法（parseFormulaText 认它）。 */
+function holePlaceholder(node: Extract<FormulaAstNode, { t: 'hole' }>): string {
+  return `?${node.label ?? node.holeId}`
+}
+
 function holeToNode(
   node: Extract<FormulaAstNode, { t: 'hole' }>,
   binding: FormulaHoleBinding | undefined,
   placeholder: boolean,
 ): RuntimeExprNode | null {
   if (!binding) {
-    // 未填：预览模式吐占位 ref（serializeExpr 会原样打印 token）；编译模式返回 null。
-    return placeholder ? { t: 'ref', path: [`❓${node.label ?? node.holeId}`] } : null
+    // 未填：预览模式吐 `?名字` 占位 ref（serializeExpr 原样打印 token）；编译模式返回 null。
+    return placeholder ? { t: 'ref', path: [holePlaceholder(node)] } : null
   }
   if (binding.kind === 'number') return { t: 'num', v: binding.value }
   if (binding.kind === 'var') {
-    if (!binding.varId) return placeholder ? { t: 'ref', path: [`❓${node.label ?? node.holeId}`] } : null
+    if (!binding.varId) return placeholder ? { t: 'ref', path: [holePlaceholder(node)] } : null
     return { t: 'ref', path: ['var', binding.varId] }
   }
   // entityAttr
-  if (!binding.entityId) return placeholder ? { t: 'ref', path: [`❓${node.label ?? node.holeId}`] } : null
+  if (!binding.entityId) return placeholder ? { t: 'ref', path: [holePlaceholder(node)] } : null
   const attr = binding.attr || node.suggestAttr
-  if (!attr) return placeholder ? { t: 'ref', path: [`entity.${binding.entityId}.attr.❓`] } : null
+  if (!attr) return placeholder ? { t: 'ref', path: [`entity.${binding.entityId}.attr.?`] } : null
   return { t: 'ref', path: ['entity', binding.entityId, 'attr', attr] }
 }
 

@@ -44,8 +44,8 @@ describe('formulaApply', () => {
     expect(missingFormulaHoles(damageFormula, { atk: { kind: 'entityAttr', entityId: 'ent-player' } })).toEqual([])
   })
 
-  it('formulaPreview 把未填空位标成 ❓', () => {
-    expect(formulaPreview(damageFormula)).toContain('❓')
+  it('formulaPreview 把未填空位标成 ?名字', () => {
+    expect(formulaPreview(damageFormula)).toContain('?')
   })
 
   it('compileFormula 用 holeBindings 套回留空位，编译出具体 expr（并归一 attr）', () => {
