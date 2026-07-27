@@ -4,6 +4,7 @@
  * 保留素材库、纯视频预览、提示词与图片参考；不再承载节点绑定、组件编辑或时间轴能力。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useT } from '../../i18n'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { ZHANDOU_VIDEOS } from '../assets/catalog'
@@ -50,6 +51,11 @@ injectStyleOnce('graph-video-view', GRAPH_VIDEO_VIEW_CSS)
 interface VideoEntry extends VideoLibraryEntry {}
 
 export function GraphVideoView(): JSX.Element {
+  const t = useT()
+  const battleGroup = t('videoAssets.group.battle')
+  const narrativeGroup = t('videoAssets.group.narrative')
+  const generatedGroup = t('videoAssets.group.generated')
+  const uploadGroup = t('videoAssets.group.upload')
   const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const videoController = useVideoAssets(game)
   const [regAssets, setRegAssets] = useState<MediaAsset[]>([])
@@ -126,10 +132,16 @@ export function GraphVideoView(): JSX.Element {
     const narr: VideoLibraryEntry[] = []
     for (const [id, url] of Object.entries(ZHANDOU_VIDEOS)) {
       const isNarr = id.startsWith('narr-')
-      ;(isNarr ? narr : clips).push({ id, label: id, url, group: isNarr ? '叙事' : '战斗', bundled: true })
+      ;(isNarr ? narr : clips).push({
+        id,
+        label: id,
+        url,
+        group: isNarr ? narrativeGroup : battleGroup,
+        bundled: true,
+      })
     }
     return [...clips, ...narr]
-  }, [])
+  }, [battleGroup, narrativeGroup])
 
   const supplementalEntries = useMemo<VideoLibraryEntry[]>(() => {
     return regAssets
@@ -138,12 +150,12 @@ export function GraphVideoView(): JSX.Element {
         id: v.id,
         label: v.label ?? v.id,
         url: v.status === 'ready' ? registryMediaUrl(v.id, game) : '',
-        group: '生成',
+        group: generatedGroup,
         status: v.status,
         fromRegistry: true,
         durMs: v.durationMs,
       }))
-  }, [regAssets, game])
+  }, [regAssets, game, generatedGroup])
 
   const entries = useMemo<VideoEntry[]>(() => {
     const seen = new Set<string>()
@@ -158,7 +170,7 @@ export function GraphVideoView(): JSX.Element {
         id: item.id,
         label: item.label,
         url: item.url,
-        group: '上传',
+        group: uploadGroup,
         fromApi: true,
         durMs: item.durMs,
         type: item.type,
@@ -168,7 +180,7 @@ export function GraphVideoView(): JSX.Element {
     for (const entry of bundledEntries) push(entry)
     for (const entry of supplementalEntries) push(entry)
     return out
-  }, [bundledEntries, supplementalEntries, videoController.items])
+  }, [bundledEntries, supplementalEntries, videoController.items, uploadGroup])
 
   const selectedEntry = entries.find((e) => e.id === selectedId)
   const timelineEntry = selectedEntry

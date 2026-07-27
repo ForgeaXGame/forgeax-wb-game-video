@@ -1,7 +1,8 @@
 import { createRef } from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import type { GameScenario } from '../../../runtime/schema/graph-schema'
+import { setLocale } from '../../../i18n'
 import * as videoAssetLibraryModule from '../VideoAssetLibrary'
 import { VideoAssetLibrary, type VideoAssetsController, type VideoLibraryEntry } from '../VideoAssetLibrary'
 import type { KinoResourceDTO } from '../kino-api'
@@ -72,6 +73,7 @@ function makeController(
 describe('VideoAssetLibrary', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setLocale('zh')
   })
 
   it('shows loading state', () => {
@@ -121,23 +123,24 @@ describe('VideoAssetLibrary', () => {
     expect(labels).toEqual(['上传 · Clip one', '战斗 · idle01'])
   })
 
-  it('renames an uploaded video on double click', async () => {
-    const controller = makeController()
-    vi.spyOn(window, 'prompt').mockReturnValue('Renamed clip')
+  it('reacts to host locale changes', () => {
     render(
       <VideoAssetLibrary
         gameId="demo"
         scenario={EMPTY_SCENARIO}
         bundledEntries={[]}
-        controller={controller}
+        controller={makeController()}
         selectedId=""
         onSelect={() => {}}
       />,
     )
+    expect(screen.getByLabelText('上传视频')).toBeTruthy()
 
-    fireEvent.doubleClick(screen.getByRole('button', { name: '上传 · Clip one' }))
+    act(() => setLocale('en'))
 
-    await waitFor(() => expect(controller.renameResource).toHaveBeenCalledWith('api-1', 'Renamed clip'))
+    expect(screen.getByLabelText('Upload video')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Rename Clip one' })).toHaveTextContent('Rename')
+    expect(screen.getByRole('button', { name: 'Delete Clip one' })).toHaveTextContent('Delete')
   })
 
   it('orders header controls as title, upload, status, count, refresh', () => {
@@ -355,7 +358,7 @@ describe('VideoAssetLibrary', () => {
     await waitFor(() => expect(controller.refresh).toHaveBeenCalledOnce())
   })
 
-  it('exposes delete but not rename for api entries', () => {
+  it('exposes rename and delete for api entries', () => {
     const onSelect = vi.fn()
     const { container } = render(
       <VideoAssetLibrary
@@ -367,7 +370,7 @@ describe('VideoAssetLibrary', () => {
         onSelect={onSelect}
       />,
     )
-    expect(screen.queryByRole('button', { name: /重命名/ })).toBeNull()
+    const renameButton = screen.getByRole('button', { name: '重命名 Clip one' })
     const deleteButton = screen.getByRole('button', { name: '删除 Clip one' })
     const assetButton = screen.getByRole('button', { name: '上传 · Clip one' })
     const row = deleteButton.closest('.val-row')
@@ -375,7 +378,7 @@ describe('VideoAssetLibrary', () => {
     expect(row).toHaveClass('is-on')
     expect(assetButton.parentElement).toBe(row)
     expect(deleteButton.parentElement).toBe(row)
-    expect([...row!.children]).toEqual([assetButton, deleteButton])
+    expect([...row!.children]).toEqual([assetButton, renameButton, deleteButton])
 
     fireEvent.click(deleteButton)
     expect(onSelect).not.toHaveBeenCalled()
@@ -383,21 +386,77 @@ describe('VideoAssetLibrary', () => {
     expect(container.querySelector('.val-row-actions')).toBeNull()
   })
 
-  it('keeps delete inline, compact, and discoverable for pointer and keyboard users', async () => {
+  it('renames an api entry without selecting it', async () => {
+    const controller = makeController({ items: [apiEntry('res-1', 'Old name')] })
+    const onSelect = vi.fn()
+    render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={onSelect}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '重命名 Old name' }))
+    const input = screen.getByLabelText('名称')
+    expect(input).toHaveValue('Old name')
+    fireEvent.change(input, { target: { value: '  New name  ' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(controller.renameResource).toHaveBeenCalledWith('res-1', 'New name'))
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the rename dialog open and validates errors', async () => {
+    const controller = makeController({
+      items: [apiEntry('res-1', 'Old name')],
+      renameResource: vi.fn(async () => {
+        throw new Error('Rename failed')
+      }),
+    })
+    render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '重命名 Old name' }))
+    const input = screen.getByLabelText('名称')
+    fireEvent.change(input, { target: { value: ' ' } })
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    expect(screen.getByText('视频名称不能为空')).toBeTruthy()
+    fireEvent.change(input, { target: { value: 'New name' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(controller.renameResource).toHaveBeenCalledOnce())
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('alert')).toHaveTextContent('Rename failed')
+  })
+
+  it('keeps row actions inline, compact, and discoverable for pointer and keyboard users', async () => {
     await import('../../shell/GraphVideoView')
     const css = document.querySelector<HTMLStyleElement>(
       'style[data-reel-style="graph-video-view"]',
     )?.textContent ?? ''
 
     expect(css).toMatch(/\.val-row\s*\{[^}]*display:\s*grid/)
-    expect(css).toMatch(/\.val-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/)
+    expect(css).toMatch(/\.val-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto/)
     expect(css).toMatch(/\.val-row\s*>\s*\.gc-row\s*\{[^}]*min-width:\s*0/)
     expect(css).toMatch(/\.val-row\s+\.gc-row-label\s*\{[^}]*text-overflow:\s*ellipsis/)
-    expect(css).toMatch(/\.val-row-delete\s*\{[^}]*min-width:\s*44px/)
-    expect(css).toMatch(/\.val-row-delete\s*\{[^}]*min-height:\s*28px/)
-    expect(css).toMatch(/\.val-row:hover\s+\.val-row-delete[^}]*opacity:\s*1/)
-    expect(css).toMatch(/\.val-row:focus-within\s+\.val-row-delete[^}]*opacity:\s*1/)
-    expect(css).toMatch(/\.val-row\.is-on\s+\.val-row-delete[^}]*opacity:\s*1/)
+    expect(css).toMatch(/\.val-row-action\s*\{[^}]*min-width:\s*44px/)
+    expect(css).toMatch(/\.val-row-action\s*\{[^}]*min-height:\s*28px/)
+    expect(css).toMatch(/\.val-row:hover\s+\.val-row-action[^}]*opacity:\s*1/)
+    expect(css).toMatch(/\.val-row:focus-within\s+\.val-row-action[^}]*opacity:\s*1/)
+    expect(css).toMatch(/\.val-row\.is-on\s+\.val-row-action[^}]*opacity:\s*1/)
   })
 
   it('delete with references shows graph and node names in confirm dialog', async () => {
@@ -528,6 +587,7 @@ describe('VideoAssetLibrary', () => {
     )
     expect(screen.getByLabelText('上传视频')).toBeDisabled()
     expect(screen.getByLabelText('上传视频').closest('label')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: '重命名 Clip' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '删除 Clip' })).toBeDisabled()
 
     rerender(
@@ -546,6 +606,7 @@ describe('VideoAssetLibrary', () => {
     )
     expect(screen.getByLabelText('上传视频')).toBeDisabled()
     expect(screen.getByLabelText('上传视频').closest('label')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: '重命名 Clip' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '删除 Clip' })).toBeDisabled()
   })
 
