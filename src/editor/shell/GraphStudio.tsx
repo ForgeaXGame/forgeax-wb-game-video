@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { GameGraph, GameScenario, SubFlowPackDef } from '../../runtime/schema/graph-schema'
-import { getSubFlowPack, getSubFlow, resolveGraphEntry } from '../../runtime/schema/graph-schema'
+import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
@@ -177,11 +177,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setVideoOptionsError(kinoResources.error)
   }, [kinoResources.error, kinoResources.items])
 
-  // NodeInspector 自己的「新建并挂载子蓝图」小机关（节点属性面板内，与画布「添加引用」按钮
-  // 是两条不同的路：面板走这里只会新建全新子蓝图，天然不成环）。`onPacksChange` 契约是"给出
-  // 完整下一份列表"（历史遗留，实际全部调用点只会追加恰好一个新建的包）；蓝图库改版后 packs
-  // 由 blueprints 派生，这里按 id 差集把新增项各自落成一个子蓝图文档，已存在的 id 不重复导入。
-  // 画布侧「引用已存在蓝图」的成环保护见下方 `addPackRef`（用 `wouldCreateCycle`）。
+  // NodeInspector「新建并挂载子蓝图」：`onPacksChange` 契约是"给出完整下一份列表"（历史遗留，
+  // 实际全部调用点只会追加恰好一个新建的包）；蓝图库改版后 packs 由 blueprints 派生，这里按 id
+  // 差集把新增项各自落成一个子蓝图文档，已存在的 id 不重复导入。
   const setPacks = useCallback((next: SubFlowPackDef[]) => {
     const cur = useGraphScenario.getState().blueprints
     for (const p of next) if (!cur[p.id]) importBlueprint(packToDoc(p))
@@ -289,35 +287,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     }
     setCanvasGraph((g) => addNode(g, node))
     setSelected(id)
-  }
-  /** 画布空白处「添加引用」：从蓝图库里挑一个既有蓝图接进来（不新建全新子蓝图），排除自己 +
-   * 会成环的候选（`wouldCreateCycle`）。选中后插入一个 `subFlowPack` 引用容器节点。 */
-  const addPackRef = (position: { x: number; y: number }) => {
-    const proj = useGraphScenario.getState().authoringProject()
-    const candidates = Object.values(blueprints).filter(
-      (d) => d.id !== activeBlueprintId && !wouldCreateCycle(proj, activeBlueprintId, d.id),
-    )
-    if (candidates.length === 0) {
-      alert('没有可引用的蓝图（或都会造成引用环）。先在左侧「＋ 新建蓝图」。')
-      return
-    }
-    const pick = prompt(`引用哪张蓝图？输入编号：\n${candidates.map((d, i) => `${i}: ${d.title}`).join('\n')}`, '0')
-    if (pick == null) return
-    const chosen = candidates[Number(pick)]
-    if (!chosen) return
-    const container: GameNode = {
-      id: `n-${Date.now().toString(36)}`,
-      type: 'perf',
-      position,
-      inputs: [],
-      outputs: [],
-      data: {
-        name: chosen.title,
-        subFlowPack: { id: chosen.id, entry: resolveGraphEntry(chosen.graph, chosen.entry) ?? chosen.entry },
-      },
-    }
-    setGraph((g) => addNode(g, container))
-    setSelected(container.id)
   }
 
   // 实体键签名：草稿曾缺 entities 被回填后必须重建 session，否则 HUD bind 全空、血条永不出现。
@@ -553,7 +522,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           onDrill={showingForeignPlayGraph ? undefined : onDrill}
           onPaneClick={() => setSelected(null)}
           onAddNode={showingForeignPlayGraph ? undefined : addPerfNode}
-          onAddPackNode={showingForeignPlayGraph ? undefined : addPackRef}
           onFitLayout={showingForeignPlayGraph ? undefined : applyLayout}
         />
 
