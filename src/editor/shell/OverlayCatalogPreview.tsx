@@ -357,12 +357,15 @@ export function OverlayCatalogPreview({
         y: num(child.inputs?.[mode.yKey], cb ? cb.top + cb.h / 2 : 0.5),
       }
     }
-    return { mode, x: num(child.layout?.left, 0), y: num(child.layout?.top, 0) }
+    // layout 型：left/top 未设（可能靠 right/bottom 锚定）时用实测视觉位置起算，首拖不跳。
+    const cb = contentBoxes[child.id]
+    return { mode, x: num(child.layout?.left, cb ? cb.left : 0), y: num(child.layout?.top, cb ? cb.top : 0) }
   }
   /** 写回组件自己的位置字段（inputs.x/y 是它暴露的位置控件；否则 layout.left/top）。 */
   const writePos = (childId: string, mode: PositionMode, x: number, y: number): void => {
     if (mode.kind === 'inputs') onPatchChildInputs?.(childId, { [mode.xKey]: x, [mode.yKey]: y })
-    else onPatchChildLayout?.(childId, { left: x, top: y })
+    // 清掉 right/bottom：否则与新写的 left/top 并存会把盒子拉伸而非平移（如靠 right 锚定的横幅）。
+    else onPatchChildLayout?.(childId, { left: x, top: y, right: undefined, bottom: undefined })
   }
   /** 不许组件溢出画布：按内容 bbox 把「拟施加的位移增量」钳到内容仍落在 [0,1] 内，返回允许的增量。 */
   const clampMoveDelta = (cb: NBox | undefined, dx: number, dy: number): { dx: number; dy: number } => {
