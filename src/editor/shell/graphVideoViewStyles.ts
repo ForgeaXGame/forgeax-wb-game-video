@@ -103,7 +103,7 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-reference-thumb button:disabled { opacity: .55; cursor: default; }
 
 /* 横屏：提示词占右侧整列，图片参考留在视频下方，避免打断预览与参考素材的关联。 */
-@media (min-width: 981px) and (min-aspect-ratio: 16 / 10) {
+@media (min-width: 981px) {
   .gc-stage-video .gc-video-top {
     grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
     grid-template-rows: minmax(0, 1fr) minmax(180px, 0.6fr);
