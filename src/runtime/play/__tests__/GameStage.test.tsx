@@ -1,5 +1,5 @@
-import { fireEvent, render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClipSnap } from '../../engine/session'
 import { GameStage, type GameStageProps } from '../GameStage'
 
@@ -28,8 +28,26 @@ function videoFor(container: HTMLElement, src: string): HTMLVideoElement {
   return video
 }
 
+const frameCallbacks = new WeakMap<HTMLVideoElement, VideoFrameRequestCallback>()
+
+function submitFrame(video: HTMLVideoElement): void {
+  const callback = frameCallbacks.get(video)
+  if (!callback) throw new Error('video frame callback not registered')
+  act(() => callback(0, {} as VideoFrameCallbackMetadata))
+}
+
 describe('GameStage buffered playback', () => {
-  it('keeps the current frame visible until the next video has decoded a frame', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', {
+      configurable: true,
+      value(this: HTMLVideoElement, callback: VideoFrameRequestCallback) {
+        frameCallbacks.set(this, callback)
+        return 1
+      },
+    })
+  })
+
+  it('keeps the current frame visible until the next video reaches the compositor', () => {
     const current = props()
     const { container, rerender } = render(<GameStage {...current} />)
     const first = videoFor(container, '/a.mp4')
@@ -43,8 +61,46 @@ describe('GameStage buffered playback', () => {
 
     fireEvent.loadedData(next)
 
+    expect(first).toHaveStyle({ opacity: '1' })
+    expect(next).toHaveStyle({ opacity: '0' })
+
+    submitFrame(next)
+
     expect(first).toHaveStyle({ opacity: '0' })
     expect(next).toHaveStyle({ opacity: '1' })
+  })
+
+  it('reuses a preloaded video element instead of assigning its src during the switch', () => {
+    const nextClip = clip('b')
+    const { container, rerender } = render(
+      <GameStage
+        {...props({
+          preloadVideos: [{ videoSrc: '/b.mp4', clip: nextClip }],
+        })}
+      />,
+    )
+    const first = videoFor(container, '/a.mp4')
+    const preloaded = videoFor(container, '/b.mp4')
+    fireEvent.loadedData(first)
+    fireEvent.loadedData(preloaded)
+
+    rerender(
+      <GameStage
+        {...props({
+          videoSrc: '/b.mp4',
+          clip: nextClip,
+          preloadVideos: [],
+        })}
+      />,
+    )
+
+    const promoted = videoFor(container, '/b.mp4')
+    expect(promoted).toBe(preloaded)
+    expect(first).toHaveStyle({ opacity: '1' })
+
+    fireEvent.loadedData(promoted)
+    submitFrame(promoted)
+    expect(promoted).toHaveStyle({ opacity: '1' })
   })
 
   it('ignores media events from the retained old video', () => {
@@ -74,6 +130,7 @@ describe('GameStage buffered playback', () => {
     expect(onPerformanceEnd).not.toHaveBeenCalled()
 
     fireEvent.loadedData(next)
+    submitFrame(next)
     fireEvent.ended(next)
     expect(onPerformanceEnd).toHaveBeenCalledTimes(1)
   })
@@ -93,6 +150,7 @@ describe('GameStage buffered playback', () => {
     expect(latest).toHaveStyle({ opacity: '0' })
 
     fireEvent.loadedData(latest)
+    submitFrame(latest)
     expect(first).toHaveStyle({ opacity: '0' })
     expect(latest).toHaveStyle({ opacity: '1' })
   })
@@ -112,6 +170,7 @@ describe('GameStage buffered playback', () => {
     expect(replay).toHaveStyle({ opacity: '0' })
 
     fireEvent.loadedData(replay)
+    submitFrame(replay)
     expect(replay).toHaveStyle({ opacity: '1' })
   })
 })

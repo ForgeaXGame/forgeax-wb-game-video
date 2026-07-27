@@ -370,6 +370,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [session])
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
+  const preloadVideos = useMemo(
+    () => session.preloadClips().map((candidate) => ({
+      videoSrc: resolveMediaSrc(candidate.mediaId, game),
+      clip: candidate,
+      videoKey: `${candidate.nodeId}-${playEpoch}`,
+    })),
+    [session, snap.currentNodeId, game, playEpoch],
+  )
 
   useEffect(() => {
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
@@ -583,6 +591,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 videoSrc={videoSrc}
                 videoKey={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
                 clip={snap.clip}
+                preloadVideos={preloadVideos}
                 overlayMounts={snap.overlayMounts}
                 skins={session.skins}
                 skinCtx={{
