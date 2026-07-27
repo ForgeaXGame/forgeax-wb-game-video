@@ -6,6 +6,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
+import { AudioRefInput } from './AudioRefInput'
+import { audioChoices, patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
@@ -28,6 +30,20 @@ import { ConditionEditor, EffectsEditor, createDefaultEffect, type EditorPickerC
 import { SpawnInputsEditor } from './spawn-inputs-editor'
 import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
 import { PRESET_SCHEME_OVERLAYS, PRESET_SCHEME_BY_ID } from './schemeOverlays'
+
+/**
+ * 「音乐动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
+ * 语义全压在这一条 tooltip 里。逐句对着 `bgm-stack.ts` 核过：
+ * - push：`apply` 压新帧，旧帧留在下面，等这层被结束时 `resume` 回到它；
+ * - replace：只换栈顶帧的播放字段，被顶掉的那首**没有**留在栈上（栈空、或栈顶是弹不掉的
+ *   文档床时退化成 push）；
+ * - stop：`stop()` 结束栈顶那层、回到下一层，栈顶已是文档床时返回 null（一条指令都不发，D13）。
+ *
+ * 「离开本节点不结束」必须说：调度层弹 `callStack` 帧、局内清空 `callStack` 都**不动** BGM 栈
+ * （见 `engine.ts` 的 `advanceAuto` / `consumeRedirect`），「包进子流程就会自己收掉」是作者最
+ * 容易替引擎脑补出来的一条不存在的规则。
+ */
+const BGM_MODE_TITLE = '留空 = 这里不换音乐，继续播上层正在响的那首。配了就一直播：走边离开本节点、弹回外层子流程/子蓝图都不结束，只有在该停的节点上选「结束当前音乐」，或跳转 / 重开一局才会退掉它。\n起播并记住上一首 = 这层被结束时回到它；换曲不记住 = 顶掉正在响的那首、层数不变（正响的是文档默认床轨时例外：它是地板顶不掉，会另起一层）；结束当前音乐 = 结束正在响的这层，回到上一层还没结束的那首（只剩文档床时什么都不做）。'
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -1159,6 +1175,7 @@ export function NodeInspector({
   graph,
   nodeId,
   videoOptions = [],
+  audioOptions = [],
   packs = [],
   isRefAllowed,
   overlays,
@@ -1177,6 +1194,8 @@ export function NodeInspector({
   graph: GameGraph
   nodeId: string | null
   videoOptions?: VideoOption[]
+  /** 作用域 BGM 的音频资产候选（`assets/manifest` 里 kind==='audio'）；空 = 只能手填 id。 */
+  audioOptions?: AudioOption[]
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
   /**
@@ -1217,6 +1236,16 @@ export function NodeInspector({
   onRemoveMount?: (mountId: string) => void
   onJump?: (id: string) => void
 }): JSX.Element {
+  // 「音乐动作」在还没选曲子时也得选得动：`patchNodeBgm` 对「没有 ref 且不是 stop」的配置一律
+  // 删键（不留 `{ ref: '' }` 这种 validate 判 error、runtime 静默丢弃的残留），所以空态下
+  // push / replace 落不了盘，下拉会自己弹回「起播」。落不了盘的那一步先记在这儿，等作者填了
+  // 曲子再随 ref 一起写进去。换节点 = 换一份草稿（同 `AudioRefInput` 的 `key={nodeId}`）。
+  const [draftBgmMode, setDraftBgmMode] = useState<'push' | 'replace'>('push')
+  const [draftBgmModeNode, setDraftBgmModeNode] = useState(nodeId)
+  if (nodeId !== draftBgmModeNode) {
+    setDraftBgmModeNode(nodeId)
+    setDraftBgmMode('push')
+  }
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
   const d = node.data
@@ -1246,6 +1275,13 @@ export function NodeInspector({
   const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
   const nestMode: 'none' | 'subflow' | 'pack' = nestPack ? 'pack' : nestRef ? 'subflow' : 'none'
+  // 作用域 BGM：读原始值（不过 getNodeBgm）——半填的 ref 也要显示，否则作者打字打不出第一个字符。
+  const bgm = d.bgm
+  // 手写/AI 生成的非法 mode 在下拉里显示成 push（validate 会把它判 error），别让 select 变成
+  // 「什么都没选」的空框。还没有配置时读本地草稿——见组件顶部 `draftBgmMode`。
+  const bgmMode: 'push' | 'replace' | 'stop' = bgm?.mode === 'replace' || bgm?.mode === 'stop'
+    ? bgm.mode
+    : bgm ? 'push' : draftBgmMode
   const packKey = nestPack
     ? (nestPack.version ? `${nestPack.id}@${nestPack.version}` : nestPack.id)
     : ''
@@ -1754,6 +1790,71 @@ export function NodeInspector({
             onDelete={() => onChange(disconnect(graph, e.id))}
           />
         ))}
+      </div>
+
+      {/* 作用域 BGM：本节点作为 owner 的床轨。不填 = 不动 BGM 栈（继续播上层那首），旧图零行为变化。 */}
+      <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
+        <b>音乐（作用域 BGM）</b>
+        {/* 「音乐动作」在空态也得在：`{ mode: 'stop' }` 是一条没有 ref 的配置，藏到「填了 ref 之后」
+            作者就永远选不到它（v2 里 win / lose 全靠这条收尾）。 */}
+        {row('音乐动作', (
+          <select
+            value={bgmMode}
+            onChange={(e) => {
+              const mode = e.target.value as 'push' | 'replace' | 'stop'
+              // stop 自己就是一条完整配置（不带曲子），落得了盘；push / replace 在空态落不了，
+              // 记进草稿让下拉停在作者选的那一项上。
+              if (mode !== 'stop') setDraftBgmMode(mode)
+              patchData({ bgm: patchNodeBgm(bgm, { mode }) })
+            }}
+            style={{ flex: 1 }}
+            title={BGM_MODE_TITLE}
+          >
+            <option value="push">起播并记住上一首</option>
+            <option value="replace">换曲，不记住上一首</option>
+            <option value="stop">结束当前音乐</option>
+          </select>
+        ))}
+        {/* stop 那一条不引入曲子（SPEC §7）：资产输入收起，连带 restart 一起——
+            它在 stop 上没有落点（patchNodeBgm 也会把它收掉）。 */}
+        {bgmMode === 'stop' ? null : (
+          <>
+            {row('音乐', (
+              <AudioRefInput
+                // 换节点 = 新一份草稿。`AudioRefInput` 只按 `value` 校准草稿，而两个节点配同一段 ref 时
+                // `value` 根本不变：不重挂的话，在 A 上「全选删除」留下的空草稿会跟到 B，B 的框显示成空、
+                // 失焦即被判为刻意清除，把作者从没打开过的 B 的 bgm 删掉。
+                key={nodeId}
+                value={bgm?.ref ?? ''}
+                options={audioChoices(audioOptions, bgm?.ref)}
+                // 例子必须是**能解析**的形状：只有 `a-<tag>-…` 走素材层端点（见 media.ts 的
+                // REGISTRY_ASSET_ID），裸名字会掉进只认视频的 Kino 端点，作者照着填必然 404。
+                placeholder="音频资产 id，如 a-aud-battle"
+                title="填 assets/manifest 里的音频资产 id（形如 a-aud-…）；图上只存 id，播放地址由试玩壳层解析"
+                clearTitle="清除本节点的音乐配置：回到「不换音乐」，沿用上层正在播的那首"
+                // 带上 `bgmMode`：空态下选的「换曲」只活在草稿里，靠这一步随 ref 一起落盘。
+                onChange={(ref) => patchData({ bgm: patchNodeBgm(bgm, { ref, mode: bgmMode }) })}
+              />
+            ))}
+            {bgm ? (
+              <>
+                {row('重进时', (
+                  <span
+                    style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, opacity: 0.85 }}
+                    title="不勾 = 同一首接着播（战斗多回合靠它不断曲）；勾上 = 每次重新进入本节点都从头播。"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={bgm.restart === true}
+                      onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { restart: e.target.checked }) })}
+                    />
+                    从头重播
+                  </span>
+                ))}
+              </>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   )

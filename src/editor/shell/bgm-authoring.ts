@@ -1,0 +1,104 @@
+/**
+ * BGM 录入的作者态纯函数（无 React / 无 IO）—— 面板上每一次改动都过这里再写回图。
+ *
+ * 一条铁律：**ref 空 = 整个 `bgm` 消失**（唯一例外是节点的 `mode: 'stop'`，那一条本就不带曲子）。
+ * `{ ref: '' }` 会被 validate 判 error、被 runtime 静默丢弃（见 `getNodeBgm`），作者只会听到
+ * 「没响」；所以清空音乐必须删字段，不能留空壳。
+ * 同理默认值（`mode: 'push'` / `restart: false` / `loop: true`）一律
+ * 不落盘 —— 让「没配」与「配了默认值」在磁盘上同形，旧图不会因为点开一次面板就长出一堆等价字段。
+ */
+import type { NodeBgm } from '../../runtime/schema/graph-schema'
+import type { MediaAsset } from '../assets/registry-types'
+
+/** BGM 资产下拉候选：`id` 落盘（永不落 URL），`label` 仅展示。 */
+export interface AudioOption {
+  id: string
+  label: string
+}
+
+function cleanRef(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+/** 音量归一到 [0, 1]；非数字/NaN 视为未设（validate 对越界值只报 error，不替作者兜底）。 */
+function cleanVolume(v: unknown): number | undefined {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined
+  return Math.min(1, Math.max(0, v))
+}
+
+/** fade 毫秒取整；≤0 与非法值一律视为未设（0 = 不淡入淡出 = 缺省行为）。 */
+function cleanMs(v: unknown): number | undefined {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return undefined
+  return Math.round(v)
+}
+
+/**
+ * 节点作用域 BGM 的补丁 —— `undefined` 返回值即「把 `data.bgm` 键删掉」（`patchNodeData` 语义）。
+ * 面板出 ref / mode / restart，手写落盘的 volume / fade 原样保留。
+ *
+ * 两条形状规则，缺一条作者就写不出 v2 的配置或者会落下撒谎的残留：
+ *
+ * 1. **`mode: 'stop'` 独占一条**（结束当前音乐，不引入曲子）：ref 与播放字段一律收掉。
+ *    `BgmStack.stop()` 只读**被结束那一层**的字段（fadeOutMs 取离场帧、volume 与
+ *    fadeInMs 取恢复出来的那帧），ref 更是压根不读（SPEC §3.3「给了也忽略」）——留着它们只会
+ *    让面板显示着一首永远不播的曲子。
+ *    离开 stop 要显式给 mode（下拉就是这么写的）；那时手上没曲子，于是回到下面那条。
+ * 2. **没有非空 ref 就删键**：`{ ref: '' }` 会被 validate 判 error、被 runtime 静默丢弃，
+ *    作者只会听到「没响」。清空音乐必须让整个 `bgm` 消失。
+ */
+export function patchNodeBgm(current: NodeBgm | undefined, patch: Partial<NodeBgm>): NodeBgm | undefined {
+  const merged = { ...current, ...patch }
+  if (merged.mode === 'stop') return { mode: 'stop' }
+  const ref = cleanRef(merged.ref)
+  if (!ref) return undefined
+  const out: NodeBgm = { ref }
+  if (merged.mode === 'replace') out.mode = 'replace'
+  const volume = cleanVolume(merged.volume)
+  if (volume !== undefined) out.volume = volume
+  const fadeInMs = cleanMs(merged.fadeInMs)
+  if (fadeInMs !== undefined) out.fadeInMs = fadeInMs
+  const fadeOutMs = cleanMs(merged.fadeOutMs)
+  if (fadeOutMs !== undefined) out.fadeOutMs = fadeOutMs
+  if (merged.restart === true) out.restart = true
+  return out
+}
+
+/**
+ * `assets/manifest` 资产 → BGM 候选（只收 `kind: 'audio'`：视频 id 填进床轨槽会被壳层
+ * 当视频解析，听感上是「没响」）。
+ */
+export function audioAssetOptions(assets: readonly MediaAsset[]): AudioOption[] {
+  return assets
+    .filter((a) => a.kind === 'audio')
+    .map((a) => {
+      const label = a.label?.trim()
+      return { id: a.id, label: label && label !== a.id ? `${label} (${a.id})` : a.id }
+    })
+}
+
+/**
+ * 当前 ref 并进候选（对齐「视频」字段的 `videoChoices`，但效果不同）：这里的控件是
+ * `<input list>`，当前 ref 本来就明摆在输入框里 —— 补这一条是给**补全列表**用的：
+ * 打开候选时能看见「我现在填的是这个」并原样选回去（清空重打时不必手抄一遍），
+ * 列表也不会看起来像是把当前这首排除在外。视频那边是 `<select>`，不补则真的显示成未选中。
+ * 补出来的那条**标注来源**：这里的候选清一色 `名字 (id)`，不标的话作者会以为它是素材库里的一条。
+ */
+export function audioChoices(options: readonly AudioOption[], ref: string | undefined): readonly AudioOption[] {
+  const id = cleanRef(ref)
+  if (!id || options.some((o) => o.id === id)) return options
+  return [{ id, label: `${id}（手填 · 不在素材库）` }, ...options]
+}
+
+/**
+ * 壳层工具条的报警文案（`null` = 不报警）。查询失败分两种，说法不能混：
+ *  - 手上一条候选都没有 → 候选确实用不了；
+ *  - 手上还有候选（刷新失败时缓存刻意保留上一轮，见 `audioAssetCacheStore`）→ 只能说「可能不是
+ *    最新的」。说成「不可用」会和补全里明明列着的那几条互相打脸。
+ * 今天 `refresh()` 还没有调用方，第二种走不到；音频上传链路一落地它就是常态。
+ */
+export function audioLookupAlert(error: string | null, optionCount: number): string | null {
+  if (!error) return null
+  return optionCount > 0
+    ? `音频素材刷新失败：${error}（候选可能不是最新的，仍可手填 id）`
+    : `音频素材加载失败：${error}（音乐候选暂不可用，仍可手填 id）`
+}
