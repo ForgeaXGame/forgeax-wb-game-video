@@ -91,7 +91,7 @@ function kino(): KinoVideoClient {
 }
 
 describe('createKinoAssetLibraryClient', () => {
-  it('maps audio list, upload, rename and deletion to Kino resource operations', async () => {
+  it('maps audio list, upload, rename and deletion to provider-backed resource operations', async () => {
     const kinoClient = kino()
     const transport: UploadTransport = { put: vi.fn(async () => {}) }
     const client = createKinoAssetLibraryClient({ client: kinoClient, transport })

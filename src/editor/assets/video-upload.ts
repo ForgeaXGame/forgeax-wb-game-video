@@ -22,8 +22,8 @@ interface BrowserUploadPolicy {
 }
 
 /**
- * Browser-side mirror of the provider upload contract. All Kino-backed media
- * uploaders must validate through this table before preparing an upload.
+ * Browser-side mirror of the provider upload contract. All provider-backed
+ * media uploaders must validate through this table before preparing an upload.
  */
 export const BROWSER_UPLOAD_POLICIES: Readonly<Record<BrowserUploadMediaType, BrowserUploadPolicy>> = {
   video: {
@@ -244,7 +244,7 @@ export function assertMediaUploadFile(mediaType: BrowserUploadMediaType, file: F
   }
 }
 
-export interface UploadKinoResourceOptions {
+export interface UploadProviderResourceOptions {
   client: KinoVideoClient
   transport?: UploadTransport
   gameId: string
@@ -259,10 +259,12 @@ export interface UploadKinoResourceOptions {
 }
 
 /**
- * Standard prepare → PUT → create pipeline for non-replacement Kino resources.
+ * Standard prepare → PUT → create pipeline for non-replacement resources.
+ * The browser calls the `/api/v1/kino` route, while the server selects the
+ * active Local, S3, COS, or Kino provider.
  * Video replacement and retry behavior builds on the lower-level primitives below.
  */
-export async function uploadKinoResource(options: UploadKinoResourceOptions): Promise<KinoResourceDTO> {
+export async function uploadProviderResource(options: UploadProviderResourceOptions): Promise<KinoResourceDTO> {
   assertMediaUploadFile(options.mediaType, options.file)
   assertNotAborted(options.signal)
   const requestOptions = options.signal ? { signal: options.signal } : undefined

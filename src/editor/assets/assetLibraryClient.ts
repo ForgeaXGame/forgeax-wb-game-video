@@ -7,7 +7,7 @@ import {
 } from './kino-api'
 import {
   BROWSER_UPLOAD_POLICIES,
-  uploadKinoResource,
+  uploadProviderResource,
   VideoUploadError,
   type UploadTransport,
 } from './video-upload'
@@ -101,7 +101,7 @@ export function createKinoAssetLibraryClient(
 
     async upload(gameId, kind, file, requestOptions) {
       try {
-        const resource = await uploadKinoResource({
+        const resource = await uploadProviderResource({
           client,
           transport: options.transport,
           gameId,
