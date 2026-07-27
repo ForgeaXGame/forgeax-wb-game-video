@@ -25,9 +25,14 @@ import {
   documentFromBlueprints, documentFromScenario, emptyBlueprintDoc, metaFromDocument,
   normalizeDocument, playDocument,
 } from './blueprint-project'
+import { isBlueprintTitleTaken } from './blueprint-title'
 import { resolveGraphEntry } from '../../runtime/schema/graph-schema'
 import { blueprintsReferencing, findReferenceCycle } from '../../graph/edit/blueprint-refs'
 import { loadGameComponents } from '../../runtime/component-host'
+
+export type BlueprintTitleActionOk = { ok: true; id?: string }
+export type BlueprintTitleActionErr = { ok: false; reason: 'duplicate_title' | 'not_found' }
+export type BlueprintTitleActionResult = BlueprintTitleActionOk | BlueprintTitleActionErr
 
 /** 载入 demo / 文档时保证内置「通用样式」方案存在——用于 reset()/首次落座。 */
 function withBuiltinSchemes<T extends GameScenario>(s: T): T {
@@ -156,10 +161,10 @@ interface GraphScenarioStore {
   addTextStylePreset: (group: TextStyleGroup, preset: GraphTextStylePreset) => void
   /** 删除一个用户自定义文字预设。 */
   removeTextStylePreset: (group: TextStyleGroup, presetId: string) => void
-  /** 新建一个空子蓝图并选中它，返回新 id。 */
-  createBlueprint: (title?: string) => string
-  /** 重命名一个蓝图（主/子皆可）。 */
-  renameBlueprint: (id: string, title: string) => void
+  /** 新建一个空子蓝图并选中它；标题冲突时不改状态。 */
+  createBlueprint: (title?: string) => BlueprintTitleActionResult
+  /** 重命名一个蓝图（主/子皆可）；标题冲突时不改状态。 */
+  renameBlueprint: (id: string, title: string) => BlueprintTitleActionResult
   /** 删除一个子蓝图；主蓝图或仍被引用中的蓝图会被拦截。 */
   deleteBlueprint: (id: string) => { ok: boolean; blockedBy?: string[] }
   /** 切换当前编辑/选中的蓝图（库 UI 用）。 */
@@ -410,26 +415,34 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     },
 
     createBlueprint: (title) => {
-      const doc = emptyBlueprintDoc({ title })
-      set((st) => ({
-        blueprints: { ...st.blueprints, [doc.id]: doc },
+      const st = get()
+      const resolved = (title ?? '新蓝图').trim() || '新蓝图'
+      if (isBlueprintTitleTaken(st.blueprints, resolved)) {
+        return { ok: false, reason: 'duplicate_title' }
+      }
+      const doc = emptyBlueprintDoc({ title: resolved })
+      set((s) => ({
+        blueprints: { ...s.blueprints, [doc.id]: doc },
         activeBlueprintId: doc.id,
         graph: doc.graph,
         selectedNodeId: null,
         // 新建后框选进视口（子蓝图节点少，不 fit 会停在上一张大图的平移/缩放上）。
-        fitSignal: st.fitSignal + 1,
+        fitSignal: s.fitSignal + 1,
       }))
       scheduleDraft()
-      return doc.id
+      return { ok: true, id: doc.id }
     },
     renameBlueprint: (id, title) => {
-      let changed = false
-      set((st) => {
-        if (!st.blueprints[id]) return {}
-        changed = true
-        return { blueprints: { ...st.blueprints, [id]: { ...st.blueprints[id]!, title } } }
-      })
-      if (changed) scheduleDraft()
+      const st = get()
+      if (!st.blueprints[id]) return { ok: false, reason: 'not_found' }
+      const nextTitle = title.trim()
+      if (!nextTitle) return { ok: false, reason: 'not_found' }
+      if (isBlueprintTitleTaken(st.blueprints, nextTitle, id)) {
+        return { ok: false, reason: 'duplicate_title' }
+      }
+      set({ blueprints: { ...st.blueprints, [id]: { ...st.blueprints[id]!, title: nextTitle } } })
+      scheduleDraft()
+      return { ok: true }
     },
     selectBlueprint: (id) => set((st) => {
       if (id === st.activeBlueprintId) return { selectedNodeId: null }
