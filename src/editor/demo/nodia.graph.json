@@ -213,30 +213,6 @@
           }
         ]
       },
-      "enter": {
-        "id": "enter",
-        "title": "入场转场",
-        "children": [
-          {
-            "id": "enter-fade",
-            "trigger": {
-              "when": "enter"
-            },
-            "inputs": {
-              "durationMs": 700,
-              "style": "fade",
-              "color": "#000"
-            },
-            "component": "transition",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
       "fuzhu": {
         "id": "fuzhu",
         "title": "辅助回血飘字",
@@ -1312,15 +1288,6 @@
           "overlayNodes": [
             {
               "overlay": "battleHud",
-              "layout": {
-                "left": 0,
-                "top": 0,
-                "width": 1,
-                "height": 1
-              }
-            },
-            {
-              "overlay": "enter",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3377,15 +3344,6 @@
                 "overlayNodes": [
                   {
                     "overlay": "battleHud",
-                    "layout": {
-                      "left": 0,
-                      "top": 0,
-                      "width": 1,
-                      "height": 1
-                    }
-                  },
-                  {
-                    "overlay": "enter",
                     "layout": {
                       "left": 0,
                       "top": 0,
