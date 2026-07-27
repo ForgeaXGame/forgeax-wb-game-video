@@ -408,186 +408,6 @@
           }
         ]
       },
-      "n_follow": {
-        "id": "n_follow",
-        "title": "跟随 · 應默",
-        "children": [
-          {
-            "id": "n_follow-c",
-            "trigger": {
-              "when": "at",
-              "ms": 12093
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
-      "n_land": {
-        "id": "n_land",
-        "title": "上岸 · 應默",
-        "children": [
-          {
-            "id": "n_land-c",
-            "trigger": {
-              "when": "at",
-              "ms": 13200
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
-      "n_nodrink": {
-        "id": "n_nodrink",
-        "title": "不饮 · 應默",
-        "children": [
-          {
-            "id": "n_nodrink-c",
-            "trigger": {
-              "when": "at",
-              "ms": 12093
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
-      "n_nofollow": {
-        "id": "n_nofollow",
-        "title": "不跟随 · 應默",
-        "children": [
-          {
-            "id": "n_nofollow-c",
-            "trigger": {
-              "when": "at",
-              "ms": 12093
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
-      "n_river": {
-        "id": "n_river",
-        "title": "渡河 · 應默",
-        "children": [
-          {
-            "id": "n_river-c",
-            "trigger": {
-              "when": "at",
-              "ms": 12069
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
       "n_soul": {
         "id": "n_soul",
         "title": "小魂对白",
@@ -603,42 +423,6 @@
               "color": "#ffd54a"
             },
             "component": "dialogue",
-            "layout": {
-              "left": 0,
-              "top": 0,
-              "width": 1,
-              "height": 1
-            }
-          }
-        ]
-      },
-      "n_tea": {
-        "id": "n_tea",
-        "title": "饮茶 · 應默",
-        "children": [
-          {
-            "id": "n_tea-c",
-            "trigger": {
-              "when": "at",
-              "ms": 12093
-            },
-            "inputs": {
-              "timeoutMs": 8000,
-              "events": [
-                {
-                  "id": "ying",
-                  "label": "應"
-                },
-                {
-                  "id": "mo",
-                  "label": "默"
-                }
-              ],
-              "defaultEvent": "mo",
-              "x": 0.5,
-              "y": 0.88
-            },
-            "component": "inkYingMo",
             "layout": {
               "left": 0,
               "top": 0,
@@ -1021,7 +805,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_river",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1053,6 +837,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 12069
+                  }
+                }
               }
             }
           ]
@@ -1095,7 +887,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_land",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1127,6 +919,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 13200
+                  }
+                }
               }
             }
           ]
@@ -1188,7 +988,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_tea",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1220,6 +1020,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 12093
+                  }
+                }
               }
             }
           ]
@@ -1290,7 +1098,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_nodrink",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1322,6 +1130,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 12093
+                  }
+                }
               }
             }
           ]
@@ -1345,7 +1161,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_follow",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1377,6 +1193,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 12093
+                  }
+                }
               }
             }
           ]
@@ -1438,7 +1262,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "n_nofollow",
+              "overlay": "base:inkYingMo",
               "reactions": [
                 {
                   "when": {
@@ -1470,6 +1294,14 @@
                 "top": 0,
                 "width": 1,
                 "height": 1
+              },
+              "overrides": {
+                "inkYingMo-0": {
+                  "trigger": {
+                    "when": "at",
+                    "ms": 12093
+                  }
+                }
               }
             }
           ]
@@ -3235,7 +3067,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_river",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3267,6 +3099,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 12069
+                        }
+                      }
                     }
                   }
                 ]
@@ -3309,7 +3149,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_land",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3341,6 +3181,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 13200
+                        }
+                      }
                     }
                   }
                 ]
@@ -3402,7 +3250,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_tea",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3434,6 +3282,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 12093
+                        }
+                      }
                     }
                   }
                 ]
@@ -3504,7 +3360,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_nodrink",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3536,6 +3392,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 12093
+                        }
+                      }
                     }
                   }
                 ]
@@ -3559,7 +3423,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_follow",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3591,6 +3455,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 12093
+                        }
+                      }
                     }
                   }
                 ]
@@ -3652,7 +3524,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "n_nofollow",
+                    "overlay": "base:inkYingMo",
                     "reactions": [
                       {
                         "when": {
@@ -3684,6 +3556,14 @@
                       "top": 0,
                       "width": 1,
                       "height": 1
+                    },
+                    "overrides": {
+                      "inkYingMo-0": {
+                        "trigger": {
+                          "when": "at",
+                          "ms": 12093
+                        }
+                      }
                     }
                   }
                 ]
