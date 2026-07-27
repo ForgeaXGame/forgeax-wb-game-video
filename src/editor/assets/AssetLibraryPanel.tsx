@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type { AssetLibraryController, ManagedAsset, ManagedAssetKind } from './assetLibraryClient'
 
-const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif'
-const AUDIO_ACCEPT = 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac'
+const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif'
+const AUDIO_ACCEPT = '.mp3,.wav,.ogg,.m4a,.aac'
 
 function formatBytes(value: number | undefined): string {
   if (value == null) return '大小未知'

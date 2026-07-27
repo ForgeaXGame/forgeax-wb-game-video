@@ -5,7 +5,12 @@ import {
   type KinoResourceDTO,
   type KinoVideoClient,
 } from './kino-api'
-import { createDefaultXhrUploadTransport, type UploadTransport } from './video-upload'
+import {
+  BROWSER_UPLOAD_POLICIES,
+  uploadKinoResource,
+  VideoUploadError,
+  type UploadTransport,
+} from './video-upload'
 
 export type ManagedAssetKind = 'image' | 'audio'
 
@@ -27,9 +32,6 @@ export interface AssetLibraryClient {
   remove(gameId: string, id: string, options?: { signal?: AbortSignal }): Promise<void>
 }
 
-const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
-const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac'])
-const MAX_ASSET_UPLOAD_BYTES = 100 * 1024 * 1024
 const MAX_ASSET_LIBRARY_PAGES = 100
 
 export class AssetLibraryUploadError extends Error {
@@ -42,30 +44,6 @@ export class AssetLibraryUploadError extends Error {
 export interface CreateKinoAssetLibraryClientOptions {
   client?: KinoVideoClient
   transport?: UploadTransport
-}
-
-function mimeTypesFor(kind: ManagedAssetKind): Set<string> {
-  return kind === 'image' ? IMAGE_MIME_TYPES : AUDIO_MIME_TYPES
-}
-
-function assertUploadFile(kind: ManagedAssetKind, file: File): void {
-  if (!file.name.trim()) {
-    throw new AssetLibraryUploadError('请选择一个具有文件名的文件')
-  }
-  if (!mimeTypesFor(kind).has(file.type)) {
-    const supported = kind === 'image'
-      ? 'PNG、JPEG、WebP 或 GIF 图片'
-      : 'MP3、WAV、OGG、M4A/MP4 或 AAC 音频'
-    throw new AssetLibraryUploadError(`不支持的${kind === 'image' ? '图片' : '音频'}格式；仅支持${supported}`)
-  }
-  if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > MAX_ASSET_UPLOAD_BYTES) {
-    throw new AssetLibraryUploadError('文件大小必须在 100 MB 以内')
-  }
-}
-
-function extension(fileName: string): string | undefined {
-  const match = /\.([A-Za-z0-9]+)$/.exec(fileName)
-  return match?.[1]?.toLowerCase()
 }
 
 function displayName(fileName: string): string {
@@ -102,7 +80,6 @@ export function createKinoAssetLibraryClient(
   options: CreateKinoAssetLibraryClientOptions = {},
 ): AssetLibraryClient {
   const client = options.client ?? createKinoVideoClient()
-  const transport = options.transport ?? createDefaultXhrUploadTransport()
 
   return {
     async list(gameId, kind, requestOptions) {
@@ -123,28 +100,42 @@ export function createKinoAssetLibraryClient(
     },
 
     async upload(gameId, kind, file, requestOptions) {
-      assertUploadFile(kind, file)
-      const prepared = await client.prepareUpload({
-        game_id: gameId,
-        file_name: file.name,
-        mime_type: file.type as Parameters<KinoVideoClient['prepareUpload']>[0]['mime_type'],
-        bytes: file.size,
-        extension: extension(file.name),
-      }, requestOptions)
-      await transport.put(file, prepared.upload, undefined, requestOptions?.signal)
-      const resource = await client.create({
-        game_id: gameId,
-        media_type: kind,
-        url: prepared.object_url,
+      try {
+        const resource = await uploadKinoResource({
+          client,
+          transport: options.transport,
+          gameId,
+          mediaType: kind,
+          file,
         name: displayName(file.name),
-        type: 'UPLOAD',
-        source: 'wb-game-video',
-        source_meta: {
-          mime_type: file.type,
-          extra: { bytes: file.size },
-        },
-      }, requestOptions)
-      return toManagedAsset(resource, kind, client)
+          source: 'wb-game-video',
+          sourceMeta: { extra: { bytes: file.size } },
+          signal: requestOptions?.signal,
+        })
+        return toManagedAsset(resource, kind, client)
+      } catch (error) {
+        if (!(error instanceof VideoUploadError)) throw error
+        const policy = BROWSER_UPLOAD_POLICIES[kind]
+        if (error.code === 'invalid_media_type') {
+          const supported = kind === 'image'
+            ? 'PNG、JPEG、WebP 或 GIF 图片'
+            : 'MP3、WAV、OGG、M4A 或 AAC 音频'
+          throw new AssetLibraryUploadError(`不支持的${kind === 'image' ? '图片' : '音频'}格式；仅支持${supported}`)
+        }
+        if (error.code === 'invalid_file_name') {
+          throw new AssetLibraryUploadError(
+            kind === 'audio' && file.type === 'audio/mp4'
+              ? 'M4A 音频必须使用 .m4a 文件扩展名'
+              : '文件名或扩展名与媒体格式不匹配',
+          )
+        }
+        if (error.code === 'invalid_upload_size') {
+          throw new AssetLibraryUploadError(
+            `文件大小必须在 ${(policy.maxBytes / (1024 * 1024)).toFixed(0)} MB 以内`,
+          )
+        }
+        throw error
+      }
     },
 
     async rename(gameId, id, name, requestOptions) {

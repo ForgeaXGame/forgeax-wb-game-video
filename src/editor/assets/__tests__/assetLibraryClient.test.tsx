@@ -141,7 +141,29 @@ describe('createKinoAssetLibraryClient', () => {
 
     await expect(
       client.upload('demo', 'audio', new File(['x'], 'theme.flac', { type: 'audio/flac' })),
-    ).rejects.toEqual(new AssetLibraryUploadError('不支持的音频格式；仅支持MP3、WAV、OGG、M4A/MP4 或 AAC 音频'))
+    ).rejects.toEqual(new AssetLibraryUploadError('不支持的音频格式；仅支持MP3、WAV、OGG、M4A 或 AAC 音频'))
+    expect(kinoClient.prepareUpload).not.toHaveBeenCalled()
+  })
+
+  it('rejects images larger than the provider limit before preparing an upload', async () => {
+    const kinoClient = kino()
+    const client = createKinoAssetLibraryClient({ client: kinoClient })
+    const oversized = new File(['x'], 'cover.png', { type: 'image/png' })
+    Object.defineProperty(oversized, 'size', { value: 20 * 1024 * 1024 + 1 })
+
+    await expect(client.upload('demo', 'image', oversized)).rejects.toEqual(
+      new AssetLibraryUploadError('文件大小必须在 20 MB 以内'),
+    )
+    expect(kinoClient.prepareUpload).not.toHaveBeenCalled()
+  })
+
+  it('requires audio/mp4 files to use the provider-supported m4a extension', async () => {
+    const kinoClient = kino()
+    const client = createKinoAssetLibraryClient({ client: kinoClient })
+
+    await expect(
+      client.upload('demo', 'audio', new File(['x'], 'theme.mp4', { type: 'audio/mp4' })),
+    ).rejects.toEqual(new AssetLibraryUploadError('M4A 音频必须使用 .m4a 文件扩展名'))
     expect(kinoClient.prepareUpload).not.toHaveBeenCalled()
   })
 })

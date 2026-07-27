@@ -28,12 +28,12 @@ describe('AssetLibraryPanel', () => {
     expect(screen.getByRole('navigation', { name: '资产类型' })).toHaveTextContent('图片')
     expect(screen.getByRole('navigation', { name: '资产类型' })).toHaveTextContent('音频')
     expect(screen.getByLabelText('图片资源列表')).toHaveTextContent('封面')
-    expect(screen.getByLabelText('上传图片')).toHaveAttribute('accept', 'image/png,image/jpeg,image/webp,image/gif')
+    expect(screen.getByLabelText('上传图片')).toHaveAttribute('accept', '.png,.jpg,.jpeg,.webp,.gif')
     expect(screen.queryByRole('dialog', { name: '资产预览' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /音频 1/ }))
     expect(screen.getByLabelText('BGM资源列表')).toHaveTextContent('主题曲')
-    expect(screen.getByLabelText('上传 BGM')).toHaveAttribute('accept', 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac')
+    expect(screen.getByLabelText('上传 BGM')).toHaveAttribute('accept', '.mp3,.wav,.ogg,.m4a,.aac')
   })
 
   it('opens asset details in a dialog from its list thumbnail', () => {
