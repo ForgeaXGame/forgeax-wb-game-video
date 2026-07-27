@@ -1149,9 +1149,16 @@ function EdgeRouteEditor({
   )
 }
 
+/** 节点「视频」下拉项：id 写入 media.ref；label 仅展示。 */
+export interface VideoOption {
+  id: string
+  label: string
+}
+
 export function NodeInspector({
   graph,
   nodeId,
+  videoOptions = [],
   packs = [],
   isRefAllowed,
   overlays,
@@ -1169,6 +1176,7 @@ export function NodeInspector({
 }: {
   graph: GameGraph
   nodeId: string | null
+  videoOptions?: VideoOption[]
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
   /**
@@ -1227,6 +1235,10 @@ export function NodeInspector({
   }
   // 「默认样式 / ＋ 挂载」只列固化界面方案（画廊 + nodia），不混入草稿残留 ov-* 等。
   const schemeOverlayIds = PRESET_SCHEME_OVERLAYS.map((o) => o.id)
+  const mediaRef = d.media?.ref ?? ''
+  const selectedVideoValue = mediaRef && !videoOptions.some((option) => option.id === mediaRef)
+    ? '__unavailable__'
+    : mediaRef
 
   const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
@@ -1371,6 +1383,22 @@ export function NodeInspector({
       </div>
 
       {row('名称', <input value={d.name} onChange={(e) => patchData({ name: e.target.value })} style={{ flex: 1 }} />)}
+      {row('视频', (
+        <select
+          value={selectedVideoValue}
+          onChange={(e) => patchData({ media: e.target.value ? { kind: 'VIDEO', ref: e.target.value } : undefined })}
+          style={{ flex: 1 }}
+          title="选择该演出节点播放的视频（与视频素材库一致，仅显示 Kino 接口资源）"
+        >
+          {selectedVideoValue === '__unavailable__' ? (
+            <option value="__unavailable__" disabled>（当前视频不在素材库）</option>
+          ) : null}
+          <option value="">（无演出）</option>
+          {videoOptions.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
+      ))}
       {row('播放', (
         <select value={d.mediaPlayMode ?? 'once'} onChange={(e) => patchData({ mediaPlayMode: e.target.value as 'once' | 'loop' })}>
           <option value="once">播放一次</option>
