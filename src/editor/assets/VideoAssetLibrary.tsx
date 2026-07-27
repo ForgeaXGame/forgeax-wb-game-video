@@ -167,6 +167,13 @@ export interface VideoAssetLibraryProps {
   listBodyRef?: Ref<HTMLDivElement>
 }
 
+interface BatchUploadState {
+  current: number
+  total: number
+  fileName: string
+  status: 'uploading' | 'failed'
+}
+
 export function VideoAssetLibrary({
   gameId,
   scenario,
@@ -184,8 +191,10 @@ export function VideoAssetLibrary({
   const [pendingDelete, setPendingDelete] = useState<VideoLibraryEntry | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [batchUpload, setBatchUpload] = useState<BatchUploadState | null>(null)
   const deleteTriggerRef = useRef<HTMLElement | null>(null)
-  const actionsBusy = controller.uploading || controller.mutating || deleteBusy
+  const batchUploading = batchUpload?.status === 'uploading'
+  const actionsBusy = controller.uploading || controller.mutating || deleteBusy || batchUploading
 
   const apiEntries = useMemo(() => controller.items.map(mapApiItem), [controller.items])
 
@@ -202,7 +211,9 @@ export function VideoAssetLibrary({
     return out
   }, [apiEntries, bundledEntries, supplementalEntries])
 
-  const showUploadStatus = controller.uploadProgress != null || controller.uploadError != null
+  const showUploadStatus = batchUpload != null
+    || controller.uploadProgress != null
+    || controller.uploadError != null
 
   const openDeleteDialog = (entry: VideoLibraryEntry, trigger: HTMLElement) => {
     setOperationError(null)
@@ -256,15 +267,51 @@ export function VideoAssetLibrary({
   }, [pendingDelete, scenario, blueprints, mainPackId])
 
   const onFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const files = Array.from(event.target.files ?? [])
     event.target.value = ''
-    if (!file) {
+    if (files.length === 0) {
       return
     }
-    const created = await controller.upload(file)
-    if (created) {
+
+    setOperationError(null)
+    setBatchUpload(null)
+    for (const [index, file] of files.entries()) {
+      if (files.length > 1) {
+        setBatchUpload({
+          current: index + 1,
+          total: files.length,
+          fileName: file.name,
+          status: 'uploading',
+        })
+      }
+      const created = await controller.upload(file)
+      if (!created) {
+        if (files.length > 1) {
+          setBatchUpload({
+            current: index + 1,
+            total: files.length,
+            fileName: file.name,
+            status: 'failed',
+          })
+          setOperationError(
+            `批量上传在「${file.name}」失败，已完成 ${index}/${files.length} 个文件。请处理失败项后重新选择剩余文件。`,
+          )
+        }
+        return
+      }
       onSelect(created.resource_id)
     }
+    setBatchUpload(null)
+  }
+
+  const retryComplete = async () => {
+    const created = await controller.retryComplete()
+    if (!created) {
+      return
+    }
+    onSelect(created.resource_id)
+    setBatchUpload(null)
+    setOperationError(null)
   }
 
   return (
@@ -281,6 +328,7 @@ export function VideoAssetLibrary({
             className="val-head-upload-input"
             type="file"
             accept="video/mp4"
+            multiple
             aria-label="上传视频"
             disabled={actionsBusy}
             onChange={(e) => void onFileChange(e)}
@@ -288,6 +336,14 @@ export function VideoAssetLibrary({
         </label>
         {showUploadStatus ? (
           <div className="val-head-status" role="status" aria-live="polite">
+            {batchUpload ? (
+              <span
+                className="val-head-batch"
+                title={batchUpload.fileName}
+              >
+                批量 {batchUpload.current}/{batchUpload.total}
+              </span>
+            ) : null}
             {controller.uploadProgress != null ? (
               <span className="val-head-progress">上传 {controller.uploadProgress}%</span>
             ) : null}
@@ -299,7 +355,7 @@ export function VideoAssetLibrary({
                     type="button"
                     aria-label="重试完成上传"
                     disabled={actionsBusy}
-                    onClick={() => void controller.retryComplete()}
+                    onClick={() => void retryComplete()}
                   >
                     重试
                   </button>

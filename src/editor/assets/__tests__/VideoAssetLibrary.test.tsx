@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { GameScenario } from '../../../runtime/schema/graph-schema'
 import * as videoAssetLibraryModule from '../VideoAssetLibrary'
 import { VideoAssetLibrary, type VideoAssetsController, type VideoLibraryEntry } from '../VideoAssetLibrary'
+import type { KinoResourceDTO } from '../kino-api'
 
 const EMPTY_SCENARIO: GameScenario = {
   version: 'wb-game-video.graph.v1',
@@ -21,6 +22,19 @@ function apiEntry(id: string, label = id): VideoLibraryEntry {
     url: `/api/v1/kino/resources/${id}/content?game_id=demo`,
     group: '上传',
     fromApi: true,
+  }
+}
+
+function uploadedResource(id: string): KinoResourceDTO {
+  return {
+    resource_id: id,
+    game_id: 'demo',
+    media_type: 'video',
+    url: `http://object/${id}`,
+    name: id,
+    source: 'upload',
+    created_at: 1,
+    updated_at: 1,
   }
 }
 
@@ -175,6 +189,7 @@ describe('VideoAssetLibrary', () => {
 
     expect(input).toHaveAttribute('type', 'file')
     expect(input).toHaveAttribute('accept', 'video/mp4')
+    expect(input).toHaveAttribute('multiple')
     expect(input).not.toHaveAttribute('hidden')
     expect(input).not.toHaveStyle({ display: 'none' })
     expect(input).toHaveClass('val-head-upload-input')
@@ -217,6 +232,63 @@ describe('VideoAssetLibrary', () => {
 
     await waitFor(() => expect(controller.upload).toHaveBeenCalledWith(file))
     expect(input.value).toBe('')
+  })
+
+  it('uploads multiple selected videos in order and selects each completed resource', async () => {
+    const onSelect = vi.fn()
+    const upload = vi.fn(async (file: File) => uploadedResource(file.name))
+    const controller = makeController({ upload })
+    render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={onSelect}
+      />,
+    )
+    const input = screen.getByLabelText('上传视频') as HTMLInputElement
+    const first = new File(['first'], 'first.mp4', { type: 'video/mp4' })
+    const second = new File(['second'], 'second.mp4', { type: 'video/mp4' })
+
+    fireEvent.change(input, { target: { files: [first, second] } })
+
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
+    expect(upload.mock.calls.map(([file]) => file)).toEqual([first, second])
+    expect(onSelect.mock.calls).toEqual([['first.mp4'], ['second.mp4']])
+    await waitFor(() => expect(screen.queryByText(/批量 \d+\/2/)).toBeNull())
+  })
+
+  it('stops a batch on failure and reports the completed file count', async () => {
+    const upload = vi.fn()
+      .mockResolvedValueOnce(uploadedResource('first'))
+      .mockResolvedValueOnce(undefined)
+    const controller = makeController({ upload })
+    render(
+      <VideoAssetLibrary
+        gameId="demo"
+        scenario={EMPTY_SCENARIO}
+        bundledEntries={[]}
+        controller={controller}
+        selectedId=""
+        onSelect={() => {}}
+      />,
+    )
+    const input = screen.getByLabelText('上传视频') as HTMLInputElement
+    const files = [
+      new File(['first'], 'first.mp4', { type: 'video/mp4' }),
+      new File(['second'], 'second.mp4', { type: 'video/mp4' }),
+      new File(['third'], 'third.mp4', { type: 'video/mp4' }),
+    ]
+
+    fireEvent.change(input, { target: { files } })
+
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '批量上传在「second.mp4」失败，已完成 1/3 个文件。请处理失败项后重新选择剩余文件。',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('批量 2/3')
   })
 
   it('shows compact upload status and retry in the header', async () => {
