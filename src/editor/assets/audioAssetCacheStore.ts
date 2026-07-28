@@ -63,8 +63,7 @@ export const useAudioAssetCache = create<AudioAssetCacheStore>((set, get) => ({
       set((state) => ({
         byGame: {
           ...state.byGame,
-          // 失败保留上一轮资产：一次网络抖动不该把作者正在用的候选清光（壳层的警告也据此
-          // 改口说「可能不是最新的」，见 audioLookupAlert）。
+          // 失败保留上一轮资产：一次网络抖动不该把作者正在用的候选清光。
           [gameId]: { ...(state.byGame[gameId] ?? EMPTY), loading: false, error: message(error), generation },
         },
       }))
