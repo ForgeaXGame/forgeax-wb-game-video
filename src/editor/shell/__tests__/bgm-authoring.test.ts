@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   audioAssetOptions,
-  audioChoices,
   patchNodeBgm,
-  type AudioOption,
 } from '../bgm-authoring'
 import { patchNodeData } from '../../../graph/edit/graph-edit'
-import type { MediaAsset } from '../../assets/registry-types'
+import type { KinoResourceDTO } from '../../assets/kino-api'
 import type { GameGraph } from '../../../runtime/schema/graph-schema'
 
 describe('patchNodeBgm', () => {
@@ -105,53 +103,24 @@ describe('节点面板的写回路径（patchNodeData + patchNodeBgm）', () => 
 })
 
 describe('audio picker fallbacks', () => {
-  const asset = (id: string, label?: string): MediaAsset => ({
-    id,
-    kind: 'audio',
-    productionType: 'video_clip',
-    status: 'ready',
-    ...(label ? { label } : {}),
-    createdAt: 0,
-    updatedAt: 0,
+  const resource = (id: string, name?: string): KinoResourceDTO => ({
+    resource_id: id,
+    game_id: 'demo',
+    media_type: 'audio',
+    name,
+    url: `/api/v1/kino/resources/${id}/content`,
+    created_at: 0,
+    updated_at: 0,
   })
 
-  it('label 优先，缺 label 用 id', () => {
-    expect(audioAssetOptions([asset('a-aud-1', '战斗床'), asset('a-aud-2')])).toEqual([
-      { id: 'a-aud-1', label: '战斗床 (a-aud-1)' },
-      { id: 'a-aud-2', label: 'a-aud-2' },
+  it('名字优先，缺名字用 id；重复 id 去重', () => {
+    expect(audioAssetOptions([
+      resource('aud-1', '战斗床'),
+      resource('aud-2'),
+      resource('aud-1', '战斗床副本'),
+    ])).toEqual([
+      { id: 'aud-1', label: '战斗床' },
+      { id: 'aud-2', label: 'aud-2' },
     ])
-  })
-
-  it('非 audio 资产不进候选（视频 id 填进床轨槽会解析成视频）', () => {
-    expect(audioAssetOptions([{ ...asset('a-vid-1'), kind: 'video' }])).toEqual([])
-  })
-
-})
-
-// 与 NodeInspector 的 `videoChoices` 同款：填进去的 id 不在素材候选里也得留在候选里，否则
-// 手填的 / 素材被删的 / 查询失败时的 ref 在下拉里读起来像「什么都没选」。
-describe('audioChoices（当前 ref 并进候选）', () => {
-  const lib: AudioOption[] = [{ id: 'a-aud-1', label: '战斗床 (a-aud-1)' }]
-
-  it('ref 不在候选里 → 置顶补一条，并标明不是素材库来的', () => {
-    const merged = audioChoices(lib, 'bgm-battle')
-    expect(merged).toHaveLength(2)
-    expect(merged[0]!.id).toBe('bgm-battle')
-    expect(merged[0]!.label).not.toBe('战斗床 (a-aud-1)')
-    expect(merged[0]!.label).toContain('bgm-battle')
-    expect(merged[1]).toEqual(lib[0])
-  })
-
-  it('ref 已在候选里 → 原样返回（不出现两条同 id）', () => {
-    expect(audioChoices(lib, 'a-aud-1')).toEqual(lib)
-  })
-
-  it('没填 ref / 只填了空白 → 原样返回', () => {
-    expect(audioChoices(lib, undefined)).toEqual(lib)
-    expect(audioChoices(lib, '   ')).toEqual(lib)
-  })
-
-  it('候选查不到时也只剩当前 ref 一条（面板仍显示作者填的那首）', () => {
-    expect(audioChoices([], 'bgm-battle').map((o) => o.id)).toEqual(['bgm-battle'])
   })
 })

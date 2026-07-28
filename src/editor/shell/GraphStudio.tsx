@@ -156,10 +156,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
   const kinoResources = useKinoVideoResources(game)
-  // 节点面板「音乐」候选；音频入库链路未通前恒为空，面板退化成手填 id（见 AudioRefInput）。
-  // 资产层只给原始资产，展示形状在壳层拼。
+  // 节点面板「音乐」下拉候选（与「视频」同款）：Kino media_type=audio，展示形状在壳层拼。
   const audio = useAudioAssets(game)
-  const audioOptions = useMemo(() => audioAssetOptions(audio.assets), [audio.assets])
+  const audioOptions = useMemo(() => audioAssetOptions(audio.items), [audio.items])
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
   useEffect(() => {

@@ -70,7 +70,7 @@ describe('试玩表面挂载床轨', () => {
     })
     useAudioAssets.mockReset()
     useAudioAssets.mockReturnValue({
-      assets: [], loading: false, error: null, generation: 0, refresh: vi.fn(),
+      items: [], total: 0, loading: false, error: null, generation: 0, refresh: vi.fn(),
     })
     seedGraphStore()
   })

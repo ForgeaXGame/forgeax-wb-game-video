@@ -92,7 +92,7 @@ describe('missing video notices across play surfaces', () => {
     })
     useAudioAssets.mockReset()
     useAudioAssets.mockReturnValue({
-      assets: [], loading: false, error: null, generation: 0, refresh: vi.fn(),
+      items: [], total: 0, loading: false, error: null, generation: 0, refresh: vi.fn(),
     })
     seedGraphStore()
   })

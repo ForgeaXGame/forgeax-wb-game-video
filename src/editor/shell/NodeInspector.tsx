@@ -6,8 +6,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
-import { AudioRefInput } from './AudioRefInput'
-import { audioChoices, patchNodeBgm, type AudioOption } from './bgm-authoring'
+import { patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
@@ -1186,7 +1185,7 @@ export function NodeInspector({
   graph: GameGraph
   nodeId: string | null
   videoOptions?: VideoOption[]
-  /** 作用域 BGM 的音频资产候选（`assets/manifest` 里 kind==='audio'）；空 = 只能手填 id。 */
+  /** 作用域 BGM 的音频资产候选（Kino media_type=audio，与资产库一致）；与「视频」下拉同款。 */
   audioOptions?: AudioOption[]
   /** 本局子蓝图包（随 scenario 保存）。 */
   packs?: readonly SubFlowPackDef[]
@@ -1230,8 +1229,8 @@ export function NodeInspector({
 }): JSX.Element {
   // 「音乐动作」在还没选曲子时也得选得动：`patchNodeBgm` 对「没有 ref 且不是 stop」的配置一律
   // 删键（不留 `{ ref: '' }` 这种 validate 判 error、runtime 静默丢弃的残留），所以空态下
-  // push / replace 落不了盘，下拉会自己弹回「起播」。落不了盘的那一步先记在这儿，等作者填了
-  // 曲子再随 ref 一起写进去。换节点 = 换一份草稿（同 `AudioRefInput` 的 `key={nodeId}`）。
+  // push / replace 落不了盘，下拉会自己弹回「起播」。落不了盘的那一步先记在这儿，等作者选了
+  // 曲子再随 ref 一起写进去。换节点 = 换一份草稿。
   const [draftBgmMode, setDraftBgmMode] = useState<'push' | 'replace'>('push')
   const [draftBgmModeNode, setDraftBgmModeNode] = useState(nodeId)
   if (nodeId !== draftBgmModeNode) {
@@ -1260,11 +1259,15 @@ export function NodeInspector({
   const selectedVideoValue = mediaRef && !videoOptions.some((option) => option.id === mediaRef)
     ? '__unavailable__'
     : mediaRef
+  const bgmRef = d.bgm?.ref ?? ''
+  const selectedAudioValue = bgmRef && !audioOptions.some((option) => option.id === bgmRef)
+    ? '__unavailable__'
+    : bgmRef
 
   const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
   const nestMode: 'none' | 'subflow' | 'pack' = nestPack ? 'pack' : nestRef ? 'subflow' : 'none'
-  // 作用域 BGM：读原始值（不过 getNodeBgm）——半填的 ref 也要显示，否则作者打字打不出第一个字符。
+  // 作用域 BGM：读原始值（不过 getNodeBgm），与面板下拉一致。
   const bgm = d.bgm
   // 手写/AI 生成的非法 mode 在下拉里显示成 push（validate 会把它判 error），别让 select 变成
   // 「什么都没选」的空框。还没有配置时读本地草稿——见组件顶部 `draftBgmMode`。
@@ -1768,21 +1771,20 @@ export function NodeInspector({
         {bgmMode === 'stop' ? null : (
           <>
             {row('音乐', (
-              <AudioRefInput
-                // 换节点 = 新一份草稿。`AudioRefInput` 只按 `value` 校准草稿，而两个节点配同一段 ref 时
-                // `value` 根本不变：不重挂的话，在 A 上「全选删除」留下的空草稿会跟到 B，B 的框显示成空、
-                // 失焦即被判为刻意清除，把作者从没打开过的 B 的 bgm 删掉。
-                key={nodeId}
-                value={bgm?.ref ?? ''}
-                options={audioChoices(audioOptions, bgm?.ref)}
-                // 例子必须是**能解析**的形状：只有 `a-<tag>-…` 走素材层端点（见 media.ts 的
-                // REGISTRY_ASSET_ID），裸名字会掉进只认视频的 Kino 端点，作者照着填必然 404。
-                placeholder="音频资产 id，如 a-aud-battle"
-                title="填 assets/manifest 里的音频资产 id（形如 a-aud-…）；图上只存 id，播放地址由试玩壳层解析"
-                clearTitle="清除本节点的音乐配置：回到「不换音乐」，沿用上层正在播的那首"
-                // 带上 `bgmMode`：空态下选的「换曲」只活在草稿里，靠这一步随 ref 一起落盘。
-                onChange={(ref) => patchData({ bgm: patchNodeBgm(bgm, { ref, mode: bgmMode }) })}
-              />
+              <select
+                value={selectedAudioValue}
+                onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { ref: e.target.value, mode: bgmMode }) })}
+                style={{ flex: 1 }}
+                title="选择该节点作用域 BGM（与资产库音频一致，仅显示 Kino 接口资源）；空 = 不换曲，沿用上层正在播的那首"
+              >
+                {selectedAudioValue === '__unavailable__' ? (
+                  <option value="__unavailable__" disabled>（当前音乐不在素材库）</option>
+                ) : null}
+                <option value="">（空）</option>
+                {audioOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
             ))}
             {bgm ? (
               <>

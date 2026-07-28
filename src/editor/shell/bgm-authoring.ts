@@ -8,7 +8,7 @@
  * 不落盘 —— 让「没配」与「配了默认值」在磁盘上同形，旧图不会因为点开一次面板就长出一堆等价字段。
  */
 import type { NodeBgm } from '../../runtime/schema/graph-schema'
-import type { MediaAsset } from '../assets/registry-types'
+import type { KinoResourceDTO } from '../assets/kino-api'
 
 /** BGM 资产下拉候选：`id` 落盘（永不落 URL），`label` 仅展示。 */
 export interface AudioOption {
@@ -64,27 +64,18 @@ export function patchNodeBgm(current: NodeBgm | undefined, patch: Partial<NodeBg
 }
 
 /**
- * `assets/manifest` 资产 → BGM 候选（只收 `kind: 'audio'`：视频 id 填进床轨槽会被壳层
- * 当视频解析，听感上是「没响」）。
+ * Kino 音频资源 → BGM 候选（与「视频」字段拼 `VideoOption` 同款：去重、名字优先）。
+ * 数据源是 Kino `media_type: 'audio'`（资产库上传的那批），不是本地 `/__gva__/assets`。
  */
-export function audioAssetOptions(assets: readonly MediaAsset[]): AudioOption[] {
-  return assets
-    .filter((a) => a.kind === 'audio')
-    .map((a) => {
-      const label = a.label?.trim()
-      return { id: a.id, label: label && label !== a.id ? `${label} (${a.id})` : a.id }
-    })
-}
-
-/**
- * 当前 ref 并进候选（对齐「视频」字段的 `videoChoices`，但效果不同）：这里的控件是
- * `<input list>`，当前 ref 本来就明摆在输入框里 —— 补这一条是给**补全列表**用的：
- * 打开候选时能看见「我现在填的是这个」并原样选回去（清空重打时不必手抄一遍），
- * 列表也不会看起来像是把当前这首排除在外。视频那边是 `<select>`，不补则真的显示成未选中。
- * 补出来的那条**标注来源**：这里的候选清一色 `名字 (id)`，不标的话作者会以为它是素材库里的一条。
- */
-export function audioChoices(options: readonly AudioOption[], ref: string | undefined): readonly AudioOption[] {
-  const id = cleanRef(ref)
-  if (!id || options.some((o) => o.id === id)) return options
-  return [{ id, label: `${id}（手填 · 不在素材库）` }, ...options]
+export function audioAssetOptions(resources: readonly KinoResourceDTO[]): AudioOption[] {
+  const seen = new Set<string>()
+  const out: AudioOption[] = []
+  for (const resource of resources) {
+    const id = resource.resource_id
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    const name = resource.name?.trim()
+    out.push({ id, label: name && name !== id ? name : id })
+  }
+  return out
 }
