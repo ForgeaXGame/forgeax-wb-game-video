@@ -70,11 +70,15 @@ ${PREVIEW_CLOCK_CSS}
 .gc-list-add:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .gc-list-add.is-on { background: rgba(240,136,64,.28); border-color: var(--gc-accent); }
 .gc-list-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+/* 分组表头直接贴住滚动容器顶边，避免顶部 padding 露出从其下滚过的方案行。 */
+.gc-list-body.has-groups { padding-top: 0; padding-bottom: 20px; }
 /* 「＋」旁浮层新建：JS 用 fixed 贴按钮右侧（躲过 .gc-list overflow:hidden）。 */
 .gc-list-compose-anchor { display: inline-flex; }
 .gc-list-compose-pop {
+  position: relative;
   z-index: 80;
   display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
   width: 240px;
   padding: 6px;
   border-radius: 10px;
@@ -113,6 +117,47 @@ ${PREVIEW_CLOCK_CSS}
   transition: background .12s, border-color .12s;
 }
 .gc-list-compose-ok:hover { background: rgba(240,136,64,.28); border-color: var(--gc-accent); }
+.gc-list-compose-error {
+  flex: 1 1 100%;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(80, 20, 20, .92);
+  border: 1px solid rgba(248,113,113,.45);
+  color: #ff9a9a;
+  font-size: 11px;
+  line-height: 1.35;
+}
+/* 行内动作旁浮层（重命名 / 删除确认）——与「＋」新建同款。 */
+.gc-row-act-anchor { position: relative; display: inline-flex; }
+.gc-list-confirm-pop {
+  flex-direction: column;
+  align-items: stretch;
+  width: 220px;
+  gap: 8px;
+}
+.gc-list-confirm-msg {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--gc-text);
+}
+.gc-list-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.gc-list-confirm-actions button {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  height: 28px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--gc-line); color: var(--gc-text); font-size: 11.5px;
+  background: rgba(255,255,255,.04);
+}
+.gc-list-confirm-actions button:hover { background: rgba(255,255,255,.08); }
+.gc-list-confirm-actions button.is-danger {
+  border-color: rgba(248,113,113,.45);
+  background: rgba(248,113,113,.16);
+  color: #ff9a9a;
+}
+.gc-list-confirm-actions button.is-danger:hover { background: rgba(248,113,113,.28); }
 .gc-row {
   all: unset; box-sizing: border-box;
   display: flex; align-items: center; gap: 9px;
@@ -132,10 +177,11 @@ ${PREVIEW_CLOCK_CSS}
   font-size: 11px; color: #5fbf7f;
 }
 .gc-row-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gc-row-badge { flex: none; margin-left: auto; }
+.gc-row-badge { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 /* 每行右侧的行内动作（重命名/设为入口/删除）——平时透明，hover/选中才显。 */
 .gc-row-actions { flex: none; display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.gc-row:hover .gc-row-actions, .gc-row.is-on .gc-row-actions { opacity: 1; }
+.gc-row:hover .gc-row-actions, .gc-row.is-on .gc-row-actions,
+.gc-row-actions:has(.is-on) { opacity: 1; }
 .gc-row-act {
   all: unset; box-sizing: border-box;
   width: 22px; height: 22px; border-radius: 6px;
@@ -143,12 +189,17 @@ ${PREVIEW_CLOCK_CSS}
   font-size: 12px; color: var(--gc-muted); cursor: pointer;
   transition: background .12s, color .12s;
 }
-.gc-row-act:hover { background: var(--gc-panel3); color: var(--gc-text); }
-.gc-row-act.is-danger:hover { background: rgba(248,113,113,.2); color: #ff9a9a; }
+.gc-row-act:hover, .gc-row-act.is-on { background: var(--gc-panel3); color: var(--gc-text); }
+.gc-row-act.is-danger:hover, .gc-row-act.is-danger.is-on { background: rgba(248,113,113,.2); color: #ff9a9a; }
 
 /* ── 左栏树/分组（界面 tab：自定义覆盖物组头 → 方案叶子）── */
 .gc-group { display: flex; flex-direction: column; }
-.gc-group-head { display: flex; align-items: center; gap: 4px; }
+.gc-group-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--gc-panel);
+  border-bottom: 1px solid var(--gc-line-soft);
+}
 .gc-group-toggle {
   all: unset; box-sizing: border-box; flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 7px;
@@ -174,8 +225,10 @@ ${PREVIEW_CLOCK_CSS}
 }
 .gc-group-add:hover { background: var(--gc-accent-soft); color: var(--gc-text); border-color: var(--gc-accent-line); }
 .gc-group-children { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
-.gc-row.is-leaf { margin-left: 14px; }
-.gc-group-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 10px 6px 24px; }
+/* 叶子（方案行）：明确呈现组层级，同时压紧内部 mark/gap，把宽度留给标题。 */
+.gc-row.is-leaf { margin-left: 14px; gap: 6px; padding-left: 8px; padding-right: 8px; }
+.gc-row.is-leaf .gc-row-mark { width: 11px; }
+.gc-group-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 10px 6px 32px; }
 
 /* ── 右栏预览 ── */
 .gc-preview {

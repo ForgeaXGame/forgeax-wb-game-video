@@ -46,6 +46,15 @@ function ensureCanvasStyle(): void {
     .react-flow__controls-button{background:#20242c;border-bottom:1px solid #33373f;width:26px;height:26px}
     .react-flow__controls-button:hover{background:#2b3038}
     .react-flow__controls-button svg{fill:#c9d1e0;max-width:14px;max-height:14px}
+    /* 蓝图地图：整图底板+节点+连线；与 Controls 同行靠右 */
+    .gv-graph-minimap.react-flow__panel.bottom.left{left:52px;border-radius:8px;overflow:hidden;border:1px solid #403830;box-shadow:0 2px 12px rgba(0,0,0,.55);background:#12151c;cursor:grab}
+    .gv-graph-minimap:active{cursor:grabbing}
+    .gv-graph-minimap-svg{display:block;width:100%;height:100%;touch-action:none}
+    .gv-graph-minimap-board{fill:#1a2030;stroke:#2a3344;stroke-width:1}
+    .gv-graph-minimap-edge{stroke:rgba(148,163,184,.45);stroke-linecap:round}
+    .gv-graph-minimap-node{stroke:rgba(11,13,16,.7);opacity:.95}
+    .gv-graph-minimap-mask{fill:rgba(6,8,12,.48);stroke:none}
+    .gv-graph-minimap-viewport{stroke:#f08840}
     .react-flow__attribution{display:none}
     /* 节点内可溢出（右侧 hover 菜单）；外层 gv-canvas-host 用 contain:paint 裁命中区，防止渗到工具条 */
     .react-flow__node{overflow:visible!important}
@@ -91,11 +100,18 @@ import type { Overlay } from '../../runtime/schema/node-config-schema'
 import { getSubFlowPack, isSubflowContainerData } from '../../runtime/schema/graph-schema'
 import type { FXNode } from '../../runtime/schema/react-flow-schema'
 import { toFXView } from './fx-view'
+import { GraphMiniMap } from './GraphMiniMap'
 import { connect, disconnect, duplicateNodes, insertNodeAfter, removeNode, setNodePosition } from '../edit/graph-edit'
 
 const MOD_HINT = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
   ? '⌘'
   : 'Ctrl'
+
+/**
+ * 模块级剪贴板：GraphStudio 用 `key={activeBlueprintId}` remount 画布以清本地 selectedIds，
+ * useRef 会跟着丢；跨主/子蓝图粘贴必须活过 remount。
+ */
+let graphClipboard: { nodes: GameNode[]; edges: GameEdge[] } | null = null
 
 interface CanvasNodeViewData {
   fx: FXNode
@@ -118,6 +134,14 @@ const BADGE_COLOR: Record<string, string> = {
   pack: '#3b82f6',
   subflow: '#eab308',
 }
+
+/** MiniMap 节点填色：读 RF node.data.fx.data.badge → BADGE_COLOR。 */
+export function minimapNodeColor(node: { data: unknown }): string {
+  const badge = (node.data as { fx?: { data?: { badge?: string } } } | null | undefined)?.fx?.data?.badge
+  if (typeof badge === 'string' && BADGE_COLOR[badge]) return BADGE_COLOR[badge]!
+  return '#4b5563'
+}
+
 const HANDLE_COLOR: Record<string, string> = {
   default: '#6b7280',
   pass: '#22c55e',
@@ -408,8 +432,6 @@ export interface GraphCanvasProps {
   onPaneClick?: () => void
   /** 画布右下角：添加节点（属于蓝图编辑手势，不进顶栏）。position = 当前视口中心（flow 坐标）。 */
   onAddNode?: (position: { x: number; y: number }) => void
-  /** 画布右下角：引用一张既有蓝图，插入 subFlowPack 引用容器节点。 */
-  onAddPackNode?: (position: { x: number; y: number }) => void
   /** 画布右下角：自适应布局（dagre 重排 + fitView）。 */
   onFitLayout?: () => void
   /**
@@ -444,7 +466,6 @@ function GraphCanvasInner({
   onDrill,
   onPaneClick,
   onAddNode,
-  onAddPackNode,
   onFitLayout,
   fitReserveRightPx = 0,
 }: GraphCanvasProps): JSX.Element {
@@ -482,10 +503,11 @@ function GraphCanvasInner({
   }, [screenToFlowPosition])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [clipTip, setClipTip] = useState<string>('')
-  const clipboard = useRef<{ nodes: GameNode[]; edges: GameEdge[] } | null>(null)
-  /** Shift 按下（点选多选）；与框选（boxSelecting）区分，避免 RF 的 select 变更冲掉 Shift+点。 */
+  /** Shift 按下（点选多选）；与框选（boxSelecting）区分，避免 RF 的 selectionChange 冲掉 Shift+点。 */
   const shiftHeld = useRef(false)
   const boxSelecting = useRef(false)
+  /** 框选结束时一次性提交的选中集（框选过程中不 setState，避免受控 nodes 重渲染触发 xyflow 误选全图）。 */
+  const pendingBoxSelection = useRef<string[] | null>(null)
   /** 跳过 mount 时的 effect：首帧 fit 交给 onInit（节点已度量）；effect 只响应后续下钻/自适应。 */
   const skipFitEffectOnce = useRef(true)
   const fx = useMemo(() => toFXView(graph, overlays), [graph, overlays])
@@ -509,10 +531,10 @@ function GraphCanvasInner({
       if (nodeIds.length === 0) return
       onChange(next)
       setSelectedIds(nodeIds)
-      onJump?.(nodeIds[0]!)
-      flashTip(`已复制 ${nodeIds.length} 个节点`)
+      // 批量生成副本：只高亮，不打开节点配置（由用户再单击打开）。
+      flashTip(`已生成 ${nodeIds.length} 个副本`)
     },
-    [graph, onChange, onJump, flashTip],
+    [graph, onChange, flashTip],
   )
 
   const onInsertAfter = useCallback(
@@ -567,12 +589,12 @@ function GraphCanvasInner({
     const edges = graph.edges
       .filter((e) => ids.has(e.source) && ids.has(e.target))
       .map((e) => structuredClone(e))
-    clipboard.current = { nodes, edges }
-    flashTip(`已拷贝 ${nodes.length} 个节点 · ${MOD_HINT}V 粘贴`)
+    graphClipboard = { nodes, edges }
+    flashTip(`已复制 ${nodes.length} 个节点 · ${MOD_HINT}V 粘贴（可跨蓝图）`)
   }, [graph, selectedIds, flashTip])
 
   const pasteClipboard = useCallback(() => {
-    const clip = clipboard.current
+    const clip = graphClipboard
     if (!clip?.nodes.length) {
       flashTip('剪贴板为空 · 先选中后点「复制」或按快捷键')
       return
@@ -589,9 +611,9 @@ function GraphCanvasInner({
       edges: [...graph.edges, ...pasted.edges.filter((e) => idSet.has(e.source) && idSet.has(e.target))],
     })
     setSelectedIds(nodeIds)
-    onJump?.(nodeIds[0]!)
+    // 粘贴只落图+高亮，不打开节点配置。
     flashTip(`已粘贴 ${nodeIds.length} 个节点`)
-  }, [graph, onChange, onJump, flashTip])
+  }, [graph, onChange, flashTip])
 
   const rfNodes = useMemo(
     () =>
@@ -637,7 +659,7 @@ function GraphCanvasInner({
     [fx, traversedEdgeIds, visibleNodeIds, readOnly, onDeleteEdge],
   )
 
-  // 跟踪 Shift，供 onNodesChange 判断是否该忽略 RF 的点选变更。
+  // 跟踪 Shift，供 onSelectionChange 判断是否该忽略 RF 的点选（Shift+点由 onNodeClick 负责）。
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeld.current = true }
     const up = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeld.current = false }
@@ -670,28 +692,41 @@ function GraphCanvasInner({
   /**
    * 选中节点变化时，把视口平移让该节点落在画布「未被面板盖住的左侧可见区」中心（不缩放）。
    * 与 fitSignal 互不干扰：fitSignal 框全图、revealNodeId 仅平移；关闭面板（null）不抢用户手动平移。
+   * 切图后 RF 节点偶发尚未就绪 → 短延迟重试一次。
    */
   useEffect(() => {
     if (!revealNodeId) return
-    const node = getNodes().find((n) => n.id === revealNodeId)
-    if (!node) return
-    const el = rootRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const ratio = typeof revealPanelRatio === 'number' && revealPanelRatio > 0 ? Math.min(0.85, revealPanelRatio) : 0
-    // 节点中心（flow 坐标）：未度量时退回 position（左上角）。
-    const cx = node.position.x + (node.measured?.width ?? node.width ?? 100) / 2
-    const cy = node.position.y + (node.measured?.height ?? node.height ?? 60) / 2
-    const vp = getViewport()
-    const zoom = vp.zoom || 1
-    // 左侧可见区中心（screen 坐标，相对画布容器）：画布宽 × (1 - ratio) / 2。
-    const targetScreenX = rect.width * (1 - ratio) / 2
-    const targetScreenY = rect.height / 2
-    // viewport.x = screenX - flowX * zoom
-    const nextX = targetScreenX - cx * zoom
-    const nextY = targetScreenY - cy * zoom
-    void setViewport({ x: nextX, y: nextY, zoom }, { duration: 220 })
+    let cancelled = false
+    const reveal = (attempt: number) => {
+      if (cancelled) return
+      const node = getNodes().find((n) => n.id === revealNodeId)
+      if (!node) {
+        if (attempt < 1) window.setTimeout(() => reveal(attempt + 1), 40)
+        return
+      }
+      const el = rootRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+      const ratio = typeof revealPanelRatio === 'number' && revealPanelRatio > 0 ? Math.min(0.85, revealPanelRatio) : 0
+      // 节点中心（flow 坐标）：未度量时退回 position（左上角）。
+      const cx = node.position.x + (node.measured?.width ?? node.width ?? 100) / 2
+      const cy = node.position.y + (node.measured?.height ?? node.height ?? 60) / 2
+      const vp = getViewport()
+      const zoom = vp.zoom || 1
+      // 左侧可见区中心（screen 坐标，相对画布容器）：画布宽 × (1 - ratio) / 2。
+      const targetScreenX = rect.width * (1 - ratio) / 2
+      const targetScreenY = rect.height / 2
+      // viewport.x = screenX - flowX * zoom
+      const nextX = targetScreenX - cx * zoom
+      const nextY = targetScreenY - cy * zoom
+      void setViewport({ x: nextX, y: nextY, zoom }, { duration: 220 })
+    }
+    const t = window.setTimeout(() => reveal(0), 0)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealNodeId, revealPanelRatio])
 
@@ -724,28 +759,38 @@ function GraphCanvasInner({
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       let next = graph
-      let hasSelect = false
+      const removed = new Set<string>()
       for (const c of changes) {
         if (c.type === 'position' && c.position) next = setNodePosition(next, c.id, c.position)
-        else if (c.type === 'remove') next = removeNode(next, c.id)
-        else if (c.type === 'select') hasSelect = true
-      }
-      // 框选 / 普通点选：应用 RF select。Shift+点选由 onNodeClick 负责，这里跳过以免被冲成单选。
-      if (hasSelect && (boxSelecting.current || !shiftHeld.current)) {
-        setSelectedIds((prev) => {
-          const sel = new Set(prev)
-          for (const c of changes) {
-            if (c.type !== 'select') continue
-            if (c.selected) sel.add(c.id)
-            else sel.delete(c.id)
-          }
-          return [...sel]
-        })
+        else if (c.type === 'remove') {
+          next = removeNode(next, c.id)
+          removed.add(c.id)
+        }
+        // select：框选过程不在这里 setState（见 onSelectionStart/End）；普通点选走 onSelectionChange / onNodeClick。
       }
       if (next !== graph) onChange(next)
+      // Delete/Backspace 删节点：清本地多选，并关掉右侧节点配置（与按钮删除同源 onPaneClick）。
+      if (removed.size > 0) {
+        setSelectedIds((prev) => prev.filter((id) => !removed.has(id)))
+        onPaneClick?.()
+      }
     },
-    [graph, onChange],
+    [graph, onChange, onPaneClick],
   )
+
+  /**
+   * 同步选中集。框选拖拽中绝不 setState：受控 `nodes[].selected` 重渲染会使 xyflow
+   * 短暂丢掉 handleBounds，`getNodesInside` 把无 bounds 的节点一律算进框 → 闪「全选」。
+   * Shift+点选由 onNodeClick 负责。
+   */
+  const onSelectionChange = useCallback(({ nodes }: { nodes: { id: string }[] }) => {
+    if (boxSelecting.current) {
+      pendingBoxSelection.current = nodes.map((n) => n.id)
+      return
+    }
+    if (shiftHeld.current) return
+    setSelectedIds(nodes.map((n) => n.id))
+  }, [])
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
@@ -767,11 +812,12 @@ function GraphCanvasInner({
 
   const onNodeClick = useCallback(
     (e: React.MouseEvent, n: { id: string }) => {
+      // Shift+点：只做多选加减，不打开节点配置（不 onJump）。
       if (e.shiftKey) {
         setSelectedIds((prev) => (prev.includes(n.id) ? prev.filter((id) => id !== n.id) : [...prev, n.id]))
-      } else {
-        setSelectedIds([n.id])
+        return
       }
+      setSelectedIds([n.id])
       onJump?.(n.id)
     },
     [onJump],
@@ -794,13 +840,23 @@ function GraphCanvasInner({
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onSelectionChange={onSelectionChange}
         onNodeDoubleClick={(_e, n) => { if (containerIds.has(n.id)) onDrill?.(n.id) }}
         onPaneClick={() => {
           setSelectedIds([])
           onPaneClick?.()
         }}
-        onSelectionStart={() => { boxSelecting.current = true }}
-        onSelectionEnd={() => { boxSelecting.current = false }}
+        onSelectionStart={() => {
+          boxSelecting.current = true
+          pendingBoxSelection.current = []
+        }}
+        onSelectionEnd={() => {
+          boxSelecting.current = false
+          const ids = pendingBoxSelection.current
+            ?? getNodes().filter((n) => n.selected).map((n) => n.id)
+          pendingBoxSelection.current = null
+          setSelectedIds(ids)
+        }}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesFocusable={!readOnly}
@@ -813,12 +869,13 @@ function GraphCanvasInner({
       >
         <Background />
         <Controls position="bottom-left" />
+        <GraphMiniMap nodeColor={minimapNodeColor} />
       </ReactFlow>
       {!readOnly && selectedIds.length > 1 && (
         <div className="gv-sel-bar">
           <span>已选 {selectedIds.length} 个节点</span>
-          <button type="button" onClick={() => applyDuplicate(selectedIds)} title={`${MOD_HINT}D`}>复制</button>
-          <button type="button" onClick={copySelectedToClipboard} title={`${MOD_HINT}C`}>拷贝</button>
+          <button type="button" onClick={() => applyDuplicate(selectedIds)} title={`${MOD_HINT}D · 立刻在画布生成副本`}>生成副本</button>
+          <button type="button" onClick={copySelectedToClipboard} title={`${MOD_HINT}C · 复制到剪贴板，再 ${MOD_HINT}V 粘贴`}>复制</button>
           <button type="button" className="danger" onClick={deleteSelected}>删除</button>
           <span className="hint">{MOD_HINT}V 粘贴 · Shift+点多选 · Shift+拖框选</span>
         </div>
@@ -840,18 +897,6 @@ function GraphCanvasInner({
             title="添加演出节点"
           >
             ＋ 添加节点
-          </button>
-        )}
-        {onAddPackNode && (
-          <button
-            type="button"
-            onClick={() => {
-              const c = viewportCenter()
-              onAddPackNode({ x: c.x - 90 + Math.random() * 40, y: c.y - 40 + Math.random() * 40 })
-            }}
-            title="引用一张既有蓝图（从蓝图库选一个，插入引用容器节点）"
-          >
-            ＋ 引用蓝图
           </button>
         )}
         <button

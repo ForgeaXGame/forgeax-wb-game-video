@@ -32,41 +32,6 @@ export const NODIA_SCHEME_BATTLE_HUD: Overlay = {
   ],
 }
 
-export const NODIA_SCHEME_HIT_CHEER: Overlay = {
-  id: 'hitCheer',
-  title: '受击加油横幅（右上角，点击追加英雄名）',
-  children: [
-    {
-      id: 'banner',
-      component: 'bossHitCheer',
-      layout: { right: 0, top: 0 },
-      trigger: { when: 'enter' },
-      inputs: { heroName: { ref: 'entity.ent-player.name' } },
-    },
-  ],
-}
-
-export const NODIA_SCHEME_HP_PANEL: Overlay = {
-  id: 'hpPanel',
-  title: '回合按钮面板（A / B1 / B2）',
-  children: [
-    {
-      id: 'panelA',
-      component: 'panelA',
-      layout: { left: 0, top: 0 },
-      trigger: { when: 'enter' },
-      inputs: {},
-    },
-    {
-      id: 'panelB',
-      component: 'panelB',
-      layout: { right: 0, top: 0 },
-      trigger: { when: 'enter' },
-      inputs: {},
-    },
-  ],
-}
-
 export const NODIA_SCHEME_READOUTS: Overlay = {
   id: 'readouts',
   title: '血量读数（spawn 模板）',
@@ -113,30 +78,6 @@ export const NODIA_NODE_SCHEME_BLOCK: Overlay = {
         "height": 1
       },
       "component": "floatText"
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:breathe` → 界面方案 `breathe`。 */
-export const NODIA_NODE_SCHEME_BREATHE: Overlay = {
-  "id": "breathe",
-  "title": "调息（方案B：非阻塞改气力）",
-  "children": [
-    {
-      "id": "breathe",
-      "component": "panelA",
-      "layout": {
-        "left": "4%",
-        "bottom": "22%",
-        "width": "120px",
-        "height": "40px"
-      },
-      "trigger": {
-        "when": "enter"
-      },
-      "inputs": {
-        "label": "调息 +2气"
-      }
     }
   ]
 } as Overlay
@@ -294,171 +235,6 @@ export const NODIA_NODE_SCHEME_N_DOOR: Overlay = {
   ]
 } as Overlay
 
-/** 源自 nodia `node:n_follow` → 界面方案 `n_follow`。 */
-export const NODIA_NODE_SCHEME_N_FOLLOW: Overlay = {
-  "id": "n_follow",
-  "title": "跟随 · 應默",
-  "children": [
-    {
-      "id": "n_follow-c",
-      "trigger": {
-        "when": "at",
-        "ms": 12093
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:n_land` → 界面方案 `n_land`。 */
-export const NODIA_NODE_SCHEME_N_LAND: Overlay = {
-  "id": "n_land",
-  "title": "上岸 · 應默",
-  "children": [
-    {
-      "id": "n_land-c",
-      "trigger": {
-        "when": "at",
-        "ms": 13200
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:n_nodrink` → 界面方案 `n_nodrink`。 */
-export const NODIA_NODE_SCHEME_N_NODRINK: Overlay = {
-  "id": "n_nodrink",
-  "title": "不饮 · 應默",
-  "children": [
-    {
-      "id": "n_nodrink-c",
-      "trigger": {
-        "when": "at",
-        "ms": 12093
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:n_nofollow` → 界面方案 `n_nofollow`。 */
-export const NODIA_NODE_SCHEME_N_NOFOLLOW: Overlay = {
-  "id": "n_nofollow",
-  "title": "不跟随 · 應默",
-  "children": [
-    {
-      "id": "n_nofollow-c",
-      "trigger": {
-        "when": "at",
-        "ms": 12093
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:n_river` → 界面方案 `n_river`。 */
-export const NODIA_NODE_SCHEME_N_RIVER: Overlay = {
-  "id": "n_river",
-  "title": "渡河 · 應默",
-  "children": [
-    {
-      "id": "n_river-c",
-      "trigger": {
-        "when": "at",
-        "ms": 12069
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
-    }
-  ]
-} as Overlay
-
 /** 源自 nodia `node:n_soul` → 界面方案 `n_soul`。 */
 export const NODIA_NODE_SCHEME_N_SOUL: Overlay = {
   "id": "n_soul",
@@ -481,39 +257,6 @@ export const NODIA_NODE_SCHEME_N_SOUL: Overlay = {
         "height": 1
       },
       "component": "dialogue"
-    }
-  ]
-} as Overlay
-
-/** 源自 nodia `node:n_tea` → 界面方案 `n_tea`。 */
-export const NODIA_NODE_SCHEME_N_TEA: Overlay = {
-  "id": "n_tea",
-  "title": "饮茶 · 應默",
-  "children": [
-    {
-      "id": "n_tea-c",
-      "trigger": {
-        "when": "at",
-        "ms": 12093
-      },
-      "inputs": {
-        "timeoutMs": 8000,
-        "events": [
-          {
-            "id": "ying",
-            "label": "應"
-          },
-          {
-            "id": "mo",
-            "label": "默"
-          }
-        ],
-        "defaultEvent": "mo",
-        "x": 0.5,
-        "y": 0.88
-      },
-      "component": "inkYingMo",
-      "layout": { ...STAGE_FILL_LAYOUT }
     }
   ]
 } as Overlay
@@ -770,30 +513,21 @@ export const NODIA_NODE_SCHEME_ZHONG: Overlay = {
   ]
 } as Overlay
 
-/** nodia 原界面方案（4）。 */
+/** nodia 原界面方案（2）。 */
 export const NODIA_FREE_SCHEME_OVERLAYS: readonly Overlay[] = [
   NODIA_SCHEME_BATTLE_HUD,
-  NODIA_SCHEME_HIT_CHEER,
-  NODIA_SCHEME_HP_PANEL,
   NODIA_SCHEME_READOUTS,
 ]
 
-/** nodia `node:*` 升格后的界面方案（21）。 */
+/** nodia `node:*` 升格后的界面方案（20）。 */
 export const NODIA_NODE_SCHEME_OVERLAYS: readonly Overlay[] = [
   NODIA_NODE_SCHEME_BLOCK,
-  NODIA_NODE_SCHEME_BREATHE,
   NODIA_NODE_SCHEME_DODGEP,
   NODIA_NODE_SCHEME_ENTER,
   NODIA_NODE_SCHEME_FUZHU,
   NODIA_NODE_SCHEME_HURT,
   NODIA_NODE_SCHEME_N_DOOR,
-  NODIA_NODE_SCHEME_N_FOLLOW,
-  NODIA_NODE_SCHEME_N_LAND,
-  NODIA_NODE_SCHEME_N_NODRINK,
-  NODIA_NODE_SCHEME_N_NOFOLLOW,
-  NODIA_NODE_SCHEME_N_RIVER,
   NODIA_NODE_SCHEME_N_SOUL,
-  NODIA_NODE_SCHEME_N_TEA,
   NODIA_NODE_SCHEME_PU,
   NODIA_NODE_SCHEME_PU2,
   NODIA_NODE_SCHEME_TELE,

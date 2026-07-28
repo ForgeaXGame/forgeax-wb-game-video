@@ -10,7 +10,7 @@ export interface KinoEnvelope<T> {
   error_code?: string
 }
 
-export type KinoMediaType = 'image' | 'video'
+export type KinoMediaType = 'image' | 'video' | 'audio'
 
 export type KinoResourceType =
   | 'KEYFRAME'
@@ -72,7 +72,17 @@ export interface DirectUploadResponse {
 export interface PrepareUploadInput {
   game_id: string
   file_name?: string
-  mime_type: 'video/mp4'
+  mime_type:
+    | 'video/mp4'
+    | 'image/png'
+    | 'image/jpeg'
+    | 'image/webp'
+    | 'image/gif'
+    | 'audio/mpeg'
+    | 'audio/wav'
+    | 'audio/ogg'
+    | 'audio/mp4'
+    | 'audio/aac'
   bytes: number
   extension?: string
   client_resource_id?: string
@@ -115,7 +125,7 @@ export interface BatchCreateKinoResourcesResult {
 
 export interface ListKinoResourcesQuery {
   game_id: string
-  media_type?: 'video'
+  media_type?: KinoMediaType
   page?: number
   page_size?: number
   type?: KinoResourceType
@@ -155,6 +165,9 @@ export interface CreateKinoVideoClientOptions {
 
 const DEFAULT_BASE_URL = '/api/v1/kino'
 const MAX_ERROR_MESSAGE_LENGTH = 512
+
+/** Kino `/resources` 服务端分页协议的单页上限。 */
+export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
 
 function normalizeBaseUrl(raw: string | undefined): string {
   const trimmed = (raw ?? DEFAULT_BASE_URL).trim()

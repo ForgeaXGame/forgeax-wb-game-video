@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config'
-import type { Plugin } from 'vite'
+import { loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { existsSync, createReadStream, statSync } from 'fs'
@@ -70,11 +70,10 @@ function readGraphReqJson(req: { on: (ev: string, cb: (arg?: unknown) => void) =
 }
 
 // ─── Dev-only signed upload reverse proxy (port 15185) ───────────────────
-function videoUploadProxyPlugin(): Plugin {
+function videoUploadProxyPlugin(allowedExtraHosts: readonly string[]): Plugin {
   return {
     name: 'gamevideo-video-upload-proxy',
     configureServer(server) {
-      const allowedExtraHosts = parseAllowedExtraHosts(process.env.VIDEO_UPLOAD_PROXY_ALLOWED_HOSTS)
       server.middlewares.use(
         VIDEO_UPLOAD_PROXY_ROUTE_PREFIX,
         createVideoUploadProxyHandler({ allowedExtraHosts }),
@@ -88,8 +87,8 @@ const GVA_ROUTE_PREFIX = '/__gva__'
 
 /**
  * 素材层读端点（磁盘权威 = `.forgeax/games/<slug>/assets/`，写方=服务端 gen:* 工具）：
- *   GET /__gva__/assets?game=slug[&kind=video|image]   → { assets: MediaAsset[] }
- *   GET /__gva__/media/<id>?game=slug                   → 流式回二进制（支持 Range，便于视频拖播）
+ *   GET /__gva__/assets?game=slug[&kind=video|image|audio] → { assets: MediaAsset[] }
+ *   GET /__gva__/media/<id>?game=slug                      → 流式回二进制（支持 Range，便于视频拖播 / 床轨解码）
  * 无 `.forgeax/games` 工程根或无 slug 时 assets 返回空、media 404。
  */
 function gameVideoAssetsPlugin(): Plugin {
@@ -111,7 +110,7 @@ function gameVideoAssetsPlugin(): Plugin {
           if (path === '/assets' && method === 'GET') {
             if (!dir) return sendJson(res, 200, { assets: [] })
             const kindParam = url.searchParams.get('kind')
-            const kind = kindParam === 'video' || kindParam === 'image' ? (kindParam as MediaKind) : undefined
+            const kind = kindParam === 'video' || kindParam === 'image' || kindParam === 'audio' ? (kindParam as MediaKind) : undefined
             return sendJson(res, 200, { assets: listAssets(dir, kind ? { kind } : undefined) })
           }
 
@@ -139,7 +138,7 @@ function gameVideoAssetsPlugin(): Plugin {
           //   POST /__gva__/generate-keyframe  body: KeyframeInput
           if (path === '/generate-video' && method === 'POST') {
             if (!dir) return sendJson(res, 400, { asset: null, error: 'no assets dir / invalid slug' })
-            const octx: OrchestrateCtx = { dir, env: process.env }
+            const octx: OrchestrateCtx = { dir, gameId: slug!, env: process.env }
             readGraphReqJson(req)
               .then((body) => generateVideo(octx, body as unknown as Parameters<typeof generateVideo>[1]))
               .then((asset) => sendJson(res, 200, { asset }))
@@ -148,7 +147,7 @@ function gameVideoAssetsPlugin(): Plugin {
           }
           if (path === '/generate-keyframe' && method === 'POST') {
             if (!dir) return sendJson(res, 400, { asset: null, error: 'no assets dir / invalid slug' })
-            const octx: OrchestrateCtx = { dir, env: process.env }
+            const octx: OrchestrateCtx = { dir, gameId: slug!, env: process.env }
             readGraphReqJson(req)
               .then((body) => generateKeyframe(octx, body as unknown as Parameters<typeof generateKeyframe>[1]))
               .then((asset) => sendJson(res, 200, { asset }))
@@ -273,7 +272,9 @@ function gameComponentsDevPlugin(): Plugin {
 // 属 seed/构建步骤，走 CLI `scripts/sync-components-to-game.mjs`，不在 vite / 保存链里做。
 // 存储/打版本一律走 game-host 服务（/api/game-host）。
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const allowedVideoUploadHosts = parseAllowedExtraHosts(env.VIDEO_UPLOAD_PROXY_ALLOWED_HOSTS)
   // 作为 forgeax-studio 插件 build 时，host 把产物挂在 `/extensions/wb-game-video/`
   // 子路径下，需要绝对 base；独立 dev/preview/standalone 用相对 './'。
   const pluginBase =
@@ -282,7 +283,7 @@ export default defineConfig(() => {
 
   return {
     base: pluginBase,
-    plugins: [react(), videoUploadProxyPlugin(), gameVideoAssetsPlugin(), gameComponentsDevPlugin()],
+    plugins: [react(), videoUploadProxyPlugin(allowedVideoUploadHosts), gameVideoAssetsPlugin(), gameComponentsDevPlugin()],
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),
@@ -324,7 +325,7 @@ export default defineConfig(() => {
       globals: true,
       // happy-dom 20.9.0 的 localStorage 在 vitest 下方法取不到 → setup 里补内存版兜底
       setupFiles: ['./src/test/setup.ts'],
-      include: ['src/**/__tests__/**/*.test.{ts,tsx}'],
+      include: ['src/**/__tests__/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
     },
     build: {
       outDir: 'dist',

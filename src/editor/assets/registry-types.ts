@@ -2,7 +2,7 @@
  * registry-types —— 游戏级共享素材层的**类型 SSOT**（浏览器安全，零依赖 · 无 node:fs）。
  *
  * 素材层数据落在 `.forgeax/games/<slug>/assets/`：
- *   - `manifest.json` = { version, assets: MediaAsset[] }（唯一写方 = wb-game-video）
+ *   - `manifest.json` = { version:2, assets: AssetRecord[] }（游戏级共享资产清单）
  *   - `media/<id>.<ext>` = wb-game-video **自产**的图/视频二进制
  *
  * 前端（media.ts / GraphVideoView）与后端（server/asset-registry.ts + generation）都
@@ -10,8 +10,12 @@
  * **只读引用**，文件仍在对方目录、不复制进本 registry（externalPath 指回原路径）。
  */
 
-/** 资产的存储类别（对齐 NodeMedia.kind 的大类）。 */
-export type MediaKind = 'image' | 'video'
+/**
+ * 资产的存储类别（对齐 NodeMedia.kind 的大类）。
+ * `audio` = 床轨/音效（BGM SPEC 决策 A：音频并进本 manifest，与 video/image 同 resolve；
+ * **不**以 wb-bgm 的 `audio/manifest.json` 为 play 路径 SSOT）。
+ */
+export type MediaKind = 'image' | 'video' | 'audio'
 
 /**
  * 资产用途（决定它在生成管线里的角色）——判断"这条资产是什么"永远看 productionType：
@@ -29,6 +33,12 @@ export type MediaProductionType =
 
 /** 生成生命周期。placeholder = 已占位未生成；generating = 生成中；ready = 就绪；failed = 失败。 */
 export type MediaStatus = 'placeholder' | 'generating' | 'ready' | 'failed'
+
+export interface MediaProviderMapping {
+  kind: 'local' | 's3' | 'cos' | 'kino'
+  ref: string
+  upstreamResourceId?: string
+}
 
 export interface MediaAsset {
   id: string
@@ -52,6 +62,8 @@ export interface MediaAsset {
   url?: string
   /** 跨模块只读产物：对方文件的绝对磁盘路径（**不复制**进本 registry 的 media/）。 */
   externalPath?: string
+  /** 共享上传服务管理的存储映射；读取内容必须走服务端 content API。 */
+  provider?: MediaProviderMapping
   /** 归属的演出节点 id（GameGraph node.id）；跨模块 ref 可空。 */
   sceneNodeId?: string
   /** 产出来源：'wb-game-video' | 'wb-character' | '<scene-module>' 等。 */
@@ -66,6 +78,13 @@ export interface MediaAsset {
   updatedAt: number
   /** 其它元信息（如 refIds / seed / model / keyframeRole 等）。 */
   meta?: Record<string, unknown>
+}
+
+/** 其它资产域拥有的记录。registry 必须原样保留，但不会把它们暴露为 MediaAsset。 */
+export interface ForeignAssetRecord {
+  id: string
+  kind: string
+  [key: string]: unknown
 }
 
 /**
@@ -84,10 +103,11 @@ export interface StyleAxes {
 
 /** manifest.json 顶层容器。 */
 export interface AssetManifest {
-  version: 1
-  assets: MediaAsset[]
+  version: 2
+  assets: Array<MediaAsset | ForeignAssetRecord>
   /** 游戏级风格三轴默认（可选）；缺省=各轴不加。 */
   styleAxes?: StyleAxes
+  [key: string]: unknown
 }
 
 /** 前端渲染友好的轻量视图（列表/卡片用）。 */
