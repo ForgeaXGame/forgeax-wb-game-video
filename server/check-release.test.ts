@@ -1,0 +1,150 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { resolve } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
+import { validateRelease } from '../scripts/check-release.mjs'
+
+const fixtureBase = mkdtempSync(resolve(import.meta.dirname, '.check-release-'))
+const toolId = 'wb-game-video:get-graph'
+const oldToolId = ['gv', 'id:get-graph'].join('')
+const oldStorageKey = ['game', 'video:graph:view'].join('')
+
+interface FixtureOptions {
+  backendKeys?: string[]
+  manifestVersion?: string
+  missingBackend?: boolean
+  missingReturns?: boolean
+  oldIdentitySource?: string
+}
+
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function createFixture(name: string, options: FixtureOptions = {}): string {
+  const root = resolve(fixtureBase, name)
+  mkdirSync(resolve(root, 'dist/server'), { recursive: true })
+  mkdirSync(resolve(root, 'schemas'), { recursive: true })
+  mkdirSync(resolve(root, 'docs'), { recursive: true })
+  mkdirSync(resolve(root, 'src/__tests__'), { recursive: true })
+
+  writeJson(resolve(root, 'package.json'), {
+    name: '@forgeax/wb-game-video',
+    version: '0.1.0',
+    peerDependencies: {
+      '@forgeax/extension-platform': '0.0.2',
+    },
+    devDependencies: {
+      '@forgeax/extension-platform': '0.0.2',
+    },
+  })
+  writeJson(resolve(root, 'forgeax-extension.json'), {
+    id: '@forgeax/wb-game-video',
+    version: options.manifestVersion ?? '0.1.0',
+    entry: {
+      frontend: './dist/index.html',
+      backend: './dist/server/tool-handlers.js',
+    },
+    provides: {
+      skills: [
+        {
+          id: 'wb-game-video:author-guide',
+          entry: './SKILL.md',
+        },
+      ],
+      tools: [
+        {
+          id: toolId,
+          args: './schemas/get-graph.args.json',
+          returns: './schemas/get-graph.returns.json',
+        },
+      ],
+    },
+  })
+  writeFileSync(resolve(root, 'dist/index.html'), '<!doctype html>\n')
+  writeFileSync(resolve(root, 'SKILL.md'), '# Author guide\n')
+  writeJson(resolve(root, 'schemas/get-graph.args.json'), { type: 'object' })
+  if (!options.missingReturns) {
+    writeJson(resolve(root, 'schemas/get-graph.returns.json'), { type: 'object' })
+  }
+  if (!options.missingBackend) {
+    const keys = options.backendKeys ?? [toolId]
+    writeFileSync(
+      resolve(root, 'dist/server/tool-handlers.js'),
+      `export default {${keys.map((key) => `${JSON.stringify(key)}: async () => ({})`).join(',')}}\n`,
+    )
+  }
+
+  // Historical prose and the one-time migration are allowed to name legacy IDs.
+  writeFileSync(resolve(root, 'docs/history.md'), `${oldToolId}\n`)
+  writeFileSync(
+    resolve(root, 'src/bootMigrateLegacyKeys.ts'),
+    `${JSON.stringify(oldStorageKey)}\n`,
+  )
+  writeFileSync(
+    resolve(root, 'src/__tests__/bootMigrateLegacyKeys.test.ts'),
+    `${JSON.stringify(oldToolId)}\n`,
+  )
+  if (options.oldIdentitySource) {
+    writeFileSync(resolve(root, 'src/active.ts'), options.oldIdentitySource)
+  }
+
+  return root
+}
+
+afterAll(() => {
+  rmSync(fixtureBase, { recursive: true, force: true })
+})
+
+describe('validateRelease', () => {
+  it('accepts a complete self-contained release package', async () => {
+    const fixtureRoot = createFixture('valid')
+
+    expect(await validateRelease(fixtureRoot)).toEqual([])
+  })
+
+  it('accumulates missing release entries without importing a missing backend', async () => {
+    const missingBackendRoot = createFixture('missing-backend', {
+      missingBackend: true,
+      missingReturns: true,
+    })
+
+    const errors = await validateRelease(missingBackendRoot)
+    expect(errors).toContainEqual(expect.stringContaining('entry.backend'))
+    expect(errors).toContainEqual(expect.stringContaining('returns'))
+  })
+
+  it('reports the package-derived tag when manifest version differs', async () => {
+    const badVersionRoot = createFixture('bad-version', {
+      manifestVersion: '0.2.0',
+    })
+
+    expect(await validateRelease(badVersionRoot)).toContainEqual(
+      expect.stringContaining('v0.1.0'),
+    )
+  })
+
+  it('rejects compiled handlers that differ from manifest tool order', async () => {
+    const badToolRoot = createFixture('bad-tools', {
+      backendKeys: ['wb-game-video:save-graph'],
+    })
+
+    expect(await validateRelease(badToolRoot)).toContainEqual(
+      expect.stringContaining('handler keys'),
+    )
+  })
+
+  it('rejects legacy active identities outside historical and migration files', async () => {
+    const oldIdentityRoot = createFixture('old-identity', {
+      oldIdentitySource: `export const tool = ${JSON.stringify(oldToolId)}\n`,
+    })
+
+    expect(await validateRelease(oldIdentityRoot)).toContainEqual(
+      expect.stringContaining('old active identity'),
+    )
+  })
+})
