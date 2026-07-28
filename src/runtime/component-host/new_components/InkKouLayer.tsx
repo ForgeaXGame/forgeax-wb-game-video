@@ -5,7 +5,7 @@
 import { useRef } from 'react'
 import type { OverlayProps } from '../rendererRegistry'
 import type { ComponentDef } from '../../registry/component-registry'
-import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass } from './skinRuntime'
+import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const inkKouComponent: ComponentDef = {
   label: '叩击',
@@ -26,7 +26,7 @@ export function InkKouLayer({ emit, preview }: OverlayProps) {
   }
 
   return (
-    <div className={`pvn-opts pvn-opts--kou show${previewFreezeClass(preview)}`} aria-label="叩击">
+    <div className={`pvn-opts pvn-opts--kou show${preview ? ' is-frozen' : ''}`} aria-label="叩击">
       <button type="button" className="pvn-opt pvn-opt--kou" aria-label="叩" disabled={preview} onClick={knock}>
         <span className="pvn-kou-orn" aria-hidden="true">
           <i className="pvn-kou-dot" />

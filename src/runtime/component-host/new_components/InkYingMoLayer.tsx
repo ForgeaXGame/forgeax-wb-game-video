@@ -5,7 +5,7 @@
 import { useRef } from 'react'
 import type { OverlayProps } from '../rendererRegistry'
 import type { ComponentDef } from '../../registry/component-registry'
-import { injectCss, ensureInkFilters, ensureBrushFont, previewFreezeClass } from './skinRuntime'
+import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const inkYingMoComponent: ComponentDef = {
   label: '應/默 抉择',
@@ -26,7 +26,7 @@ export function InkYingMoLayer({ emit, preview }: OverlayProps) {
   }
 
   return (
-    <div className={`pvn-opts pvn-opts--yingmo show${previewFreezeClass(preview)}`} aria-label="应默抉择">
+    <div className={`pvn-opts pvn-opts--yingmo show${preview ? ' is-frozen' : ''}`} aria-label="应默抉择">
       <div className="pvn-yingmo-pair">
         <ChoiceButton label="應" event="ying" preview={preview} onPick={pick} />
         <ChoiceButton label="默" event="mo" preview={preview} onPick={pick} />
