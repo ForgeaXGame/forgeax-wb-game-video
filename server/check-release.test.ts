@@ -46,7 +46,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'package.json'), {
       name: options.packageName ?? '@forgeax/wb-game-video',
-      version: '0.1.1',
+      version: '0.1.2',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
       },
@@ -60,7 +60,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'forgeax-extension.json'), {
       id: '@forgeax/wb-game-video',
-      version: options.manifestVersion ?? '0.1.1',
+      version: options.manifestVersion ?? '0.1.2',
       entry: {
         frontend: './dist/index.html',
         backend: './dist/server/tool-handlers.js',
@@ -179,7 +179,7 @@ describe('validateRelease', () => {
     })
 
     expect(await validateRelease(badVersionRoot)).toContainEqual(
-      expect.stringContaining('v0.1.1'),
+      expect.stringContaining('v0.1.2'),
     )
   })
 

@@ -25,6 +25,7 @@ const expectedTools = [
 describe('release identity', () => {
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax/wb-game-video')
+    expect(pkg.version).toBe('0.1.2')
     expect(manifest.id).toBe(pkg.name)
     expect(manifest.version).toBe(pkg.version)
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
