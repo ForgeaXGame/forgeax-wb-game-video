@@ -591,10 +591,8 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
 
     // 非破坏式载入某历史版本：读该 tag 的 blueprint 放进当前编辑数据；
     // 不 checkout、不改 git 历史。内容若已等于当前干净基线（如刚保存的最新版）则不标草稿。
+    // 覆盖未保存草稿的二次确认由 VersionPicker 的 popConfirm 负责，此处不再弹原生 confirm。
     loadVersion: async (tag: string) => {
-      if (get().isDraft && typeof confirm === 'function') {
-        if (!confirm(`载入版本 ${tag} 会覆盖当前未保存的修改，继续？`)) return
-      }
       const doc = await loadVersionProject(get().game, tag)
       if (!isLibraryDocument(doc)) {
         set({ savedTip: `载入 ${tag} 失败` })

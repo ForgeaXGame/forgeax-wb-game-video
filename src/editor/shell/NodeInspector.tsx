@@ -1771,10 +1771,6 @@ export function NodeInspector({
             + 边
           </button>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, lineHeight: 1.45 }}>
-          先连到目标即可跑通：不设条件时，播完会走<strong>第一条</strong>「默认推进」边（多条无条件时可调权重）。
-          「交互出口」只在选项 / QTE 结果分支时再改；画布拖线默认也是默认推进。
-        </div>
         {graph.edges.filter((e) => e.source === node.id).map((e) => (
           <EdgeRouteEditor
             key={e.id}

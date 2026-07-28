@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   audioAssetOptions,
   audioChoices,
-  audioLookupAlert,
   patchNodeBgm,
   type AudioOption,
 } from '../bgm-authoring'
@@ -154,28 +153,5 @@ describe('audioChoices（当前 ref 并进候选）', () => {
 
   it('候选查不到时也只剩当前 ref 一条（面板仍显示作者填的那首）', () => {
     expect(audioChoices([], 'bgm-battle').map((o) => o.id)).toEqual(['bgm-battle'])
-  })
-})
-
-// 刷新失败时缓存刻意保留上一轮候选（一次网络抖动不该清空选择器），于是「候选不可用」这句话
-// 会和补全里明明列着的候选互相打脸。两种失败得说两句话。
-describe('audioLookupAlert（壳层报警文案）', () => {
-  it('没失败就没有警告', () => {
-    expect(audioLookupAlert(null, 0)).toBeNull()
-    expect(audioLookupAlert(null, 3)).toBeNull()
-  })
-
-  it('一条候选都没有 → 说「候选不可用」', () => {
-    const text = audioLookupAlert('HTTP 500', 0)
-    expect(text).toContain('HTTP 500')
-    expect(text).toContain('暂不可用')
-    expect(text).not.toContain('不是最新')
-  })
-
-  it('手上还有候选 → 说「可能不是最新的」，不否认那些候选', () => {
-    const text = audioLookupAlert('HTTP 503', 2)
-    expect(text).toContain('HTTP 503')
-    expect(text).toContain('不是最新')
-    expect(text).not.toContain('暂不可用')
   })
 })

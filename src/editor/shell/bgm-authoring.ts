@@ -88,17 +88,3 @@ export function audioChoices(options: readonly AudioOption[], ref: string | unde
   if (!id || options.some((o) => o.id === id)) return options
   return [{ id, label: `${id}（手填 · 不在素材库）` }, ...options]
 }
-
-/**
- * 壳层工具条的报警文案（`null` = 不报警）。查询失败分两种，说法不能混：
- *  - 手上一条候选都没有 → 候选确实用不了；
- *  - 手上还有候选（刷新失败时缓存刻意保留上一轮，见 `audioAssetCacheStore`）→ 只能说「可能不是
- *    最新的」。说成「不可用」会和补全里明明列着的那几条互相打脸。
- * 今天 `refresh()` 还没有调用方，第二种走不到；音频上传链路一落地它就是常态。
- */
-export function audioLookupAlert(error: string | null, optionCount: number): string | null {
-  if (!error) return null
-  return optionCount > 0
-    ? `音频素材刷新失败：${error}（候选可能不是最新的，仍可手填 id）`
-    : `音频素材加载失败：${error}（音乐候选暂不可用，仍可手填 id）`
-}

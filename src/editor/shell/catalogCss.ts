@@ -125,23 +125,37 @@ ${PREVIEW_CLOCK_CSS}
   font-size: 11px;
   line-height: 1.35;
 }
-/* 确认对话框（与视频库 val-dialog* 同款，蓝图 tab 不依赖视频 tab 注入）。 */
-.val-dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 40; }
-.val-dialog { background: var(--gc-panel2); border: 1px solid var(--gc-line-soft); border-radius: 12px; padding: 16px; max-width: 420px; width: calc(100% - 32px); color: var(--gc-text); }
-.val-dialog > h2 { margin: 0 0 8px; font-size: 15px; }
-.val-dialog > p { margin: 0; color: var(--gc-muted); font-size: 13px; line-height: 1.45; }
-.val-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.val-dialog-actions button {
+/* 行内动作旁浮层（重命名 / 删除确认）——与「＋」新建同款。 */
+.gc-row-act-anchor { position: relative; display: inline-flex; }
+.gc-list-confirm-pop {
+  flex-direction: column;
+  align-items: stretch;
+  width: 220px;
+  gap: 8px;
+}
+.gc-list-confirm-msg {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--gc-text);
+}
+.gc-list-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.gc-list-confirm-actions button {
   all: unset; box-sizing: border-box; cursor: pointer;
-  height: 30px; padding: 0 12px; border-radius: 7px;
-  border: 1px solid var(--gc-line); color: var(--gc-text); font-size: 12px;
+  height: 28px; padding: 0 10px; border-radius: 7px;
+  border: 1px solid var(--gc-line); color: var(--gc-text); font-size: 11.5px;
   background: rgba(255,255,255,.04);
 }
-.val-dialog-actions button:last-child {
+.gc-list-confirm-actions button:hover { background: rgba(255,255,255,.08); }
+.gc-list-confirm-actions button.is-danger {
   border-color: rgba(248,113,113,.45);
   background: rgba(248,113,113,.16);
   color: #ff9a9a;
 }
+.gc-list-confirm-actions button.is-danger:hover { background: rgba(248,113,113,.28); }
 .gc-row {
   all: unset; box-sizing: border-box;
   display: flex; align-items: center; gap: 9px;
@@ -164,7 +178,8 @@ ${PREVIEW_CLOCK_CSS}
 .gc-row-badge { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 /* 每行右侧的行内动作（重命名/设为入口/删除）——平时透明，hover/选中才显。 */
 .gc-row-actions { flex: none; display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s; }
-.gc-row:hover .gc-row-actions, .gc-row.is-on .gc-row-actions { opacity: 1; }
+.gc-row:hover .gc-row-actions, .gc-row.is-on .gc-row-actions,
+.gc-row-actions:has(.is-on) { opacity: 1; }
 .gc-row-act {
   all: unset; box-sizing: border-box;
   width: 22px; height: 22px; border-radius: 6px;
@@ -172,8 +187,8 @@ ${PREVIEW_CLOCK_CSS}
   font-size: 12px; color: var(--gc-muted); cursor: pointer;
   transition: background .12s, color .12s;
 }
-.gc-row-act:hover { background: var(--gc-panel3); color: var(--gc-text); }
-.gc-row-act.is-danger:hover { background: rgba(248,113,113,.2); color: #ff9a9a; }
+.gc-row-act:hover, .gc-row-act.is-on { background: var(--gc-panel3); color: var(--gc-text); }
+.gc-row-act.is-danger:hover, .gc-row-act.is-danger.is-on { background: rgba(248,113,113,.2); color: #ff9a9a; }
 
 /* ── 左栏树/分组（界面 tab：自定义覆盖物组头 → 方案叶子）── */
 .gc-group { display: flex; flex-direction: column; }

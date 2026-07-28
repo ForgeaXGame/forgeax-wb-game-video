@@ -3,7 +3,7 @@
  *
  * 左：可编辑蓝图画布（GraphCanvas），实时高亮当前执行节点 + 点亮已走边，点节点可 jump。
  * 右：试玩面板（演出/HUD/交互/结局），与画布共享**同一个 GraphSession**，所以执行到哪、画布就亮哪。
- * 编辑图后点「重开」用最新图重建 session。
+ * 编辑图后可从节点「从此试玩」打开浮层；浮层内「重开」用最新图重建 session。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
@@ -13,7 +13,7 @@ import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
 import { useAudioAssets } from '../assets/audioAssetCacheStore'
-import { audioAssetOptions, audioLookupAlert } from './bgm-authoring'
+import { audioAssetOptions } from './bgm-authoring'
 import { NodePreviewStage } from './NodePreviewStage'
 import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
@@ -93,7 +93,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // 共享场景 store（蓝图/实体/变量/规则/场景/试玩 并行视图共用同一份 graph+meta+持久化）。
   const graph = useGraphScenario((s) => s.graph)
   const isDraft = useGraphScenario((s) => s.isDraft)
-  const savedTip = useGraphScenario((s) => s.savedTip)
   const fitSignal = useGraphScenario((s) => s.fitSignal)
   const runKey = useGraphScenario((s) => s.runKey)
   const setGraph = useGraphScenario((s) => s.setGraph)
@@ -125,7 +124,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   // 保存 = 打版本：一次性存 blueprint + 组件（服务端钩子）+ git tag vN。
   const doCommit = useGraphScenario((s) => s.commit)
-  const reset = useGraphScenario((s) => s.reset)
   const applyLayout = useGraphScenario((s) => s.applyLayout)
   const bumpRun = useGraphScenario((s) => s.bumpRun)
 
@@ -159,11 +157,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
   const kinoResources = useKinoVideoResources(game)
   // 节点面板「音乐」候选；音频入库链路未通前恒为空，面板退化成手填 id（见 AudioRefInput）。
-  // 与视频候选同规矩：资产层只给原始资产，展示形状在壳层拼；查询失败要在工具条上说出来，
-  // 不能装成一个空候选（见下方 alert）。
+  // 资产层只给原始资产，展示形状在壳层拼。
   const audio = useAudioAssets(game)
   const audioOptions = useMemo(() => audioAssetOptions(audio.assets), [audio.assets])
-  const audioAlert = audioLookupAlert(audio.error, audioOptions.length)
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
   useEffect(() => {
@@ -275,12 +271,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [canvasW, setCanvasW] = useState(0)
   const panelRatio = canvasW > 0 ? Math.min(0.8, panelW / canvasW) : 0
 
-  const resetToDemo = () => {
-    if (!confirm('重置为内置 demo 数据？当前未保存的编辑将丢失。')) return
-    reset()
-    setSelected(null)
-    setDrillStack([])
-  }
   const addPerfNode = (position: { x: number; y: number }) => {
     const id = `n-${Date.now().toString(36)}`
     const node: GameNode = {
@@ -460,30 +450,24 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const leaveOneLevel = () => {
     if (drillStack.length > 0) setDrillStack((s) => s.slice(0, -1))
   }
-  const clearCanvasGraph = () => {
-    if (canvasGraph.nodes.length === 0 && canvasGraph.edges.length === 0) return
-    if (!confirm('清空当前画布的所有节点和连线？（其它数据如实体/变量/界面方案不受影响）')) return
-    setCanvasGraph({ nodes: [], edges: [] })
-    setSelected(null)
-  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}>
-      {/* 顶部工具条：场景级动作（保存/版本/试玩），不含画布编辑手势 */}
+      {/* 顶部工具条：历史版本 → 保存 → 草稿提示，不含画布编辑手势 */}
       <div className="gv-graph-toolbar" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
         <VersionPicker />
-        <button type="button" onClick={bumpRun}>▶ 重开</button>
-        <button type="button" onClick={resetToDemo} title="恢复为内置 demo 数据（丢弃当前未保存编辑）">↺ 重置</button>
-        <button type="button" onClick={() => setPlayOpen((v) => !v)} title="显示/隐藏试玩浮层">{playOpen ? '▣ 隐藏试玩' : '▷ 显示试玩'}</button>
-        <button type="button" onClick={clearCanvasGraph} title="清空当前画布的所有节点和连线">🗑 清空</button>
-        <span style={{ opacity: 0.6, fontSize: 11 }}>{savedTip || `phase: ${snap.phase}`}</span>
+        <button type="button" onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
+        {isDraft ? (
+          <span
+            style={{ opacity: 0.85, fontSize: 12, color: '#ffc53d' }}
+            title="当前显示的是未保存草稿，尚未写入权威版本。点「💾 保存」提交。"
+          >
+            ⚠ 未保存草稿
+          </span>
+        ) : null}
         {videoOptionsError ? (
           <span role="alert" style={{ color: '#ff8f8f', fontSize: 11 }}>
             Kino 视频素材加载失败：{videoOptionsError}
           </span>
-        ) : null}
-        {audioAlert ? (
-          <span role="alert" style={{ color: '#ff8f8f', fontSize: 11 }}>{audioAlert}</span>
         ) : null}
       </div>
 
