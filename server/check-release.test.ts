@@ -244,11 +244,11 @@ describe('validateRelease', () => {
       `src/runtime/${compactOldName}-symlink`,
     ]
     mkdirSync(resolve(fixtureRoot, 'src/runtime'), { recursive: true })
-    writeFileSync(resolve(fixtureRoot, paths[0]), Buffer.from([0, 255, 1, 254]))
-    writeFileSync(resolve(fixtureRoot, paths[1]), 'not a known text extension\n')
-    writeFileSync(resolve(fixtureRoot, paths[2]), 'extensionless\n')
-    mkdirSync(resolve(fixtureRoot, paths[3]))
-    symlinkSync(resolve(fixtureRoot, '..', 'outside-package'), resolve(fixtureRoot, paths[4]))
+    writeFileSync(resolve(fixtureRoot, paths[0]!), Buffer.from([0, 255, 1, 254]))
+    writeFileSync(resolve(fixtureRoot, paths[1]!), 'not a known text extension\n')
+    writeFileSync(resolve(fixtureRoot, paths[2]!), 'extensionless\n')
+    mkdirSync(resolve(fixtureRoot, paths[3]!))
+    symlinkSync(resolve(fixtureRoot, '..', 'outside-package'), resolve(fixtureRoot, paths[4]!))
 
     const errors = await validateRelease(fixtureRoot)
     for (const path of paths) {
