@@ -70,6 +70,8 @@ ${PREVIEW_CLOCK_CSS}
 .gc-list-add:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .gc-list-add.is-on { background: rgba(240,136,64,.28); border-color: var(--gc-accent); }
 .gc-list-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+/* 分组表头直接贴住滚动容器顶边，避免顶部 padding 露出从其下滚过的方案行。 */
+.gc-list-body.has-groups { padding-top: 0; padding-bottom: 20px; }
 /* 「＋」旁浮层新建：JS 用 fixed 贴按钮右侧（躲过 .gc-list overflow:hidden）。 */
 .gc-list-compose-anchor { display: inline-flex; }
 .gc-list-compose-pop {
@@ -192,7 +194,12 @@ ${PREVIEW_CLOCK_CSS}
 
 /* ── 左栏树/分组（界面 tab：自定义覆盖物组头 → 方案叶子）── */
 .gc-group { display: flex; flex-direction: column; }
-.gc-group-head { display: flex; align-items: center; gap: 4px; }
+.gc-group-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--gc-panel);
+  border-bottom: 1px solid var(--gc-line-soft);
+}
 .gc-group-toggle {
   all: unset; box-sizing: border-box; flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 7px;
@@ -218,10 +225,10 @@ ${PREVIEW_CLOCK_CSS}
 }
 .gc-group-add:hover { background: var(--gc-accent-soft); color: var(--gc-text); border-color: var(--gc-accent-line); }
 .gc-group-children { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
-/* 叶子（方案行）：缩进收窄 + 内部 mark/gap 压紧，把宽度让给标题（左栏仅 248px）。 */
-.gc-row.is-leaf { margin-left: 6px; gap: 6px; padding-left: 8px; padding-right: 8px; }
+/* 叶子（方案行）：明确呈现组层级，同时压紧内部 mark/gap，把宽度留给标题。 */
+.gc-row.is-leaf { margin-left: 14px; gap: 6px; padding-left: 8px; padding-right: 8px; }
 .gc-row.is-leaf .gc-row-mark { width: 11px; }
-.gc-group-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 10px 6px 24px; }
+.gc-group-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 10px 6px 32px; }
 
 /* ── 右栏预览 ── */
 .gc-preview {

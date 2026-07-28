@@ -34,7 +34,7 @@ export type BlueprintTitleActionOk = { ok: true; id?: string }
 export type BlueprintTitleActionErr = { ok: false; reason: 'duplicate_title' | 'not_found' }
 export type BlueprintTitleActionResult = BlueprintTitleActionOk | BlueprintTitleActionErr
 
-/** 载入 demo / 文档时保证内置「通用样式」方案存在——用于 reset()/首次落座。 */
+/** 载入 demo / 文档时保证基础覆盖物存在——用于 reset()/首次落座。 */
 function withBuiltinSchemes<T extends GameScenario>(s: T): T {
   return {
     ...s,
@@ -63,7 +63,7 @@ function resolveActiveDoc(state: Pick<GraphScenarioStore, 'blueprints' | 'active
   return state.blueprints[state.activeBlueprintId]
 }
 
-/** ui.overlays 缺失内置方案则补（作用于共享 meta，不覆盖已有）。 */
+/** ui.overlays 缺失基础覆盖物则补（作用于共享 meta，不覆盖已有）。 */
 function withBuiltinSchemesMeta(m: ScenarioMetaFields): ScenarioMetaFields {
   return { ...m, ui: { ...m.ui, overlays: ensureBuiltinSchemes(m.ui?.overlays) } }
 }
