@@ -44,6 +44,8 @@ const SCAN_EXCLUDED_FILES = new Set([
 ])
 const compactLegacyName = ['game', 'video'].join('')
 const compactLegacyReelName = ['reel', 'studio'].join('-')
+const compactLegacyPackageName = ['wb', 'video', 'game'].join('-')
+const compactLegacyScopedName = ['@forgeax-extension', 'wb-game-video'].join('/')
 const oldToolNamespaces = [['gv', 'id'].join(''), ['g', 'en'].join('')]
 const oldEnvironmentNames = [
   ['PORT', 'REEL', 'STUDIO'].join('_'),
@@ -58,6 +60,13 @@ const OLD_ACTIVE_IDENTITIES = [
   new RegExp(`\\b(?:${oldEnvironmentNames.join('|')})\\b`),
   new RegExp(`emit:${compactLegacyName}`),
   new RegExp(`/${compactLegacyName}\\b`),
+]
+const OLD_ACTIVE_PATH_IDENTITIES = [
+  new RegExp(`(?:^|/)${compactLegacyName}(?:[./_-]|$)`, 'i'),
+  new RegExp(`(?:^|/)${compactLegacyPackageName}(?:[./_-]|$)`, 'i'),
+  new RegExp(`(?:^|/)${compactLegacyReelName}(?:[./_-]|$)`, 'i'),
+  new RegExp(`(?:^|/)${oldToolNamespaces[0]}(?:[./_-]|$)`, 'i'),
+  new RegExp(`(?:^|/)${compactLegacyScopedName}(?:/|$)`, 'i'),
 ]
 const GENERATED_MIGRATION_PREFIX_LIST = new RegExp(
   `\\[\\s*(["'])${compactLegacyReelName}\\1\\s*,\\s*(["'])${compactLegacyName}\\2\\s*,\\s*(["'])${oldToolNamespaces[0]}\\3\\s*\\]`,
@@ -142,6 +151,15 @@ async function findOldActiveIdentities(root, errors) {
         !isTextFile(packagePath)
       ) {
         continue
+      }
+
+      for (const pattern of OLD_ACTIVE_PATH_IDENTITIES) {
+        const match = pattern.exec(packagePath)
+        if (!match) continue
+        errors.push(
+          `old active identity ${JSON.stringify(match[0])} in relative path ${packagePath}`,
+        )
+        break
       }
 
       const source = identityScanSource(

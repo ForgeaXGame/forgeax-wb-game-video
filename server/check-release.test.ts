@@ -46,7 +46,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'package.json'), {
       name: options.packageName ?? '@forgeax/wb-game-video',
-      version: '0.1.2',
+      version: '0.1.3',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
       },
@@ -60,7 +60,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'forgeax-extension.json'), {
       id: '@forgeax/wb-game-video',
-      version: options.manifestVersion ?? '0.1.2',
+      version: options.manifestVersion ?? '0.1.3',
       entry: {
         frontend: './dist/index.html',
         backend: './dist/server/tool-handlers.js',
@@ -179,7 +179,7 @@ describe('validateRelease', () => {
     })
 
     expect(await validateRelease(badVersionRoot)).toContainEqual(
-      expect.stringContaining('v0.1.2'),
+      expect.stringContaining('v0.1.3'),
     )
   })
 
@@ -211,6 +211,35 @@ describe('validateRelease', () => {
     expect(await validateRelease(oldIdentityRoot)).toContainEqual(
       expect.stringContaining('dist/assets/stale.js'),
     )
+  })
+
+  it.each([
+    `${['game', 'video'].join('')}.html`,
+    `${['wb', 'video', 'game'].join('-')}.html`,
+    `${['reel', 'studio'].join('-')}.html`,
+    `${['gv', 'id'].join('')}.html`,
+    `${['@forgeax-extension', 'wb-game-video'].join('/')}/index.html`,
+  ])('rejects legacy active identity in relative path %s', async (legacyPath) => {
+    const activePath = `src/runtime/sdk/standalone/${legacyPath}`
+    const oldIdentityRoot = createFixture(`old-path-${legacyPath.replaceAll('/', '-')}`, {
+      oldIdentityFiles: {
+        [activePath]: '<!doctype html>\n',
+      },
+    })
+
+    expect(await validateRelease(oldIdentityRoot)).toContainEqual(
+      expect.stringContaining(activePath),
+    )
+  })
+
+  it('accepts the unified identity in active relative path names', async () => {
+    const unifiedIdentityRoot = createFixture('unified-path-identity', {
+      oldIdentityFiles: {
+        'src/runtime/sdk/standalone/wb-game-video.html': '<!doctype html>\n',
+      },
+    })
+
+    expect(await validateRelease(unifiedIdentityRoot)).toEqual([])
   })
 
   it('rejects a dotted legacy browser-key namespace', async () => {
