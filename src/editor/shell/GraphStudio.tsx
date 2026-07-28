@@ -71,7 +71,7 @@ function subflowMembers(graph: GameGraph, entryId: string): Set<string> {
 }
 
 /** 节点面板预览区宽度：拖拽持久化键与几何约束（表单区至少 FORM_W_MIN，面板过窄时预览让位）。 */
-const PREVIEW_W_KEY = 'gvid.nodePanel.previewW'
+const PREVIEW_W_KEY = 'wb-game-video.nodePanel.previewW'
 const PREVIEW_W_MIN = 340
 const FORM_W_MIN = 400
 
