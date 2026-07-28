@@ -1,15 +1,10 @@
 // server/tool-handlers.ts
-import { existsSync as existsSync5, readFileSync as readFileSync7, readdirSync as readdirSync2 } from "fs";
+import { readdirSync as readdirSync2 } from "fs";
 import { resolve as resolve5 } from "path";
 
 // server/asset-registry.ts
 import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream, statSync, renameSync } from "fs";
 import { extname, isAbsolute, relative, resolve, sep } from "path";
-var GAME_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}$/;
-function assetsDir(projectRoot, slug) {
-  if (!projectRoot || !slug || !GAME_SLUG_RE.test(slug)) return null;
-  return resolve(projectRoot, ".forgeax", "games", slug, "assets");
-}
 function manifestPath(dir) {
   return resolve(dir, "manifest.json");
 }
@@ -2029,7 +2024,7 @@ function pickPortraitRel(m) {
   return p.front ?? p.current ?? p.three_quarter ?? Object.values(p).find(Boolean) ?? m.pipelines?.turnaround?.views?.front ?? Object.values(m.pipelines?.turnaround?.views ?? {}).find(Boolean);
 }
 function importCharacterRefs(opts) {
-  const { assetsDir: assetsDir2, charactersDir } = opts;
+  const { assetsDir, charactersDir } = opts;
   if (!existsSync2(charactersDir)) return [];
   const out = [];
   let entries;
@@ -2054,7 +2049,7 @@ function importCharacterRefs(opts) {
     const externalPath = resolve2(charDir, rel);
     if (!existsSync2(externalPath)) continue;
     out.push(
-      upsertAsset(assetsDir2, {
+      upsertAsset(assetsDir, {
         id: `a-charref-${charId}`,
         kind: "image",
         productionType: "character_ref",
@@ -2080,7 +2075,7 @@ function shortId(desc) {
   return `a-sceneref-${key.replace(/[^a-z0-9]/gi, "").slice(0, 24)}`;
 }
 function importSceneRefs(opts) {
-  const { assetsDir: assetsDir2, texturesDir } = opts;
+  const { assetsDir, texturesDir } = opts;
   const indexPath = resolve3(texturesDir, "index.json");
   if (!existsSync3(indexPath)) return [];
   let list;
@@ -2096,7 +2091,7 @@ function importSceneRefs(opts) {
     const externalPath = resolve3(texturesDir, desc.file);
     if (!existsSync3(externalPath)) continue;
     out.push(
-      upsertAsset(assetsDir2, {
+      upsertAsset(assetsDir, {
         id: shortId(desc),
         kind: "image",
         productionType: "scene_ref",
@@ -2508,50 +2503,55 @@ function writeProject(dir, project, title = "graph") {
 }
 
 // server/tool-handlers.ts
-var GAME_SLUG_RE2 = /^[a-z0-9][a-z0-9-]{1,40}$/;
-function findProjectRoot(ctx) {
-  let dir = ctx.cwd ?? process.cwd();
-  for (let i = 0; i < 8; i++) {
-    if (existsSync5(resolve5(dir, ".forgeax"))) return dir;
-    const parent = resolve5(dir, "..");
-    if (parent === dir) break;
-    dir = parent;
-  }
+function isSafeGameId(value) {
+  return typeof value === "string" && value.length > 0 && value !== "." && value !== ".." && !value.includes("/") && !value.includes("\\");
+}
+function resolveExtensionRoot(ctx) {
+  if (ctx.extensionDir) return resolve5(ctx.extensionDir);
+  if (ctx.cwd) return resolve5(ctx.cwd);
   return null;
 }
-function resolveActiveGameSlug(ctx) {
-  const root = findProjectRoot(ctx);
-  if (!root) return null;
-  try {
-    const parsed = JSON.parse(readFileSync7(resolve5(root, ".forgeax", "active-game.json"), "utf-8"));
-    const slug = typeof parsed.slug === "string" ? parsed.slug : null;
-    return slug && GAME_SLUG_RE2.test(slug) ? slug : null;
-  } catch {
-    return null;
+function bindHostContext(ctx) {
+  if (ctx.gameId !== void 0) {
+    const extensionRoot2 = resolveExtensionRoot(ctx);
+    if (!isSafeGameId(ctx.gameId) || !ctx.cwd || !extensionRoot2) return null;
+    return {
+      boundGameId: ctx.gameId,
+      gameRoot: resolve5(ctx.cwd),
+      extensionRoot: extensionRoot2
+    };
   }
+  const extensionRoot = resolveExtensionRoot(ctx);
+  if (!isSafeGameId(ctx.game) || !ctx.projectRoot || !extensionRoot) return null;
+  return {
+    boundGameId: ctx.game,
+    gameRoot: resolve5(ctx.projectRoot, ".forgeax", "games", ctx.game),
+    extensionRoot
+  };
 }
-function pickSlug(args, ctx) {
-  const explicit = (args.gameSlug ?? "").trim();
-  if (explicit) return GAME_SLUG_RE2.test(explicit) ? explicit : null;
-  return resolveActiveGameSlug(ctx);
+function pickSlug(args, bound) {
+  if (!bound) return null;
+  if (args.gameSlug !== void 0 && args.gameSlug !== bound.boundGameId) return null;
+  return bound.boundGameId;
 }
 function graphDir(ctx, slug) {
-  const root = findProjectRoot(ctx);
-  if (!slug || !root) return null;
-  return resolve5(root, ".forgeax", "games", slug);
+  const bound = bindHostContext(ctx);
+  if (!slug || !bound || slug !== bound.boundGameId) return null;
+  return bound.gameRoot;
 }
 function orchestrateCtx(args, ctx) {
-  const slug = pickSlug(args, ctx);
-  const dir = assetsDir(findProjectRoot(ctx), slug);
-  if (!dir || !slug) return null;
+  const bound = bindHostContext(ctx);
+  const slug = pickSlug(args, bound);
+  if (!slug || !bound) return null;
+  const dir = resolve5(bound.gameRoot, "assets");
   return { dir, gameId: slug, env: ctx.env };
 }
-var NO_REGISTRY_ERR = "\u65E0 .forgeax \u5DE5\u7A0B\u6839\u6216\u65E0\u6548 gameSlug\uFF0C\u65E0\u6CD5\u8BBF\u95EE\u7D20\u6750\u5C42";
+var NO_REGISTRY_ERR = "\u5BBF\u4E3B\u672A\u7ED1\u5B9A\u6709\u6548\u6E38\u620F\u76EE\u5F55\u6216 gameSlug \u4E0E\u5F53\u524D\u6E38\u620F\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u8BBF\u95EE\u7D20\u6750\u5C42";
 function crossModuleDir(args, ctx, sub) {
-  const slug = pickSlug(args, ctx);
-  const root = findProjectRoot(ctx);
-  if (!slug || !root) return null;
-  return resolve5(root, ".forgeax", "games", slug, sub);
+  const bound = bindHostContext(ctx);
+  const slug = pickSlug(args, bound);
+  if (!slug || !bound) return null;
+  return resolve5(bound.gameRoot, sub);
 }
 function mapPerspective(p) {
   if (p === "first") return "\u7B2C\u4E00\u4EBA\u79F0";
@@ -2568,19 +2568,19 @@ var tools = {
    * 无盘数据时 project 为 null。args: { gameSlug? }
    */
   "wb-game-video:get-graph": async (args, ctx) => {
-    const slug = pickSlug(args, ctx);
+    const slug = pickSlug(args, bindHostContext(ctx));
     const dir = graphDir(ctx, slug);
     const project = dir ? readProject(dir).project : null;
     return { project, gameSlug: slug };
   },
   /**
-   * 覆盖写当前 game 的库文档，并压一版快照（留 10）。
-   * args: { gameSlug?, project, title? }
+   * 覆盖写当前 game 的 blueprint.json；title 为保留参数，当前忽略。
+   * args: { gameSlug?, project, title? }；成功 versions 固定为空数组。
    */
   "wb-game-video:save-graph": async (args, ctx) => {
-    const slug = pickSlug(args, ctx);
+    const slug = pickSlug(args, bindHostContext(ctx));
     const dir = graphDir(ctx, slug);
-    if (!dir) return { ok: false, errors: ["\u65E0 .forgeax \u5DE5\u7A0B\u6839\u6216\u65E0\u6548 gameSlug\uFF0C\u65E0\u6CD5\u843D\u76D8"] };
+    if (!dir) return { ok: false, errors: ["\u5BBF\u4E3B\u672A\u7ED1\u5B9A\u6709\u6548\u6E38\u620F\u76EE\u5F55\u6216 gameSlug \u4E0E\u5F53\u524D\u6E38\u620F\u4E0D\u4E00\u81F4\uFF0C\u65E0\u6CD5\u843D\u76D8"] };
     if (!args.project) return { ok: false, errors: ["\u7F3A\u5C11 project"] };
     const errors = validateDocument(args.project);
     if (errors.length) return { ok: false, errors, gameSlug: slug };
@@ -2592,7 +2592,9 @@ var tools = {
    */
   "wb-game-video:list-videos": async (_args, ctx) => {
     try {
-      const dir = resolve5(ctx.cwd ?? process.cwd(), "src", "editor", "assets", "zhandou");
+      const extensionRoot = resolveExtensionRoot(ctx);
+      if (!extensionRoot) throw new Error("\u5BBF\u4E3B\u672A\u63D0\u4F9B\u6269\u5C55\u76EE\u5F55");
+      const dir = resolve5(extensionRoot, "src", "editor", "assets", "zhandou");
       const videos = readdirSync2(dir).filter((f) => f.toLowerCase().endsWith(".mp4")).map((f) => f.replace(/\.mp4$/i, "")).sort();
       return { videos };
     } catch (e) {
