@@ -328,7 +328,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   useEffect(() => {
     const jumpId = pendingJumpRef.current
     pendingJumpRef.current = null
-    setSnap(jumpId ? sessionRef.current.jump(jumpId) : sessionRef.current.start())
+    setSnap(jumpId ? sessionRef.current.jump(jumpId, { resetGlobals: true }) : sessionRef.current.start())
     setPlayEpoch((n) => n + 1)
     setBgmRunKey((n) => n + 1)
   }, [session])
