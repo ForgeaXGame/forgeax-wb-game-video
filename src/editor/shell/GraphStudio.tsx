@@ -12,12 +12,14 @@ import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
+import { useAudioAssets } from '../assets/audioAssetCacheStore'
+import { audioAssetOptions, audioLookupAlert } from './bgm-authoring'
 import { NodePreviewStage } from './NodePreviewStage'
 import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
-import { GameStage } from '../../runtime/play'
+import { BgmPlayer, GameStage } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
@@ -25,7 +27,6 @@ import { removeMountGraph } from '../video/graphMaterialOps'
 import { resolveMediaSrc } from './media'
 import { useKinoVideoResources } from '../assets/kinoVideoCacheStore'
 import { useClipPerformanceEnd, videoDurationCapReached, MissingVideoNotice } from '../../runtime/play'
-import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import { addNode } from '../../graph/edit/graph-edit'
 import type { GameNode } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
@@ -148,32 +149,35 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [playFromNodeId, setPlayFromNodeId] = useState<string | null>(null)
   /** 每次 start / 从此试玩 递增，强制 <video> remount——末节点同 id 再 jump 时否则 key 不变、播完不重开。 */
   const [playEpoch, setPlayEpoch] = useState(0)
+  /**
+   * 只随 session 重建递增，用来重挂 `BgmPlayer`。新会话的 `bgm` 快照从 `null` 起，而「还没发过
+   * 指令」不是停播令（见 SessionSnapshot.bgm）——不重挂就会把上一局的曲子拖进新局。
+   * 刻意**不**复用 `playEpoch`：那个还会在画布 jump 时递增，跟着重挂会让床轨每次点节点都从头起播。
+   */
+  const [bgmRunKey, setBgmRunKey] = useState(0)
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
   const kinoResources = useKinoVideoResources(game)
+  // 节点面板「音乐」候选；音频入库链路未通前恒为空，面板退化成手填 id（见 AudioRefInput）。
+  // 与视频候选同规矩：资产层只给原始资产，展示形状在壳层拼；查询失败要在工具条上说出来，
+  // 不能装成一个空候选（见下方 alert）。
+  const audio = useAudioAssets(game)
+  const audioOptions = useMemo(() => audioAssetOptions(audio.assets), [audio.assets])
+  const audioAlert = audioLookupAlert(audio.error, audioOptions.length)
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
   useEffect(() => {
-    const bundled: VideoOption[] = Object.keys(ZHANDOU_VIDEOS)
-      .sort((a, b) => a.localeCompare(b))
-      .map((id) => ({
-        id,
-        label: id.startsWith('narr-') ? `叙事 · ${id}` : `战斗 · ${id}`,
-      }))
     const seen = new Set<string>()
     const kino: VideoOption[] = []
     for (const resource of kinoResources.items) {
       if (seen.has(resource.resource_id)) continue
       seen.add(resource.resource_id)
-      const name = resource.name?.trim()
       kino.push({
         id: resource.resource_id,
-        label: name && name !== resource.resource_id
-          ? `素材 · ${name} (${resource.resource_id})`
-          : `素材 · ${resource.resource_id}`,
+        label: resource.name?.trim() || resource.resource_id,
       })
     }
-    setVideoOptions([...kino, ...bundled.filter((v) => !seen.has(v.id))])
+    setVideoOptions(kino)
     setVideoOptionsError(kinoResources.error)
   }, [kinoResources.error, kinoResources.items])
 
@@ -336,9 +340,20 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     pendingJumpRef.current = null
     setSnap(jumpId ? sessionRef.current.jump(jumpId) : sessionRef.current.start())
     setPlayEpoch((n) => n + 1)
+    setBgmRunKey((n) => n + 1)
   }, [session])
 
   const videoSrc = resolveMediaSrc(snap.clip?.mediaId, game)
+  const preloadVideos = useMemo(
+    () => session.preloadClips().map((candidate) => ({
+      videoSrc: resolveMediaSrc(candidate.mediaId, game),
+      clip: candidate,
+      videoKey: `${candidate.nodeId}-${playEpoch}`,
+    })),
+    [session, snap.currentNodeId, game, playEpoch],
+  )
+  /** 床轨解析器（引擎只抛资产 id，URL 归壳层）；稳定引用，避免每帧让 BgmPlayer 重跑 effect。 */
+  const resolveBgm = useCallback((id: string | undefined) => resolveMediaSrc(id, game), [game])
 
   useEffect(() => {
     // 无视频：durationMs 到点推进（逻辑节拍节点）。
@@ -433,8 +448,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
         <span style={{ opacity: 0.6, fontSize: 11 }}>{savedTip || `phase: ${snap.phase}`}</span>
         {videoOptionsError ? (
           <span role="alert" style={{ color: '#ff8f8f', fontSize: 11 }}>
-            Kino 视频素材加载失败：{videoOptionsError}（仅显示内置视频）
+            Kino 视频素材加载失败：{videoOptionsError}
           </span>
+        ) : null}
+        {audioAlert ? (
+          <span role="alert" style={{ color: '#ff8f8f', fontSize: 11 }}>{audioAlert}</span>
         ) : null}
       </div>
 
@@ -546,11 +564,16 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               onFocus={() => claimPlayerFocus(playRootRef.current)}
               style={{ position: 'relative', height: 180, background: '#000', outline: 'none' }}
             >
+              {/* 床轨：独立音频通道（视频恒 muted）。挂在浮层里 → 关掉试玩即随卸载停播；
+                  key 随 session 重建换 → 重开不把上一局的曲子拖进新局（同 GraphPlaySurface）。 */}
+              <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} />
+
               {/* 演出 + 叠层：共享 runtime/play 的 GameStage。videoKey 带 playEpoch → 同节点再 jump 强制 remount。 */}
               <GameStage
                 videoSrc={videoSrc}
                 videoKey={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
                 clip={snap.clip}
+                preloadVideos={preloadVideos}
                 overlayMounts={snap.overlayMounts}
                 skins={session.skins}
                 skinCtx={{
@@ -626,6 +649,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 graph={canvasGraph}
                 nodeId={selected}
                 videoOptions={videoOptions}
+                audioOptions={audioOptions}
                 packs={packs}
                 isRefAllowed={isRefAllowed}
                 overlays={overlays}

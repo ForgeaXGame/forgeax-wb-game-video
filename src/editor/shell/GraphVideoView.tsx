@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../../i18n'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
-import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import {
   VideoAssetLibrary,
   type VideoLibraryEntry,
@@ -52,8 +51,6 @@ interface VideoEntry extends VideoLibraryEntry {}
 
 export function GraphVideoView(): JSX.Element {
   const t = useT()
-  const battleGroup = t('videoAssets.group.battle')
-  const narrativeGroup = t('videoAssets.group.narrative')
   const generatedGroup = t('videoAssets.group.generated')
   const uploadGroup = t('videoAssets.group.upload')
   const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
@@ -127,22 +124,6 @@ export function GraphVideoView(): JSX.Element {
     setRegAssets((assets) => assets.filter((asset) => asset.id !== assetId))
   }
 
-  const bundledEntries = useMemo<VideoLibraryEntry[]>(() => {
-    const clips: VideoLibraryEntry[] = []
-    const narr: VideoLibraryEntry[] = []
-    for (const [id, url] of Object.entries(ZHANDOU_VIDEOS)) {
-      const isNarr = id.startsWith('narr-')
-      ;(isNarr ? narr : clips).push({
-        id,
-        label: id,
-        url,
-        group: isNarr ? narrativeGroup : battleGroup,
-        bundled: true,
-      })
-    }
-    return [...clips, ...narr]
-  }, [battleGroup, narrativeGroup])
-
   const supplementalEntries = useMemo<VideoLibraryEntry[]>(() => {
     return regAssets
       .filter((a) => a.kind === 'video' && a.productionType === 'video_clip')
@@ -177,10 +158,9 @@ export function GraphVideoView(): JSX.Element {
         updatedAt: item.updatedAt,
       })
     }
-    for (const entry of bundledEntries) push(entry)
     for (const entry of supplementalEntries) push(entry)
     return out
-  }, [bundledEntries, supplementalEntries, videoController.items, uploadGroup])
+  }, [supplementalEntries, videoController.items, uploadGroup])
 
   const selectedEntry = entries.find((e) => e.id === selectedId)
   const timelineEntry = selectedEntry
@@ -271,7 +251,6 @@ export function GraphVideoView(): JSX.Element {
       <VideoAssetLibrary
         gameId={game}
         scenario={scenario}
-        bundledEntries={bundledEntries}
         supplementalEntries={supplementalEntries}
         selectedId={selectedId}
         onSelect={setSelectedId}
