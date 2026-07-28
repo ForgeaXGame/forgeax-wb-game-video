@@ -22,7 +22,7 @@
 
 ## 它是什么
 
-`@forgeax-extension/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 编辑
+`@forgeax/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 编辑
 **`GraphLibraryDocument`**（原 scenario 根字段 + `manifest.packs` 含主/子蓝图）；纯 TS
 状态机开跑吃根 `graph`，执行中依赖查 `manifest.packs`。视频上叠血条/QTE/选择等可插拔组件。
 
@@ -38,21 +38,20 @@
 >   `App.tsx` / `mount.tsx`（mount 重建为 graph-only 极简版）都没了；
 > - 更早退役的旧蓝图引擎（`blueprint/blueprint-schema.ts`、`scenarioToBlueprint.ts`、`blueprint/runtime/*`、
 >   `forge/BlueprintTab.tsx`、`player/BlueprintPlayer.tsx`、旧战斗皮肤）同样不存在；
-> - 后端 17 个 `gvid:*` FMV 工具（forge-script/save-scenario/generate-video/…）+ 对应 schemas 已删，
->   `server/tool-handlers.ts` 重写为 graph-native 三工具（见下）；
+> - 旧 FMV 工具和对应 schemas 已删，`server/tool-handlers.ts` 只提供当前 graph-native 工具（见下）；
 > - `vite.config.ts` 只剩 react + `/__gva__` 素材端点 + `/api` → forgeax server 代理
 >   （**落盘/打版本已上收宿主 `/api/game-host`**；旧 `/__graph__` 写盘端点已删）。
 >
 > **别再引用/复活以上任何东西**；Scene→Blueprint 编译、`USE_BLUEPRINT_RUNTIME`、`scene.ext.qteUi` 分派、
-> `gvid:*-scenario`/`generate-*` 工具全部作废。
+> 旧场景编排和视频生成工具全部作废。
 
 ### AI 工具（graph-native，`server/tool-handlers.ts` = `entry.backend`）
 契约 = **读写 `GraphLibraryDocument`（字段名 `project`）**，落盘游戏仓根
 `.forgeax/games/<slug>/blueprint.json`（+ `project.json`；与宿主 `/api/game-host` 同格式；
 **无** `game-video/` 子目录、**无** keep-10 版本夹——版本 = 游戏仓 git tag）：
-- `gvid:get-graph` `({gameSlug?})` — `{ project }`（无盘 `project: null`）。
-- `gvid:save-graph` `({project,title?,gameSlug?})` — 整本覆盖写 `blueprint.json`。
-- `gvid:list-videos` — 列内置演出视频库可绑的 `media.ref`。
+- `wb-game-video:get-graph` `({gameSlug?})` — `{ project }`（无盘 `project: null`）。
+- `wb-game-video:save-graph` `({project,title?,gameSlug?})` — 整本覆盖写 `blueprint.json`。
+- `wb-game-video:list-videos` — 列内置演出视频库可绑的 `media.ref`。
 蓝图库设计：`docs/superpowers/specs/2026-07-21-blueprint-library-folder-management.md`。
 驱动 agent = `agent-nodia`。
 
@@ -165,7 +164,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 2. **判断别建独立节点**（R1）：出手/血量/胜负/变招 都折进演出节点条件/加权出边；先手等状态用变量 + 条件边。
 3. **皮肤别 import 引擎代码**（R4）：只 `react + ./skinRuntime`，否则破坏「可独立替换」；用它就在 json 填 `component` 名。
 4. **引擎里别用 `Math.random` / 别碰 DOM**（R2）。
-5. **改 demo 改 `demo/nodia.graph.json`**（编辑器出厂数据源）；改运行时 game 数据走 `gvid:save-graph` 或工坊「保存」。
+5. **改 demo 改 `demo/nodia.graph.json`**（编辑器出厂数据源）；改运行时 game 数据走 `wb-game-video:save-graph` 或工坊「保存」。
 
 ## 已知缺口 / Backlog
 
@@ -182,7 +181,7 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 
 ### P3 · 产品能力
 - **三轨时间轴可视化（polish）**：视频轨编辑有一部分，完整三轨视图未齐。
-- **AI 生成新视频**：只能绑 `editor/assets/zhandou/*.mp4`（`gvid:list-videos`）；Seedance 链路已删。若要恢复，另引独立生视频链路，**不复活整套 FMV**。
+- **AI 生成新视频**：只能绑 `editor/assets/zhandou/*.mp4`（`wb-game-video:list-videos`）；Seedance 链路已删。若要恢复，另引独立生视频链路，**不复活整套 FMV**。
 - **多段攻击多段漂字**：现多只结第一击。
 
 ### P4 · 低优暂缓（07-06 spec 已标）
@@ -190,10 +189,10 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 - **Boss 回合结构化**：现靠 cycle / 条件边，无独立 Boss 回合模型。
 
 ### 刻意不做
-- 复活 FMV 双路径 / `Scene.kind` 第二套状态机 / `.gamevideo-scenarios` 回退。
+- 复活 FMV 双路径 / `Scene.kind` 第二套状态机 / 旧场景存储回退。
 
 ### 近期已清（备忘）
-- 我方/敌方回合 subflow；画布 chrome（自适应/加节点右下角）；拖节点误 fitView；下钻徽标裁切；删 `.gamevideo-*` 与 `posters/`；demo 节点 dagre 坐标写入 json（重置不再叠成一团）。
+- 我方/敌方回合 subflow；画布 chrome（自适应/加节点右下角）；拖节点误 fitView；下钻徽标裁切；删旧缓存与 `posters/`；demo 节点 dagre 坐标写入 json（重置不再叠成一团）。
 
 ## 深入文档
 
@@ -204,5 +203,5 @@ demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版�
 | 三态 schema（scenario/graph/…）说明 | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-schemas.md` |
 | **QTE / 数值填表 Schema + 扩展协议**（🟢 SPEC） | `<repo>/docs/superpowers/specs/2026-07-09-wb-game-video-plugin-extension-protocol-design.md` §7 |
 | **模块划分 + 实施清单**（`runtime` / `graph` / `editor`） | 同上文档 §12 / §10；素材在 `editor/assets` |
-| 包定位 / 媒体三态 / AI 调用指南 | `README.md` / `SKILL.md`（trigger `/gamevideo`） |
+| 包定位 / 媒体三态 / AI 调用指南 | `README.md` / `SKILL.md`（trigger `/wb-game-video`） |
 | 插件声明（surface / tool / port / permissions） | `forgeax-extension.json` |

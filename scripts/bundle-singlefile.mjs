@@ -2,7 +2,7 @@
 /**
  * 把 `vite build` 的产物压成**一个自包含 HTML 文件**。
  *
- * 用例：把整个编辑器压成**一份 `gamevideo.html`**，发给作者本人或试用者双击即用：
+ * 用例：把整个编辑器压成**一份 `wb-game-video.html`**，发给作者本人或试用者双击即用：
  *   - 纯前端 graph 引擎，不依赖任何外部服务（无 LLM/视频生成，演出视频用内置库）
  *   - 不依赖额外资源文件（JS/CSS 全部 inline）
  *   - 字体走 Google Fonts CDN（首次打开需要联网；离线也只是字体退化，功能完整）
@@ -13,7 +13,7 @@
  *      → <script type="module">…代码…</script>
  *      把 <link rel="stylesheet" crossorigin href="./assets/index-XXX.css">
  *      → <style>…CSS…</style>
- *   3. 写到 dist/gamevideo.html
+ *   3. 写到 dist/wb-game-video.html
  *   4. 做完整性检查：所有 ./assets/*.{js,css} 引用都已被吃掉
  *
  * 不引入 npm 依赖（避免让用户先 install 一堆东西才能拿到产物）。
@@ -31,7 +31,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
 const DIST = resolve(ROOT, 'dist')
 const HTML_IN = resolve(DIST, 'index.html')
-const HTML_OUT = resolve(DIST, 'gamevideo.html')
+const HTML_OUT = resolve(DIST, 'wb-game-video.html')
 
 if (!existsSync(HTML_IN)) {
   console.error(
