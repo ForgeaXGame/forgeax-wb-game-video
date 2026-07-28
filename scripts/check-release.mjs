@@ -17,6 +17,7 @@ const TEXT_EXTENSIONS = new Set([
   '.js',
   '.jsx',
   '.json',
+  '.lock',
   '.md',
   '.mjs',
   '.ts',
@@ -42,22 +43,24 @@ const SCAN_EXCLUDED_FILES = new Set([
   'src/__tests__/bootMigrateLegacyKeys.test.ts',
 ])
 const compactLegacyName = ['game', 'video'].join('')
+const compactLegacyReelName = ['reel', 'studio'].join('-')
 const oldToolNamespaces = [['gv', 'id'].join(''), ['g', 'en'].join('')]
 const oldEnvironmentNames = [
   ['PORT', 'REEL', 'STUDIO'].join('_'),
-  ['PORT', 'GAMEVIDEO', 'STUDIO'].join('_'),
-  ['WB', 'GAMEVIDEO', 'PLUGIN', 'BUILD'].join('_'),
+  ['PORT', ['GAME', 'VIDEO'].join(''), 'STUDIO'].join('_'),
+  ['WB', ['GAME', 'VIDEO'].join(''), 'PLUGIN', 'BUILD'].join('_'),
 ]
 const OLD_ACTIVE_IDENTITIES = [
   new RegExp(['@forgeax-', 'extension/wb-game-', 'video'].join('')),
-  new RegExp(`\\b(?:${oldToolNamespaces.join('|')}):[a-z]`),
-  new RegExp(`\\b${compactLegacyName}(?:[:.\\-\\]]|\\b)`),
+  new RegExp(`\\b(?:${oldToolNamespaces.join('|')})(?::[a-z]|\\.)`, 'i'),
+  new RegExp(`\\b${compactLegacyReelName}\\b`, 'i'),
+  new RegExp(`\\b${compactLegacyName}(?:[:.\\-\\]]|\\b)`, 'i'),
   new RegExp(`\\b(?:${oldEnvironmentNames.join('|')})\\b`),
   new RegExp(`emit:${compactLegacyName}`),
   new RegExp(`/${compactLegacyName}\\b`),
 ]
-const GENERATED_MIGRATION_PREFIX_PAIR = new RegExp(
-  `\\[\\s*(["'])reel-studio\\1\\s*,\\s*(["'])${compactLegacyName}\\2\\s*\\]`,
+const GENERATED_MIGRATION_PREFIX_LIST = new RegExp(
+  `\\[\\s*(["'])${compactLegacyReelName}\\1\\s*,\\s*(["'])${compactLegacyName}\\2\\s*,\\s*(["'])${oldToolNamespaces[0]}\\3\\s*\\]`,
   'g',
 )
 
@@ -117,7 +120,7 @@ function isTextFile(path) {
 function identityScanSource(packagePath, source) {
   if (!packagePath.startsWith('dist/')) return source
   return source.replace(
-    GENERATED_MIGRATION_PREFIX_PAIR,
+    GENERATED_MIGRATION_PREFIX_LIST,
     '["generated-legacy-migration-prefixes"]',
   )
 }

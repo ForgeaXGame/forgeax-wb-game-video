@@ -12,7 +12,7 @@
  * 语义：把每个旧前缀键拷到对应新键（新键已存在则不覆盖，保护新数据），再删旧键。
  * 幂等：旧键删完后再次运行为 no-op。SSR / 无 localStorage 环境静默跳过。
  */
-const LEGACY_PREFIXES = ['reel-studio', 'gamevideo'] as const
+const LEGACY_PREFIXES = ['reel-studio', 'gamevideo', 'gvid'] as const
 const NEW_PREFIX = 'wb-game-video'
 
 function migrateLegacyLocalStorageKeys(): void {

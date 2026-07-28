@@ -16,6 +16,13 @@ describe('wb-game-video browser key migration', () => {
     },
   )
 
+  it('preserves the node-panel preview width while moving its dotted gvid key', async () => {
+    localStorage.setItem('gvid.nodePanel.previewW', '512')
+    await import('../bootMigrateLegacyKeys')
+    expect(localStorage.getItem('wb-game-video.nodePanel.previewW')).toBe('512')
+    expect(localStorage.getItem('gvid.nodePanel.previewW')).toBeNull()
+  })
+
   it('does not overwrite an existing new key', async () => {
     localStorage.setItem('gamevideo:graph:view', 'old')
     localStorage.setItem('wb-game-video:graph:view', 'new')

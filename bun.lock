@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "reel-studio",
+      "name": "@forgeax/wb-game-video",
       "dependencies": {
         "@breezystack/lamejs": "^1.2.7",
         "@dagrejs/dagre": "^3.0.0",

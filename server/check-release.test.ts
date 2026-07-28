@@ -4,7 +4,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { validateRelease } from '../scripts/check-release.mjs'
 
@@ -12,6 +12,8 @@ const fixtureBase = mkdtempSync(resolve(import.meta.dirname, '.check-release-'))
 const toolId = 'wb-game-video:get-graph'
 const oldToolId = ['gv', 'id:get-graph'].join('')
 const oldStorageKey = ['game', 'video:graph:view'].join('')
+const oldDottedStorageKey = ['gv', 'id.nodePanel.previewW'].join('')
+const oldBrandName = ['reel', 'studio'].join('-')
 
 interface FixtureOptions {
   backendKeys?: string[]
@@ -23,6 +25,7 @@ interface FixtureOptions {
   packageName?: string
   platformVersion?: string
   oldIdentityDistSource?: string
+  oldIdentityFiles?: Record<string, string>
   oldIdentitySource?: string
 }
 
@@ -43,7 +46,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'package.json'), {
       name: options.packageName ?? '@forgeax/wb-game-video',
-      version: '0.1.0',
+      version: '0.1.1',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
       },
@@ -57,7 +60,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'forgeax-extension.json'), {
       id: '@forgeax/wb-game-video',
-      version: options.manifestVersion ?? '0.1.0',
+      version: options.manifestVersion ?? '0.1.1',
       entry: {
         frontend: './dist/index.html',
         backend: './dist/server/tool-handlers.js',
@@ -105,13 +108,17 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   )
   writeFileSync(
     resolve(root, 'dist/assets/migration.js'),
-    `const prefixes = ["reel-studio", ${JSON.stringify(['game', 'video'].join(''))}]\n`,
+    `const prefixes = [${JSON.stringify(oldBrandName)}, ${JSON.stringify(['game', 'video'].join(''))}, ${JSON.stringify(['gv', 'id'].join(''))}]\n`,
   )
   if (options.oldIdentityDistSource) {
     writeFileSync(resolve(root, 'dist/assets/stale.js'), options.oldIdentityDistSource)
   }
   if (options.oldIdentitySource) {
     writeFileSync(resolve(root, 'src/active.ts'), options.oldIdentitySource)
+  }
+  for (const [path, source] of Object.entries(options.oldIdentityFiles ?? {})) {
+    mkdirSync(resolve(root, dirname(path)), { recursive: true })
+    writeFileSync(resolve(root, path), source)
   }
 
   return root
@@ -172,7 +179,7 @@ describe('validateRelease', () => {
     })
 
     expect(await validateRelease(badVersionRoot)).toContainEqual(
-      expect.stringContaining('v0.1.0'),
+      expect.stringContaining('v0.1.1'),
     )
   })
 
@@ -204,5 +211,34 @@ describe('validateRelease', () => {
     expect(await validateRelease(oldIdentityRoot)).toContainEqual(
       expect.stringContaining('dist/assets/stale.js'),
     )
+  })
+
+  it('rejects a dotted legacy browser-key namespace', async () => {
+    const oldIdentityRoot = createFixture('old-dotted-gvid', {
+      oldIdentitySource: `export const key = ${JSON.stringify(oldDottedStorageKey)}\n`,
+    })
+
+    expect(await validateRelease(oldIdentityRoot)).toContainEqual(
+      expect.stringContaining('src/active.ts'),
+    )
+  })
+
+  it.each([
+    ['bun.lock', `"name": ${JSON.stringify(oldBrandName)}\n`],
+    ['server/engine/llm/skills/README.md', `# ${oldBrandName} Prompt Skills\n`],
+  ])('rejects legacy package branding in %s', async (path, source) => {
+    const oldIdentityRoot = createFixture(`old-brand-${path.replaceAll('/', '-')}`, {
+      oldIdentityFiles: { [path]: source },
+    })
+
+    expect(await validateRelease(oldIdentityRoot)).toContainEqual(
+      expect.stringContaining(path),
+    )
+  })
+
+  it('allows legacy names only in the exact migration and historical-doc exemptions', async () => {
+    const migrationRoot = createFixture('migration-exemptions')
+
+    expect(await validateRelease(migrationRoot)).toEqual([])
   })
 })
