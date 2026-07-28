@@ -70,7 +70,9 @@ function row(label: string, node: ReactNode): JSX.Element {
 /** 悬停 / 模块内聚焦时边框微亮；`nested` 仅略缩进，底色与父级一致。 */
 const HOVER_CARD_CLASS = 'ni-hover-card'
 const HOVER_CARD_NESTED = 'ni-hover-card--nested'
-const HOVER_CARD_STYLE_ID = 'ni-hover-card-style-v6'
+/** 图标按钮：对齐宿主侧栏 `.sb-icon-btn`（透明底、无边框、hover 才提亮）；无 padding，按钮尺寸 = 图标尺寸。 */
+const ICON_BTN_CLASS = 'ni-icon-btn'
+const HOVER_CARD_STYLE_ID = 'ni-hover-card-style-v8'
 
 function ensureHoverCardStyle(): void {
   if (typeof document === 'undefined') return
@@ -81,6 +83,8 @@ function ensureHoverCardStyle(): void {
     'ni-hover-card-style-v3',
     'ni-hover-card-style-v4',
     'ni-hover-card-style-v5',
+    'ni-hover-card-style-v6',
+    'ni-hover-card-style-v7',
   ]) {
     document.getElementById(id)?.remove()
   }
@@ -110,6 +114,27 @@ function ensureHoverCardStyle(): void {
 .${HOVER_CARD_CLASS}.${HOVER_CARD_NESTED}:hover,
 .${HOVER_CARD_CLASS}.${HOVER_CARD_NESTED}:focus-within {
   border-color: #6bc4a8;
+}
+.${ICON_BTN_CLASS} {
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--faint, #8c8377);
+  flex-shrink: 0;
+  line-height: 0;
+}
+.${ICON_BTN_CLASS}:hover {
+  color: var(--txt, #f6f1e9);
+  background: rgba(255, 255, 255, 0.08);
+}
+.${ICON_BTN_CLASS}:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: -1px;
 }
 `
   document.head.appendChild(el)
@@ -1176,6 +1201,8 @@ export function NodeInspector({
   formulas,
   focusedMountId,
   onFocusMount,
+  previewOpen,
+  onTogglePreview,
   onChange,
   onPacksChange,
   onEnsureOverlay,
@@ -1209,6 +1236,10 @@ export function NodeInspector({
   focusedMountId?: string | null
   /** 点击某挂载卡片标题时上抛（与预览台双向联动）；再次点同一张 = 取消聚焦（回到全展开）。 */
   onFocusMount?: (mountId: string | null) => void
+  /** 宿主左侧预览区当前是否展开（驱动头部弧形把手的朝向与文案）。 */
+  previewOpen?: boolean
+  /** 传了才渲染头部弧形把手：切换宿主左侧预览区的展开/收起。 */
+  onTogglePreview?: () => void
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   /**
@@ -1394,8 +1425,58 @@ export function NodeInspector({
     patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
   }
   return (
-    <div style={{ padding: 10, overflow: 'auto', fontSize: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
+    // 根上刻意不设 overflow：一旦它成为滚动容器，下方吸顶头部条就只相对它定位——而它高度随内容、
+    // 永不自己滚动，吸顶会失效。真正的滚动容器是宿主外层（GraphStudio：flex 1 0 400px + overflow:auto）。
+    <div style={{ padding: 10, fontSize: 12 }}>
+      {/* 头部条吸顶：配置项很长，滚到底部时仍要能点「从此试玩」/「删除节点」。
+          负 margin 抵掉根 padding，让它吸顶时铺满面板宽度并盖住下方滚过的内容（故需不透明底色）。 */}
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 6,
+          margin: '-10px -10px 8px',
+          padding: '10px 10px 8px',
+          background: 'var(--work, #0e0c09)',
+          borderBottom: '1px solid #2e2924',
+        }}
+      >
+        {/* 预览区开关：对齐宿主侧栏折叠按钮（lucide panel-left-close / panel-left-open，本包无
+            图标库，图标手写 inline SVG——与 GraphCanvas 的 Ico 同款做法）。 */}
+        {onTogglePreview ? (
+          <button
+            type="button"
+            className={ICON_BTN_CLASS}
+            onClick={onTogglePreview}
+            aria-expanded={!!previewOpen}
+            aria-label={previewOpen ? '收起预览区' : '展开预览区'}
+            title={previewOpen ? '收起左侧预览区' : '展开左侧预览区'}
+            // 按钮无 padding（尺寸=图标），只需抵掉 svg viewBox 内缩（rect x=3 → 16px 下约 2px），
+            // 让图标可见左缘落在表单内容列（节点标题 / 各区标题都从这一列起）上。
+            style={{ marginLeft: -2 }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+              {previewOpen ? <path d="m16 15-3-3 3-3" /> : <path d="m14 9 3 3-3 3" />}
+            </svg>
+          </button>
+        ) : null}
         <b style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>节点 {node.id}</b>
         <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           <button
@@ -1609,9 +1690,18 @@ export function NodeInspector({
                       const inputs = (child.inputs ?? {}) as Record<string, unknown>
                       const summary = summarizeComponentInputs(inputs)
                       return (
+                        // 一个组件 = 一张卡片：展开后「参数」「事件」两组都被这层边框+底色包住，
+                        // 读起来是同一个整体（对齐 NodeActionsEditor 行的卡片写法）。
                         <details
                           key={child.id}
-                          style={{ marginBottom: 4, border: '1px solid #262626', borderRadius: 6, padding: '2px 6px', fontSize: 11 }}
+                          style={{
+                            marginBottom: 6,
+                            border: '1px solid #2a2a2a',
+                            borderRadius: 6,
+                            padding: '2px 8px',
+                            fontSize: 11,
+                            background: 'rgba(0,0,0,0.22)',
+                          }}
                         >
                           <summary
                             style={{
@@ -1634,11 +1724,15 @@ export function NodeInspector({
                             <span style={{ opacity: 0.4, marginLeft: 'auto' }}>▾</span>
                           </summary>
                           <div style={{ padding: '4px 0 6px' }}>
+                            {/* x/y 不在本面板出数字框：位置统一在左侧预览台拖拽调（拖拽直接写
+                                inputs.x/y）。仍保留在组件 manifest 里，因为 isPositionable() 靠它
+                                判定该组件能否拖拽定位。 */}
                             <ComponentFormFields
                               componentId={child.component}
                               values={inputs}
                               onChange={(next) => setChildInputs(i, child.id, next)}
                               pickers={pickers}
+                              excludeKeys={['x', 'y']}
                               density="compact"
                             />
                           </div>
