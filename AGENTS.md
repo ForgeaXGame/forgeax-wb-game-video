@@ -1,207 +1,64 @@
-# AGENTS.md — wb-game-video（视频游戏工坊）给 AI 看的入口
+# AGENTS.md — @forgeax/wb-game-video
 
-> 你（AI agent）被丢进 `packages/marketplace/extensions/wb-game-video/` 时，先读这份。
-> 比 `README.md` / `SKILL.md` 浓缩，按你查信息的优先级排版。深入细节再翻那两份。
-> 最后更新：2026-07-22（蓝图库方案 A：单文件 + manifest.packs；开跑根 graph / 依赖查 packs）。
+这是独立的 `@forgeax/wb-game-video` 仓库。修改前先读本文件和 [`README.md`](./README.md)。
 
----
+## 不可破坏的边界
 
-## ⚠️ 硬规矩：三份标准流程 schema 禁止随意加字段
+- `src/runtime/schema/node-config-schema.ts`、`react-flow-schema.ts`、`graph-schema.ts` 是发布数据契约；增删字段必须取得专门同意。
+- `src/runtime` 不得依赖 `src/graph` 或编辑器壳。状态机不接触 DOM/React，不使用 `Math.random`。
+- 图中只有 `perf` 演出节点；路由判断放在边上，副作用放在 reaction 中，UI 放在 overlay/component 中。
+- 运行入口是根 `graph`；子流程从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
 
-以下三份是**定义标准流程/落盘契约的 schema**，是全系统的稳定地基：
+## 持久化与启动
 
-- `src/runtime/schema/node-config-schema.ts`
-- `src/runtime/schema/react-flow-schema.ts`
-- `src/runtime/schema/graph-schema.ts`
+- 权威蓝图：`.forgeax/games/<slug>/blueprint.json`。
+- 项目元信息：同目录 `project.json`，首次工具保存时按需创建。
+- 共享生成素材：同目录 `assets/`；角色和场景引用从 `characters/`、`textures/` 只读导入。
+- `save-graph` 的 `title` 是保留参数，当前不产生版本；成功结果的 `versions` 固定为空数组。
+- 未保存草稿使用 localStorage。空项目使用空库，内置 demo 只在显式“重置”时载入。
 
-**不得随意往这三份里增删字段**。任何要往它们里加字段的改动，**必须先取得用户的专门同意**，不能自作主张。
-需要临时/派生信息时，优先放到**编辑器侧**（如 `editor/shell/*`）用现有数据推导，而不是往核心 schema 加字段。
-（反面教材：曾往 `ComponentInput` 加过 `variant` 字段来给 events 编辑器传参——错误做法，已改为在编辑器侧按组件 `kind` 推导。）
+AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
 
----
+## 宿主上下文
 
-## 它是什么
+后端只接受两种明确的宿主上下文：
 
-`@forgeax/wb-game-video` = **玩法优先的视频游戏编辑器 + 运行时**。作者/AI 编辑
-**`GraphLibraryDocument`**（原 scenario 根字段 + `manifest.packs` 含主/子蓝图）；纯 TS
-状态机开跑吃根 `graph`，执行中依赖查 `manifest.packs`。视频上叠血条/QTE/选择等可插拔组件。
+- Arrival：`ctx.gameId` 是绑定 id，`ctx.cwd` 是当前游戏根，`ctx.extensionDir` 是扩展根。
+- ForgeaX：`ctx.game` 是绑定 id，`ctx.projectRoot` 是项目根，`ctx.cwd` 是扩展根；当前
+  游戏根为 `ctx.projectRoot/.forgeax/games/<ctx.game>`。
 
-代码已按三分模块落地：
-- **`src/runtime/`** — schema / 引擎 / Kind·Skin 注册 / 校验（可独立单测；**不** import editor/assets）
-- **`src/graph/`** — 蓝图画布 + 图编辑纯函数
-- **`src/editor/`** — 工坊壳（Studio / persist / demo / video）+ **`editor/assets/`**（视频/字体）
+内部按需统一成 `boundGameId` / `gameRoot` / `extensionRoot`。`list-videos` 只要求
+`extensionRoot`，允许在无游戏绑定的 ForgeaX 会话中调用；其余游戏读写、生成和共享素材
+工具要求 `boundGameId + gameRoot`。不得读取全局 active-game，不得把 ForgeaX 的扩展
+`cwd` 当成项目根。显式 `gameSlug` 必须与绑定 id 逐字一致。game id 支持中文与单字符；
+只拒绝空值、`.`、`..` 和路径分隔符。
 
-唯一入口 `src/main.tsx → GraphApp`。皮肤字体由 `editor/init.ts` → `bootEditorSkins()` 注入 runtime（`setBrushFontUrl`）。
+`ctx.env` 只包含 manifest 声明且后端实际读取的 `FORGEAX_SERVER_URL` /
+`FORGEAX_SERVER_PORT`。
 
-> ⚠️ **旧 FMV 内容生产整套已在 2026-07-09 物理删除**（一刀切，无兼容层）：
-> - 前端 `src/{scenario,llm,media,editor,player,forge,storytree,qte,io,ui,stage,minigames,fx,lib,shell}/` +
->   `App.tsx` / `mount.tsx`（mount 重建为 graph-only 极简版）都没了；
-> - 更早退役的旧蓝图引擎（`blueprint/blueprint-schema.ts`、`scenarioToBlueprint.ts`、`blueprint/runtime/*`、
->   `forge/BlueprintTab.tsx`、`player/BlueprintPlayer.tsx`、旧战斗皮肤）同样不存在；
-> - 旧 FMV 工具和对应 schemas 已删，`server/tool-handlers.ts` 只提供当前 graph-native 工具（见下）；
-> - `vite.config.ts` 只剩 react + `/__gva__` 素材端点 + `/api` → forgeax server 代理
->   （**落盘/打版本已上收宿主 `/api/game-host`**；旧 `/__graph__` 写盘端点已删）。
->
-> **别再引用/复活以上任何东西**；Scene→Blueprint 编译、`USE_BLUEPRINT_RUNTIME`、`scene.ext.qteUi` 分派、
-> 旧场景编排和视频生成工具全部作废。
+扩展后端是宿主进程内加载的 fully-trusted 代码；manifest 的权限和 `requestedEnv`
+是声明与审计信息，不构成进程隔离，也不限制进程已有的 Node 能力。
 
-### AI 工具（graph-native，`server/tool-handlers.ts` = `entry.backend`）
-契约 = **读写 `GraphLibraryDocument`（字段名 `project`）**，落盘游戏仓根
-`.forgeax/games/<slug>/blueprint.json`（+ `project.json`；与宿主 `/api/game-host` 同格式；
-**无** `game-video/` 子目录、**无** keep-10 版本夹——版本 = 游戏仓 git tag）：
-- `wb-game-video:get-graph` `({gameSlug?})` — `{ project }`（无盘 `project: null`）。
-- `wb-game-video:save-graph` `({project,title?,gameSlug?})` — 整本覆盖写 `blueprint.json`。
-- `wb-game-video:list-videos` — 列内置演出视频库可绑的 `media.ref`。
-蓝图库设计：`docs/superpowers/specs/2026-07-21-blueprint-library-folder-management.md`。
-驱动 agent = `agent-nodia`。
-
-## 1 分钟跑起来
+## 开发与验证
 
 ```bash
-cd packages/marketplace/extensions/wb-game-video
-npm run dev            # vite dev，端口 15185
-npx vitest run         # 单测（vitest + happy-dom）
-npx tsc --noEmit       # 类型检查（当前全绿）
+bun install
+bun run dev
+bun run test
+bun run lint
+bun run build
 ```
 
----
+发布前 `bun run build` 必须成功；它会依次生成前端、后端、standalone 产物并执行 release validator。
 
-## 硬性规则（改动前必读，不要违反）
+## 目录
 
-### R0 · Standalone HTTP
-- 浏览器侧访问插件自有端点（`/__graph__` / `/__gva__` / 媒体 URL 等）必须走
-  `src/lib/plugin-http.ts` 的 `pluginUrl()` / `pluginFetch()`；不要直接写
-  `fetch('/__graph__/...')` 或把裸 `/__gva__/...` 塞进 `<img>/<video>`。
-- 原因：本地 dev 直连插件端口，但 anydev 里插件 iframe 走 Studio 同源 HTTPS
-  `/__fx-plugin/wb-game-video/` 代理；裸根路径会绕到 Studio 根导致 404 / mixed-content。
-
-### R1 · Schema（`src/runtime/schema/graph-schema.ts` 是 SSOT 形态；）
-- **落盘文档 = `GraphLibraryDocument`** = 原 `GameScenario` 根字段 + `manifest{ mainPackId, packs }`。
-  根 `graph` = 开跑入口（主蓝图镜像）；子蓝图本体只在 `manifest.packs`；**无根级 `packs` 数组**。
-- **只有一种节点类型「演出节点」(`type:'perf'`)**：可绑视频；判断折进出边（勿做独立网关节点）。
-  跨节点记忆用变量 + 条件边（见 nodia 的 `mineFirst`）。
-- **心智三层**：`edges` = 路由；节点/挂载 `reactions` = 副作用（无局级 scenario.reactions）；`ui.overlays` + `overlayNodes` = UI。
-- **一切逻辑声明式、可序列化、无函数入库**：条件 `GraphCondition`(`var/flag/attr/attrRatio/attrCompare/score/hasItem/visited`)、
-  副作用 `GraphEffect`(`attr/var/flag/item`，`value` 可为常量或 `{expr}` 表达式，见 `expr.ts`)。**不准把函数/代码塞进数据。**
-- **实体无 hp 特权**：`entities[id].attrs` 是开放数值袋，`hp` 只是"名为 hp、attrMeta 带 max/initial 的一个 attr"的约定；
-  死亡 = `attrRatio hp lte 0`。换品类（竞速等）只换 attrs，不改引擎。
-- **handle 派生**：`node.inputs/outputs` 不手写、由组件 `events` / 实例 `inputs.events` 派生；`position` 才存 json。
-- **已删调度标签**：`ComponentDef.role` / `ComponentDef.surface`、独立 interaction 层（`openInteraction` / `submitInteraction` / `snapshot.interaction`）一律不存在；
-  全部组件 = `renderOverlay` + `emit(event) → reactions`。
-
-### R2 · Runtime（`src/runtime/engine/engine.ts` = 纯 TS 状态机，零 DOM）
-- 引擎 `GraphRuntime` 吃 `GameGraph+GameScenario` → 产**泛型 directive**（`playClip` / `renderOverlay` / `removeOverlay` / `hudUpdate` / …）；
-  **相位只有** `idle | playing | ended`（无 `awaitInteraction` / `openInteraction` / 独立 interaction 快照）。
-  **无出边且调用栈空 → 相位切 `ended`，不强制任何结局文案**（胜负/结局表现完全走节点 overlay 与图规则，配了才演）；
-  **有视频节点按素材播完推进**（Player `onEnded`；`once`=播完走 / `loop`=循环到交互或规则改道）；`durationMs` 不面向作者配置、不截断视频。
-  **引擎绝不碰 DOM/React**。`GraphSession`(视图模型) 消费 directive 成 `SessionSnapshot`（`overlayMounts` + hud）；工坊 `GraphPlaySurface` 只订阅 snapshot 渲染。
-- 入口：`start()`（从 `nodes[0]`）/ `onPerformanceEnd()` / `tick(ms)` / `emitComponentEvent(elId, eventId)` / `jumpToNode(id)`。
-  Player 侧对应 `session.emitEvent`；**不要**再写 `submit` / `submitInteraction`。
-- **等待是声明式的**：节点若没有无条件自动出边、走向靠组件 `emit → reactions`/事件边，则 `advanceAuto` 会停住等事件；超时由皮肤 `useDefaultEventTimeout` 自 `emit(defaultEvent)`。
-- **`requiredPlugins`**：scenario 头声明依赖；`registerPlugin` + `validateScenario` / ctor fail-loud。
-- **RNG 必须走 `state.rng`（`rng.ts`）**，不准 `Math.random`。落盘不再带 `rng.seed`（init 固定 seed 0）；需要可配置时再补回。
-- 加新玩法 = 注册一个 **ComponentDef**（`component-registry.ts`：`label` / `inputs` / `events` + 可选 `validate?`/`render?`）+
-  `registerOverlayRenderer` 皮肤；**无 `role` / `surface` 调度标签**；核心/引擎/Player 都不改。
-- **依赖铁律**：`runtime` 不得 import `graph/` 或工坊壳（Studio/persist/demo）。
-
-### R3 · 持久化 / demo（v4，2026-07-09）
-- **出厂 demo = 只读 `src/editor/demo/nodia.graph.json`**（`src/editor/demo/demo.ts` import；`NODIA_DEMO` 只读，副本用 `makeNodiaDemo`）。改 demo 直接改这份 json（无代码生成器）。
-- **主动保存走宿主 game-host**：`保存` → `PUT /api/game-host/games/<slug>/package`（写游戏仓根
-  `blueprint.json` + `project.json` + `assets/manifest.json`，权威最新）。见 `persist-client.ts`
-  （实现在 `@forgeax/platform-io` `api/game-host.ts`，由 cli/server 挂 `/api/game-host`）。
-  **不再有** `/__graph__` 写盘 / `game-video/` 子目录 / `scenarios.graph.versions/` keep-10。
-- **打版本**：`POST /api/game-host/games/<slug>/versions` → 游戏仓 **git annotated tag `vN`**
-  （产品只用最新、不做回退；`store.commit()` / `VersionPicker` 打版本按钮）。
-- **游戏专属组件**：游戏仓 `components/` → `bun scripts/build-game-components.mjs <gameDir>` 出
-  `dist/components/index.js`（`register(host)` 契约）→ 运行时 `component-host.loadGameComponents(slug)`
-  经 `GET /api/game-host/games/<slug>/components/*` 动态加载；未构建则回落平台内建集（`src/runtime/component-host/`）。
-- **未保存草稿只在 localStorage**（autosave，不落盘）。
-- **进入优先级：localStorage 草稿 > 磁盘最新已保存版本 > demo**；无数据=空蓝图；「重置」=回 demo。
-- 版本下拉从磁盘版本索引读；`loadVersion` 取磁盘快照。
-
-### R4 · 盖在视频上的组件（皮肤：QTE/选择/血条/漂字/转场/对话）
-- 都是 **`src/runtime/component-host/components/` 下独立、自闭环、可替换的 React 组件**，按 `kind` 或 `component` id 注册进
-  `src/runtime/component-host/rendererRegistry.tsx`，渲染时以 `<Comp key=… />` 挂成子元素（各自 fiber/hook，**外层有错误边界隔离——坏组件只提示不崩引擎**）。
-- **配置只记组件名**：全部为 overlay child 的 `component`；统一 `OverlayProps`（`overlay` / `emit` / `ctx`），
-  在 `rendererRegistry.tsx` 注册；自闭环辅助见 `skinRuntime.ts`（CSS/滤镜/字体/超时自 emit）。
-
----
-
-## 心智模型：数据 → 引擎 → 渲染
-
-```
-demo/nodia.graph.json (GameScenario)         ← SSOT（localStorage 草稿/版本覆盖其上）
-  ui.overlays{} + node.overlayNodes[]        ← UI（HUD/QTE/字幕…）
-  node.data.reactions / mount.reactions      ← 副作用
-  graph.edges[]  条件/加权出边                ← 路由（判断折在这里，无网关节点）
-        ▼  src/runtime  GraphRuntime → directive → GraphSession → SessionSnapshot
-        ▼  src/graph    GraphCanvas（编辑/可视化）
-  src/editor/shell GraphPlaySurface / GraphStudio（工坊壳）订阅 snapshot 渲染
-        └─ 皮肤从 src/runtime/component-host 注册表取组件（错误边界隔离）
-```
-
-## 关键目录（改 X 看哪里）
-
-| 你要 | 看 |
+| 领域 | 位置 |
 |---|---|
-| 图 schema / 类型 SSOT | `src/runtime/schema/graph-schema.ts` |
-| 状态机引擎 | `src/runtime/engine/engine.ts` |
-| 视图模型（引擎↔UI） | `src/runtime/engine/session.ts` |
-| 组件契约 / 注册 | `src/runtime/component-host/components/*` + `src/runtime/registry/component-registry.ts` |
-| 表达式 / 随机 / 效果 / 条件 | `src/runtime/engine/{expr,rng,apply-effects,condition}.ts` |
-| 校验 | `src/runtime/validate/validate.ts` |
-| 皮肤 / renderer registry | `src/runtime/component-host/` |
-| 蓝图画布 / 图编辑 / 派生视图 | `src/graph/canvas/` / `src/graph/edit/` |
-| 试玩 / Studio / 节点面板（工坊壳） | `src/editor/shell/` |
-| demo / 持久化 / store | `src/editor/demo/` / `src/editor/persist/` |
-| 内容素材（视频/字体） | `src/editor/assets/` |
-| 应用外壳 / 视图路由 | `src/GraphApp.tsx` / `src/editor/persist/graphViewStore.ts` |
-| AI 工具后端 | `server/tool-handlers.ts` + `schemas/*.json` |
+| schema、状态机、组件宿主、校验 | `src/runtime/` |
+| 蓝图画布与编辑纯函数 | `src/graph/` |
+| 工坊壳、持久化、素材与显式 demo | `src/editor/` |
+| AI 工具、生成编排、素材登记 | `server/` |
+| JSON 工具契约 | `schemas/` |
 
-## 你 90% 会踩的坑
-
-1. **页面没显示你改的 demo？** localStorage 的草稿/版本优先级高于 demo。点**「重置」**回到 demo json。
-2. **判断别建独立节点**（R1）：出手/血量/胜负/变招 都折进演出节点条件/加权出边；先手等状态用变量 + 条件边。
-3. **皮肤别 import 引擎代码**（R4）：只 `react + ./skinRuntime`，否则破坏「可独立替换」；用它就在 json 填 `component` 名。
-4. **引擎里别用 `Math.random` / 别碰 DOM**（R2）。
-5. **改 demo 改 `demo/nodia.graph.json`**（编辑器出厂数据源）；改运行时 game 数据走 `wb-game-video:save-graph` 或工坊「保存」。
-
-## 已知缺口 / Backlog
-
-> living list（2026-07-09）。已完成项不列；优先级：契约债 > 文档债 > 产品能力 > 低优暂缓。
-
-### P1 · 契约债（影响扩展）
-- **QTE 出口可自定义**：现写死 `pass/good/fail`；应像 choice 的 `opt:*`，由皮肤 / `outputs(params)` 派生。
-- **`qteKind` 降级**：`parry|timing|mash|sequence|sweep` 是产品枚举，不是引擎一级类型；`parry≈timing`（同为打点，差在皮肤）。中期改为 `component` + 资源预设。
-- **三分法依赖纪律二次收紧**：目录已拆 `runtime/graph/editor`，边界未钉死——skins 是否应迁出 runtime 核心、NodeInspector 业务字段是否全归 editor、player 薄层是否独立成章。
-
-### P2 · 文档债
-- **`SEEDANCE-PARITY.md` 已译成 graph + Overlay 对照**（2026-07-14）；旧 FMV 字段表已清。
-- **07-06 spec 状态段对齐现行持久化**：草稿 localStorage + 磁盘权威（`/__graph__`），与文中过期「零 localStorage」说法统一。
-
-### P3 · 产品能力
-- **三轨时间轴可视化（polish）**：视频轨编辑有一部分，完整三轨视图未齐。
-- **AI 生成新视频**：只能绑 `editor/assets/zhandou/*.mp4`（`wb-game-video:list-videos`）；Seedance 链路已删。若要恢复，另引独立生视频链路，**不复活整套 FMV**。
-- **多段攻击多段漂字**：现多只结第一击。
-
-### P4 · 低优暂缓（07-06 spec 已标）
-- **`edge.showAtMs` 选项渐显**：schema 有字段；await 期无 tick，未真正跑通。
-- **Boss 回合结构化**：现靠 cycle / 条件边，无独立 Boss 回合模型。
-
-### 刻意不做
-- 复活 FMV 双路径 / `Scene.kind` 第二套状态机 / 旧场景存储回退。
-
-### 近期已清（备忘）
-- 我方/敌方回合 subflow；画布 chrome（自适应/加节点右下角）；拖节点误 fitView；下钻徽标裁切；删旧缓存与 `posters/`；demo 节点 dagre 坐标写入 json（重置不再叠成一团）。
-
-## 深入文档
-
-| 你要 | 看 |
-|---|---|
-| 皮肤 props / 注册 / 自闭环工具 | `src/runtime/component-host/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |
-| 引擎设计规格 + 分期 + 实施状态（含 2026-07-09 增补） | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-blueprint-orchestration-design.md` |
-| 三态 schema（scenario/graph/…）说明 | `<repo>/docs/superpowers/specs/2026-07-06-wb-game-video-schemas.md` |
-| **QTE / 数值填表 Schema + 扩展协议**（🟢 SPEC） | `<repo>/docs/superpowers/specs/2026-07-09-wb-game-video-plugin-extension-protocol-design.md` §7 |
-| **模块划分 + 实施清单**（`runtime` / `graph` / `editor`） | 同上文档 §12 / §10；素材在 `editor/assets` |
-| 包定位 / 媒体三态 / AI 调用指南 | `README.md` / `SKILL.md`（trigger `/wb-game-video`） |
-| 插件声明（surface / tool / port / permissions） | `forgeax-extension.json` |
+历史设计稿可能记录已淘汰方案；发布行为以代码、manifest、schema、README 和 SKILL 为准。
