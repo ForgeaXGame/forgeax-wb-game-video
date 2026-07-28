@@ -15,9 +15,14 @@ const oldStorageKey = ['game', 'video:graph:view'].join('')
 
 interface FixtureOptions {
   backendKeys?: string[]
+  malformedManifest?: boolean
+  malformedPackage?: boolean
   manifestVersion?: string
   missingBackend?: boolean
   missingReturns?: boolean
+  packageName?: string
+  platformVersion?: string
+  oldIdentityDistSource?: string
   oldIdentitySource?: string
 }
 
@@ -27,44 +32,53 @@ function writeJson(path: string, value: unknown): void {
 
 function createFixture(name: string, options: FixtureOptions = {}): string {
   const root = resolve(fixtureBase, name)
+  mkdirSync(resolve(root, 'dist/assets'), { recursive: true })
   mkdirSync(resolve(root, 'dist/server'), { recursive: true })
   mkdirSync(resolve(root, 'schemas'), { recursive: true })
   mkdirSync(resolve(root, 'docs'), { recursive: true })
   mkdirSync(resolve(root, 'src/__tests__'), { recursive: true })
 
-  writeJson(resolve(root, 'package.json'), {
-    name: '@forgeax/wb-game-video',
-    version: '0.1.0',
-    peerDependencies: {
-      '@forgeax/extension-platform': '0.0.2',
-    },
-    devDependencies: {
-      '@forgeax/extension-platform': '0.0.2',
-    },
-  })
-  writeJson(resolve(root, 'forgeax-extension.json'), {
-    id: '@forgeax/wb-game-video',
-    version: options.manifestVersion ?? '0.1.0',
-    entry: {
-      frontend: './dist/index.html',
-      backend: './dist/server/tool-handlers.js',
-    },
-    provides: {
-      skills: [
-        {
-          id: 'wb-game-video:author-guide',
-          entry: './SKILL.md',
-        },
-      ],
-      tools: [
-        {
-          id: toolId,
-          args: './schemas/get-graph.args.json',
-          returns: './schemas/get-graph.returns.json',
-        },
-      ],
-    },
-  })
+  if (options.malformedPackage) {
+    writeFileSync(resolve(root, 'package.json'), '{ invalid package JSON\n')
+  } else {
+    writeJson(resolve(root, 'package.json'), {
+      name: options.packageName ?? '@forgeax/wb-game-video',
+      version: '0.1.0',
+      peerDependencies: {
+        '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
+      },
+      devDependencies: {
+        '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
+      },
+    })
+  }
+  if (options.malformedManifest) {
+    writeFileSync(resolve(root, 'forgeax-extension.json'), '{ invalid manifest JSON\n')
+  } else {
+    writeJson(resolve(root, 'forgeax-extension.json'), {
+      id: '@forgeax/wb-game-video',
+      version: options.manifestVersion ?? '0.1.0',
+      entry: {
+        frontend: './dist/index.html',
+        backend: './dist/server/tool-handlers.js',
+      },
+      provides: {
+        skills: [
+          {
+            id: 'wb-game-video:author-guide',
+            entry: './SKILL.md',
+          },
+        ],
+        tools: [
+          {
+            id: toolId,
+            args: './schemas/get-graph.args.json',
+            returns: './schemas/get-graph.returns.json',
+          },
+        ],
+      },
+    })
+  }
   writeFileSync(resolve(root, 'dist/index.html'), '<!doctype html>\n')
   writeFileSync(resolve(root, 'SKILL.md'), '# Author guide\n')
   writeJson(resolve(root, 'schemas/get-graph.args.json'), { type: 'object' })
@@ -89,6 +103,13 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
     resolve(root, 'src/__tests__/bootMigrateLegacyKeys.test.ts'),
     `${JSON.stringify(oldToolId)}\n`,
   )
+  writeFileSync(
+    resolve(root, 'dist/assets/migration.js'),
+    `const prefixes = ["reel-studio", ${JSON.stringify(['game', 'video'].join(''))}]\n`,
+  )
+  if (options.oldIdentityDistSource) {
+    writeFileSync(resolve(root, 'dist/assets/stale.js'), options.oldIdentityDistSource)
+  }
   if (options.oldIdentitySource) {
     writeFileSync(resolve(root, 'src/active.ts'), options.oldIdentitySource)
   }
@@ -118,6 +139,33 @@ describe('validateRelease', () => {
     expect(errors).toContainEqual(expect.stringContaining('returns'))
   })
 
+  it('still validates manifest paths when package JSON is malformed', async () => {
+    const malformedPackageRoot = createFixture('malformed-package', {
+      malformedPackage: true,
+      missingBackend: true,
+      missingReturns: true,
+    })
+
+    const errors = await validateRelease(malformedPackageRoot)
+    expect(errors).toContainEqual(expect.stringContaining('package.json is not readable JSON'))
+    expect(errors).toContainEqual(expect.stringContaining('entry.backend'))
+    expect(errors).toContainEqual(expect.stringContaining('returns'))
+  })
+
+  it('still validates package identity and dependencies when manifest JSON is malformed', async () => {
+    const malformedManifestRoot = createFixture('malformed-manifest', {
+      malformedManifest: true,
+      packageName: '@forgeax/wb-game-video-invalid',
+      platformVersion: '0.0.1',
+    })
+
+    const errors = await validateRelease(malformedManifestRoot)
+    expect(errors).toContainEqual(expect.stringContaining('forgeax-extension.json is not readable JSON'))
+    expect(errors).toContainEqual(expect.stringContaining('package name'))
+    expect(errors).toContainEqual(expect.stringContaining('peerDependencies'))
+    expect(errors).toContainEqual(expect.stringContaining('devDependencies'))
+  })
+
   it('reports the package-derived tag when manifest version differs', async () => {
     const badVersionRoot = createFixture('bad-version', {
       manifestVersion: '0.2.0',
@@ -145,6 +193,16 @@ describe('validateRelease', () => {
 
     expect(await validateRelease(oldIdentityRoot)).toContainEqual(
       expect.stringContaining('old active identity'),
+    )
+  })
+
+  it('rejects legacy active identities in tracked dist files', async () => {
+    const oldIdentityRoot = createFixture('old-dist-identity', {
+      oldIdentityDistSource: `export const tool = ${JSON.stringify(oldToolId)}\n`,
+    })
+
+    expect(await validateRelease(oldIdentityRoot)).toContainEqual(
+      expect.stringContaining('dist/assets/stale.js'),
     )
   })
 })

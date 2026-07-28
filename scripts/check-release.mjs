@@ -34,7 +34,6 @@ const TEXT_FILENAMES = new Set([
 ])
 const SCAN_EXCLUDED_DIRS = new Set([
   '.git',
-  'dist',
   'docs',
   'node_modules',
 ])
@@ -57,6 +56,10 @@ const OLD_ACTIVE_IDENTITIES = [
   new RegExp(`emit:${compactLegacyName}`),
   new RegExp(`/${compactLegacyName}\\b`),
 ]
+const GENERATED_MIGRATION_PREFIX_PAIR = new RegExp(
+  `\\[\\s*(["'])reel-studio\\1\\s*,\\s*(["'])${compactLegacyName}\\2\\s*\\]`,
+  'g',
+)
 
 function isWithinRoot(root, candidate) {
   const pathFromRoot = relative(root, candidate)
@@ -111,6 +114,14 @@ function isTextFile(path) {
   return TEXT_FILENAMES.has(name) || TEXT_EXTENSIONS.has(extname(path))
 }
 
+function identityScanSource(packagePath, source) {
+  if (!packagePath.startsWith('dist/')) return source
+  return source.replace(
+    GENERATED_MIGRATION_PREFIX_PAIR,
+    '["generated-legacy-migration-prefixes"]',
+  )
+}
+
 async function findOldActiveIdentities(root, errors) {
   const pending = ['']
   while (pending.length > 0) {
@@ -130,7 +141,10 @@ async function findOldActiveIdentities(root, errors) {
         continue
       }
 
-      const source = await readFile(resolve(root, packagePath), 'utf8')
+      const source = identityScanSource(
+        packagePath,
+        await readFile(resolve(root, packagePath), 'utf8'),
+      )
       for (const pattern of OLD_ACTIVE_IDENTITIES) {
         const match = pattern.exec(source)
         if (!match) continue
@@ -140,6 +154,90 @@ async function findOldActiveIdentities(root, errors) {
         )
         break
       }
+    }
+  }
+}
+
+function validatePackage(pkg, errors) {
+  if (pkg.name !== PACKAGE_NAME) {
+    errors.push(`package name must be ${PACKAGE_NAME}; received ${JSON.stringify(pkg.name)}`)
+  }
+
+  for (const dependencyKind of ['peerDependencies', 'devDependencies']) {
+    const actual = pkg[dependencyKind]?.[PLATFORM_PACKAGE]
+    if (actual !== PLATFORM_VERSION) {
+      errors.push(
+        `${dependencyKind}.${PLATFORM_PACKAGE} must be exactly ${PLATFORM_VERSION}; received ${JSON.stringify(actual)}`,
+      )
+    }
+  }
+}
+
+async function validateManifest(packageRoot, manifest, errors) {
+  if (manifest.id !== PACKAGE_NAME) {
+    errors.push(
+      `manifest ID must be ${PACKAGE_NAME}; received ${JSON.stringify(manifest.id)}`,
+    )
+  }
+
+  const backendPath = await checkPackagePath(
+    packageRoot,
+    'entry.backend',
+    manifest.entry?.backend,
+    errors,
+  )
+  await checkPackagePath(
+    packageRoot,
+    'entry.frontend',
+    manifest.entry?.frontend,
+    errors,
+  )
+
+  const skills = Array.isArray(manifest.provides?.skills)
+    ? manifest.provides.skills
+    : []
+  for (const [index, skill] of skills.entries()) {
+    await checkPackagePath(
+      packageRoot,
+      `provides.skills[${index}].entry`,
+      skill?.entry,
+      errors,
+    )
+  }
+
+  const tools = Array.isArray(manifest.provides?.tools)
+    ? manifest.provides.tools
+    : []
+  for (const [index, tool] of tools.entries()) {
+    await checkPackagePath(
+      packageRoot,
+      `provides.tools[${index}].args`,
+      tool?.args,
+      errors,
+    )
+    await checkPackagePath(
+      packageRoot,
+      `provides.tools[${index}].returns`,
+      tool?.returns,
+      errors,
+    )
+  }
+
+  if (backendPath) {
+    try {
+      const backend = await import(/* @vite-ignore */ pathToFileURL(backendPath).href)
+      const handlerKeys = Object.keys(backend.default ?? {})
+      const manifestToolIds = tools.map((tool) => tool?.id)
+      if (
+        handlerKeys.length !== manifestToolIds.length ||
+        handlerKeys.some((key, index) => key !== manifestToolIds[index])
+      ) {
+        errors.push(
+          `compiled backend handler keys ${JSON.stringify(handlerKeys)} must equal manifest tool IDs in order ${JSON.stringify(manifestToolIds)}`,
+        )
+      }
+    } catch (error) {
+      errors.push(`entry.backend could not be imported as ESM: ${error.message}`)
     }
   }
 }
@@ -154,91 +252,14 @@ export async function validateRelease(root) {
     errors,
   )
 
+  if (pkg) validatePackage(pkg, errors)
+  if (manifest) await validateManifest(packageRoot, manifest, errors)
   if (pkg && manifest) {
-    if (pkg.name !== PACKAGE_NAME) {
-      errors.push(`package name must be ${PACKAGE_NAME}; received ${JSON.stringify(pkg.name)}`)
-    }
-    if (manifest.id !== pkg.name) {
-      errors.push(
-        `manifest ID must equal package name ${JSON.stringify(pkg.name)}; received ${JSON.stringify(manifest.id)}`,
-      )
-    }
-
     const expectedTag = `v${pkg.version}`
     if (manifest.version !== pkg.version) {
       errors.push(
         `manifest version ${JSON.stringify(manifest.version)} must equal package version ${JSON.stringify(pkg.version)} for tag ${expectedTag}`,
       )
-    }
-
-    for (const dependencyKind of ['peerDependencies', 'devDependencies']) {
-      const actual = pkg[dependencyKind]?.[PLATFORM_PACKAGE]
-      if (actual !== PLATFORM_VERSION) {
-        errors.push(
-          `${dependencyKind}.${PLATFORM_PACKAGE} must be exactly ${PLATFORM_VERSION}; received ${JSON.stringify(actual)}`,
-        )
-      }
-    }
-
-    const backendPath = await checkPackagePath(
-      packageRoot,
-      'entry.backend',
-      manifest.entry?.backend,
-      errors,
-    )
-    await checkPackagePath(
-      packageRoot,
-      'entry.frontend',
-      manifest.entry?.frontend,
-      errors,
-    )
-
-    const skills = Array.isArray(manifest.provides?.skills)
-      ? manifest.provides.skills
-      : []
-    for (const [index, skill] of skills.entries()) {
-      await checkPackagePath(
-        packageRoot,
-        `provides.skills[${index}].entry`,
-        skill?.entry,
-        errors,
-      )
-    }
-
-    const tools = Array.isArray(manifest.provides?.tools)
-      ? manifest.provides.tools
-      : []
-    for (const [index, tool] of tools.entries()) {
-      await checkPackagePath(
-        packageRoot,
-        `provides.tools[${index}].args`,
-        tool?.args,
-        errors,
-      )
-      await checkPackagePath(
-        packageRoot,
-        `provides.tools[${index}].returns`,
-        tool?.returns,
-        errors,
-      )
-    }
-
-    if (backendPath) {
-      try {
-        const backend = await import(/* @vite-ignore */ pathToFileURL(backendPath).href)
-        const handlerKeys = Object.keys(backend.default ?? {})
-        const manifestToolIds = tools.map((tool) => tool?.id)
-        if (
-          handlerKeys.length !== manifestToolIds.length ||
-          handlerKeys.some((key, index) => key !== manifestToolIds[index])
-        ) {
-          errors.push(
-            `compiled backend handler keys ${JSON.stringify(handlerKeys)} must equal manifest tool IDs in order ${JSON.stringify(manifestToolIds)}`,
-          )
-        }
-      } catch (error) {
-        errors.push(`entry.backend could not be imported as ESM: ${error.message}`)
-      }
     }
   }
 
