@@ -1,0 +1,110 @@
+/**
+ * 皮肤自带运行时（component-host/ 内部工具箱）—— 让每个皮肤组件**自闭环**：只依赖 React + 本工具，
+ * 不 import 游戏引擎其它代码。样式/SVG 滤镜都由皮肤自己注入，方便用户把组件整包拷走/替换。
+ *
+ * 提供：
+ *   - injectCss(id, css)：幂等注入一份 <style>（同 id HMR 覆盖）。
+ *   - ensureInkFilters()：注入水墨毛边 SVG 滤镜 #inkRough / #inkRoughNarr。
+ *   - ensureBrushFont：书法字体 HYShangWei —— 字体**自带在 component-host 层**（与用它的皮肤组件同层），
+ *     组件自调 `ensureBrushFont()` 即可，不再由 editor 全局注入，也不跨层依赖 assets。
+ *   - useDefaultEventTimeout：限时组件到点自 emit(defaultEvent)。
+ */
+import { useEffect, useRef } from 'react'
+// 字体与皮肤组件同层自带（component-host/assets）；随 runtime 一起发，不依赖 editor 注入。
+import brushFontUrl from '../assets/fonts/HYShangWei.woff2?url'
+
+const injected = new Map<string, HTMLStyleElement>()
+
+/** 从 inputs 归一超时 ms（timeoutMs / windowMs / durationMs）。 */
+export function resolveTimeoutMs(inputs: Record<string, unknown> | undefined): number | undefined {
+  if (!inputs) return undefined
+  const raw =
+    (typeof inputs.timeoutMs === 'number' ? inputs.timeoutMs : undefined)
+    ?? (typeof inputs.windowMs === 'number' ? inputs.windowMs : undefined)
+    ?? (typeof inputs.durationMs === 'number' ? inputs.durationMs : undefined)
+  return typeof raw === 'number' && raw > 0 ? raw : undefined
+}
+
+/**
+ * 组件挂载后计时，到点 emit(defaultEvent ?? 'fail')；preview 不跑。
+ *
+ * emit 用 ref 持有——试玩面每帧 setSnap 会换新的内联 emit，若进 effect deps
+ * 会把 timeout 清掉重开，限时默认选项（如應/默 8s→默）永远到不了点。
+ */
+export function useDefaultEventTimeout(
+  emit: ((key: string) => void) | undefined,
+  inputs: Record<string, unknown> | undefined,
+  preview?: boolean,
+): void {
+  const timeoutMs = resolveTimeoutMs(inputs)
+  const defaultEvent =
+    typeof inputs?.defaultEvent === 'string' && inputs.defaultEvent
+      ? inputs.defaultEvent
+      : 'fail'
+  const emitRef = useRef(emit)
+  emitRef.current = emit
+  useEffect(() => {
+    if (preview || !emitRef.current || timeoutMs == null) return
+    const t = setTimeout(() => emitRef.current?.(defaultEvent), timeoutMs)
+    return () => clearTimeout(t)
+  }, [timeoutMs, defaultEvent, preview])
+}
+
+export function injectCss(id: string, css: string): void {
+  if (typeof document === 'undefined') return
+  const existing = injected.get(id)
+  if (existing) {
+    if (existing.textContent !== css) existing.textContent = css
+    return
+  }
+  const style = document.createElement('style')
+  style.setAttribute('data-skin-style', id)
+  style.textContent = css
+  document.head.appendChild(style)
+  injected.set(id, style)
+}
+
+const INK_HOST_ID = 'skin-ink-filter-defs'
+const INK_DEF = (id: string): string =>
+  `<filter id="${id}" x="-20%" y="-60%" width="140%" height="220%">` +
+  '<feTurbulence type="fractalNoise" baseFrequency="0.018 0.5" numOctaves="2" seed="7" result="n"/>' +
+  '<feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>' +
+  '</filter>'
+
+/** 注入 #inkRough / #inkRoughNarr 两个水墨毛边滤镜（幂等，全局一次）。 */
+export function ensureInkFilters(): void {
+  if (typeof document === 'undefined' || document.getElementById(INK_HOST_ID)) return
+  const host = document.createElement('div')
+  host.id = INK_HOST_ID
+  host.setAttribute('aria-hidden', 'true')
+  host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden'
+  host.innerHTML = `<svg width="0" height="0" focusable="false" aria-hidden="true">${INK_DEF('inkRough')}${INK_DEF('inkRoughNarr')}</svg>`
+  document.body.appendChild(host)
+}
+
+/**
+ * 注入水墨手书字体 HYShangWei（@font-face，幂等）。字体文件与本工具同层自带
+ * （`component-host/assets/fonts`），需要它的皮肤组件自调本函数即可——不依赖 editor、不跨层。
+ * 若字体加载失败，CSS font-family 会回落到 STKaiti/KaiTi。
+ */
+export function ensureBrushFont(): void {
+  injectCss(
+    'skin-brush-font',
+    `@font-face{font-family:'HYShangWei';src:url('${brushFontUrl}') format('woff2');font-weight:normal;font-style:normal;font-display:swap;}`,
+  )
+}
+
+/**
+ * 编辑器预览 scrub 精度 opt-in 辅助——**不接也没事**：宿主 `.gc-preview-clock.is-paused` 已统一
+ * 冻住子树内全部纯 CSS animation（暂停即停）。只有想让「拖播放头」精确对上入场动画某一帧的皮肤
+ * 才需要这套：配合 `animation-delay: calc(<固有 delay> - var(--preview-t, 0ms))` +
+ * preview 时整体 `animation-play-state: paused`（见 inkKou / inkYingMo 的 is-frozen 规则）。
+ */
+export function previewFreezeClass(preview: boolean | undefined): string {
+  return preview ? ' is-frozen' : ''
+}
+
+/** `--preview-t` CSS 变量：给 previewFreezeClass 配套的负 delay 表达式用。 */
+export function previewTStyle(localMs: number): Record<string, string> {
+  return { ['--preview-t']: `${Math.max(0, localMs)}ms` }
+}
