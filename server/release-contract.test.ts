@@ -25,9 +25,9 @@ const expectedTools = [
 describe('release identity', () => {
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax/wb-game-video')
-    expect(pkg.version).toBe('0.1.4')
+    expect(pkg.version).toBe('0.2.0')
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe(pkg.version)
+    expect(manifest.version).toBe('0.2.0')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),
@@ -41,6 +41,18 @@ describe('release identity', () => {
   it('declares the host platform as an exact peer and dev dependency', () => {
     expect(pkg.peerDependencies['@forgeax/extension-platform']).toBe('0.0.2')
     expect(pkg.devDependencies['@forgeax/extension-platform']).toBe('0.0.2')
+    expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.1.0')
+    expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.1.0')
+  })
+
+  it('exports the compiled host module with the declared tool map', async () => {
+    expect(pkg.exports['.']).toBe('./dist/index.js')
+    expect(pkg.exports['./host']).toBe('./dist/server/host.js')
+    expect(manifest.entry.backend).toBe('./dist/server/host.js')
+
+    const backend = await import('../dist/server/host.js')
+    expect(backend.host).toBeDefined()
+    expect(Object.keys(backend.tools)).toEqual(expectedTools)
   })
 
   it('publishes the canonical independent repository URL', () => {
