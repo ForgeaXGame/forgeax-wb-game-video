@@ -63,8 +63,8 @@ A second review hardened those boundaries further:
 - Public records are field-whitelisted and deeply sanitized. Absolute paths,
   file URLs, model/provider URLs, provider mappings, and sensitive legacy nested
   metadata never cross the service boundary. A claimed locator survives only
-  when its asset id and URL are independently attested by the Workbench media
-  capability.
+  when its asset id, URL, extension-owned source marker, and registry id are
+  independently attested by the Workbench media capability.
 - Every tool-shaped service input is compiled directly from the published
   Draft 2020-12 JSON schema with Ajv. Router query keys are closed and
   single-valued, and invalid generation input is rejected before a model call.

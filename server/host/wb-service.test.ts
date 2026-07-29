@@ -125,6 +125,9 @@ class MemoryMedia implements MediaCapability {
       url: `https://media.invalid/${id}`,
       contentType: input.contentType,
       sizeBytes: input.bytes.byteLength,
+      ...(input.metadata ? {
+        metadata: structuredClone(input.metadata),
+      } : {}),
     }
     this.assets.set(id, structuredClone(asset))
     return asset
@@ -512,6 +515,34 @@ describe('createWbGameVideoService', () => {
           provenance: 'workbench-media-capability',
           assetId: 'unsafe-host-id',
           locator: 'data:text/html,unsafe',
+        },
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    media.assets.set('real-model-provider-id', {
+      id: 'real-model-provider-id',
+      type: 'image',
+      url: 'https://model.invalid/real-provider-item.png',
+      contentType: 'image/png',
+      metadata: {
+        source: 'model-provider',
+        registryId: 'forged-model-provider',
+      },
+    })
+    manifest.assets.push({
+      id: 'forged-model-provider',
+      kind: 'image',
+      productionType: 'shot_image',
+      status: 'ready',
+      url: 'https://model.invalid/real-provider-item.png',
+      provider: { kind: 'local', ref: 'real-model-provider-id' },
+      sourceModule: 'wb-game-video',
+      meta: {
+        hostMedia: {
+          provenance: 'workbench-media-capability',
+          assetId: 'real-model-provider-id',
+          locator: 'https://model.invalid/real-provider-item.png',
         },
       },
       createdAt: 1,

@@ -337,7 +337,16 @@ function publicHostAsset(
   const authoritativeMedia = hostAssetId
     ? trustedMedia.get(hostAssetId)
     : undefined
-  const trustedLocator = authoritativeMedia
+  const authoritativeMetadata = authoritativeMedia?.metadata
+  const trustedLocator = (
+    authoritativeMedia
+    && isRecord(authoritativeMetadata)
+    && (
+      authoritativeMetadata.source === 'wb-game-video-reference'
+      || authoritativeMetadata.source === 'wb-game-video-generation'
+    )
+    && authoritativeMetadata.registryId === normalized.id
+  )
     ? safeHostMediaUrl(authoritativeMedia.url)
     : undefined
   const sanitizedMeta = deepSanitizeMeta(
