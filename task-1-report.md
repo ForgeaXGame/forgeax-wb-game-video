@@ -25,6 +25,10 @@ Base commit: `4b2a545c4cb2ef9d5c6d85d2d419dbe655a0ada8`.
   failed on the intended old version, missing dependency, and missing exports.
 - GREEN: focused release tests passed: 35 tests, 0 failures.
 - `bun run build` passed, including `node scripts/check-release.mjs`.
+- Review follow-up: from a fresh detached checkout, `bun install --frozen-lockfile
+  --offline` passed, then the exact focused release command passed 42 tests before
+  a full build. The full build/release validator and `bun pm pack --dry-run
+  --ignore-scripts` also passed; the dry-run package listed no `vendor/` files.
 
 ## Dependency-resolution note
 
