@@ -516,6 +516,16 @@ function generatedAssetId(
   return makeAssetId(productionType)
 }
 
+function sanitizedGenerationError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : 'Generation failed'
+  const sanitized = raw
+    .replace(/file:\/\/\S+/gi, '[redacted]')
+    .replace(/https?:\/\/\S+/gi, '[redacted]')
+    .replace(/(?:[A-Za-z]:[\\/]|\/Users\/|\/private\/|\/workspace\/)\S*/g, '[redacted]')
+    .slice(0, 400)
+  return sanitized || 'Generation failed'
+}
+
 /**
  * Host-neutral generation pipeline. It has no network URL, filesystem path, or
  * environment discovery: models produce through the model gateway and every
@@ -530,119 +540,137 @@ export function createHostGenerationOrchestrator(
     const productionType = mode === 'grid_storyboard'
       ? 'grid_storyboard'
       : 'shot_image'
-    const axes = await hostAxes(registry, input.styleAxes)
-    const references = await hostReferences(registry, input.refAssetIds)
-    const keyframePrompt = buildShotImagePrompt({
-      ...input,
-      uiStylePrompt: input.uiStylePrompt ?? axes.uiStylePrompt,
-      refsReady: references.length > 0,
-    })
-    const prompt = mode === 'grid_storyboard'
-      ? buildShotGridStoryboardPrompt({
-          ...(input.grid ?? {}),
-          originalPrompt: keyframePrompt,
-          referenceCount: references.length,
-          sceneRefReady: references.length > 0,
-        })
-      : keyframePrompt
-    const generated = firstGeneratedAsset(
-      (await context.models.generateImage({
-        prompt,
-        references,
-        aspectRatio: '1:1',
-        metadata: {
-          sceneNodeId: input.sceneNodeId,
-          productionType,
-        },
-      })).assets,
-      'image',
+    const registryId = generatedAssetId(productionType)
+    const label = input.label ?? (
+      mode === 'grid_storyboard'
+        ? `分镜故事板 · ${input.nodeName}`
+        : `关键帧 · ${input.nodeName}`
     )
-    return registry.persistGenerated(generated, {
-      registryId: generatedAssetId(productionType),
-      filenamePrefix: mode === 'grid_storyboard' ? 'storyboard' : 'keyframe',
-      productionType,
-      sceneNodeId: input.sceneNodeId,
-      label: input.label ?? (
-        mode === 'grid_storyboard'
-          ? `分镜故事板 · ${input.nodeName}`
-          : `关键帧 · ${input.nodeName}`
-      ),
-      prompt,
-      meta: { refIds: input.refAssetIds ?? [], mode },
+    await registry.upsert({
+      id: registryId, kind: 'image', productionType, status: 'generating',
+      label, sceneNodeId: input.sceneNodeId, sourceModule: 'wb-game-video',
+      createdAt: Date.now(), updatedAt: Date.now(),
     })
+    try {
+      const axes = await hostAxes(registry, input.styleAxes)
+      const references = await hostReferences(registry, input.refAssetIds)
+      const keyframePrompt = buildShotImagePrompt({
+        ...input,
+        uiStylePrompt: input.uiStylePrompt ?? axes.uiStylePrompt,
+        refsReady: references.length > 0,
+      })
+      const prompt = mode === 'grid_storyboard'
+        ? buildShotGridStoryboardPrompt({
+            ...(input.grid ?? {}), originalPrompt: keyframePrompt,
+            referenceCount: references.length, sceneRefReady: references.length > 0,
+          })
+        : keyframePrompt
+      const generated = firstGeneratedAsset((await context.models.generateImage({
+        prompt, references, aspectRatio: '1:1',
+        metadata: { sceneNodeId: input.sceneNodeId, productionType },
+      })).assets, 'image')
+      return await registry.persistGenerated(generated, {
+        registryId,
+        filenamePrefix: mode === 'grid_storyboard' ? 'storyboard' : 'keyframe',
+        productionType,
+        sceneNodeId: input.sceneNodeId,
+        label,
+        prompt,
+        meta: { refIds: input.refAssetIds ?? [], mode },
+      })
+    } catch (error) {
+      await registry.update(registryId, {
+        status: 'failed', error: sanitizedGenerationError(error),
+      })
+      throw error
+    }
   }
 
   const video = async (input: VideoGenInput): Promise<MediaAsset> => {
     assertRefsPresent(input)
-    const axes = await hostAxes(registry, input.styleAxes)
-    const characterReferences = await hostReferences(registry, input.characterRefIds)
-    const sceneReferences = await hostReferences(registry, input.sceneRefIds)
-    const continuityReferences = await hostReferences(
-      registry,
-      input.continuityFirstFrameId ? [input.continuityFirstFrameId] : [],
-    )
-    const references = [
-      ...continuityReferences,
-      ...characterReferences,
-      ...sceneReferences,
-    ]
-    let index = 1
-    const bindings: VideoRefBinding[] = []
-    if (continuityReferences.length) {
-      bindings.push({ index: index++, role: '续接首帧' })
-    }
-    for (const id of input.characterRefIds.filter(Boolean)) {
-      bindings.push({
-        index: index++,
-        role: '角色',
-        label: (await registry.get(id))?.label,
-      })
-    }
-    for (const id of input.sceneRefIds.filter(Boolean)) {
-      bindings.push({
-        index: index++,
-        role: '场景',
-        label: (await registry.get(id))?.label,
-      })
-    }
-    const prompt = buildSeedanceVideoPrompt({
-      seedancePrompt: input.seedancePrompt,
-      storyText: input.storyText,
-      nodeName: input.nodeName,
-      durationSeconds: input.durationSeconds,
-      artStyle: input.artStyle ?? axes.artMedia,
-      styleKeywords: input.styleKeywords ?? axes.styleKeywords,
-      refs: bindings,
-      extend: input.extend,
-      transitionHint: input.transitionHint,
+    const registryId = generatedAssetId('video_clip')
+    const label = input.label ?? `视频 · ${input.nodeName}`
+    await registry.upsert({
+      id: registryId, kind: 'video', productionType: 'video_clip',
+      status: 'generating', label, sceneNodeId: input.sceneNodeId,
+      sourceModule: 'wb-game-video', createdAt: Date.now(), updatedAt: Date.now(),
     })
-    const generated = firstGeneratedAsset(
-      (await context.models.generateVideo({
-        prompt,
-        references,
+    try {
+      const axes = await hostAxes(registry, input.styleAxes)
+      const characterReferences = await hostReferences(registry, input.characterRefIds)
+      const sceneReferences = await hostReferences(registry, input.sceneRefIds)
+      const continuityReferences = await hostReferences(
+        registry,
+        input.continuityFirstFrameId ? [input.continuityFirstFrameId] : [],
+      )
+      const references = [
+        ...continuityReferences,
+        ...characterReferences,
+        ...sceneReferences,
+      ]
+      let index = 1
+      const bindings: VideoRefBinding[] = []
+      if (continuityReferences.length) {
+        bindings.push({ index: index++, role: '续接首帧' })
+      }
+      for (const id of input.characterRefIds.filter(Boolean)) {
+        bindings.push({
+          index: index++,
+          role: '角色',
+          label: (await registry.get(id))?.label,
+        })
+      }
+      for (const id of input.sceneRefIds.filter(Boolean)) {
+        bindings.push({
+          index: index++,
+          role: '场景',
+          label: (await registry.get(id))?.label,
+        })
+      }
+      const prompt = buildSeedanceVideoPrompt({
+        seedancePrompt: input.seedancePrompt,
+        storyText: input.storyText,
+        nodeName: input.nodeName,
         durationSeconds: input.durationSeconds,
-        metadata: {
-          sceneNodeId: input.sceneNodeId,
-          generateAudio: input.generateAudio ?? false,
-          extend: input.extend ?? false,
+        artStyle: input.artStyle ?? axes.artMedia,
+        styleKeywords: input.styleKeywords ?? axes.styleKeywords,
+        refs: bindings,
+        extend: input.extend,
+        transitionHint: input.transitionHint,
+      })
+      const generated = firstGeneratedAsset(
+        (await context.models.generateVideo({
+          prompt,
+          references,
+          durationSeconds: input.durationSeconds,
+          metadata: {
+            sceneNodeId: input.sceneNodeId,
+            generateAudio: input.generateAudio ?? false,
+            extend: input.extend ?? false,
+          },
+        })).assets,
+        'video',
+      )
+      return await registry.persistGenerated(generated, {
+        registryId,
+        filenamePrefix: 'video',
+        productionType: 'video_clip',
+        sceneNodeId: input.sceneNodeId,
+        label,
+        prompt,
+        durationMs: Math.round(input.durationSeconds * 1000),
+        meta: {
+          characterRefIds: input.characterRefIds,
+          sceneRefIds: input.sceneRefIds,
+          modelAssetId: generated.id,
         },
-      })).assets,
-      'video',
-    )
-    return registry.persistGenerated(generated, {
-      registryId: generatedAssetId('video_clip'),
-      filenamePrefix: 'video',
-      productionType: 'video_clip',
-      sceneNodeId: input.sceneNodeId,
-      label: input.label ?? `视频 · ${input.nodeName}`,
-      prompt,
-      durationMs: Math.round(input.durationSeconds * 1000),
-      meta: {
-        characterRefIds: input.characterRefIds,
-        sceneRefIds: input.sceneRefIds,
-        modelAssetId: generated.id,
-      },
-    })
+      })
+    } catch (error) {
+      await registry.update(registryId, {
+        status: 'failed', error: sanitizedGenerationError(error),
+      })
+      throw error
+    }
   }
 
   return {

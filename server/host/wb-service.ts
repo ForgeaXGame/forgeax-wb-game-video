@@ -22,6 +22,10 @@ import {
   importCharacterRefsFromHost,
   importSceneRefsFromHost,
 } from '../intake'
+import {
+  validateServiceInput,
+  type ServiceSchemaName,
+} from './service-validation'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -33,16 +37,32 @@ export class WbServiceInputError extends TypeError {
 }
 
 export interface WbGameVideoService {
-  getGraph(): Promise<unknown>
+  getGraph(input?: unknown): Promise<unknown>
   saveGraph(input: unknown): Promise<unknown>
   listAssets(query: unknown): Promise<unknown>
-  getAsset(assetId: string): Promise<unknown>
+  getAsset(input: unknown): Promise<unknown>
   importCharacterRefs(input: unknown): Promise<unknown>
   importSceneRefs(input: unknown): Promise<unknown>
   generateShotScript(input: unknown): Promise<unknown>
   generateKeyframe(input: unknown): Promise<unknown>
   generateVideo(input: unknown): Promise<unknown>
   generateNodeVideo(input: unknown): Promise<unknown>
+}
+
+function assertSchema(schema: ServiceSchemaName, value: unknown): void {
+  const errors = validateServiceInput(schema, value)
+  if (errors.length) throw new WbServiceInputError(errors.join('; '))
+}
+
+function publicErrorMessage(error: unknown): string {
+  const raw = error instanceof Error && typeof error.message === 'string'
+    ? error.message
+    : 'Operation failed'
+  return raw
+    .replace(/file:\/\/\S+/gi, '[redacted]')
+    .replace(/https?:\/\/\S+/gi, '[redacted]')
+    .replace(/(?:[A-Za-z]:[\\/]|\/Users\/|\/private\/|\/workspace\/)\S*/g, '[redacted]')
+    .slice(0, 400)
 }
 
 function record(value: unknown, label = 'Input'): Record<string, unknown> {
@@ -307,7 +327,10 @@ export function createWbGameVideoService(
   const generation = createHostGenerationOrchestrator(context, registry)
 
   return {
-    async getGraph() {
+    async getGraph(value = {}) {
+      assertSchema('getGraph', value)
+      const input = record(value)
+      assertBoundGame(input, context.gameId)
       const [blueprint] = await Promise.all([
         context.files.read(BLUEPRINT_FILE),
         context.files.read(PROJECT_FILE),
@@ -318,6 +341,7 @@ export function createWbGameVideoService(
       }
     },
     async saveGraph(value) {
+      assertSchema('saveGraph', value)
       const input = record(value)
       assertBoundGame(input, context.gameId)
       if (input.project === undefined) {
@@ -344,6 +368,7 @@ export function createWbGameVideoService(
       return { ok: true, versions: [], gameSlug: context.gameId }
     },
     async listAssets(value) {
+      assertSchema('listAssets', value)
       const input = record(value)
       assertBoundGame(input, context.gameId)
       const filter: AssetFilter = {}
@@ -370,63 +395,73 @@ export function createWbGameVideoService(
       }
       return { assets: await registry.list(filter) }
     },
-    async getAsset(assetId) {
+    async getAsset(value) {
+      const inputValue = typeof value === 'string' ? { id: value } : value
+      assertSchema('getAsset', inputValue)
+      const input = record(inputValue)
+      assertBoundGame(input, context.gameId)
       const id = assertLogicalIdentifier(
-        stringValue(assetId, 'assetId', true)!,
+        stringValue(input.id, 'id', true)!,
         'assetId',
       )
       return { asset: await registry.get(id) }
     },
     async importCharacterRefs(value) {
+      assertSchema('importCharacterRefs', value)
       const input = record(value)
       assertBoundGame(input, context.gameId)
       assertOnlyKeys(input, ['gameSlug'])
       try {
         return { refs: await importCharacterRefsFromHost(context, registry) }
       } catch (error) {
-        return { refs: [], error: (error as Error).message }
+        return { refs: [], error: publicErrorMessage(error) }
       }
     },
     async importSceneRefs(value) {
+      assertSchema('importSceneRefs', value)
       const input = record(value)
       assertBoundGame(input, context.gameId)
       assertOnlyKeys(input, ['gameSlug'])
       try {
         return { refs: await importSceneRefsFromHost(context, registry) }
       } catch (error) {
-        return { refs: [], error: (error as Error).message }
+        return { refs: [], error: publicErrorMessage(error) }
       }
     },
     async generateShotScript(value) {
+      assertSchema('generateShotScript', value)
       const input = shotScriptInput(value, context.gameId)
       try {
         return { shots: await generation.generateShotScript(input) }
       } catch (error) {
-        return { shots: [], error: (error as Error).message }
+        return { shots: [], error: publicErrorMessage(error) }
       }
     },
     async generateKeyframe(value) {
+      assertSchema('generateKeyframe', value)
       const input = keyframeInput(value, context.gameId)
       try {
         return { asset: await generation.generateKeyframe(input) }
       } catch (error) {
-        return { asset: null, error: (error as Error).message }
+        return { asset: null, error: publicErrorMessage(error) }
       }
     },
     async generateVideo(value) {
+      assertSchema('generateVideo', value)
       const input = videoInput(value, context.gameId, 60)
       try {
         return { asset: await generation.generateVideo(input) }
       } catch (error) {
-        return { asset: null, error: (error as Error).message }
+        return { asset: null, error: publicErrorMessage(error) }
       }
     },
     async generateNodeVideo(value) {
+      assertSchema('generateNodeVideo', value)
       const input = videoInput(value, context.gameId, 120)
       try {
         return { assets: await generation.generateNodeVideo(input) }
       } catch (error) {
-        return { assets: [], error: (error as Error).message }
+        return { assets: [], error: publicErrorMessage(error) }
       }
     },
   }

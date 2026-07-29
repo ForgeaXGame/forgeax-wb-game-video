@@ -33,7 +33,12 @@ function jsonResponse(
 function notFound(): WorkbenchExtensionRouterResponse {
   return jsonResponse(404, {
     ok: false,
-    error: { code: 'not_found', message: 'Not Found' },
+    error: {
+      code: 'not_found',
+      target: 'wb-game-video',
+      message: 'Not Found',
+      retryable: false,
+    },
   })
 }
 
@@ -87,15 +92,33 @@ function jsonBody(request: WorkbenchExtensionRouterRequest): unknown {
   }
 }
 
-function listQuery(
+function exactQuery(
   query: Readonly<Record<string, readonly string[]>>,
+  allowed: readonly string[],
 ): Record<string, string> {
+  const allowedKeys = new Set(allowed)
   const result: Record<string, string> = {}
-  for (const name of ['kind', 'productionType', 'sceneNodeId'] as const) {
-    const value = query[name]?.[0]
-    if (value !== undefined) result[name] = value
+  for (const [name, values] of Object.entries(query)) {
+    if (!allowedKeys.has(name)) {
+      throw new WbServiceInputError(`Query contains unsupported key: ${name}`)
+    }
+    if (values.length !== 1 || values[0] === undefined) {
+      throw new WbServiceInputError(`Query key must have exactly one value: ${name}`)
+    }
+    result[name] = values[0]
   }
   return result
+}
+
+function assertBoundQuery(
+  query: Record<string, string>,
+  gameId: string,
+): void {
+  if (query.gameSlug !== undefined && query.gameSlug !== gameId) {
+    throw new WbServiceInputError(
+      'gameSlug does not match the host-bound game',
+    )
+  }
 }
 
 type ServiceMethod =
@@ -133,14 +156,21 @@ export function createWbGameVideoRouter(
         const path = parts.join('/')
 
         if (method === 'GET' && path === 'assets') {
-          return jsonResponse(200, await service.listAssets(listQuery(request.query)))
+          const query = exactQuery(request.query, [
+            'gameSlug', 'kind', 'productionType', 'sceneNodeId',
+          ])
+          return jsonResponse(200, await service.listAssets(query))
         }
         if (
           method === 'GET'
           && parts.length === 2
           && parts[0] === 'assets'
         ) {
-          return jsonResponse(200, await service.getAsset(parts[1]!))
+          const query = exactQuery(request.query, ['gameSlug'])
+          return jsonResponse(200, await service.getAsset({
+            id: parts[1]!,
+            ...query,
+          }))
         }
         if (
           method === 'GET'
@@ -148,6 +178,8 @@ export function createWbGameVideoRouter(
           && parts[0] === 'media'
           && parts[1] === 'bundled'
         ) {
+          const query = exactQuery(request.query, ['gameSlug'])
+          assertBoundQuery(query, context.gameId)
           const response = await bundledMediaResponse(
             parts[2]!,
             header(request, 'range'),
@@ -155,6 +187,8 @@ export function createWbGameVideoRouter(
           return response.status === 404 ? notFound() : response
         }
         if (method === 'GET' && path === 'style-axes') {
+          const query = exactQuery(request.query, ['gameSlug'])
+          assertBoundQuery(query, context.gameId)
           return jsonResponse(200, {
             styleAxes: await getHostStyleAxes(context) ?? null,
           })
@@ -162,6 +196,7 @@ export function createWbGameVideoRouter(
         if (method === 'POST') {
           const serviceMethod = POST_ROUTES.get(path)
           if (serviceMethod) {
+            exactQuery(request.query, [])
             return jsonResponse(
               200,
               await service[serviceMethod](jsonBody(request)),
@@ -175,7 +210,9 @@ export function createWbGameVideoRouter(
             ok: false,
             error: {
               code: error.code,
+              target: 'wb-game-video',
               message: error.message,
+              retryable: false,
             },
           })
         }
@@ -183,7 +220,9 @@ export function createWbGameVideoRouter(
           ok: false,
           error: {
             code: 'internal_error',
+            target: 'wb-game-video',
             message: 'Internal Server Error',
+            retryable: false,
           },
         })
       }

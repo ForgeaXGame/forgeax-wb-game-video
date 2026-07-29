@@ -52,6 +52,7 @@ function request(
   options: {
     method?: string
     headers?: Record<string, readonly string[]>
+    query?: Record<string, readonly string[]>
     json?: unknown
   } = {},
 ) {
@@ -59,7 +60,7 @@ function request(
     gameId: 'router-game',
     runtimeId: 'wb-game-video',
     path,
-    query: {},
+    query: options.query ?? {},
     method: options.method ?? 'GET',
     headers: options.headers ?? {},
     body: options.json === undefined
@@ -109,7 +110,12 @@ describe('createWbGameVideoRouter', () => {
     expect(response.status).toBe(404)
     expect(bodyJson(response)).toEqual({
       ok: false,
-      error: { code: 'not_found', message: 'Not Found' },
+      error: {
+        code: 'not_found',
+        target: 'wb-game-video',
+        message: 'Not Found',
+        retryable: false,
+      },
     })
   })
 
@@ -177,6 +183,97 @@ describe('createWbGameVideoRouter', () => {
       json: {},
     }))
     expect(response.status).toBe(400)
+  })
+
+  test.each([
+    ['assets', { unknown: ['value'] }],
+    ['assets', { kind: ['image', 'video'] }],
+    ['assets/asset-1', { productionType: ['shot_image'] }],
+    ['style-axes', { kind: ['image'] }],
+    ['media/bundled/dazhao', { range: ['bytes=0-3'] }],
+  ])('rejects unknown or repeated GET query keys for %s', async (path, query) => {
+    const router = createWbGameVideoRouter(createContext())
+    const response = await router.handle(request(path, { query }))
+
+    expect(response.status).toBe(400)
+    expect(bodyJson(response)).toEqual({
+      ok: false,
+      error: {
+        code: 'invalid_input',
+        target: 'wb-game-video',
+        message: expect.any(String),
+        retryable: false,
+      },
+    })
+  })
+
+  test('accepts the published GET filters and rejects a mismatched gameSlug', async () => {
+    const router = createWbGameVideoRouter(createContext())
+    const accepted = await router.handle(request('assets', {
+      query: {
+        gameSlug: ['router-game'],
+        kind: ['image'],
+        productionType: ['shot_image'],
+        sceneNodeId: ['node-1'],
+      },
+    }))
+    const rejected = await router.handle(request('assets/asset-1', {
+      query: { gameSlug: ['another-game'] },
+    }))
+
+    expect(accepted.status).toBe(200)
+    expect(rejected.status).toBe(400)
+    expect(bodyJson(rejected)).toMatchObject({
+      error: {
+        code: 'invalid_input',
+        target: 'wb-game-video',
+        retryable: false,
+      },
+    })
+  })
+
+  test('rejects query keys on POST routes', async () => {
+    const router = createWbGameVideoRouter(createContext())
+    const response = await router.handle(request('generation/shot-script', {
+      method: 'POST',
+      query: { debug: ['true'] },
+      headers: { 'content-type': ['application/json'] },
+      json: { nodeName: 'Opening', storyText: 'Hero enters' },
+    }))
+
+    expect(response.status).toBe(400)
+    expect(bodyJson(response)).toMatchObject({
+      error: {
+        code: 'invalid_input',
+        target: 'wb-game-video',
+        retryable: false,
+      },
+    })
+  })
+
+  test('normalizes internal failures with target and retryability metadata', async () => {
+    const context = createContext()
+    const router = createWbGameVideoRouter({
+      ...context,
+      files: {
+        ...context.files,
+        async read() {
+          throw new Error('secret host failure')
+        },
+      },
+    })
+    const response = await router.handle(request('assets'))
+
+    expect(response.status).toBe(500)
+    expect(bodyJson(response)).toEqual({
+      ok: false,
+      error: {
+        code: 'internal_error',
+        target: 'wb-game-video',
+        message: 'Internal Server Error',
+        retryable: false,
+      },
+    })
   })
 
   test.each([

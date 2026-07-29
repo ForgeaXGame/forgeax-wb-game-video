@@ -258,25 +258,25 @@ export function openAssetFile(dir: string, id: string): { stream: ReturnType<typ
 const HOST_MANIFEST_PATH = 'assets/manifest.json'
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
-const hostManifestQueues = new WeakMap<BoundedGameFiles, Promise<void>>()
+const hostManifestQueues = new Map<string, Promise<void>>()
 
 async function withHostManifestLock<T>(
-  files: BoundedGameFiles,
+  scope: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const previous = hostManifestQueues.get(files) ?? Promise.resolve()
+  const previous = hostManifestQueues.get(scope) ?? Promise.resolve()
   let release!: () => void
   const current = new Promise<void>((resolveLock) => {
     release = resolveLock
   })
   const tail = previous.then(() => current)
-  hostManifestQueues.set(files, tail)
+  hostManifestQueues.set(scope, tail)
   await previous
   try {
     return await operation()
   } finally {
     release()
-    if (hostManifestQueues.get(files) === tail) hostManifestQueues.delete(files)
+    if (hostManifestQueues.get(scope) === tail) hostManifestQueues.delete(scope)
   }
 }
 
@@ -323,17 +323,108 @@ async function writeHostManifest(
 function publicHostAsset(value: unknown): MediaAsset | null {
   const normalized = normalizeMediaAsset(value)
   if (!normalized) return null
-  const {
-    externalPath: _externalPath,
-    file,
-    ...safe
-  } = normalized
+  const { label, prompt, error, meta, url } = normalized
+  const hostMedia = isRecord(meta?.hostMedia) ? meta.hostMedia : undefined
+  const trustedLocator = (
+    hostMedia?.provenance === 'workbench-media-capability'
+    && typeof hostMedia.locator === 'string'
+    && hostMedia.locator === url
+  ) ? safeHostMediaUrl(hostMedia.locator) : undefined
+  const sanitizedMeta = deepSanitizeMeta(meta, trustedLocator)
   return {
-    ...safe,
-    ...(typeof file === 'string' && !isAbsolute(file)
-      ? { file: assertBoundedRelativePath(file, 'Asset file') }
+    id: normalized.id,
+    kind: normalized.kind,
+    productionType: normalized.productionType,
+    status: normalized.status,
+    ...(label ? { label: sanitizePublicText(label) } : {}),
+    ...(prompt ? { prompt: sanitizePublicText(prompt) } : {}),
+    ...(normalized.sceneNodeId ? {
+      sceneNodeId: sanitizePublicText(normalized.sceneNodeId),
+    } : {}),
+    ...(normalized.sourceModule ? {
+      sourceModule: sanitizePublicText(normalized.sourceModule),
+    } : {}),
+    ...(normalized.mime ? { mime: normalized.mime } : {}),
+    ...(normalized.bytes !== undefined ? { bytes: normalized.bytes } : {}),
+    ...(normalized.durationMs !== undefined
+      ? { durationMs: normalized.durationMs }
       : {}),
+    ...(error ? { error: sanitizePublicText(error) } : {}),
+    ...(trustedLocator ? { url: trustedLocator } : {}),
+    ...(sanitizedMeta ? { meta: sanitizedMeta } : {}),
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
   }
+}
+
+function sanitizePublicText(value: string): string {
+  return value
+    .replace(/file:\/\/\S+/gi, '[redacted]')
+    .replace(/https?:\/\/\S+/gi, '[redacted]')
+    .replace(/(?:[A-Za-z]:[\\/]|\/Users\/|\/private\/|\/workspace\/)\S*/g, '[redacted]')
+    .slice(0, 4_000)
+}
+
+function deepSanitizeMeta(
+  value: unknown,
+  trustedLocator?: string,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined
+  const out: Record<string, unknown> = {}
+  for (const [childKey, child] of Object.entries(value)) {
+    if (/^(?:externalPath|sourceUrl|path|file|providerUrl)$/i.test(childKey)) continue
+    if (childKey === 'hostMedia' && isRecord(child)) {
+      if (
+        child.provenance === 'workbench-media-capability'
+        && typeof child.assetId === 'string'
+        && child.locator === trustedLocator
+      ) {
+        out.hostMedia = {
+          provenance: child.provenance,
+          assetId: child.assetId,
+          locator: trustedLocator,
+        }
+      }
+      continue
+    }
+    if (typeof child === 'string') {
+      if (
+        child.startsWith('file://')
+        || isAbsolute(child)
+        || /^[A-Za-z]:[\\/]/.test(child)
+        || /^https?:\/\//i.test(child)
+        || /(?:path|url)$/i.test(childKey)
+      ) continue
+      out[childKey] = child
+    } else if (Array.isArray(child)) {
+      const items: unknown[] = []
+      for (const item of child) {
+        if (typeof item === 'string') {
+          if (
+            isAbsolute(item)
+            || /^[A-Za-z]:[\\/]/.test(item)
+            || /^(?:file:|https?:)/i.test(item)
+          ) continue
+          items.push(item)
+        } else if (Array.isArray(item)) {
+          const nested = deepSanitizeMeta({ items: item }, trustedLocator)
+          if (nested?.items) items.push(nested.items)
+        } else if (isRecord(item)) {
+          const nested = deepSanitizeMeta(item, trustedLocator)
+          if (nested && Object.keys(nested).length) items.push(nested)
+        } else {
+          items.push(item)
+        }
+      }
+      out[childKey] = items
+    } else if (isRecord(child)) {
+      const nested = deepSanitizeMeta(child, trustedLocator)
+      if (nested && Object.keys(nested).length) out[childKey] = nested
+    } else {
+      out[childKey] = child
+    }
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 function safeHostMediaUrl(value: string): string | undefined {
@@ -419,8 +510,9 @@ export interface HostAssetRegistry {
 export function createHostAssetRegistry(
   context: WorkbenchExtensionContext,
 ): HostAssetRegistry {
+  const mutationScope = `wb-game-video:${context.gameRoot}`
   const upsert = async (asset: MediaAsset): Promise<MediaAsset> => (
-    withHostManifestLock(context.files, async () => {
+    withHostManifestLock(mutationScope, async () => {
       const manifest = await readHostManifest(context.files)
       const index = manifest.assets.findIndex((entry) => (
         isRecord(entry) && entry.id === asset.id
@@ -448,12 +540,15 @@ export function createHostAssetRegistry(
     })
   )
 
-  const get = async (id: string): Promise<MediaAsset | null> => {
+  const getRaw = async (id: string): Promise<MediaAsset | null> => {
     const manifest = await readHostManifest(context.files)
-    return publicHostAsset(
+    return normalizeMediaAsset(
       manifest.assets.find((entry) => isRecord(entry) && entry.id === id),
     )
   }
+  const get = async (id: string): Promise<MediaAsset | null> => (
+    publicHostAsset(await getRaw(id))
+  )
 
   return {
     async list(filter) {
@@ -462,7 +557,7 @@ export function createHostAssetRegistry(
     get,
     upsert,
     async update(id, patch) {
-      const current = await get(id)
+      const current = await getRaw(id)
       if (!current) return null
       return upsert({ ...current, ...patch, id })
     },
@@ -495,11 +590,18 @@ export function createHostAssetRegistry(
         provider: { kind: 'local', ref: hosted.id },
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        meta: input.meta,
+        meta: {
+          ...(input.meta ?? {}),
+          hostMedia: {
+            provenance: 'workbench-media-capability',
+            assetId: hosted.id,
+            locator: safeHostMediaUrl(hosted.url),
+          },
+        },
       })
     },
     async mediaReference(id) {
-      const asset = await get(id)
+      const asset = await getRaw(id)
       if (!asset) throw new Error(`参考图不存在：${id}`)
       if (asset.provider?.ref) return { assetId: asset.provider.ref }
       if (!asset.file) throw new Error(`参考图 ${id} 没有可读取的宿主媒体`)
@@ -545,7 +647,14 @@ export function createHostAssetRegistry(
         durationMs: input.durationMs,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        meta: input.meta,
+        meta: {
+          ...(input.meta ?? {}),
+          hostMedia: {
+            provenance: 'workbench-media-capability',
+            assetId: hosted.id,
+            locator: safeHostMediaUrl(hosted.url),
+          },
+        },
       })
     },
   }

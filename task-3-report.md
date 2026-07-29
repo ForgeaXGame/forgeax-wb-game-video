@@ -52,6 +52,27 @@ validated host media locators without Kino assumptions, serializes manifest
 writes, performs positional Range reads, and keeps a valid blueprint readable
 when `project.json` metadata is corrupt. Regression tests cover each behavior.
 
+A second review hardened those boundaries further:
+
+- Manifest mutation queues now use the stable host game root, so fresh context
+  and file-capability wrappers for the same game still serialize. A rejected
+  mutation cannot poison subsequent work.
+- Keyframe and video assets are visible as `generating` before the model settles,
+  then retain the same registry id through `ready` or `failed`. Multi-segment
+  node generation preserves completed segments when a later segment fails.
+- Public records are field-whitelisted and deeply sanitized. Absolute paths,
+  file URLs, model/provider URLs, provider mappings, and legacy nested metadata
+  never cross the service boundary; only a locator tagged as originating from
+  the Workbench media capability survives.
+- Every tool-shaped service input is compiled directly from the published
+  Draft 2020-12 JSON schema with Ajv. Router query keys are closed and
+  single-valued, and invalid generation input is rejected before a model call.
+- Router error envelopes consistently include `target` and `retryable`.
+
+Fresh follow-up verification: `bun test server/host` passed **88 tests with
+0 failures**; `bun run lint` passed; and direct ESM plus declaration builds of
+the service and router passed.
+
 ## Remaining boundary
 
 Task 3 intentionally does not export the finished host module or migrate the
