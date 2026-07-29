@@ -2,6 +2,7 @@
  * Browser-safe Kino video resource API client.
  * Standalone DTOs — must not import server/private packages.
  */
+import { getWorkbenchHost } from '../../lib/workbench-host'
 
 export interface KinoEnvelope<T> {
   code: number
@@ -167,16 +168,15 @@ export interface CreateKinoVideoClientOptions {
   baseUrl?: string
 }
 
-const DEFAULT_BASE_URL = '/api/v1/kino'
 const MAX_ERROR_MESSAGE_LENGTH = 512
 
 /** Kino `/resources` 服务端分页协议的单页上限。 */
 export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
 
 function normalizeBaseUrl(raw: string | undefined): string {
-  const trimmed = (raw ?? DEFAULT_BASE_URL).trim()
+  const trimmed = (raw ?? 'kino').trim()
   if (trimmed.length === 0) {
-    return DEFAULT_BASE_URL
+    return 'kino'
   }
   return trimmed.replace(/\/+$/, '')
 }
@@ -287,17 +287,18 @@ async function requestJson<T>(
   return parseEnvelope<T>(response, payload)
 }
 
-function resourcePath(resourceId: string, gameId: string, suffix = ''): string {
-  return appendQuery(
-    `/resources/${encodeURIComponent(resourceId)}${suffix}`,
-    { game_id: gameId },
-  )
+function resourcePath(resourceId: string, suffix = ''): string {
+  return `/resources/${encodeURIComponent(resourceId)}${suffix}`
+}
+
+function playbackUrl(resourceId: string, gameId: string): string {
+  return `/api/v1/kino${appendQuery(resourcePath(resourceId, '/content'), { game_id: gameId })}`
 }
 
 export function createKinoVideoClient(
   options: CreateKinoVideoClientOptions = {},
 ): KinoVideoClient {
-  const fetchImpl = options.fetch ?? fetch.bind(globalThis)
+  const fetchImpl = options.fetch ?? ((input, init) => getWorkbenchHost().extension.fetch(String(input), init))
   const baseUrl = normalizeBaseUrl(options.baseUrl)
 
   return {
@@ -314,7 +315,6 @@ export function createKinoVideoClient(
         fetchImpl,
         baseUrl,
         appendQuery('/resources', {
-          game_id: query.game_id,
           media_type: query.media_type ?? 'video',
           page: query.page,
           page_size: query.page_size,
@@ -325,10 +325,11 @@ export function createKinoVideoClient(
     },
 
     async get(resourceId, gameId, options) {
+      void gameId
       return requestJson<KinoResourceDTO>(
         fetchImpl,
         baseUrl,
-        resourcePath(resourceId, gameId),
+        resourcePath(resourceId),
         { signal: options?.signal },
       )
     },
@@ -353,7 +354,7 @@ export function createKinoVideoClient(
       return requestJson<KinoResourceDTO>(
         fetchImpl,
         baseUrl,
-        resourcePath(resourceId, input.game_id),
+        resourcePath(resourceId),
         {
           method: 'PUT',
           body: JSON.stringify(input),
@@ -363,14 +364,15 @@ export function createKinoVideoClient(
     },
 
     async delete(resourceId, gameId, options) {
-      await requestJson<null>(fetchImpl, baseUrl, resourcePath(resourceId, gameId), {
+      void gameId
+      await requestJson<null>(fetchImpl, baseUrl, resourcePath(resourceId), {
         method: 'DELETE',
         signal: options?.signal,
       })
     },
 
     playbackUrl(resourceId, gameId) {
-      return `${baseUrl}${resourcePath(resourceId, gameId, '/content')}`
+      return playbackUrl(resourceId, gameId)
     },
   }
 }

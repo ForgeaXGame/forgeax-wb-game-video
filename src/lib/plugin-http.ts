@@ -1,18 +1,11 @@
-const RAW_BASE = import.meta.env.BASE_URL ?? '/'
+import { getWorkbenchHost } from './workbench-host'
 
-function basePrefix(): string {
-  if (!RAW_BASE || RAW_BASE === './') return ''
-  return RAW_BASE.replace(/\/$/, '')
-}
-
+/** Legacy media callers keep their already-resolved source unchanged. */
 export function pluginUrl(path: string): string {
-  if (/^(?:https?:|blob:|data:)/.test(path)) return path
-  if (!path.startsWith('/')) return path
-  const prefix = basePrefix()
-  if (!prefix || path === prefix || path.startsWith(`${prefix}/`)) return path
-  return `${prefix}${path}`
+  return path
 }
 
 export function pluginFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(pluginUrl(input), init)
+  if (/^(?:https?:|blob:|data:)/.test(input)) return fetch(input, init)
+  return getWorkbenchHost().extension.fetch(input, init)
 }

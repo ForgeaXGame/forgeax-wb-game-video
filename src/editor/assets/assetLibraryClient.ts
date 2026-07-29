@@ -11,6 +11,7 @@ import {
   VideoUploadError,
   type UploadTransport,
 } from './video-upload'
+import { getWorkbenchHost } from '../../lib/workbench-host'
 
 export type ManagedAssetKind = 'image' | 'audio' | 'font'
 
@@ -79,7 +80,9 @@ function toManagedAsset(
 export function createKinoAssetLibraryClient(
   options: CreateKinoAssetLibraryClientOptions = {},
 ): AssetLibraryClient {
-  const client = options.client ?? createKinoVideoClient()
+  const client = options.client ?? createKinoVideoClient({
+    fetch: (input, init) => getWorkbenchHost().extension.fetch(String(input), init),
+  })
 
   return {
     async list(gameId, kind, requestOptions) {

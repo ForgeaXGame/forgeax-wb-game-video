@@ -7,15 +7,15 @@
  *  - 报（需要区分「查不到」与「库里真没有」的调用方）：吞掉的话面板会拿着空数组对作者撒谎。
  *    BGM 下拉已改走 Kino（见 `audioAssetCacheStore`），不再依赖本端点的 audio 过滤。
  */
-import { pluginFetch } from '../../lib/plugin-http'
+import { getWorkbenchHost } from '../../lib/workbench-host'
 import type { MediaAsset, MediaKind } from './registry-types'
 
 export async function fetchRegistryAssets(game?: string, kind?: MediaKind): Promise<MediaAsset[]> {
   const params = new URLSearchParams()
-  if (game) params.set('game', game)
+  void game
   if (kind) params.set('kind', kind)
   const qs = params.toString()
-  const r = await pluginFetch(`/__gva__/assets${qs ? `?${qs}` : ''}`)
+  const r = await getWorkbenchHost().extension.fetch(`assets${qs ? `?${qs}` : ''}`)
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   const j = (await r.json()) as { assets?: MediaAsset[] }
   return Array.isArray(j.assets) ? j.assets : []

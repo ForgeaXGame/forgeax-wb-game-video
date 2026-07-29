@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { WorkbenchClientError } from '@forgeax/workbench-host/extension'
 import { useT } from '../../i18n'
-import { pluginFetch } from '../../lib/plugin-http'
+import { getWorkbenchHost } from '../../lib/workbench-host'
 
 type PackageState = 'uninitialized' | 'initialized' | 'inconsistent'
 type PackageStatus = { state: PackageState; missing?: string[] }
@@ -18,17 +19,41 @@ type BootstrapState =
   | { kind: 'dismissed' }
   | { kind: 'ready' }
   | { kind: 'inconsistent'; missing: string[] }
-  | { kind: 'error'; error: PackageError }
+  | { kind: 'error'; error: PackageError; retry: 'status' | 'initialize' }
 
-function statusUrl(slug: string): string {
-  return `/api/game-host/games/${encodeURIComponent(slug)}/package/status`
+function statusOf(value: unknown): PackageStatus | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as { state?: unknown; missing?: unknown }
+  if (
+    candidate.state !== 'uninitialized'
+    && candidate.state !== 'initialized'
+    && candidate.state !== 'inconsistent'
+  ) return null
+  return {
+    state: candidate.state,
+    missing: Array.isArray(candidate.missing)
+      ? candidate.missing.filter((item): item is string => typeof item === 'string')
+      : undefined,
+  }
 }
 
-function initializeUrl(slug: string): string {
-  return `/api/game-host/games/${encodeURIComponent(slug)}/package/initialize`
+function packageError(cause: unknown, target: string): PackageError {
+  if (cause instanceof WorkbenchClientError) {
+    return {
+      code: cause.code,
+      target: cause.target,
+      hint: cause.message,
+      retryable: cause.retryable,
+    }
+  }
+  return {
+    target,
+    hint: cause instanceof Error ? cause.message : String(cause),
+    retryable: true,
+  }
 }
 
-export function GameBootstrap({ slug, onBoot, children }: GameBootstrapProps): JSX.Element | null {
+export function GameBootstrap({ slug: _slug, onBoot, children }: GameBootstrapProps): JSX.Element | null {
   const t = useT()
   const [state, setState] = useState<BootstrapState>({ kind: 'loading' })
 
@@ -40,29 +65,27 @@ export function GameBootstrap({ slug, onBoot, children }: GameBootstrapProps): J
   const readStatus = useCallback(async () => {
     setState({ kind: 'loading' })
     try {
-      const response = await pluginFetch(statusUrl(slug))
-      const body = (await response.json()) as PackageStatus & { error?: PackageError }
-      if (body.state === 'initialized') bootExisting()
-      else if (body.state === 'inconsistent') setState({ kind: 'inconsistent', missing: body.missing ?? [] })
-      else if (body.state === 'uninitialized') setState({ kind: 'guide' })
-      else setState({ kind: 'error', error: body.error ?? { target: 'package', hint: `HTTP ${response.status}`, retryable: true } })
+      const status = statusOf(await getWorkbenchHost().gamePackage.status())
+      if (status?.state === 'initialized') bootExisting()
+      else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
+      else if (status?.state === 'uninitialized') setState({ kind: 'guide' })
+      else setState({ kind: 'error', retry: 'status', error: { target: 'package status', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {
-      setState({ kind: 'error', error: { target: 'package status', hint: String(cause), retryable: true } })
+      setState({ kind: 'error', retry: 'status', error: packageError(cause, 'package status') })
     }
-  }, [bootExisting, slug])
+  }, [bootExisting])
 
   useEffect(() => { void readStatus() }, [readStatus])
 
   const initialize = async () => {
     setState({ kind: 'loading' })
     try {
-      const response = await pluginFetch(initializeUrl(slug), { method: 'POST' })
-      const body = (await response.json()) as PackageStatus & { error?: PackageError }
-      if (body.state === 'initialized') bootExisting()
-      else if (body.state === 'inconsistent') setState({ kind: 'inconsistent', missing: body.missing ?? [] })
-      else setState({ kind: 'error', error: body.error ?? { target: 'package', hint: `HTTP ${response.status}`, retryable: true } })
+      const status = statusOf(await getWorkbenchHost().gamePackage.initialize())
+      if (status?.state === 'initialized') bootExisting()
+      else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
+      else setState({ kind: 'error', retry: 'initialize', error: { target: 'package', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {
-      setState({ kind: 'error', error: { target: 'package', hint: String(cause), retryable: true } })
+      setState({ kind: 'error', retry: 'initialize', error: packageError(cause, 'package') })
     }
   }
 
@@ -74,7 +97,7 @@ export function GameBootstrap({ slug, onBoot, children }: GameBootstrapProps): J
   }
   if (state.kind === 'error') {
     const { error } = state
-    return <section className="ga-bootstrap" role="alert"><h1>{t('bootstrap.failed.title')}</h1><p>{t('bootstrap.failed.target')} {error.target ?? t('bootstrap.failed.workspace')}</p><p>{error.hint ?? t('bootstrap.failed.noDetails')}</p>{error.retryable !== false && <button type="button" onClick={() => void initialize()}>{t('bootstrap.retry')}</button>}</section>
+    return <section className="ga-bootstrap" role="alert"><h1>{t('bootstrap.failed.title')}</h1><p>{t('bootstrap.failed.target')} {error.target ?? t('bootstrap.failed.workspace')}</p><p>{error.hint ?? t('bootstrap.failed.noDetails')}</p>{error.retryable !== false && <button type="button" onClick={() => void (state.retry === 'status' ? readStatus() : initialize())}>{t('bootstrap.retry')}</button>}</section>
   }
   return <section className="ga-bootstrap" aria-labelledby="ga-bootstrap-title">
     <h1 id="ga-bootstrap-title">{t('bootstrap.guide.title')}</h1>

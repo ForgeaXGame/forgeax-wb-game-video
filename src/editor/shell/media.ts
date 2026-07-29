@@ -17,7 +17,8 @@ import {
 } from '../assets/kino-api'
 import { fetchRegistryAssets } from '../assets/registry-assets'
 import type { MediaAsset, MediaKind, StyleAxes } from '../assets/registry-types'
-import { pluginFetch, pluginUrl } from '../../lib/plugin-http'
+import { getWorkbenchHost } from '../../lib/workbench-host'
+import { pluginUrl } from '../../lib/plugin-http'
 
 let defaultKinoClient: KinoVideoClient | undefined
 
@@ -167,8 +168,9 @@ export async function listRegistryAssets(game?: string, kind?: MediaKind): Promi
 
 /** 取单条 registry 资产（轮询生成状态用）。 */
 export async function getRegistryAsset(game: string, id: string): Promise<MediaAsset | null> {
+  void game
   try {
-    const r = await pluginFetch(`/__gva__/asset/${encodeURIComponent(id)}?game=${encodeURIComponent(game)}`)
+    const r = await getWorkbenchHost().extension.fetch(`assets/${encodeURIComponent(id)}`)
     if (!r.ok) return null
     const j = (await r.json()) as { asset?: MediaAsset | null }
     return j.asset ?? null
@@ -199,8 +201,9 @@ export interface GenerateVideoRequest {
 
 /** 读游戏级风格三轴（manifest.styleAxes）。离线/无端点返回 null。 */
 export async function getGameStyleAxes(game: string): Promise<StyleAxes | null> {
+  void game
   try {
-    const r = await pluginFetch(`/__gva__/style-axes?game=${encodeURIComponent(game)}`)
+    const r = await getWorkbenchHost().extension.fetch('style-axes')
     if (!r.ok) return null
     const j = (await r.json()) as { styleAxes?: StyleAxes | null }
     return j.styleAxes ?? null
@@ -211,8 +214,9 @@ export async function getGameStyleAxes(game: string): Promise<StyleAxes | null> 
 
 /** 浅合并写游戏级风格三轴，返回合并后结果。 */
 export async function setGameStyleAxes(game: string, axes: StyleAxes): Promise<StyleAxes | null> {
+  void game
   try {
-    const r = await pluginFetch(`/__gva__/style-axes?game=${encodeURIComponent(game)}`, {
+    const r = await getWorkbenchHost().extension.fetch('style-axes', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(axes),
@@ -233,7 +237,8 @@ export async function requestGenerateVideo(
   game: string,
   input: GenerateVideoRequest,
 ): Promise<{ asset?: MediaAsset; error?: string }> {
-  return postGva('/__gva__/generate-video', game, input)
+  void game
+  return toolResult('wb-game-video:generate-video', input)
 }
 
 export interface GenerateKeyframeRequest {
@@ -262,43 +267,37 @@ export async function requestGenerateKeyframe(
   game: string,
   input: GenerateKeyframeRequest,
 ): Promise<{ asset?: MediaAsset; error?: string }> {
-  return postGva('/__gva__/generate-keyframe', game, input)
+  void game
+  return toolResult('wb-game-video:generate-keyframe', input)
 }
 
 /** 跨模块只读拿料：把 wb-character 立绘登记成 character_ref。返回登记的 ref 列表。 */
 export async function importCharacterRefs(game: string): Promise<{ refs: MediaAsset[]; error?: string }> {
-  return postGvaRefs('/__gva__/import-character-refs', game)
+  void game
+  return toolRefs('wb-game-video:import-character-refs')
 }
 
 /** 跨模块只读拿料：把场景模块贴图登记成 scene_ref。 */
 export async function importSceneRefs(game: string): Promise<{ refs: MediaAsset[]; error?: string }> {
-  return postGvaRefs('/__gva__/import-scene-refs', game)
+  void game
+  return toolRefs('wb-game-video:import-scene-refs')
 }
 
-async function postGvaRefs(path: string, game: string): Promise<{ refs: MediaAsset[]; error?: string }> {
+async function toolRefs(toolId: string): Promise<{ refs: MediaAsset[]; error?: string }> {
   try {
-    const r = await pluginFetch(`${path}?game=${encodeURIComponent(game)}`, { method: 'POST' })
-    const j = (await r.json()) as { refs?: MediaAsset[]; error?: string }
-    if (!r.ok) return { refs: [], error: j.error || `HTTP ${r.status}` }
+    const j = await getWorkbenchHost().tool.call(toolId, {}) as { refs?: MediaAsset[]; error?: string }
     return { refs: Array.isArray(j.refs) ? j.refs : [], error: j.error }
   } catch (e) {
     return { refs: [], error: (e as Error).message }
   }
 }
 
-async function postGva(
-  path: string,
-  game: string,
+async function toolResult(
+  toolId: string,
   body: unknown,
 ): Promise<{ asset?: MediaAsset; error?: string }> {
   try {
-    const r = await pluginFetch(`${path}?game=${encodeURIComponent(game)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const j = (await r.json()) as { asset?: MediaAsset; error?: string }
-    if (!r.ok) return { error: j.error || `HTTP ${r.status}` }
+    const j = await getWorkbenchHost().tool.call(toolId, body) as { asset?: MediaAsset; error?: string }
     return j
   } catch (e) {
     return { error: (e as Error).message }
