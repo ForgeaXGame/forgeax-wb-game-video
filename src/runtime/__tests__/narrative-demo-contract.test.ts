@@ -13,7 +13,7 @@ beforeAll(() => {
 })
 
 const YINGMO_NODES = ['n_river', 'n_land', 'n_tea', 'n_nodrink', 'n_follow', 'n_nofollow'] as const
-const DAZHAO_RESOURCE_ID = 'fa6da536-df0b-4f4f-aede-d77e8b053950'
+const DAZHAO_RESOURCE_ID = 'dazhao'
 
 function collectMediaRefs(value: unknown, refs: string[] = []): string[] {
   if (Array.isArray(value)) {
@@ -32,11 +32,10 @@ function collectMediaRefs(value: unknown, refs: string[] = []): string[] {
 }
 
 describe('nodia narrative demo contract', () => {
-  it('重置模板使用 Kino/COS resource id，不回退本地视频 basename', () => {
+  it('重置模板使用扩展自带视频 basename，不依赖 Kino/COS resource id', () => {
     const refs = collectMediaRefs(makeNodiaDemo())
     expect(refs).toContain(DAZHAO_RESOURCE_ID)
-    expect(refs).not.toContain('dazhao')
-    expect(refs.filter((ref) => ref.includes('narr-')).every((ref) => ref.startsWith('m-narr-'))).toBe(true)
+    expect(refs.filter((ref) => ref.startsWith('narr-')).length).toBeGreaterThan(0)
   })
 
   it('新规格 應/默 使用静态事件契约与 layout；片尾前 3s 弹出', () => {
