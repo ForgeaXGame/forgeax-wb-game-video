@@ -15,7 +15,7 @@ afterEach(() => {
 describe('gvaImageUrl', () => {
   it('builds a same-origin, revisioned image URL', () => {
     expect(gvaImageUrl('a-img-1/2', 'demo game', 42)).toBe(
-      '/api/v1/kino/resources/a-img-1%2F2/content?game_id=demo%20game&v=42',
+      '/media/resources/a-img-1%2F2/content?v=42',
     )
   })
 })
@@ -29,7 +29,7 @@ describe('deleteReferenceImage', () => {
     await deleteReferenceImage('demo game', 'a-img-1')
 
     expect(client.extension.fetch).toHaveBeenCalledWith(
-      'kino/resources/a-img-1',
+      'media/resources/a-img-1',
       expect.objectContaining({ method: 'DELETE' }),
     )
   })

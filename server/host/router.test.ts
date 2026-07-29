@@ -87,6 +87,57 @@ describe('createWbGameVideoRouter', () => {
     expect(bodyJson(axes)).toEqual({ styleAxes: { artMedia: 'ink' } })
   })
 
+  test('persists style-axis updates through the shared host context', async () => {
+    const router = createWbGameVideoRouter(createContext())
+
+    const response = await router.handle(request('style-axes', {
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      json: { director: 'wong-kar-wai' },
+    }))
+
+    expect(response.status).toBe(200)
+    expect(bodyJson(response)).toEqual({
+      styleAxes: { artMedia: 'ink', director: 'wong-kar-wai' },
+    })
+  })
+
+  test('maps browser media list, write, read, rename and delete to the host context', async () => {
+    const router = createWbGameVideoRouter(createContext())
+    const created = await router.handle({
+      ...request('media/resources', {
+        method: 'POST',
+        headers: {
+          'content-type': ['image/png'],
+          'x-workbench-media-name': ['cover.png'],
+          'x-workbench-media-type': ['image'],
+        },
+      }),
+      body: encoder.encode('cover'),
+    })
+    const createdBody = bodyJson(created) as { data: { resource_id: string } }
+    const id = createdBody.data.resource_id
+
+    const listed = await router.handle(request('media/resources', {
+      query: { media_type: ['image'] },
+    }))
+    const renamed = await router.handle(request(`media/resources/${id}`, {
+      method: 'PUT',
+      headers: { 'content-type': ['application/json'] },
+      json: { name: 'renamed' },
+    }))
+    const fetched = await router.handle(request(`media/resources/${id}`))
+    const removed = await router.handle(request(`media/resources/${id}`, { method: 'DELETE' }))
+    const afterDelete = await router.handle(request('media/resources'))
+
+    expect(created.status).toBe(200)
+    expect(bodyJson(listed)).toMatchObject({ data: { items: [{ resource_id: id, media_type: 'image' }] } })
+    expect(bodyJson(renamed)).toMatchObject({ data: { resource_id: id, name: 'renamed' } })
+    expect(bodyJson(fetched)).toMatchObject({ data: { resource_id: id, name: 'renamed' } })
+    expect(removed.status).toBe(204)
+    expect(bodyJson(afterDelete)).toMatchObject({ data: { items: [], total: 0 } })
+  })
+
   test('preserves raw request headers and binary body semantics for bundled ranges', async () => {
     const router = createWbGameVideoRouter(createContext())
     const response = await router.handle(request('media/bundled/dazhao', {

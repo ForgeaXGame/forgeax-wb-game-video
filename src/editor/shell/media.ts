@@ -2,11 +2,11 @@
  * Resolves a node media reference to a playable URL.
  *  - Existing http/blob/data/absolute URLs pass through unchanged.
  *  - Bundled zhandou basenames resolve first, including legacy `m-` refs.
- *  - Shared-registry ids (`a-<tag>-*`, see makeAssetId) use `/__gva__/media/:id` — **any kind**,
+ *  - Shared-registry ids (`a-<tag>-*`, see makeAssetId) use the extension media route — **any kind**,
  *    audio included (BGM SPEC 决策 A: 床轨与 video/image 同 resolve, 引擎只抛 id).
  *  - Remaining stable ids use the Kino content endpoint (video-only service).
  * Uploaded images use the shared resource API; image and generation registry operations
- * continue to use `/__gva__`.
+ * continue to use host-bound extension routes.
  */
 import { zhandouUrl } from '../assets/catalog'
 import {
@@ -17,7 +17,7 @@ import {
 } from '../assets/kino-api'
 import { fetchRegistryAssets } from '../assets/registry-assets'
 import type { MediaAsset, MediaKind, StyleAxes } from '../assets/registry-types'
-import { getWorkbenchHost } from '../../lib/workbench-host'
+import { ExtensionResponseError, getWorkbenchHost, readExtensionJson } from '../../lib/workbench-host'
 import { pluginUrl } from '../../lib/plugin-http'
 
 let defaultKinoClient: KinoVideoClient | undefined
@@ -35,7 +35,7 @@ export function kinoVideoContentUrl(resourceId: string, gameId: string): string 
 /**
  * 共享素材层自产资产 id 的形状（`makeAssetId` = `a-<tag>-<t>-<r>`）。按**形状**而非 kind 分流：
  * 解析器手里只有一个 id（引擎不传 kind），而 registry 里的 video / image / audio 播放地址同构
- * （`/__gva__/media/<id>`）——所以别按 kind 过滤，否则床轨 id 会掉进只认视频的 Kino 端点。
+ * （extension media route）——所以别按 kind 过滤，否则床轨 id 会掉进只认视频的 Kino 端点。
  */
 const REGISTRY_ASSET_ID = /^a-[a-z]+-/
 
@@ -55,7 +55,7 @@ export function resolveMediaSrc(ref: string | undefined, game?: string): string 
 /**
  * 优先序解析（D8 目标态，手里已有 MediaAsset 时用）：
  *   1. `asset.url`（manifest 稳定可播地址）—— 上传能力就绪后成片走这里；
- *   2. （D9 兜底，暂留）本地 `/__gva__/media/<id>` 流 / zhandou basename。
+ *   2. （D9 兜底，暂留）扩展媒体流 / zhandou basename。
  * graph/blueprint 只挂 id；URL 只住 manifest —— 引擎只抛 id，壳层在此 resolve。
  */
 export function resolveAssetSrc(asset: Pick<MediaAsset, 'id' | 'url'>, game?: string): string | undefined {
@@ -63,10 +63,10 @@ export function resolveAssetSrc(asset: Pick<MediaAsset, 'id' | 'url'>, game?: st
   return resolveMediaSrc(asset.id, game)
 }
 
-/** 共享素材层某资产的同源播放 URL（`/__gva__/media/<id>`）。 */
+/** 共享素材层某资产的宿主绑定播放路径。 */
 export function registryMediaUrl(id: string, game?: string): string {
-  const q = game ? `?game=${encodeURIComponent(game)}` : ''
-  return pluginUrl(`/__gva__/media/${encodeURIComponent(id)}${q}`)
+  void game
+  return `/media/assets/${encodeURIComponent(id)}`
 }
 
 /**
@@ -153,17 +153,9 @@ export async function getKinoVideoResource(game: string, resourceId: string) {
   }
 }
 
-/**
- * 列共享素材层原始 MediaAsset（`GraphVideoView` 的素材列表 / 占位卡用）；离线/无端点返回 []。
- * 需要把失败**报出来**的候选查询（如 BGM）用 `fetchRegistryAssets`，别在这里加 error 出参：
- * 这些调用点全都是「有就画、没有就空着」，多一条错误状态只会长出一堆用不上的分支。
- */
+/** Lists the shared registry assets for graph views and placeholder cards. */
 export async function listRegistryAssets(game?: string, kind?: MediaKind): Promise<MediaAsset[]> {
-  try {
-    return await fetchRegistryAssets(game, kind)
-  } catch {
-    return []
-  }
+  return fetchRegistryAssets(game, kind)
 }
 
 /** 取单条 registry 资产（轮询生成状态用）。 */
@@ -171,11 +163,11 @@ export async function getRegistryAsset(game: string, id: string): Promise<MediaA
   void game
   try {
     const r = await getWorkbenchHost().extension.fetch(`assets/${encodeURIComponent(id)}`)
-    if (!r.ok) return null
-    const j = (await r.json()) as { asset?: MediaAsset | null }
+    const j = await readExtensionJson(r) as { asset?: MediaAsset | null }
     return j.asset ?? null
-  } catch {
-    return null
+  } catch (error) {
+    if (error instanceof ExtensionResponseError && error.status === 404) return null
+    throw error
   }
 }
 
@@ -202,31 +194,21 @@ export interface GenerateVideoRequest {
 /** 读游戏级风格三轴（manifest.styleAxes）。离线/无端点返回 null。 */
 export async function getGameStyleAxes(game: string): Promise<StyleAxes | null> {
   void game
-  try {
-    const r = await getWorkbenchHost().extension.fetch('style-axes')
-    if (!r.ok) return null
-    const j = (await r.json()) as { styleAxes?: StyleAxes | null }
-    return j.styleAxes ?? null
-  } catch {
-    return null
-  }
+  const r = await getWorkbenchHost().extension.fetch('style-axes')
+  const j = await readExtensionJson(r) as { styleAxes?: StyleAxes | null }
+  return j.styleAxes ?? null
 }
 
 /** 浅合并写游戏级风格三轴，返回合并后结果。 */
 export async function setGameStyleAxes(game: string, axes: StyleAxes): Promise<StyleAxes | null> {
   void game
-  try {
-    const r = await getWorkbenchHost().extension.fetch('style-axes', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(axes),
-    })
-    if (!r.ok) return null
-    const j = (await r.json()) as { styleAxes?: StyleAxes | null }
-    return j.styleAxes ?? null
-  } catch {
-    return null
-  }
+  const r = await getWorkbenchHost().extension.fetch('style-axes', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(axes),
+  })
+  const j = await readExtensionJson(r) as { styleAxes?: StyleAxes | null }
+  return j.styleAxes ?? null
 }
 
 /**

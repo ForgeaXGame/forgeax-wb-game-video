@@ -1,6 +1,8 @@
 import type { WorkbenchExtensionRouterResponse } from '@forgeax/workbench-host/node'
 import { open, readFile, readdir, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
+import { resolve } from 'node:path'
 import { NODIA_ASSETS_MANIFEST } from './nodia-assets'
 
 const EMPTY = new Uint8Array()
@@ -28,26 +30,33 @@ async function resolveBundledAsset(
   const source = new URL(`../../src/editor/assets/${key}`, import.meta.url)
   try {
     if ((await stat(source)).isFile()) return source
-    return null
   } catch {
-    // Published package: Vite-owned assets are siblings of dist/server and are
-    // content-hashed. The logical manifest id selects exactly one basename.
-    const assetsDirectory = new URL('../assets/', import.meta.url)
-    let entries: string[]
+    // Vitest evaluates modules from a transformed URL. The checkout path keeps
+    // source-mode range coverage equivalent to the published module path.
+    const checkout = pathToFileURL(resolve(process.cwd(), 'src/editor/assets', key))
     try {
-      entries = await readdir(assetsDirectory)
+      if ((await stat(checkout)).isFile()) return checkout
     } catch {
-      return null
+      // fall through to the published bundle below
     }
-    const matcher = new RegExp(`^${escaped(id)}(?:-[A-Za-z0-9_-]+)?\\.mp4$`)
-    const matches = entries.filter((entry) => matcher.test(entry)).sort()
-    if (matches.length !== 1) return null
-    try {
-      const resolved = new URL(matches[0]!, assetsDirectory)
-      return (await stat(resolved)).isFile() ? resolved : null
-    } catch {
-      return null
-    }
+  }
+  // Published package: Vite-owned assets are siblings of dist/server and are
+  // content-hashed. The logical manifest id selects exactly one basename.
+  const assetsDirectory = new URL('../assets/', import.meta.url)
+  let entries: string[]
+  try {
+    entries = await readdir(assetsDirectory)
+  } catch {
+    return null
+  }
+  const matcher = new RegExp(`^${escaped(id)}(?:-[A-Za-z0-9_-]+)?\\.mp4$`)
+  const matches = entries.filter((entry) => matcher.test(entry)).sort()
+  if (matches.length !== 1) return null
+  try {
+    const resolved = new URL(matches[0]!, assetsDirectory)
+    return (await stat(resolved)).isFile() ? resolved : null
+  } catch {
+    return null
   }
 }
 

@@ -86,3 +86,18 @@ test('renders inconsistent packages as an explicit non-retryable error', async (
   expect(screen.getByRole('alert')).toHaveTextContent('blueprint.json')
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
 })
+
+test('does not repeat status or use a stale onBoot callback after a parent rerender', async () => {
+  let resolveStatus: ((value: { state: 'initialized' }) => void) | undefined
+  client.gamePackage.status.mockReturnValueOnce(new Promise((resolve) => { resolveStatus = resolve }))
+  const firstBoot = vi.fn()
+  const latestBoot = vi.fn()
+  const view = render(<GameBootstrap slug="demo" onBoot={firstBoot}><div>workspace</div></GameBootstrap>)
+
+  view.rerender(<GameBootstrap slug="demo" onBoot={latestBoot}><div>workspace</div></GameBootstrap>)
+  resolveStatus?.({ state: 'initialized' })
+
+  await waitFor(() => expect(latestBoot).toHaveBeenCalledTimes(1))
+  expect(firstBoot).not.toHaveBeenCalled()
+  expect(client.gamePackage.status).toHaveBeenCalledTimes(1)
+})

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_KINO_RESOURCE_PAGE_SIZE,
-  createKinoVideoClient,
   type KinoResourceDTO,
   type KinoVideoClient,
 } from './kino-api'
@@ -11,7 +10,7 @@ import {
   VideoUploadError,
   type UploadTransport,
 } from './video-upload'
-import { getWorkbenchHost } from '../../lib/workbench-host'
+import { getWorkbenchHost, readExtensionJson } from '../../lib/workbench-host'
 
 export type ManagedAssetKind = 'image' | 'audio' | 'font'
 
@@ -80,9 +79,8 @@ function toManagedAsset(
 export function createKinoAssetLibraryClient(
   options: CreateKinoAssetLibraryClientOptions = {},
 ): AssetLibraryClient {
-  const client = options.client ?? createKinoVideoClient({
-    fetch: (input, init) => getWorkbenchHost().extension.fetch(String(input), init),
-  })
+  if (!options.client) return createHostAssetLibraryClient()
+  const client = options.client
 
   return {
     async list(gameId, kind, requestOptions) {
@@ -164,6 +162,68 @@ export function createKinoAssetLibraryClient(
 
     async remove(gameId, id, requestOptions) {
       await client.delete(id, gameId, requestOptions)
+    },
+  }
+}
+
+function hostResource(resource: KinoResourceDTO, kind: ManagedAssetKind): ManagedAsset {
+  return {
+    id: resource.resource_id,
+    kind,
+    name: resource.name || resource.resource_id,
+    url: resource.url,
+    mime: resource.source_meta?.mime_type,
+    updatedAt: resource.updated_at,
+  }
+}
+
+function hostEnvelope(value: unknown): unknown {
+  if (!value || typeof value !== 'object') throw new Error('Extension returned an invalid media response')
+  const data = (value as { code?: unknown; data?: unknown }).data
+  if ((value as { code?: unknown }).code !== 0) throw new Error('Extension returned a failed media response')
+  return data
+}
+
+function createHostAssetLibraryClient(): AssetLibraryClient {
+  const request = (path: string, init?: RequestInit) => getWorkbenchHost().extension.fetch(path, init)
+  return {
+    async list(_gameId, kind, options) {
+      const response = await request(`media/resources?media_type=${encodeURIComponent(kind)}`, { signal: options?.signal })
+      const data = hostEnvelope(await readExtensionJson(response)) as { items?: KinoResourceDTO[] }
+      if (!Array.isArray(data.items)) throw new Error('Extension returned an invalid media list')
+      return data.items.map((item) => hostResource(item, kind))
+    },
+    async upload(_gameId, kind, file, options) {
+      const response = await request('media/resources', {
+        method: 'POST',
+        signal: options?.signal,
+        headers: {
+          'content-type': file.type,
+          'x-workbench-media-name': file.name,
+          'x-workbench-media-type': kind,
+        },
+        body: file,
+      })
+      return hostResource(hostEnvelope(await readExtensionJson(response)) as KinoResourceDTO, kind)
+    },
+    async rename(_gameId, id, name, options) {
+      const response = await request(`media/resources/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        signal: options?.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const resource = hostEnvelope(await readExtensionJson(response)) as KinoResourceDTO
+      if (resource.media_type !== 'image' && resource.media_type !== 'audio' && resource.media_type !== 'font') {
+        throw new AssetLibraryUploadError('只能重命名图片、音频或字体资产')
+      }
+      return hostResource(resource, resource.media_type)
+    },
+    async remove(_gameId, id, options) {
+      const response = await request(`media/resources/${encodeURIComponent(id)}`, {
+        method: 'DELETE', signal: options?.signal,
+      })
+      if (!response.ok) await readExtensionJson(response)
     },
   }
 }

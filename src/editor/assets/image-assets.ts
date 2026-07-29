@@ -92,5 +92,5 @@ export async function deleteReferenceImage(game: string, assetId: string): Promi
 
 export function gvaImageUrl(assetId: string, game: string, updatedAt?: number): string {
   const url = kinoClient().playbackUrl(assetId, game)
-  return updatedAt === undefined ? url : `${url}&v=${encodeURIComponent(String(updatedAt))}`
+  return updatedAt === undefined ? url : `${url}?v=${encodeURIComponent(String(updatedAt))}`
 }

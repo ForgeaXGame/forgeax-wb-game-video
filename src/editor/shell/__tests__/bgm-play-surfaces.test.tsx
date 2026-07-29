@@ -83,7 +83,7 @@ describe('试玩表面挂载床轨', () => {
   it('GraphPlaySurface：整表面即试玩，进场就起文档床', () => {
     render(<GraphPlaySurface scenario={SCENARIO} />)
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
-      '/__gva__/media/a-aud-story?game=game-nodia-fighting',
+      '/media/assets/a-aud-story',
     ])
   })
 

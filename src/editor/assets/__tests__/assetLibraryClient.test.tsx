@@ -10,6 +10,13 @@ import {
 import type { KinoResourceDTO, KinoVideoClient } from '../kino-api'
 import type { UploadTransport } from '../video-upload'
 
+const extensionFetch = vi.fn()
+
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({ extension: { fetch: extensionFetch } }),
+  readExtensionJson: (response: Response) => response.json(),
+}))
+
 function client(): AssetLibraryClient {
   return {
     list: vi.fn(async (_game, kind): Promise<ManagedAsset[]> => {
@@ -94,6 +101,38 @@ function kino(): KinoVideoClient {
 }
 
 describe('createKinoAssetLibraryClient', () => {
+  it('uses host media routes by default and consumes host-returned locators', async () => {
+    const response = resource({ url: '/host/media/audio-1', name: '原名' })
+    extensionFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { items: [response] } }), {
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: response }), {
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { ...response, name: '新主题曲' } }), {
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const client = createKinoAssetLibraryClient()
+    const file = new File(['music'], 'theme.mp3', { type: 'audio/mpeg' })
+
+    await expect(client.list('demo', 'audio')).resolves.toEqual([expect.objectContaining({
+      id: 'audio-1', url: '/host/media/audio-1',
+    })])
+    await client.upload('demo', 'audio', file)
+    await client.rename('demo', 'audio-1', '新主题曲')
+    await client.remove('demo', 'audio-1')
+
+    expect(extensionFetch).toHaveBeenNthCalledWith(1, 'media/resources?media_type=audio', expect.anything())
+    expect(extensionFetch).toHaveBeenNthCalledWith(2, 'media/resources', expect.objectContaining({
+      method: 'POST', body: file,
+      headers: expect.objectContaining({ 'x-workbench-media-name': 'theme.mp3' }),
+    }))
+    expect(extensionFetch).toHaveBeenNthCalledWith(3, 'media/resources/audio-1', expect.objectContaining({ method: 'PUT' }))
+    expect(extensionFetch).toHaveBeenNthCalledWith(4, 'media/resources/audio-1', expect.objectContaining({ method: 'DELETE' }))
+  })
+
   it('maps audio list, upload, rename and deletion to provider-backed resource operations', async () => {
     const kinoClient = kino()
     const transport: UploadTransport = { put: vi.fn(async () => {}) }

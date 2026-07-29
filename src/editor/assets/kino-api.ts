@@ -174,9 +174,9 @@ const MAX_ERROR_MESSAGE_LENGTH = 512
 export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
 
 function normalizeBaseUrl(raw: string | undefined): string {
-  const trimmed = (raw ?? 'kino').trim()
+  const trimmed = (raw ?? 'media').trim()
   if (trimmed.length === 0) {
-    return 'kino'
+    return 'media'
   }
   return trimmed.replace(/\/+$/, '')
 }
@@ -204,12 +204,12 @@ function appendQuery(
 }
 
 async function readJsonPayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) {
-    throw new KinoClientError('Upstream returned an empty response', 502, 'upstream_unavailable')
+  const mediaType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+  if (mediaType !== 'application/json' && !mediaType?.endsWith('+json')) {
+    throw new KinoClientError('Upstream returned a non-JSON response', 502, 'upstream_unavailable')
   }
   try {
-    return JSON.parse(text) as unknown
+    return await response.json() as unknown
   } catch {
     throw new KinoClientError('Upstream returned malformed JSON', 502, 'upstream_unavailable')
   }
@@ -292,7 +292,8 @@ function resourcePath(resourceId: string, suffix = ''): string {
 }
 
 function playbackUrl(resourceId: string, gameId: string): string {
-  return `/api/v1/kino${appendQuery(resourcePath(resourceId, '/content'), { game_id: gameId })}`
+  void gameId
+  return `/media/resources/${encodeURIComponent(resourceId)}/content`
 }
 
 export function createKinoVideoClient(

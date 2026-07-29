@@ -507,6 +507,7 @@ export interface HostAssetRegistry {
   upsert(asset: MediaAsset): Promise<MediaAsset>
   update(id: string, patch: Partial<MediaAsset>): Promise<MediaAsset | null>
   getStyleAxes(): Promise<StyleAxes | undefined>
+  setStyleAxes(axes: StyleAxes): Promise<StyleAxes>
   importGameFile(input: {
     registryId: string
     relativePath: string
@@ -609,6 +610,14 @@ export function createHostAssetRegistry(
     update,
     async getStyleAxes() {
       return (await readHostManifest(context.files)).styleAxes
+    },
+    async setStyleAxes(axes) {
+      return withHostManifestLock(mutationScope, async () => {
+        const manifest = await readHostManifest(context.files)
+        const styleAxes = { ...(manifest.styleAxes ?? {}), ...axes }
+        await writeHostManifest(context.files, { ...manifest, styleAxes })
+        return styleAxes
+      })
     },
     async importGameFile(input) {
       const relativePath = assertBoundedRelativePath(input.relativePath)

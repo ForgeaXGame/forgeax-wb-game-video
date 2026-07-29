@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { WorkbenchClientError } from '@forgeax/workbench-host/extension'
 import { useT } from '../../i18n'
 import { getWorkbenchHost } from '../../lib/workbench-host'
@@ -56,21 +56,35 @@ function packageError(cause: unknown, target: string): PackageError {
 export function GameBootstrap({ slug: _slug, onBoot, children }: GameBootstrapProps): JSX.Element | null {
   const t = useT()
   const [state, setState] = useState<BootstrapState>({ kind: 'loading' })
+  const onBootRef = useRef(onBoot)
+  const mountedRef = useRef(true)
 
-  const bootExisting = useCallback(() => {
-    setState({ kind: 'ready' })
-    onBoot()
+  useEffect(() => {
+    onBootRef.current = onBoot
   }, [onBoot])
 
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
+
+  const bootExisting = useCallback(() => {
+    if (!mountedRef.current) return
+    setState({ kind: 'ready' })
+    onBootRef.current()
+  }, [])
+
   const readStatus = useCallback(async () => {
+    if (!mountedRef.current) return
     setState({ kind: 'loading' })
     try {
       const status = statusOf(await getWorkbenchHost().gamePackage.status())
+      if (!mountedRef.current) return
       if (status?.state === 'initialized') bootExisting()
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else if (status?.state === 'uninitialized') setState({ kind: 'guide' })
       else setState({ kind: 'error', retry: 'status', error: { target: 'package status', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {
+      if (!mountedRef.current) return
       setState({ kind: 'error', retry: 'status', error: packageError(cause, 'package status') })
     }
   }, [bootExisting])
@@ -78,13 +92,16 @@ export function GameBootstrap({ slug: _slug, onBoot, children }: GameBootstrapPr
   useEffect(() => { void readStatus() }, [readStatus])
 
   const initialize = async () => {
+    if (!mountedRef.current) return
     setState({ kind: 'loading' })
     try {
       const status = statusOf(await getWorkbenchHost().gamePackage.initialize())
+      if (!mountedRef.current) return
       if (status?.state === 'initialized') bootExisting()
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else setState({ kind: 'error', retry: 'initialize', error: { target: 'package', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {
+      if (!mountedRef.current) return
       setState({ kind: 'error', retry: 'initialize', error: packageError(cause, 'package') })
     }
   }
