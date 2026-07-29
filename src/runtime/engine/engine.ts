@@ -574,6 +574,10 @@ export class GraphRuntime {
       durationMs: node.data.durationMs,
     })
     this.setPhase('playing')
+    // window 是显隐唯一 SSOT（有 window 就跳过 trigger，见 nodes/perf.ts 与 flushTimeline）：
+    // 这里立刻按 elapsed=0 冲一遍窗口，让 `startMs<=0` 的子件与 `trigger:enter` 同帧出现，
+    // 而不是等宿主第一次 tick 才冒出来（headless / 首帧前就该可见）。
+    this.tickWindows(node, 0)
     // 普通节点的 `data.bgm` 只走这条演出入场路径（容器 returning 走 beginResume，不会到这里）；
     // 容器排除在外是因为它那句归 descend 管，否则一次进入会 apply 两遍。
     if (!isSubflowContainerData(node.data)) this.applyNodeBgm(node)
