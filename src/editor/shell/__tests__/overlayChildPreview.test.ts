@@ -1,16 +1,14 @@
 /**
- * 回归：时间轴预览必须能画挂载方案里的组件（含 battleHpBar）。
+ * 回归：时间轴预览必须能画挂载方案里的新规格组件。
  * 表现层统一走 overlay 表 + skinCtx 绘制时 resolve。
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createCoreSkinRegistry, registerCoreSkins } from '../../../runtime/component-host/components'
-import { battleHpBarPreset } from '../../../runtime/component-host/components/BattleHpBar'
-import { inkKouPreset } from '../../../runtime/component-host/components/InkKouLayer'
-import { inkYingMoPreset } from '../../../runtime/component-host/components/InkYingMoLayer'
 import { renderOverlayChildPreview } from '../overlayChildPreview'
 import type { SkinCtx } from '../../../runtime/component-host/rendererRegistry'
+import type { OverlayChild } from '../../../runtime/schema/graph-schema'
 
 beforeAll(() => {
     registerCoreSkins()
@@ -33,9 +31,13 @@ const ctx: SkinCtx = {
 }
 
 describe('overlayChildPreview · 时间轴预览', () => {
-  it('battleHpBar 能渲出 DOM（overlay 表 + ctx resolve）', () => {
+  it('我方新规格血条能渲出 DOM', () => {
     const reg = createCoreSkinRegistry()
-    const child = battleHpBarPreset('hp-player', { bind: 'ent-player', label: '我方' })
+    const child: OverlayChild = {
+      id: 'hp-player',
+      component: 'battlePlayerHpBar',
+      inputs: { current: 72, max: 100, label: '我方', qi: 3, qiMax: 5 },
+    }
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 0) as ReactElement,
     )
@@ -45,19 +47,35 @@ describe('overlayChildPreview · 时间轴预览', () => {
 
   it('敌方血条同样可预览', () => {
     const reg = createCoreSkinRegistry()
-    const child = battleHpBarPreset('hp-boss', { bind: 'ent-boss', label: '敌方' })
+    const child: OverlayChild = {
+      id: 'hp-boss',
+      component: 'battleEnemyHpBar',
+      inputs: { current: 58, max: 100, label: '敌方' },
+    }
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 0) as ReactElement,
     )
     expect(html).toContain('ks-hud-boss')
     expect(html).toContain('敌方')
   })
+
+  it('伤害与增益飘字预览使用稳定 fit target 且不播放位移动画', () => {
+    const reg = createCoreSkinRegistry()
+    for (const component of ['damageFloatText', 'gainFloatText']) {
+      const child: OverlayChild = { id: component, component, inputs: {} }
+      const html = renderToStaticMarkup(
+        renderOverlayChildPreview(child, reg, ctx, 400) as ReactElement,
+      )
+      expect(html).toContain('is-preview')
+      expect(html).toContain('data-overlay-fit-target')
+    }
+  })
 })
 
 describe('overlayChildPreview · 泛用预览时钟（preview/previewTimeMs 透传）', () => {
-  it('inkYingMo（挂了 window.startMs）：is-frozen + 按 localMs 算的 --preview-t，且按钮禁用', () => {
+  it('新规格 inkYingMo 预览冻结交互且按钮禁用', () => {
     const reg = createCoreSkinRegistry()
-    const child = { ...inkYingMoPreset('c1'), window: { startMs: 1000 } }
+    const child: OverlayChild = { id: 'c1', component: 'inkYingMo', inputs: {}, window: { startMs: 1000 } }
     // 播放头 1300ms、child 于 1000ms 进场 → localMs = 300ms。
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 1300) as ReactElement,
@@ -67,14 +85,14 @@ describe('overlayChildPreview · 泛用预览时钟（preview/previewTimeMs 透�
     expect(html).toContain('disabled=""')
   })
 
-  it('inkKou（QTE cues 走 appearAt 绝对帧，无 window）：localMs 原样 = 播放头，不因引入时钟而漂移', () => {
+  it('新规格 inkKou 预览冻结交互', () => {
     const reg = createCoreSkinRegistry()
-    const child = inkKouPreset('c2')
-    // 默认 cue：appearAt 0 ~ endAt 1000；playhead=400 落在窗内才会渲出按钮。
+    const child: OverlayChild = { id: 'c2', component: 'inkKou', inputs: {} }
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 400) as ReactElement,
     )
     expect(html).toContain('is-frozen')
     expect(html).toContain('--preview-t:400ms')
+    expect(html).toContain('disabled=""')
   })
 })

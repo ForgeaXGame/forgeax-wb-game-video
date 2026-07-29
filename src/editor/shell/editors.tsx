@@ -192,11 +192,15 @@ export function defaultsForComponent(componentId: string): Record<string, unknow
   return buildDefaults(getComponent(componentId)?.inputs)
 }
 
+const CUE_COMPONENT_IDS = new Set(['inkKou', 'battleParry'])
+const OPTION_COMPONENT_IDS = new Set(['inkYingMo', 'battleSkillBar'])
+
 /**
  * 编辑器：组件 inputs 是否声明了多拍点结构（`component: 'qteCues'`）。
  * 有 ⇒ 时间轴走拍点交互；组件侧只需在 inputs 里声明该项，不必另加分类标签。
  */
 export function hasCuePointsInput(componentId: string): boolean {
+  if (CUE_COMPONENT_IDS.has(componentId)) return true
   const inputs = getComponent(componentId)?.inputs
   return !!inputs?.some((i) => i.component === 'qteCues')
 }
@@ -207,6 +211,7 @@ export function hasCuePointsInput(componentId: string): boolean {
  */
 export function hasOptionEventsInput(componentId: string): boolean {
   if (hasCuePointsInput(componentId)) return false
+  if (OPTION_COMPONENT_IDS.has(componentId)) return true
   const inputs = getComponent(componentId)?.inputs
   return !!inputs?.some((i) => i.component === 'events')
 }

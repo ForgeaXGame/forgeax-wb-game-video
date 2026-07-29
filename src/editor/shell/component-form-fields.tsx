@@ -41,6 +41,11 @@ function fieldHint(inp: ComponentInput): string {
   return parts.join(' · ')
 }
 
+function defaultPlaceholder(inp: ComponentInput): string | undefined {
+  if (inp.default === undefined || inp.default === null || typeof inp.default === 'object') return undefined
+  return String(inp.default)
+}
+
 function field(label: string, node: JSX.Element, title?: string): JSX.Element {
   return (
     <label style={rowStyle} title={title}>
@@ -217,6 +222,7 @@ function renderInput(
         {wrap(
           <ColorPicker
             value={typeof val === 'string' ? val : undefined}
+            placeholder={defaultPlaceholder(inp)}
             onChange={(next) => onPatch(inp.key, next)}
           />,
         )}
@@ -281,6 +287,9 @@ function renderInput(
     )
   }
   if (inp.options) {
+    const defaultOption = typeof inp.default === 'string'
+      ? inp.options.find((option) => option.value === inp.default)
+      : undefined
     return (
       <span key={inp.key}>
         {wrap(
@@ -290,7 +299,9 @@ function renderInput(
             style={{ flex: compact ? undefined : 1, maxWidth: compact ? 110 : undefined, fontSize: 12 }}
             title={hint}
           >
-            <option value="">（未选）</option>
+            <option value="">
+              {defaultOption ? `默认：${defaultOption.label}` : '（未选）'}
+            </option>
             {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>,
         )}
@@ -305,6 +316,7 @@ function renderInput(
             <input
               type="number"
               value={typeof val === 'number' ? val : ''}
+              placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value === '' ? undefined : Number(e.target.value))}
               style={{ width: compact ? 56 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
               title={hint}
@@ -332,6 +344,7 @@ function renderInput(
           {wrap(
             <input
               value={typeof val === 'string' ? val : ''}
+              placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
               style={{ width: compact ? 88 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
               title={hint}

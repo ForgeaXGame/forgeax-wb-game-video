@@ -7,9 +7,9 @@ import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variab
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
-import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
+import type { Layout, NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
-import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
+import { aggregateOverlayEvents, overlayReactionKey, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/component-registry'
 import {
@@ -26,10 +26,11 @@ import {
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
-import { SpawnInputsEditor } from './spawn-inputs-editor'
 import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
 import { PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
+import { NodeActionsEditor } from './NodeActionsEditor'
+import { ComponentEventsEditor } from './ComponentEventsEditor'
 
 /**
  * 「音乐动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -190,13 +191,9 @@ function eventReactionDo(reactions: Reaction[] | undefined, ev: OverlayEventRef)
   return resolveEventReactionDo(reactions, ev.localEventId, ev.childId, ev.mountId) ?? []
 }
 
-/** eventKeys 全集：替换某事件反应时移除所有别名，写入规范 id（= 组件 emit 的 localEventId，对齐边 sourceHandle）。 */
+/** 新规格挂载 reaction 使用稳定 childId:eventId；边仍单独使用 localEventId。 */
 function eventKeySet(ev: OverlayEventRef): Set<string> {
-  const keys = new Set<string>([ev.localEventId, ev.eventId])
-  keys.add(`${ev.childId}:${ev.localEventId}`)
-  keys.add(`${ev.mountId}:${ev.localEventId}`)
-  keys.add(`${ev.mountId}:${ev.childId}:${ev.localEventId}`)
-  return keys
+  return new Set([overlayReactionKey(ev.childId, ev.localEventId)])
 }
 
 function upsertEventReaction(
@@ -206,8 +203,9 @@ function upsertEventReaction(
 ): Reaction[] | undefined {
   const keys = eventKeySet(ev)
   const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
-  // 落盘用 localEventId：与引擎 outcome / 边 sourceHandle 一致（勿写 mount:child:… 展示用 eventId）。
-  if (doActions.length) rest.push({ when: { type: 'event', id: ev.localEventId }, do: doActions })
+  if (doActions.length) {
+    rest.push({ when: { type: 'event', id: overlayReactionKey(ev.childId, ev.localEventId) }, do: doActions })
+  }
   return rest.length ? rest : undefined
 }
 
@@ -378,23 +376,9 @@ function LifecycleReactionsEditor({
   )
 }
 
-/** 事件展示：中文名优先，括号里保留机器 id（对齐「出边 › 目标」的 `名称 (id)`）。 */
-function overlayEventLabel(ev: {
-  eventId: string
-  localEventId: string
-  label?: string
-  componentId: string
-  childId: string
-}): string {
-  const comp = getComponentManifest(ev.componentId)?.label?.trim()
-  const local = ev.label?.trim()
-  const head = [comp, local].filter(Boolean).join(' · ')
-  if (head && head !== ev.eventId) return `${head} (${ev.eventId})`
-  return ev.eventId
-}
-
 function OverlayReactionsEditor({
   events,
+  catalogReactions,
   reactions,
   edgeOptions,
   routeHints,
@@ -410,6 +394,7 @@ function OverlayReactionsEditor({
   onRouteTo,
 }: {
   events: OverlayEventRef[]
+  catalogReactions?: OverlayReaction[]
   reactions: Reaction[] | undefined
   edgeOptions: OptItem[]
   /** eventId → 出边目标摘要（有 advance 或默认推进时都能看见去哪）。 */
@@ -426,88 +411,48 @@ function OverlayReactionsEditor({
   onChange: (next: Reaction[] | undefined) => void
   /** 选目标节点：upsert 边 + 本挂载 advance；空串 = 清除该出口边。 */
   onRouteTo: (ev: OverlayEventRef, targetId: string) => void
-}): JSX.Element {
+}): JSX.Element | null {
+  if (!events.length) return null
   const catalog = pickers ?? { entities, variables }
-  if (!events.length) {
-    return (
-      <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-        无导出事件（交互组件需有 inputs.events / manifest.events）
-      </div>
-    )
-  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+    <div style={{ marginTop: 4 }}>
       {sectionLabel('事件响应')}
       <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 2, lineHeight: 1.4 }}>
-        选目标节点会同步写出边；多目标加权见「出边」。
+        目录动作先执行，挂载动作按顺序追加；选目标节点会同步写出边。
       </div>
-      {events.map((ev) => {
-        const actions = eventReactionDo(reactions, ev)
-        const pool = handleEdges(graph, nodeId, ev.localEventId)
-        const advance = actions.find((a): a is Extract<NodeAction, { kind: 'advance' }> => a.kind === 'advance')
-        const advanceEdge = advance ? graph.edges.find((e) => e.id === advance.edgeId) : undefined
-        const multiPool = pool.length > 1
-        const currentTarget = multiPool
-          ? ''
-          : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
-        const hint = routeHints?.[ev.localEventId] ?? routeHints?.[ev.eventId]
-        const actionBrief =
-          actions.length === 0
-            ? '无动作'
-            : actions.map((a) => (a.kind === 'effect' ? '效果' : a.kind === 'spawn' ? '生成' : '推进')).join(' · ')
-        return (
-          <HoverCard
-            key={ev.eventId}
-            nested
-            header={(
-              <div style={{ minWidth: 0, flex: 1 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
-                <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {overlayEventLabel(ev)}
-                </div>
-                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
-                  {currentTarget
-                    ? `→ ${nodeOptions.find((o) => o.value === currentTarget)?.label ?? currentTarget}`
-                    : multiPool
-                      ? `多目标边池 (${pool.length})`
-                      : '仅副作用'}
-                  {' · '}
-                  {actionBrief}
-                </div>
-              </div>
-            )}
-          >
-            {sectionLabel('走向')}
-            {row('目标节点', (
-              multiPool ? (
-                <span style={{ fontSize: 11, color: '#ce9178' }}>
-                  多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}
-                </span>
+      <ComponentEventsEditor
+        mode="mount"
+        events={events}
+        catalogReactions={catalogReactions}
+        mountReactions={reactions}
+        edgeOptions={edgeOptions}
+        spawnOptions={spawnOptions}
+        overlays={overlays}
+        pickers={catalog}
+        onMountActionsChange={(event, actions) => onChange(upsertEventReaction(reactions, event, actions))}
+        renderRoute={(event) => {
+          const actions = eventReactionDo(reactions, event)
+          const pool = handleEdges(graph, nodeId, event.localEventId)
+          const advance = actions.find((action): action is Extract<NodeAction, { kind: 'advance' }> => action.kind === 'advance')
+          const advanceEdge = advance ? graph.edges.find((edge) => edge.id === advance.edgeId) : undefined
+          const multiPool = pool.length > 1
+          const currentTarget = multiPool ? '' : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
+          const hint = routeHints?.[event.localEventId] ?? routeHints?.[event.eventId]
+          return (
+            <div style={{ marginTop: 6 }}>
+              {sectionLabel('走向')}
+              {row('目标节点', multiPool ? (
+                <span style={{ fontSize: 11, color: '#ce9178' }}>多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}</span>
               ) : (
-                <select
-                  value={currentTarget}
-                  onChange={(e) => onRouteTo(ev, e.target.value)}
-                  style={{ flex: 1 }}
-                  title="写入出边 sourceHandle=事件 id，并在本挂载 reactions 里挂 advance"
-                >
+                <select value={currentTarget} onChange={(e) => onRouteTo(event, e.target.value)} style={{ flex: 1 }}>
                   <option value="">（无 · 只做副作用）</option>
-                  {nodeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                  {nodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-              )
-            ))}
-            {sectionLabel('触发时动作')}
-            <NodeActionsEditor
-              actions={actions}
-              edgeOptions={edgeOptions}
-              spawnOptions={spawnOptions}
-              overlays={overlays}
-              pickers={catalog}
-              onChange={(doActions) => onChange(upsertEventReaction(reactions, ev, doActions))}
-            />
-          </HoverCard>
-        )
-      })}
+              ))}
+            </div>
+          )
+        }}
+      />
     </div>
   )
 }
@@ -515,7 +460,7 @@ function OverlayReactionsEditor({
 type MountLayoutKey = keyof Layout
 
 const MOUNT_LAYOUT_HINT =
-  '挂载盒在视频视口上的位置与尺寸（对齐 CSS absolute）。只影响血条、飘字等表现层；應默 / QTE / 技能条请改下方组件参数里的 x、y。'
+  '挂载盒在视频视口上的位置与尺寸（对齐 CSS absolute）。新规格组件参数不承载位置；画布拖拽与这里的布局字段写回同一份 mount.layout。'
 
 const MOUNT_LAYOUT_PRESETS: Array<{
   id: string
@@ -833,118 +778,6 @@ const REACTIVE_LABEL: Record<ReactiveType, string> = {
 }
 function isReactive(r: Reaction): boolean {
   return r.when.type === 'watch' || r.when.type === 'shown' || r.when.type === 'hidden'
-}
-
-/** node.data.reactions 内 do 动作编辑：effect / spawn / advance（沿边推进）。 */
-function NodeActionsEditor({
-  actions,
-  edgeOptions,
-  spawnOptions,
-  overlays,
-  pickers,
-  onChange,
-}: {
-  actions: NodeAction[]
-  edgeOptions: OptItem[]
-  spawnOptions: OptItem[]
-  overlays?: Record<string, Overlay>
-  pickers?: EditorPickerCtx
-  onChange: (next: NodeAction[]) => void
-}): JSX.Element {
-  const patchAt = (i: number, a: NodeAction) => onChange(actions.map((c, j) => (j === i ? a : c)))
-  const removeAt = (i: number) => onChange(actions.filter((_, j) => j !== i))
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {actions.map((a, i) => (
-        <div
-          key={i}
-          style={{
-            border: '1px solid #2a2a2a',
-            borderRadius: 5,
-            padding: '6px 8px',
-            background: 'rgba(0,0,0,0.22)',
-            minWidth: 0,
-            maxWidth: '100%',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8 }}>
-              {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '沿边推进'}
-            </span>
-            <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
-          </div>
-          {a.kind === 'effect' ? (
-            <EffectsEditor value={a.effects} pickers={pickers} onChange={(effs) => patchAt(i, { kind: 'effect', effects: effs ?? [] })} />
-          ) : null}
-          {a.kind === 'spawn' ? (
-            <>
-              {row('模板', (
-                <select
-                  value={a.from}
-                  onChange={(e) => patchAt(i, { ...a, from: e.target.value })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
-                >
-                  <option value="">（选组件模板）</option>
-                  {spawnOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ))}
-              {row('存活ms', (
-                <input
-                  type="number"
-                  value={a.ttlMs ?? 0}
-                  onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }}
-                  title="0=常驻直到离场"
-                />
-              ))}
-              <SpawnInputsEditor
-                from={a.from}
-                inputs={a.inputs}
-                overlays={overlays}
-                pickers={pickers}
-                onChange={(inputs) => patchAt(i, { ...a, inputs })}
-              />
-            </>
-          ) : null}
-          {a.kind === 'advance' ? (
-            <>
-              {row('走边', (
-                <select
-                  value={a.edgeId}
-                  onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
-                >
-                  <option value="">（选出边）</option>
-                  {edgeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ))}
-              {a.edgeId ? (
-                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-                  {edgeOptions.find((o) => o.value === a.edgeId)?.label ?? `边 ${a.edgeId}（未找到）`}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => onChange([...actions, {
-            kind: 'effect',
-            // 与「生成组件」一样一次带好初值，避免先出空壳再点一次「+ 效果」
-            effects: [createDefaultEffect('attr', pickers?.entities, pickers?.variables)],
-          }])}
-        >
-          ＋ 效果
-        </button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button>
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -1743,6 +1576,7 @@ export function NodeInspector({
                 ) : null}
                 <OverlayReactionsEditor
                   events={events}
+                  catalogReactions={overlays?.[mount.overlay]?.reactions}
                   reactions={mount.reactions}
                   edgeOptions={edgeOptions}
                   routeHints={routeHints}

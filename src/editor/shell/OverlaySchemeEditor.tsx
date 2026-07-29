@@ -5,10 +5,14 @@
  */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
-import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { ComponentLibrary } from './ComponentLibrary'
 import { componentTypeLabel } from './editors'
+import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
+import { getComponentManifest } from '../../runtime/registry/component-registry'
+import { ComponentFormFields } from './component-form-fields'
+import { ComponentEventsEditor } from './ComponentEventsEditor'
 
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
 /** 组件行的删除 × ——小而醒目。 */
@@ -21,6 +25,77 @@ const rowDelBtn: CSSProperties = {
   fontSize: 16,
   lineHeight: 1,
   padding: '0 4px',
+}
+
+function topmostChildId(children: Overlay['children']): string {
+  return children.reduce<{ id: string; zIndex: number; index: number } | null>((top, child, index) => {
+    const zIndex = typeof child.layout?.zIndex === 'number' ? child.layout.zIndex : 0
+    if (!top || zIndex > top.zIndex || (zIndex === top.zIndex && index > top.index)) {
+      return { id: child.id, zIndex, index }
+    }
+    return top
+  }, null)?.id ?? ''
+}
+
+type ChildRectKey = 'left' | 'top' | 'width' | 'height'
+
+const CHILD_RECT_FIELDS: Array<{ key: ChildRectKey; label: string; placeholder: string }> = [
+  { key: 'left', label: 'X%', placeholder: '0' },
+  { key: 'top', label: 'Y%', placeholder: '0' },
+  { key: 'width', label: '宽%', placeholder: '100' },
+  { key: 'height', label: '高%', placeholder: '100' },
+]
+
+function percentValue(value: Layout[ChildRectKey]): string {
+  if (typeof value !== 'number') return ''
+  return String(Math.round(value * 1000) / 10)
+}
+
+function ChildLayoutFields({
+  child,
+  onPatch,
+}: {
+  child: Overlay['children'][number]
+  onPatch: (patch: Partial<Layout>) => void
+}): JSX.Element {
+  const set = (key: ChildRectKey, raw: string): void => {
+    if (raw === '') {
+      onPatch({ [key]: undefined })
+      return
+    }
+    const percent = Number(raw)
+    if (!Number.isFinite(percent)) return
+    const min = key === 'width' || key === 'height' ? 2 : 0
+    const normalized = Math.min(100, Math.max(min, percent)) / 100
+    onPatch({
+      [key]: normalized,
+      ...(key === 'left' ? { right: undefined } : {}),
+      ...(key === 'top' ? { bottom: undefined } : {}),
+    })
+  }
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>位置与尺寸</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+        {CHILD_RECT_FIELDS.map(({ key, label, placeholder }) => (
+          <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, fontSize: 10, opacity: 0.85 }}>
+            <span>{label}</span>
+            <input
+              type="number"
+              min={key === 'width' || key === 'height' ? 2 : 0}
+              max={100}
+              step={0.1}
+              value={percentValue(child.layout?.[key])}
+              placeholder={placeholder}
+              aria-label={`${child.id} ${label}`}
+              onChange={(event) => set(key, event.target.value)}
+              style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontSize: 11 }}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -85,10 +160,14 @@ export function DuplicateBadge({
 export interface OverlaySchemeEditorProps {
   overlayId: string
   overlay: Overlay
+  overlays?: Record<string, Overlay>
   entities: Record<string, Entity>
   variables: Record<string, Variable>
   usageCount: number
-  /** 锁定态（基础覆盖物单组件方案）：只可编辑 layout，不允许增删组件、不显组件库/删除。 */
+  /**
+   * 结构锁定态（基础覆盖物单组件方案）：
+   * 可编辑 inputs/layout；不可删除方案、增删组件或修改目录事件动作。
+   */
   locked?: boolean
   /** 与本方案内容重复的其它方案 id（component+位置+参数等价，见 overlay-dedup.ts）；空 = 无重复。 */
   duplicateOf?: readonly string[]
@@ -104,11 +183,13 @@ export interface OverlaySchemeEditorProps {
     childId: string,
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
+  onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
 }
 
 export function OverlaySchemeEditor({
   overlayId,
   overlay,
+  overlays: overlayCatalog,
   entities,
   variables,
   usageCount,
@@ -119,10 +200,35 @@ export function OverlaySchemeEditor({
   onAddChild,
   onRemoveChild,
   onPatchChild,
+  onReactionsChange,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
+  const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
+  const selectedEvents = selectedChild
+    ? aggregateOverlayEvents(
+        { id: overlay.id, children: [selectedChild] },
+        getComponentManifest,
+        { mountId: overlay.id },
+      )
+    : []
+  const overlays = overlayCatalog ?? { [overlay.id]: overlay }
+  const spawnOptions = Object.values(overlays).flatMap((definition) =>
+    definition.children.map((child) => ({
+      value: `${definition.id}/${child.id}`,
+      label: `${definition.title?.trim() || definition.id} · ${componentTypeLabel(child.component)} · ${child.id}`,
+    })))
+
+  // 进入方案时默认选中视觉最上层组件（zIndex 高者优先，同层级后渲染者优先）；
+  // 双字幕等完全重叠时，默认选择因此与眼前实际可见的那一层一致。
+  // 参数/事件因此始终紧跟画布出现，不要求作者先猜到还需额外点击一次。
+  useEffect(() => {
+    setSelectedChildId((current) =>
+      overlay.children.some((child) => child.id === current)
+        ? current
+        : topmostChildId(overlay.children))
+  }, [overlayId, overlay.children])
 
   // Backspace/Delete 删除选中组件；经 onRemoveChild→setMeta 天然进 zundo 撤销历史。锁定态（基础覆盖物）不删。
   // 护栏：输入框/下拉/可编辑区、以及焦点在左侧方案列表（.gc-list）内一律放行给它们。
@@ -196,7 +302,6 @@ export function OverlaySchemeEditor({
                 }
           }
           onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
-          onPatchChildInputs={(childId, inputs) => onPatchChild(childId, { inputs })}
           onWarnChange={setWarnIds}
         />
 
@@ -258,12 +363,60 @@ export function OverlaySchemeEditor({
             )
           })}
         </div>
+        {selectedChild ? (
+          <div data-testid="overlay-selected-child-editor" style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+              参数 · {componentTypeLabel(selectedChild.component)}
+            </div>
+            {locked ? (
+              <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
+                基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
+              </div>
+            ) : null}
+            <ChildLayoutFields
+              child={selectedChild}
+              onPatch={(layout) => onPatchChild(selectedChild.id, { layout })}
+            />
+            <ComponentFormFields
+              componentId={selectedChild.component}
+              values={selectedChild.inputs ?? {}}
+              pickers={{ entities, variables }}
+              density="compact"
+              onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
+            />
+            {selectedEvents.length > 0 ? (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 600, margin: '10px 0 6px' }}>事件</div>
+                {locked ? (
+                  <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
+                    基础组件方案的目录事件动作只读；节点挂载仍可追加动作。
+                  </div>
+                ) : null}
+                <fieldset
+                  data-testid="overlay-event-editor"
+                  disabled={locked}
+                  style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+                >
+                  <ComponentEventsEditor
+                    mode="catalog"
+                    events={selectedEvents}
+                    catalogReactions={overlay.reactions}
+                    spawnOptions={spawnOptions}
+                    overlays={overlays}
+                    pickers={{ entities, variables }}
+                    onCatalogChange={locked ? undefined : onReactionsChange}
+                  />
+                </fieldset>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可在画布上调整其位置 / 尺寸。
+          基础组件方案锁定为单组件，不可增删；可调整参数、位置和尺寸。
         </div>
       ) : (
         <ComponentLibrary />

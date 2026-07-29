@@ -90,6 +90,18 @@ export type NodeAction =
   | { kind: 'advance'; edgeId: string }
   | { kind: 'spawn'; from: string; inputs?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
 
+/** Overlay 目录事件动作：目录是可复用表现/副作用模板，不得携带节点专属走向。 */
+export type OverlayReactionAction = Exclude<NodeAction, { kind: 'advance' }>
+
+/**
+ * Overlay 目录专用 reaction。稳定 key 恒为 `${childId}:${eventId}`；
+ * 只允许组件 event → effect/spawn，节点挂载可再按顺序追加通用 NodeAction（含 advance）。
+ */
+export interface OverlayReaction {
+  when: { type: 'event'; id: string }
+  do: OverlayReactionAction[]
+}
+
 /**
  * 触发面（闭合）——节点生命周期 + 事件 + 数据/状态 + 组件生命周期。effect 一律挂 reactions。
  * - enter：进入节点（演出开始）
@@ -188,6 +200,8 @@ export interface Overlay {
   id: string
   title?: string
   children: OverlayChild[]
+  /** 目录继承动作；严格使用 `childId:eventId`，运行时仅在组件 emit 路径消费。 */
+  reactions?: OverlayReaction[]
 }
 
 /** scenario.ui：overlay 目录。 */

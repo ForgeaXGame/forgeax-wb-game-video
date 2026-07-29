@@ -426,11 +426,12 @@ export function applyStyleLockedEventParams(
   if (!RICH_SKIN_COMPONENTS.has(id)) return cleaned
   const locked = RICH_SKIN_DEFAULT_EVENTS[id]
   if (!Array.isArray(locked) || locked.length === 0) return cleaned
+  const eventIds = new Set(locked.map((event) => event.id))
+  const requestedDefault = typeof cleaned.defaultEvent === 'string' ? cleaned.defaultEvent : ''
   return {
     ...cleaned,
     events: locked.map((e) => ({ id: e.id, label: e.label, condition: e.condition })),
-    defaultEvent:
-      (typeof cleaned.defaultEvent === 'string' && cleaned.defaultEvent) || 'fail',
+    defaultEvent: eventIds.has(requestedDefault) ? requestedDefault : locked[0]!.id,
   }
 }
 
@@ -982,7 +983,7 @@ export function isSchemeOriginElement(scenario: GameScenario, node: GameNode | u
 function materialKindForChild(scenario: GameScenario, node: GameNode | undefined, el: OverlayChild): MaterialKind {
   if (isSchemeOriginElement(scenario, node, el.id)) return 'component'
   if (el.component === 'dialogue') return 'subtitle'
-  if (el.component === 'floatText') return 'overlay'
+  if (el.component === 'damageFloatText' || el.component === 'gainFloatText') return 'overlay'
   if (hasOptionEventsInput(el.component)) return 'option'
   if (hasCuePointsInput(el.component)) return 'qte'
   if (el.component === 'filter') return 'filter'
@@ -1340,17 +1341,19 @@ export function activePreviewOverlaysFromNode(
       if (ms < start || ms > end) continue
       const label = resolveFloatTextPreviewLabel(floatPreviewParams(scenario, node, el, inputs as FloatTextParams), previewCtx)
       if (!label) continue
+      const mount = findMountOwningChild(scenario, node, el.id)
+      const mountId = mount ? overlayMountId(mount) : ''
       out.push({
         id: `overlay:${el.id}`,
         materialKey: `overlay:${el.id}`,
         kind: 'overlay',
         label,
-        x: (inputs.x as number) ?? OVERLAY_XY.x,
-        y: (inputs.y as number) ?? OVERLAY_XY.y,
+        x: 0.5 + (typeof mount?.layout?.left === 'number' ? mount.layout.left : 0),
+        y: 0.5 + (typeof mount?.layout?.top === 'number' ? mount.layout.top : 0),
         zIndex: normalizeLayer(el.layout?.zIndex, 1),
         movable: true,
         style: inputs.style as GraphTextStyle | undefined,
-        target: { kind: 'element', elementId: el.id },
+        target: { kind: 'mount', mountId, elementId: el.id },
       })
     } else if (kind === 'qte') {
       if (qteOutcomeDetail === undefined) {
@@ -1377,6 +1380,8 @@ export function activePreviewOverlaysFromNode(
       const start = el.window?.startMs ?? 0
       const end = el.window?.endMs ?? maxMs
       if (ms < start || ms > end) continue
+      const mount = findMountOwningChild(scenario, node, el.id)
+      const mountId = mount ? overlayMountId(mount) : ''
       out.push({
         id: `option:list:${el.id}`,
         materialKey: `option:${el.id}`,
@@ -1387,11 +1392,11 @@ export function activePreviewOverlaysFromNode(
           previewCtx,
           previewState,
         ) || undefined,
-        x: typeof inputs.x === 'number' ? inputs.x : OPTION_XY.x,
-        y: typeof inputs.y === 'number' ? inputs.y : OPTION_XY.y,
+        x: 0.5 + (typeof mount?.layout?.left === 'number' ? mount.layout.left : 0),
+        y: 0.5 + (typeof mount?.layout?.top === 'number' ? mount.layout.top : 0),
         zIndex: normalizeLayer(el.layout?.zIndex, 3),
         movable: true,
-        target: { kind: 'element', elementId: el.id },
+        target: { kind: 'mount', mountId, elementId: el.id },
       })
     } else if (kind === 'filter' || kind === 'fx') {
       // 滤镜/特效走 videoFx 旁路，不进可拖叠层
@@ -1577,6 +1582,47 @@ export function patchOverlayPositionGraph(
   return scenario
 }
 
+/** 新规格画布：移动/调层整份挂载，内部 child 相对排版保持不变。 */
+export function patchOverlayMountLayoutGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  mountId: string,
+  patch: Partial<Layout>,
+): GameScenario {
+  const mount = (node.data.overlayNodes ?? []).find((item) => overlayMountId(item) === mountId)
+  if (!mount) return scenario
+  return patchOverlayMount(scenario, node.id, mountId, {
+    layout: { ...mount.layout, ...patch },
+  })
+}
+
+/** 预览画布层级调整：沿用元素 layout.zIndex / cue.zIndex，不增加并行字段。 */
+export function patchOverlayZIndexGraph(
+  scenario: GameScenario,
+  node: GameNode,
+  target: PreviewTarget,
+  zIndex: number,
+): GameScenario {
+  const nextZ = clampLayer(zIndex)
+  if (target.kind === 'element' || target.kind === 'mount') {
+    const el = findElement(scenario, node, target.elementId)
+    if (!el) return scenario
+    return patchOverlayChild(scenario, node.id, el.id, {
+      layout: { ...el.layout, zIndex: nextZ },
+    })
+  }
+  if (target.kind === 'qteCue') {
+    const el = findElement(scenario, node, target.elementId)
+    if (!el) return scenario
+    const cues = cuesOf(el).map((cue) =>
+      cue.id === target.cueId ? { ...cue, zIndex: nextZ } : cue)
+    return patchOverlayChild(scenario, node.id, el.id, {
+      inputs: { ...el.inputs, cues },
+    })
+  }
+  return scenario
+}
+
 // ── 写映射：删除 + 二次确认 ────────────────────────────────────────────────────
 function isWholeInteractionDelete(scenario: GameScenario, node: GameNode, item: MaterialItem): boolean {
   if (item.kind === 'option') return true
@@ -1752,11 +1798,11 @@ export function addMaterialGraph(
     const id = newElementId()
     const float: OverlayChild = {
       id,
-      component: 'floatText',
+      component: 'damageFloatText',
       trigger: { when: 'enter' },
       window: { startMs, endMs },
-      layout: { zIndex: at ? at.zIndex : 1 },
-      inputs: { text: '-100', x: OVERLAY_XY.x, y: 0.45 },
+      layout: layoutForNewChild(undefined, at ? at.zIndex : 1),
+      inputs: { text: '-100' },
     }
     const s1 = addOverlayChild(scenario, node.id, float)
     const s1Node = findNode(s1.graph, node.id) ?? node
@@ -1790,20 +1836,15 @@ export function addMaterialGraph(
     const id = newElementId()
     const optStart = at ? startMs : 0
     const optEnd = at ? endMs : dur
-    // 默认样式的选项固定为无皮肤清单（可自由增删选项）——不再有多皮肤可选。
+    // 默认选项固定使用新规格「應/默」组件。
+    const inputs = applyStyleLockedEventParams({}, 'inkYingMo')
     const el: OverlayChild = {
       id,
-      component: 'choice',
+      component: 'inkYingMo',
       trigger: { when: 'enter' },
       window: { startMs: optStart, endMs: optEnd },
       layout: layoutForNewChild(undefined, at ? at.zIndex : 3),
-      inputs: {
-        presentation: 'list',
-        x: OPTION_XY.x,
-        y: OPTION_XY.y,
-        events: [{ id: 'opt0', label: '选项一' }],
-        defaultEvent: 'opt0',
-      },
+      inputs,
     }
     const s = addOverlayChild(s0, node.id, el)
     return { scenario: s, selectKey: `option:${id}` }

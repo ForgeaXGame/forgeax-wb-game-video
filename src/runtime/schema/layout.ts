@@ -103,7 +103,8 @@ export function childWrapStyle(childLayout: Layout | undefined, mountHasSize: bo
       childLayout.translateX != null ||
       childLayout.translateY != null)
   if (hasChildPos && childLayout) {
-    const pe = layoutHasExplicitSize(childLayout) ? 'none' : 'auto'
+    const hasSize = layoutHasExplicitSize(childLayout)
+    const pe = hasSize ? 'none' : 'auto'
     return { ...layoutToCss(childLayout), pointerEvents: pe }
   }
   if (mountHasSize) {

@@ -8,7 +8,7 @@ describe('new-components Dialogue', () => {
   it('declares its authoring inputs and renders speaker, text, and self-contained CSS', () => {
     expect(dialogueComponent.inputs).toEqual([
       { key: 'speaker', label: '说话人', valueType: 'string' },
-      { key: 'text', label: '台词', valueType: 'string' },
+      { key: 'text', label: '台词', valueType: 'string', default: '……' },
     ])
 
     render(

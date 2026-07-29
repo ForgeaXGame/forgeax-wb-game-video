@@ -11,7 +11,7 @@ export const dialogueComponent: ComponentDef = {
   label: '字幕/对白',
   inputs: [
     { key: 'speaker', label: '说话人', valueType: 'string' },
-    { key: 'text', label: '台词', valueType: 'string' },
+    { key: 'text', label: '台词', valueType: 'string', default: '……' },
   ],
 }
 
@@ -22,7 +22,7 @@ export function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
 
   return (
     <div className="gv-dialogue">
-      <div className="gv-dialogue-box">
+      <div className="gv-dialogue-box" data-overlay-fit-target>
         {speaker && <div className="gv-dialogue-speaker">{speaker}</div>}
         <div className="gv-dialogue-text">{text}</div>
       </div>
