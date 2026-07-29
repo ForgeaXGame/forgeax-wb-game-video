@@ -145,7 +145,7 @@
 
     "@forgeax/extension-platform": ["@forgeax/extension-platform@0.0.2", "https://mirrors.tencent.com/npm/@forgeax/extension-platform/-/extension-platform-0.0.2.tgz", {}, "sha512-FvPk1d/s1x1jM4T0IAaTZrzniKzpIY/FRXQMgXsxt9MI94YH9msm0yo3GCYHEfsn2E9X0s0qmHGDqk5Kx2LSNA=="],
 
-    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.1.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-W3pWBpHayY2TJWujCAab2aLBJTHJa0a2swE+PZD8fKCaigj7w8aP8bBHXrYBAe3tC+eLYXDsvicwdAuGDxhxpQ=="],
+    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.1.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-7qcqlD6ONfb3yUeUzzPikEGXNEpNjonf+ZZ2EYbbNd7F8BK+61LiZRNu3jhuip4FWE4K9yieAxhJIgHpf5H79w=="],
 
     "ajv": ["ajv@8.20.0", "https://mirrors.tencent.com/npm/ajv/-/ajv-8.20.0.tgz", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 

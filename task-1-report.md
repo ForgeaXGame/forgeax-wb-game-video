@@ -29,6 +29,10 @@ Base commit: `4b2a545c4cb2ef9d5c6d85d2d419dbe655a0ada8`.
   --offline` passed, then the exact focused release command passed 42 tests before
   a full build. The full build/release validator and `bun pm pack --dry-run
   --ignore-scripts` also passed; the dry-run package listed no `vendor/` files.
+- Vendor refresh: two independent packs of reviewed commit `e99d2eff` were
+  byte-identical; frozen offline install, backend build, and a focused typecheck
+  of `server/intake/characters.ts` passed with `BoundedGameFiles.list` available.
+  The refreshed package dry-run still listed no `vendor/` files.
 
 ## Dependency-resolution note
 
@@ -37,6 +41,15 @@ through the committed, reviewed tarball rather than a machine-local symlink.
 The peer and development specs remain exactly `0.1.0`; Bun's lockfile records
 the tarball with a relative `vendor/...` resolution and integrity only. Neither
 the package nor the lockfile contains an absolute path.
+
+Current vendor provenance:
+
+- reviewed host commit:
+  `e99d2effb11f3074fe397cabc09c1e46147f5e1e`;
+- tarball SHA-256:
+  `c837f55be9e8a63bebcb72372c2a5fa853940a0511ad1d9db91c7c597877b2ff`;
+- Bun lock integrity:
+  `sha512-7qcqlD6ONfb3yUeUzzPikEGXNEpNjonf+ZZ2EYbbNd7F8BK+61LiZRNu3jhuip4FWE4K9yieAxhJIgHpf5H79w==`.
 
 After `@forgeax/workbench-host@0.1.0` is published, remove its `overrides`
 entry, delete `vendor/forgeax-workbench-host-0.1.0.tgz`, regenerate `bun.lock`,
