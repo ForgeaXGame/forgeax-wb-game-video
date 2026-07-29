@@ -3,13 +3,13 @@
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
 import { useMemo, useState, type ReactNode } from 'react'
-import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
-import { aggregateOverlayEvents, overlayReactionKey, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
+import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/component-registry'
 import {
@@ -18,6 +18,7 @@ import {
   reconnect,
   removeNode,
   updateEdgeData,
+  updateEventRouteTiming,
   updateNodeData,
   upsertBranchEdge,
   makeEmptySubFlowPack,
@@ -192,9 +193,13 @@ function eventReactionDo(reactions: Reaction[] | undefined, ev: OverlayEventRef)
   return resolveEventReactionDo(reactions, ev.localEventId, ev.childId, ev.mountId) ?? []
 }
 
-/** 新规格挂载 reaction 使用稳定 childId:eventId；边仍单独使用 localEventId。 */
+/** 清理节点挂载 reaction 的全部历史别名；目录 reaction 的稳定 key 由 ComponentEventsEditor 单独维护。 */
 function eventKeySet(ev: OverlayEventRef): Set<string> {
-  return new Set([overlayReactionKey(ev.childId, ev.localEventId)])
+  const keys = new Set<string>([ev.localEventId, ev.eventId])
+  keys.add(`${ev.childId}:${ev.localEventId}`)
+  keys.add(`${ev.mountId}:${ev.localEventId}`)
+  keys.add(`${ev.mountId}:${ev.childId}:${ev.localEventId}`)
+  return keys
 }
 
 function upsertEventReaction(
@@ -204,9 +209,7 @@ function upsertEventReaction(
 ): Reaction[] | undefined {
   const keys = eventKeySet(ev)
   const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
-  if (doActions.length) {
-    rest.push({ when: { type: 'event', id: overlayReactionKey(ev.childId, ev.localEventId) }, do: doActions })
-  }
+  if (doActions.length) rest.push({ when: { type: 'event', id: ev.localEventId }, do: doActions })
   return rest.length ? rest : undefined
 }
 
@@ -393,6 +396,8 @@ function OverlayReactionsEditor({
   nodeId,
   onChange,
   onRouteTo,
+  routingSettlement,
+  onSetRouteTiming,
 }: {
   events: OverlayEventRef[]
   catalogReactions?: OverlayReaction[]
@@ -412,6 +417,12 @@ function OverlayReactionsEditor({
   onChange: (next: Reaction[] | undefined) => void
   /** 选目标节点：upsert 边 + 本挂载 advance；空串 = 清除该出口边。 */
   onRouteTo: (ev: OverlayEventRef, targetId: string) => void
+  routingSettlement?: RoutingSettlement
+  onSetRouteTiming: (
+    ev: OverlayEventRef,
+    transition: 'immediate' | 'onSettlement',
+    settlement?: RoutingSettlement,
+  ) => void
 }): JSX.Element | null {
   if (!events.length) return null
   const catalog = pickers ?? { entities, variables }
@@ -438,6 +449,10 @@ function OverlayReactionsEditor({
           const advanceEdge = advance ? graph.edges.find((edge) => edge.id === advance.edgeId) : undefined
           const multiPool = pool.length > 1
           const currentTarget = multiPool ? '' : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
+          const routeEdge = advanceEdge ?? pool[0]
+          const timing = routeEdge?.data?.transition === 'onSettlement'
+            ? routingSettlement?.type === 'at' ? 'at' : 'complete'
+            : 'immediate'
           const hint = routeHints?.[event.localEventId] ?? routeHints?.[event.eventId]
           return (
             <div style={{ marginTop: 6 }}>
@@ -450,6 +465,38 @@ function OverlayReactionsEditor({
                   {nodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               ))}
+              {routeEdge ? row('跳转时机', (
+                <select
+                  value={timing}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === 'immediate') onSetRouteTiming(event, 'immediate')
+                    else if (value === 'at') onSetRouteTiming(event, 'onSettlement', { type: 'at', ms: 1000 })
+                    else onSetRouteTiming(event, 'onSettlement', { type: 'complete' })
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  <option value="immediate">立即跳转</option>
+                  <option value="complete">当前节点播放结束时</option>
+                  <option value="at">播放到指定时间时</option>
+                </select>
+              )) : null}
+              {routeEdge && timing === 'at' ? row('结算时间', (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={routingSettlement?.type === 'at' ? routingSettlement.ms : 0}
+                    onChange={(e) => onSetRouteTiming(event, 'onSettlement', {
+                      type: 'at',
+                      ms: Math.max(0, Number(e.target.value) || 0),
+                    })}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <span style={{ fontSize: 11, opacity: 0.65 }}>ms</span>
+                </span>
+              )) : null}
             </div>
           )
         }}
@@ -1399,6 +1446,10 @@ export function NodeInspector({
                     patchData({ overlayNodes: next })
                   }}
                   onRouteTo={(ev, targetId) => onChange(routeMountEventToNode(graph, node.id, i, ev, targetId))}
+                  routingSettlement={d.routingSettlement}
+                  onSetRouteTiming={(ev, transition, settlement) => onChange(
+                    updateEventRouteTiming(graph, node.id, ev.localEventId, transition, settlement),
+                  )}
                 />
                   </>
                 ) : null}

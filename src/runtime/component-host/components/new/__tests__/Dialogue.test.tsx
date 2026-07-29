@@ -4,7 +4,7 @@ import { DialogueOverlay, dialogueComponent } from '../Dialogue'
 
 afterEach(cleanup)
 
-describe('new-components Dialogue', () => {
+describe('components/new Dialogue', () => {
   it('declares its authoring inputs and renders speaker, text, and self-contained CSS', () => {
     expect(dialogueComponent.inputs).toEqual([
       { key: 'speaker', label: '说话人', valueType: 'string' },

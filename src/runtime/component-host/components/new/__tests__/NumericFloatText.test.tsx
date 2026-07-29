@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createRng } from '../../../engine/rng'
-import type { SkinCtx } from '../../rendererRegistry'
+import { createRng } from '../../../../engine/rng'
+import type { SkinCtx } from '../../../rendererRegistry'
 import {
   DamageFloatTextOverlay,
   damageFloatTextComponent,

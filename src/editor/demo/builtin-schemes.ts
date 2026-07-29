@@ -9,7 +9,7 @@
  * 幂等：boot 只在缺失时补，用户可自由改内部 children；删掉整份下次 boot 会补回。
  */
 import type { Overlay, OverlayChild } from '../../runtime/schema/graph-schema'
-import { NEW_COMPONENTS } from '../../runtime/component-host/new_components'
+import { NEW_COMPONENTS } from '../../runtime/component-host/components/new'
 import { STAGE_FILL_LAYOUT } from '../../runtime/schema/layout'
 
 /** 基础覆盖物 方案 id 前缀：`base:<组件id>`，每份仅含该单组件、锁定不可增删。 */

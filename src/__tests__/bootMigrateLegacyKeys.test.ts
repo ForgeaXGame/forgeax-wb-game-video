@@ -23,7 +23,7 @@ describe('wb-game-video browser key migration', () => {
     expect(localStorage.getItem('gvid.nodePanel.previewW')).toBeNull()
   })
 
-  it('preserves the node-panel preview open state while moving its dotted gvid key', async () => {
+  it('preserves the node-panel preview state while moving its dotted gvid key', async () => {
     localStorage.setItem('gvid.nodePanel.previewOpen', '1')
     await import('../bootMigrateLegacyKeys')
     expect(localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')

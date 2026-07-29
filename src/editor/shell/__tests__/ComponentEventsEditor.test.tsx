@@ -126,6 +126,67 @@ describe('NodeInspector overlay events', () => {
     expect(screen.queryByText('继承方案')).toBeNull()
     expect(screen.queryByText(/细调/)).toBeNull()
   })
+
+  it('rewrites mount reaction aliases to one local event key when routing changes', () => {
+    const onChange = vi.fn()
+    const graph: GameGraph = {
+      nodes: [
+        {
+          id: 'n1',
+          type: 'perf',
+          position: { x: 0, y: 0 },
+          inputs: [],
+          outputs: [],
+          data: {
+            name: '事件节点',
+            overlayNodes: [{
+              overlay: 'hud',
+              reactions: [
+                { when: { type: 'event', id: 'q:pass' }, do: [{ kind: 'effect', effects: [] }] },
+                { when: { type: 'event', id: 'hud:q:pass' }, do: [{ kind: 'advance', edgeId: 'stale' }] },
+              ],
+            }],
+          },
+        },
+        {
+          id: 'n2',
+          type: 'perf',
+          position: { x: 100, y: 0 },
+          inputs: [],
+          outputs: [],
+          data: { name: '目标节点' },
+        },
+      ],
+      edges: [],
+    }
+
+    render(
+      <NodeInspector
+        graph={graph}
+        nodeId="n1"
+        overlays={{
+          hud: {
+            id: 'hud',
+            children: [{
+              id: 'q',
+              component: 'qte',
+              inputs: { events: [{ id: 'pass', label: '成功' }] },
+            }],
+          },
+        }}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('目标节点'), { target: { value: 'n2' } })
+
+    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    const reactions = next.nodes[0]?.data.overlayNodes?.[0]?.reactions ?? []
+    const eventReactions = reactions.filter((reaction) => reaction.when.type === 'event')
+    expect(eventReactions).toHaveLength(1)
+    expect(eventReactions[0]?.when).toEqual({ type: 'event', id: 'pass' })
+    expect(eventReactions[0]?.do.map((action) => action.kind)).toEqual(['effect', 'advance'])
+  })
 })
 
 describe('OverlaySchemeEditor selected child', () => {

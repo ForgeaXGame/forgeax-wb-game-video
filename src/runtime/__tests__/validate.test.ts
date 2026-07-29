@@ -77,4 +77,24 @@ describe('validateGraph', () => {
     const issues = validateGraph({ nodes: [a.node], edges: [] }, { overlays: a.overlays })
     expect(issues.filter((issue) => issue.code.startsWith('overlay.reaction'))).toEqual([])
   })
+
+  it('rejects invalid routing settlement data', () => {
+    const a = perf('a')
+    const b = perf('b')
+    ;(a.node.data as unknown as Record<string, unknown>).routingSettlement = { type: 'at', ms: -1 }
+    const g: GameGraph = {
+      nodes: [a.node, b.node],
+      edges: [{
+        id: 'e1',
+        source: 'a',
+        target: 'b',
+        sourceHandle: 'default',
+        targetHandle: 'in',
+        data: { transition: 'onSettlement' },
+      }],
+    }
+    const codes = validateGraph(g, { overlays: { ...a.overlays, ...b.overlays } }).map((issue) => issue.code)
+    expect(codes).toContain('node.routingSettlement.invalid')
+    expect(codes).toContain('edge.transition.default')
+  })
 })

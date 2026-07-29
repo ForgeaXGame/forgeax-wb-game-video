@@ -1,11 +1,11 @@
 /**
  * ComponentLibrary —— 界面 tab 画布右侧「组件库」。
- * 直接读取 new_components 的唯一注册清单，
+ * 直接读取 components/new 的唯一注册清单，
  * 渲染成可拖拽 chip；拖到画布（OverlayCatalogPreview 的 stage）落地为一个 child。
  * 纯展示：不持有方案数据，落地逻辑在 stage 的 onDrop 里（读 dataTransfer 的组件 id）。
  */
 import type { JSX } from 'react'
-import { NEW_COMPONENTS } from '../../runtime/component-host/new_components'
+import { NEW_COMPONENTS } from '../../runtime/component-host/components/new'
 import { injectStyleOnce } from '../../styles/injectStyle'
 
 /** 拖拽 MIME：库 chip → 画布落地时用它取组件 id。 */

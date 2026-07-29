@@ -3,7 +3,7 @@ import {
   createCoreSkinRegistry,
   createDefaultComponentRegistry,
 } from '../component-host/components'
-import { NEW_COMPONENTS } from '../component-host/new_components'
+import { NEW_COMPONENTS } from '../component-host/components/new'
 
 const NEW_COMPONENT_IDS = [
   'dialogue',
@@ -17,7 +17,7 @@ const NEW_COMPONENT_IDS = [
   'battleEnemyHpBar',
 ] as const
 
-describe('new_components registration', () => {
+describe('components/new registration', () => {
   it('registers all nine definitions and renderers in isolated registries', () => {
     const components = createDefaultComponentRegistry()
     const skins = createCoreSkinRegistry()

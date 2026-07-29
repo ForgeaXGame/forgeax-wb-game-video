@@ -3,8 +3,8 @@
  * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
  */
 import type { ReactNode } from 'react'
-import type { ComponentDef } from '../../registry/component-registry'
-import type { OverlayProps } from '../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
+import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss, ensureBrushFont } from './skinRuntime'
 import { resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 

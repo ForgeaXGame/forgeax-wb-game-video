@@ -1,7 +1,7 @@
 /**
  * 平台内建组件注册入口。
  *
- * 组件定义、展示名与渲染器的唯一清单是 `new_components/NEW_COMPONENTS`。
+ * 组件定义、展示名与渲染器的唯一清单是 `new/NEW_COMPONENTS`。
  * 旧组件源码不再从本入口导出或注册，已有旧 component id 运行时按未知组件处理。
  */
 import {
@@ -20,7 +20,7 @@ import {
   gainFloatTextComponent,
   inkKouComponent,
   inkYingMoComponent,
-} from '../new_components'
+} from './new'
 
 export {
   NEW_COMPONENTS,

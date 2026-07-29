@@ -1,14 +1,14 @@
-import type { ComponentDef } from '../../registry/component-registry'
-import type { OverlayComponent } from '../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
+import type { OverlayComponent } from '../../rendererRegistry'
 import { BattleEnemyHpBar, battleEnemyHpBarComponent } from './BattleEnemyHpBar'
-import { BattleParryLayer, battleParryComponent } from './BattleParryLayer'
+import { BattleParryLayer, battleParryComponent } from './BattleParry'
 import { BattlePlayerHpBar, battlePlayerHpBarComponent } from './BattlePlayerHpBar'
-import { BattleSkillLayer, battleSkillBarComponent } from './BattleSkillLayer'
+import { BattleSkillLayer, battleSkillBarComponent } from './BattleSkill'
 import { DamageFloatTextOverlay, damageFloatTextComponent } from './DamageFloatText'
 import { DialogueOverlay, dialogueComponent } from './Dialogue'
 import { GainFloatTextOverlay, gainFloatTextComponent } from './GainFloatText'
-import { InkKouLayer, inkKouComponent } from './InkKouLayer'
-import { InkYingMoLayer, inkYingMoComponent } from './InkYingMoLayer'
+import { InkKouLayer, inkKouComponent } from './InkKou'
+import { InkYingMoLayer, inkYingMoComponent } from './InkYingMo'
 
 export {
   BattleEnemyHpBar,
