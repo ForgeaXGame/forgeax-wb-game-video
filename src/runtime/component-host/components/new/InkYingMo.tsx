@@ -4,16 +4,17 @@
  */
 import { useRef } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const inkYingMoComponent: ComponentDef = {
+export const InkYingMoManifest: ComponentManifest = {
+  id: 'InkYingMo',
   label: '應/默 抉择',
   events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }],
   inputs: [],
 }
 
-export function InkYingMoLayer({ emit, preview }: OverlayProps) {
+export function InkYingMo({ emit, preview }: OverlayProps) {
   injectCss('ink-yingmo-layer', YINGMO_CSS)
   ensureInkFilters()
   ensureBrushFont()

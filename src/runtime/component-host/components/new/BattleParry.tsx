@@ -4,16 +4,17 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const battleParryComponent: ComponentDef = {
+export const BattleParryManifest: ComponentManifest = {
+  id: 'BattleParry',
   label: '防反抉择',
   events: [{ id: 'parry', label: '防反' }, { id: 'dodge', label: '闪避' }, { id: 'fail', label: '受击' }],
   inputs: [],
 }
 
-export function BattleParryLayer({ emit, preview }: OverlayProps) {
+export function BattleParry({ emit, preview }: OverlayProps) {
   injectCss('battle-parry-layer', PARRY_CSS)
   ensureInkFilters()
   ensureBrushFont()
