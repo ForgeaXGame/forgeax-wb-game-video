@@ -3,7 +3,7 @@
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
 import { useMemo, useState, type ReactNode } from 'react'
-import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
@@ -18,6 +18,7 @@ import {
   reconnect,
   removeNode,
   updateEdgeData,
+  updateEventRouteTiming,
   updateNodeData,
   upsertBranchEdge,
   makeEmptySubFlowPack,
@@ -408,6 +409,8 @@ function OverlayReactionsEditor({
   nodeId,
   onChange,
   onRouteTo,
+  routingSettlement,
+  onSetRouteTiming,
 }: {
   events: OverlayEventRef[]
   reactions: Reaction[] | undefined
@@ -426,6 +429,12 @@ function OverlayReactionsEditor({
   onChange: (next: Reaction[] | undefined) => void
   /** 选目标节点：upsert 边 + 本挂载 advance；空串 = 清除该出口边。 */
   onRouteTo: (ev: OverlayEventRef, targetId: string) => void
+  routingSettlement?: RoutingSettlement
+  onSetRouteTiming: (
+    ev: OverlayEventRef,
+    transition: 'immediate' | 'onSettlement',
+    settlement?: RoutingSettlement,
+  ) => void
 }): JSX.Element {
   const catalog = pickers ?? { entities, variables }
   if (!events.length) {
@@ -450,6 +459,10 @@ function OverlayReactionsEditor({
         const currentTarget = multiPool
           ? ''
           : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
+        const routeEdge = advanceEdge ?? pool[0]
+        const timing = routeEdge?.data?.transition === 'onSettlement'
+          ? routingSettlement?.type === 'at' ? 'at' : 'complete'
+          : 'immediate'
         const hint = routeHints?.[ev.localEventId] ?? routeHints?.[ev.eventId]
         const actionBrief =
           actions.length === 0
@@ -496,6 +509,38 @@ function OverlayReactionsEditor({
                 </select>
               )
             ))}
+            {routeEdge ? row('跳转时机', (
+              <select
+                value={timing}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value === 'immediate') onSetRouteTiming(ev, 'immediate')
+                  else if (value === 'at') onSetRouteTiming(ev, 'onSettlement', { type: 'at', ms: 1000 })
+                  else onSetRouteTiming(ev, 'onSettlement', { type: 'complete' })
+                }}
+                style={{ flex: 1 }}
+              >
+                <option value="immediate">立即跳转</option>
+                <option value="complete">当前节点播放结束时</option>
+                <option value="at">播放到指定时间时</option>
+              </select>
+            )) : null}
+            {routeEdge && timing === 'at' ? row('结算时间', (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={routingSettlement?.type === 'at' ? routingSettlement.ms : 0}
+                  onChange={(e) => onSetRouteTiming(ev, 'onSettlement', {
+                    type: 'at',
+                    ms: Math.max(0, Number(e.target.value) || 0),
+                  })}
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <span style={{ fontSize: 11, opacity: 0.65 }}>ms</span>
+              </span>
+            )) : null}
             {sectionLabel('触发时动作')}
             <NodeActionsEditor
               actions={actions}
@@ -1759,6 +1804,10 @@ export function NodeInspector({
                     patchData({ overlayNodes: next })
                   }}
                   onRouteTo={(ev, targetId) => onChange(routeMountEventToNode(graph, node.id, i, ev, targetId))}
+                  routingSettlement={d.routingSettlement}
+                  onSetRouteTiming={(ev, transition, settlement) => onChange(
+                    updateEventRouteTiming(graph, node.id, ev.localEventId, transition, settlement),
+                  )}
                 />
                   </>
                 ) : null}

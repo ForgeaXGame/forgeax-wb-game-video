@@ -113,6 +113,7 @@ export interface EdgeRouting {
   condition?: GraphCondition
   weight?: number
   label?: string
+  transition?: 'immediate' | 'onSettlement'
 }
 
 /** 图节点 type 字面量；合法集合的 SSOT 是引擎侧 NodeKindRegistry，故用开放联合。 */
@@ -149,6 +150,7 @@ export interface NodeData {
   name: string
   media?: NodeMedia
   mediaPlayMode?: 'once' | 'loop'
+  routingSettlement?: { type: 'complete' } | { type: 'at'; ms: number }
   /**
    * 可选播放时长上限（ms）。无视频节点：作停留节拍。有视频节点：`>0` 且
    * `≤ 视频本身长度` 时到点提前收演出；否则视为无效，以视频本身长度为准。

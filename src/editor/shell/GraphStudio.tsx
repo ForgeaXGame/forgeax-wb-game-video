@@ -78,7 +78,7 @@ const FORM_W_MIN = 400
  * 预览区展开/收起：**默认收起**（配置面板占地方，多数时候只改表单）。状态是全局一份而非按节点存——
  * 换节点沿用上次的选择。持久化到 localStorage，跨会话保持。
  */
-const PREVIEW_OPEN_KEY = 'gvid.nodePanel.previewOpen'
+const PREVIEW_OPEN_KEY = 'wb-game-video.nodePanel.previewOpen'
 
 
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
