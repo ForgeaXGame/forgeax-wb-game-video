@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import type { OverlayProps } from '../rendererRegistry'
-import type { ComponentDef } from '../../registry/component-registry'
+import type { OverlayProps } from '../../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const battlePlayerHpBarComponent: ComponentDef = {
@@ -61,7 +61,7 @@ const PLAYER_CSS = `
 .ks-hud-hp-ghost { z-index:1; background:rgba(255,255,255,.5); transition:width .6s cubic-bezier(.2,.7,.3,1) .22s; }
 .ks-hud-hp-fill { z-index:2; transition:width .16s linear; background:linear-gradient(90deg,#7398cf,#a6c6ee); }
 .ks-hud-hp.is-low .ks-hud-hp-fill { background:linear-gradient(90deg,#f87171,#ef4444); animation:ks-hud-lowpulse 1s ease-in-out infinite; }
-.ks-hud-rage { display:flex; justify-content:flex-end; gap:.8cqh; margin-top:1cqh; }
+.ks-hud-rage { display:flex; flex-direction:row-reverse; justify-content:flex-end; gap:.8cqh; margin-top:1cqh; }
 .ks-hud-pip { width:1.6cqmin; height:1.6cqmin; border-radius:50%; background:radial-gradient(circle at 35% 30%,#5a5346,#262219); border:1px solid rgba(0,0,0,.5); box-shadow:0 1px 2px rgba(0,0,0,.5); transition:all .2s; }
 .ks-hud-pip.on { background:radial-gradient(circle at 35% 30%,#ffe49c,#c8902f); border-color:rgba(255,220,150,.7); box-shadow:0 0 7px rgba(255,190,90,.7),0 1px 2px rgba(0,0,0,.4); }
 @keyframes ks-hud-lowpulse { 0%,100% { opacity:1; } 50% { opacity:.55; } }

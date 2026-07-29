@@ -3,8 +3,8 @@
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的对白视觉。
  */
 import type { ReactNode } from 'react'
-import type { ComponentDef } from '../../registry/component-registry'
-import type { OverlayProps } from '../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
+import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss } from './skinRuntime'
 
 export const dialogueComponent: ComponentDef = {
