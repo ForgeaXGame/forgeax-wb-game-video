@@ -3,8 +3,8 @@
  * 不 import 游戏引擎其它代码。样式/SVG 滤镜都由皮肤自己注入，方便用户把组件整包拷走/替换。
  */
 
-// 字体与皮肤组件同层自带（component-host/assets）；随 runtime 一起发，不依赖 editor 注入。
-import brushFontUrl from '../assets/fonts/HYShangWei.woff2'
+// 字体与皮肤组件同层自带；随 runtime 一起发，不依赖 editor 注入。
+import brushFontUrl from './HYShangWei.woff2'
 
 const injected = new Map<string, HTMLStyleElement>()
 

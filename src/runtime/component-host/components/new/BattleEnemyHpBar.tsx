@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import type { OverlayProps } from '../rendererRegistry'
-import type { ComponentDef } from '../../registry/component-registry'
+import type { OverlayProps } from '../../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const battleEnemyHpBarComponent: ComponentDef = {

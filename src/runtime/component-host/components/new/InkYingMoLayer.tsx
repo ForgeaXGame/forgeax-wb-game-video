@@ -3,8 +3,8 @@
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与点击交互。
  */
 import { useRef } from 'react'
-import type { OverlayProps } from '../rendererRegistry'
-import type { ComponentDef } from '../../registry/component-registry'
+import type { OverlayProps } from '../../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const inkYingMoComponent: ComponentDef = {
