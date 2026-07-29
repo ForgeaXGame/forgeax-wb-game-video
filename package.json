@@ -11,6 +11,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "forgeax-extension.json",
+    "schemas",
+    "README.md",
+    "SKILL.md"
+  ],
   "exports": {
     ".": "./dist/index.js",
     "./host": "./dist/server/host.js"
@@ -54,6 +61,9 @@
   "peerDependencies": {
     "@forgeax/extension-platform": "0.0.2",
     "@forgeax/workbench-host": "0.1.0"
+  },
+  "overrides": {
+    "@forgeax/workbench-host": "file:vendor/forgeax-workbench-host-0.1.0.tgz"
   },
   "devDependencies": {
     "@forgeax/extension-platform": "0.0.2",

@@ -1,6 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { pathToFileURL } from 'node:url'
+import { beforeAll, describe, expect, it } from 'vitest'
 import tools from '../server/tool-handlers'
 
 const root = resolve(import.meta.dirname, '..')
@@ -21,6 +23,15 @@ const expectedTools = [
   'wb-game-video:import-character-refs',
   'wb-game-video:import-scene-refs',
 ]
+let compiledBackendUrl: string
+
+beforeAll(() => {
+  const backendPath = resolve(root, 'dist/server/host.js')
+  if (!existsSync(backendPath)) {
+    execFileSync('bun', ['run', 'build:backend'], { cwd: root, stdio: 'pipe' })
+  }
+  compiledBackendUrl = pathToFileURL(backendPath).href
+})
 
 describe('release identity', () => {
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
@@ -50,9 +61,20 @@ describe('release identity', () => {
     expect(pkg.exports['./host']).toBe('./dist/server/host.js')
     expect(manifest.entry.backend).toBe('./dist/server/host.js')
 
-    const backend = await import('../dist/server/host.js')
+    const backend = await import(compiledBackendUrl)
     expect(backend.host).toBeDefined()
     expect(Object.keys(backend.tools)).toEqual(expectedTools)
+  })
+
+  it('excludes the vendored development bootstrap from the published package', () => {
+    expect(pkg.files).toEqual([
+      'dist',
+      'forgeax-extension.json',
+      'schemas',
+      'README.md',
+      'SKILL.md',
+    ])
+    expect(pkg.files).not.toContain('vendor')
   })
 
   it('publishes the canonical independent repository URL', () => {

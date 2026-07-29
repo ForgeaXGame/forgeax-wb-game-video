@@ -21,10 +21,17 @@ interface FixtureOptions {
   malformedManifest?: boolean
   malformedPackage?: boolean
   manifestVersion?: string
+  manifestBackend?: string
   missingBackend?: boolean
+  missingNamedHost?: boolean
   missingReturns?: boolean
+  namedToolKeys?: string[]
   packageName?: string
+  packageExports?: unknown
   platformVersion?: string
+  workbenchHostVersion?: string
+  localPackagePath?: string
+  lockSource?: string
   oldIdentityDistSource?: string
   oldIdentityFiles?: Record<string, string>
   oldIdentitySource?: string
@@ -50,16 +57,20 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
       version: '0.2.0',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': '0.1.0',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.1.0',
       },
       devDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': '0.1.0',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.1.0',
       },
-      exports: {
+      exports: options.packageExports ?? {
         '.': './dist/index.js',
         './host': './dist/server/host.js',
       },
+      files: ['dist', 'forgeax-extension.json', 'schemas', 'README.md', 'SKILL.md'],
+      ...(options.localPackagePath
+        ? { overrides: { '@forgeax/workbench-host': options.localPackagePath } }
+        : {}),
     })
   }
   if (options.malformedManifest) {
@@ -70,7 +81,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
       version: options.manifestVersion ?? '0.2.0',
       entry: {
         frontend: './dist/index.html',
-        backend: './dist/server/host.js',
+        backend: options.manifestBackend ?? './dist/server/host.js',
       },
       provides: {
         skills: [
@@ -90,16 +101,19 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
     })
   }
   writeFileSync(resolve(root, 'dist/index.html'), '<!doctype html>\n')
+  writeFileSync(resolve(root, 'dist/index.js'), 'export {}\n')
   writeFileSync(resolve(root, 'SKILL.md'), '# Author guide\n')
+  writeFileSync(resolve(root, 'bun.lock'), options.lockSource ?? '{}\n')
   writeJson(resolve(root, 'schemas/get-graph.args.json'), { type: 'object' })
   if (!options.missingReturns) {
     writeJson(resolve(root, 'schemas/get-graph.returns.json'), { type: 'object' })
   }
   if (!options.missingBackend) {
     const keys = options.backendKeys ?? [toolId]
+    const namedKeys = options.namedToolKeys ?? keys
     writeFileSync(
       resolve(root, 'dist/server/host.js'),
-      `export const host = {}\nexport const tools = {${keys.map((key) => `${JSON.stringify(key)}: async () => ({})`).join(',')}}\nexport default tools\n`,
+      `${options.missingNamedHost ? '' : 'export const host = {}\n'}export const tools = {${namedKeys.map((key) => `${JSON.stringify(key)}: async () => ({})`).join(',')}}\nexport default {${keys.map((key) => `${JSON.stringify(key)}: async () => ({})`).join(',')}}\n`,
     )
   }
 
@@ -171,6 +185,7 @@ describe('validateRelease', () => {
       malformedManifest: true,
       packageName: '@forgeax/wb-game-video-invalid',
       platformVersion: '0.0.1',
+      workbenchHostVersion: '0.1.1',
     })
 
     const errors = await validateRelease(malformedManifestRoot)
@@ -178,6 +193,27 @@ describe('validateRelease', () => {
     expect(errors).toContainEqual(expect.stringContaining('package name'))
     expect(errors).toContainEqual(expect.stringContaining('peerDependencies'))
     expect(errors).toContainEqual(expect.stringContaining('devDependencies'))
+    expect(errors).toContainEqual(expect.stringContaining('@forgeax/workbench-host'))
+  })
+
+  it('requires the root and host package exports', async () => {
+    const fixtureRoot = createFixture('missing-host-export', {
+      packageExports: { '.': './dist/index.js' },
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('exports["./host"]'),
+    )
+  })
+
+  it('requires the host backend manifest entry', async () => {
+    const fixtureRoot = createFixture('wrong-backend-entry', {
+      manifestBackend: './dist/server/tool-handlers.js',
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('entry.backend must be exactly ./dist/server/host.js'),
+    )
   })
 
   it('reports the package-derived tag when manifest version differs', async () => {
@@ -196,7 +232,38 @@ describe('validateRelease', () => {
     })
 
     expect(await validateRelease(badToolRoot)).toContainEqual(
-      expect.stringContaining('handler keys'),
+      expect.stringContaining('named tools keys'),
+    )
+  })
+
+  it('requires the compiled backend to export named host and tools', async () => {
+    const fixtureRoot = createFixture('missing-named-host', {
+      missingNamedHost: true,
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('named host'),
+    )
+  })
+
+  it('checks named compiled tools rather than the default export', async () => {
+    const fixtureRoot = createFixture('bad-named-tools', {
+      namedToolKeys: ['wb-game-video:save-graph'],
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('named tools keys'),
+    )
+  })
+
+  it.each([
+    ['package.json', { localPackagePath: 'file:/Users/example/workbench-host.tgz' }],
+    ['bun.lock', { lockSource: '"file:///Users/example/workbench-host.tgz"\n' }],
+  ])('rejects local absolute paths in %s', async (_label, options) => {
+    const fixtureRoot = createFixture(`local-path-${_label}`, options)
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('local absolute path'),
     )
   })
 
