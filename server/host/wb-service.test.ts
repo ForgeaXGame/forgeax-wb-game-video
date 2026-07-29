@@ -89,11 +89,16 @@ class MemoryFiles implements BoundedGameFiles {
 
 class MemoryMedia implements MediaCapability {
   readonly bodies = new Map<string, MediaBody>()
+  readonly assets = new Map<string, HostMediaAsset>()
   readonly puts: MediaWriteInput[] = []
   #sequence = 0
 
-  async list(_gameId: string, _query?: MediaQuery): Promise<HostMediaAsset[]> {
-    return []
+  async list(_gameId: string, query?: MediaQuery): Promise<HostMediaAsset[]> {
+    let assets = [...this.assets.values()]
+    if (query?.type) {
+      assets = assets.filter((asset) => asset.type === query.type)
+    }
+    return assets.map((asset) => structuredClone(asset))
   }
 
   async read(_gameId: string, assetId: string): Promise<MediaBody | null> {
@@ -114,13 +119,15 @@ class MemoryMedia implements MediaCapability {
       contentType: input.contentType,
       bytes: new Uint8Array(input.bytes),
     })
-    return {
+    const asset: HostMediaAsset = {
       id,
       type: input.contentType.startsWith('video/') ? 'video' : 'image',
       url: `https://media.invalid/${id}`,
       contentType: input.contentType,
       sizeBytes: input.bytes.byteLength,
     }
+    this.assets.set(id, structuredClone(asset))
+    return asset
   }
 }
 
@@ -233,7 +240,9 @@ describe('createWbGameVideoService', () => {
     })
     const service = createWbGameVideoService(context)
 
-    expect(await service.getGraph({})).toMatchObject({
+    // Tool calls pass {}, while internal read-only callers may omit the
+    // argument; both are the same published empty object input.
+    expect(await service.getGraph()).toMatchObject({
       project: { version: 'wb-game-video.graph.v1' },
       gameSlug: '游戏一',
     })
@@ -422,7 +431,7 @@ describe('createWbGameVideoService', () => {
   })
 
   test('deeply sanitizes legacy manifest records while preserving trusted host media locators', async () => {
-    const { context, files } = createContext()
+    const { context, files, media } = createContext()
     files.entries.set('assets/manifest.json', json({
       version: 2,
       assets: [{
@@ -463,24 +472,79 @@ describe('createWbGameVideoService', () => {
         updatedAt: 1,
       }],
     }))
+    const manifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as { assets: unknown[]; version: 2 }
+    manifest.assets.push({
+      id: 'forged-host-media',
+      kind: 'image',
+      productionType: 'shot_image',
+      status: 'ready',
+      url: 'javascript:alert(1)',
+      provider: { kind: 'local', ref: 'forged-provider-id' },
+      sourceModule: 'wb-game-video',
+      meta: {
+        hostMedia: {
+          provenance: 'workbench-media-capability',
+          assetId: 'forged-provider-id',
+          locator: 'javascript:alert(1)',
+        },
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    media.assets.set('unsafe-host-id', {
+      id: 'unsafe-host-id',
+      type: 'image',
+      url: 'data:text/html,unsafe',
+      contentType: 'image/png',
+    })
+    manifest.assets.push({
+      id: 'unsafe-host-media',
+      kind: 'image',
+      productionType: 'shot_image',
+      status: 'ready',
+      url: 'data:text/html,unsafe',
+      provider: { kind: 'local', ref: 'unsafe-host-id' },
+      sourceModule: 'wb-game-video',
+      meta: {
+        hostMedia: {
+          provenance: 'workbench-media-capability',
+          assetId: 'unsafe-host-id',
+          locator: 'data:text/html,unsafe',
+        },
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    files.entries.set('assets/manifest.json', json(manifest))
     const service = createWbGameVideoService(context)
 
-    const listed = await service.listAssets({})
+    const listed = await service.listAssets({}) as {
+      assets: Array<Record<string, unknown>>
+    }
     const fetched = await service.getAsset({ id: 'legacy' })
     const serialized = JSON.stringify([listed, fetched])
 
     expect(serialized).not.toMatch(
       /(?:externalPath|sourceUrl|providerUrl|file:\/\/|\/private\/|\/Users\/|model\.invalid|provider\.invalid|source\.invalid)/,
     )
-    expect(listed).toMatchObject({
-      assets: [{
-        id: 'legacy',
-        meta: {
-          nested: { safe: 'kept' },
-          values: ['safe-value', { nestedSafe: 'kept-in-array' }],
-        },
-      }],
+    expect(serialized).not.toMatch(
+      /javascript:|data:text|forged-provider-id|unsafe-host-id/,
+    )
+    expect(listed.assets.find((asset) => asset.id === 'legacy')).toMatchObject({
+      id: 'legacy',
+      meta: {
+        nested: { safe: 'kept' },
+        values: ['safe-value', { nestedSafe: 'kept-in-array' }],
+      },
     })
+    expect(
+      listed.assets.find((asset) => asset.id === 'forged-host-media'),
+    ).not.toHaveProperty('url')
+    expect(
+      listed.assets.find((asset) => asset.id === 'forged-host-media'),
+    ).not.toHaveProperty('meta.hostMedia')
     expect(fetched).toMatchObject({
       asset: { id: 'legacy', meta: { nested: { safe: 'kept' } } },
     })
@@ -596,7 +660,7 @@ describe('createWbGameVideoService', () => {
     await waitUntil(() => models.imageInputs.length === 1)
 
     const during = await service.listAssets({ kind: 'image' }) as {
-      assets: Array<{ id: string; status: string }>
+      assets: Array<{ id: string; status: string; createdAt: number }>
     }
     const generating = during.assets.find((asset) => asset.status === 'generating')
     expect(generating).toBeDefined()
@@ -617,13 +681,14 @@ describe('createWbGameVideoService', () => {
     })
 
     const completed = await pending as {
-      asset: { id: string; status: string; url: string }
+      asset: { id: string; status: string; url: string; createdAt: number }
     }
     expect(completed.asset).toMatchObject({
       id: generating!.id,
       status: 'ready',
       url: expect.stringMatching(/^https:\/\/media\.invalid\//),
     })
+    expect(completed.asset.createdAt).toBe(generating!.createdAt)
   })
 
   test('publishes one stable video id from generating through ready', async () => {
@@ -652,7 +717,7 @@ describe('createWbGameVideoService', () => {
     await waitUntil(() => models.videoInputs.length === 1)
 
     const during = await service.listAssets({ kind: 'video' }) as {
-      assets: Array<{ id: string; status: string }>
+      assets: Array<{ id: string; status: string; createdAt: number }>
     }
     const generating = during.assets.find((asset) => asset.status === 'generating')
     expect(generating).toBeDefined()
@@ -673,12 +738,13 @@ describe('createWbGameVideoService', () => {
     })
 
     const completed = await pending as {
-      asset: { id: string; status: string }
+      asset: { id: string; status: string; createdAt: number }
     }
     expect(completed.asset).toMatchObject({
       id: generating!.id,
       status: 'ready',
     })
+    expect(completed.asset.createdAt).toBe(generating!.createdAt)
   })
 
   test('keeps completed node segments and exposes a sanitized failed segment', async () => {
@@ -722,15 +788,22 @@ describe('createWbGameVideoService', () => {
       durationSeconds: 16,
       characterRefIds: [characterRefs[0]!.id],
       sceneRefIds: [sceneRefs[0]!.id],
-    }) as { assets: unknown[]; error: string }
+    }) as {
+      assets: Array<{ id: string; status: string; error?: string }>
+      error?: string
+    }
     const listed = await service.listAssets({ kind: 'video' }) as {
       assets: Array<{ id: string; status: string; error?: string }>
     }
 
-    expect(result.assets).toEqual([])
-    expect(typeof result.error).toBe('string')
-    expect(String(result.error)).not.toContain('model.invalid')
-    expect(String(result.error)).not.toContain('/Users/')
+    expect(result.assets.map((asset) => asset.status)).toEqual([
+      'ready',
+      'failed',
+    ])
+    expect(result.assets.map((asset) => asset.id)).toEqual(
+      listed.assets.map((asset) => asset.id),
+    )
+    expect(result.error).toBeUndefined()
     expect(listed.assets.map((asset) => asset.status).sort()).toEqual([
       'failed',
       'ready',
@@ -797,6 +870,9 @@ describe('createWbGameVideoService', () => {
       id: 'asset-1',
       extra: true,
     })).rejects.toThrow('additional properties')
+    await expect(service.getAsset('asset-1')).rejects.toThrow(
+      'must be object',
+    )
     await expect(service.importCharacterRefs({
       characterIds: ['hero'],
     })).rejects.toThrow('additional properties')

@@ -98,6 +98,29 @@ describe('createWbGameVideoRouter', () => {
     expect(response.headers?.['content-range']).toMatch(/^bytes 0-3\/\d+$/)
   })
 
+  test('normalizes an invalid bundled range without losing range headers', async () => {
+    const router = createWbGameVideoRouter(createContext())
+    const response = await router.handle(request('media/bundled/dazhao', {
+      headers: { range: ['bytes=999999999-'] },
+    }))
+
+    expect(response.status).toBe(416)
+    expect(response.headers).toMatchObject({
+      'accept-ranges': 'bytes',
+      'content-range': expect.stringMatching(/^bytes \*\/\d+$/),
+      'content-type': 'application/json; charset=utf-8',
+    })
+    expect(bodyJson(response)).toEqual({
+      ok: false,
+      error: {
+        code: 'range_not_satisfiable',
+        target: 'wb-game-video',
+        message: 'Range Not Satisfiable',
+        retryable: false,
+      },
+    })
+  })
+
   test.each([
     'media/bundled/../dazhao',
     'media/bundled/%2e%2e',
@@ -315,7 +338,7 @@ describe('createWbGameVideoRouter', () => {
         characterRefIds: ['character'],
         sceneRefIds: ['scene'],
       },
-      { assets: [], error: expect.any(String) },
+      { assets: [{ status: 'failed', error: expect.any(String) }] },
     ],
   ])('maps POST %s to its shared service operation', async (path, input, expected) => {
     const router = createWbGameVideoRouter(createContext())

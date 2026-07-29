@@ -184,7 +184,27 @@ export function createWbGameVideoRouter(
             parts[2]!,
             header(request, 'range'),
           )
-          return response.status === 404 ? notFound() : response
+          if (response.status === 404) return notFound()
+          if (response.status === 416) {
+            const normalized = jsonResponse(416, {
+              ok: false,
+              error: {
+                code: 'range_not_satisfiable',
+                target: 'wb-game-video',
+                message: 'Range Not Satisfiable',
+                retryable: false,
+              },
+            })
+            return {
+              ...normalized,
+              headers: {
+                ...normalized.headers,
+                'accept-ranges': response.headers?.['accept-ranges'] ?? 'bytes',
+                'content-range': response.headers?.['content-range'] ?? 'bytes */0',
+              },
+            }
+          }
+          return response
         }
         if (method === 'GET' && path === 'style-axes') {
           const query = exactQuery(request.query, ['gameSlug'])

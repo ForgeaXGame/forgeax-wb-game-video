@@ -526,6 +526,16 @@ function sanitizedGenerationError(error: unknown): string {
   return sanitized || 'Generation failed'
 }
 
+class HostSegmentGenerationError extends Error {
+  constructor(
+    readonly asset: MediaAsset,
+    cause: unknown,
+  ) {
+    super(sanitizedGenerationError(cause), { cause })
+    this.name = 'HostSegmentGenerationError'
+  }
+}
+
 /**
  * Host-neutral generation pipeline. It has no network URL, filesystem path, or
  * environment discovery: models produce through the model gateway and every
@@ -666,10 +676,11 @@ export function createHostGenerationOrchestrator(
         },
       })
     } catch (error) {
-      await registry.update(registryId, {
+      const failed = await registry.update(registryId, {
         status: 'failed', error: sanitizedGenerationError(error),
       })
-      throw error
+      if (!failed) throw error
+      throw new HostSegmentGenerationError(failed, error)
     }
   }
 
@@ -694,21 +705,26 @@ export function createHostGenerationOrchestrator(
     async generateNodeVideo(input) {
       assertRefsPresent(input)
       const segments = splitDurationIntoSegments(input.durationSeconds)
-      if (segments.length === 1) return [await video(input)]
       const baseLabel = input.label ?? `视频 · ${input.nodeName}`
       const assets: MediaAsset[] = []
       for (let index = 0; index < segments.length; index++) {
         const extend = index > 0
-        assets.push(await video({
-          ...input,
-          durationSeconds: segments[index]!,
-          label: `${baseLabel} · 段${index + 1}/${segments.length}`,
-          extend,
-          transitionHint: extend
-            ? input.transitionHint
-              ?? `接上一段（第 ${index} 段）尾部，人物、机位、光影、表演节奏无缝延续`
-            : undefined,
-        }))
+        try {
+          assets.push(await video({
+            ...input,
+            durationSeconds: segments[index]!,
+            label: `${baseLabel} · 段${index + 1}/${segments.length}`,
+            extend,
+            transitionHint: extend
+              ? input.transitionHint
+                ?? `接上一段（第 ${index} 段）尾部，人物、机位、光影、表演节奏无缝延续`
+              : undefined,
+          }))
+        } catch (error) {
+          if (!(error instanceof HostSegmentGenerationError)) throw error
+          assets.push(error.asset)
+          break
+        }
       }
       return assets
     },

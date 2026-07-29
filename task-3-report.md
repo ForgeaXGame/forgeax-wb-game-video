@@ -61,15 +61,19 @@ A second review hardened those boundaries further:
   then retain the same registry id through `ready` or `failed`. Multi-segment
   node generation preserves completed segments when a later segment fails.
 - Public records are field-whitelisted and deeply sanitized. Absolute paths,
-  file URLs, model/provider URLs, provider mappings, and legacy nested metadata
-  never cross the service boundary; only a locator tagged as originating from
-  the Workbench media capability survives.
+  file URLs, model/provider URLs, provider mappings, and sensitive legacy nested
+  metadata never cross the service boundary. A claimed locator survives only
+  when its asset id and URL are independently attested by the Workbench media
+  capability.
 - Every tool-shaped service input is compiled directly from the published
   Draft 2020-12 JSON schema with Ajv. Router query keys are closed and
   single-valued, and invalid generation input is rejected before a model call.
-- Router error envelopes consistently include `target` and `retryable`.
+- Multi-segment node generation returns completed records plus the stable failed
+  record in segment order, so callers do not lose resumable ids.
+- Router error envelopes—including invalid byte ranges—consistently include
+  `target` and `retryable`.
 
-Fresh follow-up verification: `bun test server/host` passed **88 tests with
+Fresh follow-up verification: `bun test server/host` passed **89 tests with
 0 failures**; `bun run lint` passed; and direct ESM plus declaration builds of
 the service and router passed.
 

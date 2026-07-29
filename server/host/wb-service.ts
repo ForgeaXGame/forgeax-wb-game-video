@@ -396,9 +396,8 @@ export function createWbGameVideoService(
       return { assets: await registry.list(filter) }
     },
     async getAsset(value) {
-      const inputValue = typeof value === 'string' ? { id: value } : value
-      assertSchema('getAsset', inputValue)
-      const input = record(inputValue)
+      assertSchema('getAsset', value)
+      const input = record(value)
       assertBoundGame(input, context.gameId)
       const id = assertLogicalIdentifier(
         stringValue(input.id, 'id', true)!,
