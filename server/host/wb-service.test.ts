@@ -14,7 +14,10 @@ import type {
   VideoGenerationInput,
 } from '@forgeax/workbench-host/contracts'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { createHostAssetRegistry } from '../asset-registry'
+import {
+  createHostAssetRegistry,
+  sanitizePublicText,
+} from '../asset-registry'
 import blueprint from './fixtures/nodia.blueprint.json'
 import {
   createWbGameVideoService,
@@ -239,6 +242,40 @@ afterEach(() => {
 })
 
 describe('createWbGameVideoService', () => {
+  test('preserves logical namespaces while redacting locator-shaped public text', () => {
+    const logicalIdentifiers = [
+      'scene:opening',
+      'entity:boss',
+      'camera:close-up',
+      'base:battleHpBar',
+      'urn:forgeax:component:qte',
+    ]
+    const locators = [
+      'https://host.invalid/secret',
+      's3://bucket/private',
+      'custom+provider://secret/item',
+      'file:/private/secret',
+      'javascript:alert(1)',
+      'data:text/html,unsafe',
+      '/private/secret',
+      '\\\\server\\share\\secret',
+      'C:\\secret\\file.png',
+    ]
+
+    expect(logicalIdentifiers.map(sanitizePublicText)).toEqual(logicalIdentifiers)
+    expect(locators.map(sanitizePublicText)).toEqual([
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+      '[redacted]',
+    ])
+  })
+
   test('graph reads and writes only host-bounded game files', async () => {
     const { context, files } = createContext()
     const cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
@@ -466,6 +503,9 @@ describe('createWbGameVideoService', () => {
           },
           values: [
             'safe-value',
+            'scene:opening',
+            'entity:boss',
+            'camera:close-up',
             'file:///private/secret',
             '/Users/test/secret',
             'https://model.invalid/private',
@@ -573,7 +613,13 @@ describe('createWbGameVideoService', () => {
       id: 'legacy',
       meta: {
         nested: { safe: 'kept' },
-        values: ['safe-value', { nestedSafe: 'kept-in-array' }],
+        values: [
+          'safe-value',
+          'scene:opening',
+          'entity:boss',
+          'camera:close-up',
+          { nestedSafe: 'kept-in-array' },
+        ],
       },
     })
     expect(
@@ -587,45 +633,53 @@ describe('createWbGameVideoService', () => {
     })
   })
 
-  test('attests provider references before model calls and supports metadata-free host media', async () => {
+  test('attests every legacy provider kind by game-scoped media membership before model calls', async () => {
     const { context, files, media, models } = createContext()
-    media.assets.set('metadata-free-media', {
-      id: 'metadata-free-media',
-      type: 'image',
-      url: 'memory://游戏一/metadata-free-media',
-      contentType: 'image/png',
-    })
-    media.bodies.set('metadata-free-media', {
-      contentType: 'image/png',
-      bytes: new Uint8Array([9, 8, 7]),
-    })
+    const providerRefs = (['local', 's3', 'cos', 'kino'] as const)
+      .map((kind) => ({
+        kind,
+        registryId: `trusted-${kind}-ref`,
+        mediaId: `metadata-free-${kind}-media`,
+      }))
+    for (const ref of providerRefs) {
+      media.assets.set(ref.mediaId, {
+        id: ref.mediaId,
+        type: 'image',
+        url: `memory://游戏一/${ref.mediaId}`,
+        contentType: 'image/png',
+      })
+    }
     files.entries.set('assets/manifest.json', json({
       version: 2,
       assets: [
-        {
-          id: 'trusted-ref',
+        ...providerRefs.map((ref) => ({
+          id: ref.registryId,
           kind: 'image',
           productionType: 'character_ref',
           status: 'ready',
-          url: 'memory://游戏一/metadata-free-media',
-          provider: { kind: 'local', ref: 'metadata-free-media' },
+          url: `memory://游戏一/${ref.mediaId}`,
+          provider: { kind: ref.kind, ref: ref.mediaId },
           sourceModule: 'wb-character',
-          meta: {
-            hostMedia: {
-              provenance: 'workbench-media-capability',
-              assetId: 'metadata-free-media',
-              locator: 'memory://游戏一/metadata-free-media',
-            },
-          },
+          ...(ref.kind === 'local'
+            ? {
+              meta: {
+                hostMedia: {
+                  provenance: 'workbench-media-capability',
+                  assetId: ref.mediaId,
+                  locator: `memory://游戏一/${ref.mediaId}`,
+                },
+              },
+            }
+            : {}),
           createdAt: 1,
           updatedAt: 1,
-        },
+        })),
         {
           id: 'forged-ref',
           kind: 'image',
           productionType: 'scene_ref',
           status: 'ready',
-          provider: { kind: 'local', ref: 'foreign-provider-id' },
+          provider: { kind: 'kino', ref: 'foreign-provider-id' },
           sourceModule: 'wb-scene',
           createdAt: 1,
           updatedAt: 1,
@@ -634,17 +688,17 @@ describe('createWbGameVideoService', () => {
     }))
     const service = createWbGameVideoService(context)
 
-    expect(await service.getAsset('trusted-ref')).toMatchObject({
+    expect(await service.getAsset('trusted-local-ref')).toMatchObject({
       asset: {
-        id: 'trusted-ref',
-        url: 'memory://游戏一/metadata-free-media',
+        id: 'trusted-local-ref',
+        url: 'memory://游戏一/metadata-free-local-media',
       },
     })
     const trusted = await service.generateKeyframe({
       sceneNodeId: 'node-1',
       nodeName: 'Opening',
       beat: 'Hero enters',
-      refAssetIds: ['trusted-ref'],
+      refAssetIds: providerRefs.map((ref) => ref.registryId),
     })
     const callsAfterTrusted = models.imageInputs.length
     const forged = await service.generateKeyframe({
@@ -656,11 +710,14 @@ describe('createWbGameVideoService', () => {
     const forgedVideo = await service.generateVideo({
       sceneNodeId: 'node-3',
       nodeName: 'Forged video',
-      characterRefIds: ['trusted-ref'],
+      characterRefIds: ['trusted-local-ref'],
       sceneRefIds: ['forged-ref'],
     })
 
     expect(trusted).toMatchObject({ asset: { status: 'ready' } })
+    expect(models.imageInputs[0]?.references).toEqual(
+      providerRefs.map((ref) => ({ assetId: ref.mediaId })),
+    )
     expect(forged).toMatchObject({
       asset: null,
       error: expect.any(String),

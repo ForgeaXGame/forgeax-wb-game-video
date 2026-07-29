@@ -376,7 +376,8 @@ function publicHostAsset(
 
 export function sanitizePublicText(value: string): string {
   return value
-    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:(?:\/\/)?\S+/g, '[redacted]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/\S+/g, '[redacted]')
+    .replace(/\b(?:file|javascript|data|vbscript|blob):\S+/gi, '[redacted]')
     .replace(/\\\\[^\s]+/g, '[redacted]')
     .replace(/[A-Za-z]:[\\/][^\s]+/g, '[redacted]')
     .replace(
@@ -649,9 +650,6 @@ export function createHostAssetRegistry(
       const asset = await getRaw(id)
       if (!asset) throw new Error(`参考图不存在：${id}`)
       if (asset.provider?.ref) {
-        if (asset.provider.kind !== 'local') {
-          throw new Error(`参考图 ${id} 的 provider 不属于宿主媒体能力`)
-        }
         const hosted = (await context.media.list(context.gameId))
           .find((candidate) => candidate.id === asset.provider!.ref)
         if (!hosted) {
