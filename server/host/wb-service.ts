@@ -11,6 +11,7 @@ import {
 } from '../../src/editor/persist/blueprint-project'
 import {
   createHostAssetRegistry,
+  sanitizePublicText,
   type AssetFilter,
 } from '../asset-registry'
 import {
@@ -40,7 +41,7 @@ export interface WbGameVideoService {
   getGraph(input?: unknown): Promise<unknown>
   saveGraph(input: unknown): Promise<unknown>
   listAssets(query: unknown): Promise<unknown>
-  getAsset(input: unknown): Promise<unknown>
+  getAsset(assetId: string): Promise<unknown>
   importCharacterRefs(input: unknown): Promise<unknown>
   importSceneRefs(input: unknown): Promise<unknown>
   generateShotScript(input: unknown): Promise<unknown>
@@ -58,11 +59,7 @@ function publicErrorMessage(error: unknown): string {
   const raw = error instanceof Error && typeof error.message === 'string'
     ? error.message
     : 'Operation failed'
-  return raw
-    .replace(/file:\/\/\S+/gi, '[redacted]')
-    .replace(/https?:\/\/\S+/gi, '[redacted]')
-    .replace(/(?:[A-Za-z]:[\\/]|\/Users\/|\/private\/|\/workspace\/)\S*/g, '[redacted]')
-    .slice(0, 400)
+  return sanitizePublicText(raw).slice(0, 400)
 }
 
 function record(value: unknown, label = 'Input'): Record<string, unknown> {
@@ -133,6 +130,20 @@ function assertBoundGame(input: Record<string, unknown>, gameId: string): void {
   if (slug !== gameId) {
     throw new WbServiceInputError('gameSlug does not match the host-bound game')
   }
+}
+
+/**
+ * Tool/router adapter for the published get-asset object schema. The business
+ * service itself keeps the established `getAsset(assetId)` interface.
+ */
+export function getAssetIdFromArgs(value: unknown, gameId: string): string {
+  assertSchema('getAsset', value)
+  const input = record(value)
+  assertBoundGame(input, gameId)
+  return assertLogicalIdentifier(
+    stringValue(input.id, 'id', true)!,
+    'assetId',
+  )
 }
 
 function assertOnlyKeys(
@@ -396,11 +407,8 @@ export function createWbGameVideoService(
       return { assets: await registry.list(filter) }
     },
     async getAsset(value) {
-      assertSchema('getAsset', value)
-      const input = record(value)
-      assertBoundGame(input, context.gameId)
       const id = assertLogicalIdentifier(
-        stringValue(input.id, 'id', true)!,
+        stringValue(value, 'assetId', true)!,
         'assetId',
       )
       return { asset: await registry.get(id) }

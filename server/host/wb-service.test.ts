@@ -16,7 +16,10 @@ import type {
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostAssetRegistry } from '../asset-registry'
 import blueprint from './fixtures/nodia.blueprint.json'
-import { createWbGameVideoService } from './wb-service'
+import {
+  createWbGameVideoService,
+  getAssetIdFromArgs,
+} from './wb-service'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -446,8 +449,9 @@ describe('createWbGameVideoService', () => {
         externalPath: '/private/legacy.png',
         url: 'https://model.invalid/legacy.png',
         provider: { kind: 'remote', ref: 'https://provider.invalid/secret' },
+        label: 'Legacy /home/test/label [/opt/secret] \\\\server\\share C:\\secret s3://bucket/key',
         prompt: 'use https://model.invalid/prompt and /Users/test/prompt.txt',
-        error: 'failed at file:///private/error.log',
+        error: 'failed at file:///private/error.log and /etc/passwd (/root/.ssh/key)',
         sourceUrl: 'https://source.invalid/top-level',
         legacyDetails: {
           providerUrl: 'https://provider.invalid/top-level-nested',
@@ -465,6 +469,12 @@ describe('createWbGameVideoService', () => {
             'file:///private/secret',
             '/Users/test/secret',
             'https://model.invalid/private',
+            '/home/test/secret',
+            '/var/lib/private',
+            '\\\\server\\share\\secret',
+            'C:\\secret\\file.png',
+            's3://bucket/private',
+            'custom+provider://secret/item',
             {
               sourceUrl: 'https://provider.invalid/array-item',
               nestedSafe: 'kept-in-array',
@@ -523,26 +533,22 @@ describe('createWbGameVideoService', () => {
     media.assets.set('real-model-provider-id', {
       id: 'real-model-provider-id',
       type: 'image',
-      url: 'https://model.invalid/real-provider-item.png',
+      url: 'https://media.invalid/real-provider-item.png',
       contentType: 'image/png',
-      metadata: {
-        source: 'model-provider',
-        registryId: 'forged-model-provider',
-      },
     })
     manifest.assets.push({
       id: 'forged-model-provider',
       kind: 'image',
       productionType: 'shot_image',
       status: 'ready',
-      url: 'https://model.invalid/real-provider-item.png',
+      url: 's3://forged-provider/real-provider-item.png',
       provider: { kind: 'local', ref: 'real-model-provider-id' },
       sourceModule: 'wb-game-video',
       meta: {
         hostMedia: {
           provenance: 'workbench-media-capability',
           assetId: 'real-model-provider-id',
-          locator: 'https://model.invalid/real-provider-item.png',
+          locator: 's3://forged-provider/real-provider-item.png',
         },
       },
       createdAt: 1,
@@ -554,14 +560,14 @@ describe('createWbGameVideoService', () => {
     const listed = await service.listAssets({}) as {
       assets: Array<Record<string, unknown>>
     }
-    const fetched = await service.getAsset({ id: 'legacy' })
+    const fetched = await service.getAsset('legacy')
     const serialized = JSON.stringify([listed, fetched])
 
     expect(serialized).not.toMatch(
       /(?:externalPath|sourceUrl|providerUrl|file:\/\/|\/private\/|\/Users\/|model\.invalid|provider\.invalid|source\.invalid)/,
     )
     expect(serialized).not.toMatch(
-      /javascript:|data:text|forged-provider-id|unsafe-host-id/,
+      /javascript:|data:text|forged-provider-id|unsafe-host-id|s3:\/\/|custom\+provider:|\/home\/|\/etc\/|\/opt\/|\/root\/|\/var\/|\\\\server\\|C:\\/,
     )
     expect(listed.assets.find((asset) => asset.id === 'legacy')).toMatchObject({
       id: 'legacy',
@@ -579,6 +585,92 @@ describe('createWbGameVideoService', () => {
     expect(fetched).toMatchObject({
       asset: { id: 'legacy', meta: { nested: { safe: 'kept' } } },
     })
+  })
+
+  test('attests provider references before model calls and supports metadata-free host media', async () => {
+    const { context, files, media, models } = createContext()
+    media.assets.set('metadata-free-media', {
+      id: 'metadata-free-media',
+      type: 'image',
+      url: 'memory://游戏一/metadata-free-media',
+      contentType: 'image/png',
+    })
+    media.bodies.set('metadata-free-media', {
+      contentType: 'image/png',
+      bytes: new Uint8Array([9, 8, 7]),
+    })
+    files.entries.set('assets/manifest.json', json({
+      version: 2,
+      assets: [
+        {
+          id: 'trusted-ref',
+          kind: 'image',
+          productionType: 'character_ref',
+          status: 'ready',
+          url: 'memory://游戏一/metadata-free-media',
+          provider: { kind: 'local', ref: 'metadata-free-media' },
+          sourceModule: 'wb-character',
+          meta: {
+            hostMedia: {
+              provenance: 'workbench-media-capability',
+              assetId: 'metadata-free-media',
+              locator: 'memory://游戏一/metadata-free-media',
+            },
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'forged-ref',
+          kind: 'image',
+          productionType: 'scene_ref',
+          status: 'ready',
+          provider: { kind: 'local', ref: 'foreign-provider-id' },
+          sourceModule: 'wb-scene',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }))
+    const service = createWbGameVideoService(context)
+
+    expect(await service.getAsset('trusted-ref')).toMatchObject({
+      asset: {
+        id: 'trusted-ref',
+        url: 'memory://游戏一/metadata-free-media',
+      },
+    })
+    const trusted = await service.generateKeyframe({
+      sceneNodeId: 'node-1',
+      nodeName: 'Opening',
+      beat: 'Hero enters',
+      refAssetIds: ['trusted-ref'],
+    })
+    const callsAfterTrusted = models.imageInputs.length
+    const forged = await service.generateKeyframe({
+      sceneNodeId: 'node-2',
+      nodeName: 'Forged',
+      beat: 'Must not call model',
+      refAssetIds: ['forged-ref'],
+    })
+    const forgedVideo = await service.generateVideo({
+      sceneNodeId: 'node-3',
+      nodeName: 'Forged video',
+      characterRefIds: ['trusted-ref'],
+      sceneRefIds: ['forged-ref'],
+    })
+
+    expect(trusted).toMatchObject({ asset: { status: 'ready' } })
+    expect(forged).toMatchObject({
+      asset: null,
+      error: expect.any(String),
+    })
+    expect(forgedVideo).toMatchObject({
+      asset: null,
+      error: expect.any(String),
+    })
+    expect(models.imageInputs).toHaveLength(callsAfterTrusted)
+    expect(models.videoInputs).toHaveLength(0)
   })
 
   test('keyframe and video generation use model and media capabilities without environment URLs', async () => {
@@ -627,7 +719,7 @@ describe('createWbGameVideoService', () => {
     }
     const firstVideo = assets.assets[0]
     expect(firstVideo).toBeDefined()
-    expect(await service.getAsset({ id: firstVideo!.id })).toMatchObject({
+    expect(await service.getAsset(firstVideo!.id)).toMatchObject({
       asset: { id: firstVideo!.id },
     })
 
@@ -893,17 +985,19 @@ describe('createWbGameVideoService', () => {
     await expect(service.listAssets({ kind: 'audio' })).rejects.toThrow(
       'allowed values',
     )
-    await expect(service.getAsset({
+    expect(getAssetIdFromArgs({
+      id: 'asset-1',
+      gameSlug: '游戏一',
+    }, context.gameId)).toBe('asset-1')
+    expect(() => getAssetIdFromArgs({
       id: 'asset-1',
       gameSlug: 'another-game',
-    })).rejects.toThrow('does not match')
-    await expect(service.getAsset({
+    }, context.gameId)).toThrow('does not match')
+    expect(() => getAssetIdFromArgs({
       id: 'asset-1',
       extra: true,
-    })).rejects.toThrow('additional properties')
-    await expect(service.getAsset('asset-1')).rejects.toThrow(
-      'must be object',
-    )
+    }, context.gameId)).toThrow('additional properties')
+    await expect(service.getAsset('asset-1')).resolves.toEqual({ asset: null })
     await expect(service.importCharacterRefs({
       characterIds: ['hero'],
     })).rejects.toThrow('additional properties')

@@ -337,15 +337,9 @@ function publicHostAsset(
   const authoritativeMedia = hostAssetId
     ? trustedMedia.get(hostAssetId)
     : undefined
-  const authoritativeMetadata = authoritativeMedia?.metadata
   const trustedLocator = (
     authoritativeMedia
-    && isRecord(authoritativeMetadata)
-    && (
-      authoritativeMetadata.source === 'wb-game-video-reference'
-      || authoritativeMetadata.source === 'wb-game-video-generation'
-    )
-    && authoritativeMetadata.registryId === normalized.id
+    && authoritativeMedia.url === normalized.url
   )
     ? safeHostMediaUrl(authoritativeMedia.url)
     : undefined
@@ -380,12 +374,20 @@ function publicHostAsset(
   }
 }
 
-function sanitizePublicText(value: string): string {
+export function sanitizePublicText(value: string): string {
   return value
-    .replace(/file:\/\/\S+/gi, '[redacted]')
-    .replace(/https?:\/\/\S+/gi, '[redacted]')
-    .replace(/(?:[A-Za-z]:[\\/]|\/Users\/|\/private\/|\/workspace\/)\S*/g, '[redacted]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:(?:\/\/)?\S+/g, '[redacted]')
+    .replace(/\\\\[^\s]+/g, '[redacted]')
+    .replace(/[A-Za-z]:[\\/][^\s]+/g, '[redacted]')
+    .replace(
+      /(^|[^A-Za-z0-9._-])\/[^\s,;)\]}"']+/g,
+      (_match, prefix: string) => `${prefix}[redacted]`,
+    )
     .slice(0, 4_000)
+}
+
+function containsSensitivePublicText(value: string): boolean {
+  return sanitizePublicText(value) !== value
 }
 
 function deepSanitizeMeta(
@@ -413,10 +415,7 @@ function deepSanitizeMeta(
     }
     if (typeof child === 'string') {
       if (
-        child.startsWith('file://')
-        || isAbsolute(child)
-        || /^[A-Za-z]:[\\/]/.test(child)
-        || /^https?:\/\//i.test(child)
+        containsSensitivePublicText(child)
         || /(?:path|url)$/i.test(childKey)
       ) continue
       out[childKey] = child
@@ -424,11 +423,7 @@ function deepSanitizeMeta(
       const items: unknown[] = []
       for (const item of child) {
         if (typeof item === 'string') {
-          if (
-            isAbsolute(item)
-            || /^[A-Za-z]:[\\/]/.test(item)
-            || /^(?:file:|https?:)/i.test(item)
-          ) continue
+          if (containsSensitivePublicText(item)) continue
           items.push(item)
         } else if (Array.isArray(item)) {
           const nested = deepSanitizeMeta(
@@ -653,7 +648,17 @@ export function createHostAssetRegistry(
     async mediaReference(id) {
       const asset = await getRaw(id)
       if (!asset) throw new Error(`参考图不存在：${id}`)
-      if (asset.provider?.ref) return { assetId: asset.provider.ref }
+      if (asset.provider?.ref) {
+        if (asset.provider.kind !== 'local') {
+          throw new Error(`参考图 ${id} 的 provider 不属于宿主媒体能力`)
+        }
+        const hosted = (await context.media.list(context.gameId))
+          .find((candidate) => candidate.id === asset.provider!.ref)
+        if (!hosted) {
+          throw new Error(`参考图 ${id} 的宿主媒体引用不存在`)
+        }
+        return { assetId: hosted.id }
+      }
       if (!asset.file) throw new Error(`参考图 ${id} 没有可读取的宿主媒体`)
       const relativePath = assertBoundedRelativePath(`assets/${asset.file}`)
       const bytes = await context.files.read(relativePath)

@@ -63,8 +63,11 @@ A second review hardened those boundaries further:
 - Public records are field-whitelisted and deeply sanitized. Absolute paths,
   file URLs, model/provider URLs, provider mappings, and sensitive legacy nested
   metadata never cross the service boundary. A claimed locator survives only
-  when its asset id, URL, extension-owned source marker, and registry id are
-  independently attested by the Workbench media capability.
+  when its game-scoped asset id and exact URL are independently attested by the
+  Workbench media capability; optional media metadata is not required.
+- Model references never use a manifest `provider.ref` directly. The referenced
+  id must first exist in the host media capability for the bound game, so a
+  forged foreign id fails before any model call.
 - Every tool-shaped service input is compiled directly from the published
   Draft 2020-12 JSON schema with Ajv. Router query keys are closed and
   single-valued, and invalid generation input is rejected before a model call.
@@ -72,8 +75,11 @@ A second review hardened those boundaries further:
   record in segment order, so callers do not lose resumable ids.
 - Router error envelopes—including invalid byte ranges—consistently include
   `target` and `retryable`.
+- `getAsset(assetId)` retains its required string business-service interface.
+  The exported `getAssetIdFromArgs()` adapter owns published object-schema and
+  host-bound `gameSlug` validation for Task 4 tool and router callers.
 
-Fresh follow-up verification: `bun test server/host` passed **89 tests with
+Fresh follow-up verification: `bun test server/host` passed **90 tests with
 0 failures**; `bun run lint` passed; and direct ESM plus declaration builds of
 the service and router passed.
 

@@ -8,6 +8,7 @@ import { getHostStyleAxes } from '../asset-registry'
 import { bundledMediaResponse } from './media-routes'
 import {
   createWbGameVideoService,
+  getAssetIdFromArgs,
   WbServiceInputError,
 } from './wb-service'
 
@@ -167,10 +168,11 @@ export function createWbGameVideoRouter(
           && parts[0] === 'assets'
         ) {
           const query = exactQuery(request.query, ['gameSlug'])
-          return jsonResponse(200, await service.getAsset({
+          const id = getAssetIdFromArgs({
             id: parts[1]!,
             ...query,
-          }))
+          }, context.gameId)
+          return jsonResponse(200, await service.getAsset(id))
         }
         if (
           method === 'GET'
