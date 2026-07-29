@@ -3,20 +3,23 @@ import { basename, dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const demoPath = resolve(root, 'src/editor/demo/nodia.graph.json')
+const demoPath = process.env.NODIA_DEMO_PATH ?? resolve(root, 'src/editor/demo/nodia.graph.json')
 const videosDir = resolve(root, 'src/editor/assets/zhandou')
-const fixturesDir = resolve(root, 'server/host/fixtures')
+const fixturesDir = process.env.NODIA_FIXTURES_DIR ?? resolve(root, 'server/host/fixtures')
 
-function collectMediaRefs(value, refs = []) {
+function collectMediaRefs(value, refs = [], at = 'blueprint') {
   if (Array.isArray(value)) {
-    for (const item of value) collectMediaRefs(item, refs)
+    for (const [index, item] of value.entries()) collectMediaRefs(item, refs, `${at}[${index}]`)
     return refs
   }
   if (!value || typeof value !== 'object') return refs
-  if (value.media && typeof value.media === 'object' && typeof value.media.ref === 'string') {
+  if (value.media && typeof value.media === 'object' && Object.prototype.hasOwnProperty.call(value.media, 'ref')) {
+    if (typeof value.media.ref !== 'string' || value.media.ref.trim().length === 0) {
+      throw new Error(`${at}.media.ref must be a nonempty string logical id`)
+    }
     refs.push(value.media.ref)
   }
-  for (const child of Object.values(value)) collectMediaRefs(child, refs)
+  for (const [key, child] of Object.entries(value)) collectMediaRefs(child, refs, `${at}.${key}`)
   return refs
 }
 

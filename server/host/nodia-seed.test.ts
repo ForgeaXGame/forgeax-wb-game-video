@@ -1,5 +1,11 @@
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createNodiaSeed, validateNodiaSeed } from './nodia-seed'
+
+const root = resolve(import.meta.dirname, '../..')
 
 function collectMediaRefs(value: unknown, refs: string[] = []): string[] {
   if (Array.isArray(value)) {
@@ -16,6 +22,20 @@ function collectMediaRefs(value: unknown, refs: string[] = []): string[] {
   }
   for (const child of Object.values(record)) collectMediaRefs(child, refs)
   return refs
+}
+
+function setFirstMediaRef(seed: Awaited<ReturnType<typeof createNodiaSeed>>, ref: unknown): void {
+  const main = seed.blueprint.manifest.packs[seed.blueprint.manifest.mainPackId]!
+  for (const graph of [seed.blueprint.graph, main.graph]) {
+    graph.nodes[0]!.data.media = { kind: 'video', ref } as never
+  }
+}
+
+function setFirstSubFlowPack(seed: Awaited<ReturnType<typeof createNodiaSeed>>, value: unknown): void {
+  const main = seed.blueprint.manifest.packs[seed.blueprint.manifest.mainPackId]!
+  for (const graph of [seed.blueprint.graph, main.graph]) {
+    ;(graph.nodes[0]!.data as unknown as { subFlowPack?: unknown }).subFlowPack = value
+  }
 }
 
 describe('Nodia game package seed', () => {
@@ -70,5 +90,75 @@ describe('Nodia game package seed', () => {
     ;(seed.blueprint.graph.nodes[0]!.data as unknown as { subFlowPack?: unknown }).subFlowPack = { id: main.id }
 
     expect(() => validateNodiaSeed(seed)).toThrow(/subflow reference cycle/)
+  })
+
+  it.each([42, null, '', '  '])('rejects a media.ref that is not a nonempty logical id: %j', async (ref) => {
+    const seed = await createNodiaSeed()
+    setFirstMediaRef(seed, ref)
+
+    expect(() => validateNodiaSeed(seed)).toThrow(/media\.ref.*nonempty string logical id/)
+  })
+
+  it('rejects an unreachable graph node', async () => {
+    const seed = await createNodiaSeed()
+    const main = seed.blueprint.manifest.packs[seed.blueprint.manifest.mainPackId]!
+    for (const graph of [seed.blueprint.graph, main.graph]) {
+      graph.nodes.push({ ...structuredClone(graph.nodes[0]!), id: 'orphan-node' })
+    }
+
+    expect(() => validateNodiaSeed(seed)).toThrow(/unreachable node 'orphan-node'/)
+  })
+
+  it.each([
+    [null, /subFlowPack must be an object/],
+    [{}, /subFlowPack.id must be a nonempty string/],
+    [{ id: '' }, /subFlowPack.id must be a nonempty string/],
+    [{ id: 42 }, /subFlowPack.id must be a nonempty string/],
+    [{ id: 'missing-pack' }, /references missing subflow 'missing-pack'/],
+  ])('rejects malformed or missing subFlowPack references', async (value, expected) => {
+    const seed = await createNodiaSeed()
+    setFirstSubFlowPack(seed, value)
+
+    expect(() => validateNodiaSeed(seed)).toThrow(expected)
+  })
+
+  it.each([
+    ['id', 'other', /project.id must be nodia/],
+    ['title', '', /project.title must be Nodia/],
+    ['platformVersion', 1, /project.platformVersion must be 1/],
+  ])('rejects invalid required project field %s', async (field, value, expected) => {
+    const seed = await createNodiaSeed()
+    ;(seed.project as unknown as Record<string, unknown>)[field] = value
+
+    expect(() => validateNodiaSeed(seed)).toThrow(expected)
+  })
+
+  it('makes the fixture builder reject a media object with a non-string ref', async () => {
+    const seed = await createNodiaSeed()
+    setFirstMediaRef(seed, 42)
+    const dir = mkdtempSync(join(tmpdir(), 'nodia-seed-builder-'))
+    const blueprintPath = join(dir, 'invalid-blueprint.json')
+    writeFileSync(blueprintPath, JSON.stringify(seed.blueprint))
+
+    try {
+      let failure: unknown
+      try {
+        execFileSync('bun', ['scripts/build-nodia-seed.mjs'], {
+          cwd: root,
+          env: {
+            ...process.env,
+            NODIA_DEMO_PATH: blueprintPath,
+            NODIA_FIXTURES_DIR: join(dir, 'fixtures'),
+          },
+          stdio: 'pipe',
+        })
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeDefined()
+      expect((failure as { stderr?: Buffer }).stderr?.toString()).toMatch(/media\.ref.*nonempty string logical id/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -3727,6 +3727,24 @@
         }
       },
       {
+        "id": "e-amy-subflow-entry",
+        "source": "a_my",
+        "target": "wait",
+        "sourceHandle": "default",
+        "targetHandle": "in",
+        "data": {
+          "condition": {
+            "all": [
+              {
+                "type": "score",
+                "op": "lt",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      {
         "id": "e-amy-lose",
         "source": "a_my",
         "target": "lose",
@@ -3786,6 +3804,24 @@
                 "entityId": "ent-boss",
                 "attr": "hp",
                 "op": "lte",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "e-bai-subflow-entry",
+        "source": "b_ai",
+        "target": "tele",
+        "sourceHandle": "default",
+        "targetHandle": "in",
+        "data": {
+          "condition": {
+            "all": [
+              {
+                "type": "score",
+                "op": "lt",
                 "value": 0
               }
             ]
@@ -7075,6 +7111,24 @@
               }
             },
             {
+              "id": "e-amy-subflow-entry",
+              "source": "a_my",
+              "target": "wait",
+              "sourceHandle": "default",
+              "targetHandle": "in",
+              "data": {
+                "condition": {
+                  "all": [
+                    {
+                      "type": "score",
+                      "op": "lt",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            },
+            {
               "id": "e-amy-lose",
               "source": "a_my",
               "target": "lose",
@@ -7134,6 +7188,24 @@
                       "entityId": "ent-boss",
                       "attr": "hp",
                       "op": "lte",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": "e-bai-subflow-entry",
+              "source": "b_ai",
+              "target": "tele",
+              "sourceHandle": "default",
+              "targetHandle": "in",
+              "data": {
+                "condition": {
+                  "all": [
+                    {
+                      "type": "score",
+                      "op": "lt",
                       "value": 0
                     }
                   ]

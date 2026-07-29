@@ -66,7 +66,10 @@ function assertPortable(value: unknown, at = 'seed'): void {
 
 function validateProject(project: unknown): asserts project is NodiaProject {
   assert(isRecord(project), 'project must be an object')
+  assert(project.id === 'nodia', 'project.id must be nodia')
+  assert(project.title === 'Nodia', 'project.title must be Nodia')
   assert(project.platform === 'wb-game-video', 'project.platform must be wb-game-video')
+  assert(project.platformVersion === '1', 'project.platformVersion must be 1')
   assert(isRecord(project.entry), 'project.entry must be an object')
   assert(project.entry.blueprint === 'blueprint.json', 'project.entry.blueprint must be blueprint.json')
   assert(project.entry.components === 'dist/components', 'project.entry.components must be dist/components')
@@ -100,16 +103,28 @@ function collectMediaRefs(value: unknown, refs: Array<{ ref: string; at: string 
     return
   }
   if (!isRecord(value)) return
-  if (isRecord(value.media) && typeof value.media.ref === 'string') {
-    refs.push({ ref: value.media.ref, at: `${at}.media.ref` })
+  if (isRecord(value.media) && Object.prototype.hasOwnProperty.call(value.media, 'ref')) {
+    const ref = value.media.ref
+    assert(typeof ref === 'string' && ref.trim().length > 0, `${at}.media.ref must be a nonempty string logical id`)
+    refs.push({ ref, at: `${at}.media.ref` })
   }
   for (const [key, item] of Object.entries(value)) collectMediaRefs(item, refs, `${at}.${key}`)
 }
 
 function subFlowPackId(value: unknown): string | undefined {
-  if (!isRecord(value) || !isRecord(value.subFlowPack)) return undefined
+  if (!isRecord(value) || !Object.prototype.hasOwnProperty.call(value, 'subFlowPack')) return undefined
+  assert(isRecord(value.subFlowPack), 'subFlowPack must be an object')
   const id = value.subFlowPack.id
-  return typeof id === 'string' && id.length > 0 ? id : undefined
+  assert(typeof id === 'string' && id.trim().length > 0, 'subFlowPack.id must be a nonempty string')
+  if (value.subFlowPack.version !== undefined) {
+    assert(typeof value.subFlowPack.version === 'string' && value.subFlowPack.version.trim().length > 0,
+      'subFlowPack.version must be a nonempty string when present')
+  }
+  if (value.subFlowPack.entry !== undefined) {
+    assert(typeof value.subFlowPack.entry === 'string' && value.subFlowPack.entry.trim().length > 0,
+      'subFlowPack.entry must be a nonempty string when present')
+  }
+  return id
 }
 
 function validateBlueprint(blueprint: unknown, assetIds: Set<string>): asserts blueprint is GraphLibraryDocument {
@@ -167,6 +182,8 @@ function validateBlueprint(blueprint: unknown, assetIds: Set<string>): asserts b
         }
       }
     }
+    const unreachable = [...nodeIds].find((nodeId) => !visited.has(nodeId))
+    assert(!unreachable, `pack '${packId}' has unreachable node '${unreachable}' from entry '${rawPack.entry}'`)
 
     for (const node of rawPack.graph.nodes) {
       const packRefId = isRecord(node) ? subFlowPackId(node.data) : undefined

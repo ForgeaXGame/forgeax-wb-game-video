@@ -23,3 +23,16 @@
 
 The requested `.superpowers/sdd/2026-07-29-wb-game-video-host-module` plan directory was not present
 in this Task-2 checkout. The supplied `task-2-brief.md` was therefore used as the implementation plan.
+
+## Review round 1
+
+- `media.ref` is now fail-loud whenever a media object owns the field: numbers, null, empty, and
+  whitespace-only values are invalid in both the runtime validator and fixture builder.
+- The validator now rejects unreachable graph nodes and malformed/empty/missing `subFlowPack` pointers,
+  while retaining missing-target and cycle checks. The canonical graph has no intentional disconnected
+  UI-only nodes: its formerly disconnected combat subflows are now connected by two `score < 0` edges.
+  Score is initialized to zero and has no mutation in Nodia, so these structural reachability edges are
+  never selected by normal runtime routing.
+- Full Nodia project identity (`id`, `title`, `platform`, `platformVersion`, and entry fields) is now
+  validated. New adversarial tests cover every review finding, including a builder invocation with an
+  invalid blueprint input.
