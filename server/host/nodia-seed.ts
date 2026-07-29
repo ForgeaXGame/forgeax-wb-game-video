@@ -13,7 +13,7 @@ export interface NodiaProject {
   }
 }
 
-export interface NodiaSeed {
+export interface NodiaSeed extends Record<string, unknown> {
   project: NodiaProject
   blueprint: GraphLibraryDocument
   assetsManifest: NodiaAssetsManifest

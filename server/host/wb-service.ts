@@ -27,6 +27,7 @@ import {
   validateServiceInput,
   type ServiceSchemaName,
 } from './service-validation'
+import { NODIA_ASSETS_MANIFEST } from './nodia-assets'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -40,6 +41,7 @@ export class WbServiceInputError extends TypeError {
 export interface WbGameVideoService {
   getGraph(input?: unknown): Promise<unknown>
   saveGraph(input: unknown): Promise<unknown>
+  listVideos(input: unknown): Promise<unknown>
   listAssets(query: unknown): Promise<unknown>
   getAsset(assetId: string): Promise<unknown>
   importCharacterRefs(input: unknown): Promise<unknown>
@@ -377,6 +379,13 @@ export function createWbGameVideoService(
         )
       }
       return { ok: true, versions: [], gameSlug: context.gameId }
+    },
+    async listVideos(value) {
+      assertSchema('listVideos', value)
+      record(value)
+      return {
+        videos: NODIA_ASSETS_MANIFEST.assets.map((asset) => asset.id),
+      }
     },
     async listAssets(value) {
       assertSchema('listAssets', value)

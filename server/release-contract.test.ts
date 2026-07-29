@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -27,9 +27,7 @@ let compiledBackendUrl: string
 
 beforeAll(() => {
   const backendPath = resolve(root, 'dist/server/host.js')
-  if (!existsSync(backendPath)) {
-    execFileSync('bun', ['run', 'build:backend'], { cwd: root, stdio: 'pipe' })
-  }
+  execFileSync('bun', ['run', 'build:backend'], { cwd: root, stdio: 'pipe' })
   compiledBackendUrl = pathToFileURL(backendPath).href
 })
 
@@ -64,6 +62,14 @@ describe('release identity', () => {
     const backend = await import(compiledBackendUrl)
     expect(backend.host).toBeDefined()
     expect(Object.keys(backend.tools)).toEqual(expectedTools)
+  })
+
+  it('loads the compiled host module in Node ESM', () => {
+    expect(() => execFileSync('node', [
+      '--input-type=module',
+      '--eval',
+      `await import(${JSON.stringify(compiledBackendUrl)})`,
+    ], { cwd: root, stdio: 'pipe' })).not.toThrow()
   })
 
   it('excludes the vendored development bootstrap from the published package', () => {

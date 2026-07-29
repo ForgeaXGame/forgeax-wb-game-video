@@ -1,15 +1,19 @@
-/**
- * Release-module bridge for the Workbench host.
- *
- * Task 1 only establishes the package and bundle contract. Task 4 replaces this
- * placeholder with the actual Workbench host implementation and HTTP behavior.
- */
-import tools from './tool-handlers'
+import { defineWorkbenchExtension } from '@forgeax/workbench-host/node'
+import { createNodiaSeed, validateNodiaSeed } from './host/nodia-seed'
+import { createWbGameVideoRouter } from './host/router'
+import { tools } from './tool-handlers'
 
-/** Temporary marker for the published host-module contract; it has no behavior. */
-export const host = {}
+export const host = defineWorkbenchExtension({
+  tools,
+  gamePackage: {
+    platform: 'wb-game-video',
+    createSeed: createNodiaSeed,
+    async validateSeed(seed) {
+      validateNodiaSeed(seed)
+    },
+  },
+  createRouter: createWbGameVideoRouter,
+})
 
-/** The existing AI tool map remains available from the backend module. */
 export { tools }
-
-export default tools
+export default host
