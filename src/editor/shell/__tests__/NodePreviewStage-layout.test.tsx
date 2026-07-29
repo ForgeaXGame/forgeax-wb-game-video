@@ -190,4 +190,94 @@ describe('NodePreviewStage overlay layout', () => {
       })
     })
   })
+
+  it('keeps an initially auto-sized mount auto-sized through the first drag', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-overlay-fit-target')) {
+        return {
+          x: 40,
+          y: 30,
+          left: 40,
+          top: 30,
+          right: 100,
+          bottom: 50,
+          width: 60,
+          height: 20,
+          toJSON: () => ({}),
+        }
+      }
+      return {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 100,
+        width: 200,
+        height: 100,
+        toJSON: () => ({}),
+      }
+    })
+    const current = node('n1', {
+      overlayNodes: [{ overlay: 'float' }],
+    })
+    const initialScenario = scnOf(
+      { nodes: [current], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              children: [{
+                id: 'damage',
+                component: 'damageFloatText',
+                layout: { left: 0.2, top: 0.3 },
+                trigger: { when: 'enter' },
+                inputs: { text: '-10' },
+              }],
+            },
+          },
+        },
+      },
+    )
+    let latestScenario = initialScenario
+    function Harness(): JSX.Element {
+      const [scenario, setScenario] = useState(initialScenario)
+      latestScenario = scenario
+      return (
+        <NodePreviewStage
+          scenario={scenario}
+          node={scenario.graph.nodes[0]!}
+          game="test"
+          focusedMountId="float"
+          onEditScenario={(edit) => setScenario((value) => edit(value, value.graph.nodes[0]!))}
+          onFocusMount={vi.fn()}
+        />
+      )
+    }
+    const { container } = render(<Harness />)
+    const canvas = await waitFor(() =>
+      screen.getByRole('application', { name: '节点视频覆盖物画布' }))
+    const fitTarget = await waitFor(() => {
+      const element = container.querySelector('[data-overlay-fit-target]')
+      expect(element).not.toBeNull()
+      return element as HTMLElement
+    })
+    const mountWrapper = fitTarget.parentElement?.parentElement?.parentElement as HTMLElement
+    expect(mountWrapper.style.width).toBe('fit-content')
+    expect(mountWrapper.style.height).toBe('fit-content')
+
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 60, clientY: 40 })
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 80, clientY: 50 })
+    fireEvent.pointerUp(canvas, { pointerId: 2, clientX: 80, clientY: 50 })
+
+    await waitFor(() => {
+      expect(latestScenario.graph.nodes[0]?.data.overlayNodes?.[0]?.layout).toEqual({
+        left: 0.1,
+        top: 0.1,
+      })
+      expect(mountWrapper.style.width).toBe('fit-content')
+      expect(mountWrapper.style.height).toBe('fit-content')
+    })
+  })
 })

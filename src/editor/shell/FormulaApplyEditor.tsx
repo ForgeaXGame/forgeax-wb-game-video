@@ -34,13 +34,13 @@ function effectiveAttr(binding: FormulaHoleBinding | undefined, suggestAttr: str
   return attrs[0]?.id ?? ''
 }
 
-/** 样例求值上下文：实体 attrs 原样、变量取 initial、rng 固定种子——供「≈ 样例值」试算（与 FormulaTextEditor 同一套语义）。 */
+/** 样例求值上下文：实体 attrs 原样、变量取 initial；每次试算另建 seed 0 RNG。 */
 function sampleCtx(entities?: Record<string, Entity>, variables?: Record<string, Variable>): EvalCtx {
   const ents: EvalCtx['entities'] = {}
   for (const [id, e] of Object.entries(entities ?? {})) ents[id] = { attrs: e.attrs ?? {} }
   const vars: Record<string, number> = {}
   for (const [id, v] of Object.entries(variables ?? {})) vars[id] = v.initial ?? 0
-  return { entities: ents, vars, flags: {}, score: 0, rng: createRng(1) }
+  return { entities: ents, vars, flags: {}, score: 0 }
 }
 
 export function FormulaApplyEditor({
@@ -81,7 +81,9 @@ export function FormulaApplyEditor({
   const compiledLabel = compiled == null ? '' : typeof compiled === 'number' ? String(compiled) : compiled.expr
   // 填满全部留空位后，拿样例实体/变量值实时算出结果（≈ 值），替代与顶部「公式：」重复的编译串展示。
   const ctx = useMemo(() => sampleCtx(entities, variables), [entities, variables])
-  const sampleValue = compiledLabel && missingHoles.length === 0 ? tryEvalExpr(compiledLabel, ctx) : null
+  const sampleValue = compiledLabel && missingHoles.length === 0
+    ? tryEvalExpr(compiledLabel, { ...ctx, rng: createRng(0) })
+    : null
 
   return (
     <div style={box}>

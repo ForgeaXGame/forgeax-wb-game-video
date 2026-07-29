@@ -30,7 +30,7 @@ export function BattlePlayerHpBar({ overlay }: OverlayProps): ReactNode {
 
   return (
     <div className="ks-hud-bottom">
-      <div className={`ks-hud-hp ks-hud-me-unit${low ? ' is-low' : ''}`}>
+      <div className={`ks-hud-hp ks-hud-me-unit${low ? ' is-low' : ''}`} data-overlay-fit-target>
         <div className="ks-hud-hp-name">{label}</div>
         <div className="ks-hud-hp-bar">
           <span className="ks-hud-hp-ghost" style={{ width: hpBarPercent(current, max) }} />

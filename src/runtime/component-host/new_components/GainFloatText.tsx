@@ -1,21 +1,22 @@
 /**
- * 增益飘字（component id: `gainFloatText`）—— 显示由外部解析完成的单行文本。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的上浮淡出视觉。
+ * 增益飘字（component id: `gainFloatText`）—— value 支持固定数字或 `{expr}` 公式。
+ * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayProps } from '../rendererRegistry'
 import { injectCss, ensureBrushFont } from './skinRuntime'
+import { resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 
-export const gainFloatTextComponent: ComponentDef = {
+export const gainFloatTextComponent: ComponentDef<NumericFloatTextInputs> = {
   label: '增益飘字',
-  inputs: [{ key: 'text', label: '文本', valueType: 'string', default: '+50' }],
+  inputs: [{ key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: 50 }],
 }
 
-export function GainFloatTextOverlay({ overlay, preview }: OverlayProps): ReactNode {
+export function GainFloatTextOverlay({ overlay, ctx, preview }: OverlayProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '+50'
+  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '+50')
 
   return (
     <div className={`gv-gain-float-text${preview ? ' is-preview' : ''}`}>

@@ -1,21 +1,22 @@
 /**
- * 伤害飘字（component id: `damageFloatText`）—— 显示由外部解析完成的单行文本。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的上浮淡出视觉。
+ * 伤害飘字（component id: `damageFloatText`）—— value 支持固定数字或 `{expr}` 公式。
+ * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
  */
 import type { ReactNode } from 'react'
 import type { ComponentDef } from '../../registry/component-registry'
 import type { OverlayProps } from '../rendererRegistry'
 import { injectCss, ensureBrushFont } from './skinRuntime'
+import { resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 
-export const damageFloatTextComponent: ComponentDef = {
+export const damageFloatTextComponent: ComponentDef<NumericFloatTextInputs> = {
   label: '伤害飘字',
-  inputs: [{ key: 'text', label: '文本', valueType: 'string', default: '-25' }],
+  inputs: [{ key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 }],
 }
 
-export function DamageFloatTextOverlay({ overlay, preview }: OverlayProps): ReactNode {
+export function DamageFloatTextOverlay({ overlay, ctx, preview }: OverlayProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '-25'
+  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '-25')
 
   return (
     <div className={`gv-damage-float-text${preview ? ' is-preview' : ''}`}>

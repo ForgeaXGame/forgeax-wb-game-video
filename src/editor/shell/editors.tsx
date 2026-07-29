@@ -328,6 +328,7 @@ export function SizeEditor({
 // ── NumOrExpr（常量 / 选取公式）───────────────────────────────────────────────
 export function ValueInput({
   value,
+  defaultValue,
   onChange,
   entities,
   variables,
@@ -335,13 +336,14 @@ export function ValueInput({
   effectOp,
 }: {
   value: NumOrExpr | undefined
+  defaultValue?: number
   onChange: (v: NumOrExpr) => void
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
 } & MetaCatalogProps): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <ValueExprEditor value={value} entities={entities} variables={variables} formulas={formulas} onChange={onChange} effectOp={effectOp} />
+      <ValueExprEditor value={value ?? defaultValue} entities={entities} variables={variables} formulas={formulas} onChange={onChange} effectOp={effectOp} />
     </div>
   )
 }

@@ -235,6 +235,7 @@ function renderInput(
         <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{label}</div>
         <ValueInput
           value={val as NumOrExpr | undefined}
+          defaultValue={typeof inp.default === 'number' ? inp.default : undefined}
           entities={pickers?.entities}
           variables={pickers?.variables}
           formulas={pickers?.formulas}
@@ -372,6 +373,14 @@ export function summarizeComponentInputs(values: Record<string, unknown>): strin
   push('attr')
   push('speaker')
   push('text', (v) => `「${String(v).slice(0, 12)}${String(v).length > 12 ? '…' : ''}」`)
+  push('value', (v) => {
+    if (typeof v === 'number') return `数值=${v}`
+    if (v && typeof v === 'object' && typeof (v as { expr?: unknown }).expr === 'string') {
+      const expr = (v as { expr: string }).expr
+      return `公式=${expr.slice(0, 16)}${expr.length > 16 ? '…' : ''}`
+    }
+    return `数值=${String(v)}`
+  })
   if (Array.isArray(values.events)) {
     const evs = values.events as Array<{ id?: string; label?: string }>
     bits.push(evs.map((e) => e.label || e.id || '?').slice(0, 4).join('/'))

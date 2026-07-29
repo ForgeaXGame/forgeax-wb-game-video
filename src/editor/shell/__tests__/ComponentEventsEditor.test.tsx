@@ -422,4 +422,36 @@ describe('ComponentFormFields defaults', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
     unregisterComponent('test-default-input')
   })
+
+  it('edits damage float text as either a fixed number or an applied formula', () => {
+    const formula: Formula = {
+      id: 'formula-float-damage',
+      name: '飘字伤害',
+      ast: { t: 'num', id: 'n0', v: -12 },
+    }
+    const onChange = vi.fn()
+    render(
+      <ComponentFormFields
+        componentId="damageFloatText"
+        values={{}}
+        pickers={{ formulas: { [formula.id]: formula } }}
+        onChange={onChange}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
+    const applyFormula = screen.getByRole('button', { name: '应用公式' })
+    expect(applyFormula).not.toBeDisabled()
+    fireEvent.click(applyFormula)
+    expect(onChange).toHaveBeenCalledWith({
+      value: {
+        expr: '-12',
+        pick: {
+          mode: 'formula',
+          formulaId: formula.id,
+          holeBindings: {},
+        },
+      },
+    })
+  })
 })

@@ -35,6 +35,7 @@ import { PreviewClockProvider, previewClockLayerClassName } from './previewClock
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
+import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { resolveGraphTextCss } from '../text/text-css'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import { materialClass, type MaterialItem } from '../video/materialTimelineShared'
@@ -42,6 +43,7 @@ import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { findMountOwningChild } from '../../graph/edit/overlay-edit'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
@@ -230,8 +232,15 @@ export function NodePreviewStage({
       if (group) group.children.push(child)
       else groups.set(mountId, { mount, children: [child] })
     }
-    return [...groups.entries()].map(([mountId, value]) => ({ mountId, ...value }))
-  }, [previewSkinChildren, scenario, node])
+    return [...groups.entries()].map(([mountId, value]) => ({
+      mountId,
+      ...value,
+      layout: resolveMountLayoutForChildren(
+        value.mount.layout,
+        resolveMountChildren(overlays, value.mount).map((child) => child.layout),
+      ) ?? {},
+    }))
+  }, [overlays, previewSkinChildren, scenario, node])
   const videoFx = useMemo(
     () => resolveVideoFxForNode(node, overlays, playheadMs, maxMs),
     [node, overlays, playheadMs, maxMs],
@@ -426,9 +435,8 @@ export function NodePreviewStage({
   }, [previewMountGroups, playheadMs, contentRect])
 
   const interactionItems = useMemo<CanvasInteractionItem[]>(() =>
-    previewMountGroups.map(({ mountId, mount, children }) => {
+    previewMountGroups.map(({ mountId, mount, children, layout }) => {
       const content = mountContentBoxes[mountId]
-      const layout = mount.layout
       const explicitBox: CanvasBox | null =
         !isFullStageMountLayout(layout)
         && typeof layout?.left === 'number'
@@ -519,7 +527,7 @@ export function NodePreviewStage({
               {previewSkinChildren.length > 0 ? (
                 <PreviewClockProvider value={previewClockValue}>
                   <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
-                    {previewMountGroups.map(({ mountId, mount, children }) => (
+                    {previewMountGroups.map(({ mountId, children, layout }) => (
                       <div
                         key={mountId}
                         ref={(element) => { mountPreviewRefs.current[mountId] = element }}
@@ -527,7 +535,7 @@ export function NodePreviewStage({
                       >
                         {children.map((child) => (
                           <span key={child.id} style={{ display: 'contents' }}>
-                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, mount.layout)}
+                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout)}
                           </span>
                         ))}
                       </div>

@@ -30,8 +30,27 @@ const ctx: SkinCtx = {
   },
 }
 
+function openingTagForClass(html: string, className: string): string {
+  const classMarker = `class="${className}"`
+  const classIndex = html.indexOf(classMarker)
+  expect(classIndex).toBeGreaterThanOrEqual(0)
+  const tagStart = html.lastIndexOf('<', classIndex)
+  const tagEnd = html.indexOf('>', classIndex)
+  return html.slice(tagStart, tagEnd + 1)
+}
+
+function expectFitTargetOn(html: string, className: string): void {
+  expect(openingTagForClass(html, className)).toContain('data-overlay-fit-target="true"')
+}
+
+function expectPartialCurrentFill(html: string, className: string): void {
+  const tag = openingTagForClass(html, className)
+  expect(tag).toContain('style="width:')
+  expect(tag).not.toContain('width:100%')
+}
+
 describe('overlayChildPreview · 时间轴预览', () => {
-  it('我方新规格血条能渲出 DOM', () => {
+  it('我方新规格血条以完整血槽单元作为 fit target', () => {
     const reg = createCoreSkinRegistry()
     const child: OverlayChild = {
       id: 'hp-player',
@@ -43,9 +62,11 @@ describe('overlayChildPreview · 时间轴预览', () => {
     )
     expect(html).toContain('ks-hud-hp')
     expect(html).toContain('我方')
+    expectPartialCurrentFill(html, 'ks-hud-hp-fill me')
+    expectFitTargetOn(html, 'ks-hud-hp ks-hud-me-unit')
   })
 
-  it('敌方血条同样可预览', () => {
+  it('敌方新规格血条以完整血槽单元作为 fit target', () => {
     const reg = createCoreSkinRegistry()
     const child: OverlayChild = {
       id: 'hp-boss',
@@ -57,6 +78,8 @@ describe('overlayChildPreview · 时间轴预览', () => {
     )
     expect(html).toContain('ks-hud-boss')
     expect(html).toContain('敌方')
+    expectPartialCurrentFill(html, 'ks-hud-boss-fill foe')
+    expectFitTargetOn(html, 'ks-hud-boss ks-hud-foe-unit')
   })
 
   it('伤害与增益飘字预览使用稳定 fit target 且不播放位移动画', () => {

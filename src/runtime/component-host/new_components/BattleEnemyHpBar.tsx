@@ -24,7 +24,7 @@ export function BattleEnemyHpBar({ overlay }: OverlayProps): ReactNode {
   const label = typeof inputs.label === 'string' && inputs.label ? inputs.label : '敌方'
 
   return (
-    <div className="ks-hud-boss ks-hud-foe-unit">
+    <div className="ks-hud-boss ks-hud-foe-unit" data-overlay-fit-target>
       <div className="ks-hud-boss-name">{label}</div>
       <div className="ks-hud-boss-bar">
         <span className="ks-hud-boss-ghost" style={{ width: hpBarPercent(current, max) }} />
