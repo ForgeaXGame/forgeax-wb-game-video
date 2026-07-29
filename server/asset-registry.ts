@@ -15,6 +15,15 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream, statSync, renameSync } from 'node:fs'
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import type {
+  MediaAsset as HostMediaAsset,
+  MediaReference,
+  MediaWriteInput,
+} from '@forgeax/workbench-host/contracts'
+import type {
+  BoundedGameFiles,
+  WorkbenchExtensionContext,
+} from '@forgeax/workbench-host/node'
 import type { AssetManifest, MediaAsset, MediaKind, MediaProductionType, StyleAxes } from '../src/editor/assets/registry-types'
 
 const GAME_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,40}$/
@@ -242,4 +251,308 @@ export function openAssetFile(dir: string, id: string): { stream: ReturnType<typ
   } catch {
     return null
   }
+}
+
+// ── Workbench host capability-backed registry ────────────────────────────────
+
+const HOST_MANIFEST_PATH = 'assets/manifest.json'
+const textEncoder = new TextEncoder()
+const textDecoder = new TextDecoder()
+const hostManifestQueues = new WeakMap<BoundedGameFiles, Promise<void>>()
+
+async function withHostManifestLock<T>(
+  files: BoundedGameFiles,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = hostManifestQueues.get(files) ?? Promise.resolve()
+  let release!: () => void
+  const current = new Promise<void>((resolveLock) => {
+    release = resolveLock
+  })
+  const tail = previous.then(() => current)
+  hostManifestQueues.set(files, tail)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (hostManifestQueues.get(files) === tail) hostManifestQueues.delete(files)
+  }
+}
+
+function assertBoundedRelativePath(value: string, label = 'Game file path'): string {
+  const normalized = value.replace(/\\/g, '/')
+  if (
+    normalized.length === 0
+    || normalized.startsWith('/')
+    || /^[A-Za-z]:\//.test(normalized)
+    || normalized.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new TypeError(`${label} must be a bounded relative path`)
+  }
+  return normalized
+}
+
+async function readHostManifest(files: BoundedGameFiles): Promise<AssetManifest> {
+  const bytes = await files.read(HOST_MANIFEST_PATH)
+  if (!bytes) return { version: 2, assets: [] }
+  let parsed: Partial<AssetManifest>
+  try {
+    parsed = JSON.parse(textDecoder.decode(bytes)) as Partial<AssetManifest>
+  } catch (error) {
+    throw new Error('Invalid shared asset manifest JSON', { cause: error })
+  }
+  if (parsed.version !== 2 || !Array.isArray(parsed.assets)) {
+    throw new Error('Unsupported shared asset manifest')
+  }
+  validateAssetRecords(parsed.assets)
+  return { ...parsed, version: 2, assets: parsed.assets } as AssetManifest
+}
+
+async function writeHostManifest(
+  files: BoundedGameFiles,
+  manifest: AssetManifest,
+): Promise<void> {
+  validateAssetRecords(manifest.assets)
+  await files.write(
+    HOST_MANIFEST_PATH,
+    textEncoder.encode(`${JSON.stringify({ ...manifest, version: 2 }, null, 2)}\n`),
+  )
+}
+
+function publicHostAsset(value: unknown): MediaAsset | null {
+  const normalized = normalizeMediaAsset(value)
+  if (!normalized) return null
+  const {
+    externalPath: _externalPath,
+    file,
+    ...safe
+  } = normalized
+  return {
+    ...safe,
+    ...(typeof file === 'string' && !isAbsolute(file)
+      ? { file: assertBoundedRelativePath(file, 'Asset file') }
+      : {}),
+  }
+}
+
+function safeHostMediaUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'file:' ? undefined : value
+  } catch {
+    return undefined
+  }
+}
+
+function filterAssets(
+  manifest: AssetManifest,
+  filter?: AssetFilter,
+): MediaAsset[] {
+  let assets = manifest.assets
+    .map(publicHostAsset)
+    .filter((asset): asset is MediaAsset => asset !== null)
+  if (filter?.kind) assets = assets.filter((asset) => asset.kind === filter.kind)
+  if (filter?.productionType) {
+    assets = assets.filter((asset) => asset.productionType === filter.productionType)
+  }
+  if (filter?.sceneNodeId) {
+    assets = assets.filter((asset) => asset.sceneNodeId === filter.sceneNodeId)
+  }
+  return assets
+}
+
+function mediaFilename(prefix: string, id: string, mime: string): string {
+  const safeId = id.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'asset'
+  const extension = extForContentType(mime)
+  return `${prefix}-${safeId}.${extension}`
+}
+
+function extForContentType(contentType: string): string {
+  switch (contentType.toLowerCase().split(';', 1)[0]) {
+    case 'image/jpeg': return 'jpg'
+    case 'image/webp': return 'webp'
+    case 'video/mp4': return 'mp4'
+    case 'video/webm': return 'webm'
+    case 'video/quicktime': return 'mov'
+    default: return 'png'
+  }
+}
+
+export interface HostAssetRegistry {
+  list(filter?: AssetFilter): Promise<MediaAsset[]>
+  get(id: string): Promise<MediaAsset | null>
+  upsert(asset: MediaAsset): Promise<MediaAsset>
+  update(id: string, patch: Partial<MediaAsset>): Promise<MediaAsset | null>
+  getStyleAxes(): Promise<StyleAxes | undefined>
+  importGameFile(input: {
+    registryId: string
+    relativePath: string
+    filename: string
+    contentType: string
+    productionType: 'character_ref' | 'scene_ref'
+    label: string
+    sourceModule: string
+    meta?: Record<string, unknown>
+  }): Promise<MediaAsset>
+  mediaReference(id: string): Promise<MediaReference>
+  persistGenerated(
+    generated: HostMediaAsset,
+    input: {
+      registryId: string
+      filenamePrefix: string
+      productionType: 'shot_image' | 'grid_storyboard' | 'video_clip'
+      sceneNodeId: string
+      label: string
+      prompt: string
+      durationMs?: number
+      meta?: Record<string, unknown>
+    },
+  ): Promise<MediaAsset>
+}
+
+/**
+ * Creates the registry used by host-neutral service and router calls. Game data
+ * is accessed only through bounded file helpers; binary ingress/egress goes
+ * through the host media capability.
+ */
+export function createHostAssetRegistry(
+  context: WorkbenchExtensionContext,
+): HostAssetRegistry {
+  const upsert = async (asset: MediaAsset): Promise<MediaAsset> => (
+    withHostManifestLock(context.files, async () => {
+      const manifest = await readHostManifest(context.files)
+      const index = manifest.assets.findIndex((entry) => (
+        isRecord(entry) && entry.id === asset.id
+      ))
+      const now = Date.now()
+      const next: MediaAsset = {
+        ...asset,
+        createdAt: asset.createdAt || now,
+        updatedAt: now,
+      }
+      if (index >= 0) {
+        const current = manifest.assets[index]
+        if (
+          !isMediaAsset(current)
+          || (isProviderBacked(current) && current.sourceModule !== next.sourceModule)
+        ) {
+          throw new Error(`Asset id is owned by another asset domain: ${asset.id}`)
+        }
+        manifest.assets[index] = next
+      } else {
+        manifest.assets.push(next)
+      }
+      await writeHostManifest(context.files, manifest)
+      return publicHostAsset(next)!
+    })
+  )
+
+  const get = async (id: string): Promise<MediaAsset | null> => {
+    const manifest = await readHostManifest(context.files)
+    return publicHostAsset(
+      manifest.assets.find((entry) => isRecord(entry) && entry.id === id),
+    )
+  }
+
+  return {
+    async list(filter) {
+      return filterAssets(await readHostManifest(context.files), filter)
+    },
+    get,
+    upsert,
+    async update(id, patch) {
+      const current = await get(id)
+      if (!current) return null
+      return upsert({ ...current, ...patch, id })
+    },
+    async getStyleAxes() {
+      return (await readHostManifest(context.files)).styleAxes
+    },
+    async importGameFile(input) {
+      const relativePath = assertBoundedRelativePath(input.relativePath)
+      const bytes = await context.files.read(relativePath)
+      if (!bytes) throw new Error(`Reference media was not found: ${relativePath}`)
+      const hosted = await context.media.put(context.gameId, {
+        filename: input.filename,
+        contentType: input.contentType,
+        bytes,
+        metadata: {
+          source: 'wb-game-video-reference',
+          registryId: input.registryId,
+        },
+      })
+      return upsert({
+        id: input.registryId,
+        kind: 'image',
+        productionType: input.productionType,
+        status: 'ready',
+        label: input.label,
+        sourceModule: input.sourceModule,
+        mime: hosted.contentType,
+        bytes: hosted.sizeBytes ?? bytes.byteLength,
+        url: safeHostMediaUrl(hosted.url),
+        provider: { kind: 'local', ref: hosted.id },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        meta: input.meta,
+      })
+    },
+    async mediaReference(id) {
+      const asset = await get(id)
+      if (!asset) throw new Error(`参考图不存在：${id}`)
+      if (asset.provider?.ref) return { assetId: asset.provider.ref }
+      if (!asset.file) throw new Error(`参考图 ${id} 没有可读取的宿主媒体`)
+      const relativePath = assertBoundedRelativePath(`assets/${asset.file}`)
+      const bytes = await context.files.read(relativePath)
+      if (!bytes) throw new Error(`参考图 ${id} 内容不存在`)
+      const hosted = await context.media.put(context.gameId, {
+        filename: mediaFilename('reference', id, asset.mime ?? 'image/png'),
+        contentType: asset.mime ?? 'image/png',
+        bytes,
+        metadata: { source: 'wb-game-video-registry', registryId: id },
+      })
+      return { assetId: hosted.id }
+    },
+    async persistGenerated(generated, input) {
+      const body = await context.media.read(context.gameId, generated.id)
+      if (!body || body.bytes.byteLength === 0) {
+        throw new Error('Generated media is not readable through the host media capability')
+      }
+      const hosted = await context.media.put(context.gameId, {
+        filename: mediaFilename(input.filenamePrefix, input.registryId, body.contentType),
+        contentType: body.contentType,
+        bytes: body.bytes,
+        metadata: {
+          source: 'wb-game-video-generation',
+          generatedAssetId: generated.id,
+          registryId: input.registryId,
+        },
+      })
+      return upsert({
+        id: input.registryId,
+        kind: input.productionType === 'video_clip' ? 'video' : 'image',
+        productionType: input.productionType,
+        status: 'ready',
+        label: input.label,
+        prompt: input.prompt,
+        sceneNodeId: input.sceneNodeId,
+        sourceModule: 'wb-game-video',
+        mime: hosted.contentType,
+        bytes: hosted.sizeBytes ?? body.bytes.byteLength,
+        url: safeHostMediaUrl(hosted.url),
+        provider: { kind: 'local', ref: hosted.id },
+        durationMs: input.durationMs,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        meta: input.meta,
+      })
+    },
+  }
+}
+
+export async function getHostStyleAxes(
+  context: WorkbenchExtensionContext,
+): Promise<StyleAxes | undefined> {
+  return createHostAssetRegistry(context).getStyleAxes()
 }

@@ -14,6 +14,7 @@
  * registry 生命周期：每次生成 upsert placeholder→generating→ready/failed，供 P5 轮询三态。
  */
 import {
+  createHostAssetRegistry,
   getAsset,
   getStyleAxes,
   resolveAssetFilePath,
@@ -21,6 +22,12 @@ import {
   upsertAsset,
   writeMediaFile,
 } from '../asset-registry'
+import type { HostAssetRegistry } from '../asset-registry'
+import type {
+  MediaAsset as HostMediaAsset,
+  MediaReference,
+} from '@forgeax/workbench-host/contracts'
+import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 import type { MediaAsset, StyleAxes } from '../../src/editor/assets/registry-types'
 import { makeAssetId } from '../../src/editor/assets/registry-types'
 import { composeAxes, type ComposedAxes } from '../engine/axes'
@@ -462,3 +469,220 @@ export function createSemaphore(max: number): {
 
 export { SEEDANCE_POLISH_SYSTEM_PROMPT }
 export type { RefCharacter }
+
+// ── Workbench host capability-backed orchestration ───────────────────────────
+
+export interface HostGenerationOrchestrator {
+  generateShotScript(
+    input: ShotScriptInput & { styleAxes?: StyleAxes },
+  ): Promise<SeedancePromptEntry[]>
+  generateKeyframe(input: KeyframeInput): Promise<MediaAsset>
+  generateVideo(input: VideoGenInput): Promise<MediaAsset>
+  generateNodeVideo(input: VideoGenInput): Promise<MediaAsset[]>
+}
+
+function firstGeneratedAsset(
+  assets: HostMediaAsset[],
+  expectedType: 'image' | 'video',
+): HostMediaAsset {
+  const asset = assets.find((candidate) => candidate.type === expectedType)
+  if (!asset) throw new Error(`Model gateway did not return a generated ${expectedType}`)
+  return asset
+}
+
+async function hostAxes(
+  registry: HostAssetRegistry,
+  override?: StyleAxes,
+  custom?: string,
+): Promise<ComposedAxes> {
+  const base = await registry.getStyleAxes()
+  return composeAxes({ ...(base ?? {}), ...(override ?? {}) }, custom)
+}
+
+async function hostReferences(
+  registry: HostAssetRegistry,
+  ids: readonly string[] | undefined,
+): Promise<MediaReference[]> {
+  const references: MediaReference[] = []
+  for (const id of ids ?? []) {
+    if (id) references.push(await registry.mediaReference(id))
+  }
+  return references
+}
+
+function generatedAssetId(
+  productionType: 'shot_image' | 'grid_storyboard' | 'video_clip',
+): string {
+  return makeAssetId(productionType)
+}
+
+/**
+ * Host-neutral generation pipeline. It has no network URL, filesystem path, or
+ * environment discovery: models produce through the model gateway and every
+ * resulting body is normalized back through the host media capability.
+ */
+export function createHostGenerationOrchestrator(
+  context: WorkbenchExtensionContext,
+  registry = createHostAssetRegistry(context),
+): HostGenerationOrchestrator {
+  const keyframe = async (input: KeyframeInput): Promise<MediaAsset> => {
+    const mode: KeyframeMode = input.mode ?? 'keyframe'
+    const productionType = mode === 'grid_storyboard'
+      ? 'grid_storyboard'
+      : 'shot_image'
+    const axes = await hostAxes(registry, input.styleAxes)
+    const references = await hostReferences(registry, input.refAssetIds)
+    const keyframePrompt = buildShotImagePrompt({
+      ...input,
+      uiStylePrompt: input.uiStylePrompt ?? axes.uiStylePrompt,
+      refsReady: references.length > 0,
+    })
+    const prompt = mode === 'grid_storyboard'
+      ? buildShotGridStoryboardPrompt({
+          ...(input.grid ?? {}),
+          originalPrompt: keyframePrompt,
+          referenceCount: references.length,
+          sceneRefReady: references.length > 0,
+        })
+      : keyframePrompt
+    const generated = firstGeneratedAsset(
+      (await context.models.generateImage({
+        prompt,
+        references,
+        aspectRatio: '1:1',
+        metadata: {
+          sceneNodeId: input.sceneNodeId,
+          productionType,
+        },
+      })).assets,
+      'image',
+    )
+    return registry.persistGenerated(generated, {
+      registryId: generatedAssetId(productionType),
+      filenamePrefix: mode === 'grid_storyboard' ? 'storyboard' : 'keyframe',
+      productionType,
+      sceneNodeId: input.sceneNodeId,
+      label: input.label ?? (
+        mode === 'grid_storyboard'
+          ? `分镜故事板 · ${input.nodeName}`
+          : `关键帧 · ${input.nodeName}`
+      ),
+      prompt,
+      meta: { refIds: input.refAssetIds ?? [], mode },
+    })
+  }
+
+  const video = async (input: VideoGenInput): Promise<MediaAsset> => {
+    assertRefsPresent(input)
+    const axes = await hostAxes(registry, input.styleAxes)
+    const characterReferences = await hostReferences(registry, input.characterRefIds)
+    const sceneReferences = await hostReferences(registry, input.sceneRefIds)
+    const continuityReferences = await hostReferences(
+      registry,
+      input.continuityFirstFrameId ? [input.continuityFirstFrameId] : [],
+    )
+    const references = [
+      ...continuityReferences,
+      ...characterReferences,
+      ...sceneReferences,
+    ]
+    let index = 1
+    const bindings: VideoRefBinding[] = []
+    if (continuityReferences.length) {
+      bindings.push({ index: index++, role: '续接首帧' })
+    }
+    for (const id of input.characterRefIds.filter(Boolean)) {
+      bindings.push({
+        index: index++,
+        role: '角色',
+        label: (await registry.get(id))?.label,
+      })
+    }
+    for (const id of input.sceneRefIds.filter(Boolean)) {
+      bindings.push({
+        index: index++,
+        role: '场景',
+        label: (await registry.get(id))?.label,
+      })
+    }
+    const prompt = buildSeedanceVideoPrompt({
+      seedancePrompt: input.seedancePrompt,
+      storyText: input.storyText,
+      nodeName: input.nodeName,
+      durationSeconds: input.durationSeconds,
+      artStyle: input.artStyle ?? axes.artMedia,
+      styleKeywords: input.styleKeywords ?? axes.styleKeywords,
+      refs: bindings,
+      extend: input.extend,
+      transitionHint: input.transitionHint,
+    })
+    const generated = firstGeneratedAsset(
+      (await context.models.generateVideo({
+        prompt,
+        references,
+        durationSeconds: input.durationSeconds,
+        metadata: {
+          sceneNodeId: input.sceneNodeId,
+          generateAudio: input.generateAudio ?? false,
+          extend: input.extend ?? false,
+        },
+      })).assets,
+      'video',
+    )
+    return registry.persistGenerated(generated, {
+      registryId: generatedAssetId('video_clip'),
+      filenamePrefix: 'video',
+      productionType: 'video_clip',
+      sceneNodeId: input.sceneNodeId,
+      label: input.label ?? `视频 · ${input.nodeName}`,
+      prompt,
+      durationMs: Math.round(input.durationSeconds * 1000),
+      meta: {
+        characterRefIds: input.characterRefIds,
+        sceneRefIds: input.sceneRefIds,
+        modelAssetId: generated.id,
+      },
+    })
+  }
+
+  return {
+    async generateShotScript(input) {
+      const axes = await hostAxes(registry, input.styleAxes)
+      const prompt = buildNodeShotScriptPrompt({
+        ...input,
+        artStyle: input.artStyle ?? axes.artMedia,
+        styleKeywords: input.styleKeywords ?? axes.styleKeywords,
+      })
+      const result = await context.models.generateText({
+        prompt,
+        system: axes.directorSystem || undefined,
+        temperature: 0.7,
+        metadata: { responseFormat: 'json' },
+      })
+      return parseShotScript(result.text, input.durationSeconds)
+    },
+    generateKeyframe: keyframe,
+    generateVideo: video,
+    async generateNodeVideo(input) {
+      assertRefsPresent(input)
+      const segments = splitDurationIntoSegments(input.durationSeconds)
+      if (segments.length === 1) return [await video(input)]
+      const baseLabel = input.label ?? `视频 · ${input.nodeName}`
+      const assets: MediaAsset[] = []
+      for (let index = 0; index < segments.length; index++) {
+        const extend = index > 0
+        assets.push(await video({
+          ...input,
+          durationSeconds: segments[index]!,
+          label: `${baseLabel} · 段${index + 1}/${segments.length}`,
+          extend,
+          transitionHint: extend
+            ? input.transitionHint
+              ?? `接上一段（第 ${index} 段）尾部，人物、机位、光影、表演节奏无缝延续`
+            : undefined,
+        }))
+      }
+      return assets
+    },
+  }
+}
