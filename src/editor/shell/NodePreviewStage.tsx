@@ -36,9 +36,8 @@ import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
-import { resolveGraphTextCss } from '../text/text-css'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
-import { materialClass, type MaterialItem, type TimelinePointMarker } from '../video/materialTimelineShared'
+import { type MaterialItem, type TimelinePointMarker } from '../video/materialTimelineShared'
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
@@ -53,7 +52,6 @@ import {
   type CanvasInteractionItem,
 } from './OverlayCanvasInteraction'
 import {
-  activePreviewOverlaysFromNode,
   collectMountItemsFromNode,
   deleteMaterialGraph,
   mountOverlayGraph,
@@ -126,9 +124,6 @@ const NPS_CSS = `
 .nps-more-pop button:hover { background: var(--gc-accent-soft); border-color: var(--gc-accent-line); }
 .nps-more-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 8px; }
 .nps-root .mtl-root { flex: none; }
-/* 有真实皮肤的挂载物：手柄只做透明热区（不渲染默认 ring/label），选中在贴纸外围画矩形虚线框
-   示意该 overlay 的区域，真实贴纸由皮肤层呈现——「挂载物长啥样就是啥样」。 */
-.nps-root .gc-preview-overlay { pointer-events:none; }
 `
 
 const DEFAULT_MOUNT_W = 0.25
@@ -236,10 +231,6 @@ export function NodePreviewStage({
     () => previewSkinChildrenInWindow(scenario, node, playheadMs, maxMs),
     [scenario, node, playheadMs, maxMs],
   )
-  const previewOverlays = useMemo(
-    () => activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs),
-    [scenario, node, playheadMs, maxMs],
-  )
   const previewMountGroups = useMemo(() => {
     const groups = new Map<string, {
       mount: NonNullable<GameNode['data']['overlayNodes']>[number]
@@ -287,7 +278,6 @@ export function NodePreviewStage({
       condition: { state: st, visited: new Set<string>() },
     }
   }, [scenario])
-  const skinnedPreviewIds = useMemo(() => new Set(previewSkinChildren.map((c) => c.id)), [previewSkinChildren])
   const previewClockValue = useMemo(() => ({ playing: isVideoPlaying, playheadMs }), [isVideoPlaying, playheadMs])
 
   // 「添加控件」= 覆盖物挂载入口：候选与界面 tab 同一份（自定义覆盖物 + 基础覆盖物，打平；
@@ -600,35 +590,6 @@ export function NodePreviewStage({
                   </div>
                 </PreviewClockProvider>
               ) : null}
-              {previewOverlays.map((o) => {
-                const elId = o.target.kind === 'element' || o.target.kind === 'qteCue' || o.target.kind === 'mount'
-                  ? o.target.elementId
-                  : ''
-                const ownMount = elId ? findMountOwningChild(scenario, node, elId) : undefined
-                const selected = !!ownMount && overlayMountId(ownMount) === selectedOverlayId
-                const skinned = !!elId && skinnedPreviewIds.has(elId)
-                return (
-                    <div
-                      key={o.id}
-                      aria-hidden
-                      className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${skinned ? ' is-skinned' : ''}`}
-                      style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: skinned ? 30 : 20 + o.zIndex, pointerEvents: 'none' }}
-                    >
-                      {skinned ? null : (
-                        <>
-                          {o.kind === 'qte' || o.movable ? <span className="gc-preview-ring" /> : null}
-                          <span
-                            className="gc-preview-label"
-                            style={(o.kind === 'subtitle' || o.kind === 'overlay') && o.style ? resolveGraphTextCss(o.style) : undefined}
-                          >
-                            {o.label}
-                          </span>
-                          {o.detail ? <span className="gc-preview-detail">{o.detail}</span> : null}
-                        </>
-                      )}
-                    </div>
-                )
-              })}
             </ScaledOverlayContent>
             <OverlayCanvasInteraction
               stageRef={contentAnchorRef}

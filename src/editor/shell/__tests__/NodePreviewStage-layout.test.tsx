@@ -14,6 +14,45 @@ afterEach(() => {
 })
 
 describe('NodePreviewStage overlay layout', () => {
+  it('never falls back to a ring and label when the real interface skin is not visible', () => {
+    const current = node('n1', {
+      overlayNodes: [{ overlay: 'qte-overlay' }],
+    })
+    const scenario = scnOf(
+      { nodes: [current], edges: [] },
+      {
+        ui: {
+          overlays: {
+            'qte-overlay': {
+              id: 'qte-overlay',
+              children: [{
+                id: 'qte-child',
+                component: 'qte',
+                window: { startMs: 1000, endMs: 2000 },
+                trigger: { when: 'enter' },
+                inputs: {
+                  cues: [{ id: 'cue-1', appearAt: 0, targetAt: 200, endAt: 400 }],
+                },
+              }],
+            },
+          },
+        },
+      },
+    )
+
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        onEditScenario={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.gc-preview-ring')).toBeNull()
+    expect(container.querySelector('.gc-preview-label')).toBeNull()
+  })
+
   it('moves a mounted overlay without writing or changing width/height', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-overlay-fit-target')) {
