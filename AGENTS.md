@@ -41,6 +41,9 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
 
 ## 开发与验证
 
+- 本仓库前端调试端口固定为 `15185`（已由 `vite.config.ts` 配置）；启动开发服务时不得用
+  `--port` 覆盖为其它端口。
+
 ```bash
 bun install
 bun run dev

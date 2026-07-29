@@ -32,7 +32,7 @@ describe('useAssetLibrary', () => {
     expect(result.current.error).toMatch(/尚未启用/)
   })
 
-  it('loads both asset groups from an injected client', async () => {
+  it('loads all asset groups from an injected client', async () => {
     const api = client()
     const { result } = renderHook(() => useAssetLibrary('demo', api))
 
@@ -46,7 +46,7 @@ describe('useAssetLibrary', () => {
   it('updates local state after uploading, renaming, and deleting', async () => {
     const api = client()
     const { result } = renderHook(() => useAssetLibrary('demo', api))
-    await waitFor(() => expect(result.current.items).toHaveLength(2))
+    await waitFor(() => expect(result.current.items).toHaveLength(3))
 
     await act(async () => {
       await result.current.upload('image', new File(['x'], 'new.png', { type: 'image/png' }))

@@ -7,7 +7,7 @@ import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, Sub
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
-import type { Layout, NodeAction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
+import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
@@ -27,10 +27,12 @@ import {
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
-import { SpawnInputsEditor } from './spawn-inputs-editor'
 import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
 import { PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
+import { NodeActionsEditor } from './NodeActionsEditor'
+import { ComponentEventsEditor } from './ComponentEventsEditor'
+import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 
 /**
  * 「音乐动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -191,7 +193,7 @@ function eventReactionDo(reactions: Reaction[] | undefined, ev: OverlayEventRef)
   return resolveEventReactionDo(reactions, ev.localEventId, ev.childId, ev.mountId) ?? []
 }
 
-/** eventKeys 全集：替换某事件反应时移除所有别名，写入规范 id（= 组件 emit 的 localEventId，对齐边 sourceHandle）。 */
+/** 清理节点挂载 reaction 的全部历史别名；目录 reaction 的稳定 key 由 ComponentEventsEditor 单独维护。 */
 function eventKeySet(ev: OverlayEventRef): Set<string> {
   const keys = new Set<string>([ev.localEventId, ev.eventId])
   keys.add(`${ev.childId}:${ev.localEventId}`)
@@ -207,7 +209,6 @@ function upsertEventReaction(
 ): Reaction[] | undefined {
   const keys = eventKeySet(ev)
   const rest = (reactions ?? []).filter((r) => !(r.when.type === 'event' && keys.has(r.when.id)))
-  // 落盘用 localEventId：与引擎 outcome / 边 sourceHandle 一致（勿写 mount:child:… 展示用 eventId）。
   if (doActions.length) rest.push({ when: { type: 'event', id: ev.localEventId }, do: doActions })
   return rest.length ? rest : undefined
 }
@@ -379,23 +380,9 @@ function LifecycleReactionsEditor({
   )
 }
 
-/** 事件展示：中文名优先，括号里保留机器 id（对齐「出边 › 目标」的 `名称 (id)`）。 */
-function overlayEventLabel(ev: {
-  eventId: string
-  localEventId: string
-  label?: string
-  componentId: string
-  childId: string
-}): string {
-  const comp = getComponentManifest(ev.componentId)?.label?.trim()
-  const local = ev.label?.trim()
-  const head = [comp, local].filter(Boolean).join(' · ')
-  if (head && head !== ev.eventId) return `${head} (${ev.eventId})`
-  return ev.eventId
-}
-
 function OverlayReactionsEditor({
   events,
+  catalogReactions,
   reactions,
   edgeOptions,
   routeHints,
@@ -413,6 +400,7 @@ function OverlayReactionsEditor({
   onSetRouteTiming,
 }: {
   events: OverlayEventRef[]
+  catalogReactions?: OverlayReaction[]
   reactions: Reaction[] | undefined
   edgeOptions: OptItem[]
   /** eventId → 出边目标摘要（有 advance 或默认推进时都能看见去哪）。 */
@@ -435,317 +423,85 @@ function OverlayReactionsEditor({
     transition: 'immediate' | 'onSettlement',
     settlement?: RoutingSettlement,
   ) => void
-}): JSX.Element {
+}): JSX.Element | null {
+  if (!events.length) return null
   const catalog = pickers ?? { entities, variables }
-  if (!events.length) {
-    return (
-      <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-        无导出事件（交互组件需有 inputs.events / manifest.events）
-      </div>
-    )
-  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+    <div style={{ marginTop: 4 }}>
       {sectionLabel('事件响应')}
       <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 2, lineHeight: 1.4 }}>
-        选目标节点会同步写出边；多目标加权见「出边」。
+        目录动作先执行，挂载动作按顺序追加；选目标节点会同步写出边。
       </div>
-      {events.map((ev) => {
-        const actions = eventReactionDo(reactions, ev)
-        const pool = handleEdges(graph, nodeId, ev.localEventId)
-        const advance = actions.find((a): a is Extract<NodeAction, { kind: 'advance' }> => a.kind === 'advance')
-        const advanceEdge = advance ? graph.edges.find((e) => e.id === advance.edgeId) : undefined
-        const multiPool = pool.length > 1
-        const currentTarget = multiPool
-          ? ''
-          : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
-        const routeEdge = advanceEdge ?? pool[0]
-        const timing = routeEdge?.data?.transition === 'onSettlement'
-          ? routingSettlement?.type === 'at' ? 'at' : 'complete'
-          : 'immediate'
-        const hint = routeHints?.[ev.localEventId] ?? routeHints?.[ev.eventId]
-        const actionBrief =
-          actions.length === 0
-            ? '无动作'
-            : actions.map((a) => (a.kind === 'effect' ? '效果' : a.kind === 'spawn' ? '生成' : '推进')).join(' · ')
-        return (
-          <HoverCard
-            key={ev.eventId}
-            nested
-            header={(
-              <div style={{ minWidth: 0, flex: 1 }} title={`child=${ev.childId} · local=${ev.localEventId}`}>
-                <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {overlayEventLabel(ev)}
-                </div>
-                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 2 }}>
-                  {currentTarget
-                    ? `→ ${nodeOptions.find((o) => o.value === currentTarget)?.label ?? currentTarget}`
-                    : multiPool
-                      ? `多目标边池 (${pool.length})`
-                      : '仅副作用'}
-                  {' · '}
-                  {actionBrief}
-                </div>
-              </div>
-            )}
-          >
-            {sectionLabel('走向')}
-            {row('目标节点', (
-              multiPool ? (
-                <span style={{ fontSize: 11, color: '#ce9178' }}>
-                  多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}
-                </span>
+      <ComponentEventsEditor
+        mode="mount"
+        events={events}
+        catalogReactions={catalogReactions}
+        mountReactions={reactions}
+        edgeOptions={edgeOptions}
+        spawnOptions={spawnOptions}
+        overlays={overlays}
+        pickers={catalog}
+        onMountActionsChange={(event, actions) => onChange(upsertEventReaction(reactions, event, actions))}
+        renderRoute={(event) => {
+          const actions = eventReactionDo(reactions, event)
+          const pool = handleEdges(graph, nodeId, event.localEventId)
+          const advance = actions.find((action): action is Extract<NodeAction, { kind: 'advance' }> => action.kind === 'advance')
+          const advanceEdge = advance ? graph.edges.find((edge) => edge.id === advance.edgeId) : undefined
+          const multiPool = pool.length > 1
+          const currentTarget = multiPool ? '' : (advanceEdge?.target ?? (pool.length === 1 ? pool[0]!.target : ''))
+          const routeEdge = advanceEdge ?? pool[0]
+          const timing = routeEdge?.data?.transition === 'onSettlement'
+            ? routingSettlement?.type === 'at' ? 'at' : 'complete'
+            : 'immediate'
+          const hint = routeHints?.[event.localEventId] ?? routeHints?.[event.eventId]
+          return (
+            <div style={{ marginTop: 6 }}>
+              {sectionLabel('走向')}
+              {row('目标节点', multiPool ? (
+                <span style={{ fontSize: 11, color: '#ce9178' }}>多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}</span>
               ) : (
-                <select
-                  value={currentTarget}
-                  onChange={(e) => onRouteTo(ev, e.target.value)}
-                  style={{ flex: 1 }}
-                  title="写入出边 sourceHandle=事件 id，并在本挂载 reactions 里挂 advance"
-                >
+                <select value={currentTarget} onChange={(e) => onRouteTo(event, e.target.value)} style={{ flex: 1 }}>
                   <option value="">（无 · 只做副作用）</option>
-                  {nodeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                  {nodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-              )
-            ))}
-            {routeEdge ? row('跳转时机', (
-              <select
-                value={timing}
-                onChange={(e) => {
-                  const value = e.target.value
-                  if (value === 'immediate') onSetRouteTiming(ev, 'immediate')
-                  else if (value === 'at') onSetRouteTiming(ev, 'onSettlement', { type: 'at', ms: 1000 })
-                  else onSetRouteTiming(ev, 'onSettlement', { type: 'complete' })
-                }}
-                style={{ flex: 1 }}
-              >
-                <option value="immediate">立即跳转</option>
-                <option value="complete">当前节点播放结束时</option>
-                <option value="at">播放到指定时间时</option>
-              </select>
-            )) : null}
-            {routeEdge && timing === 'at' ? row('结算时间', (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
-                <input
-                  type="number"
-                  min={0}
-                  step={100}
-                  value={routingSettlement?.type === 'at' ? routingSettlement.ms : 0}
-                  onChange={(e) => onSetRouteTiming(ev, 'onSettlement', {
-                    type: 'at',
-                    ms: Math.max(0, Number(e.target.value) || 0),
-                  })}
-                  style={{ flex: 1, minWidth: 0 }}
-                />
-                <span style={{ fontSize: 11, opacity: 0.65 }}>ms</span>
-              </span>
-            )) : null}
-            {sectionLabel('触发时动作')}
-            <NodeActionsEditor
-              actions={actions}
-              edgeOptions={edgeOptions}
-              spawnOptions={spawnOptions}
-              overlays={overlays}
-              pickers={catalog}
-              onChange={(doActions) => onChange(upsertEventReaction(reactions, ev, doActions))}
-            />
-          </HoverCard>
-        )
-      })}
-    </div>
-  )
-}
-
-type MountLayoutKey = keyof Layout
-
-const MOUNT_LAYOUT_HINT =
-  '挂载盒在视频视口上的位置与尺寸（对齐 CSS absolute）。只影响血条、飘字等表现层；應默 / QTE / 技能条请改下方组件参数里的 x、y。'
-
-const MOUNT_LAYOUT_PRESETS: Array<{
-  id: string
-  label: string
-  layout: Layout | undefined
-  title: string
-}> = [
-  {
-    id: 'tl',
-    label: '左上',
-    layout: undefined,
-    title: '快捷：清掉 layout，挂载盒贴视频左上角并随内容自适应',
-  },
-  {
-    id: 'br',
-    label: '右下',
-    layout: { right: 0, bottom: 0 },
-    title: '快捷：right=0、bottom=0，把挂载盒贴到视频右下角',
-  },
-  {
-    id: 'c',
-    label: '居中',
-    layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
-    title: '快捷：left/top=0.5 且 translate=-0.5，挂载盒中心对齐视频中心',
-  },
-]
-
-const MOUNT_LAYOUT_FIELDS: Array<{ key: MountLayoutKey; label: string; title: string }> = [
-  {
-    key: 'left',
-    label: 'L',
-    title: 'left（左边距）：挂载盒左边缘距视频左边的距离。数字 0~1 为比例，也可写 40% / 12px。与 right 一般二选一。',
-  },
-  {
-    key: 'right',
-    label: 'R',
-    title: 'right（右边距）：挂载盒右边缘距视频右边的距离。贴右下角时填 0，并配合 bottom=0；勿再写 left。',
-  },
-  {
-    key: 'top',
-    label: 'T',
-    title: 'top（上边距）：挂载盒上边缘距视频上边的距离。数字 0~1 为比例，也可写 40% / 12px。',
-  },
-  {
-    key: 'bottom',
-    label: 'B',
-    title: 'bottom（下边距）：挂载盒下边缘距视频下边的距离。贴右下角时填 0，并配合 right=0；勿再写 top。',
-  },
-  {
-    key: 'width',
-    label: 'W',
-    title: 'width（宽度）：挂载盒宽度。空=随内容自适应；可写 0.5 / 50% / 120px。',
-  },
-  {
-    key: 'height',
-    label: 'H',
-    title: 'height（高度）：挂载盒高度。空=随内容自适应；可写 0.5 / 50% / 120px。',
-  },
-  {
-    key: 'translateX',
-    label: 'tx',
-    title: 'translateX（水平自偏移）：相对挂载盒自身再平移。居中时常与 left=0.5 合用，填 -0.5（左移自身半宽）。',
-  },
-  {
-    key: 'translateY',
-    label: 'ty',
-    title: 'translateY（垂直自偏移）：相对挂载盒自身再平移。居中时常与 top=0.5 合用，填 -0.5。',
-  },
-  {
-    key: 'zIndex',
-    label: 'z',
-    title: 'zIndex（叠层顺序）：数字越大越靠上，用于多挂载重叠时控制谁盖住谁。',
-  },
-]
-
-function summarizeMountLayout(layout: Layout | undefined): string {
-  if (!layout) return '默认·左上'
-  const parts: string[] = []
-  for (const { key, label } of MOUNT_LAYOUT_FIELDS) {
-    const v = layout[key]
-    if (v !== undefined) parts.push(`${label}${v}`)
-  }
-  return parts.length ? parts.join(' ') : '默认·左上'
-}
-
-/**
- * 挂载盒相对视频视口的 layout —— 默认一行摘要+快捷预设，展开再编全字段。
- */
-function MountLayoutEditor({
-  layout,
-  onChange,
-}: {
-  layout: Layout | undefined
-  onChange: (next: Layout | undefined) => void
-}): JSX.Element {
-  const display = (key: MountLayoutKey): string => {
-    const v = layout?.[key]
-    if (v === undefined) return ''
-    return String(v)
-  }
-  const set = (key: MountLayoutKey, raw: string) => {
-    const trimmed = raw.trim()
-    const next: Layout = { ...layout }
-    if (!trimmed) delete next[key]
-    else if (key === 'zIndex') {
-      const n = Number(trimmed)
-      if (Number.isFinite(n)) next.zIndex = n
-      else delete next.zIndex
-    } else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-      next[key] = Number(trimmed)
-    } else {
-      next[key] = trimmed as Layout[Exclude<MountLayoutKey, 'zIndex'>]
-    }
-    onChange(Object.keys(next).length ? next : undefined)
-  }
-  return (
-    <details style={{ marginBottom: 6, fontSize: 11 }} title={MOUNT_LAYOUT_HINT}>
-      <summary
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 6,
-          cursor: 'pointer',
-          listStyle: 'none',
-          opacity: 0.9,
+              ))}
+              {routeEdge ? row('跳转时机', (
+                <select
+                  value={timing}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === 'immediate') onSetRouteTiming(event, 'immediate')
+                    else if (value === 'at') onSetRouteTiming(event, 'onSettlement', { type: 'at', ms: 1000 })
+                    else onSetRouteTiming(event, 'onSettlement', { type: 'complete' })
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  <option value="immediate">立即跳转</option>
+                  <option value="complete">当前节点播放结束时</option>
+                  <option value="at">播放到指定时间时</option>
+                </select>
+              )) : null}
+              {routeEdge && timing === 'at' ? row('结算时间', (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={routingSettlement?.type === 'at' ? routingSettlement.ms : 0}
+                    onChange={(e) => onSetRouteTiming(event, 'onSettlement', {
+                      type: 'at',
+                      ms: Math.max(0, Number(e.target.value) || 0),
+                    })}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <span style={{ fontSize: 11, opacity: 0.65 }}>ms</span>
+                </span>
+              )) : null}
+            </div>
+          )
         }}
-      >
-        <span style={{ opacity: 0.65 }} title={MOUNT_LAYOUT_HINT}>位置</span>
-        <span
-          style={{ fontFamily: 'ui-monospace, monospace', opacity: 0.85 }}
-          title={`当前 layout：${summarizeMountLayout(layout)}。${MOUNT_LAYOUT_HINT}`}
-        >
-          {summarizeMountLayout(layout)}
-        </span>
-        <span style={{ display: 'inline-flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-          {MOUNT_LAYOUT_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                onChange(p.layout ? { ...p.layout } : undefined)
-              }}
-              style={{
-                fontSize: 10,
-                padding: '1px 6px',
-                border: '1px solid #444',
-                borderRadius: 4,
-                background: '#1a1a1a',
-                color: '#ccc',
-                cursor: 'pointer',
-              }}
-              title={p.title}
-            >
-              {p.label}
-            </button>
-          ))}
-        </span>
-        <span
-          style={{ opacity: 0.45, marginLeft: 'auto' }}
-          title="展开后可分别编辑 left/right/top/bottom/width/height/translate/zIndex"
-        >
-          ▾ 细调
-        </span>
-      </summary>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px', marginTop: 6, paddingLeft: 2 }}>
-        {MOUNT_LAYOUT_FIELDS.map(({ key, label, title }) => (
-          <label
-            key={key}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11 }}
-            title={title}
-          >
-            <span style={{ opacity: 0.55, width: 14, textAlign: 'right', flexShrink: 0 }}>{label}</span>
-            <input
-              value={display(key)}
-              onChange={(e) => set(key, e.target.value)}
-              style={{ width: 44, fontSize: 11 }}
-              title={title}
-              aria-label={title}
-            />
-          </label>
-        ))}
-      </div>
-    </details>
+      />
+    </div>
   )
 }
 
@@ -878,118 +634,6 @@ const REACTIVE_LABEL: Record<ReactiveType, string> = {
 }
 function isReactive(r: Reaction): boolean {
   return r.when.type === 'watch' || r.when.type === 'shown' || r.when.type === 'hidden'
-}
-
-/** node.data.reactions 内 do 动作编辑：effect / spawn / advance（沿边推进）。 */
-function NodeActionsEditor({
-  actions,
-  edgeOptions,
-  spawnOptions,
-  overlays,
-  pickers,
-  onChange,
-}: {
-  actions: NodeAction[]
-  edgeOptions: OptItem[]
-  spawnOptions: OptItem[]
-  overlays?: Record<string, Overlay>
-  pickers?: EditorPickerCtx
-  onChange: (next: NodeAction[]) => void
-}): JSX.Element {
-  const patchAt = (i: number, a: NodeAction) => onChange(actions.map((c, j) => (j === i ? a : c)))
-  const removeAt = (i: number) => onChange(actions.filter((_, j) => j !== i))
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {actions.map((a, i) => (
-        <div
-          key={i}
-          style={{
-            border: '1px solid #2a2a2a',
-            borderRadius: 5,
-            padding: '6px 8px',
-            background: 'rgba(0,0,0,0.22)',
-            minWidth: 0,
-            maxWidth: '100%',
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8 }}>
-              {a.kind === 'effect' ? '施加效果' : a.kind === 'spawn' ? '生成组件' : '沿边推进'}
-            </span>
-            <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>移除</button>
-          </div>
-          {a.kind === 'effect' ? (
-            <EffectsEditor value={a.effects} pickers={pickers} onChange={(effs) => patchAt(i, { kind: 'effect', effects: effs ?? [] })} />
-          ) : null}
-          {a.kind === 'spawn' ? (
-            <>
-              {row('模板', (
-                <select
-                  value={a.from}
-                  onChange={(e) => patchAt(i, { ...a, from: e.target.value })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
-                >
-                  <option value="">（选组件模板）</option>
-                  {spawnOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ))}
-              {row('存活ms', (
-                <input
-                  type="number"
-                  value={a.ttlMs ?? 0}
-                  onChange={(e) => patchAt(i, { ...a, ttlMs: Number(e.target.value) || undefined })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }}
-                  title="0=常驻直到离场"
-                />
-              ))}
-              <SpawnInputsEditor
-                from={a.from}
-                inputs={a.inputs}
-                overlays={overlays}
-                pickers={pickers}
-                onChange={(inputs) => patchAt(i, { ...a, inputs })}
-              />
-            </>
-          ) : null}
-          {a.kind === 'advance' ? (
-            <>
-              {row('走边', (
-                <select
-                  value={a.edgeId}
-                  onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })}
-                  style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
-                >
-                  <option value="">（选出边）</option>
-                  {edgeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ))}
-              {a.edgeId ? (
-                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
-                  {edgeOptions.find((o) => o.value === a.edgeId)?.label ?? `边 ${a.edgeId}（未找到）`}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => onChange([...actions, {
-            kind: 'effect',
-            // 与「生成组件」一样一次带好初值，避免先出空壳再点一次「+ 效果」
-            effects: [createDefaultEffect('attr', pickers?.entities, pickers?.variables)],
-          }])}
-        >
-          ＋ 效果
-        </button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button>
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -1426,13 +1070,6 @@ export function NodeInspector({
     }
     patchData({ overlayNodes: mounts })
   }
-  const setMountLayout = (mountIndex: number, layout: Layout | undefined) => {
-    const mounts = [...(d.overlayNodes ?? [])]
-    const mount = mounts[mountIndex]
-    if (!mount) return
-    mounts[mountIndex] = { ...mount, layout }
-    patchData({ overlayNodes: mounts })
-  }
   const targetNodeOptions: OptItem[] = nodeIds
     .filter((id) => id !== node.id)
     .map((id) => ({ value: id, label: nodeLabel(id) }))
@@ -1647,7 +1284,12 @@ export function NodeInspector({
                 const preset = PRESET_SCHEME_BY_ID[oid]
                 if (preset) onEnsureOverlay?.(structuredClone(preset))
               }
-              mounts.push({ overlay: oid })
+              const definition = overlays?.[oid] ?? PRESET_SCHEME_BY_ID[oid]
+              const layout = resolveMountLayoutForChildren(
+                undefined,
+                definition?.children.map((child) => child.layout) ?? [],
+              )
+              mounts.push({ overlay: oid, ...(layout ? { layout } : {}) })
               patchData({ overlayNodes: mounts })
             }}
             title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）；含内置画廊与 nodia 界面方案"
@@ -1726,7 +1368,6 @@ export function NodeInspector({
               >
                 {expanded ? (
                   <>
-                <MountLayoutEditor layout={mount.layout} onChange={(layout) => setMountLayout(i, layout)} />
                 {mountChildren.length ? (
                   <div style={{ marginBottom: 4 }}>
                     {sectionLabel('组件参数')}
@@ -1788,6 +1429,7 @@ export function NodeInspector({
                 ) : null}
                 <OverlayReactionsEditor
                   events={events}
+                  catalogReactions={overlays?.[mount.overlay]?.reactions}
                   reactions={mount.reactions}
                   edgeOptions={edgeOptions}
                   routeHints={routeHints}

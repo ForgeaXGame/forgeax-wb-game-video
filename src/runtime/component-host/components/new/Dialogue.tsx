@@ -3,28 +3,26 @@
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的对白视觉。
  */
 import type { ReactNode } from 'react'
-import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
+import type { ComponentDef } from '../../../registry/component-registry'
 import { injectCss } from './skinRuntime'
 
-export const DialogueManifest: ComponentManifest = {
-  id: 'Dialogue',
+export const dialogueComponent: ComponentDef = {
   label: '字幕/对白',
   inputs: [
     { key: 'speaker', label: '说话人', valueType: 'string' },
-    { key: 'text', label: '台词', valueType: 'string' },
+    { key: 'text', label: '台词', valueType: 'string', default: '……' },
   ],
-  events: [],
 }
 
-export function Dialogue({ overlay }: OverlayProps): ReactNode {
+export function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
   injectCss('dialogue', DIALOGUE_CSS)
   const speaker = typeof overlay.inputs.speaker === 'string' ? overlay.inputs.speaker : ''
   const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '……'
 
   return (
     <div className="gv-dialogue">
-      <div className="gv-dialogue-box">
+      <div className="gv-dialogue-box" data-overlay-fit-target>
         {speaker && <div className="gv-dialogue-speaker">{speaker}</div>}
         <div className="gv-dialogue-text">{text}</div>
       </div>
