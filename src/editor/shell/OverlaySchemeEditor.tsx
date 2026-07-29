@@ -6,11 +6,16 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
-import { OverlayCatalogPreview } from './OverlayCatalogPreview'
+import {
+  DEFAULT_OVERLAY_DESIGN_CANVAS,
+  OverlayCatalogPreview,
+} from './OverlayCatalogPreview'
+import type { CanvasBox } from './OverlayCanvasInteraction'
 import { ComponentLibrary } from './ComponentLibrary'
 import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
+import type { Formula } from '../persist/formula-authoring'
 import { ComponentFormFields } from './component-form-fields'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 
@@ -35,67 +40,6 @@ function topmostChildId(children: Overlay['children']): string {
     }
     return top
   }, null)?.id ?? ''
-}
-
-type ChildRectKey = 'left' | 'top' | 'width' | 'height'
-
-const CHILD_RECT_FIELDS: Array<{ key: ChildRectKey; label: string; placeholder: string }> = [
-  { key: 'left', label: 'X%', placeholder: '0' },
-  { key: 'top', label: 'Y%', placeholder: '0' },
-  { key: 'width', label: '宽%', placeholder: '100' },
-  { key: 'height', label: '高%', placeholder: '100' },
-]
-
-function percentValue(value: Layout[ChildRectKey]): string {
-  if (typeof value !== 'number') return ''
-  return String(Math.round(value * 1000) / 10)
-}
-
-function ChildLayoutFields({
-  child,
-  onPatch,
-}: {
-  child: Overlay['children'][number]
-  onPatch: (patch: Partial<Layout>) => void
-}): JSX.Element {
-  const set = (key: ChildRectKey, raw: string): void => {
-    if (raw === '') {
-      onPatch({ [key]: undefined })
-      return
-    }
-    const percent = Number(raw)
-    if (!Number.isFinite(percent)) return
-    const min = key === 'width' || key === 'height' ? 2 : 0
-    const normalized = Math.min(100, Math.max(min, percent)) / 100
-    onPatch({
-      [key]: normalized,
-      ...(key === 'left' ? { right: undefined } : {}),
-      ...(key === 'top' ? { bottom: undefined } : {}),
-    })
-  }
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>位置与尺寸</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-        {CHILD_RECT_FIELDS.map(({ key, label, placeholder }) => (
-          <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, fontSize: 10, opacity: 0.85 }}>
-            <span>{label}</span>
-            <input
-              type="number"
-              min={key === 'width' || key === 'height' ? 2 : 0}
-              max={100}
-              step={0.1}
-              value={percentValue(child.layout?.[key])}
-              placeholder={placeholder}
-              aria-label={`${child.id} ${label}`}
-              onChange={(event) => set(key, event.target.value)}
-              style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontSize: 11 }}
-            />
-          </label>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -163,6 +107,7 @@ export interface OverlaySchemeEditorProps {
   overlays?: Record<string, Overlay>
   entities: Record<string, Entity>
   variables: Record<string, Variable>
+  formulas?: Record<string, Formula>
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
@@ -183,6 +128,8 @@ export interface OverlaySchemeEditorProps {
     childId: string,
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
+  /** 编辑器本地设计画布整体移动时，批量平移方案 children；不写 Overlay 级字段。 */
+  onMoveCanvas?: (moveDelta: { x: number; y: number }) => void
   onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
 }
 
@@ -192,6 +139,7 @@ export function OverlaySchemeEditor({
   overlays: overlayCatalog,
   entities,
   variables,
+  formulas,
   usageCount,
   locked = false,
   duplicateOf = [],
@@ -200,9 +148,12 @@ export function OverlaySchemeEditor({
   onAddChild,
   onRemoveChild,
   onPatchChild,
+  onMoveCanvas,
   onReactionsChange,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
+  const [designCanvases, setDesignCanvases] = useState<Record<string, CanvasBox>>({})
+  const designCanvas = designCanvases[overlayId] ?? DEFAULT_OVERLAY_DESIGN_CANVAS
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
   const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
@@ -302,6 +253,11 @@ export function OverlaySchemeEditor({
                 }
           }
           onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
+          designCanvas={designCanvas}
+          onDesignCanvasChange={(box, moveDelta) => {
+            setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
+            if (moveDelta) onMoveCanvas?.(moveDelta)
+          }}
           onWarnChange={setWarnIds}
         />
 
@@ -373,14 +329,10 @@ export function OverlaySchemeEditor({
                 基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
               </div>
             ) : null}
-            <ChildLayoutFields
-              child={selectedChild}
-              onPatch={(layout) => onPatchChild(selectedChild.id, { layout })}
-            />
             <ComponentFormFields
               componentId={selectedChild.component}
               values={selectedChild.inputs ?? {}}
-              pickers={{ entities, variables }}
+              pickers={{ entities, variables, formulas }}
               density="compact"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
             />
@@ -403,7 +355,7 @@ export function OverlaySchemeEditor({
                     catalogReactions={overlay.reactions}
                     spawnOptions={spawnOptions}
                     overlays={overlays}
-                    pickers={{ entities, variables }}
+                    pickers={{ entities, variables, formulas }}
                     onCatalogChange={locked ? undefined : onReactionsChange}
                   />
                 </fieldset>
@@ -416,7 +368,7 @@ export function OverlaySchemeEditor({
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可调整参数、位置和尺寸。
+          基础组件方案锁定为单组件，不可增删；可调整参数和组件位置。
         </div>
       ) : (
         <ComponentLibrary />

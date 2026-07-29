@@ -11,7 +11,13 @@ import { createRng } from '../../runtime/engine/rng'
 import { AttrSelect, EntitySelect } from './editors'
 import { LooseNumberInput } from './TermChainEditor'
 import { VariablePicker } from './scenario-pickers'
-import { compileFormula, formulaHoles, formulaPreview, missingFormulaHoles } from './formulaApply'
+import {
+  compileFormula,
+  formulaHoles,
+  formulaPreview,
+  missingFormulaHoles,
+  missingFormulaVariables,
+} from './formulaApply'
 import { findEntity, findFormula, listAttrOptions, listFormulaOptions } from './valueExprPick'
 
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }
@@ -56,6 +62,9 @@ export function FormulaApplyEditor({
   const formula = findFormula(formulas, formulaId)
   const holes = formula ? formulaHoles(formula) : []
   const missingHoles = formula ? missingFormulaHoles(formula, holeBindings) : []
+  const missingVariables = formula ? missingFormulaVariables(formula, holeBindings, variables) : []
+  const needsVariableBinding = holes.some((hole) => hole.kind === 'var')
+  const hasDeclaredVariables = Object.keys(variables ?? {}).length > 0
 
   function pickFormula(nextId: string): void {
     const next = findFormula(formulas, nextId)
@@ -89,6 +98,15 @@ export function FormulaApplyEditor({
       ) : (
         <>
           <p style={hint}>公式：{formulaPreview(formula, holeBindings)}</p>
+          {missingVariables.length > 0 ? (
+            <p role="alert" style={{ ...hint, color: '#ffb86c' }}>
+              公式引用的变量「{missingVariables.join('、')}」尚未创建，请先到「规则 → 变量」创建变量。
+            </p>
+          ) : needsVariableBinding && !hasDeclaredVariables ? (
+            <p role="alert" style={{ ...hint, color: '#ffb86c' }}>
+              该公式需要变量，请先到「规则 → 变量」创建变量。
+            </p>
+          ) : null}
           {holes.length === 0 ? (
             <p style={hint}>该公式没有留空位，直接应用即可。</p>
           ) : (

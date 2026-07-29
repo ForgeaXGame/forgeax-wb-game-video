@@ -6,7 +6,7 @@
  *   - 视频舞台：`gc-frame` / `computeVideoContentRect` 锚定 object-fit:contain 实际画面；
  *   - 皮肤层：`previewSkinChildrenInWindow` + `renderOverlayChildPreview` + PreviewClock
  *     （暂停冻结 CSS 动画）；滤镜/特效走 `resolveVideoFxForNode` 旁路；
- *   - 叠层手柄：`activePreviewOverlaysFromNode`，可拖即写回 `patchOverlayPositionGraph`（x/y）；
+ *   - 叠层操作框：节点视频画布只允许移动整份 overlay，写回挂载 `layout.left/top`；
  *   - 时间轴：`MaterialTimeline` 全交互，但**投影到挂载级**（`collectMountItemsFromNode`：
  *     一份挂载 = 一条），拖动整体平移挂载内子件、删除移除整份挂载，写回
  *     `patchMaterialGraph`（mount 分支 → shiftMountWindowGraph）/`deleteMaterialGraph`；
@@ -34,6 +34,7 @@ import { renderOverlayChildPreview } from './overlayChildPreview'
 import { PreviewClockProvider, previewClockLayerClassName } from './previewClock'
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
+import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
 import { resolveGraphTextCss } from '../text/text-css'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import { materialClass, type MaterialItem } from '../video/materialTimelineShared'
@@ -130,11 +131,9 @@ const NPS_CSS = `
 const DEFAULT_MOUNT_W = 0.25
 const DEFAULT_MOUNT_H = 0.15
 
-function isStageFillLayout(layout: Layout | undefined): boolean {
+function isFullStageMountLayout(layout: Layout | undefined): boolean {
   return (
-    layout?.left === 0
-    && layout.top === 0
-    && layout.width === 1
+    layout?.width === 1
     && layout.height === 1
     && layout.right == null
     && layout.bottom == null
@@ -186,8 +185,6 @@ export function NodePreviewStage({
   const mountPreviewRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [mountContentBoxes, setMountContentBoxes] = useState<Record<string, { left: number; top: number; width: number; height: number }>>({})
   const mountBoxSigRef = useRef('')
-  const [mountContentMins, setMountContentMins] = useState<Record<string, { width: number; height: number }>>({})
-  const mountMinSigRef = useRef('')
 
   const mediaRef = node.data.media?.ref ?? ''
   const playMode = node.data.mediaPlayMode ?? 'once'
@@ -367,12 +364,10 @@ export function NodePreviewStage({
   }
 
   // ── 预览叠层画布（共享 OverlayCanvasInteraction）──────────────────────────
-  function patchMountBox(mountId: string, box: CanvasBox): void {
+  function patchMountPosition(mountId: string, position: { x: number; y: number }): void {
     onEditScenario((s, n) => patchOverlayMountLayoutGraph(s, n, mountId, {
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
+      left: position.x,
+      top: position.y,
       right: undefined,
       bottom: undefined,
     }))
@@ -392,7 +387,6 @@ export function NodePreviewStage({
     const stageRect = stage.getBoundingClientRect()
     if (!stageRect.width || !stageRect.height) return
     const next: Record<string, { left: number; top: number; width: number; height: number }> = {}
-    const nextMins: Record<string, { width: number; height: number }> = {}
     for (const { mountId } of previewMountGroups) {
       const wrap = mountPreviewRefs.current[mountId]
       if (!wrap) continue
@@ -400,15 +394,6 @@ export function NodePreviewStage({
       let top = Infinity
       let right = -Infinity
       let bottom = -Infinity
-      let minWidth = 0
-      let minHeight = 0
-      for (const element of wrap.querySelectorAll<HTMLElement>('*')) {
-        const style = getComputedStyle(element)
-        const cssMinWidth = Number.parseFloat(style.minWidth)
-        const cssMinHeight = Number.parseFloat(style.minHeight)
-        if (Number.isFinite(cssMinWidth)) minWidth = Math.max(minWidth, cssMinWidth)
-        if (Number.isFinite(cssMinHeight)) minHeight = Math.max(minHeight, cssMinHeight)
-      }
       for (const element of overlayFitTargets(wrap)) {
         const rect = element.getBoundingClientRect()
         if (!rect.width || !rect.height) continue
@@ -430,10 +415,6 @@ export function NodePreviewStage({
         width: (right - left) / stageRect.width,
         height: (bottom - top) / stageRect.height,
       }
-      nextMins[mountId] = {
-        width: minWidth / stageRect.width,
-        height: minHeight / stageRect.height,
-      }
     }
     const sig = Object.entries(next)
       .map(([id, box]) => `${id}:${box.left.toFixed(3)},${box.top.toFixed(3)},${box.width.toFixed(3)},${box.height.toFixed(3)}`)
@@ -442,52 +423,48 @@ export function NodePreviewStage({
       mountBoxSigRef.current = sig
       setMountContentBoxes(next)
     }
-    const minSig = Object.entries(nextMins)
-      .map(([id, size]) => `${id}:${size.width.toFixed(3)},${size.height.toFixed(3)}`)
-      .join('|')
-    if (minSig !== mountMinSigRef.current) {
-      mountMinSigRef.current = minSig
-      setMountContentMins(nextMins)
-    }
   }, [previewMountGroups, playheadMs, contentRect])
 
   const interactionItems = useMemo<CanvasInteractionItem[]>(() =>
     previewMountGroups.map(({ mountId, mount, children }) => {
       const content = mountContentBoxes[mountId]
-      const minimum = mountContentMins[mountId]
       const layout = mount.layout
-      const authored = !isStageFillLayout(layout) && (
-        typeof layout?.left === 'number'
-        || typeof layout?.top === 'number'
-        || typeof layout?.width === 'number'
-        || typeof layout?.height === 'number'
-      )
-      const layoutLeft = authored && typeof layout?.left === 'number' ? layout.left : (content?.left ?? 0)
-      const layoutTop = authored && typeof layout?.top === 'number' ? layout.top : (content?.top ?? 0)
-      const layoutWidth = authored && typeof layout?.width === 'number' ? layout.width : (content?.width ?? DEFAULT_MOUNT_W)
-      const layoutHeight = authored && typeof layout?.height === 'number' ? layout.height : (content?.height ?? DEFAULT_MOUNT_H)
-      const left = content ? Math.min(layoutLeft, content.left) : layoutLeft
-      const top = content ? Math.min(layoutTop, content.top) : layoutTop
-      const box: CanvasBox = {
-        left,
-        top,
-        width: content ? Math.max(layoutLeft + layoutWidth, content.left + content.width) - left : layoutWidth,
-        height: content ? Math.max(layoutTop + layoutHeight, content.top + content.height) - top : layoutHeight,
+      const explicitBox: CanvasBox | null =
+        !isFullStageMountLayout(layout)
+        && typeof layout?.left === 'number'
+        && typeof layout.top === 'number'
+        && typeof layout.width === 'number'
+        && typeof layout.height === 'number'
+        && layout.translateX == null
+        && layout.translateY == null
+          ? {
+              left: layout.left,
+              top: layout.top,
+              width: layout.width,
+              height: layout.height,
+            }
+          : null
+      const box: CanvasBox = explicitBox ?? {
+        left: content?.left ?? 0,
+        top: content?.top ?? 0,
+        width: content?.width ?? DEFAULT_MOUNT_W,
+        height: content?.height ?? DEFAULT_MOUNT_H,
       }
       return {
         id: mountId,
         label: overlays?.[mount.overlay]?.title?.trim() || mountId,
-        position: { x: box.left, y: box.top },
+        position: {
+          x: typeof layout?.left === 'number' ? layout.left : 0,
+          y: typeof layout?.top === 'number' ? layout.top : 0,
+        },
         frame: { kind: 'box', ...box },
         zIndex: typeof mount.layout?.zIndex === 'number'
           ? mount.layout.zIndex
           : Math.max(0, ...children.map((child) => typeof child.layout?.zIndex === 'number' ? child.layout.zIndex : 0)),
         movable: true,
-        resizable: true,
-        minWidth: minimum?.width,
-        minHeight: minimum?.height,
+        resizable: false,
       }
-    }), [mountContentBoxes, mountContentMins, overlays, previewMountGroups])
+    }), [mountContentBoxes, overlays, previewMountGroups])
 
   const previewContentStyle: CSSProperties | undefined = contentRect
     ? { left: `${contentRect.left}px`, top: `${contentRect.top}px`, width: `${contentRect.width}px`, height: `${contentRect.height}px` }
@@ -538,56 +515,56 @@ export function NodePreviewStage({
         ) : null}
         <div ref={contentAnchorRef} className="gc-content-anchor" style={previewContentStyle}>
           <div className="gc-preview-overlays">
-            {previewSkinChildren.length > 0 ? (
-              <PreviewClockProvider value={previewClockValue}>
-                <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
-                  {previewMountGroups.map(({ mountId, mount, children }) => (
-                    <div
-                      key={mountId}
-                      ref={(element) => { mountPreviewRefs.current[mountId] = element }}
-                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-                    >
-                      {children.map((child) => (
-                        <span key={child.id} style={{ display: 'contents' }}>
-                          {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, mount.layout)}
-                        </span>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </PreviewClockProvider>
-            ) : null}
-            {previewOverlays.map((o) => {
-              const elId = o.target.kind === 'element' || o.target.kind === 'qteCue' || o.target.kind === 'mount'
-                ? o.target.elementId
-                : ''
-              const ownMount = elId ? findMountOwningChild(scenario, node, elId) : undefined
-              const selected = !!ownMount && overlayMountId(ownMount) === selectedOverlayId
-              const skinned = !!elId && skinnedPreviewIds.has(elId)
-              return (
-                <div
-                  key={o.id}
-                  aria-hidden
-                  className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${skinned ? ' is-skinned' : ''}`}
-                  style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: skinned ? 30 : 20 + o.zIndex, pointerEvents: 'none' }}
-                >
-                  {/* 有真实皮肤：手柄只做透明热区（不渲染默认 ring/label），真实贴纸由皮肤层呈现——
-                      「挂载物长啥样就是啥样」，选中靠 is-skinned 描边提示可拖。 */}
-                  {skinned ? null : (
-                    <>
-                      {o.kind === 'qte' || o.movable ? <span className="gc-preview-ring" /> : null}
-                      <span
-                        className="gc-preview-label"
-                        style={(o.kind === 'subtitle' || o.kind === 'overlay') && o.style ? resolveGraphTextCss(o.style) : undefined}
+            <ScaledOverlayContent>
+              {previewSkinChildren.length > 0 ? (
+                <PreviewClockProvider value={previewClockValue}>
+                  <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
+                    {previewMountGroups.map(({ mountId, mount, children }) => (
+                      <div
+                        key={mountId}
+                        ref={(element) => { mountPreviewRefs.current[mountId] = element }}
+                        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
                       >
-                        {o.label}
-                      </span>
-                      {o.detail ? <span className="gc-preview-detail">{o.detail}</span> : null}
-                    </>
-                  )}
-                </div>
-              )
-            })}
+                        {children.map((child) => (
+                          <span key={child.id} style={{ display: 'contents' }}>
+                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, mount.layout)}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </PreviewClockProvider>
+              ) : null}
+              {previewOverlays.map((o) => {
+                const elId = o.target.kind === 'element' || o.target.kind === 'qteCue' || o.target.kind === 'mount'
+                  ? o.target.elementId
+                  : ''
+                const ownMount = elId ? findMountOwningChild(scenario, node, elId) : undefined
+                const selected = !!ownMount && overlayMountId(ownMount) === selectedOverlayId
+                const skinned = !!elId && skinnedPreviewIds.has(elId)
+                return (
+                    <div
+                      key={o.id}
+                      aria-hidden
+                      className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${skinned ? ' is-skinned' : ''}`}
+                      style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: skinned ? 30 : 20 + o.zIndex, pointerEvents: 'none' }}
+                    >
+                      {skinned ? null : (
+                        <>
+                          {o.kind === 'qte' || o.movable ? <span className="gc-preview-ring" /> : null}
+                          <span
+                            className="gc-preview-label"
+                            style={(o.kind === 'subtitle' || o.kind === 'overlay') && o.style ? resolveGraphTextCss(o.style) : undefined}
+                          >
+                            {o.label}
+                          </span>
+                          {o.detail ? <span className="gc-preview-detail">{o.detail}</span> : null}
+                        </>
+                      )}
+                    </div>
+                )
+              })}
+            </ScaledOverlayContent>
             <OverlayCanvasInteraction
               stageRef={contentAnchorRef}
               items={interactionItems}
@@ -599,16 +576,8 @@ export function NodePreviewStage({
                 focusMount(id)
               }}
               onMove={(id, position) => {
-                const item = interactionItems.find((candidate) => candidate.id === id)
-                if (!item || item.frame.kind !== 'box') return
-                patchMountBox(id, {
-                  left: position.x,
-                  top: position.y,
-                  width: item.frame.width,
-                  height: item.frame.height,
-                })
+                patchMountPosition(id, position)
               }}
-              onResize={patchMountBox}
               onReorder={(id, direction) => {
                 reorderMount(id, direction)
               }}

@@ -7,7 +7,7 @@ import type { Entity, GameGraph, GraphCondition, Overlay, SubFlowPackDef, Variab
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
-import type { Layout, NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
+import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, overlayReactionKey, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
@@ -31,6 +31,7 @@ import { PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
+import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 
 /**
  * 「音乐动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -454,198 +455,6 @@ function OverlayReactionsEditor({
         }}
       />
     </div>
-  )
-}
-
-type MountLayoutKey = keyof Layout
-
-const MOUNT_LAYOUT_HINT =
-  '挂载盒在视频视口上的位置与尺寸（对齐 CSS absolute）。新规格组件参数不承载位置；画布拖拽与这里的布局字段写回同一份 mount.layout。'
-
-const MOUNT_LAYOUT_PRESETS: Array<{
-  id: string
-  label: string
-  layout: Layout | undefined
-  title: string
-}> = [
-  {
-    id: 'tl',
-    label: '左上',
-    layout: undefined,
-    title: '快捷：清掉 layout，挂载盒贴视频左上角并随内容自适应',
-  },
-  {
-    id: 'br',
-    label: '右下',
-    layout: { right: 0, bottom: 0 },
-    title: '快捷：right=0、bottom=0，把挂载盒贴到视频右下角',
-  },
-  {
-    id: 'c',
-    label: '居中',
-    layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
-    title: '快捷：left/top=0.5 且 translate=-0.5，挂载盒中心对齐视频中心',
-  },
-]
-
-const MOUNT_LAYOUT_FIELDS: Array<{ key: MountLayoutKey; label: string; title: string }> = [
-  {
-    key: 'left',
-    label: 'L',
-    title: 'left（左边距）：挂载盒左边缘距视频左边的距离。数字 0~1 为比例，也可写 40% / 12px。与 right 一般二选一。',
-  },
-  {
-    key: 'right',
-    label: 'R',
-    title: 'right（右边距）：挂载盒右边缘距视频右边的距离。贴右下角时填 0，并配合 bottom=0；勿再写 left。',
-  },
-  {
-    key: 'top',
-    label: 'T',
-    title: 'top（上边距）：挂载盒上边缘距视频上边的距离。数字 0~1 为比例，也可写 40% / 12px。',
-  },
-  {
-    key: 'bottom',
-    label: 'B',
-    title: 'bottom（下边距）：挂载盒下边缘距视频下边的距离。贴右下角时填 0，并配合 right=0；勿再写 top。',
-  },
-  {
-    key: 'width',
-    label: 'W',
-    title: 'width（宽度）：挂载盒宽度。空=随内容自适应；可写 0.5 / 50% / 120px。',
-  },
-  {
-    key: 'height',
-    label: 'H',
-    title: 'height（高度）：挂载盒高度。空=随内容自适应；可写 0.5 / 50% / 120px。',
-  },
-  {
-    key: 'translateX',
-    label: 'tx',
-    title: 'translateX（水平自偏移）：相对挂载盒自身再平移。居中时常与 left=0.5 合用，填 -0.5（左移自身半宽）。',
-  },
-  {
-    key: 'translateY',
-    label: 'ty',
-    title: 'translateY（垂直自偏移）：相对挂载盒自身再平移。居中时常与 top=0.5 合用，填 -0.5。',
-  },
-  {
-    key: 'zIndex',
-    label: 'z',
-    title: 'zIndex（叠层顺序）：数字越大越靠上，用于多挂载重叠时控制谁盖住谁。',
-  },
-]
-
-function summarizeMountLayout(layout: Layout | undefined): string {
-  if (!layout) return '默认·左上'
-  const parts: string[] = []
-  for (const { key, label } of MOUNT_LAYOUT_FIELDS) {
-    const v = layout[key]
-    if (v !== undefined) parts.push(`${label}${v}`)
-  }
-  return parts.length ? parts.join(' ') : '默认·左上'
-}
-
-/**
- * 挂载盒相对视频视口的 layout —— 默认一行摘要+快捷预设，展开再编全字段。
- */
-function MountLayoutEditor({
-  layout,
-  onChange,
-}: {
-  layout: Layout | undefined
-  onChange: (next: Layout | undefined) => void
-}): JSX.Element {
-  const display = (key: MountLayoutKey): string => {
-    const v = layout?.[key]
-    if (v === undefined) return ''
-    return String(v)
-  }
-  const set = (key: MountLayoutKey, raw: string) => {
-    const trimmed = raw.trim()
-    const next: Layout = { ...layout }
-    if (!trimmed) delete next[key]
-    else if (key === 'zIndex') {
-      const n = Number(trimmed)
-      if (Number.isFinite(n)) next.zIndex = n
-      else delete next.zIndex
-    } else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-      next[key] = Number(trimmed)
-    } else {
-      next[key] = trimmed as Layout[Exclude<MountLayoutKey, 'zIndex'>]
-    }
-    onChange(Object.keys(next).length ? next : undefined)
-  }
-  return (
-    <details style={{ marginBottom: 6, fontSize: 11 }} title={MOUNT_LAYOUT_HINT}>
-      <summary
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 6,
-          cursor: 'pointer',
-          listStyle: 'none',
-          opacity: 0.9,
-        }}
-      >
-        <span style={{ opacity: 0.65 }} title={MOUNT_LAYOUT_HINT}>位置</span>
-        <span
-          style={{ fontFamily: 'ui-monospace, monospace', opacity: 0.85 }}
-          title={`当前 layout：${summarizeMountLayout(layout)}。${MOUNT_LAYOUT_HINT}`}
-        >
-          {summarizeMountLayout(layout)}
-        </span>
-        <span style={{ display: 'inline-flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-          {MOUNT_LAYOUT_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                onChange(p.layout ? { ...p.layout } : undefined)
-              }}
-              style={{
-                fontSize: 10,
-                padding: '1px 6px',
-                border: '1px solid #444',
-                borderRadius: 4,
-                background: '#1a1a1a',
-                color: '#ccc',
-                cursor: 'pointer',
-              }}
-              title={p.title}
-            >
-              {p.label}
-            </button>
-          ))}
-        </span>
-        <span
-          style={{ opacity: 0.45, marginLeft: 'auto' }}
-          title="展开后可分别编辑 left/right/top/bottom/width/height/translate/zIndex"
-        >
-          ▾ 细调
-        </span>
-      </summary>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 8px', marginTop: 6, paddingLeft: 2 }}>
-        {MOUNT_LAYOUT_FIELDS.map(({ key, label, title }) => (
-          <label
-            key={key}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11 }}
-            title={title}
-          >
-            <span style={{ opacity: 0.55, width: 14, textAlign: 'right', flexShrink: 0 }}>{label}</span>
-            <input
-              value={display(key)}
-              onChange={(e) => set(key, e.target.value)}
-              style={{ width: 44, fontSize: 11 }}
-              title={title}
-              aria-label={title}
-            />
-          </label>
-        ))}
-      </div>
-    </details>
   )
 }
 
@@ -1214,13 +1023,6 @@ export function NodeInspector({
     }
     patchData({ overlayNodes: mounts })
   }
-  const setMountLayout = (mountIndex: number, layout: Layout | undefined) => {
-    const mounts = [...(d.overlayNodes ?? [])]
-    const mount = mounts[mountIndex]
-    if (!mount) return
-    mounts[mountIndex] = { ...mount, layout }
-    patchData({ overlayNodes: mounts })
-  }
   const targetNodeOptions: OptItem[] = nodeIds
     .filter((id) => id !== node.id)
     .map((id) => ({ value: id, label: nodeLabel(id) }))
@@ -1435,7 +1237,12 @@ export function NodeInspector({
                 const preset = PRESET_SCHEME_BY_ID[oid]
                 if (preset) onEnsureOverlay?.(structuredClone(preset))
               }
-              mounts.push({ overlay: oid })
+              const definition = overlays?.[oid] ?? PRESET_SCHEME_BY_ID[oid]
+              const layout = resolveMountLayoutForChildren(
+                undefined,
+                definition?.children.map((child) => child.layout) ?? [],
+              )
+              mounts.push({ overlay: oid, ...(layout ? { layout } : {}) })
               patchData({ overlayNodes: mounts })
             }}
             title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）；含内置画廊与 nodia 界面方案"
@@ -1514,7 +1321,6 @@ export function NodeInspector({
               >
                 {expanded ? (
                   <>
-                <MountLayoutEditor layout={mount.layout} onChange={(layout) => setMountLayout(i, layout)} />
                 {mountChildren.length ? (
                   <div style={{ marginBottom: 4 }}>
                     {sectionLabel('组件参数')}

@@ -34,7 +34,7 @@ export function ComponentLibrary(): JSX.Element {
   return (
     <div className="ocl-root">
       <div className="ocl-title">组件库（{NEW_COMPONENTS.length}）</div>
-      <div className="ocl-hint">拖到左侧画布落地；再拖动改位置 / 拖角改尺寸。</div>
+      <div className="ocl-hint">拖到左侧画布落地；再拖动调整组件位置。</div>
       {NEW_COMPONENTS.map(({ id, definition }) => {
         const label = definition.label ?? id
         return (

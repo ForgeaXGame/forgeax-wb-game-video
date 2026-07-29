@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
 import { registerComponent, unregisterComponent } from '../../../runtime/registry/component-registry'
 import type { GameGraph, Overlay, OverlayEventRef } from '../../../runtime/schema/graph-schema'
+import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
 import { ComponentFormFields } from '../component-form-fields'
 import { NodeInspector } from '../NodeInspector'
@@ -61,6 +62,32 @@ describe('ComponentEventsEditor', () => {
     expect(screen.getByText('挂载追加动作')).toBeTruthy()
     expect(screen.getByRole('button', { name: /沿边推进/ })).toBeTruthy()
   })
+
+  it('enables applying formulas inside catalog event effects when the formula library is provided', () => {
+    const formula: Formula = {
+      id: 'formula-damage',
+      name: '伤害',
+      ast: { t: 'num', id: 'n0', v: 12 },
+    }
+    render(
+      <ComponentEventsEditor
+        mode="catalog"
+        events={[event]}
+        catalogReactions={[{
+          when: { type: 'event', id: 'q:pass' },
+          do: [{
+            kind: 'effect',
+            effects: [{ kind: 'var', varId: '', op: 'set', value: 0 }],
+          }],
+        }]}
+        spawnOptions={[]}
+        pickers={{ formulas: { 'formula-damage': formula } }}
+        onCatalogChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '应用公式' })).not.toBeDisabled()
+  })
 })
 
 describe('NodeInspector overlay events', () => {
@@ -95,6 +122,9 @@ describe('NodeInspector overlay events', () => {
 
     expect(screen.queryByText('事件响应')).toBeNull()
     expect(screen.queryByText(/无导出事件/)).toBeNull()
+    expect(screen.queryByText('位置')).toBeNull()
+    expect(screen.queryByText('继承方案')).toBeNull()
+    expect(screen.queryByText(/细调/)).toBeNull()
   })
 })
 
@@ -128,18 +158,34 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="subtitle-a"]')?.classList.contains('is-selected')).toBe(false)
   })
 
-  it('keeps each subtitle layout fields synchronized with canvas move and resize', async () => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: 200,
-      bottom: 100,
-      width: 200,
-      height: 100,
-      toJSON: () => ({}),
-    }))
+  it('moves the design canvas with its children and keeps a manually shrunken canvas clipped', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-overlay-fit-target')) {
+        return {
+          x: 50,
+          y: 60,
+          left: 50,
+          top: 60,
+          right: 150,
+          bottom: 90,
+          width: 100,
+          height: 30,
+          toJSON: () => ({}),
+        }
+      }
+      return {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 200,
+        bottom: 100,
+        width: 200,
+        height: 100,
+        toJSON: () => ({}),
+      }
+    })
+    let latest: Overlay | undefined
     function Harness(): JSX.Element {
       const [overlay, setOverlay] = useState<Overlay>({
         id: 'double-subtitle',
@@ -158,59 +204,83 @@ describe('OverlaySchemeEditor selected child', () => {
           },
         ],
       })
+      latest = overlay
       return (
-        <OverlaySchemeEditor
-          overlayId={overlay.id}
-          overlay={overlay}
-          entities={{}}
-          variables={{}}
-          usageCount={0}
-          onRename={vi.fn()}
-          onRemove={vi.fn()}
-          onAddChild={vi.fn()}
-          onRemoveChild={vi.fn()}
-          onPatchChild={(childId, patch) => {
-            setOverlay((current) => ({
+        <>
+          <OverlaySchemeEditor
+            overlayId={overlay.id}
+            overlay={overlay}
+            entities={{}}
+            variables={{}}
+            usageCount={0}
+            onRename={vi.fn()}
+            onRemove={vi.fn()}
+            onAddChild={vi.fn()}
+            onRemoveChild={vi.fn()}
+            onPatchChild={(childId, patch) => {
+              setOverlay((current) => ({
+                ...current,
+                children: current.children.map((child) =>
+                  child.id === childId
+                    ? {
+                        ...child,
+                        ...(patch.inputs ? { inputs: patch.inputs } : {}),
+                        ...(patch.layout ? { layout: { ...child.layout, ...patch.layout } } : {}),
+                      }
+                    : child),
+              }))
+            }}
+            onMoveCanvas={(moveDelta) => setOverlay((current) => ({
               ...current,
-              children: current.children.map((child) =>
-                child.id === childId
-                  ? {
-                      ...child,
-                      ...(patch.inputs ? { inputs: patch.inputs } : {}),
-                      ...(patch.layout ? { layout: { ...child.layout, ...patch.layout } } : {}),
-                    }
-                  : child),
-            }))
-          }}
-          onReactionsChange={vi.fn()}
-        />
+              children: current.children.map((child) => ({
+                ...child,
+                layout: {
+                  ...child.layout,
+                  left: (typeof child.layout?.left === 'number' ? child.layout.left : 0) + moveDelta.x,
+                  top: (typeof child.layout?.top === 'number' ? child.layout.top : 0) + moveDelta.y,
+                  right: undefined,
+                  bottom: undefined,
+                },
+              })),
+            }))}
+            onReactionsChange={vi.fn()}
+          />
+        </>
       )
     }
-    const { container } = render(<Harness />)
+    render(<Harness />)
 
-    await waitFor(() => expect(screen.getByLabelText('subtitle-b 宽%')).toHaveValue(100))
-    expect(screen.getByLabelText('subtitle-b X%')).toHaveValue(0)
-    expect(screen.getByLabelText('subtitle-b Y%')).toHaveValue(0)
-    expect(screen.getByLabelText('subtitle-b 高%')).toHaveValue(100)
+    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(50))
+    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(50)
+    expect(screen.queryByRole('button', { name: /调整dialogue大小/ })).toBeNull()
+    expect(document.querySelectorAll('[data-overflow-child]')).not.toHaveLength(0)
+    expect((document.querySelector('[data-overlay-content-clip]') as HTMLElement).style.clipPath).toContain('inset(')
 
-    expect(screen.getAllByRole('button', { name: /调整dialogue大小/ })).toHaveLength(8)
-    const resize = screen.getByRole('button', { name: '调整dialogue大小：右下' })
-    fireEvent.pointerDown(resize, { pointerId: 1, clientX: 200, clientY: 100 })
-    fireEvent.pointerMove(resize, { pointerId: 1, clientX: 160, clientY: 80 })
-    fireEvent.pointerUp(resize, { pointerId: 1, clientX: 160, clientY: 80 })
-    await waitFor(() => expect(screen.getByLabelText('subtitle-b 宽%')).toHaveValue(80))
-    expect(screen.getByLabelText('subtitle-b 高%')).toHaveValue(80)
+    const canvas = screen.getByRole('application', { name: '界面方案画布' })
+    expect(fireEvent.keyDown(window, { key: ' ', code: 'Space' })).toBe(false)
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 60, clientY: 30 })
+    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 80, clientY: 40 })
+    fireEvent.pointerUp(canvas, { pointerId: 2, clientX: 80, clientY: 40 })
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
 
-    fireEvent.pointerDown(container.querySelector('[title="subtitle-a"]')!)
-    await waitFor(() => expect(screen.getByLabelText('subtitle-a 宽%')).toHaveValue(100))
-    expect(screen.getByLabelText('subtitle-a X%')).toHaveValue(0)
-    expect(screen.getByLabelText('subtitle-a Y%')).toHaveValue(0)
-    expect(screen.getByLabelText('subtitle-a 高%')).toHaveValue(100)
+    await waitFor(() => {
+      expect((document.querySelector('[data-canvas-item="__overlay-canvas__"]') as HTMLElement).style.left).toBe('35%')
+    })
+    expect(latest?.children[0]?.layout?.left).toBeCloseTo(0.1)
+    expect(latest?.children[0]?.layout?.top).toBeCloseTo(0.1)
+    expect(latest?.children[1]?.layout?.left).toBeCloseTo(0.1)
+    expect(latest?.children[1]?.layout?.top).toBeCloseTo(0.1)
+    expect(screen.getAllByRole('button', { name: /调整覆盖物画布大小/ })).toHaveLength(8)
 
-    fireEvent.change(screen.getByLabelText('subtitle-a X%'), { target: { value: '25' } })
-    fireEvent.change(screen.getByLabelText('subtitle-a 宽%'), { target: { value: '50' } })
-    await waitFor(() => expect(screen.getByLabelText('subtitle-a X%')).toHaveValue(25))
-    expect(screen.getByLabelText('subtitle-a 宽%')).toHaveValue(50)
+    const resize = screen.getByRole('button', { name: '调整覆盖物画布大小：右下' })
+    fireEvent.pointerDown(resize, { pointerId: 3, clientX: 170, clientY: 85 })
+    fireEvent.pointerMove(resize, { pointerId: 3, clientX: 130, clientY: 65 })
+    fireEvent.pointerUp(resize, { pointerId: 3, clientX: 130, clientY: 65 })
+
+    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(30))
+    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(30)
+    expect(Object.prototype.hasOwnProperty.call(latest, 'layout')).toBe(false)
+    expect(document.querySelectorAll('[data-overflow-child]')).not.toHaveLength(0)
   })
 
   it('defaults to the first child and immediately shows parameters and events below the canvas', () => {
@@ -240,7 +310,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(screen.getByText(/^参数 ·/)).toBeTruthy()
     expect(screen.getByText('事件')).toBeTruthy()
     expect(screen.getByText('q:pass')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: /调整qte大小/ })).toHaveLength(8)
+    expect(screen.queryByRole('button', { name: /调整qte大小/ })).toBeNull()
   })
 
   it('allows parameter edits while the base scheme structure is locked', () => {
@@ -268,7 +338,7 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const current = screen.getByDisplayValue('50') as HTMLInputElement
+    const current = screen.getByText('当前血量').closest('label')!.querySelector('input') as HTMLInputElement
     expect(current.disabled).toBe(false)
     fireEvent.change(current, { target: { value: '60' } })
     expect(onPatchChild).toHaveBeenCalledWith('hp', {

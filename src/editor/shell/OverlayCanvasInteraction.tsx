@@ -38,6 +38,15 @@ export interface CanvasInteractionItem {
   zIndex: number
   movable: boolean
   resizable: boolean
+  /** 已选中但命中栈里有更高 item 时，让更高 item 优先（编辑器背景 frame 用）。 */
+  yieldToHigherItems?: boolean
+  /**
+   * 移动边界：
+   * - frame（默认）：可见操作框完整留在舞台内；
+   * - anchor：只约束写回锚点在 0~1，适合满舞台 OverlayNode 的偏移编辑；
+   * - none：不钳制。
+   */
+  movementBounds?: 'frame' | 'anchor' | 'none'
   /** 组件 CSS/内容派生的最小盒尺寸（归一舞台坐标）。 */
   minWidth?: number
   minHeight?: number
@@ -149,6 +158,22 @@ export function clampCanvasDelta(box: CanvasBox, dx: number, dy: number): Canvas
   }
 }
 
+export function constrainCanvasMove(
+  item: CanvasInteractionItem,
+  box: CanvasBox,
+  dx: number,
+  dy: number,
+): CanvasPoint {
+  if (item.movementBounds === 'none') return { x: dx, y: dy }
+  if (item.movementBounds === 'anchor') {
+    return {
+      x: clamp(item.position.x + dx, 0, 1) - item.position.x,
+      y: clamp(item.position.y + dy, 0, 1) - item.position.y,
+    }
+  }
+  return clampCanvasDelta(box, dx, dy)
+}
+
 export function resizeCanvasBox(
   box: CanvasBox,
   dx: number,
@@ -213,6 +238,7 @@ export function OverlayCanvasInteraction({
   renderFrame,
   frameVisibility = 'always',
   ariaLabel = '覆盖物画布',
+  spaceDragId,
 }: {
   stageRef: RefObject<HTMLElement | null>
   items: readonly CanvasInteractionItem[]
@@ -224,14 +250,18 @@ export function OverlayCanvasInteraction({
   renderFrame?: (item: CanvasInteractionItem, state: CanvasItemState) => ReactNode
   frameVisibility?: 'always' | 'active'
   ariaLabel?: string
+  /** 按住 Space 时忽略命中栈，直接拖动指定 item，并阻止浏览器页面滚动。 */
+  spaceDragId?: string
 }): JSX.Element {
   injectStyleOnce('overlay-canvas-interaction', CSS)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [resizingId, setResizingId] = useState<string | null>(null)
+  const [spacePressed, setSpacePressed] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; itemId: string } | null>(null)
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const draggingRef = useRef(false)
+  const spacePressedRef = useRef(false)
   const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 
   useLayoutEffect(() => {
@@ -281,7 +311,8 @@ export function OverlayCanvasInteraction({
       event.preventDefault()
       const pixels = event.shiftKey ? 10 : 1
       const box = resolveCanvasFrame(item.frame, geometry.size)
-      const delta = clampCanvasDelta(
+      const delta = constrainCanvasMove(
+        item,
         box,
         direction[0] * pixels / geometry.rect.width,
         direction[1] * pixels / geometry.rect.height,
@@ -295,16 +326,49 @@ export function OverlayCanvasInteraction({
     return () => window.removeEventListener('keydown', onKey)
   }, [itemMap, onMove, selectedId, stageRef])
 
+  useEffect(() => {
+    if (!spaceDragId) return
+    const down = (event: KeyboardEvent): void => {
+      if (event.code !== 'Space' || ignoresCanvasShortcut(event.target)) return
+      event.preventDefault()
+      if (spacePressedRef.current) return
+      spacePressedRef.current = true
+      setSpacePressed(true)
+    }
+    const up = (event: KeyboardEvent): void => {
+      if (event.code !== 'Space') return
+      if (!ignoresCanvasShortcut(event.target)) event.preventDefault()
+      spacePressedRef.current = false
+      setSpacePressed(false)
+    }
+    const blur = (): void => {
+      spacePressedRef.current = false
+      setSpacePressed(false)
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', blur)
+    }
+  }, [spaceDragId])
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     if (menu) setMenu(null)
-    const stack = hitStack(event.clientX, event.clientY)
+    const spaceItem = spacePressedRef.current && spaceDragId
+      ? itemMap.get(spaceDragId)
+      : undefined
+    const stack = spaceItem ? [spaceItem] : hitStack(event.clientX, event.clientY)
     if (stack.length === 0) {
       onSelect(null)
       return
     }
-    const selectedIndex = stack.findIndex((item) => item.id === selectedId)
-    const item = selectedIndex >= 0 ? stack[selectedIndex] : stack[0]
+    const selectedIndex = spaceItem ? -1 : stack.findIndex((item) => item.id === selectedId)
+    const selectedItem = selectedIndex >= 0 ? stack[selectedIndex] : undefined
+    const item = selectedItem && !selectedItem.yieldToHigherItems ? selectedItem : stack[0]
     if (!item) return
     onSelect(item.id)
     if (!item.movable) return
@@ -327,7 +391,8 @@ export function OverlayCanvasInteraction({
         draggingRef.current = true
         setDraggingId(item.id)
       }
-      const delta = clampCanvasDelta(
+      const delta = constrainCanvasMove(
+        item,
         startBox,
         clientDx / geometry.rect.width,
         clientDy / geometry.rect.height,
@@ -418,7 +483,7 @@ export function OverlayCanvasInteraction({
   return (
     <>
       <div
-        className={`oci-layer${hoveredId ? ' is-over-item' : ''}${draggingId ? ' is-dragging' : ''}${resizingId ? ' is-resizing' : ''}`}
+        className={`oci-layer${hoveredId || spacePressed ? ' is-over-item' : ''}${draggingId ? ' is-dragging' : ''}${resizingId ? ' is-resizing' : ''}`}
         role="application"
         aria-label={ariaLabel}
         tabIndex={0}

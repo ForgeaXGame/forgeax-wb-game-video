@@ -103,6 +103,30 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     if (!ov) return
     setOverlays({ ...allOverlays, [oid]: { ...ov, title } })
   }
+  const moveSchemeChildren = (
+    oid: string,
+    moveDelta: { x: number; y: number },
+  ) => {
+    const ov = allOverlays[oid]
+    if (!ov) return
+    if (moveDelta.x === 0 && moveDelta.y === 0) return
+    setOverlays({
+      ...allOverlays,
+      [oid]: {
+        ...ov,
+        children: ov.children.map((child) => ({
+          ...child,
+          layout: {
+            ...child.layout,
+            left: (typeof child.layout?.left === 'number' ? child.layout.left : 0) + moveDelta.x,
+            top: (typeof child.layout?.top === 'number' ? child.layout.top : 0) + moveDelta.y,
+            right: undefined,
+            bottom: undefined,
+          },
+        })),
+      },
+    })
+  }
   const removeScheme = (oid: string) => {
     const { [oid]: _drop, ...rest } = allOverlays
     setOverlays(rest)
@@ -247,6 +271,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   overlays={allOverlays}
                   entities={meta.entities ?? {}}
                   variables={meta.variables ?? {}}
+                  formulas={meta.formulas as Record<string, Formula> | undefined}
                   usageCount={overlayUsage[selOverlay] ?? 0}
                   locked={selLocked}
                   duplicateOf={dupMap.get(selOverlay) ?? []}
@@ -255,6 +280,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   onAddChild={(p, place) => addSchemeChild(selOverlay, p, place)}
                   onRemoveChild={(c) => removeSchemeChild(selOverlay, c)}
                   onPatchChild={(c, patch) => patchOverlayChild(selOverlay, c, patch)}
+                  onMoveCanvas={(moveDelta) => moveSchemeChildren(selOverlay, moveDelta)}
                   onReactionsChange={(reactions) =>
                     setOverlays({ ...allOverlays, [selOverlay]: { ...ov, reactions } })}
                 />

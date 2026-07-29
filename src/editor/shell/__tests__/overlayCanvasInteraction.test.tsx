@@ -5,6 +5,7 @@ import {
   canvasHitStack,
   clampCanvasDelta,
   OverlayCanvasInteraction,
+  constrainCanvasMove,
   resizeCanvasBox,
   resolveCanvasFrame,
   type CanvasBox,
@@ -92,6 +93,38 @@ describe('OverlayCanvasInteraction geometry', () => {
     )
     expect(delta.x).toBeCloseTo(0.05)
     expect(delta.y).toBeCloseTo(-0.1)
+  })
+
+  it('can constrain movement by the persisted anchor instead of a full-stage frame', () => {
+    const delta = constrainCanvasMove(
+      {
+        ...ITEM,
+        position: { x: 0, y: 0 },
+        frame: { kind: 'box', left: 0, top: 0, width: 1, height: 1 },
+        movementBounds: 'anchor',
+      },
+      { left: 0, top: 0, width: 1, height: 1 },
+      0.1,
+      0.2,
+    )
+    expect(delta).toEqual({ x: 0.1, y: 0.2 })
+  })
+
+  it('allows a mount anchor to become negative when its visible content moves to the top-left edge', () => {
+    const item: CanvasInteractionItem = {
+      ...ITEM,
+      position: { x: 0, y: 0 },
+      frame: { kind: 'box', left: 0.3, top: 0.4, width: 0.2, height: 0.2 },
+    }
+    const delta = constrainCanvasMove(
+      item,
+      { left: 0.3, top: 0.4, width: 0.2, height: 0.2 },
+      -0.5,
+      -0.6,
+    )
+    expect(delta).toEqual({ x: -0.3, y: -0.4 })
+    expect(item.position.x + delta.x).toBe(-0.3)
+    expect(item.position.y + delta.y).toBe(-0.4)
   })
 
   it('returns overlapping items from topmost to bottommost', () => {

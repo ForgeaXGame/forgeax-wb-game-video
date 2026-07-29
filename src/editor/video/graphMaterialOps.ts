@@ -77,7 +77,11 @@ import {
 } from '../../graph/edit/overlay-edit'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { STAGE_FILL_LAYOUT, layoutIsEffectivelyEmpty } from '../../runtime/schema/layout'
+import {
+  STAGE_FILL_LAYOUT,
+  layoutIsEffectivelyEmpty,
+  resolveMountLayoutForChildren,
+} from '../../runtime/schema/layout'
 
 /**
  * 新建/克隆子件 layout（通用，不按 component id 特判）：
@@ -1140,7 +1144,12 @@ export function mountOverlayGraph(
   if (!ui?.overlays?.[overlayId] && preset) {
     ui = { ...ui, overlays: { ...(ui?.overlays ?? {}), [overlayId]: structuredClone(preset) } }
   }
-  const next = [...mounts, { overlay: overlayId }]
+  const definition = ui?.overlays?.[overlayId]
+  const layout = resolveMountLayoutForChildren(
+    undefined,
+    definition?.children.map((child) => child.layout) ?? [],
+  )
+  const next = [...mounts, { overlay: overlayId, ...(layout ? { layout } : {}) }]
   return { ...scenario, ui, graph: updateNodeData(scenario.graph, node.id, { overlayNodes: next }) }
 }
 
@@ -1591,8 +1600,13 @@ export function patchOverlayMountLayoutGraph(
 ): GameScenario {
   const mount = (node.data.overlayNodes ?? []).find((item) => overlayMountId(item) === mountId)
   if (!mount) return scenario
+  const children = resolveMountChildren(scenario.ui?.overlays, mount)
+  const layout = resolveMountLayoutForChildren(
+    { ...mount.layout, ...patch },
+    children.map((child) => child.layout),
+  )
   return patchOverlayMount(scenario, node.id, mountId, {
-    layout: { ...mount.layout, ...patch },
+    layout,
   })
 }
 
