@@ -3,16 +3,18 @@
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的上浮淡出视觉。
  */
 import type { ReactNode } from 'react'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss, ensureBrushFont } from './skinRuntime'
 
-export const gainFloatTextComponent: ComponentDef = {
+export const GainFloatTextManifest: ComponentManifest = {
+  id: 'GainFloatText',
   label: '增益飘字',
   inputs: [{ key: 'text', label: '文本', valueType: 'string' }],
+  events: [],
 }
 
-export function GainFloatTextOverlay({ overlay }: OverlayProps): ReactNode {
+export function GainFloatText({ overlay }: OverlayProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
   const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '+50'

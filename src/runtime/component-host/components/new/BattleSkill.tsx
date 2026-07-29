@@ -4,10 +4,11 @@
  */
 import { useRef, useState } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const battleSkillBarComponent: ComponentDef = {
+export const BattleSkillManifest: ComponentManifest = {
+  id: 'BattleSkill',
   label: '战斗技能条',
   events: [
     { id: 'light', label: '轻攻击' },
@@ -18,7 +19,7 @@ export const battleSkillBarComponent: ComponentDef = {
   inputs: [],
 }
 
-export function BattleSkillLayer({ emit, preview }: OverlayProps) {
+export function BattleSkill({ emit, preview }: OverlayProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()

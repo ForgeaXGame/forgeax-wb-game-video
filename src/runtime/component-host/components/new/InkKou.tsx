@@ -4,16 +4,17 @@
  */
 import { useRef } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const inkKouComponent: ComponentDef = {
+export const InkKouManifest: ComponentManifest = {
+  id: 'InkKou',
   label: '叩击',
   events: [{ id: 'kou', label: '叩' }],
   inputs: [],
 }
 
-export function InkKouLayer({ emit, preview }: OverlayProps) {
+export function InkKou({ emit, preview }: OverlayProps) {
   injectCss('ink-kou-layer', KOU_CSS)
   ensureInkFilters()
   ensureBrushFont()

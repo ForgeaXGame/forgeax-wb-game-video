@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const battleEnemyHpBarComponent: ComponentDef = {
+export const BattleEnemyHpBarManifest: ComponentManifest = {
+  id: 'BattleEnemyHpBar',
   label: '敌方水墨血条',
   inputs: [
     { key: 'current', label: '当前血量', valueType: 'number' },
