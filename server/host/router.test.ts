@@ -52,7 +52,13 @@ function createContext(): WorkbenchExtensionContext {
     files: {
       async list(path) {
         expect(path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/])/)
-        return []
+        const prefix = `${path.replace(/\/+$/, '')}/`
+        return [...new Set(
+          [...state.keys()]
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => key.slice(prefix.length).split('/')[0]!)
+            .filter(Boolean),
+        )].sort()
       },
       async read(path) {
         expect(path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/])/)
@@ -213,6 +219,27 @@ describe('createWbGameVideoRouter', () => {
     expect(bodyJson(afterDelete)).toMatchObject({ data: { items: [] } })
   })
 
+  test('serializes browser media index mutations across concurrent router instances', async () => {
+    const context = createContext()
+    const upload = (name: string) => createWbGameVideoRouter(context).handle({
+      ...request('media/resources', {
+        method: 'POST',
+        headers: {
+          'content-type': ['image/png'],
+          'x-workbench-media-name': [name],
+          'x-workbench-media-type': ['image'],
+        },
+      }),
+      body: encoder.encode(name),
+    })
+
+    const responses = await Promise.all([upload('first.png'), upload('second.png')])
+    const listed = await createWbGameVideoRouter(context).handle(request('media/resources'))
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200])
+    expect(bodyJson(listed)).toMatchObject({ data: { total: 2 } })
+  })
+
   test('uploads a file larger than 1 MiB in bounded chunks and finalizes it across router instances', async () => {
     const context = createContext()
     const bytes = new Uint8Array(1024 * 1024 + 17)
@@ -366,6 +393,34 @@ describe('createWbGameVideoRouter', () => {
     expect(invented.status).toBe(404)
   })
 
+  test('tombstones and rejects expired upload sessions', async () => {
+    const context = createContext()
+    const preparedResponse = await createWbGameVideoRouter(context).handle(uploadPrepareRequest(1))
+    const prepared = (bodyJson(preparedResponse) as {
+      data: { upload_token: string; upload: { url: string; chunk_count: number } }
+    }).data
+    const sessionPath = `assets/.wb-game-video-uploads/${prepared.upload_token}/session.json`
+    const sessionBytes = await context.files.read(sessionPath)
+    const session = JSON.parse(decoder.decode(sessionBytes!))
+    await context.files.write(sessionPath, encoder.encode(JSON.stringify({
+      ...session,
+      expiresAt: Date.now() - 1,
+    })))
+
+    const response = await createWbGameVideoRouter(context).handle({
+      ...request(prepared.upload.url, {
+        method: 'PUT',
+        query: { chunk_index: ['0'], chunk_count: [String(prepared.upload.chunk_count)] },
+        headers: { 'content-type': ['image/png'] },
+      }),
+      body: new Uint8Array([1]),
+    })
+    const tombstone = JSON.parse(decoder.decode((await context.files.read(sessionPath))!))
+
+    expect(response.status).toBe(409)
+    expect(tombstone).toMatchObject({ status: 'expired' })
+  })
+
   test.each([
     [{ bytes: 20 * 1024 * 1024 + 1 }, 'image size above its 20 MiB limit'],
     [{ file_name: '../escape.png' }, 'unsafe file name'],
@@ -474,6 +529,110 @@ describe('createWbGameVideoRouter', () => {
     expect(removed).toMatchObject({ status: 204, body: new Uint8Array() })
   })
 
+  test('deduplicates repeated prepared uploads in a batch and caps page_size at 100', async () => {
+    const context = createContext()
+    const preparedResponse = await createWbGameVideoRouter(context).handle(uploadPrepareRequest(1))
+    const prepared = (bodyJson(preparedResponse) as {
+      data: { upload: { url: string; chunk_count: number }; object_url: string }
+    }).data
+    await createWbGameVideoRouter(context).handle({
+      ...request(prepared.upload.url, {
+        method: 'PUT',
+        query: { chunk_index: ['0'], chunk_count: [String(prepared.upload.chunk_count)] },
+        headers: { 'content-type': ['image/png'] },
+      }),
+      body: new Uint8Array([1]),
+    })
+    const batch = await createWbGameVideoRouter(context).handle(request('media/resources/batch', {
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      json: {
+        game_id: 'router-game',
+        resources: [
+          { media_type: 'image', url: prepared.object_url, name: 'first' },
+          { media_type: 'image', url: prepared.object_url, name: 'duplicate' },
+        ],
+      },
+    }))
+    const oversizedPage = await createWbGameVideoRouter(context).handle(request('media/resources', {
+      query: { page_size: ['101'] },
+    }))
+
+    expect(bodyJson(batch)).toMatchObject({
+      data: { created_count: 1, skipped_count: 1, items: [expect.any(Object)] },
+    })
+    expect(oversizedPage.status).toBe(400)
+  })
+
+  test('preserves the logical resource id for an authorized replacement', async () => {
+    const context = createContext()
+    const original = await createWbGameVideoRouter(context).handle({
+      ...request('media/resources', {
+        method: 'POST',
+        headers: {
+          'content-type': ['image/png'],
+          'x-workbench-media-name': ['original.png'],
+          'x-workbench-media-type': ['image'],
+        },
+      }),
+      body: encoder.encode('old'),
+    })
+    const id = (bodyJson(original) as { data: { resource_id: string } }).data.resource_id
+    const preparedResponse = await createWbGameVideoRouter(context).handle(uploadPrepareRequest(3, {
+      file_name: 'replacement.png',
+      client_resource_id: id,
+      replace_existing: true,
+    }))
+    const prepared = (bodyJson(preparedResponse) as {
+      data: { upload: { url: string; chunk_count: number }; object_url: string }
+    }).data
+    await createWbGameVideoRouter(context).handle({
+      ...request(prepared.upload.url, {
+        method: 'PUT',
+        query: { chunk_index: ['0'], chunk_count: [String(prepared.upload.chunk_count)] },
+        headers: { 'content-type': ['image/png'] },
+      }),
+      body: encoder.encode('new'),
+    })
+    const replaced = await createWbGameVideoRouter(context).handle(request('media/resources', {
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      json: {
+        game_id: 'router-game',
+        media_type: 'image',
+        url: prepared.object_url,
+        name: 'replacement',
+      },
+    }))
+    const listed = await createWbGameVideoRouter(context).handle(request('media/resources'))
+    const content = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}/content`),
+    )
+    const missing = await createWbGameVideoRouter(context).handle(uploadPrepareRequest(1, {
+      client_resource_id: 'missing',
+      replace_existing: true,
+    }))
+
+    expect(bodyJson(replaced)).toMatchObject({ data: { resource_id: id } })
+    expect(bodyJson(listed)).toMatchObject({ data: { total: 1 } })
+    expect(decoder.decode(content.body)).toBe('new')
+    expect(missing.status).toBe(400)
+  })
+
+  test('caps active upload sessions and their declared per-game size', async () => {
+    const context = createContext()
+    const statuses: number[] = []
+    for (let index = 0; index < 17; index += 1) {
+      const response = await createWbGameVideoRouter(context).handle(
+        uploadPrepareRequest(1, { file_name: `upload-${index}.png` }),
+      )
+      statuses.push(response.status)
+    }
+
+    expect(statuses.slice(0, 16)).toEqual(new Array(16).fill(200))
+    expect(statuses[16]).toBe(400)
+  })
+
   test('serves a generated registry asset through its trusted media reference', async () => {
     const context = createContext()
     const hosted = await context.media.put(context.gameId, {
@@ -495,6 +654,31 @@ describe('createWbGameVideoRouter', () => {
     expect(response.status).toBe(200)
     expect(response.headers?.['content-type']).toBe('image/png')
     expect(decoder.decode(response.body)).toBe('generated')
+  })
+
+  test('rejects a forged generated registry media reference', async () => {
+    const context = createContext()
+    const hosted = await context.media.put(context.gameId, {
+      filename: 'private.png', contentType: 'image/png', bytes: encoder.encode('private'),
+    })
+    await context.files.write('assets/manifest.json', encoder.encode(JSON.stringify({
+      version: 2,
+      assets: [{
+        id: 'forged', kind: 'image', productionType: 'shot_image', status: 'ready',
+        provider: { kind: 'local', ref: hosted.id },
+        meta: {
+          hostMedia: {
+            provenance: 'workbench-media-capability',
+            assetId: 'different-id',
+          },
+        },
+        createdAt: 1, updatedAt: 1,
+      }],
+    })))
+
+    const response = await createWbGameVideoRouter(context).handle(request('media/assets/forged'))
+
+    expect(response.status).toBe(404)
   })
 
   test('preserves raw request headers and binary body semantics for bundled ranges', async () => {

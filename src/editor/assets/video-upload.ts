@@ -417,13 +417,19 @@ function validateUploadInstruction(
   if ((instruction as { method?: unknown }).method !== 'PUT') {
     throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
   }
-  let url: URL
+  const safeRelative = (
+    instruction.url.startsWith('/')
+    && !instruction.url.startsWith('//')
+    && !/[\\\r\n\0]/.test(instruction.url)
+  )
+  let safeAbsolute = false
   try {
-    url = new URL(instruction.url)
+    const url = new URL(instruction.url)
+    safeAbsolute = url.protocol === 'http:' || url.protocol === 'https:'
   } catch {
-    throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
+    // A handshake endpoint may intentionally be root-relative.
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  if (!safeRelative && !safeAbsolute) {
     throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
   }
   if (
@@ -530,12 +536,19 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
         }
 
         try {
-          const chunkUrl = new URL(instruction.url)
+          const relativeUrl = instruction.url.startsWith('/')
+          const chunkUrl = new URL(
+            instruction.url,
+            relativeUrl ? globalThis.location.origin : undefined,
+          )
           if (instruction.chunk_size !== undefined) {
             chunkUrl.searchParams.set('chunk_index', String(chunkIndex))
             chunkUrl.searchParams.set('chunk_count', String(chunkCount))
           }
-          const transportUrl = resolveUploadTransportUrl(chunkUrl.toString())
+          const serializedChunkUrl = relativeUrl
+            ? `${chunkUrl.pathname}${chunkUrl.search}${chunkUrl.hash}`
+            : chunkUrl.toString()
+          const transportUrl = resolveUploadTransportUrl(serializedChunkUrl)
           xhr.open(instruction.method, transportUrl, true)
           for (const [key, value] of Object.entries(headers)) {
             xhr.setRequestHeader(key, value)

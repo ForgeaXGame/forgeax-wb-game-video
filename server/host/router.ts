@@ -215,8 +215,8 @@ export function createWbGameVideoRouter(
           const items = await browserMedia.list(type, query.type)
           const page = query.page === undefined ? 1 : Number(query.page)
           const pageSize = query.page_size === undefined ? Math.max(1, items.length) : Number(query.page_size)
-          if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1) {
-            throw new WbServiceInputError('page and page_size must be positive integers')
+          if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+            throw new WbServiceInputError('page must be positive and page_size must be between 1 and 100')
           }
           const offset = (page - 1) * pageSize
           return mediaResponse({ items: items.slice(offset, offset + pageSize), total: items.length, page, page_size: pageSize })

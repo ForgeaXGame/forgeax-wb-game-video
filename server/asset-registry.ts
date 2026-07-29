@@ -321,6 +321,22 @@ async function writeHostManifest(
   )
 }
 
+function trustedHostMediaId(
+  normalized: MediaAsset,
+  trustedMedia: ReadonlyMap<string, HostMediaAsset>,
+): string | undefined {
+  const hostMedia = isRecord(normalized.meta?.hostMedia)
+    ? normalized.meta.hostMedia
+    : undefined
+  const hostAssetId = (
+    hostMedia?.provenance === 'workbench-media-capability'
+    && typeof hostMedia.assetId === 'string'
+    && normalized.provider?.kind === 'local'
+    && normalized.provider.ref === hostMedia.assetId
+  ) ? hostMedia.assetId : undefined
+  return hostAssetId && trustedMedia.has(hostAssetId) ? hostAssetId : undefined
+}
+
 function publicHostAsset(
   value: unknown,
   trustedMedia: ReadonlyMap<string, HostMediaAsset>,
@@ -328,16 +344,8 @@ function publicHostAsset(
   const normalized = normalizeMediaAsset(value)
   if (!normalized) return null
   const { label, prompt, error, meta } = normalized
-  const hostMedia = isRecord(meta?.hostMedia) ? meta.hostMedia : undefined
-  const hostAssetId = (
-    hostMedia?.provenance === 'workbench-media-capability'
-    && typeof hostMedia.assetId === 'string'
-    && normalized.provider?.kind === 'local'
-    && normalized.provider.ref === hostMedia.assetId
-  ) ? hostMedia.assetId : undefined
-  const authoritativeMedia = hostAssetId
-    ? trustedMedia.get(hostAssetId)
-    : undefined
+  const hostAssetId = trustedHostMediaId(normalized, trustedMedia)
+  const authoritativeMedia = hostAssetId ? trustedMedia.get(hostAssetId) : undefined
   const trustedLocator = (
     authoritativeMedia
     && authoritativeMedia.url === normalized.url
@@ -614,7 +622,8 @@ export function createHostAssetRegistry(
       const asset = await getRaw(id)
       if (!asset) return null
       if (asset.provider?.ref) {
-        return context.media.read(context.gameId, asset.provider.ref)
+        const trustedId = trustedHostMediaId(asset, await trustedMedia())
+        return trustedId ? context.media.read(context.gameId, trustedId) : null
       }
       if (!asset.file) return null
       const relativePath = assertBoundedRelativePath(`assets/${asset.file}`)

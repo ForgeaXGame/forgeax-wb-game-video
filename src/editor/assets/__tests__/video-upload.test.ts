@@ -632,4 +632,21 @@ describe('default XHR transport header safety', () => {
       7,
     ])
   })
+
+  it('accepts a safe root-relative handshake upload endpoint', async () => {
+    const file = makeMp4File()
+    const upload = createDefaultXhrUploadTransport().put(file, {
+      ...preparedResponse().upload,
+      url: '/extension/runtime/media/uploads/0123456789abcdef0123456789abcdef',
+    })
+    const xhr = xhrInstances[0]!
+
+    expect(xhr.open).toHaveBeenCalledWith(
+      'PUT',
+      '/extension/runtime/media/uploads/0123456789abcdef0123456789abcdef',
+      true,
+    )
+    xhr.onload?.()
+    await upload
+  })
 })
