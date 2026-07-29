@@ -24,6 +24,7 @@ export function NodeActionsEditor({
   overlays,
   pickers,
   allowAdvance = true,
+  allowSpawn = true,
   onChange,
 }: {
   actions: NodeAction[]
@@ -32,6 +33,7 @@ export function NodeActionsEditor({
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
   allowAdvance?: boolean
+  allowSpawn?: boolean
   onChange: (next: NodeAction[]) => void
 }): JSX.Element {
   const patchAt = (i: number, action: NodeAction) =>
@@ -73,7 +75,9 @@ export function NodeActionsEditor({
       ))}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => onChange([...actions, { kind: 'effect', effects: [createDefaultEffect('attr', pickers?.entities, pickers?.variables)] }])}>＋ 效果</button>
-        <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
+        {allowSpawn ? (
+          <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
+        ) : null}
         {allowAdvance ? <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button> : null}
       </div>
     </div>

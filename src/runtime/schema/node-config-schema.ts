@@ -134,6 +134,19 @@ export interface Reaction {
   do: NodeAction[]
 }
 
+/**
+ * 「生命周期效果」子集 —— 相位由**节点演出进程**决定（进入 / 播到某刻 / 离开前 / 收尾），
+ * 区别于由外部信号驱动的 event / watch / shown / hidden。
+ *
+ * 编辑器把这一子集作为一个整体呈现（时机统一表达为「播到 ms」），并按**子集内序号**定位某一条
+ * ——不能用 `reactions` 的绝对下标：检视器回写时会把子集排到数组前面（`[...life, ...rest]`），
+ * 绝对下标会随之漂移。作者态与时间轴标记共用这个序号，才能双向对得上。
+ */
+export function isLifecycleReaction(r: Reaction): boolean {
+  const t = r.when.type
+  return t === 'enter' || t === 'at' || t === 'exit' || t === 'complete'
+}
+
 /** Overlay 聚合后的事件（编辑器下拉项）。 */
 export interface OverlayEventRef {
   eventId: string
@@ -249,6 +262,18 @@ export interface OverlayNode {
 /** 挂载键：显式 id 优先，否则 overlay 目录 id。 */
 export function overlayMountId(mount: OverlayNode): string {
   return mount.id ?? mount.overlay
+}
+
+/**
+ * 新建一份 overlay 挂载。同模板首份沿用 overlay id；重复挂载追加稳定序号，确保运行态 child id、
+ * React key、时间轴与事件命名空间都按实例隔离。
+ */
+export function createOverlayMount(mounts: readonly OverlayNode[], overlayId: string): OverlayNode {
+  const used = new Set(mounts.map(overlayMountId))
+  if (!used.has(overlayId)) return { overlay: overlayId }
+  let ordinal = 2
+  while (used.has(`${overlayId}__${ordinal}`)) ordinal += 1
+  return { id: `${overlayId}__${ordinal}`, overlay: overlayId }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

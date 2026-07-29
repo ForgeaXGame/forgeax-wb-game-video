@@ -2,13 +2,13 @@
  * NodeInspector —— 节点配置面板。选中画布节点后编辑其 `node.data`、overlay reactions 与出边。
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
-import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { createOverlayMount, overlayMountId } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents, resolveEventReactionDo } from '../../runtime/schema/overlay-events'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { deriveOutputs, getComponentManifest } from '../../runtime/registry/component-registry'
@@ -273,33 +273,42 @@ function routeMountEventToNode(
   return updateNodeData(g, nodeId, { overlayNodes: mounts, reactions: dataReactions })
 }
 
-type LifecyclePhase = 'enter' | 'at' | 'exit' | 'complete'
-const LIFECYCLE_PHASES: LifecyclePhase[] = ['enter', 'at', 'exit', 'complete']
-const PHASE_LABEL: Record<LifecyclePhase, string> = {
-  enter: '进入时',
-  at: '播到 ms',
-  exit: '离开前',
-  complete: '收尾/推进',
-}
-
+/** 历史生命周期相位仍可读取；作者侧新增和编辑统一落成精确的 `at(ms)`。 */
 function isLifecycle(r: Reaction): boolean {
   return r.when.type === 'enter' || r.when.type === 'at' || r.when.type === 'exit' || r.when.type === 'complete'
 }
 
-/**
- * node.data.reactions 的**生命周期效果**编辑：按相位（enter/at/exit/complete）施加 effects。
- * 只改状态，不决定走向（走向由「出边」负责）。complete 可带 if 条件（首个成立者施加）。
- */
+function lifecycleAtMs(r: Reaction, durationMs?: number): number {
+  if (r.when.type === 'at') return r.when.ms
+  if (r.when.type === 'enter') return 0
+  return Math.max(0, Math.round(durationMs ?? 0))
+}
+
+function legacyPhaseHint(r: Reaction): string | null {
+  if (r.when.type === 'at') return null
+  if (r.when.type === 'complete') {
+    return r.when.if
+      ? '旧「收尾」相位 · 带 if 条件（仍生效）：改这条会丢弃条件并落成播到 ms'
+      : '旧「收尾」相位（仍生效，作 if 分支的兜底）：改这条即落成播到 ms'
+  }
+  if (r.when.type === 'exit') return '旧「离开前」相位（任何离开路径都触发）：改这条即落成播到 ms'
+  return '旧「进入时」相位：改这条即落成播到 ms'
+}
+
 function LifecycleReactionsEditor({
   reactions,
-  nodeIds,
+  durationMs,
+  focusedIndex,
+  onFocusIndex,
   pickers,
   entities,
   variables,
   onChange,
 }: {
   reactions: Reaction[] | undefined
-  nodeIds: string[]
+  durationMs?: number
+  focusedIndex?: number | null
+  onFocusIndex?: (lifecycleIndex: number | null) => void
   pickers?: EditorPickerCtx
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
@@ -307,62 +316,80 @@ function LifecycleReactionsEditor({
 }): JSX.Element {
   const life = (reactions ?? []).filter(isLifecycle)
   const rest = (reactions ?? []).filter((r) => !isLifecycle(r))
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([])
   const commit = (next: Reaction[]) => {
     const merged = [...next, ...rest]
     onChange(merged.length ? merged : undefined)
   }
   const patchAt = (i: number, r: Reaction) => commit(life.map((c, j) => (j === i ? r : c)))
-  const setPhase = (i: number, phase: LifecyclePhase) => {
-    const when: Reaction['when'] =
-      phase === 'at' ? { type: 'at', ms: 0 } : phase === 'complete' ? { type: 'complete' } : { type: phase }
-    patchAt(i, { ...life[i]!, when })
+  const removeAt = (i: number) => {
+    if (focusedIndex === i) onFocusIndex?.(null)
+    else if (focusedIndex != null && focusedIndex > i) onFocusIndex?.(focusedIndex - 1)
+    commit(life.filter((_, j) => j !== i))
   }
+
+  useEffect(() => {
+    if (focusedIndex == null) return
+    itemRefs.current[focusedIndex]?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusedIndex])
+
+  useEffect(() => {
+    if (focusedIndex != null && focusedIndex >= life.length) onFocusIndex?.(null)
+  }, [focusedIndex, life.length, onFocusIndex])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-      {life.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6 }}>无生命周期效果</div> : null}
+      {life.length === 0 ? <div style={{ fontSize: 11, opacity: 0.6 }}>无结算</div> : null}
       {life.map((r, i) => {
         const effects = r.do.find((a): a is Extract<NodeAction, { kind: 'effect' }> => a.kind === 'effect')
-        const phase = r.when.type as LifecyclePhase
+        const atMs = lifecycleAtMs(r, durationMs)
+        const legacy = legacyPhaseHint(r)
+        const focused = focusedIndex === i
         return (
-          <div key={i} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: 6 }}>
+          <div
+            key={i}
+            ref={(el) => { itemRefs.current[i] = el }}
+            data-lifecycle-effect-index={i}
+            data-selected={focused ? 'true' : 'false'}
+            onPointerDown={() => onFocusIndex?.(i)}
+            style={{
+              border: `1px solid ${focused ? '#5ad4c0' : '#2a2a2a'}`,
+              borderRadius: 6,
+              padding: 6,
+              background: focused ? 'rgba(90,212,192,.12)' : undefined,
+              boxShadow: focused ? '0 0 0 2px rgba(90,212,192,.38), 0 0 14px rgba(90,212,192,.12)' : undefined,
+              transition: 'border-color 120ms ease, background 120ms ease, box-shadow 120ms ease',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
-              <select value={phase} onChange={(e) => setPhase(i, e.target.value as LifecyclePhase)} style={{ fontSize: 12 }}>
-                {LIFECYCLE_PHASES.map((ph) => <option key={ph} value={ph}>{PHASE_LABEL[ph]}</option>)}
-              </select>
-              <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => commit(life.filter((_, j) => j !== i))}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 12, opacity: 0.8, flexShrink: 0 }}>播到</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={atMs}
+                  title={durationMs ? `本节点演出 ${durationMs}ms` : undefined}
+                  onChange={(e) => patchAt(i, { ...r, when: { type: 'at', ms: Math.max(0, Number(e.target.value) || 0) } })}
+                  style={{ width: 88, minWidth: 0 }}
+                />
+                <span style={{ fontSize: 11, opacity: 0.65, flexShrink: 0 }}>ms</span>
+              </span>
+              <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>
                 移除
               </button>
             </div>
-            {r.when.type === 'at' ? row('ms', (
-              <input
-                type="number"
-                value={r.when.ms}
-                onChange={(e) => patchAt(i, { ...r, when: { type: 'at', ms: Number(e.target.value) || 0 } })}
-                style={{ flex: 1 }}
-              />
-            )) : null}
-            {r.when.type === 'complete' ? (
-              <>
-                <div style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 2px' }}>if 条件（留空 = 无条件）</div>
-                <ConditionEditor
-                  value={r.when.if}
-                  nodeIds={nodeIds}
-                  pickers={pickers}
-                  entities={entities}
-                  variables={variables}
-                  onChange={(condition) =>
-                    patchAt(i, { ...r, when: { type: 'complete', ...(condition ? { if: condition as GraphCondition } : {}) } })
-                  }
-                />
-              </>
-            ) : null}
+            {legacy ? <div style={{ fontSize: 10, color: '#e8b339', marginBottom: 4 }}>{legacy}</div> : null}
             <div style={{ fontSize: 11, opacity: 0.7, margin: '6px 0 2px' }}>effects</div>
             <EffectsEditor
               value={effects?.effects}
               pickers={pickers}
               entities={entities}
               variables={variables}
-              onChange={(effs) => patchAt(i, { ...r, do: effs?.length ? [{ kind: 'effect', effects: effs }] : [] })}
+              onChange={(effs) => patchAt(i, {
+                when: { type: 'at', ms: atMs },
+                do: effs?.length ? [{ kind: 'effect', effects: effs }] : [],
+              })}
             />
           </div>
         )
@@ -370,11 +397,11 @@ function LifecycleReactionsEditor({
       <button
         type="button"
         onClick={() => commit([...life, {
-          when: { type: 'enter' },
+          when: { type: 'at', ms: 0 },
           do: [{ kind: 'effect', effects: [createDefaultEffect('attr', entities ?? pickers?.entities, variables ?? pickers?.variables)] }],
         }])}
       >
-        ＋ 生命周期效果
+        ＋ 结算
       </button>
     </div>
   )
@@ -441,6 +468,7 @@ function OverlayReactionsEditor({
         spawnOptions={spawnOptions}
         overlays={overlays}
         pickers={catalog}
+        allowSpawn={false}
         onMountActionsChange={(event, actions) => onChange(upsertEventReaction(reactions, event, actions))}
         renderRoute={(event) => {
           const actions = eventReactionDo(reactions, event)
@@ -889,7 +917,9 @@ export function NodeInspector({
   variables,
   formulas,
   focusedMountId,
+  focusedLifecycleIndex,
   onFocusMount,
+  onFocusLifecycle,
   previewOpen,
   onTogglePreview,
   onChange,
@@ -923,8 +953,12 @@ export function NodeInspector({
    * 空 = 平铺展开全部挂载（默认）。
    */
   focusedMountId?: string | null
+  /** 预览台时间轴当前选中的结算（子集序号）；本区域据此高亮对应配置块。 */
+  focusedLifecycleIndex?: number | null
   /** 点击某挂载卡片标题时上抛（与预览台双向联动）；再次点同一张 = 取消聚焦（回到全展开）。 */
   onFocusMount?: (mountId: string | null) => void
+  /** 点击某条结算时上抛（与时间轴菱形双向联动）。 */
+  onFocusLifecycle?: (lifecycleIndex: number | null) => void
   /** 宿主左侧预览区当前是否展开（驱动头部弧形把手的朝向与文案）。 */
   previewOpen?: boolean
   /** 传了才渲染头部弧形把手：切换宿主左侧预览区的展开/收起。 */
@@ -1271,14 +1305,13 @@ export function NodeInspector({
       {/* 覆盖物挂载 + reactions（每挂载一份） */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-          <b>覆盖物事件</b>
+          <b>界面</b>
           <select
             value=""
             onChange={(e) => {
               const oid = e.target.value
               if (!oid) return
               const mounts = [...(d.overlayNodes ?? [])]
-              if (mounts.some((m) => overlayMountId(m) === oid || m.overlay === oid)) return
               // 目录缺失时先写入固化原型，再挂载（否则聚合事件/预览会空）。
               if (!overlays?.[oid]) {
                 const preset = PRESET_SCHEME_BY_ID[oid]
@@ -1289,21 +1322,20 @@ export function NodeInspector({
                 undefined,
                 definition?.children.map((child) => child.layout) ?? [],
               )
-              mounts.push({ overlay: oid, ...(layout ? { layout } : {}) })
+              const created = createOverlayMount(mounts, oid)
+              mounts.push({ ...created, ...(layout ? { layout } : {}) })
               patchData({ overlayNodes: mounts })
             }}
             title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）；含内置画廊与 nodia 界面方案"
             style={{ maxWidth: 140, fontSize: 11 }}
           >
-            <option value="">＋ 挂载…</option>
+            <option value="">＋ 添加界面</option>
             {schemeOverlayIds.map((id) => (
               <option key={id} value={id}>{overlayLabel(id)}</option>
             ))}
           </select>
         </div>
-        {(d.overlayNodes ?? []).length === 0 ? (
-          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>尚未挂载；可上拉选择或在视频/界面编辑器添加</div>
-        ) : (
+        {(d.overlayNodes ?? []).length > 0 ? (
           (d.overlayNodes ?? []).map((mount, i) => {
             const mid = overlayMountId(mount)
             const multi = (d.overlayNodes?.length ?? 0) > 1
@@ -1456,18 +1488,17 @@ export function NodeInspector({
               </HoverCard>
             )
           })
-        )}
+        ) : null}
       </div>
 
-      {/* 生命周期效果：node.data.reactions（enter/at/exit/complete，只改状态；走向见出边） */}
+      {/* node.data.reactions 中的时刻副作用，作者界面统一称「结算」。 */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
-        <b>生命周期效果</b>
-        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
-          进入 / 播到某 ms / 离开 / 收尾时施加副作用；去向由下方「出边」决定。
-        </div>
+        <b>结算</b>
         <LifecycleReactionsEditor
           reactions={d.reactions}
-          nodeIds={nodeIds}
+          durationMs={d.durationMs}
+          focusedIndex={focusedLifecycleIndex}
+          onFocusIndex={onFocusLifecycle}
           pickers={pickers}
           entities={entities}
           variables={variables}

@@ -36,15 +36,15 @@ import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
-import { resolveGraphTextCss } from '../text/text-css'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
-import { materialClass, type MaterialItem } from '../video/materialTimelineShared'
+import { type MaterialItem, type TimelinePointMarker } from '../video/materialTimelineShared'
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
-import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { isLifecycleReaction, overlayMountId, type NodeAction } from '../../runtime/schema/node-config-schema'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { findMountOwningChild } from '../../graph/edit/overlay-edit'
+import { setLifecycleReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
   OverlayCanvasInteraction,
@@ -52,7 +52,6 @@ import {
   type CanvasInteractionItem,
 } from './OverlayCanvasInteraction'
 import {
-  activePreviewOverlaysFromNode,
   collectMountItemsFromNode,
   deleteMaterialGraph,
   mountOverlayGraph,
@@ -125,9 +124,6 @@ const NPS_CSS = `
 .nps-more-pop button:hover { background: var(--gc-accent-soft); border-color: var(--gc-accent-line); }
 .nps-more-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 8px; }
 .nps-root .mtl-root { flex: none; }
-/* 有真实皮肤的挂载物：手柄只做透明热区（不渲染默认 ring/label），选中在贴纸外围画矩形虚线框
-   示意该 overlay 的区域，真实贴纸由皮肤层呈现——「挂载物长啥样就是啥样」。 */
-.nps-root .gc-preview-overlay { pointer-events:none; }
 `
 
 const DEFAULT_MOUNT_W = 0.25
@@ -151,13 +147,29 @@ function fmtTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function effectsBrief(actions: NodeAction[]): string {
+  const effects = actions.flatMap((action) => (action.kind === 'effect' ? action.effects : []))
+  const spawns = actions.filter((action) => action.kind === 'spawn').length
+  const parts = effects.slice(0, 2).map((effect) => {
+    if (effect.kind === 'attr') return `${effect.entityId}.${effect.attr} ${effect.op} ${String(effect.value)}`
+    if (effect.kind === 'var') return `${effect.varId} ${effect.op} ${String(effect.value)}`
+    if (effect.kind === 'flag') return `${effect.varId} = ${effect.value}`
+    return `${effect.itemId} ${effect.op === 'give' ? '+' : '-'}${effect.count}`
+  })
+  if (effects.length > 2) parts.push(`等 ${effects.length} 项`)
+  if (spawns > 0) parts.push(`刷出 ${spawns} 个瞬态组件`)
+  return parts.length ? parts.join(' · ') : '未配置效果'
+}
+
 export function NodePreviewStage({
   scenario,
   node,
   game,
   focusedMountId,
+  focusedLifecycleIndex,
   onEditScenario,
   onFocusMount,
+  onFocusLifecycle,
 }: {
   /** 读投影场景：canvasGraph（主图或下钻包图）+ ui.overlays + entities/variables。 */
   scenario: GameScenario
@@ -166,10 +178,14 @@ export function NodePreviewStage({
   game: string
   /** 右侧表单当前聚焦的挂载 id（预览据此高亮对应叠层/时间轴条）。 */
   focusedMountId?: string | null
+  /** 右侧表单当前聚焦的结算（生命周期子集序号）；时间轴据此高亮对应菱形。 */
+  focusedLifecycleIndex?: number | null
   /** 写回通道：主图走 setScenario，子蓝图下钻由上层分流到包图（见 GraphStudio）。 */
   onEditScenario: (fn: (s: GameScenario, n: GameNode) => GameScenario) => void
   /** 选中某挂载覆盖物时上抛（右侧表单据此聚焦该卡片；传 null = 清空聚焦）。 */
   onFocusMount?: (mountId: string | null) => void
+  /** 点中某结算菱形时上抛，让右侧对应配置块高亮。 */
+  onFocusLifecycle?: (lifecycleIndex: number | null) => void
 }): JSX.Element {
   bootEditorSkins()
   injectStyleOnce('graph-catalog', CATALOG_CSS)
@@ -213,10 +229,6 @@ export function NodePreviewStage({
   const materials = useMemo(() => collectMountItemsFromNode(scenario, node, maxMs), [scenario, node, maxMs])
   const previewSkinChildren = useMemo(
     () => previewSkinChildrenInWindow(scenario, node, playheadMs, maxMs),
-    [scenario, node, playheadMs, maxMs],
-  )
-  const previewOverlays = useMemo(
-    () => activePreviewOverlaysFromNode(scenario, node, playheadMs, maxMs),
     [scenario, node, playheadMs, maxMs],
   )
   const previewMountGroups = useMemo(() => {
@@ -266,7 +278,6 @@ export function NodePreviewStage({
       condition: { state: st, visited: new Set<string>() },
     }
   }, [scenario])
-  const skinnedPreviewIds = useMemo(() => new Set(previewSkinChildren.map((c) => c.id)), [previewSkinChildren])
   const previewClockValue = useMemo(() => ({ playing: isVideoPlaying, playheadMs }), [isVideoPlaying, playheadMs])
 
   // 「添加控件」= 覆盖物挂载入口：候选与界面 tab 同一份（自定义覆盖物 + 基础覆盖物，打平；
@@ -359,6 +370,42 @@ export function NodePreviewStage({
     }
     onEditScenario((s, n) => deleteMaterialGraph(s, n, item))
     if (selectedMountId === item.id) focusMount(null)
+  }
+
+  const pointMarkers = useMemo((): TimelinePointMarker[] => {
+    const out: TimelinePointMarker[] = []
+    const settlement = node.data.routingSettlement
+    if (settlement?.type === 'at') {
+      out.push({ id: 'settlement', ms: settlement.ms, kind: 'settlement', label: '结算时刻 · 延迟事件边在此刻提交并离开节点' })
+    }
+    ;(node.data.reactions ?? []).filter(isLifecycleReaction).forEach((reaction, lifecycleIndex) => {
+      const ms = reaction.when.type === 'at' ? reaction.when.ms : reaction.when.type === 'enter' ? 0 : null
+      if (ms == null) return
+      out.push({ id: `life:${lifecycleIndex}`, ms, kind: 'lifecycle', label: `结算 · ${effectsBrief(reaction.do)}` })
+    })
+    return out
+  }, [node.data.routingSettlement, node.data.reactions])
+
+  const lifecycleIndexOf = (id: string): number | null => {
+    if (!id.startsWith('life:')) return null
+    const index = Number(id.slice('life:'.length))
+    return Number.isInteger(index) ? index : null
+  }
+
+  const movePointMarker = (id: string, ms: number): void => {
+    if (id === 'settlement') {
+      onEditScenario((scenarioToEdit, nodeToEdit) => ({
+        ...scenarioToEdit,
+        graph: setRoutingSettlementMs(scenarioToEdit.graph, nodeToEdit.id, ms),
+      }))
+      return
+    }
+    const lifecycleIndex = lifecycleIndexOf(id)
+    if (lifecycleIndex == null) return
+    onEditScenario((scenarioToEdit, nodeToEdit) => ({
+      ...scenarioToEdit,
+      graph: setLifecycleReactionMs(scenarioToEdit.graph, nodeToEdit.id, lifecycleIndex, ms),
+    }))
   }
   /** 「添加控件」点击 / 拖入：挂载一张覆盖物（可带落点 ms → 整体平移到该时刻）。 */
   function mountOverlay(overlayId: string, atMs?: number): void {
@@ -543,35 +590,6 @@ export function NodePreviewStage({
                   </div>
                 </PreviewClockProvider>
               ) : null}
-              {previewOverlays.map((o) => {
-                const elId = o.target.kind === 'element' || o.target.kind === 'qteCue' || o.target.kind === 'mount'
-                  ? o.target.elementId
-                  : ''
-                const ownMount = elId ? findMountOwningChild(scenario, node, elId) : undefined
-                const selected = !!ownMount && overlayMountId(ownMount) === selectedOverlayId
-                const skinned = !!elId && skinnedPreviewIds.has(elId)
-                return (
-                    <div
-                      key={o.id}
-                      aria-hidden
-                      className={`gc-preview-overlay ${materialClass(o.kind)}${selected ? ' is-selected' : ''}${o.movable ? ' is-movable' : ''}${skinned ? ' is-skinned' : ''}`}
-                      style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, zIndex: skinned ? 30 : 20 + o.zIndex, pointerEvents: 'none' }}
-                    >
-                      {skinned ? null : (
-                        <>
-                          {o.kind === 'qte' || o.movable ? <span className="gc-preview-ring" /> : null}
-                          <span
-                            className="gc-preview-label"
-                            style={(o.kind === 'subtitle' || o.kind === 'overlay') && o.style ? resolveGraphTextCss(o.style) : undefined}
-                          >
-                            {o.label}
-                          </span>
-                          {o.detail ? <span className="gc-preview-detail">{o.detail}</span> : null}
-                        </>
-                      )}
-                    </div>
-                )
-              })}
             </ScaledOverlayContent>
             <OverlayCanvasInteraction
               stageRef={contentAnchorRef}
@@ -656,6 +674,8 @@ export function NodePreviewStage({
         maxMs={maxMs}
         playheadMs={playheadMs}
         selectedMaterialKey={selectedMountId ? `mount:${selectedMountId}` : null}
+        pointMarkers={pointMarkers}
+        selectedPointMarkerId={focusedLifecycleIndex != null ? `life:${focusedLifecycleIndex}` : null}
         context="video"
         editable
         emptyHint="该节点暂无挂载覆盖物——用上方「添加控件」挂载一张覆盖物"
@@ -673,6 +693,11 @@ export function NodePreviewStage({
           }
         }}
         onPatchMaterial={patchMaterial}
+        onPointMarkerChange={movePointMarker}
+        onSelectPointMarker={(id) => {
+          const lifecycleIndex = lifecycleIndexOf(id)
+          if (lifecycleIndex != null) onFocusLifecycle?.(lifecycleIndex)
+        }}
         onDeleteMaterial={deleteMaterial}
         onDropTemplate={(template, atMs) => mountOverlay(template, atMs)}
       />
