@@ -1,8 +1,9 @@
 import { getWorkbenchHost } from './workbench-host'
 
-/** Legacy media callers keep their already-resolved source unchanged. */
+/** Resolves an extension-relative media path from the accepted handshake. */
 export function pluginUrl(path: string): string {
-  return path
+  if (/^(?:https?:|blob:|data:)/.test(path)) return path
+  return getWorkbenchHost().extension.url(path)
 }
 
 export function pluginFetch(input: string, init?: RequestInit): Promise<Response> {

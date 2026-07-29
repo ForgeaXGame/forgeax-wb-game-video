@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_KINO_RESOURCE_PAGE_SIZE,
+  type DirectUploadResponse,
   type KinoResourceDTO,
   type KinoVideoClient,
 } from './kino-api'
 import {
+  assertMediaUploadFile,
   BROWSER_UPLOAD_POLICIES,
   uploadProviderResource,
   VideoUploadError,
@@ -193,16 +195,66 @@ function createHostAssetLibraryClient(): AssetLibraryClient {
       if (!Array.isArray(data.items)) throw new Error('Extension returned an invalid media list')
       return data.items.map((item) => hostResource(item, kind))
     },
-    async upload(_gameId, kind, file, options) {
+    async upload(gameId, kind, file, options) {
+      assertMediaUploadFile(kind, file)
+      const preparedResponse = await request('media/image-assets/upload', {
+        method: 'POST',
+        signal: options?.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          game_id: gameId,
+          file_name: file.name,
+          mime_type: file.type,
+          bytes: file.size,
+          extension: /\.[A-Za-z0-9]+$/.exec(file.name)?.[0].slice(1).toLowerCase(),
+        }),
+      })
+      const prepared = hostEnvelope(
+        await readExtensionJson(preparedResponse),
+      ) as DirectUploadResponse
+      if (
+        !prepared
+        || !prepared.upload
+        || !/^media\/uploads\/[0-9a-f]{32}$/.test(prepared.upload.url)
+        || !Number.isSafeInteger(prepared.upload.chunk_size)
+        || prepared.upload.chunk_size! <= 0
+        || prepared.upload.chunk_size! >= 1024 * 1024
+        || !Number.isSafeInteger(prepared.upload.chunk_count)
+        || prepared.upload.chunk_count !== Math.ceil(file.size / prepared.upload.chunk_size!)
+      ) {
+        throw new Error('Extension returned an invalid upload instruction')
+      }
+      for (let index = 0; index < prepared.upload.chunk_count!; index += 1) {
+        const start = index * prepared.upload.chunk_size!
+        const body = file.slice(
+          start,
+          Math.min(file.size, start + prepared.upload.chunk_size!),
+          file.type,
+        )
+        const response = await request(
+          `${prepared.upload.url}?chunk_index=${index}&chunk_count=${prepared.upload.chunk_count}`,
+          {
+            method: 'PUT',
+            signal: options?.signal,
+            headers: { 'content-type': file.type },
+            body,
+          },
+        )
+        if (!response.ok) await readExtensionJson(response)
+      }
       const response = await request('media/resources', {
         method: 'POST',
         signal: options?.signal,
-        headers: {
-          'content-type': file.type,
-          'x-workbench-media-name': file.name,
-          'x-workbench-media-type': kind,
-        },
-        body: file,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          game_id: gameId,
+          media_type: kind,
+          url: prepared.object_url,
+          name: displayName(file.name),
+          type: 'UPLOAD',
+          source: 'wb-game-video',
+          source_meta: { mime_type: file.type, extra: { bytes: file.size } },
+        }),
       })
       return hostResource(hostEnvelope(await readExtensionJson(response)) as KinoResourceDTO, kind)
     },

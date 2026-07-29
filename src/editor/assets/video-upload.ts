@@ -433,6 +433,21 @@ function validateUploadInstruction(
   ) {
     throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
   }
+  const hasChunkSize = instruction.chunk_size !== undefined
+  const hasChunkCount = instruction.chunk_count !== undefined
+  if (
+    hasChunkSize !== hasChunkCount
+    || (hasChunkSize && (
+      !Number.isSafeInteger(instruction.chunk_size)
+      || instruction.chunk_size! <= 0
+      || instruction.chunk_size! >= 1024 * 1024
+      || !Number.isSafeInteger(instruction.chunk_count)
+      || instruction.chunk_count! <= 0
+      || instruction.chunk_count! > 200
+    ))
+  ) {
+    throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
+  }
   return sanitizeInstructionHeaders(instruction.headers)
 }
 
@@ -442,8 +457,17 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
       const headers = validateUploadInstruction(instruction)
       assertNotAborted(signal)
       const report = createProgressReporter(onProgress)
+      const chunkSize = instruction.chunk_size ?? file.size
+      const chunkCount = instruction.chunk_count ?? 1
+      if (chunkCount !== Math.ceil(file.size / chunkSize)) {
+        throw new VideoUploadError('Invalid upload instruction', 'invalid_upload_instruction')
+      }
 
-      await new Promise<void>((resolve, reject) => {
+      const uploadChunk = (
+        body: Blob,
+        chunkIndex: number,
+        uploadedBefore: number,
+      ) => new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         let settled = false
         const cleanup = () => {
@@ -476,11 +500,12 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
         }
 
         xhr.upload.onprogress = (event) => {
-          const total = event.lengthComputable && event.total > 0 ? event.total : file.size
+          const total = event.lengthComputable && event.total > 0 ? event.total : body.size
           if (total <= 0) {
             return
           }
-          report((event.loaded / total) * 99)
+          const loaded = Math.min(body.size, (event.loaded / total) * body.size)
+          report(((uploadedBefore + loaded) / file.size) * 99)
         }
 
         xhr.onload = () => {
@@ -505,12 +530,17 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
         }
 
         try {
-          const transportUrl = resolveUploadTransportUrl(instruction.url)
+          const chunkUrl = new URL(instruction.url)
+          if (instruction.chunk_size !== undefined) {
+            chunkUrl.searchParams.set('chunk_index', String(chunkIndex))
+            chunkUrl.searchParams.set('chunk_count', String(chunkCount))
+          }
+          const transportUrl = resolveUploadTransportUrl(chunkUrl.toString())
           xhr.open(instruction.method, transportUrl, true)
           for (const [key, value] of Object.entries(headers)) {
             xhr.setRequestHeader(key, value)
           }
-          xhr.send(file)
+          xhr.send(body)
         } catch (error) {
           fail(
             new VideoUploadError(
@@ -520,6 +550,17 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
           )
         }
       })
+
+      for (let index = 0; index < chunkCount; index += 1) {
+        const start = index * chunkSize
+        const body = instruction.chunk_size === undefined
+          ? file
+          : file.slice(start, Math.min(file.size, start + chunkSize), file.type)
+        await uploadChunk(body, index, start)
+        if (instruction.chunk_size !== undefined) {
+          report((Math.min(file.size, start + body.size) / file.size) * 99)
+        }
+      }
     },
   }
 }

@@ -1,8 +1,6 @@
 import type { WorkbenchExtensionRouterResponse } from '@forgeax/workbench-host/node'
 import { open, readFile, readdir, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
 import { NODIA_ASSETS_MANIFEST } from './nodia-assets'
 
 const EMPTY = new Uint8Array()
@@ -31,14 +29,8 @@ async function resolveBundledAsset(
   try {
     if ((await stat(source)).isFile()) return source
   } catch {
-    // Vitest evaluates modules from a transformed URL. The checkout path keeps
-    // source-mode range coverage equivalent to the published module path.
-    const checkout = pathToFileURL(resolve(process.cwd(), 'src/editor/assets', key))
-    try {
-      if ((await stat(checkout)).isFile()) return checkout
-    } catch {
-      // fall through to the published bundle below
-    }
+    // Fall through to the published bundle below. The runtime path must never
+    // depend on a process working directory.
   }
   // Published package: Vite-owned assets are siblings of dist/server and are
   // content-hashed. The logical manifest id selects exactly one basename.
@@ -58,6 +50,12 @@ async function resolveBundledAsset(
   } catch {
     return null
   }
+}
+
+export type BundledMediaResolver = (id: string, key: string) => Promise<URL | null>
+
+export interface BundledMediaResponseOptions {
+  readonly resolveAsset?: BundledMediaResolver
 }
 
 interface ByteRange {
@@ -107,6 +105,7 @@ function rangeNotSatisfiable(size: number): WorkbenchExtensionRouterResponse {
 export async function bundledMediaResponse(
   rawId: string,
   rangeHeader?: string,
+  options: BundledMediaResponseOptions = {},
 ): Promise<WorkbenchExtensionRouterResponse> {
   let id: string
   try {
@@ -135,7 +134,7 @@ export async function bundledMediaResponse(
   // Resolve the URL here to assert it is file-backed and avoid ever returning
   // it as part of a public response.
   fileURLToPath(new URL(`../../src/editor/assets/${key}`, import.meta.url))
-  const location = await resolveBundledAsset(id, key)
+  const location = await (options.resolveAsset ?? resolveBundledAsset)(id, key)
   if (!location) return notFound()
   let size: number
   try {

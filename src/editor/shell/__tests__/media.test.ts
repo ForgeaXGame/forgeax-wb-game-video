@@ -3,7 +3,10 @@ import { ZHANDOU_VIDEOS } from '../../assets/catalog'
 import { requestGenerateVideo, resolveMediaSrc } from '../media'
 
 const client = {
-  extension: { fetch: vi.fn() },
+  extension: {
+    fetch: vi.fn(),
+    url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\//, '')}`),
+  },
   tool: { call: vi.fn() },
 }
 
@@ -13,6 +16,7 @@ vi.mock('../../../lib/workbench-host', () => ({
 
 afterEach(() => {
   client.extension.fetch.mockReset()
+  client.extension.url.mockClear()
   client.tool.call.mockReset()
 })
 
@@ -24,20 +28,20 @@ describe('resolveMediaSrc', () => {
 
   it('routes generated a-vid resources through the registry playback endpoint', () => {
     expect(resolveMediaSrc('a-vid-generated', 'demo game')).toBe(
-      '/media/assets/a-vid-generated',
+      'https://host.test/extension/runtime/media/assets/a-vid-generated',
     )
   })
 
   it('routes registry audio ids through the same media endpoint as video (BGM 决策 A)', () => {
     // Kino 只认视频；床轨 id 必须落回 assets/manifest 的 /__gva__/media/<id>，别按 kind 分叉。
     expect(resolveMediaSrc('a-aud-bgm-battle', 'demo game')).toBe(
-      '/media/assets/a-aud-bgm-battle',
+      'https://host.test/extension/runtime/media/assets/a-aud-bgm-battle',
     )
   })
 
   it('routes stable Kino ids through the Kino content endpoint', () => {
     expect(resolveMediaSrc('res/123', 'demo game')).toBe(
-      '/media/resources/res%2F123/content',
+      'https://host.test/extension/runtime/media/resources/res%2F123/content',
     )
   })
 

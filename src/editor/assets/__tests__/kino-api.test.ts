@@ -109,6 +109,42 @@ describe('createKinoVideoClient', () => {
     expect(prepared.upload_token).toBe('token')
   })
 
+  it('binds a relative host upload instruction to the handshake URL', async () => {
+    const fetchImpl = makeFetch(() =>
+      new Response(JSON.stringify(envelope({
+        upload: {
+          method: 'PUT',
+          url: 'media/uploads/0123456789abcdef0123456789abcdef',
+          headers: { 'content-type': 'image/png' },
+          expires_at: '2099-01-01T00:00:00.000Z',
+          chunk_size: 512 * 1024,
+          chunk_count: 3,
+        },
+        object_url: 'workbench-upload:0123456789abcdef0123456789abcdef',
+        upload_token: '0123456789abcdef0123456789abcdef',
+      })), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    const client = createKinoVideoClient({
+      fetch: fetchImpl,
+      url: (path) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`,
+    })
+
+    const prepared = await client.prepareUpload({
+      game_id: 'demo',
+      file_name: 'large.png',
+      mime_type: 'image/png',
+      bytes: 1024 * 1024 + 1,
+    })
+
+    expect(prepared.upload.url).toBe(
+      'https://host.test/extension/runtime/media/uploads/0123456789abcdef0123456789abcdef',
+    )
+    expect(prepared.upload).toMatchObject({ chunk_size: 512 * 1024, chunk_count: 3 })
+  })
+
   it('accepts audio resource and upload MIME types', async () => {
     const fetchImpl = makeFetch((input, init) => {
       if (init?.method === 'POST') {
@@ -190,7 +226,10 @@ describe('createKinoVideoClient', () => {
         headers: { 'content-type': 'application/json' },
       })
     })
-    const client = createKinoVideoClient({ fetch: fetchImpl })
+    const client = createKinoVideoClient({
+      fetch: fetchImpl,
+      url: (path) => `https://host.test/extension/runtime${path}`,
+    })
     await client.get('res/1', 'demo slug')
     await client.update('res/1', {
       game_id: 'demo slug',
@@ -200,10 +239,22 @@ describe('createKinoVideoClient', () => {
       name: 'renamed.mp4',
     })
     await client.delete('res/1', 'demo slug')
-    expect(client.playbackUrl('res/1', 'demo slug')).toBe('/media/resources/res%2F1/content')
+    expect(client.playbackUrl('res/1', 'demo slug')).toBe(
+      'https://host.test/extension/runtime/media/resources/res%2F1/content',
+    )
     expect(calls[0]).toBe('media/resources/res%2F1')
     expect(calls[1]).toBe('media/resources/res%2F1')
     expect(calls[2]).toBe('media/resources/res%2F1')
+  })
+
+  it('accepts the router DELETE 204 contract without parsing JSON', async () => {
+    const fetchImpl = makeFetch((_input, init) => {
+      expect(init?.method).toBe('DELETE')
+      return new Response(null, { status: 204 })
+    })
+    const client = createKinoVideoClient({ fetch: fetchImpl })
+
+    await expect(client.delete('res-1', 'demo')).resolves.toBeUndefined()
   })
 
   it('create and batch post JSON bodies', async () => {

@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { GameScenario } from '../../../runtime/schema/graph-schema'
 import { GraphPlayer } from '../GraphPlayer'
+
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({
+    extension: {
+      url: (path: string) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`,
+    },
+  }),
+}))
 
 const SCENARIO: GameScenario = {
   version: 'wb-game-video.graph.v1',

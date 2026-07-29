@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { deleteReferenceImage, gvaImageUrl, ImageUploadError } from '../image-assets'
 
-const client = { extension: { fetch: vi.fn() } }
+const client = {
+  extension: {
+    fetch: vi.fn(),
+    url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`),
+  },
+}
 
 vi.mock('../../../lib/workbench-host', () => ({
   getWorkbenchHost: () => client,
@@ -15,7 +20,7 @@ afterEach(() => {
 describe('gvaImageUrl', () => {
   it('builds a same-origin, revisioned image URL', () => {
     expect(gvaImageUrl('a-img-1/2', 'demo game', 42)).toBe(
-      '/media/resources/a-img-1%2F2/content?v=42',
+      'https://host.test/extension/runtime/media/resources/a-img-1%2F2/content?v=42',
     )
   })
 })

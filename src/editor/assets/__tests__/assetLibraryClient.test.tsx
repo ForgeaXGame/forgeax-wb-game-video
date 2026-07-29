@@ -103,10 +103,24 @@ function kino(): KinoVideoClient {
 describe('createKinoAssetLibraryClient', () => {
   it('uses host media routes by default and consumes host-returned locators', async () => {
     const response = resource({ url: '/host/media/audio-1', name: '原名' })
+    const uploadId = '0123456789abcdef0123456789abcdef'
     extensionFetch
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { items: [response] } }), {
         headers: { 'content-type': 'application/json' },
       }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: {
+        upload: {
+          method: 'PUT',
+          url: `media/uploads/${uploadId}`,
+          headers: { 'content-type': 'audio/mpeg' },
+          expires_at: '2099-01-01T00:00:00.000Z',
+          chunk_size: 512 * 1024,
+          chunk_count: 1,
+        },
+        object_url: `workbench-upload:${uploadId}`,
+        upload_token: uploadId,
+      } }), { headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: response }), {
         headers: { 'content-type': 'application/json' },
       }))
@@ -125,12 +139,61 @@ describe('createKinoAssetLibraryClient', () => {
     await client.remove('demo', 'audio-1')
 
     expect(extensionFetch).toHaveBeenNthCalledWith(1, 'media/resources?media_type=audio', expect.anything())
-    expect(extensionFetch).toHaveBeenNthCalledWith(2, 'media/resources', expect.objectContaining({
-      method: 'POST', body: file,
-      headers: expect.objectContaining({ 'x-workbench-media-name': 'theme.mp3' }),
+    expect(extensionFetch).toHaveBeenNthCalledWith(2, 'media/image-assets/upload', expect.objectContaining({
+      method: 'POST',
     }))
-    expect(extensionFetch).toHaveBeenNthCalledWith(3, 'media/resources/audio-1', expect.objectContaining({ method: 'PUT' }))
-    expect(extensionFetch).toHaveBeenNthCalledWith(4, 'media/resources/audio-1', expect.objectContaining({ method: 'DELETE' }))
+    expect(extensionFetch).toHaveBeenNthCalledWith(
+      3,
+      `media/uploads/${uploadId}?chunk_index=0&chunk_count=1`,
+      expect.objectContaining({ method: 'PUT', body: expect.any(Blob) }),
+    )
+    expect(extensionFetch).toHaveBeenNthCalledWith(4, 'media/resources', expect.objectContaining({
+      method: 'POST',
+    }))
+    expect(extensionFetch).toHaveBeenNthCalledWith(5, 'media/resources/audio-1', expect.objectContaining({ method: 'PUT' }))
+    expect(extensionFetch).toHaveBeenNthCalledWith(6, 'media/resources/audio-1', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('keeps every default browser upload request below the 1 MiB host limit', async () => {
+    const uploadId = 'fedcba9876543210fedcba9876543210'
+    const file = new File([new Uint8Array(1024 * 1024 + 5)], 'large.png', { type: 'image/png' })
+    extensionFetch.mockImplementation(async (input, init) => {
+      const path = String(input)
+      if (path === 'media/image-assets/upload') {
+        return new Response(JSON.stringify({ code: 0, data: {
+          upload: {
+            method: 'PUT',
+            url: `media/uploads/${uploadId}`,
+            headers: { 'content-type': 'image/png' },
+            expires_at: '2099-01-01T00:00:00.000Z',
+            chunk_size: 512 * 1024,
+            chunk_count: 3,
+          },
+          object_url: `workbench-upload:${uploadId}`,
+          upload_token: uploadId,
+        } }), { headers: { 'content-type': 'application/json' } })
+      }
+      if (path.startsWith(`media/uploads/${uploadId}?`)) {
+        expect((init?.body as Blob).size).toBeLessThan(1024 * 1024)
+        return new Response(null, { status: 204 })
+      }
+      if (path === 'media/resources') {
+        return new Response(JSON.stringify({ code: 0, data: resource({
+          resource_id: 'large-image',
+          media_type: 'image',
+          name: 'large',
+          url: '/host/media/large-image',
+        }) }), { headers: { 'content-type': 'application/json' } })
+      }
+      throw new Error(`unexpected request ${path}`)
+    })
+
+    const uploaded = await createKinoAssetLibraryClient().upload('demo', 'image', file)
+
+    expect(uploaded).toMatchObject({ id: 'large-image', kind: 'image' })
+    expect(extensionFetch.mock.calls.filter(([path]) =>
+      String(path).startsWith(`media/uploads/${uploadId}?`),
+    )).toHaveLength(3)
   })
 
   it('maps audio list, upload, rename and deletion to provider-backed resource operations', async () => {

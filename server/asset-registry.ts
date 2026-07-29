@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream, s
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type {
   MediaAsset as HostMediaAsset,
+  MediaBody,
   MediaReference,
   MediaWriteInput,
 } from '@forgeax/workbench-host/contracts'
@@ -506,6 +507,7 @@ export interface HostAssetRegistry {
   get(id: string): Promise<MediaAsset | null>
   upsert(asset: MediaAsset): Promise<MediaAsset>
   update(id: string, patch: Partial<MediaAsset>): Promise<MediaAsset | null>
+  readMedia(id: string): Promise<MediaBody | null>
   getStyleAxes(): Promise<StyleAxes | undefined>
   setStyleAxes(axes: StyleAxes): Promise<StyleAxes>
   importGameFile(input: {
@@ -608,6 +610,17 @@ export function createHostAssetRegistry(
     get,
     upsert,
     update,
+    async readMedia(id) {
+      const asset = await getRaw(id)
+      if (!asset) return null
+      if (asset.provider?.ref) {
+        return context.media.read(context.gameId, asset.provider.ref)
+      }
+      if (!asset.file) return null
+      const relativePath = assertBoundedRelativePath(`assets/${asset.file}`)
+      const bytes = await context.files.read(relativePath)
+      return bytes ? { contentType: asset.mime ?? 'application/octet-stream', bytes } : null
+    },
     async getStyleAxes() {
       return (await readHostManifest(context.files)).styleAxes
     },

@@ -66,7 +66,7 @@ export function resolveAssetSrc(asset: Pick<MediaAsset, 'id' | 'url'>, game?: st
 /** 共享素材层某资产的宿主绑定播放路径。 */
 export function registryMediaUrl(id: string, game?: string): string {
   void game
-  return `/media/assets/${encodeURIComponent(id)}`
+  return pluginUrl(`/media/assets/${encodeURIComponent(id)}`)
 }
 
 /**

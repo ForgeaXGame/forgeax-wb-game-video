@@ -586,4 +586,50 @@ describe('default XHR transport header safety', () => {
     expect(progress[0]!).toBeLessThanOrEqual(progress[1]!)
     expect(progress[1]!).toBeLessThanOrEqual(100)
   })
+
+  it('splits a file larger than 1 MiB into bounded sequential extension requests', async () => {
+    const chunkSize = 512 * 1024
+    const bytes = new Uint8Array(1024 * 1024 + 7)
+    const file = new File([bytes], 'large.mp4', { type: 'video/mp4' })
+    const transport = createDefaultXhrUploadTransport()
+    const upload = transport.put(file, {
+      method: 'PUT',
+      url: 'https://host.test/extensions/wb-game-video/media/uploads/0123456789abcdef0123456789abcdef',
+      headers: { 'content-type': 'video/mp4' },
+      expires_at: '2099-01-01T00:00:00.000Z',
+      chunk_size: chunkSize,
+      chunk_count: 3,
+    })
+
+    for (let index = 0; index < 3; index += 1) {
+      await vi.waitFor(() => expect(xhrInstances).toHaveLength(index + 1))
+      const xhr = xhrInstances[index]!
+      const sent = xhr.send.mock.calls[0]?.[0] as Blob
+      expect(sent).toBeInstanceOf(Blob)
+      expect(sent.size).toBeLessThan(1024 * 1024)
+      expect(xhr.open).toHaveBeenCalledWith(
+        'PUT',
+        expect.stringContaining(`chunk_index=${index}`),
+        true,
+      )
+      expect(xhr.open).toHaveBeenCalledWith(
+        'PUT',
+        expect.stringContaining('chunk_count=3'),
+        true,
+      )
+      xhr.upload.onprogress?.({
+        lengthComputable: true,
+        loaded: sent.size,
+        total: sent.size,
+      } as ProgressEvent)
+      xhr.onload?.()
+    }
+
+    await upload
+    expect(xhrInstances.map((xhr) => (xhr.send.mock.calls[0]?.[0] as Blob).size)).toEqual([
+      chunkSize,
+      chunkSize,
+      7,
+    ])
+  })
 })

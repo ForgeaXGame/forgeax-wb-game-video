@@ -62,6 +62,8 @@ export interface DirectUploadInstruction {
   url: string
   headers: Record<string, string>
   expires_at: string
+  chunk_size?: number
+  chunk_count?: number
 }
 
 export interface DirectUploadResponse {
@@ -166,6 +168,7 @@ export interface KinoVideoClient {
 export interface CreateKinoVideoClientOptions {
   fetch?: typeof fetch
   baseUrl?: string
+  url?: (path: string) => string
 }
 
 const MAX_ERROR_MESSAGE_LENGTH = 512
@@ -287,13 +290,52 @@ async function requestJson<T>(
   return parseEnvelope<T>(response, payload)
 }
 
+async function requestNoContent(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+  options?: Pick<RequestInit, 'method' | 'signal'>,
+): Promise<void> {
+  let response: Response
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch {
+    throw new KinoClientError('Network request failed', 502, 'network_error')
+  }
+  if (response.status === 204) return
+  const payload = await readJsonPayload(response)
+  parseEnvelope<unknown>(response, payload)
+}
+
+function resolveUploadInstruction(
+  response: DirectUploadResponse,
+  resolveUrl: (path: string) => string,
+): DirectUploadResponse {
+  if (/^https?:\/\//i.test(response.upload.url)) return response
+  return {
+    ...response,
+    upload: {
+      ...response.upload,
+      url: resolveUrl(response.upload.url),
+    },
+  }
+}
+
 function resourcePath(resourceId: string, suffix = ''): string {
   return `/resources/${encodeURIComponent(resourceId)}${suffix}`
 }
 
-function playbackUrl(resourceId: string, gameId: string): string {
+function playbackUrl(
+  resourceId: string,
+  gameId: string,
+  resolveUrl: (path: string) => string,
+): string {
   void gameId
-  return `/media/resources/${encodeURIComponent(resourceId)}/content`
+  return resolveUrl(`/media/resources/${encodeURIComponent(resourceId)}/content`)
 }
 
 export function createKinoVideoClient(
@@ -301,14 +343,19 @@ export function createKinoVideoClient(
 ): KinoVideoClient {
   const fetchImpl = options.fetch ?? ((input, init) => getWorkbenchHost().extension.fetch(String(input), init))
   const baseUrl = normalizeBaseUrl(options.baseUrl)
+  const resolveUrl = options.url
+    ?? (options.fetch
+      ? (path: string) => new URL(path, 'https://workbench-client.invalid').toString()
+      : (path: string) => getWorkbenchHost().extension.url(path))
 
   return {
     async prepareUpload(input, options) {
-      return requestJson<DirectUploadResponse>(fetchImpl, baseUrl, '/image-assets/upload', {
+      const response = await requestJson<DirectUploadResponse>(fetchImpl, baseUrl, '/image-assets/upload', {
         method: 'POST',
         body: JSON.stringify(input),
         signal: options?.signal,
       })
+      return resolveUploadInstruction(response, resolveUrl)
     },
 
     async list(query, options) {
@@ -366,14 +413,14 @@ export function createKinoVideoClient(
 
     async delete(resourceId, gameId, options) {
       void gameId
-      await requestJson<null>(fetchImpl, baseUrl, resourcePath(resourceId), {
+      await requestNoContent(fetchImpl, baseUrl, resourcePath(resourceId), {
         method: 'DELETE',
         signal: options?.signal,
       })
     },
 
     playbackUrl(resourceId, gameId) {
-      return playbackUrl(resourceId, gameId)
+      return playbackUrl(resourceId, gameId, resolveUrl)
     },
   }
 }

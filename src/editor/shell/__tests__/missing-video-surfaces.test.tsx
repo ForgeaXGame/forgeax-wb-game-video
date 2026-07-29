@@ -17,6 +17,13 @@ vi.mock('../../assets/kinoVideoCacheStore', () => {
 // 音频资产查询与本件无关（它的失败面由 missing-audio-surfaces.test.tsx 钉）；不 mock 的话它的
 // 异步 hydration 会在本文件里落成一串 act(...) 警告，失败时还会多出一条 alert。
 vi.mock('../../assets/audioAssetCacheStore', () => ({ useAudioAssets }))
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({
+    extension: {
+      url: (path: string) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`,
+    },
+  }),
+}))
 
 const SCENARIO: GameScenario = {
   version: 'wb-game-video.graph.v1',

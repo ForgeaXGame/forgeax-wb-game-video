@@ -5,7 +5,12 @@ import type {
   WorkbenchExtensionRouterResponse,
 } from '@forgeax/workbench-host/node'
 import { createHostAssetRegistry, getHostStyleAxes } from '../asset-registry'
-import { bundledMediaResponse } from './media-routes'
+import {
+  browserMediaType,
+  createBrowserMediaService,
+  UploadConflictError,
+} from './browser-media'
+import { bundledMediaResponse, type BundledMediaResolver } from './media-routes'
 import {
   createWbGameVideoService,
   getAssetIdFromArgs,
@@ -134,33 +139,15 @@ function assertBoundQuery(
   }
 }
 
-type BrowserMediaType = 'audio' | 'image' | 'video' | 'font'
-type BrowserMediaRecord = {
-  readonly resource_id: string
-  readonly host_id: string
-  readonly media_type: BrowserMediaType
-  readonly url: string
-  name: string
-  readonly created_at: number
-  updated_at: number
-  deleted: boolean
-}
-
-function browserMediaType(value: string | undefined): BrowserMediaType {
-  if (value === 'audio' || value === 'image' || value === 'video' || value === 'font') return value
-  throw new WbServiceInputError('x-workbench-media-type is invalid')
-}
-
-function resource(record: BrowserMediaRecord) {
-  return {
-    resource_id: record.resource_id,
-    game_id: '',
-    media_type: record.media_type,
-    name: record.name,
-    url: record.url,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
+function parsePositiveInteger(value: string | undefined, label: string, allowZero = false): number {
+  if (value === undefined || !/^(?:0|[1-9]\d*)$/.test(value)) {
+    throw new WbServiceInputError(`${label} is invalid`)
   }
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || (allowZero ? parsed < 0 : parsed < 1)) {
+    throw new WbServiceInputError(`${label} is invalid`)
+  }
+  return parsed
 }
 
 type ServiceMethod =
@@ -186,9 +173,10 @@ const POST_ROUTES = new Map<string, ServiceMethod>([
  */
 export function createWbGameVideoRouter(
   context: WorkbenchExtensionContext,
+  options: { bundledMediaResolver?: BundledMediaResolver } = {},
 ): WorkbenchExtensionRouter {
   const service = createWbGameVideoService(context)
-  const browserMedia = new Map<string, BrowserMediaRecord>()
+  const browserMedia = createBrowserMediaService(context)
 
   return {
     async handle(request) {
@@ -198,12 +186,33 @@ export function createWbGameVideoRouter(
         const method = request.method.toUpperCase()
         const path = parts.join('/')
 
+        if (method === 'POST' && path === 'media/image-assets/upload') {
+          exactQuery(request.query, [])
+          return mediaResponse(await browserMedia.prepareUpload(jsonBody(request)))
+        }
+        if (
+          method === 'PUT'
+          && parts.length === 3
+          && parts[0] === 'media'
+          && parts[1] === 'uploads'
+        ) {
+          const query = exactQuery(request.query, ['chunk_index', 'chunk_count'])
+          const chunkIndex = parsePositiveInteger(query.chunk_index, 'chunk_index', true)
+          const chunkCount = parsePositiveInteger(query.chunk_count, 'chunk_count')
+          const result = await browserMedia.putChunk(
+            parts[2]!,
+            chunkIndex,
+            chunkCount,
+            header(request, 'content-type'),
+            request.body,
+          )
+          if (result === 'missing') return notFound()
+          return { status: 204, headers: { 'content-length': '0' }, body: new Uint8Array() }
+        }
         if (method === 'GET' && path === 'media/resources') {
           const query = exactQuery(request.query, ['media_type', 'page', 'page_size', 'type'])
           const type = query.media_type === undefined ? undefined : browserMediaType(query.media_type)
-          const items = [...browserMedia.values()]
-            .filter((record) => !record.deleted && (!type || record.media_type === type))
-            .map(resource)
+          const items = await browserMedia.list(type, query.type)
           const page = query.page === undefined ? 1 : Number(query.page)
           const pageSize = query.page_size === undefined ? Math.max(1, items.length) : Number(query.page_size)
           if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1) {
@@ -214,73 +223,51 @@ export function createWbGameVideoRouter(
         }
         if (method === 'POST' && path === 'media/resources') {
           exactQuery(request.query, [])
+          const requestContentType = header(request, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+          if (requestContentType === 'application/json') {
+            return mediaResponse(await browserMedia.create(jsonBody(request)))
+          }
           const name = header(request, 'x-workbench-media-name')
           const type = browserMediaType(header(request, 'x-workbench-media-type'))
           const contentType = header(request, 'content-type')
           if (!name || !contentType || request.body.byteLength === 0) {
             throw new WbServiceInputError('Media upload requires name, type, content type, and body')
           }
-          const hosted = await context.media.put(context.gameId, {
-            filename: name,
-            contentType,
-            bytes: request.body,
-            metadata: { source: 'wb-game-video-browser' },
-          })
-          const now = Date.now()
-          const record: BrowserMediaRecord = {
-            resource_id: hosted.id,
-            host_id: hosted.id,
-            media_type: type,
-            url: hosted.url,
+          return mediaResponse(await browserMedia.directUpload(
             name,
-            created_at: now,
-            updated_at: now,
-            deleted: false,
-          }
-          browserMedia.set(record.resource_id, record)
-          return mediaResponse(resource(record))
+            type,
+            contentType,
+            request.body,
+          ))
+        }
+        if (method === 'POST' && path === 'media/resources/batch') {
+          exactQuery(request.query, [])
+          return mediaResponse(await browserMedia.batch(jsonBody(request)))
         }
         if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'resources') {
           const id = parts[2]!
-          const record = browserMedia.get(id)
-          if (!record || record.deleted) return notFound()
           if (method === 'GET') {
-            const body = await context.media.read(context.gameId, record.host_id)
-            if (!body) return notFound()
-            return mediaResponse(resource(record))
+            const value = await browserMedia.get(id)
+            return value ? mediaResponse(value) : notFound()
           }
           if (method === 'PUT') {
             exactQuery(request.query, [])
-            const input = jsonBody(request)
-            if (!input || typeof input !== 'object' || Array.isArray(input) || typeof (input as { name?: unknown }).name !== 'string') {
-              throw new WbServiceInputError('Media rename requires name')
-            }
-            record.name = (input as { name: string }).name
-            record.updated_at = Date.now()
-            return mediaResponse(resource(record))
+            const value = await browserMedia.update(id, jsonBody(request))
+            return value ? mediaResponse(value) : notFound()
           }
           if (method === 'DELETE') {
             exactQuery(request.query, [])
-            record.deleted = true
+            if (!await browserMedia.remove(id)) return notFound()
             return { status: 204, headers: { 'content-length': '0' }, body: new Uint8Array() }
           }
         }
         if (parts.length === 4 && parts[0] === 'media' && parts[1] === 'resources' && parts[3] === 'content' && method === 'GET') {
-          const record = browserMedia.get(parts[2]!)
-          if (!record || record.deleted) return notFound()
-          const body = await context.media.read(context.gameId, record.host_id)
+          const body = await browserMedia.content(parts[2]!)
           return body ? binaryResponse(body.contentType, body.bytes) : notFound()
         }
         if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'assets' && method === 'GET') {
-          const assetResult = await service.getAsset(parts[2]!) as { asset?: { provider?: { ref?: string }; file?: string; mime?: string } | null }
-          const asset = assetResult.asset
-          if (!asset) return notFound()
-          if (asset.provider?.ref) {
-            const body = await context.media.read(context.gameId, asset.provider.ref)
-            return body ? binaryResponse(asset.mime ?? body.contentType, body.bytes) : notFound()
-          }
-          const bytes = asset.file ? await context.files.read(`assets/${asset.file}`) : null
-          return bytes ? binaryResponse(asset.mime ?? 'application/octet-stream', bytes) : notFound()
+          const body = await createHostAssetRegistry(context).readMedia(parts[2]!)
+          return body ? binaryResponse(body.contentType, body.bytes) : notFound()
         }
 
         if (method === 'GET' && path === 'assets') {
@@ -312,6 +299,7 @@ export function createWbGameVideoRouter(
           const response = await bundledMediaResponse(
             parts[2]!,
             header(request, 'range'),
+            { resolveAsset: options.bundledMediaResolver },
           )
           if (response.status === 404) return notFound()
           if (response.status === 416) {
@@ -366,6 +354,17 @@ export function createWbGameVideoRouter(
         }
         return notFound()
       } catch (error) {
+        if (error instanceof UploadConflictError) {
+          return jsonResponse(409, {
+            ok: false,
+            error: {
+              code: 'upload_conflict',
+              target: 'wb-game-video',
+              message: error.message,
+              retryable: false,
+            },
+          })
+        }
         if (error instanceof WbServiceInputError) {
           return jsonResponse(400, {
             ok: false,
