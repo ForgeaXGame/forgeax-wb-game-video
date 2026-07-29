@@ -1,19 +1,20 @@
 /**
- * 叩击（component id: `inkKou`）—— 组件只发出「叩」事件。
+ * 叩击（component id: `InkKou`）—— 组件只发出「叩」事件。
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与交互。
  */
 import { useRef } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewTStyle } from './skinRuntime'
 
-export const inkKouComponent: ComponentDef = {
+export const InkKouManifest: ComponentManifest = {
+  id: 'InkKou',
   label: '叩击',
   events: [{ id: 'kou', label: '叩' }],
   inputs: [],
 }
 
-export function InkKouLayer({ emit, preview, previewTimeMs }: OverlayProps) {
+export function InkKou({ emit, preview, previewTimeMs }: OverlayProps) {
   injectCss('ink-kou-layer', KOU_CSS)
   ensureInkFilters()
   ensureBrushFont()

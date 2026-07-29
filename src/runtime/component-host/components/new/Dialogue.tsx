@@ -1,21 +1,23 @@
 /**
- * 字幕/对白（component id: `dialogue`）—— 显示一名角色说出的台词。
+ * 字幕/对白（component id: `Dialogue`）—— 显示一名角色说出的台词。
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的对白视觉。
  */
 import type { ReactNode } from 'react'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
 import { injectCss } from './skinRuntime'
 
-export const dialogueComponent: ComponentDef = {
+export const DialogueManifest: ComponentManifest = {
+  id: 'Dialogue',
   label: '字幕/对白',
   inputs: [
     { key: 'speaker', label: '说话人', valueType: 'string' },
     { key: 'text', label: '台词', valueType: 'string', default: '……' },
   ],
+  events: [],
 }
 
-export function DialogueOverlay({ overlay }: OverlayProps): ReactNode {
+export function Dialogue({ overlay }: OverlayProps): ReactNode {
   injectCss('dialogue', DIALOGUE_CSS)
   const speaker = typeof overlay.inputs.speaker === 'string' ? overlay.inputs.speaker : ''
   const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '……'

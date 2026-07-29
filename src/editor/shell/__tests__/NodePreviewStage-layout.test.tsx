@@ -54,7 +54,7 @@ describe('NodePreviewStage overlay layout', () => {
               title: 'HUD',
               children: [{
                 id: 'damage',
-                component: 'damageFloatText',
+                component: 'DamageFloatText',
                 trigger: { when: 'enter' },
                 inputs: {},
               }],
@@ -151,7 +151,7 @@ describe('NodePreviewStage overlay layout', () => {
               id: 'dialogues',
               children: [{
                 id: 'line',
-                component: 'dialogue',
+                component: 'Dialogue',
                 layout: { left: 0.15, top: -0.02, width: 1, height: 1 },
                 trigger: { when: 'enter' },
                 inputs: { text: '这是一句字幕示例。' },
@@ -230,7 +230,7 @@ describe('NodePreviewStage overlay layout', () => {
               id: 'float',
               children: [{
                 id: 'damage',
-                component: 'damageFloatText',
+                component: 'DamageFloatText',
                 layout: { left: 0.2, top: 0.3 },
                 trigger: { when: 'enter' },
                 inputs: { text: '-10' },

@@ -332,7 +332,7 @@ export const OVERLAY_DEMO = {
           },
           {
             id: 'parry',
-            component: 'battleParry',
+            component: 'BattleParry',
             layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
             trigger: { when: 'at', ms: 1200 },
             inputs: {
@@ -475,7 +475,7 @@ export const OVERLAY_DEMO_INSTANCE: OverlayInstance = {
     },
     {
       id: 'battleHud/parry',
-      component: 'battleParry',
+      component: 'BattleParry',
       trigger: { when: 'at', ms: 1200 },
       layout: { left: 0.5, top: 0.5, translateX: -0.5, translateY: -0.5 },
       inputs: {

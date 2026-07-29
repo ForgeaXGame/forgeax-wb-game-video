@@ -1,19 +1,21 @@
 /**
- * 伤害飘字（component id: `damageFloatText`）—— value 支持固定数字或 `{expr}` 公式。
+ * 伤害飘字（component id: `DamageFloatText`）—— value 支持固定数字或 `{expr}` 公式。
  * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
  */
 import type { ReactNode } from 'react'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss, ensureBrushFont } from './skinRuntime'
 import { resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 
-export const damageFloatTextComponent: ComponentDef<NumericFloatTextInputs> = {
+export const DamageFloatTextManifest: ComponentManifest = {
+  id: 'DamageFloatText',
   label: '伤害飘字',
   inputs: [{ key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 }],
+  events: [],
 }
 
-export function DamageFloatTextOverlay({ overlay, ctx, preview }: OverlayProps): ReactNode {
+export function DamageFloatText({ overlay, ctx, preview }: OverlayProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
   const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '-25')

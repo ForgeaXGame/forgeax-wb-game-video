@@ -49,7 +49,7 @@ describe('挂载静态方案 · 血条进试玩', () => {
 
     const hudChildren = snap.overlayMounts.flatMap((m) => m.children)
     expect(hudChildren.map((c) => c.component)).toEqual(
-      expect.arrayContaining(['battlePlayerHpBar', 'battleEnemyHpBar']),
+      expect.arrayContaining(['BattlePlayerHpBar', 'BattleEnemyHpBar']),
     )
 
     const skins = createCoreSkinRegistry()
