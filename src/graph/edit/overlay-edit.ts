@@ -114,20 +114,17 @@ export function forkSchemeForEdit(scenario: GameScenario, nodeId: string): GameS
 /** 汇总多张蓝图中每个 overlay 的挂载引用次数。 */
 export function countOverlayReferences(graphs: Iterable<GameGraph>): Record<string, number> {
   const counts: Record<string, number> = {}
-  const visit = (graph: GameGraph): void => {
+  for (const graph of graphs) {
     for (const node of graph.nodes) {
       for (const mount of node.data.overlayNodes ?? []) {
         counts[mount.overlay] = (counts[mount.overlay] ?? 0) + 1
       }
-      const process = getSubProcess(node.data)
-      if (process) visit(process.graph)
     }
   }
-  for (const graph of graphs) visit(graph)
   return counts
 }
 
-/** 某 overlay 是否被 scenario 中任一图（含内嵌子流程）挂载引用；库文档以 manifest.packs 为 SSOT。 */
+/** 某 overlay 是否被 scenario 中任一图挂载引用；库文档以 manifest.packs 为 SSOT，避免重复扫描主图镜像。 */
 export function isOverlayReferenced(scenario: GameScenario, overlayId: string): boolean {
   const inGraph = (g: GameGraph): boolean =>
     g.nodes.some((n) => (n.data.overlayNodes ?? []).some((m) => m.overlay === overlayId))

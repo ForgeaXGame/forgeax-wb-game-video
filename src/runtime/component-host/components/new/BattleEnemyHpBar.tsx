@@ -2,25 +2,27 @@ import type { ReactNode } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+import { resolveBoundHpBarValues } from './boundHpBar'
 
 export const BattleEnemyHpBarManifest: ComponentManifest = {
   id: 'BattleEnemyHpBar',
   label: '敌方水墨血条',
   inputs: [
-    { key: 'current', label: '当前血量', valueType: 'number', default: 50 },
-    { key: 'max', label: '血量上限', valueType: 'number', default: 90 },
+    { key: 'bind', label: '绑定实体', valueType: 'string', default: 'ent-boss', component: 'entity' },
+    { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp', component: 'attr' },
+    { key: 'current', label: '当前血量', valueType: 'number' },
+    { key: 'max', label: '血量上限', valueType: 'number' },
     { key: 'label', label: '显示名', valueType: 'string', default: '敌方' },
   ],
   events: [],
 }
 
-export function BattleEnemyHpBar({ overlay }: OverlayProps): ReactNode {
+export function BattleEnemyHpBar({ overlay, ctx }: OverlayProps): ReactNode {
   injectCss('graph-battle-enemy-hud', ENEMY_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const inputs = overlay.inputs
-  const current = typeof inputs.current === 'number' ? inputs.current : 50
-  const max = typeof inputs.max === 'number' ? inputs.max : 90
+  const { current, max } = resolveBoundHpBarValues(inputs, ctx, 'ent-boss', 50, 90)
 
   const label = typeof inputs.label === 'string' && inputs.label ? inputs.label : '敌方'
 

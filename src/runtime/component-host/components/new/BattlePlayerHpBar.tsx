@@ -2,13 +2,16 @@ import type { ReactNode } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
+import { resolveBoundHpBarValues } from './boundHpBar'
 
 export const BattlePlayerHpBarManifest: ComponentManifest = {
   id: 'BattlePlayerHpBar',
   label: '我方水墨血条',
   inputs: [
-    { key: 'current', label: '当前血量', valueType: 'number', default: 50 },
-    { key: 'max', label: '血量上限', valueType: 'number', default: 90 },
+    { key: 'bind', label: '绑定实体', valueType: 'string', default: 'ent-player', component: 'entity' },
+    { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp', component: 'attr' },
+    { key: 'current', label: '当前血量', valueType: 'number' },
+    { key: 'max', label: '血量上限', valueType: 'number' },
     { key: 'label', label: '显示名', valueType: 'string', default: '我方' },
     { key: 'qi', label: '当前气力', valueType: 'number', default: 3 },
     { key: 'qiMax', label: '气力上限', valueType: 'number', default: 5 },
@@ -16,16 +19,17 @@ export const BattlePlayerHpBarManifest: ComponentManifest = {
   events: [],
 }
 
-export function BattlePlayerHpBar({ overlay }: OverlayProps): ReactNode {
+export function BattlePlayerHpBar({ overlay, ctx }: OverlayProps): ReactNode {
   injectCss('graph-battle-player-hud', PLAYER_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const inputs = overlay.inputs
-  const current = typeof inputs.current === 'number' ? inputs.current : 50
-  const max = typeof inputs.max === 'number' ? inputs.max : 90
+  const { current, max } = resolveBoundHpBarValues(inputs, ctx, 'ent-player', 50, 90)
   const label = typeof inputs.label === 'string' && inputs.label ? inputs.label : '我方'
   const low = current / max <= 0.3
-  const qi = typeof inputs.qi === 'number' ? inputs.qi : 3
+  const qi = typeof ctx?.hud.vars.qi === 'number'
+    ? ctx.hud.vars.qi
+    : typeof inputs.qi === 'number' ? inputs.qi : 3
   const qiMax = typeof inputs.qiMax === 'number' && inputs.qiMax > 0 ? inputs.qiMax : 5
   const pips = Array.from({ length: qiMax }, (_, index) => index < qi)
 
