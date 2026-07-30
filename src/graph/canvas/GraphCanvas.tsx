@@ -124,7 +124,7 @@ let graphClipboard: { nodes: GameNode[]; edges: GameEdge[] } | null = null
 interface CanvasNodeViewData {
   fx: FXNode
   active?: boolean
-  /** 子流程/子蓝图容器（subFlow 或 subFlowPack）→ 显示可下钻徽标。 */
+  /** 子流程/子蓝图容器（subProcess 或 subFlowPack）→ 显示可下钻徽标。 */
   isGroup?: boolean
   /** 子蓝图容器（与同图子流程区分徽标文案）。 */
   isPack?: boolean
@@ -442,7 +442,7 @@ export interface GraphCanvasProps {
   /** 面板占画布右侧的宽度比例（0~1）；revealNodeId 据此算可见区中心偏移。默认 0（不偏移）。 */
   revealPanelRatio?: number
   onJump?: (nodeId: string) => void
-  /** 双击子流程容器节点（有 subFlow）时下钻。 */
+  /** 双击内嵌子流程容器节点（有 subProcess）时下钻。 */
   onDrill?: (containerId: string) => void
   /** 点击画布空白处（取消选中 → 隐藏节点配置面板）。 */
   onPaneClick?: () => void

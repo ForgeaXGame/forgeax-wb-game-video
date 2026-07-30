@@ -2311,9 +2311,24 @@ var OVERLAY_DEMO_INSTANCE = {
 };
 
 // src/runtime/schema/graph-schema.ts
+function getSubProcess(d) {
+  const process2 = d.subProcess;
+  return process2 && typeof process2 === "object" && typeof process2.entry === "string" && isGameGraph(process2.graph) ? process2 : void 0;
+}
 function getSubFlowPack(d) {
   const p = d.subFlowPack;
   return p && typeof p === "object" && typeof p.id === "string" ? p : void 0;
+}
+function isGameGraph(v) {
+  if (!v || typeof v !== "object") return false;
+  const g = v;
+  if (!Array.isArray(g.nodes) || !Array.isArray(g.edges)) return false;
+  return g.nodes.every((n) => {
+    if (!n || typeof n !== "object") return false;
+    const node = n;
+    if (typeof node.type !== "string" || !node.type) return false;
+    return !!node.data && typeof node.data === "object";
+  });
 }
 function resolveGraphEntry(graph, preferred) {
   const nodes = graph.nodes;
@@ -2333,6 +2348,8 @@ function collectPackRefs(graph) {
   for (const n of graph.nodes) {
     const p = getSubFlowPack(n.data);
     if (p) out.add(p.id);
+    const process2 = getSubProcess(n.data);
+    if (process2) for (const ref of collectPackRefs(process2.graph)) out.add(ref);
   }
   return out;
 }
@@ -2431,15 +2448,36 @@ function validateDocument(doc) {
   const blueprints = normalized.manifest.packs;
   const mainId = normalized.manifest.mainPackId;
   for (const [bpId, bp] of Object.entries(blueprints)) {
-    const seen = /* @__PURE__ */ new Set();
-    for (const n of bp.graph.nodes) {
-      if (seen.has(n.id)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u5185\u8282\u70B9 id \u91CD\u590D\uFF1A'${n.id}'`);
-      seen.add(n.id);
-    }
-    for (const e of bp.graph.edges) {
-      if (!seen.has(e.source)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8FB9 '${e.id}' source \u6307\u5411\u4E0D\u5B58\u5728\u7684\u8282\u70B9 '${e.source}'`);
-      if (!seen.has(e.target)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8FB9 '${e.id}' target \u6307\u5411\u4E0D\u5B58\u5728\u7684\u8282\u70B9 '${e.target}'`);
-    }
+    const seenNodes = /* @__PURE__ */ new Set();
+    const seenEdges = /* @__PURE__ */ new Set();
+    const validateScope = (graph, path) => {
+      const localNodes = new Set(graph.nodes.map((node) => node.id));
+      for (const n of graph.nodes) {
+        if (seenNodes.has(n.id)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u5185\u8282\u70B9 id \u91CD\u590D\uFF1A'${n.id}' (${path})`);
+        seenNodes.add(n.id);
+        const raw = n.data;
+        if ("subFlow" in raw || "subFlowRef" in raw) {
+          errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8282\u70B9 '${n.id}' \u4F7F\u7528\u4E86\u5DF2\u79FB\u9664\u7684 subFlow/subFlowRef`);
+        }
+        const process2 = getSubProcess(n.data);
+        if ("subProcess" in raw && !process2) {
+          errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8282\u70B9 '${n.id}' \u7684 subProcess \u7ED3\u6784\u65E0\u6548`);
+          continue;
+        }
+        if (!process2) continue;
+        if (!process2.graph.nodes.some((child) => child.id === process2.entry)) {
+          errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8282\u70B9 '${n.id}' \u7684 subProcess entry '${process2.entry}' \u4E0D\u5728\u76F4\u5C5E\u5B50\u56FE\u4E2D`);
+        }
+        validateScope(process2.graph, `${path}/${n.id}`);
+      }
+      for (const e of graph.edges) {
+        if (seenEdges.has(e.id)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u5185\u8FB9 id \u91CD\u590D\uFF1A'${e.id}' (${path})`);
+        seenEdges.add(e.id);
+        if (!localNodes.has(e.source)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8FB9 '${e.id}' source \u6307\u5411\u672C\u5C42\u4E0D\u5B58\u5728\u7684\u8282\u70B9 '${e.source}'`);
+        if (!localNodes.has(e.target)) errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) \u8FB9 '${e.id}' target \u6307\u5411\u672C\u5C42\u4E0D\u5B58\u5728\u7684\u8282\u70B9 '${e.target}'`);
+      }
+    };
+    validateScope(bp.graph, "root");
     if (bp.graph.nodes.length > 0 && !bp.graph.nodes.some((n) => n.id === bp.entry)) {
       const fallback = resolveGraphEntry(bp.graph) ?? "\u2205";
       errors.push(`\u84DD\u56FE\u300C${bp.title}\u300D(${bpId}) entry '${bp.entry}' \u4E0D\u5728\u56FE\u4E2D\uFF08\u5C06\u56DE\u9000\u5230 ${fallback}\uFF09`);
