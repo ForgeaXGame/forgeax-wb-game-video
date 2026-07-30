@@ -6,7 +6,7 @@ import { GraphPlaySurface } from '../GraphPlaySurface'
 import { GraphStudio } from '../GraphStudio'
 
 const useKinoVideoResources = vi.hoisted(() => vi.fn())
-const useAudioAssets = vi.hoisted(() => vi.fn())
+const useProjectAssets = vi.hoisted(() => vi.fn())
 
 vi.mock('../../assets/kinoVideoCacheStore', () => {
   return {
@@ -16,7 +16,7 @@ vi.mock('../../assets/kinoVideoCacheStore', () => {
 
 // 音频资产查询与本件无关（它的失败面由 missing-audio-surfaces.test.tsx 钉）；不 mock 的话它的
 // 异步 hydration 会在本文件里落成一串 act(...) 警告，失败时还会多出一条 alert。
-vi.mock('../../assets/audioAssetCacheStore', () => ({ useAudioAssets }))
+vi.mock('../../assets/projectAssetCacheStore', () => ({ useProjectAssets }))
 
 const SCENARIO: GameScenario = {
   version: 'wb-game-video.graph.v1',
@@ -90,9 +90,9 @@ describe('missing video notices across play surfaces', () => {
       generation: 0,
       refresh: vi.fn(),
     })
-    useAudioAssets.mockReset()
-    useAudioAssets.mockReturnValue({
-      items: [], total: 0, loading: false, error: null, generation: 0, refresh: vi.fn(),
+    useProjectAssets.mockReset()
+    useProjectAssets.mockReturnValue({
+      items: [], loading: false, error: null, generation: 0,
     })
     seedGraphStore()
   })

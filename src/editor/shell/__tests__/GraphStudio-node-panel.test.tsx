@@ -5,10 +5,10 @@ import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { GraphStudio } from '../GraphStudio'
 
 const useKinoVideoResources = vi.hoisted(() => vi.fn())
-const useAudioAssets = vi.hoisted(() => vi.fn())
+const useProjectAssets = vi.hoisted(() => vi.fn())
 
 vi.mock('../../assets/kinoVideoCacheStore', () => ({ useKinoVideoResources }))
-vi.mock('../../assets/audioAssetCacheStore', () => ({ useAudioAssets }))
+vi.mock('../../assets/projectAssetCacheStore', () => ({ useProjectAssets }))
 
 const SCENARIO: GameScenario = {
   version: 'wb-game-video.graph.v1',
@@ -50,8 +50,8 @@ describe('GraphStudio 节点配置分栏', () => {
     useKinoVideoResources.mockReturnValue({
       items: [], total: 0, loading: false, error: null, generation: 0, refresh: vi.fn(),
     })
-    useAudioAssets.mockReturnValue({
-      items: [], total: 0, loading: false, error: null, generation: 0, refresh: vi.fn(),
+    useProjectAssets.mockReturnValue({
+      items: [], loading: false, error: null, generation: 0,
     })
     useGraphScenario.setState({
       game: 'game-nodia-fighting',
