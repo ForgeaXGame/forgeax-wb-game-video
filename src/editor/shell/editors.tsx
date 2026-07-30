@@ -197,8 +197,8 @@ export function defaultsForComponent(componentId: string): Record<string, unknow
   return buildDefaults(getComponent(componentId)?.inputs)
 }
 
-const CUE_COMPONENT_IDS = new Set(['inkKou', 'battleParry'])
-const OPTION_COMPONENT_IDS = new Set(['inkYingMo', 'battleSkillBar'])
+const CUE_COMPONENT_IDS = new Set(['InkKou', 'BattleParry'])
+const OPTION_COMPONENT_IDS = new Set(['InkYingMo', 'BattleSkill'])
 
 /**
  * 编辑器：组件 inputs 是否声明了多拍点结构（`component: 'qteCues'`）。

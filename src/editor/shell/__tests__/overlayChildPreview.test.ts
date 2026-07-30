@@ -54,7 +54,7 @@ describe('overlayChildPreview · 时间轴预览', () => {
     const reg = createCoreSkinRegistry()
     const child: OverlayChild = {
       id: 'hp-player',
-      component: 'battlePlayerHpBar',
+      component: 'BattlePlayerHpBar',
       inputs: { current: 72, max: 100, label: '我方', qi: 3, qiMax: 5 },
     }
     const html = renderToStaticMarkup(
@@ -70,7 +70,7 @@ describe('overlayChildPreview · 时间轴预览', () => {
     const reg = createCoreSkinRegistry()
     const child: OverlayChild = {
       id: 'hp-boss',
-      component: 'battleEnemyHpBar',
+      component: 'BattleEnemyHpBar',
       inputs: { current: 58, max: 100, label: '敌方' },
     }
     const html = renderToStaticMarkup(
@@ -84,7 +84,7 @@ describe('overlayChildPreview · 时间轴预览', () => {
 
   it('伤害与增益飘字预览使用稳定 fit target 且不播放位移动画', () => {
     const reg = createCoreSkinRegistry()
-    for (const component of ['damageFloatText', 'gainFloatText']) {
+    for (const component of ['DamageFloatText', 'GainFloatText']) {
       const child: OverlayChild = { id: component, component, inputs: {} }
       const html = renderToStaticMarkup(
         renderOverlayChildPreview(child, reg, ctx, 400) as ReactElement,
@@ -98,7 +98,7 @@ describe('overlayChildPreview · 时间轴预览', () => {
 describe('overlayChildPreview · 泛用预览时钟（preview/previewTimeMs 透传）', () => {
   it('新规格 inkYingMo 预览冻结交互且按钮禁用', () => {
     const reg = createCoreSkinRegistry()
-    const child: OverlayChild = { id: 'c1', component: 'inkYingMo', inputs: {}, window: { startMs: 1000 } }
+    const child: OverlayChild = { id: 'c1', component: 'InkYingMo', inputs: {}, window: { startMs: 1000 } }
     // 播放头 1300ms、child 于 1000ms 进场 → localMs = 300ms。
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 1300) as ReactElement,
@@ -110,7 +110,7 @@ describe('overlayChildPreview · 泛用预览时钟（preview/previewTimeMs 透�
 
   it('新规格 inkKou 预览冻结交互', () => {
     const reg = createCoreSkinRegistry()
-    const child: OverlayChild = { id: 'c2', component: 'inkKou', inputs: {} }
+    const child: OverlayChild = { id: 'c2', component: 'InkKou', inputs: {} }
     const html = renderToStaticMarkup(
       renderOverlayChildPreview(child, reg, ctx, 400) as ReactElement,
     )

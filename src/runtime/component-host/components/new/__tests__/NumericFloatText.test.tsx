@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createRng } from '../../../../engine/rng'
 import type { SkinCtx } from '../../../rendererRegistry'
 import {
-  DamageFloatTextOverlay,
-  damageFloatTextComponent,
+  DamageFloatText,
+  DamageFloatTextManifest,
 } from '../DamageFloatText'
 import {
-  GainFloatTextOverlay,
-  gainFloatTextComponent,
+  GainFloatText,
+  GainFloatTextManifest,
 } from '../GainFloatText'
 import { resolveNumericFloatValue } from '../numericFloatText'
 
@@ -32,10 +32,10 @@ const ctx: SkinCtx = {
 
 describe('numeric float text components', () => {
   it('declare a shared constant-or-formula value input', () => {
-    expect(damageFloatTextComponent.inputs).toEqual([
+    expect(DamageFloatTextManifest.inputs).toEqual([
       { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 },
     ])
-    expect(gainFloatTextComponent.inputs).toEqual([
+    expect(GainFloatTextManifest.inputs).toEqual([
       { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: 50 },
     ])
   })
@@ -43,26 +43,26 @@ describe('numeric float text components', () => {
   it('render fixed numbers and evaluate formula values from SkinCtx', () => {
     render(
       <>
-        <DamageFloatTextOverlay
-          overlay={{ elementId: 'fixed-damage', component: 'damageFloatText', inputs: { value: -25 } }}
+        <DamageFloatText
+          overlay={{ elementId: 'fixed-damage', component: 'DamageFloatText', inputs: { value: -25 } }}
           ctx={ctx}
         />
-        <GainFloatTextOverlay
-          overlay={{ elementId: 'fixed-gain', component: 'gainFloatText', inputs: { value: 50 } }}
+        <GainFloatText
+          overlay={{ elementId: 'fixed-gain', component: 'GainFloatText', inputs: { value: 50 } }}
           ctx={ctx}
         />
-        <DamageFloatTextOverlay
+        <DamageFloatText
           overlay={{
             elementId: 'formula-damage',
-            component: 'damageFloatText',
+            component: 'DamageFloatText',
             inputs: { value: { expr: '-(entity.hero.attr.attack + var.bonus)' } },
           }}
           ctx={ctx}
         />
-        <GainFloatTextOverlay
+        <GainFloatText
           overlay={{
             elementId: 'formula-gain',
-            component: 'gainFloatText',
+            component: 'GainFloatText',
             inputs: { value: { expr: 'entity.hero.attr.attack / 2' } },
           }}
           ctx={ctx}
@@ -78,8 +78,8 @@ describe('numeric float text components', () => {
 
   it('keeps legacy text values readable when value is absent', () => {
     render(
-      <DamageFloatTextOverlay
-        overlay={{ elementId: 'legacy', component: 'damageFloatText', inputs: { text: '-9' } }}
+      <DamageFloatText
+        overlay={{ elementId: 'legacy', component: 'DamageFloatText', inputs: { text: '-9' } }}
         ctx={ctx}
       />,
     )

@@ -1,18 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { ensureBaseHudSchemes, NEW_COMPONENT_PRESETS } from '../builtin-schemes'
+import newComponents from '../../../runtime/component-host/components/new'
 import { STAGE_FILL_LAYOUT } from '../../../runtime/schema/layout'
 
-const NEW_COMPONENT_IDS = [
-  'dialogue',
-  'inkKou',
-  'inkYingMo',
-  'battleParry',
-  'battleSkillBar',
-  'damageFloatText',
-  'gainFloatText',
-  'battlePlayerHpBar',
-  'battleEnemyHpBar',
-] as const
+const NEW_COMPONENT_IDS = newComponents.map(({ manifest }) => manifest.id)
 
 describe('new component presets', () => {
   it('provides an explicit stage layout for every new component', () => {

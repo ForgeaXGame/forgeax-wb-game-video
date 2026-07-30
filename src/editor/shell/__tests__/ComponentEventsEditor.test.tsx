@@ -113,7 +113,7 @@ describe('NodeInspector overlay events', () => {
         overlays={{
           hud: {
             id: 'hud',
-            children: [{ id: 'damage', component: 'damageFloatText', inputs: {} }],
+            children: [{ id: 'damage', component: 'DamageFloatText', inputs: {} }],
           },
         }}
         onChange={vi.fn()}
@@ -197,8 +197,8 @@ describe('OverlaySchemeEditor selected child', () => {
         overlay={{
           id: 'double-subtitle',
           children: [
-            { id: 'subtitle-a', component: 'dialogue', inputs: { text: 'A' } },
-            { id: 'subtitle-b', component: 'dialogue', inputs: { text: 'B' } },
+            { id: 'subtitle-a', component: 'Dialogue', inputs: { text: 'A' } },
+            { id: 'subtitle-b', component: 'Dialogue', inputs: { text: 'B' } },
           ],
         }}
         entities={{}}
@@ -253,13 +253,13 @@ describe('OverlaySchemeEditor selected child', () => {
         children: [
           {
             id: 'subtitle-a',
-            component: 'dialogue',
+            component: 'Dialogue',
             inputs: { text: 'A' },
             layout: { left: 0, top: 0, width: 1, height: 1 },
           },
           {
             id: 'subtitle-b',
-            component: 'dialogue',
+            component: 'Dialogue',
             inputs: { text: 'B' },
             layout: { left: 0, top: 0, width: 1, height: 1 },
           },
@@ -378,12 +378,12 @@ describe('OverlaySchemeEditor selected child', () => {
     const onPatchChild = vi.fn()
     render(
       <OverlaySchemeEditor
-        overlayId="base:battlePlayerHpBar"
+        overlayId="base:BattlePlayerHpBar"
         overlay={{
-          id: 'base:battlePlayerHpBar',
+          id: 'base:BattlePlayerHpBar',
           children: [{
             id: 'hp',
-            component: 'battlePlayerHpBar',
+            component: 'BattlePlayerHpBar',
             inputs: { current: 50, max: 90, label: '我方', qi: 3, qiMax: 5 },
           }],
         }}
@@ -410,8 +410,8 @@ describe('OverlaySchemeEditor selected child', () => {
   it('keeps catalog event actions disabled for locked base schemes', () => {
     render(
       <OverlaySchemeEditor
-        overlayId="base:inkYingMo"
-        overlay={{ id: 'base:inkYingMo', children: [{ id: 'choice', component: 'inkYingMo', inputs: {} }] }}
+        overlayId="base:InkYingMo"
+        overlay={{ id: 'base:InkYingMo', children: [{ id: 'choice', component: 'InkYingMo', inputs: {} }] }}
         entities={{}}
         variables={{}}
         usageCount={0}
@@ -432,7 +432,7 @@ describe('OverlaySchemeEditor selected child', () => {
     render(
       <OverlaySchemeEditor
         overlayId="float"
-        overlay={{ id: 'float', children: [{ id: 'damage', component: 'damageFloatText', inputs: { text: '-25' } }] }}
+        overlay={{ id: 'float', children: [{ id: 'damage', component: 'DamageFloatText', inputs: { text: '-25' } }] }}
         entities={{}}
         variables={{}}
         usageCount={0}
@@ -493,7 +493,7 @@ describe('ComponentFormFields defaults', () => {
     const onChange = vi.fn()
     render(
       <ComponentFormFields
-        componentId="damageFloatText"
+        componentId="DamageFloatText"
         values={{}}
         pickers={{ formulas: { [formula.id]: formula } }}
         onChange={onChange}

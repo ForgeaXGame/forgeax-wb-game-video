@@ -1,21 +1,21 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DialogueOverlay, dialogueComponent } from '../Dialogue'
+import { Dialogue, DialogueManifest } from '../Dialogue'
 
 afterEach(cleanup)
 
 describe('components/new Dialogue', () => {
   it('declares its authoring inputs and renders speaker, text, and self-contained CSS', () => {
-    expect(dialogueComponent.inputs).toEqual([
+    expect(DialogueManifest.inputs).toEqual([
       { key: 'speaker', label: '说话人', valueType: 'string' },
       { key: 'text', label: '台词', valueType: 'string', default: '……' },
     ])
 
     render(
-      <DialogueOverlay
+      <Dialogue
         overlay={{
           elementId: 'line-1',
-          component: 'dialogue',
+          component: 'Dialogue',
           inputs: { speaker: 'Nodia', text: 'Follow the signal.' },
         }}
       />,
@@ -32,10 +32,10 @@ describe('components/new Dialogue', () => {
 
   it('omits an empty speaker and falls back to an ellipsis for missing text', () => {
     const { container } = render(
-      <DialogueOverlay
+      <Dialogue
         overlay={{
           elementId: 'line-2',
-          component: 'dialogue',
+          component: 'Dialogue',
           inputs: {},
         }}
       />,

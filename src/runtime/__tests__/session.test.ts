@@ -22,7 +22,7 @@ describe('GraphSession (playable view model)', () => {
     expect(snap.hud.entities['ent-boss']!.hp).toBe(30)
 
     snap = session.performanceEnd() // enter → a_my(subflow) → wait（技能交互）
-    const skill = overlayChild(snap, 'battleSkillBar')
+    const skill = overlayChild(snap, 'BattleSkill')
     expect(skill?.elementId).toBe('wait/skill')
     expect(eventIds(skill)).toEqual(['light', 'heavy', 'medit', 'ult'])
 
@@ -63,6 +63,6 @@ describe('GraphSession (playable view model)', () => {
     const snap = session.jump('wait')
     // 跳到战斗待机 → 技能 overlay 可见
     expect(snap.currentNodeId).toBe('wait')
-    expect(overlayChild(snap, 'battleSkillBar')?.elementId).toBe('wait/skill')
+    expect(overlayChild(snap, 'BattleSkill')?.elementId).toBe('wait/skill')
   })
 })
