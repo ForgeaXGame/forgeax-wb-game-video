@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { create } from 'zustand'
 import type { AssetLibraryClient, ManagedAsset, ManagedAssetKind } from './assetLibraryClient'
 
@@ -115,3 +116,20 @@ export const useProjectAssetCache = create<ProjectAssetCacheStore>((set, get) =>
     }))
   },
 }))
+
+/** 资产消费者的共享读取入口；首次挂载只拉自己需要的资产类型。 */
+export function useProjectAssets(
+  gameId: string,
+  kind: ManagedAssetKind,
+  client: AssetLibraryClient | undefined,
+  enabled = true,
+): ProjectAssetCacheEntry {
+  const cacheEntry = useProjectAssetCache((state) => state.byGame[gameId]?.[kind])
+  const ensure = useProjectAssetCache((state) => state.ensure)
+
+  useEffect(() => {
+    if (enabled && client) void ensure(gameId, kind, client)
+  }, [client, enabled, ensure, gameId, kind])
+
+  return cacheEntry ?? EMPTY_ASSET_CACHE_ENTRY
+}
