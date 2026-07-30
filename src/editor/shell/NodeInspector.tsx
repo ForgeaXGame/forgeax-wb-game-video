@@ -922,6 +922,7 @@ export function NodeInspector({
   onFocusLifecycle,
   previewOpen,
   onTogglePreview,
+  isBlueprintEntry = false,
   onChange,
   onPacksChange,
   onEnsureOverlay,
@@ -963,6 +964,8 @@ export function NodeInspector({
   previewOpen?: boolean
   /** 传了才渲染头部弧形把手：切换宿主左侧预览区的展开/收起。 */
   onTogglePreview?: () => void
+  /** 当前节点是否为非主蓝图的入口标识节点；此类节点只承担蓝图入口语义。 */
+  isBlueprintEntry?: boolean
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   /**
@@ -1023,6 +1026,8 @@ export function NodeInspector({
   const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
   const nestMode: 'none' | 'subflow' | 'pack' = nestPack ? 'pack' : nestRef ? 'subflow' : 'none'
+  /** 容器与子蓝图入口都不是演出节点，不开放演出、界面或规则配置。 */
+  const canConfigurePerformance = nestMode === 'none' && !isBlueprintEntry
   // 作用域 BGM：读原始值（不过 getNodeBgm），与面板下拉一致。
   const bgm = d.bgm
   // 手写/AI 生成的非法 mode 在下拉里显示成 push（validate 会把它判 error），别让 select 变成
@@ -1213,7 +1218,7 @@ export function NodeInspector({
       </div>
 
       {row('名称', <input value={d.name} onChange={(e) => patchData({ name: e.target.value })} style={{ flex: 1 }} />)}
-      {row('视频', (
+      {canConfigurePerformance && row('视频', (
         <select
           value={selectedVideoValue}
           onChange={(e) => patchData({ media: e.target.value ? { kind: 'VIDEO', ref: e.target.value } : undefined })}
@@ -1229,7 +1234,7 @@ export function NodeInspector({
           ))}
         </select>
       ))}
-      {row('播放', (
+      {canConfigurePerformance && row('播放', (
         <select value={d.mediaPlayMode ?? 'once'} onChange={(e) => patchData({ mediaPlayMode: e.target.value as 'once' | 'loop' })}>
           <option value="once">播放一次</option>
           <option value="loop">循环</option>
@@ -1274,7 +1279,7 @@ export function NodeInspector({
               style={{ flex: 1 }}
               title="引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑"
             >
-              <option value="">（选包）</option>
+              {eligiblePacks.length === 0 ? <option value="">无</option> : null}
               {eligiblePacks.map((p) => (
                 <option key={`${p.id}@${p.version}`} value={`${p.id}@${p.version}`}>{packLabel(p)}</option>
               ))}
@@ -1285,23 +1290,11 @@ export function NodeInspector({
               ＋ 新建子蓝图
             </button>
           ))}
-          {nestPack && row('入口覆盖', (
-            <input
-              value={nestPack.entry ?? ''}
-              onChange={(e) => patchData({
-                subFlowPack: {
-                  ...nestPack,
-                  entry: e.target.value.trim() || undefined,
-                },
-              })}
-              placeholder="默认用包内 entry"
-              style={{ flex: 1 }}
-              title="可选：覆盖包默认入口节点 id"
-            />
-          ))}
         </>
       )}
 
+      {canConfigurePerformance ? (
+        <>
       {/* 覆盖物挂载 + reactions（每挂载一份） */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
@@ -1523,6 +1516,8 @@ export function NodeInspector({
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
+        </>
+      ) : null}
 
       {/* 出边：先连目标；条件可选；交互出口仅选项/QTE 等需要时再改 */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>

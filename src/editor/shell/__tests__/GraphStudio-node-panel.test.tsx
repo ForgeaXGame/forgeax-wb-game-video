@@ -120,4 +120,36 @@ describe('GraphStudio 节点配置分栏', () => {
       expect(useGraphScenario.getState().graph.nodes.some((node) => node.id === 'intro')).toBe(false)
     })
   })
+
+  it('子蓝图入口标识节点不展示演出配置和可编辑预览', () => {
+    const childGraph = {
+      nodes: [{
+        id: 'child-entry',
+        type: 'perf' as const,
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [],
+        data: { name: '子蓝图入口' },
+      }],
+      edges: [],
+    }
+    const child: BlueprintDoc = { id: 'bp-child', title: 'Child', entry: 'child-entry', graph: childGraph }
+    useGraphScenario.setState({
+      blueprints: { [MAIN_ID]: MAIN_DOC, [child.id]: child },
+      mainBlueprintId: MAIN_ID,
+      activeBlueprintId: child.id,
+      graph: childGraph,
+      selectedNodeId: 'child-entry',
+    })
+
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    expect(screen.queryByRole('button', { name: '展开预览区' })).toBeNull()
+    expect(screen.queryByTestId('node-preview-column')).toBeNull()
+    expect(screen.queryByText('视频', { selector: 'label > span:first-child' })).toBeNull()
+    expect(screen.queryByText('播放', { selector: 'label > span:first-child' })).toBeNull()
+    expect(screen.queryByText('界面', { selector: 'b' })).toBeNull()
+    expect(screen.queryByText('结算', { selector: 'b' })).toBeNull()
+    expect(screen.queryByText('响应规则', { selector: 'b' })).toBeNull()
+  })
 })
