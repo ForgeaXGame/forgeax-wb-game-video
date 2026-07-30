@@ -33,6 +33,7 @@ function createRouter(context = createContext()) {
 
 type ContextOptions = {
   readonly state?: Map<string, Uint8Array>
+  readonly media?: WorkbenchExtensionContext['media']
   readonly onList?: (path: string) => void
   readonly onRead?: (path: string) => void
   readonly beforeWrite?: (path: string, bytes: Uint8Array) => void | Promise<void>
@@ -84,7 +85,7 @@ function createContext(options: ContextOptions = {}): WorkbenchExtensionContext 
         state.set(path, new Uint8Array(bytes))
       },
     },
-    media: new InMemoryMediaCapability(),
+    media: options.media ?? new InMemoryMediaCapability(),
     models: new InMemoryModelGateway(),
   }
 }
@@ -642,6 +643,87 @@ describe('createWbGameVideoRouter', () => {
     expect(hostedAfterRetry.map((item) => item.id)).toEqual(
       hostedAfterFailure.map((item) => item.id),
     )
+  })
+
+  test('retires an expired uncommitted finalizing upload without retrying media storage', async () => {
+    const state = createFileState()
+    const media = new InMemoryMediaCapability()
+    const putSpy = vi.spyOn(media, 'put')
+      .mockRejectedValueOnce(new Error('injected media put failure'))
+    const context = createContext({ state, media })
+    const prepared = await prepareImageUpload(context, 1)
+    await putPreparedImage(context, prepared, new Uint8Array([3]))
+    const sessionPath = await uploadSessionPath(context, prepared.upload_token)
+    const chunkPath = sessionPath.replace('/session.json', '/chunks/0.bin')
+
+    const failed = await finalizePreparedImage(context, prepared, 'uncommitted')
+    const afterFailure = JSON.parse(decoder.decode(state.get(sessionPath)!))
+    state.set(sessionPath, encoder.encode(JSON.stringify({
+      ...afterFailure,
+      expiresAt: Date.now() - 1,
+    })))
+    const retried = await finalizePreparedImage(context, prepared, 'uncommitted')
+    const afterRetry = JSON.parse(decoder.decode(state.get(sessionPath)!))
+    const listed = await createWbGameVideoRouter(context).handle(request('media/resources'))
+
+    expect(failed.status).toBe(500)
+    expect(afterFailure).toMatchObject({
+      status: 'finalizing',
+      resourceId: expect.any(String),
+    })
+    expect(retried.status).toBe(409)
+    expect(afterRetry).toMatchObject({ status: 'expired' })
+    expect(state.get(chunkPath)).toEqual(new Uint8Array())
+    expect(await media.list(context.gameId)).toHaveLength(0)
+    expect(bodyJson(listed)).toMatchObject({ data: { total: 0 } })
+    expect(putSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test('cleans an expired committed finalizing upload without a duplicate media put', async () => {
+    const state = createFileState()
+    const media = new InMemoryMediaCapability()
+    const putSpy = vi.spyOn(media, 'put')
+    let failNextClear = false
+    const context = createContext({
+      state,
+      media,
+      beforeWrite(path, bytes) {
+        if (failNextClear && path.includes('/chunks/') && bytes.byteLength === 0) {
+          failNextClear = false
+          throw new Error('injected finalization clear failure')
+        }
+      },
+    })
+    const prepared = await prepareImageUpload(context, 1)
+    await putPreparedImage(context, prepared, new Uint8Array([4]))
+    const sessionPath = await uploadSessionPath(context, prepared.upload_token)
+    const chunkPath = sessionPath.replace('/session.json', '/chunks/0.bin')
+
+    failNextClear = true
+    const failed = await finalizePreparedImage(context, prepared, 'committed')
+    const afterFailure = JSON.parse(decoder.decode(state.get(sessionPath)!))
+    state.set(sessionPath, encoder.encode(JSON.stringify({
+      ...afterFailure,
+      expiresAt: Date.now() - 1,
+    })))
+    const retried = await finalizePreparedImage(context, prepared, 'committed')
+    const afterRetry = JSON.parse(decoder.decode(state.get(sessionPath)!))
+    const listed = await createWbGameVideoRouter(context).handle(request('media/resources'))
+
+    expect(failed.status).toBe(500)
+    expect(afterFailure).toMatchObject({
+      status: 'finalizing',
+      resourceId: expect.any(String),
+    })
+    expect(retried.status).toBe(200)
+    expect(afterRetry).toMatchObject({
+      status: 'finalized',
+      resourceId: afterFailure.resourceId,
+    })
+    expect(state.get(chunkPath)).toEqual(new Uint8Array())
+    expect(await media.list(context.gameId)).toHaveLength(1)
+    expect(bodyJson(listed)).toMatchObject({ data: { total: 1 } })
+    expect(putSpy).toHaveBeenCalledTimes(1)
   })
 
   test('serializes expiry cleanup behind an in-flight PUT so a chunk cannot revive the session', async () => {

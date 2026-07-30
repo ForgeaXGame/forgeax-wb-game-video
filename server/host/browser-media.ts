@@ -598,6 +598,12 @@ async function finalizeBrowserUpload(
         if (!locator) throw new Error('Finalized upload resource is unavailable')
         return resource(committed, locator, context.gameId)
       }
+      if (session.status === 'finalizing' && Date.now() >= session.expiresAt) {
+        await clearUploadChunks(context, session)
+        session.status = 'expired'
+        await writeUploadSession(context, session)
+        throw new UploadConflictError('Upload session is expired')
+      }
       const replacementIndex = session.replaceExisting && session.clientResourceId
         ? records.findIndex((item) =>
           item.resource_id === session.clientResourceId
