@@ -482,17 +482,23 @@ function OverlayReactionsEditor({
             ? routingSettlement?.type === 'at' ? 'at' : 'complete'
             : 'immediate'
           const hint = routeHints?.[event.localEventId] ?? routeHints?.[event.eventId]
+          const sourceNode = graph.nodes.find((candidate) => candidate.id === nodeId)
+          const sourceLabel = sourceNode ? `${sourceNode.data.name || sourceNode.id} (${sourceNode.id})` : nodeId
           return (
             <div style={{ marginTop: 6 }}>
-              {sectionLabel('走向')}
-              {row('目标节点', multiPool ? (
-                <span style={{ fontSize: 11, color: '#ce9178' }}>多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}</span>
-              ) : (
-                <select value={currentTarget} onChange={(e) => onRouteTo(event, e.target.value)} style={{ flex: 1 }}>
-                  <option value="">（无 · 只做副作用）</option>
-                  {nodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, marginBottom: 4, fontSize: 12 }}>
+                <span style={{ opacity: 0.7, flexShrink: 0 }}>从</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sourceLabel}>{sourceLabel}</span>
+                <span style={{ opacity: 0.7, flexShrink: 0 }}>到</span>
+                {multiPool ? (
+                  <span style={{ fontSize: 11, color: '#ce9178', minWidth: 0 }}>多目标边池（{pool.length}）· 请在「出边」调整 {hint ?? ''}</span>
+                ) : (
+                  <select aria-label="目标节点" value={currentTarget} onChange={(e) => onRouteTo(event, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+                    <option value="">（无 · 只做副作用）</option>
+                    {nodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                )}
+              </div>
               {routeEdge ? row('跳转时机', (
                 <select
                   value={timing}
