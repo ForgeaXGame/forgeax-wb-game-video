@@ -226,16 +226,24 @@ describe('missing video notices across play surfaces', () => {
     const subflowGraph: GameScenario['graph'] = {
       nodes: [
         {
-          id: 'turn', type: 'subflow', position: { x: 0, y: 0 }, inputs: [], outputs: [],
-          data: { name: '我方回合', subFlow: 'skill' },
+          id: 'turn', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [],
+          data: {
+            name: '我方回合',
+            subProcess: {
+              entry: 'skill',
+              graph: {
+                nodes: [{
+                  id: 'skill', type: 'perf', position: { x: 0, y: 120 }, inputs: [], outputs: [],
+                  data: { name: '选择技能', media: { kind: 'video', ref: 'missing-stable-id' } },
+                }],
+                edges: [],
+              },
+            },
+          },
         },
         {
           id: 'end', type: 'perf', position: { x: 200, y: 0 }, inputs: [], outputs: [],
           data: { name: '战斗结束' },
-        },
-        {
-          id: 'skill', type: 'perf', position: { x: 0, y: 120 }, inputs: [], outputs: [],
-          data: { name: '选择技能', media: { kind: 'video', ref: 'missing-stable-id' } },
         },
       ],
       edges: [{ id: 'turn-end', source: 'turn', target: 'end', sourceHandle: 'default', targetHandle: 'in' }],

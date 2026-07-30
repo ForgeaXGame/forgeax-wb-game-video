@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
-import { getSubFlowPack } from '../../../runtime/schema/graph-schema'
+import { getSubProcess } from '../../../runtime/schema/graph-schema'
 import { NodeInspector } from '../NodeInspector'
 
 function graphWith(data: GameNodeData): GameGraph {
@@ -23,8 +23,16 @@ function expectPerformanceFieldsHidden(): void {
 afterEach(cleanup)
 
 describe('NodeInspector · 蓝图节点角色约束', () => {
-  it('子流程容器不开放演出、界面、结算和响应规则配置', () => {
-    render(<NodeInspector graph={graphWith({ name: '容器', subFlowPack: { id: 'bp-child', version: '1' } })} nodeId="node" onChange={vi.fn()} />)
+  it.each([
+    ['内嵌子流程容器', {
+      name: '容器',
+      subProcess: { entry: 'entry', graph: { nodes: [
+        { id: 'entry', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '入口' } },
+      ], edges: [] } },
+    }],
+    ['子蓝图容器', { name: '容器', subFlowPack: { id: 'bp-child', version: '1', entry: 'legacy-entry' } }],
+  ] as const)('%s 不开放演出、界面、结算和响应规则配置', (_name, data) => {
+    render(<NodeInspector graph={graphWith(data)} nodeId="node" onChange={vi.fn()} />)
 
     expectPerformanceFieldsHidden()
     expect(screen.queryByText('入口覆盖')).toBeNull()
@@ -56,7 +64,7 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
   it('子蓝图包没有候选时显示“无”，有候选时只显示实际蓝图', () => {
     const graph = graphWith({ name: '容器', subFlowPack: { id: 'missing', version: '1' } })
     const { rerender } = render(<NodeInspector graph={graph} nodeId="node" onChange={vi.fn()} />)
-    const emptySelect = screen.getByTitle('子流程使用独立蓝图；双击容器下钻编辑')
+    const emptySelect = screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')
     expect(within(emptySelect).getByRole('option', { name: '无' })).toBeTruthy()
 
     rerender(
@@ -67,35 +75,26 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
         onChange={vi.fn()}
       />,
     )
-    const populatedSelect = screen.getByTitle('子流程使用独立蓝图；双击容器下钻编辑')
+    const populatedSelect = screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')
     expect(within(populatedSelect).queryByRole('option', { name: '无' })).toBeNull()
     expect(within(populatedSelect).getByRole('option', { name: '战斗 (missing@1)' })).toBeTruthy()
   })
 
-  it('新建子流程时创建独立蓝图，不向父图追加入口节点', () => {
+  it('新建内嵌子流程时只在私有子图创建入口，不向父图追加节点', () => {
     const graph = graphWith({ name: '回合' })
     const onChange = vi.fn()
-    const onPacksChange = vi.fn()
     render(
       <NodeInspector
         graph={graph}
         nodeId="node"
-        packs={[]}
         onChange={onChange}
-        onPacksChange={onPacksChange}
       />,
     )
 
-    fireEvent.change(screen.getByTitle('无 / 子流程（独立蓝图作用域）'), { target: { value: 'subflow' } })
+    fireEvent.change(screen.getByTitle('无 / 私有内嵌子流程 / 外部子蓝图（互斥）'), { target: { value: 'process' } })
 
-    const nextPacks = onPacksChange.mock.calls[0]?.[0]
-    expect(nextPacks).toHaveLength(1)
-    expect(nextPacks[0].graph.nodes).toHaveLength(1)
     const nextGraph = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(nextGraph.nodes).toHaveLength(1)
-    expect(getSubFlowPack(nextGraph.nodes[0]!.data)).toEqual({
-      id: nextPacks[0].id,
-      version: nextPacks[0].version,
-    })
+    expect(getSubProcess(nextGraph.nodes[0]!.data)?.graph.nodes).toHaveLength(1)
   })
 })
