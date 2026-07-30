@@ -37,6 +37,7 @@ export function ComponentEventsEditor({
   spawnOptions,
   overlays,
   pickers,
+  allowSpawn = true,
   renderRoute,
   onCatalogChange,
   onMountActionsChange,
@@ -49,6 +50,7 @@ export function ComponentEventsEditor({
   spawnOptions: ActionOption[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
+  allowSpawn?: boolean
   renderRoute?: (event: OverlayEventRef) => ReactNode
   onCatalogChange?: (next: OverlayReaction[] | undefined) => void
   onMountActionsChange?: (event: OverlayEventRef, actions: NodeAction[]) => void
@@ -99,6 +101,7 @@ export function ComponentEventsEditor({
               overlays={overlays}
               pickers={pickers}
               allowAdvance={mode === 'mount'}
+              allowSpawn={allowSpawn}
               onChange={(actions) => mode === 'catalog'
                 ? writeCatalog(event, actions)
                 : onMountActionsChange?.(event, actions)}

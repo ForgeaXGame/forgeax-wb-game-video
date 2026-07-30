@@ -23,6 +23,7 @@ import {
   componentEventsLocked,
   choiceSkinPreviewInteractions,
   listOptionBranches,
+  mountOverlayGraph,
   patchMaterialGraph,
   patchOverlayMountLayoutGraph,
   patchOverlayGraph,
@@ -40,8 +41,11 @@ import {
   setQteOutcomeEffectsGraph,
   setQteOutcomeSpawnGraph,
   setQteOutcomeTargetGraph,
+  shiftMountWindowGraph,
+  resizeMountWindowGraph,
 } from '../graphMaterialOps'
 import type { MaterialItem } from '../materialTimelineShared'
+import { expandNodeOverlays } from '../../../runtime/schema/expand-overlay'
 
 // `hasCuePointsInput`/`hasOptionEventsInput`（editors）按组件 inputs 结构判定，任何用到
 // qteElement/choiceElement 的用例都需要先注册核心组件——放在文件级 beforeAll。
@@ -1161,5 +1165,78 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
     const el = findElement(next, curNode, floatId)!
     expect(el.inputs?.text).toBe('会心一击 {v}')
     expect(overlayEffects(next, curNode, floatId)).toHaveLength(1)
+  })
+})
+
+describe('graphMaterialOps · 同模板多挂载', () => {
+  it('重复挂载生成独立实例，时间轴与运行时不撞 key，删除第二份不影响第一份', () => {
+    const n = node('a', { durationMs: 3000 })
+    const overlay = {
+      id: 'n_door',
+      title: '叩门界面',
+      children: [{
+        id: 'damage',
+        component: 'floatText',
+        trigger: { when: 'enter' as const },
+        inputs: { text: '-100' },
+      }],
+    }
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      { ui: { overlays: { [overlay.id]: overlay } } },
+    )
+
+    const once = mountOverlayGraph(base, n, overlay.id)
+    const twice = mountOverlayGraph(once, findNode(once.graph, n.id)!, overlay.id)
+    const mountedNode = findNode(twice.graph, n.id)!
+
+    expect(mountedNode.data.overlayNodes).toEqual([
+      { overlay: 'n_door' },
+      { id: 'n_door__2', overlay: 'n_door' },
+    ])
+    expect(expandNodeOverlays(twice.ui?.overlays, mountedNode).flatMap((mount) => mount.children.map((child) => child.id)))
+      .toEqual(['n_door/damage', 'n_door__2/damage'])
+    expect(collectMountItemsFromNode(twice, mountedNode, 3000).map((item) => [item.key, item.label]))
+      .toEqual([
+        ['mount:n_door', '叩门界面'],
+        ['mount:n_door__2', '叩门界面 · n_door__2'],
+      ])
+
+    const removedSecond = removeMountGraph(twice, mountedNode, 'n_door__2')
+    expect(findNode(removedSecond.graph, n.id)!.data.overlayNodes).toEqual([{ overlay: 'n_door' }])
+  })
+
+  it('拖动或缩放第二份挂载只修改第二份实例', () => {
+    const n = node('a', { durationMs: 3000 })
+    const overlay = {
+      id: 'petal',
+      children: [{
+        id: 'float',
+        component: 'floatText',
+        trigger: { when: 'enter' as const },
+        window: { startMs: 0, endMs: 1000 },
+        inputs: { text: '-100' },
+      }],
+    }
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      { ui: { overlays: { [overlay.id]: overlay } } },
+    )
+    const once = mountOverlayGraph(base, n, overlay.id)
+    const twice = mountOverlayGraph(once, findNode(once.graph, n.id)!, overlay.id)
+
+    const shifted = shiftMountWindowGraph(twice, findNode(twice.graph, n.id)!, 3000, 'petal__2', { startMs: 1000 })
+    expect(expandNodeOverlays(shifted.ui?.overlays, findNode(shifted.graph, n.id)!).map((mount) => mount.children[0]!.window))
+      .toEqual([
+        { startMs: 0, endMs: 1000 },
+        { startMs: 1000, endMs: 2000 },
+      ])
+
+    const resized = resizeMountWindowGraph(shifted, findNode(shifted.graph, n.id)!, 3000, 'petal__2', { endMs: 2500 })
+    expect(expandNodeOverlays(resized.ui?.overlays, findNode(resized.graph, n.id)!).map((mount) => mount.children[0]!.window))
+      .toEqual([
+        { startMs: 0, endMs: 1000 },
+        { startMs: 1000, endMs: 2500 },
+      ])
   })
 })

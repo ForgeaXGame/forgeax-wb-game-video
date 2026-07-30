@@ -70,12 +70,13 @@ import {
   forkSchemeForEdit,
   overriddenChildIds,
   patchOverlayChild,
+  patchOverlayChildInMount,
   patchOverlayMount,
   primaryOverlayMount,
   removeOverlayChild,
   resetOverride,
 } from '../../graph/edit/overlay-edit'
-import { overlayMountId } from '../../runtime/schema/node-config-schema'
+import { createOverlayMount, overlayMountId } from '../../runtime/schema/node-config-schema'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import {
   STAGE_FILL_LAYOUT,
@@ -1118,7 +1119,7 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
       key: `mount:${mid}`,
       id: mid,
       kind: 'mount' as MaterialKind,
-      label: title || mid,
+      label: title ? (mid === mount.overlay ? title : `${title} · ${mid}`) : mid,
       startMs: start ?? 0,
       endMs: end ?? maxMs,
       zIndex: i,
@@ -1139,7 +1140,6 @@ export function mountOverlayGraph(
   preset?: Overlay,
 ): GameScenario {
   const mounts = node.data.overlayNodes ?? []
-  if (mounts.some((m) => overlayMountId(m) === overlayId || m.overlay === overlayId)) return scenario
   let ui = scenario.ui
   if (!ui?.overlays?.[overlayId] && preset) {
     ui = { ...ui, overlays: { ...(ui?.overlays ?? {}), [overlayId]: structuredClone(preset) } }
@@ -1149,7 +1149,8 @@ export function mountOverlayGraph(
     undefined,
     definition?.children.map((child) => child.layout) ?? [],
   )
-  const next = [...mounts, { overlay: overlayId, ...(layout ? { layout } : {}) }]
+  const created = createOverlayMount(mounts, overlayId)
+  const next = [...mounts, { ...created, ...(layout ? { layout } : {}) }]
   return { ...scenario, ui, graph: updateNodeData(scenario.graph, node.id, { overlayNodes: next }) }
 }
 
@@ -1204,14 +1205,14 @@ function removeOverlayChildCascading(scenario: GameScenario, node: GameNode, chi
  */
 export function removeMountGraph(scenario: GameScenario, node: GameNode, mountId: string): GameScenario {
   const mounts = node.data.overlayNodes ?? []
-  const mount = mounts.find((m) => overlayMountId(m) === mountId || m.overlay === mountId)
+  const mount = mounts.find((m) => overlayMountId(m) === mountId)
   if (!mount) return scenario
   const children = resolveMountChildren(scenario.ui?.overlays, mount)
   let s = cascadeClearChildrenEvents(scenario, node, children)
   const cur = s.graph.nodes.find((x) => x.id === node.id) ?? node
-  const next = (cur.data.overlayNodes ?? []).filter(
-    (m) => overlayMountId(m) !== overlayMountId(mount) && m.overlay !== mount.overlay,
-  )
+  const curMounts = cur.data.overlayNodes ?? []
+  const removeIndex = curMounts.findIndex((m) => overlayMountId(m) === mountId)
+  const next = curMounts.filter((_, index) => index !== removeIndex)
   s = {
     ...s,
     graph: updateNodeData(s.graph, node.id, { overlayNodes: next.length ? next : undefined }),
@@ -1250,7 +1251,7 @@ export function shiftMountWindowGraph(
   for (const el of children) {
     const sp = childVisibleSpan(el, maxMs)
     if (!sp) continue // filter/fx 无时序语义
-    s = patchOverlayChild(s, node.id, el.id, {
+    s = patchOverlayChildInMount(s, node.id, mountId, el.id, {
       window: { startMs: shift(sp.start), endMs: shift(sp.end) },
     })
   }
@@ -1293,7 +1294,7 @@ export function resizeMountWindowGraph(
     let s = scenario
     for (const x of spans) {
       if (x.start !== curStart) continue
-      s = patchOverlayChild(s, node.id, x.el.id, { window: { startMs: next, endMs: x.end } })
+      s = patchOverlayChildInMount(s, node.id, mountId, x.el.id, { window: { startMs: next, endMs: x.end } })
     }
     return s
   }
@@ -1303,7 +1304,7 @@ export function resizeMountWindowGraph(
     let s = scenario
     for (const x of spans) {
       if (x.end !== curEnd) continue
-      s = patchOverlayChild(s, node.id, x.el.id, { window: { startMs: x.start, endMs: next } })
+      s = patchOverlayChildInMount(s, node.id, mountId, x.el.id, { window: { startMs: x.start, endMs: next } })
     }
     return s
   }
@@ -1730,7 +1731,10 @@ export function listSchemeMountTabs(scenario: GameScenario, node: GameNode | und
     if (seenMount.has(mountId)) continue
     seenMount.add(mountId)
     const overlay = scenario.ui?.overlays?.[mount.overlay]
-    const title = overlay?.title?.trim() || mountId
+    const overlayTitle = overlay?.title?.trim()
+    const title = overlayTitle
+      ? (mountId === mount.overlay ? overlayTitle : `${overlayTitle} · ${mountId}`)
+      : mountId
     const components: ExtraAddableComponent[] = []
     for (const el of overlay?.children ?? []) {
       const componentId = el.component
