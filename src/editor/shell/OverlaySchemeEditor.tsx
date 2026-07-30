@@ -211,7 +211,7 @@ export function OverlaySchemeEditor({
         </div>
         <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
           {overlayId}
-          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础组件方案（单组件，不可增删）</span>}
+          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础界面（单组件，不可增删）</span>}
         </div>
         {duplicateOf.length > 0 && (
           <div
@@ -314,7 +314,7 @@ export function OverlaySchemeEditor({
             </div>
             {locked ? (
               <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
+                基础界面结构锁定；参数修改会影响所有未覆盖该参数的挂载。
               </div>
             ) : null}
             <ComponentFormFields
@@ -329,7 +329,7 @@ export function OverlaySchemeEditor({
                 <div style={{ fontSize: 11, fontWeight: 600, margin: '10px 0 6px' }}>事件</div>
                 {locked ? (
                   <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                    基础组件方案的目录事件动作只读；节点挂载仍可追加动作。
+                    基础界面的目录事件动作只读；节点挂载仍可追加动作。
                   </div>
                 ) : null}
                 <fieldset
@@ -356,7 +356,7 @@ export function OverlaySchemeEditor({
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可调整参数和组件位置。
+          基础界面锁定为单组件，不可增删；可调整参数和组件位置。
         </div>
       ) : (
         <ComponentLibrary />
