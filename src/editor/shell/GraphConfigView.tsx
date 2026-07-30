@@ -19,6 +19,7 @@ import { getGameSlug } from '../persist/gameScope'
 import { NEW_COMPONENT_PRESETS, BASE_HUD_PREFIX, listCustomSchemeIds, listBaseHudIds } from '../demo/builtin-schemes'
 import { findDuplicateOverlays } from './overlay-dedup'
 import type { Formula } from '../persist/formula-authoring'
+import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -40,7 +41,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
   const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const meta = useGraphScenario((s) => s.meta)
-  const graph = useGraphScenario((s) => s.graph)
+  const blueprints = useGraphScenario((s) => s.blueprints)
   const isDraft = useGraphScenario((s) => s.isDraft)
   const savedTip = useGraphScenario((s) => s.savedTip)
   const setMeta = useGraphScenario((s) => s.setMeta)
@@ -66,15 +67,10 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   }, [])
   const [active, setActive] = useState<ScenarioSection>(tabs[0]?.section ?? 'entities')
   // overlay 资源池「已用/未用」：统计每个 overlay 被多少节点挂载引用。
-  const overlayUsage = useMemo(() => {
-    const m: Record<string, number> = {}
-    for (const n of graph.nodes) {
-      for (const mount of n.data.overlayNodes ?? []) {
-        m[mount.overlay] = (m[mount.overlay] ?? 0) + 1
-      }
-    }
-    return m
-  }, [graph.nodes])
+  const overlayUsage = useMemo(
+    () => countOverlayReferences(Object.values(blueprints).map((doc) => doc.graph)),
+    [blueprints],
+  )
 
   // ── 界面（overlays）形态：树 + 单方案编辑 ──
   const overlaysMode = tabs.length === 1 && tabs[0]?.section === 'overlays'
@@ -102,30 +98,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     const ov = allOverlays[oid]
     if (!ov) return
     setOverlays({ ...allOverlays, [oid]: { ...ov, title } })
-  }
-  const moveSchemeChildren = (
-    oid: string,
-    moveDelta: { x: number; y: number },
-  ) => {
-    const ov = allOverlays[oid]
-    if (!ov) return
-    if (moveDelta.x === 0 && moveDelta.y === 0) return
-    setOverlays({
-      ...allOverlays,
-      [oid]: {
-        ...ov,
-        children: ov.children.map((child) => ({
-          ...child,
-          layout: {
-            ...child.layout,
-            left: (typeof child.layout?.left === 'number' ? child.layout.left : 0) + moveDelta.x,
-            top: (typeof child.layout?.top === 'number' ? child.layout.top : 0) + moveDelta.y,
-            right: undefined,
-            bottom: undefined,
-          },
-        })),
-      },
-    })
   }
   const removeScheme = (oid: string) => {
     const { [oid]: _drop, ...rest } = allOverlays
@@ -280,7 +252,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   onAddChild={(p, place) => addSchemeChild(selOverlay, p, place)}
                   onRemoveChild={(c) => removeSchemeChild(selOverlay, c)}
                   onPatchChild={(c, patch) => patchOverlayChild(selOverlay, c, patch)}
-                  onMoveCanvas={(moveDelta) => moveSchemeChildren(selOverlay, moveDelta)}
                   onReactionsChange={(reactions) =>
                     setOverlays({ ...allOverlays, [selOverlay]: { ...ov, reactions } })}
                 />
