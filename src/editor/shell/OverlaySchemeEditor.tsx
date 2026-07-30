@@ -7,10 +7,8 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import {
-  DEFAULT_OVERLAY_DESIGN_CANVAS,
   OverlayCatalogPreview,
 } from './OverlayCatalogPreview'
-import type { CanvasBox } from './OverlayCanvasInteraction'
 import { ComponentLibrary } from './ComponentLibrary'
 import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
@@ -128,8 +126,6 @@ export interface OverlaySchemeEditorProps {
     childId: string,
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
-  /** 编辑器本地设计画布整体移动时，批量平移方案 children；不写 Overlay 级字段。 */
-  onMoveCanvas?: (moveDelta: { x: number; y: number }) => void
   onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
 }
 
@@ -148,12 +144,9 @@ export function OverlaySchemeEditor({
   onAddChild,
   onRemoveChild,
   onPatchChild,
-  onMoveCanvas,
   onReactionsChange,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
-  const [designCanvases, setDesignCanvases] = useState<Record<string, CanvasBox>>({})
-  const designCanvas = designCanvases[overlayId] ?? DEFAULT_OVERLAY_DESIGN_CANVAS
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
   const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
@@ -253,11 +246,6 @@ export function OverlaySchemeEditor({
                 }
           }
           onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
-          designCanvas={designCanvas}
-          onDesignCanvasChange={(box, moveDelta) => {
-            setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
-            if (moveDelta) onMoveCanvas?.(moveDelta)
-          }}
           onWarnChange={setWarnIds}
         />
 

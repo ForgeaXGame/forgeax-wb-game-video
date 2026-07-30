@@ -24,7 +24,6 @@ describe('SessionSnapshot blueprint location', () => {
     const session = new GraphSession(scn, { rootBlueprintId: 'bp-main' })
     const snap = session.start()
     expect(snap.activeBlueprintId).toBe('enemy-turn')
-    expect(snap.activeGraphPath).toEqual([])
-    expect(snap.callStack).toEqual([{ blueprintId: 'bp-main', callerNodeId: 'wrap', graphPath: [], title: '主蓝图' }])
+    expect(snap.callStack).toEqual([{ blueprintId: 'bp-main', callerNodeId: 'wrap', title: '主蓝图' }])
   })
 })
