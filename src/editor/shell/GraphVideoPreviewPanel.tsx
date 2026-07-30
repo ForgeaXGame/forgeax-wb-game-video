@@ -55,6 +55,19 @@ export function GraphVideoPreviewPanel({
       if (timeRef.current) timeRef.current.textContent = `${fmtTime(next)} / ${fmtTime(maxMs)}`
     }
 
+    useEffect(() => {
+      if (!isVideoPlaying) return
+      let animationFrame = 0
+      const syncPlayhead = (): void => {
+        const video = videoRef.current
+        if (!video || video.paused) return
+        reportPlayhead(video.currentTime * 1000)
+        animationFrame = requestAnimationFrame(syncPlayhead)
+      }
+      animationFrame = requestAnimationFrame(syncPlayhead)
+      return () => cancelAnimationFrame(animationFrame)
+    }, [isVideoPlaying, maxMs])
+
     function togglePlay(): void {
       const video = videoRef.current
       if (!video) return
