@@ -4,7 +4,7 @@
  *
  * 与宿主解耦:靠两个注入项跑起来,不 import editor/宿主:
  *   - `resolveAsset(mediaId, game)`:把节点媒体 id 解析成可播 url(宿主专属——forgeax 走
- *     Kino/__gva__,将来 manifest/COS;arrival 走自己的实现)。runtime 不认识这些。
+ *     宿主媒体服务、将来 manifest/COS;arrival 走自己的实现)。runtime 不认识这些。
  *   - `game`:当前游戏 slug(宿主决定,如 iframe `?slug=`),作 prop 传入,runtime 不读 URL。
  *
  * 渲染帧交给共享的 <GameStage>;这里只管会话生命周期 + 根容器/焦点/占位。

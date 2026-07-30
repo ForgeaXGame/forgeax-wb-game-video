@@ -7,7 +7,7 @@
  *
  * 被两处共享（SSOT）：
  *   - `server/tool-handlers.ts` 的 wb-game-video:* 工具 + `server/generation/*` 编排（写）
- *   - `vite.config.ts` 的 `/__gva__` 端点（读 + 流式回文件）
+ *   - 宿主扩展媒体路由（读 + 流式回文件）
  *
  * 跨模块产物（人设图/场景图）**只读**：不落进本 registry 的 media/，仅以 externalPath
  * 指回对方目录（见 server/intake/*）。本 registry 只写带 productionType 的记录，并
@@ -240,7 +240,7 @@ export function mimeForPath(p: string): string {
   return MIME_BY_EXT[extname(p).toLowerCase()] ?? 'application/octet-stream'
 }
 
-/** 便捷：读文件流 + 大小 + mime（供 `/__gva__/media/:id` 端点）。 */
+/** 便捷：读文件流 + 大小 + mime（供宿主媒体路由）。 */
 export function openAssetFile(dir: string, id: string): { stream: ReturnType<typeof createReadStream>; size: number; mime: string } | null {
   const asset = getAsset(dir, id)
   if (!asset) return null

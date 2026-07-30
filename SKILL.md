@@ -50,3 +50,10 @@ import-character-refs + import-scene-refs
 素材写入 `.forgeax/games/<slug>/assets/`。蓝图写入 `.forgeax/games/<slug>/blueprint.json`，首次保存补 `.forgeax/games/<slug>/project.json`。
 
 本扩展不替代纯叙事影片、BGM、低模 3D 或 ECS 游戏工具；它专注于视频承载的玩法交互。
+
+## 宿主契约
+
+发布时需要 `@forgeax/extension-platform@0.0.2` 与
+`@forgeax/workbench-host@0.1.0`。宿主加载 `@forgeax/wb-game-video/host` 的 `host`
+导出，并注入游戏工作区、版本、媒体与模型 capability。所有工具和扩展 HTTP 路由共享同一
+服务；不支持根据 URL、进程环境或全局 active game 选择游戏。

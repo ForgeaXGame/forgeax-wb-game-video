@@ -1,0 +1,196 @@
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdir, readFile } from 'node:fs/promises'
+import { relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  RuntimeRegistry,
+  createWorkbenchHost,
+  mergeManifestLayers,
+} from '@forgeax/workbench-host/node'
+import type {
+  MediaAsset,
+  MediaBody,
+  MediaCapability,
+  MediaQuery,
+  MediaWriteInput,
+  ModelGateway,
+  VersionAdapter,
+  WorkspaceAdapter,
+} from '@forgeax/workbench-host/contracts'
+
+const packageFiles = [
+  'project.json',
+  'blueprint.json',
+  'assets/manifest.json',
+] as const
+
+function assertGameId(gameId: string): void {
+  if (!gameId || gameId === '.' || gameId === '..' || /[\\/]/.test(gameId)) {
+    throw new TypeError('Game id must be a non-empty logical identifier')
+  }
+}
+
+function within(root: string, candidate: string): boolean {
+  const path = relative(root, candidate)
+  return path === '' || (!path.startsWith('..') && !path.startsWith(`..${sep}`))
+}
+
+class LocalDevWorkspace implements WorkspaceAdapter {
+  constructor(private readonly gamesRoot: string) {}
+
+  async resolveGameRoot(gameId: string): Promise<string> {
+    assertGameId(gameId)
+    const candidate = resolve(this.gamesRoot, gameId)
+    if (!within(this.gamesRoot, candidate)) throw new TypeError('Game root is outside development workspace')
+    await mkdir(candidate, { recursive: true })
+    return realpathSync(candidate)
+  }
+}
+
+class LocalDevVersions implements VersionAdapter {
+  private readonly versions = new Map<string, Array<{
+    tag: string
+    commitHash: string
+    message: string
+    createdAt: string
+    files: Map<string, Uint8Array>
+  }>>()
+
+  async ensureRepository(gameRoot: string): Promise<void> {
+    await mkdir(gameRoot, { recursive: true })
+  }
+
+  async createVersion(gameRoot: string, message: string) {
+    const history = this.versions.get(gameRoot) ?? []
+    const files = new Map<string, Uint8Array>()
+    for (const path of packageFiles) {
+      try {
+        files.set(path, new Uint8Array(await readFile(resolve(gameRoot, path))))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+    }
+    const sequence = history.length + 1
+    const version = {
+      tag: `dev-${sequence}`,
+      commitHash: `local-${sequence}`,
+      message,
+      createdAt: new Date().toISOString(),
+      files,
+    }
+    history.push(version)
+    this.versions.set(gameRoot, history)
+    return { ...version, files: undefined } as {
+      tag: string
+      commitHash: string
+      message: string
+      createdAt: string
+    }
+  }
+
+  async currentVersion(gameRoot: string) {
+    const version = this.versions.get(gameRoot)?.at(-1)
+    return version
+      ? { tag: version.tag, commitHash: version.commitHash, dirty: false }
+      : null
+  }
+
+  async listVersions(gameRoot: string) {
+    return (this.versions.get(gameRoot) ?? []).map((version) => ({
+      tag: version.tag,
+      commitHash: version.commitHash,
+      message: version.message,
+      createdAt: version.createdAt,
+    }))
+  }
+
+  async readFileAtVersion(gameRoot: string, tag: string, path: string) {
+    const bytes = this.versions.get(gameRoot)
+      ?.find((version) => version.tag === tag)
+      ?.files.get(path)
+    return bytes ? new Uint8Array(bytes) : null
+  }
+}
+
+class InMemoryDevMedia implements MediaCapability {
+  private readonly assets = new Map<string, Map<string, { asset: MediaAsset; body: MediaBody }>>()
+
+  async list(gameId: string, query: MediaQuery = {}): Promise<MediaAsset[]> {
+    const assets = [...(this.assets.get(gameId)?.values() ?? [])]
+      .map(({ asset }) => structuredClone(asset))
+      .filter((asset) => !query.type || asset.type === query.type)
+    return assets.slice(0, query.limit ?? assets.length)
+  }
+
+  async read(gameId: string, assetId: string): Promise<MediaBody | null> {
+    const body = this.assets.get(gameId)?.get(assetId)?.body
+    return body
+      ? { contentType: body.contentType, bytes: new Uint8Array(body.bytes) }
+      : null
+  }
+
+  async put(gameId: string, input: MediaWriteInput): Promise<MediaAsset> {
+    const type = input.contentType.startsWith('image/')
+      ? 'image'
+      : input.contentType.startsWith('video/') ? 'video' : 'audio'
+    const asset: MediaAsset = {
+      id: `${gameId}:${input.filename}`,
+      type,
+      url: `memory://${encodeURIComponent(gameId)}/${encodeURIComponent(input.filename)}`,
+      contentType: input.contentType,
+      sizeBytes: input.bytes.byteLength,
+      ...(input.metadata ? { metadata: structuredClone(input.metadata) } : {}),
+    }
+    const gameAssets = this.assets.get(gameId) ?? new Map()
+    gameAssets.set(asset.id, {
+      asset: structuredClone(asset),
+      body: { contentType: input.contentType, bytes: new Uint8Array(input.bytes) },
+    })
+    this.assets.set(gameId, gameAssets)
+    return structuredClone(asset)
+  }
+}
+
+const unavailableModels: ModelGateway = {
+  async generateText() { throw new Error('Development host has no model gateway; inject one from the embedding host') },
+  async generateImage() { throw new Error('Development host has no model gateway; inject one from the embedding host') },
+  async generateVideo() { throw new Error('Development host has no model gateway; inject one from the embedding host') },
+}
+
+export interface CreateDevWorkbenchHostOptions {
+  readonly extensionRoot?: string
+  readonly gamesRoot?: string
+  readonly media?: MediaCapability
+  readonly models?: ModelGateway
+}
+
+/**
+ * Local development composition root. It uses the same host HTTP contract as
+ * production while keeping workspace files local and media memory-backed.
+ */
+export function createDevWorkbenchHost(
+  options: CreateDevWorkbenchHostOptions = {},
+) {
+  const extensionRoot = realpathSync(
+    options.extensionRoot ?? resolve(fileURLToPath(new URL('..', import.meta.url))),
+  )
+  const gamesRoot = resolve(options.gamesRoot ?? resolve(extensionRoot, '.workbench-dev', 'games'))
+  mkdirSync(gamesRoot, { recursive: true })
+  const rawManifest = JSON.parse(readFileSync(resolve(extensionRoot, 'forgeax-extension.json'), 'utf8'))
+  const registry = new RuntimeRegistry()
+  registry.register({
+    manifest: mergeManifestLayers([rawManifest]),
+    packageRoot: extensionRoot,
+    frontendEntry: 'index.html',
+    backendEntry: 'server/host.ts',
+  })
+
+  return createWorkbenchHost({
+    registry,
+    workspace: new LocalDevWorkspace(realpathSync(gamesRoot)),
+    versioning: new LocalDevVersions(),
+    media: options.media ?? new InMemoryDevMedia(),
+    models: options.models ?? unavailableModels,
+    isExtensionTrusted: () => true,
+  })
+}

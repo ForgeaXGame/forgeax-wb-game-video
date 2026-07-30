@@ -2,7 +2,7 @@
  * 音频资产（BGM 候选的料）查询 —— 与 `kinoVideoCacheStore`（「视频」字段那条路）**同款数据源**：
  * Kino `media_type: 'audio'`，按 game 分桶的共享缓存 + 显式 hydration。
  *
- * 为何不走 `/__gva__/assets?kind=audio`：资产库上传的音频落在 Kino（UUID id + provider），
+ * 为何不走本地素材清单路由：资产库上传的音频落在 Kino（UUID id + provider），
  * 本地 manifest 里虽有镜像记录，但 `listAssets` 的 MediaAsset 门闸只认带 `productionType` 的
  * image/video —— 作者在「资产 › 音频」里能看到的曲子，节点 BGM 下拉却永远空。视频字段一开始
  * 就吃 Kino，BGM 对齐同一条路。

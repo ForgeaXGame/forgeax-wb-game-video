@@ -175,7 +175,7 @@ describe('GameStage buffered playback', () => {
   })
 
   it('renews an expired gateway URL before showing a missing-video notice', () => {
-    const source = '/__gva__/media/m-narr-open?game=0728-04'
+    const source = '/__workbench__/v1/extension/rt-local/media/assets/m-narr-open?gameId=0728-04'
     const { container } = render(
       <GameStage {...props({ videoSrc: source, clip: clip('intro', 'm-narr-open') })} />,
     )
@@ -186,7 +186,7 @@ describe('GameStage buffered playback', () => {
 
     const refreshed = videoFor(
       container,
-      '/__gva__/media/m-narr-open?game=0728-04&__gva_refresh=1',
+      '/__workbench__/v1/extension/rt-local/media/assets/m-narr-open?gameId=0728-04&__gva_refresh=1',
     )
     expect(container).not.toHaveTextContent('无法播放视频资源')
 

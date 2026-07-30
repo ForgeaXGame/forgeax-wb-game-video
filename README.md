@@ -24,6 +24,23 @@ bun run lint
 bun run build
 ```
 
+`bun run dev` 启动 Vite 开发适配器（固定 `15185`）和后端 watch。适配器只挂载
+`/__workbench__/v1` 的标准 Workbench HTTP 契约；用宿主 iframe 的 nonce-bound
+handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提供旧的兼容业务路由。
+本地游戏包保存在被忽略的 `.workbench-dev/games/<gameId>/`，首次 `initialize` 时由
+扩展的 Nodia seed 创建 `project.json`、`blueprint.json` 与 `assets/manifest.json`。
+`bun test` 是无 DOM 的 server/release-contract gate；浏览器、React 与 Vite 覆盖使用
+完整的 `bun run test`（Vitest）。
+
+## 宿主集成
+
+发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
+`@forgeax/workbench-host@0.1.0`。它导出 `@forgeax/wb-game-video/host`，其中的
+`host` 提供游戏包 seed、11 个工具和共享扩展 HTTP 服务；工具调用和 HTTP 路由使用同一
+个 capability-backed service。生产宿主将该导出加载到自己的 host，并注入 workspace、
+versioning、media 和 model adapters。Arrival 与 ForgeaX 都只需把各自的游戏根解析器与
+服务 adapter 注入 `createWorkbenchHost`；扩展不读取全局 active game，也不从环境推导服务地址。
+
 `@forgeax/extension-platform` 的 peer 与开发依赖都精确固定为 `0.0.2`。后端显式适配两种宿主上下文：
 
 - Arrival：`gameId` + `cwd`（当前游戏根）+ `extensionDir`。

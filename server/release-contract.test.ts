@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -25,6 +25,39 @@ const expectedTools = [
 ]
 let compiledBackendUrl: string
 
+const forbiddenLegacyHostRoutes = [
+  '/__gva__',
+  '/__ce-api__',
+  '/api/game-host',
+  'FORGEAX_SERVER_PORT',
+  '.forgeax/active-game.json',
+]
+
+function productionSourceFiles(directory = root, relativeDirectory = ''): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = relativeDirectory
+      ? `${relativeDirectory}/${entry.name}`
+      : entry.name
+    const absolutePath = resolve(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (['.git', 'dist', 'docs', 'node_modules', '.superpowers'].includes(entry.name)) {
+        return []
+      }
+      return productionSourceFiles(absolutePath, relativePath)
+    }
+    if (
+      !entry.isFile()
+      || !/\.(?:[cm]?[jt]sx?)$/.test(entry.name)
+      || /(?:^|\/)__tests__\//.test(relativePath)
+      || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
+      || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
+    ) {
+      return []
+    }
+    return [relativePath]
+  })
+}
+
 beforeAll(() => {
   const backendPath = resolve(root, 'dist/server/host.js')
   execFileSync('bun', ['run', 'build:backend'], { cwd: root, stdio: 'pipe' })
@@ -32,6 +65,17 @@ beforeAll(() => {
 })
 
 describe('release identity', () => {
+  it('keeps legacy Vite-owned host routes out of production runtime source', () => {
+    const violations = productionSourceFiles().flatMap((file) => {
+      const source = readFileSync(resolve(root, file), 'utf8')
+      return forbiddenLegacyHostRoutes
+        .filter((route) => source.includes(route))
+        .map((route) => `${file}: ${route}`)
+    })
+
+    expect(violations).toEqual([])
+  })
+
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax/wb-game-video')
     expect(pkg.version).toBe('0.2.0')
@@ -159,9 +203,6 @@ describe('release identity', () => {
     ])
     expect(manifest.permissions.some((entry: string) => entry.startsWith('emit:')))
       .toBe(false)
-    expect(manifest.requestedEnv).toEqual([
-      'FORGEAX_SERVER_URL',
-      'FORGEAX_SERVER_PORT',
-    ])
+    expect(manifest.requestedEnv).toEqual([])
   })
 })

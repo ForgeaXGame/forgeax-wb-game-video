@@ -33,8 +33,8 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
 `cwd` 当成项目根。显式 `gameSlug` 必须与绑定 id 逐字一致。game id 支持中文与单字符；
 只拒绝空值、`.`、`..` 和路径分隔符。
 
-`ctx.env` 只包含 manifest 声明且后端实际读取的 `FORGEAX_SERVER_URL` /
-`FORGEAX_SERVER_PORT`。
+模型、媒体、版本和工作区都由 Workbench host capability 注入；扩展不得从环境或全局状态
+推导服务地址或当前游戏。
 
 扩展后端是宿主进程内加载的 fully-trusted 代码；manifest 的权限和 `requestedEnv`
 是声明与审计信息，不构成进程隔离，也不限制进程已有的 Node 能力。
@@ -51,6 +51,8 @@ bun run test
 bun run lint
 bun run build
 ```
+
+`bun test` 只跑 server/release-contract gate；需要浏览器环境的完整测试使用 `bun run test`。
 
 发布前 `bun run build` 必须成功；它会依次生成前端、后端、standalone 产物并执行 release validator。
 

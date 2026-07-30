@@ -180,9 +180,6 @@
     "model:image:still",
     "model:video:kinetic"
   ],
-  "requestedEnv": [
-    "FORGEAX_SERVER_URL",
-    "FORGEAX_SERVER_PORT"
-  ],
+  "requestedEnv": [],
   "experimental": true
 }

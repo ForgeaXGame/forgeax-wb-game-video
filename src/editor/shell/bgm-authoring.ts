@@ -65,7 +65,7 @@ export function patchNodeBgm(current: NodeBgm | undefined, patch: Partial<NodeBg
 
 /**
  * Kino 音频资源 → BGM 候选（与「视频」字段拼 `VideoOption` 同款：去重、名字优先）。
- * 数据源是 Kino `media_type: 'audio'`（资产库上传的那批），不是本地 `/__gva__/assets`。
+ * 数据源是 Kino `media_type: 'audio'`（资产库上传的那批），不是本地素材清单路由。
  */
 export function audioAssetOptions(resources: readonly KinoResourceDTO[]): AudioOption[] {
   const seen = new Set<string>()
