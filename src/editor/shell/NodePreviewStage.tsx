@@ -24,7 +24,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { GameNode, GameScenario, Layout } from '../../runtime/schema/graph-schema'
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
-import { initState } from '../../runtime/engine/engine-init'
 import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { createCoreSkinRegistry } from '../../runtime/component-host/components'
@@ -32,6 +31,7 @@ import { resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { CATALOG_CSS } from './catalogCss'
 import { renderOverlayChildPreview } from './overlayChildPreview'
 import { PreviewClockProvider, previewClockLayerClassName } from './previewClock'
+import { projectNodePreviewState } from './nodePreviewState'
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
@@ -260,11 +260,21 @@ export function NodePreviewStage({
   // 与视频 tab / 界面 tab 同源：完整皮肤表，不依赖 default 单例是否被 HMR 冲掉。
   const previewSkinReg = useMemo(() => createCoreSkinRegistry(), [])
   const previewSkinCtx = useMemo((): SkinCtx => {
-    const st = initState(scenario)
-    const toHudEnt = (attrs: Record<string, number>, attrMeta?: Record<string, { max?: number }>) => {
+    const st = projectNodePreviewState(scenario, node, playheadMs, maxMs)
+    const toHudEnt = (attrs: Record<string, number>, attrMeta?: Record<string, { max?: number; initial?: number }>) => {
       const attrMax: Record<string, number> = {}
-      for (const [k, v] of Object.entries(attrs)) attrMax[k] = attrMeta?.[k]?.max ?? v
-      return { hp: attrs.hp ?? 0, maxHp: attrMeta?.hp?.max ?? attrs.hp ?? 0, attrs: { ...attrs }, attrMax }
+      const initialAttrs: Record<string, number> = {}
+      for (const [k, v] of Object.entries(attrs)) {
+        attrMax[k] = attrMeta?.[k]?.max ?? v
+        initialAttrs[k] = attrMeta?.[k]?.initial ?? attrMeta?.[k]?.max ?? v
+      }
+      return {
+        hp: attrs.hp ?? 0,
+        maxHp: attrMeta?.hp?.max ?? attrs.hp ?? 0,
+        attrs: { ...attrs },
+        attrMax,
+        initialAttrs,
+      }
     }
     const hudEntities: SkinCtx['hud']['entities'] = Object.fromEntries(
       Object.entries(st.entities).map(([id, e]) => [id, toHudEnt(e.attrs, e.attrMeta)]),
@@ -277,7 +287,7 @@ export function NodePreviewStage({
       // 编辑器预览：用初始态做门控求值（无 visited）
       condition: { state: st, visited: new Set<string>() },
     }
-  }, [scenario])
+  }, [scenario, node, playheadMs, maxMs])
   const previewClockValue = useMemo(() => ({ playing: isVideoPlaying, playheadMs }), [isVideoPlaying, playheadMs])
 
   // 「添加控件」= 覆盖物挂载入口：候选与界面 tab 同一份（自定义覆盖物 + 基础覆盖物，打平；

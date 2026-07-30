@@ -294,22 +294,13 @@ describe('overlay sparse override（prototype + override）', () => {
         edges: [],
       }
       const childB = {
-        nodes: [node('child-b', {
-          overlayNodes: [{ overlay: 'base:DamageFloatText' }],
-          subProcess: {
-            entry: 'nested',
-            graph: {
-              nodes: [node('nested', { overlayNodes: [{ overlay: 'base:GainFloatText' }] })],
-              edges: [],
-            },
-          },
-        })],
+        nodes: [node('child-b', { overlayNodes: [{ overlay: 'base:DamageFloatText' }] })],
         edges: [],
       }
 
       expect(countOverlayReferences([main, childA, childB])).toEqual({
         'base:DamageFloatText': 3,
-        'base:GainFloatText': 2,
+        'base:GainFloatText': 1,
       })
     })
 

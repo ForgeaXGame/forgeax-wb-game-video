@@ -84,6 +84,8 @@ export interface HudEntitySnap {
   attrs: Record<string, number>
   /** attr → max（来自 attrMeta.max；无则回退当前值）。 */
   attrMax: Record<string, number>
+  /** attr → 本局初始值；覆盖物用它把运行时变化量投影到作者配置的显示基线。 */
+  initialAttrs?: Record<string, number>
 }
 export interface HudSnap {
   entities: Record<string, HudEntitySnap>
@@ -195,17 +197,21 @@ export class GraphSession {
     for (const [id, e] of Object.entries(s.entities)) {
       const attrs = { ...e.attrs }
       const attrMax: Record<string, number> = {}
+      const initialAttrs: Record<string, number> = {}
       for (const [k, v] of Object.entries(attrs)) {
         attrMax[k] = e.attrMeta?.[k]?.max ?? v
+        initialAttrs[k] = e.attrMeta?.[k]?.initial ?? e.attrMeta?.[k]?.max ?? v
       }
       for (const [k, m] of Object.entries(e.attrMeta ?? {})) {
         if (attrMax[k] === undefined && m.max !== undefined) attrMax[k] = m.max
+        if (initialAttrs[k] === undefined && m.initial !== undefined) initialAttrs[k] = m.initial
       }
       entities[id] = {
         hp: attrs.hp ?? 0,
         maxHp: e.attrMeta?.hp?.max ?? attrs.hp ?? 0,
         attrs,
         attrMax,
+        initialAttrs,
       }
     }
     return { entities, vars: { ...s.vars }, flags: { ...s.flags }, score: s.score }
