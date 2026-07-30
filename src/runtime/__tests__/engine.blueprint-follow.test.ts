@@ -44,11 +44,13 @@ describe('activeBlueprintId / callStack returnBlueprintId', () => {
     expect(rt.state.callStack).toEqual([])
   })
 
-  it('same-graph subFlow keeps activeBlueprintId', () => {
+  it('embedded subProcess keeps activeBlueprintId and records graph path', () => {
     const g: GameGraph = {
       nodes: [
-        node('wrap', { subFlow: 'sub', durationMs: 100 }),
-        node('sub', { durationMs: 100 }),
+        node('wrap', {
+          subProcess: { entry: 'sub', graph: { nodes: [node('sub', { durationMs: 100 })], edges: [] } },
+          durationMs: 100,
+        }),
         node('after', {}),
       ],
       edges: [{ id: 'e', source: 'wrap', target: 'after', sourceHandle: 'default', targetHandle: 'in' }],
@@ -57,6 +59,7 @@ describe('activeBlueprintId / callStack returnBlueprintId', () => {
     rt.start()
     expect(rt.state.currentNodeId).toBe('sub')
     expect(rt.getActiveBlueprintId()).toBe('bp-main')
+    expect(rt.getActiveGraphPath()).toEqual(['wrap'])
     expect(rt.state.callStack[0]?.returnBlueprintId).toBe('bp-main')
   })
 

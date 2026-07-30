@@ -23,7 +23,12 @@ afterEach(cleanup)
 
 describe('NodeInspector · 蓝图节点角色约束', () => {
   it.each([
-    ['同图子流程容器', { name: '容器', subFlow: 'entry' }],
+    ['内嵌子流程容器', {
+      name: '容器',
+      subProcess: { entry: 'entry', graph: { nodes: [
+        { id: 'entry', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '入口' } },
+      ], edges: [] } },
+    }],
     ['子蓝图容器', { name: '容器', subFlowPack: { id: 'bp-child', version: '1', entry: 'legacy-entry' } }],
   ] as const)('%s 不开放演出、界面、结算和响应规则配置', (_name, data) => {
     render(<NodeInspector graph={graphWith(data)} nodeId="node" onChange={vi.fn()} />)
