@@ -7,8 +7,7 @@
 - `src/runtime/schema/node-config-schema.ts`、`react-flow-schema.ts`、`graph-schema.ts` 是发布数据契约；增删字段必须取得专门同意。
 - `src/runtime` 不得依赖 `src/graph` 或编辑器壳。状态机不接触 DOM/React，不使用 `Math.random`。
 - 图中只有 `perf` 演出节点；路由判断放在边上，副作用放在 reaction 中，UI 放在 overlay/component 中。
-- 运行入口是根 `graph`；私有子流程从节点 `data.subProcess.graph` 解析，可复用子蓝图从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
-- `subProcess.entry` 只指向直属子图节点；父子图不得直接连边，同一蓝图的全部嵌套层共享节点/边 id 命名空间。
+- 运行入口是根 `graph`；子流程从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
 
 ## 持久化与启动
 

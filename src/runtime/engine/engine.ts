@@ -49,12 +49,11 @@ import {
 
 export type GraphPhase = 'idle' | 'playing' | 'ended'
 
-/** call/return 栈帧：弹回时恢复 caller 所在图。 */
+/** call/return 栈帧：弹回时恢复 caller 所在图（同图 subflow 时 returnGraph === 当前图）。 */
 export interface CallFrame {
   callerNodeId: string
   returnGraph: GameGraph
   returnBlueprintId: string
-  returnGraphPath: string[]
 }
 
 export interface RuntimeState extends MutableState {
@@ -65,15 +64,6 @@ export interface RuntimeState extends MutableState {
   traversedEdgeIds: Set<string>
   callStack: CallFrame[]
   log: string[]
-}
-
-interface ScopedEdge {
-  edge: GameEdge
-  graph: GameGraph
-  blueprintId: string
-  graphPath: string[]
-  /** callStack.length means the active graph; otherwise the owner frame index. */
-  frameIndex: number
 }
 
 const CHAIN_GUARD = 200
@@ -90,7 +80,6 @@ export class GraphRuntime {
   /** 当前正在执行的图（根 graph，或执行中解析到的子蓝图 graph）。 */
   private activeGraph: GameGraph
   private activeBlueprintId: string
-  private activeGraphPath: string[] = []
   private readonly rootBlueprintId: string
   /** 依赖查找表：id / id@version → 子蓝图（来自 manifest.packs，或测试注入的 packs）。 */
   private readonly packsByKey = new Map<string, { id: string; version?: string; entry: string; graph: GameGraph }>()
@@ -107,9 +96,9 @@ export class GraphRuntime {
   private chain = 0 // 同步穿链计数（anti-runaway）
 
   // watch / lifecycle 的 advance 硬打断：命中即设 redirect，在安全边界消费为一次跳转。
-  private redirect: { route: ScopedEdge; resetGlobals?: boolean } | null = null
+  private redirect: { goto: string; resetGlobals?: boolean } | null = null
   private inExit = false // 跑 exit 元素期间抑制规则消费，避免退出时自跳环
-  private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subProcess 下钻、直接续 out
+  private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subFlow 下钻、直接续 out
 
   // 响应式：watch 上次采样值（key = 反应作用域#下标）；每个写屏障重采样比对。
   private watchPrev = new Map<string, number>()
@@ -157,10 +146,6 @@ export class GraphRuntime {
 
   getActiveBlueprintId(): string {
     return this.activeBlueprintId
-  }
-
-  getActiveGraphPath(): string[] {
-    return [...this.activeGraphPath]
   }
 
   /**
@@ -241,7 +226,6 @@ export class GraphRuntime {
       callerNodeId,
       returnGraph: this.activeGraph,
       returnBlueprintId: this.activeBlueprintId,
-      returnGraphPath: [...this.activeGraphPath],
     })
   }
 
@@ -313,9 +297,9 @@ export class GraphRuntime {
     if (advanced) return this.drain()
 
     for (const srcId of this.eventRoutingNodeIds(el)) {
-      const scoped = this.selectScopedHandleEdge(srcId, outcome)
-      if (scoped) {
-        this.requestEventRoute(scoped)
+      const edge = this.selectHandleEdge(srcId, outcome)
+      if (edge) {
+        this.requestEventRoute(edge)
         break
       }
     }
@@ -445,7 +429,6 @@ export class GraphRuntime {
   // ── 控制入口 ────────────────────────────────────────────────────────────────
   start(): RuntimeDirective[] {
     this.activeBlueprintId = this.rootBlueprintId
-    this.activeGraphPath = []
     this.switchGraph(this.rootGraph)
     const entry = this.rootGraph.nodes[0]
     if (!entry) {
@@ -463,7 +446,7 @@ export class GraphRuntime {
   /** seek 到任意节点从头跑（调试/可视化点击）。默认保留全局态，resetGlobals 干净复现。 */
   jumpToNode(
     id: string,
-    opts: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string; graphPath?: string[] } = {},
+    opts: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string } = {},
   ): RuntimeDirective[] {
     if (opts.resetGlobals) this.resetGlobalsState()
     if (opts.blueprintId) {
@@ -472,15 +455,12 @@ export class GraphRuntime {
       if (!g) throw new Error(`jump blueprint '${opts.blueprintId}' not loaded`)
       this.switchGraph(g)
       this.activeBlueprintId = opts.blueprintId
-      this.activeGraphPath = [...(opts.graphPath ?? [])]
     } else if (opts.graph) {
       this.switchGraph(opts.graph)
       this.activeBlueprintId = opts.graph === this.rootGraph ? this.rootBlueprintId : this.activeBlueprintId
-      this.activeGraphPath = [...(opts.graphPath ?? [])]
     } else {
       this.switchGraph(this.rootGraph)
       this.activeBlueprintId = this.rootBlueprintId
-      this.activeGraphPath = []
     }
     this.state.callStack = []
     this.chain = 0
@@ -546,12 +526,7 @@ export class GraphRuntime {
         this.applyNodeBgm(node)
         if (intent.graph) {
           const packId = getSubFlowPack(node.data)?.id
-          if (packId) {
-            this.activeBlueprintId = packId
-            this.activeGraphPath = []
-          } else {
-            this.activeGraphPath = [...this.activeGraphPath, node.id]
-          }
+          if (packId) this.activeBlueprintId = packId
           this.switchGraph(intent.graph)
         }
         this.enterNode(intent.entry)
@@ -761,9 +736,9 @@ export class GraphRuntime {
       } else if (a.kind === 'spawn') {
         this.doSpawn(a)
       } else if (a.kind === 'advance') {
-        const scoped = this.scopedEdgeById(a.edgeId)
-        if (scoped && this.eventRoutingNodeIds(el).includes(scoped.edge.source)) {
-          return this.requestEventRoute(scoped)
+        const edge = this.edgeById(a.edgeId)
+        if (edge && this.eventRoutingNodeIds(el).includes(edge.source)) {
+          return this.requestEventRoute(edge)
         }
       }
       if (this.redirect) return false
@@ -859,25 +834,24 @@ export class GraphRuntime {
   /** 若有待消费的 redirect（watch/lifecycle advance），跑当前节点 exit 后即时跳转。返回是否跳转。 */
   private consumeRedirect(): boolean {
     if (!this.redirect) return false
-    const { route, resetGlobals } = this.redirect
+    const { goto, resetGlobals } = this.redirect
     this.redirect = null
     const cur = this.node(this.state.currentNodeId)
-    // 硬打断会清掉边所属作用域之下的调用帧，但那是局内路径 → BGM 栈原样，等某处 `mode: 'stop'`。
-    // `resetGlobals` 这一路**目前没有任何调用方**：`this.redirect` 只在一处赋值，且只写 route。
-    // 留着这两个分支纯粹是
+    // 硬打断会清掉整个调用栈（见下），但那是局内路径 → BGM 栈原样，等某处 `mode: 'stop'`。
+    // `resetGlobals` 这一路**目前没有任何调用方**：`this.redirect` 只在一处赋值，且只写
+    // `{ goto: edge.target }`（见下面的 `fireLifecycle` advance 分支）。留着这两个分支纯粹是
     // 为了与紧邻的 `if (resetGlobals) this.resetGlobalsState()` 成对——真有人开始写这个字段时，
     // 「状态回 initState」与「床轨按 scenario.bgm 重 derive」必须同时发生，少一个就是半清局。
     if (resetGlobals) this.unwindBgmToDocBed(true)
     if (cur) this.runExit(cur)
     this.setPhase('playing')
     if (resetGlobals) this.resetGlobalsState()
-    // 硬打断切到边所属图，并只清掉该作用域之下的调用帧。
-    this.state.callStack = this.state.callStack.slice(0, route.frameIndex)
+    // 图级规则是硬打断（判胜/判负等）：清调用栈并回到主图，再进目标节点。
+    this.state.callStack = []
     this.returningTo.clear()
-    this.switchGraph(route.graph)
-    this.activeBlueprintId = route.blueprintId
-    this.activeGraphPath = [...route.graphPath]
-    this.enterNode(route.edge.target)
+    this.switchGraph(this.rootGraph)
+    this.activeBlueprintId = this.rootBlueprintId
+    this.enterNode(goto)
     return true
   }
 
@@ -976,8 +950,8 @@ export class GraphRuntime {
       } else if (a.kind === 'advance') {
         // exit 期不接受 advance（避免与正在进行的 consumeRedirect 自跳环）。
         if (!this.redirect && !this.inExit) {
-          const route = this.scopedEdgeById(a.edgeId)
-          if (route) this.redirect = { route }
+          const edge = this.edgeById(a.edgeId)
+          if (edge) this.redirect = { goto: edge.target }
         }
       }
       if (this.redirect) return
@@ -1092,31 +1066,9 @@ export class GraphRuntime {
   }
 
   // ── 出口选择 / 边遍历 ───────────────────────────────────────────────────────
-  private scopedEdgeById(id: string): ScopedEdge | undefined {
-    const active = this.activeGraph.edges.find((edge) => edge.id === id)
-    if (active) {
-      return {
-        edge: active,
-        graph: this.activeGraph,
-        blueprintId: this.activeBlueprintId,
-        graphPath: [...this.activeGraphPath],
-        frameIndex: this.state.callStack.length,
-      }
-    }
-    for (let i = this.state.callStack.length - 1; i >= 0; i--) {
-      const frame = this.state.callStack[i]!
-      const edge = frame.returnGraph.edges.find((candidate) => candidate.id === id)
-      if (edge) {
-        return {
-          edge,
-          graph: frame.returnGraph,
-          blueprintId: frame.returnBlueprintId,
-          graphPath: [...frame.returnGraphPath],
-          frameIndex: i,
-        }
-      }
-    }
-    return undefined
+  /** 按 id 找当前图（或主图）里的边——供 reactions.do 的 advance(edgeId) 使用。 */
+  private edgeById(id: string): GameEdge | undefined {
+    return this.activeGraph.edges.find((e) => e.id === id) ?? this.rootGraph.edges.find((e) => e.id === id)
   }
 
   /** 从候选边里选一条：有条件者按序求值，命中优先；否则无条件兜底；多条候选皆带 weight 则加权随机。 */
@@ -1150,28 +1102,6 @@ export class GraphRuntime {
     return this.pickEdge((this.outgoing.get(nodeId) ?? []).filter((e) => (e.sourceHandle ?? 'default') === handle))
   }
 
-  private selectScopedHandleEdge(nodeId: string, handle: string): ScopedEdge | undefined {
-    if (this.nodes.has(nodeId)) {
-      const edge = this.selectHandleEdge(nodeId, handle)
-      if (edge) return this.scopedEdgeById(edge.id)
-    }
-    for (let i = this.state.callStack.length - 1; i >= 0; i--) {
-      const frame = this.state.callStack[i]!
-      if (frame.callerNodeId !== nodeId) continue
-      const edge = this.pickEdge(frame.returnGraph.edges.filter(
-        (candidate) => candidate.source === nodeId && (candidate.sourceHandle ?? 'default') === handle,
-      ))
-      if (edge) return {
-        edge,
-        graph: frame.returnGraph,
-        blueprintId: frame.returnBlueprintId,
-        graphPath: [...frame.returnGraphPath],
-        frameIndex: i,
-      }
-    }
-    return undefined
-  }
-
   private pickWeighted(edges: GameEdge[]): GameEdge {
     const total = edges.reduce((s, e) => s + (e.data?.weight ?? 1), 0)
     let r = (this.state.rng?.next() ?? 0) * total
@@ -1194,7 +1124,7 @@ export class GraphRuntime {
     const pending = this.pendingRoute?.settleNodeId === nodeId ? this.pendingRoute : null
     this.pendingRoute = null
     if (pending) {
-      const pendingEdge = this.scopedEdgeById(pending.edgeId)
+      const pendingEdge = this.edgeById(pending.edgeId)
       if (pendingEdge) {
         this.traverseEventEdge(pendingEdge)
         return
@@ -1204,16 +1134,15 @@ export class GraphRuntime {
     if (!edge) {
       // 声明式等待：仅有 event 出边、无 default → 停在本节点等组件 emit（不结束本局）。
       if (this.hasEventHandleOutEdges(nodeId)) return
-      // 无自动出边 + 调用栈非空 → 弹回 caller（subProcess / subFlowPack）；回环用显式边。
+      // 无自动出边 + 调用栈非空 → 弹回 caller（subFlow / subFlowPack）；回环用显式边。
       const node = this.nodes.get(nodeId)
       if (this.state.callStack.length > 0) {
         const frame = this.state.callStack.pop() as CallFrame
         if (node) this.runExit(node)
         // 弹帧对 BGM **什么都不做**（§4.2 末行）：层不绑 `callStack`，照 D5 一直播。
-        this.returningTo.add(frame.callerNodeId) // 弹回容器时跳过 subProcess 再下钻
+        this.returningTo.add(frame.callerNodeId) // 弹回容器时跳过 subFlow 再下钻
         this.switchGraph(frame.returnGraph)
         this.activeBlueprintId = frame.returnBlueprintId
-        this.activeGraphPath = [...frame.returnGraphPath]
         this.enterNode(frame.callerNodeId)
         return
       }
@@ -1238,10 +1167,9 @@ export class GraphRuntime {
   }
 
   /** 事件边：立即跳转，或锁定首个选择等待节点统一结算。 */
-  private requestEventRoute(scoped: ScopedEdge): boolean {
-    const edge = scoped.edge
+  private requestEventRoute(edge: GameEdge): boolean {
     if (edge.data?.transition !== 'onSettlement' || this.routingSettled) {
-      this.traverseEventEdge(scoped)
+      this.traverseEventEdge(edge)
       return true
     }
     if (!this.pendingRoute && this.state.currentNodeId) {
@@ -1251,25 +1179,10 @@ export class GraphRuntime {
   }
 
   /** 保留容器挂载事件从容器边离开时清调用栈的既有语义。 */
-  private traverseEventEdge(scoped: ScopedEdge): void {
-    const { edge } = scoped
-    if (scoped.graph !== this.activeGraph) {
-      const cur = this.node(this.state.currentNodeId)
-      if (cur) this.runExit(cur)
-      this.state.callStack = this.state.callStack.slice(0, scoped.frameIndex)
+  private traverseEventEdge(edge: GameEdge): void {
+    if (edge.source !== this.state.currentNodeId) {
+      this.state.callStack = []
       this.returningTo.clear()
-      this.switchGraph(scoped.graph)
-      this.activeBlueprintId = scoped.blueprintId
-      this.activeGraphPath = [...scoped.graphPath]
-      this.emit({
-        type: 'routeInfo',
-        via: edge.sourceHandle ?? 'default',
-        target: edge.target,
-        reason: describeCondition(edge.data?.condition, this.condTarget()),
-      })
-      this.state.traversedEdgeIds.add(edge.id)
-      this.enterNode(edge.target)
-      return
     }
     this.traverse(edge)
   }

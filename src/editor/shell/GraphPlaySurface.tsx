@@ -20,12 +20,13 @@ import { BgmPlayer, GameStage, useClipPerformanceEnd } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { useRevealOnScopeChange } from './useRevealOnScopeChange'
-import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
+import { getSubFlow, getSubFlowPack } from '../../runtime/schema/graph-schema'
 import {
+  activeSubflowPath,
   blueprintBreadcrumbs,
   deepestCallerOnBlueprint,
+  visibleSubflowNodeIds,
 } from './call-stack-view'
-import { graphPathLabels, resolveGraphAtPath } from '../../graph/edit/graph-scope'
 
 function autoEmitTarget(snap: SessionSnapshot): { elementId: string; key: string } | null {
   // 自动演示：找首个可 emit 的挂载组件，抛其首个非 default 事件。
@@ -159,7 +160,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     viewMode === 'pinned' && pinnedBlueprintId
       ? pinnedBlueprintId
       : (snap?.activeBlueprintId ?? rootBlueprintId)
-  const baseDisplayGraph =
+  const displayGraph =
     blueprints[displayBlueprintId]?.graph
     ?? blueprints[rootBlueprintId]?.graph
     ?? graph
@@ -168,13 +169,18 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     : displayBlueprintId === snap.activeBlueprintId
       ? snap.currentNodeId
       : deepestCallerOnBlueprint(snap.callStack, displayBlueprintId, snap.activeBlueprintId)
-  const followedDrillPath = snap && displayBlueprintId === snap.activeBlueprintId
-    ? snap.activeGraphPath
-    : []
+  const followedDrillPath = useMemo(
+    () => snap && displayBlueprintId === snap.activeBlueprintId
+      ? activeSubflowPath(displayGraph, snap.callStack, snap.activeBlueprintId)
+      : [],
+    [displayBlueprintId, displayGraph, snap?.activeBlueprintId, snap?.callStack],
+  )
   const drillPath = viewMode === 'follow' ? followedDrillPath : pinnedDrillPath
-  const displayGraph = resolveGraphAtPath(baseDisplayGraph, drillPath) ?? baseDisplayGraph
-  const drillLabels = graphPathLabels(baseDisplayGraph, drillPath)
-  const visibleActiveNodeId = activeNodeId && displayGraph.nodes.some((node) => node.id === activeNodeId) ? activeNodeId : null
+  const visibleNodeIds = useMemo(
+    () => visibleSubflowNodeIds(displayGraph, drillPath),
+    [displayGraph, drillPath],
+  )
+  const visibleActiveNodeId = activeNodeId && visibleNodeIds.has(activeNodeId) ? activeNodeId : null
   const crumbs = snap
     ? blueprintBreadcrumbs(
       rootBlueprintId,
@@ -201,7 +207,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     setSnap(sessionRef.current!.jump(nodeId, {
       blueprintId: displayBlueprintId,
       graph: displayGraph,
-      graphPath: [...drillPath],
     }))
     setViewMode('follow')
     setPinnedBlueprintId(undefined)
@@ -222,7 +227,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       setPinnedDrillPath([])
       return
     }
-    if (getSubProcess(node.data)) pinDrillPath([...drillPath, nodeId])
+    if (getSubFlow(node.data)) pinDrillPath([...drillPath, nodeId])
   }
   const traversed = useMemo(() => new Set(snap?.traversedEdgeIds ?? []), [snap?.traversedEdgeIds])
   // 打开蓝图浮层 / 进出自蓝图（含面包屑回看）时平移到高亮节点；同图内推进不抢视口。
@@ -230,13 +235,12 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     showBlueprint ? `${viewMode}:${displayBlueprintId}:${drillPath.join('/')}` : null,
     visibleActiveNodeId,
   )
-  const executingRootGraph =
+  const executingGraph =
     (snap?.activeBlueprintId
       ? blueprints[snap.activeBlueprintId]?.graph
       : undefined)
     ?? blueprints[rootBlueprintId]?.graph
     ?? graph
-  const executingGraph = resolveGraphAtPath(executingRootGraph, snap?.activeGraphPath ?? []) ?? executingRootGraph
   const currentNode = useMemo(
     () => executingGraph.nodes.find((n) => n.id === snap?.currentNodeId),
     [executingGraph, snap?.currentNodeId],
@@ -360,8 +364,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
               >
                 总览
               </button>
-              {drillLabels.map((item, index) => (
-                <span key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+              {drillPath.map((id, index) => (
+                <span key={id} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
                   <span style={{ color: '#697386' }}>›</span>
                   <button
                     type="button"
@@ -372,7 +376,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
                       cursor: 'pointer', fontSize: 12, fontWeight: index === drillPath.length - 1 ? 700 : 400,
                     }}
                   >
-                    {item.name}
+                    {displayGraph.nodes.find((node) => node.id === id)?.data.name ?? id}
                   </button>
                 </span>
               ))}
@@ -392,6 +396,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
             overlays={overlays}
             activeNodeId={visibleActiveNodeId}
             traversedEdgeIds={displayBlueprintId === snap?.activeBlueprintId ? traversed : undefined}
+            visibleNodeIds={visibleNodeIds}
             drillFitKey={`${displayBlueprintId}:${drillPath.join('/') || 'root'}`}
             revealNodeId={revealNodeId}
             onJump={jumpFromBlueprint}
