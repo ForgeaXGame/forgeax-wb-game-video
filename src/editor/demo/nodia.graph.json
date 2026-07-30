@@ -1298,59 +1298,38 @@
           "mediaPlayMode": "once",
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
+            },
+            {
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
             }
           ],
           "reactions": [
@@ -1418,7 +1397,8 @@
         "data": {
           "name": "我方回合",
           "durationMs": 0,
-          "subFlow": "wait"
+          "subFlow": "wait",
+          "overlayNodes": []
         }
       },
       {
@@ -1433,7 +1413,8 @@
         "data": {
           "name": "敌方回合",
           "durationMs": 0,
-          "subFlow": "tele"
+          "subFlow": "tele",
+          "overlayNodes": []
         }
       },
       {
@@ -1455,59 +1436,38 @@
           "mediaPlayMode": "loop",
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
+            },
+            {
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
             },
             {
               "overlay": "base:BattleSkill",
@@ -1687,98 +1647,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "pu",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "pu-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 1000
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack)"
+                  "window": {
+                    "startMs": 1000
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 1000
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -1857,98 +1789,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "pu2",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "pu2-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 600
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                  "window": {
+                    "startMs": 600
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 600
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -2019,98 +1923,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "zhong",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "zhong-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 1700
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                  "window": {
+                    "startMs": 1700
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 1700
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -2195,98 +2071,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "z2",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "z2-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 2500
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                  "window": {
+                    "startMs": 2500
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 2500
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -2363,97 +2211,68 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:GainFloatText",
               "id": "fuzhu",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "fuzhu-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "GainFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 2000
                   },
-                  "inputs": {
-                    "text": "+30",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#5fbf7f"
+                  "window": {
+                    "startMs": 2000
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 2000
+                  "inputs": {
+                    "value": 30
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -2526,98 +2345,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "ult",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "ult-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 7000
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 3)"
+                  "window": {
+                    "startMs": 7000
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 7000
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 3)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -2689,59 +2480,38 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
+            },
+            {
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
             },
             {
               "overlay": "base:BattleParry",
@@ -2885,98 +2655,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "block",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "block-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 1800
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                  "window": {
+                    "startMs": 1800
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 1800
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -3024,98 +2766,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "dodgeP",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "dodgeP-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 2000
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                  "window": {
+                    "startMs": 2000
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 2000
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -3163,98 +2877,70 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
+            },
+            {
+              "overlay": "base:DamageFloatText",
               "id": "hurt",
-              "removed": [
-                "floatText-0"
-              ],
-              "added": [
-                {
-                  "id": "hurt-fx",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "DamageFloatText-0": {
                   "trigger": {
                     "when": "at",
                     "ms": 10
                   },
-                  "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ff5a5a",
-                    "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                  "window": {
+                    "startMs": 10
                   },
-                  "component": "floatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
                     "width": 1,
                     "height": 1
                   },
-                  "window": {
-                    "startMs": 10
+                  "inputs": {
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                    }
                   }
                 }
-              ]
+              }
             }
           ],
           "reactions": [
@@ -3302,59 +2988,38 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
+            },
+            {
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
             }
           ]
         }
@@ -3377,59 +3042,38 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
+              "id": "battleHud-player",
               "layout": {
                 "left": 0,
                 "top": 0,
                 "width": 1,
                 "height": 1
               },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
+              "overrides": {
+                "BattlePlayerHpBar-0": {
                   "inputs": {
-                    "bind": "ent-player",
                     "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
                   }
                 }
-              ]
+              }
+            },
+            {
+              "overlay": "base:BattleEnemyHpBar",
+              "id": "battleHud-enemy",
+              "layout": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1
+              },
+              "overrides": {
+                "BattleEnemyHpBar-0": {
+                  "inputs": {
+                    "label": "小怪"
+                  }
+                }
+              }
             }
           ]
         }
@@ -4646,59 +4290,38 @@
                 "mediaPlayMode": "once",
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
+                  },
+                  {
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
                   }
                 ],
                 "reactions": [
@@ -4766,7 +4389,8 @@
               "data": {
                 "name": "我方回合",
                 "durationMs": 0,
-                "subFlow": "wait"
+                "subFlow": "wait",
+                "overlayNodes": []
               }
             },
             {
@@ -4781,7 +4405,8 @@
               "data": {
                 "name": "敌方回合",
                 "durationMs": 0,
-                "subFlow": "tele"
+                "subFlow": "tele",
+                "overlayNodes": []
               }
             },
             {
@@ -4803,59 +4428,38 @@
                 "mediaPlayMode": "loop",
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
+                  },
+                  {
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
                   },
                   {
                     "overlay": "base:BattleSkill",
@@ -5035,98 +4639,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "pu",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "pu-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 1000
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack)"
+                        "window": {
+                          "startMs": 1000
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 1000
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -5205,98 +4781,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "pu2",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "pu2-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 600
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                        "window": {
+                          "startMs": 600
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 600
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -5367,98 +4915,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "zhong",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "zhong-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 1700
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                        "window": {
+                          "startMs": 1700
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 1700
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -5543,98 +5063,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "z2",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "z2-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 2500
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                        "window": {
+                          "startMs": 2500
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 2500
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -5711,97 +5203,68 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:GainFloatText",
                     "id": "fuzhu",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "fuzhu-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "GainFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 2000
                         },
-                        "inputs": {
-                          "text": "+30",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#5fbf7f"
+                        "window": {
+                          "startMs": 2000
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 2000
+                        "inputs": {
+                          "value": 30
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -5874,98 +5337,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "ult",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "ult-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 7000
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 3)"
+                        "window": {
+                          "startMs": 7000
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 7000
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 3)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -6037,59 +5472,38 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
+                  },
+                  {
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
                   },
                   {
                     "overlay": "base:BattleParry",
@@ -6233,98 +5647,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "block",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "block-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 1800
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                        "window": {
+                          "startMs": 1800
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 1800
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -6372,98 +5758,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "dodgeP",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "dodgeP-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 2000
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                        "window": {
+                          "startMs": 2000
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 2000
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -6511,98 +5869,70 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "overlay": "base:DamageFloatText",
                     "id": "hurt",
-                    "removed": [
-                      "floatText-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "hurt-fx",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "DamageFloatText-0": {
                         "trigger": {
                           "when": "at",
                           "ms": 10
                         },
-                        "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ff5a5a",
-                          "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                        "window": {
+                          "startMs": 10
                         },
-                        "component": "floatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
                           "width": 1,
                           "height": 1
                         },
-                        "window": {
-                          "startMs": 10
+                        "inputs": {
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                          }
                         }
                       }
-                    ]
+                    }
                   }
                 ],
                 "reactions": [
@@ -6650,59 +5980,38 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
+                  },
+                  {
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
                   }
                 ]
               }
@@ -6725,59 +6034,38 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
+                    "id": "battleHud-player",
                     "layout": {
                       "left": 0,
                       "top": 0,
                       "width": 1,
                       "height": 1
                     },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
+                    "overrides": {
+                      "BattlePlayerHpBar-0": {
                         "inputs": {
-                          "bind": "ent-player",
                           "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
                         }
                       }
-                    ]
+                    }
+                  },
+                  {
+                    "overlay": "base:BattleEnemyHpBar",
+                    "id": "battleHud-enemy",
+                    "layout": {
+                      "left": 0,
+                      "top": 0,
+                      "width": 1,
+                      "height": 1
+                    },
+                    "overrides": {
+                      "BattleEnemyHpBar-0": {
+                        "inputs": {
+                          "label": "小怪"
+                        }
+                      }
+                    }
                   }
                 ]
               }

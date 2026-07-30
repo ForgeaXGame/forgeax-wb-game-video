@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { NODIA_DEMO_PROJECT } from '../demo'
 import { MAIN_ID } from '../../persist/blueprint-project'
 import demoJson from '../nodia.graph.json'
+import newComponents from '../../../runtime/component-host/components/new'
+import { nodeOverlayChildren } from '../../../runtime/schema/expand-overlay'
+
+const NEW_COMPONENT_IDS = new Set(newComponents.map(({ manifest }) => manifest.id))
 
 describe('NODIA_DEMO_PROJECT', () => {
   it('disk json is GraphLibraryDocument (manifest.packs + mainPackId, no legacy fields)', () => {
@@ -28,9 +32,13 @@ describe('NODIA_DEMO_PROJECT', () => {
     const overlays = NODIA_DEMO_PROJECT.ui?.overlays ?? {}
     expect(Object.keys(overlays).filter((id) => !id.startsWith('base:') && !id.startsWith('node:'))).toEqual([])
     for (const node of NODIA_DEMO_PROJECT.graph.nodes) {
-      expect((node.data.overlayNodes ?? []).every((mount) =>
-        mount.overlay.startsWith('base:') || mount.overlay.startsWith('node:'),
-      )).toBe(true)
+      for (const mount of node.data.overlayNodes ?? []) {
+        expect(mount.overlay.startsWith('base:'), `${node.id}:${mount.overlay}`).toBe(true)
+        expect(NEW_COMPONENT_IDS.has(mount.overlay.slice('base:'.length)), mount.overlay).toBe(true)
+      }
+      for (const child of nodeOverlayChildren(NODIA_DEMO_PROJECT, node)) {
+        expect(NEW_COMPONENT_IDS.has(child.component), `${node.id}:${child.component}`).toBe(true)
+      }
     }
   })
   it('turn containers have lethal edge exits (replaces old scenario.reactions)', () => {

@@ -1129,29 +1129,21 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
 }
 
 // ── 写映射：挂载级编辑（挂载 / 移除 / 整体平移） ──────────────────────────────────
-/**
- * 挂载一张覆盖物到节点（「添加控件」入口）：目录缺失且给了 preset 时先写入固化原型，
- * 再 push 一份挂载（已挂载则原样返回）。等价 NodeInspector「＋挂载」的 onEnsureOverlay + push。
- */
+/** 挂载当前项目目录中的一张覆盖物到节点（「添加控件」入口）。 */
 export function mountOverlayGraph(
   scenario: GameScenario,
   node: GameNode,
   overlayId: string,
-  preset?: Overlay,
 ): GameScenario {
   const mounts = node.data.overlayNodes ?? []
-  let ui = scenario.ui
-  if (!ui?.overlays?.[overlayId] && preset) {
-    ui = { ...ui, overlays: { ...(ui?.overlays ?? {}), [overlayId]: structuredClone(preset) } }
-  }
-  const definition = ui?.overlays?.[overlayId]
+  const definition = scenario.ui?.overlays?.[overlayId]
   const layout = resolveMountLayoutForChildren(
     undefined,
     definition?.children.map((child) => child.layout) ?? [],
   )
   const created = createOverlayMount(mounts, overlayId)
   const next = [...mounts, { ...created, ...(layout ? { layout } : {}) }]
-  return { ...scenario, ui, graph: updateNodeData(scenario.graph, node.id, { overlayNodes: next }) }
+  return { ...scenario, graph: updateNodeData(scenario.graph, node.id, { overlayNodes: next }) }
 }
 
 /**

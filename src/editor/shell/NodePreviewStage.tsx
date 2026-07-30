@@ -39,7 +39,7 @@ import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import { type MaterialItem, type TimelinePointMarker } from '../video/materialTimelineShared'
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
-import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
+import { overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { isLifecycleReaction, overlayMountId, type NodeAction } from '../../runtime/schema/node-config-schema'
 import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
@@ -410,7 +410,7 @@ export function NodePreviewStage({
   /** 「添加控件」点击 / 拖入：挂载一张覆盖物（可带落点 ms → 整体平移到该时刻）。 */
   function mountOverlay(overlayId: string, atMs?: number): void {
     onEditScenario((s, n) => {
-      const s1 = mountOverlayGraph(s, n, overlayId, PRESET_SCHEME_BY_ID[overlayId])
+      const s1 = mountOverlayGraph(s, n, overlayId)
       if (atMs == null) return s1
       const n1 = s1.graph.nodes.find((x) => x.id === n.id) ?? n
       return shiftMountWindowGraph(s1, n1, maxMs, overlayId, { startMs: atMs })

@@ -61,12 +61,12 @@ describe('overlaySignature', () => {
 describe('findDuplicateOverlays', () => {
   it('手搓单组件方案 vs base:<component> 同内容 → 跨类判重', () => {
     const overlays: Record<string, Overlay> = {
-      'base:battleHpBar': overlay('base:battleHpBar', [child({ id: 'battleHpBar-0', component: 'battleHpBar', inputs: { bind: 'ent-player', label: '角色' } })], 'HUD · 水墨血条'),
-      'scheme-0': overlay('scheme-0', [child({ id: 'hand', component: 'battleHpBar', inputs: { bind: 'ent-player', label: '角色' } })], '我的方案'),
+      'base:BattlePlayerHpBar': overlay('base:BattlePlayerHpBar', [child({ id: 'BattlePlayerHpBar-0', component: 'BattlePlayerHpBar', inputs: { label: '角色' } })], '我方水墨血条'),
+      'scheme-0': overlay('scheme-0', [child({ id: 'hand', component: 'BattlePlayerHpBar', inputs: { label: '角色' } })], '我的方案'),
     }
     const dup = findDuplicateOverlays(overlays)
-    expect(dup.get('base:battleHpBar')).toEqual(['scheme-0'])
-    expect(dup.get('scheme-0')).toEqual(['base:battleHpBar'])
+    expect(dup.get('base:BattlePlayerHpBar')).toEqual(['scheme-0'])
+    expect(dup.get('scheme-0')).toEqual(['base:BattlePlayerHpBar'])
   })
 
   it('三项同内容 → 每项列出其余两项', () => {

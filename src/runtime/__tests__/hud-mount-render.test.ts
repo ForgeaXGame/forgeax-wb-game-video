@@ -8,8 +8,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { GraphSession } from '../engine/session'
 import { createCoreSkinRegistry, registerCoreSkins } from '../component-host/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
-import { BUILTIN_SCHEMES, ensureBuiltinSchemes, SCHEME_STATIC_ID } from '../../editor/demo/builtin-schemes'
 import { STAGE_FILL_LAYOUT } from '../schema/layout'
+
+const HUD_OVERLAY_ID = 'test-hud'
 
 beforeAll(() => {
   registerCoreSkins()
@@ -17,9 +18,15 @@ beforeAll(() => {
 
 describe('挂载静态方案 · 血条进试玩', () => {
   it('enter 后 overlayMounts 含两种新规格血条并能渲出 DOM', () => {
-    const overlays = ensureBuiltinSchemes(Object.fromEntries(
-      BUILTIN_SCHEMES.map((scheme) => [scheme.id, structuredClone(scheme)]),
-    ))
+    const overlays = {
+      [HUD_OVERLAY_ID]: {
+        id: HUD_OVERLAY_ID,
+        children: [
+          { id: 'player', component: 'BattlePlayerHpBar', inputs: {}, layout: { ...STAGE_FILL_LAYOUT } },
+          { id: 'enemy', component: 'BattleEnemyHpBar', inputs: {}, layout: { ...STAGE_FILL_LAYOUT } },
+        ],
+      },
+    }
     const base = makeNodiaDemo()
     const scn = {
       ...base,
@@ -33,7 +40,7 @@ describe('挂载静态方案 · 血条进试玩', () => {
                 data: {
                   ...n.data,
                   overlayNodes: [
-                    { overlay: SCHEME_STATIC_ID, layout: { ...STAGE_FILL_LAYOUT } },
+                    { overlay: HUD_OVERLAY_ID, layout: { ...STAGE_FILL_LAYOUT } },
                     ...(n.data.overlayNodes ?? []),
                   ],
                 },
@@ -53,7 +60,7 @@ describe('挂载静态方案 · 血条进试玩', () => {
     )
 
     const skins = createCoreSkinRegistry()
-    const mount = snap.overlayMounts.find((m) => m.mountId === SCHEME_STATIC_ID)
+    const mount = snap.overlayMounts.find((m) => m.mountId === HUD_OVERLAY_ID)
     expect(mount).toBeTruthy()
 
     // 新规格血条不再通过 inputs.bind 解释位置/实体，缺 ctx 也使用参数默认值稳定预览。

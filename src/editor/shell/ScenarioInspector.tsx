@@ -6,7 +6,7 @@ import type { AttrMeta, Entity, GameScenario, Layout, Overlay, Variable } from '
 import type { Formula } from '../persist/formula-authoring'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
-import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
+import { listCustomSchemeIds, NEW_COMPONENT_PRESETS } from '../demo/builtin-schemes'
 import { FormulaTextEditor } from './FormulaTextEditor'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
@@ -87,9 +87,7 @@ export function ScenarioInspector({
   const entities = value.entities ?? {}
   const formulas = value.formulas ?? {}
   const allOverlays = value.ui?.overlays ?? {}
-  // 「通用样式」= 自由方案；排除每节点自动内容 overlay（node:*，那是时间轴的内容容器）。
-  // 内置方案（静态/动态组件方案）固定置顶，其余按目录原有顺序跟后，见 sortSchemeIds。
-  const schemeIds = sortSchemeIds(Object.keys(allOverlays).filter((id) => !id.startsWith('node:')))
+  const schemeIds = listCustomSchemeIds(allOverlays)
   const setOverlays = (overlays: Record<string, Overlay>) => onChange({ ...value, ui: { ...value.ui, overlays } })
   const patchOverlayChildInMeta = (
     overlayId: string,

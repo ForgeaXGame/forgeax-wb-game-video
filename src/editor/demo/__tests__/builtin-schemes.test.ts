@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { ensureBaseHudSchemes, NEW_COMPONENT_PRESETS } from '../builtin-schemes'
+import {
+  ensureBaseHudSchemes,
+  listCustomSchemeIds,
+  NEW_COMPONENT_PRESETS,
+} from '../builtin-schemes'
 import newComponents from '../../../runtime/component-host/components/new'
 import { STAGE_FILL_LAYOUT } from '../../../runtime/schema/layout'
 
@@ -20,5 +24,13 @@ describe('new component presets', () => {
     expect(Object.keys(overlays)).toEqual(NEW_COMPONENT_IDS.map((id) => `base:${id}`))
     expect(overlays['base:floatText']).toBeUndefined()
     expect(overlays['base:battleHpBar']).toBeUndefined()
+    expect(listCustomSchemeIds(overlays)).toEqual([])
+  })
+
+  it('keeps user-created custom overlays visible beside derived base overlays', () => {
+    const overlays = ensureBaseHudSchemes({
+      'scheme-0': { id: 'scheme-0', title: '玩家方案', children: [] },
+    })
+    expect(listCustomSchemeIds(overlays)).toEqual(['scheme-0'])
   })
 })

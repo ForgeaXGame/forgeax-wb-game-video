@@ -28,7 +28,6 @@ import {
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, EffectsEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
 import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
-import { PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
@@ -924,7 +923,6 @@ export function NodeInspector({
   onTogglePreview,
   onChange,
   onPacksChange,
-  onEnsureOverlay,
   onDropOverlayIfOrphan,
   onRemoveMount,
   onJump,
@@ -966,11 +964,6 @@ export function NodeInspector({
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   /**
-   * 挂载预设方案前：若目录里还没有该 overlay，上层写入固化原型（缺失才补）。
-   * 未传则仅能挂载当前 `overlays` 里已有的方案。
-   */
-  onEnsureOverlay?: (overlay: Overlay) => void
-  /**
    * 卸载某挂载后，请上层用完整 scenario（主图 + 所有子蓝图包）判断该 overlay 是否已无人引用，
    * 无引用则清理孤儿副本。本组件只看得到 canvasGraph，无法自行判断跨图引用，故上抛。
    */
@@ -1004,12 +997,12 @@ export function NodeInspector({
     return `${name} (${id})`
   }
   const overlayLabel = (id: string) => {
-    const title = overlays?.[id]?.title?.trim() || PRESET_SCHEME_BY_ID[id]?.title?.trim()
+    const title = overlays?.[id]?.title?.trim()
     if (!title || title === id) return id
     return `${title} (${id})`
   }
   // 「默认样式 / ＋ 挂载」与界面 tab 保持同一份列表：自定义覆盖物 + 基础覆盖物（打平），
-  // 直接从 live overlays 派生（见 builtin-schemes），不再用固化的 PRESET_SCHEME_OVERLAYS。
+  // 直接从 live overlays 派生（见 builtin-schemes）。
   const schemeOverlayIds = listSchemeAndBaseOverlayIds(overlays)
   const mediaRef = d.media?.ref ?? ''
   const selectedVideoValue = mediaRef && !videoOptions.some((option) => option.id === mediaRef)
@@ -1312,12 +1305,7 @@ export function NodeInspector({
               const oid = e.target.value
               if (!oid) return
               const mounts = [...(d.overlayNodes ?? [])]
-              // 目录缺失时先写入固化原型，再挂载（否则聚合事件/预览会空）。
-              if (!overlays?.[oid]) {
-                const preset = PRESET_SCHEME_BY_ID[oid]
-                if (preset) onEnsureOverlay?.(structuredClone(preset))
-              }
-              const definition = overlays?.[oid] ?? PRESET_SCHEME_BY_ID[oid]
+              const definition = overlays?.[oid]
               const layout = resolveMountLayoutForChildren(
                 undefined,
                 definition?.children.map((child) => child.layout) ?? [],
@@ -1326,7 +1314,7 @@ export function NodeInspector({
               mounts.push({ ...created, ...(layout ? { layout } : {}) })
               patchData({ overlayNodes: mounts })
             }}
-            title="从目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）；含内置画廊与 nodia 界面方案"
+            title="从当前项目目录追加一张 overlay 挂载（常驻：全部组件同时生效，适合 HUD）"
             style={{ maxWidth: 140, fontSize: 11 }}
           >
             <option value="">＋ 添加界面</option>
@@ -1346,7 +1334,7 @@ export function NodeInspector({
               getComponentManifest,
               { mountId: mid, prefixMount: multi },
             )
-            const mountTitle = overlays?.[mount.overlay]?.title?.trim() || PRESET_SCHEME_BY_ID[mount.overlay]?.title?.trim()
+            const mountTitle = overlays?.[mount.overlay]?.title?.trim()
             const titleText = mountTitle && mountTitle !== mid ? `${mountTitle} (${mid})` : mid
             // 聚焦联动：有聚焦时只展开该挂载，其余折叠为标题行；无聚焦 = 全展开（默认）。
             const focused = focusedMountId === mid

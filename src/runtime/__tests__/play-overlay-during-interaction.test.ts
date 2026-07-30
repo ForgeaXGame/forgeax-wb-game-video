@@ -8,9 +8,11 @@
  */
 import { describe, expect, it, beforeAll } from 'vitest'
 import { GraphSession } from '../engine/session'
-import { BUILTIN_SCHEMES, ensureBuiltinSchemes, SCHEME_STATIC_ID } from '../../editor/demo/builtin-schemes'
 import { registerCoreSkins } from '../component-host/components'
+import { STAGE_FILL_LAYOUT } from '../schema/layout'
 import { node, scnOf } from './test-fixtures'
+
+const HUD_OVERLAY_ID = 'test-hud'
 
 beforeAll(() => {
   registerCoreSkins()
@@ -18,15 +20,21 @@ beforeAll(() => {
 
 describe('试玩 · 交互挂起时仍见方案 HUD 与时间窗飘字', () => {
   it('enter：交互在前、静态方案在后 → 血条仍进 overlayMounts', () => {
-    const overlays = ensureBuiltinSchemes(Object.fromEntries(
-      BUILTIN_SCHEMES.map((scheme) => [scheme.id, structuredClone(scheme)]),
-    ))
+    const overlays = {
+      [HUD_OVERLAY_ID]: {
+        id: HUD_OVERLAY_ID,
+        children: [
+          { id: 'player', component: 'BattlePlayerHpBar', inputs: {}, layout: { ...STAGE_FILL_LAYOUT } },
+          { id: 'enemy', component: 'BattleEnemyHpBar', inputs: {}, layout: { ...STAGE_FILL_LAYOUT } },
+        ],
+      },
+    }
     const n = node('a', {
       durationMs: 8000,
       media: { kind: 'VIDEO', ref: 'clip' },
       overlayNodes: [
         { overlay: 'ov-a' },
-        { overlay: SCHEME_STATIC_ID },
+        { overlay: HUD_OVERLAY_ID },
       ],
     })
     const scn = scnOf(
