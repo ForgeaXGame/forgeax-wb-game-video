@@ -20,8 +20,13 @@ import { BgmPlayer, GameStage, useClipPerformanceEnd } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { useRevealOnScopeChange } from './useRevealOnScopeChange'
-import { getSubFlowPack } from '../../runtime/schema/graph-schema'
-import { blueprintBreadcrumbs, deepestCallerOnBlueprint } from './call-stack-view'
+import { getSubFlow, getSubFlowPack } from '../../runtime/schema/graph-schema'
+import {
+  activeSubflowPath,
+  blueprintBreadcrumbs,
+  deepestCallerOnBlueprint,
+  visibleSubflowNodeIds,
+} from './call-stack-view'
 
 function autoEmitTarget(snap: SessionSnapshot): { elementId: string; key: string } | null {
   // 自动演示：找首个可 emit 的挂载组件，抛其首个非 default 事件。
@@ -92,6 +97,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const [showLogs, setShowLogs] = useState(false)
   const [viewMode, setViewMode] = useState<'follow' | 'pinned'>('follow')
   const [pinnedBlueprintId, setPinnedBlueprintId] = useState<string>()
+  const [pinnedDrillPath, setPinnedDrillPath] = useState<string[]>([])
   const sessionRef = useRef<GraphSession | null>(null)
   const rootBlueprintIdRef = useRef(mainBlueprintId)
   const [snap, setSnap] = useState<SessionSnapshot | null>(null)
@@ -163,6 +169,18 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     : displayBlueprintId === snap.activeBlueprintId
       ? snap.currentNodeId
       : deepestCallerOnBlueprint(snap.callStack, displayBlueprintId, snap.activeBlueprintId)
+  const followedDrillPath = useMemo(
+    () => snap && displayBlueprintId === snap.activeBlueprintId
+      ? activeSubflowPath(displayGraph, snap.callStack, snap.activeBlueprintId)
+      : [],
+    [displayBlueprintId, displayGraph, snap?.activeBlueprintId, snap?.callStack],
+  )
+  const drillPath = viewMode === 'follow' ? followedDrillPath : pinnedDrillPath
+  const visibleNodeIds = useMemo(
+    () => visibleSubflowNodeIds(displayGraph, drillPath),
+    [displayGraph, drillPath],
+  )
+  const visibleActiveNodeId = activeNodeId && visibleNodeIds.has(activeNodeId) ? activeNodeId : null
   const crumbs = snap
     ? blueprintBreadcrumbs(
       rootBlueprintId,
@@ -183,6 +201,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     ) {
       setViewMode('follow')
       setPinnedBlueprintId(undefined)
+      setPinnedDrillPath([])
       return
     }
     setSnap(sessionRef.current!.jump(nodeId, {
@@ -191,12 +210,30 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     }))
     setViewMode('follow')
     setPinnedBlueprintId(undefined)
+    setPinnedDrillPath([])
+  }
+  const pinDrillPath = (path: string[]) => {
+    setViewMode('pinned')
+    setPinnedBlueprintId(displayBlueprintId)
+    setPinnedDrillPath(path)
+  }
+  const drillIntoNode = (nodeId: string) => {
+    const node = displayGraph.nodes.find((candidate) => candidate.id === nodeId)
+    if (!node) return
+    const pack = getSubFlowPack(node.data)
+    if (pack && blueprints[pack.id]) {
+      setViewMode('pinned')
+      setPinnedBlueprintId(pack.id)
+      setPinnedDrillPath([])
+      return
+    }
+    if (getSubFlow(node.data)) pinDrillPath([...drillPath, nodeId])
   }
   const traversed = useMemo(() => new Set(snap?.traversedEdgeIds ?? []), [snap?.traversedEdgeIds])
   // 打开蓝图浮层 / 进出自蓝图（含面包屑回看）时平移到高亮节点；同图内推进不抢视口。
   const revealNodeId = useRevealOnScopeChange(
-    showBlueprint ? `${viewMode}:${displayBlueprintId}` : null,
-    activeNodeId,
+    showBlueprint ? `${viewMode}:${displayBlueprintId}:${drillPath.join('/')}` : null,
+    visibleActiveNodeId,
   )
   const executingGraph =
     (snap?.activeBlueprintId
@@ -278,9 +315,11 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
                           if (crumb.blueprintId === snap?.activeBlueprintId) {
                             setViewMode('follow')
                             setPinnedBlueprintId(undefined)
+                            setPinnedDrillPath([])
                           } else {
                             setViewMode('pinned')
                             setPinnedBlueprintId(crumb.blueprintId)
+                            setPinnedDrillPath([])
                           }
                         }}
                         style={{ padding: 0, border: 'none', background: 'none', color: crumb.blueprintId === displayBlueprintId ? '#f5bd75' : '#aeb8c8', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}
@@ -297,6 +336,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
                   onClick={() => {
                     setViewMode('follow')
                     setPinnedBlueprintId(undefined)
+                    setPinnedDrillPath([])
                   }}
                   style={{ marginLeft: 'auto', padding: '2px 6px', borderRadius: 4, border: '1px solid #66513b', background: '#2f2923', color: '#f5bd75', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}
                 >
@@ -308,14 +348,59 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
           initial={{ x: 40, y: 56, w: 540, h: 420 }}
           onClose={() => setShowBlueprint(false)}
         >
+          {drillPath.length > 0 && (
+            <div
+              style={{
+                position: 'absolute', top: 8, left: 8, zIndex: 5, display: 'flex', gap: 6, alignItems: 'center',
+                maxWidth: 'calc(100% - 70px)', padding: '4px 10px', borderRadius: 999, fontSize: 12,
+                background: 'rgba(27,23,19,0.94)', border: '1px solid #66513b', color: '#c9d1e0',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.45)', overflow: 'hidden',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => pinDrillPath([])}
+                style={{ flex: 'none', padding: 0, border: 'none', background: 'none', color: '#f08840', cursor: 'pointer', fontSize: 12 }}
+              >
+                总览
+              </button>
+              {drillPath.map((id, index) => (
+                <span key={id} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+                  <span style={{ color: '#697386' }}>›</span>
+                  <button
+                    type="button"
+                    onClick={() => pinDrillPath(drillPath.slice(0, index + 1))}
+                    style={{
+                      minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: 0,
+                      border: 'none', background: 'none', color: index === drillPath.length - 1 ? '#f5bd75' : '#aeb8c8',
+                      cursor: 'pointer', fontSize: 12, fontWeight: index === drillPath.length - 1 ? 700 : 400,
+                    }}
+                  >
+                    {displayGraph.nodes.find((node) => node.id === id)?.data.name ?? id}
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                title="返回上一层"
+                onClick={() => pinDrillPath(drillPath.slice(0, -1))}
+                style={{ flex: 'none', marginLeft: 2, padding: '1px 6px', borderRadius: 4, border: '1px solid #403830', background: '#252019', color: '#c9d1e0', cursor: 'pointer', fontSize: 11 }}
+              >
+                ←
+              </button>
+            </div>
+          )}
           <GraphCanvas
             graph={displayGraph}
             onChange={() => {}}
             overlays={overlays}
-            activeNodeId={activeNodeId}
+            activeNodeId={visibleActiveNodeId}
             traversedEdgeIds={displayBlueprintId === snap?.activeBlueprintId ? traversed : undefined}
+            visibleNodeIds={visibleNodeIds}
+            drillFitKey={`${displayBlueprintId}:${drillPath.join('/') || 'root'}`}
             revealNodeId={revealNodeId}
             onJump={jumpFromBlueprint}
+            onDrill={drillIntoNode}
             readOnly
           />
         </DraggablePanel>

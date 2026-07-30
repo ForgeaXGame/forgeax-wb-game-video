@@ -208,4 +208,50 @@ describe('missing video notices across play surfaces', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pack' }))
     expect(screen.getByText('蓝图状态机 · 跟随执行')).toBeTruthy()
   })
+
+  it('isolates same-graph subflow members while following and drilling', () => {
+    const subflowGraph: GameScenario['graph'] = {
+      nodes: [
+        {
+          id: 'turn', type: 'subflow', position: { x: 0, y: 0 }, inputs: [], outputs: [],
+          data: { name: '我方回合', subFlow: 'skill' },
+        },
+        {
+          id: 'end', type: 'perf', position: { x: 200, y: 0 }, inputs: [], outputs: [],
+          data: { name: '战斗结束' },
+        },
+        {
+          id: 'skill', type: 'perf', position: { x: 0, y: 120 }, inputs: [], outputs: [],
+          data: { name: '选择技能', media: { kind: 'video', ref: 'missing-stable-id' } },
+        },
+      ],
+      edges: [{ id: 'turn-end', source: 'turn', target: 'end', sourceHandle: 'default', targetHandle: 'in' }],
+    }
+    const mainDoc: BlueprintDoc = { ...MAIN_DOC, entry: 'turn', graph: subflowGraph }
+    useGraphScenario.setState({
+      blueprints: { [MAIN_ID]: mainDoc },
+      graph: subflowGraph,
+    })
+
+    const { container } = render(<GraphPlaySurface scenario={{ ...SCENARIO, graph: subflowGraph }} />)
+    fireEvent.click(screen.getByRole('button', { name: '蓝图' }))
+
+    const canvasNodeLabels = () => [...container.querySelectorAll('.gv-bp-node')]
+      .map((node) => node.textContent ?? '')
+
+    expect(canvasNodeLabels().some((label) => label.includes('选择技能'))).toBe(true)
+    expect(canvasNodeLabels().some((label) => label.includes('我方回合'))).toBe(false)
+    expect(screen.getByRole('button', { name: '总览' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '总览' }))
+    expect(canvasNodeLabels().some((label) => label.includes('我方回合'))).toBe(true)
+    expect(canvasNodeLabels().some((label) => label.includes('选择技能'))).toBe(false)
+    expect(screen.getByText('蓝图状态机 · 回看')).toBeTruthy()
+
+    const drillButton = container.querySelector<HTMLButtonElement>('.gv-bp-node button[title*="下钻子流程"]')
+    expect(drillButton).toBeTruthy()
+    fireEvent.click(drillButton!)
+    expect(canvasNodeLabels().some((label) => label.includes('选择技能'))).toBe(true)
+    expect(canvasNodeLabels().some((label) => label.includes('我方回合'))).toBe(false)
+  })
 })
