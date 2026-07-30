@@ -146,7 +146,7 @@
 
     "@forgeax/extension-platform": ["@forgeax/extension-platform@0.0.2", "https://mirrors.tencent.com/npm/@forgeax/extension-platform/-/extension-platform-0.0.2.tgz", {}, "sha512-FvPk1d/s1x1jM4T0IAaTZrzniKzpIY/FRXQMgXsxt9MI94YH9msm0yo3GCYHEfsn2E9X0s0qmHGDqk5Kx2LSNA=="],
 
-    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.1.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-+QKZptW2h3akJeYPiddDahiMKVckBNWf9X0isEe50Dm8DaGE2//3K7dKZWtSIhRDBZ7EuPP6/KA0olmUPv2MiQ=="],
+    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.1.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-qXeVrYZgFsmvrt24/1hpSkXb9RaXMNjEhRiP73FWKHMRmE7SNx2XbesO/kZSDhjZcB9z2h2pkIBaTThF8dpLHA=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

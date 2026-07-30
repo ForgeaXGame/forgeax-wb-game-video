@@ -16,7 +16,7 @@ const oldToolId = ['gv', 'id:get-graph'].join('')
 const oldStorageKey = ['game', 'video:graph:view'].join('')
 const oldDottedStorageKey = ['gv', 'id.nodePanel.previewW'].join('')
 const oldBrandName = ['reel', 'studio'].join('-')
-const reviewedWorkbenchHostCommit = '745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb'
+const reviewedWorkbenchHostCommit = '15a573679ad058e4d04fadea2f5c90abb29d2245'
 
 interface FixtureOptions {
   backendKeys?: string[]

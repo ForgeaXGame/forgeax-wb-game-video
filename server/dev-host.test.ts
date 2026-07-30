@@ -40,6 +40,8 @@ describe('development Vite adapter', () => {
       gamesRoot,
     })
 
-    await expect(host.componentRoot('escaped-game')).rejects.toThrow('Game workspace was not found')
+    await expect(
+      host.componentFile('escaped-game', 'panel.js'),
+    ).rejects.toThrow('Game workspace was not found')
   })
 })

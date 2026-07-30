@@ -54,13 +54,13 @@ through the reviewed tarball at
 path is part of the release contract.
 
 - reviewed host commit:
-  `745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb`;
+  `15a573679ad058e4d04fadea2f5c90abb29d2245`;
 - tarball SHA-256:
-  `23b755264445dc9dced830ae695164b856417f4c22e533312905e8559c88b3a2`;
+  `786ea899c90fe843c8075efe4b0c8c9a7b182ff61105c14e7791ec2eb44e0759`;
 - tarball SHA-512 (hex):
-  `f90299a6d5b68776a425e60f89d7436a188c29572404d59ff57d22b047b9d039bc0da184dbfff72bb74a656b52221443059ec4b8f3fafca034a259943efd8c89`;
+  `a97795ad866016c9afaeddb8ff58694a45dbf5169730d8c485188fef7156287311984ed2371d976deb0efe46520e18d9701f73da1da990805a4d3845f1da4b1c`;
 - Bun lock integrity:
-  `sha512-+QKZptW2h3akJeYPiddDahiMKVckBNWf9X0isEe50Dm8DaGE2//3K7dKZWtSIhRDBZ7EuPP6/KA0olmUPv2MiQ==`.
+  `sha512-qXeVrYZgFsmvrt24/1hpSkXb9RaXMNjEhRiP73FWKHMRmE7SNx2XbesO/kZSDhjZcB9z2h2pkIBaTThF8dpLHA==`.
 
 The machine-readable source-only record is
 `vendor/forgeax-workbench-host-0.1.0.provenance.json`; release validation
@@ -72,7 +72,7 @@ integrity.
 This change does not publish, tag, push, or merge either package.
 
 1. Publish reviewed commit
-   `745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb` as
+   `15a573679ad058e4d04fadea2f5c90abb29d2245` as
    `@forgeax/workbench-host@0.1.0` first.
 2. Verify the registry artifact exposes the reviewed types and capabilities.
 3. Only then remove the wb-game-video `overrides` entry and vendored tarball,

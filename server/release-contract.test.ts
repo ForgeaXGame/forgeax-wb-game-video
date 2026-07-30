@@ -107,7 +107,7 @@ describe('release identity', () => {
       schemaVersion: 1,
       package: '@forgeax/workbench-host',
       version: '0.1.0',
-      sourceCommit: '745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb',
+      sourceCommit: '15a573679ad058e4d04fadea2f5c90abb29d2245',
       archive: 'vendor/forgeax-workbench-host-0.1.0.tgz',
       sha256: createHash('sha256').update(archive).digest('hex'),
       sha512: createHash('sha512').update(archive).digest('hex'),

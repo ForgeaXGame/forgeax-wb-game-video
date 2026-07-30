@@ -56,17 +56,33 @@ release contract 会校验 tarball integrity、已安装的 `extension.url()` �
 import { host as videoGameWorkbenchExtension } from '@forgeax/wb-game-video/host'
 import { createWorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 
-const context = createWorkbenchExtensionContext({
-  gameId: resolvedGame.id,
-  gameRoot: resolvedGame.root,
-  media: hostMedia,
-  models: hostModels,
-})
-
-const router = videoGameWorkbenchExtension.createRouter?.(context)
+const response = await workspace.withGameRoot(
+  resolvedGame.id,
+  { create: false, versioning },
+  async (scope) => {
+    const context = createWorkbenchExtensionContext({
+      gameId: resolvedGame.id,
+      gameRoot: scope.gameRoot,
+      files: scope.files,
+      media: hostMedia,
+      models: hostModels,
+    })
+    const router = videoGameWorkbenchExtension.createRouter?.(context)
+    if (!router) throw new Error('wb-game-video router is unavailable')
+    const routed = await router.handle(request)
+    return {
+      ...routed,
+      ...(routed.body ? { body: new Uint8Array(routed.body) } : {}),
+    }
+  },
+)
 ```
 
-`gameId` 与 `gameRoot` 在进入扩展前就由宿主解析完成。扩展后端只使用 context 注入的能力：
+上面的 context 构造必须发生在
+`workspace.withGameRoot(resolvedGame.id, { create: false, versioning }, async (scope) => …)`
+回调内；router 构造、请求处理与响应字节复制也必须在该回调返回前完成。不得根据
+`gameRoot` 路径临时构造 files，也不得在 scope 关闭后保留 context。
+`gameId` 与 `scope.gameRoot` 在进入扩展前就由宿主解析完成。扩展后端只使用 context 注入的能力：
 
 - `files` 提供限定在游戏根内的读写、目录枚举和跨进程 `withLocks`；
 - `media` 提供素材读写、幂等落盘与回收；

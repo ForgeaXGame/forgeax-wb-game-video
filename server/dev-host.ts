@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import {
   RuntimeRegistry,
   createWorkbenchHost,
-  createWorkbenchExtensionContext,
+  createPathBoundedGameFilesForDevelopment,
   mergeManifestLayers,
 } from '@forgeax/workbench-host/node'
 import type {
@@ -80,7 +80,7 @@ class LocalDevWorkspace implements WorkspaceAdapter {
     operation: Parameters<WorkspaceAdapter['withGameRoot']>[2],
   ): Promise<T> {
     const gameRoot = await this.openGameRoot(gameId, options.create)
-    const bounded = createWorkbenchExtensionContext({ gameId, gameRoot }).files
+    const bounded = createPathBoundedGameFilesForDevelopment(gameRoot)
     let active = true
     const assertActive = (): void => {
       if (!active) throw new Error('Development game scope is closed')
