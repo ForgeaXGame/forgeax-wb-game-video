@@ -16,16 +16,17 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { getComponent } from '../../runtime/registry/component-registry'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc } from './media'
-import { BgmPlayer, GameStage, PlaybackClockProvider, useClipPerformanceEnd, useControlledPlaybackTimeout } from '../../runtime/play'
+import { BgmPlayer, GameStage, PlaybackClockProvider, useClipPerformanceEnd, useControlledPlaybackTimeout, VideoAudioToggle } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { useRevealOnScopeChange } from './useRevealOnScopeChange'
-import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
+import { getSubFlow, getSubFlowPack } from '../../runtime/schema/graph-schema'
 import {
+  activeSubflowPath,
   blueprintBreadcrumbs,
   deepestCallerOnBlueprint,
+  visibleSubflowNodeIds,
 } from './call-stack-view'
-import { graphPathLabels, resolveGraphAtPath } from '../../graph/edit/graph-scope'
 
 function autoEmitTarget(snap: SessionSnapshot): { elementId: string; key: string } | null {
   // 自动演示：找首个可 emit 的挂载组件，抛其首个非 default 事件。
@@ -94,6 +95,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const [auto, setAuto] = useState(false)
   const [paused, setPaused] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
+  const [videoAudioEnabled, setVideoAudioEnabled] = useState(false)
   const [showBlueprint, setShowBlueprint] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [viewMode, setViewMode] = useState<'follow' | 'pinned'>('follow')
@@ -162,7 +164,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     viewMode === 'pinned' && pinnedBlueprintId
       ? pinnedBlueprintId
       : (snap?.activeBlueprintId ?? rootBlueprintId)
-  const baseDisplayGraph =
+  const displayGraph =
     blueprints[displayBlueprintId]?.graph
     ?? blueprints[rootBlueprintId]?.graph
     ?? graph
@@ -171,13 +173,18 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     : displayBlueprintId === snap.activeBlueprintId
       ? snap.currentNodeId
       : deepestCallerOnBlueprint(snap.callStack, displayBlueprintId, snap.activeBlueprintId)
-  const followedDrillPath = snap && displayBlueprintId === snap.activeBlueprintId
-    ? snap.activeGraphPath
-    : []
+  const followedDrillPath = useMemo(
+    () => snap && displayBlueprintId === snap.activeBlueprintId
+      ? activeSubflowPath(displayGraph, snap.callStack, snap.activeBlueprintId)
+      : [],
+    [displayBlueprintId, displayGraph, snap?.activeBlueprintId, snap?.callStack],
+  )
   const drillPath = viewMode === 'follow' ? followedDrillPath : pinnedDrillPath
-  const displayGraph = resolveGraphAtPath(baseDisplayGraph, drillPath) ?? baseDisplayGraph
-  const drillLabels = graphPathLabels(baseDisplayGraph, drillPath)
-  const visibleActiveNodeId = activeNodeId && displayGraph.nodes.some((node) => node.id === activeNodeId) ? activeNodeId : null
+  const visibleNodeIds = useMemo(
+    () => visibleSubflowNodeIds(displayGraph, drillPath),
+    [displayGraph, drillPath],
+  )
+  const visibleActiveNodeId = activeNodeId && visibleNodeIds.has(activeNodeId) ? activeNodeId : null
   const crumbs = snap
     ? blueprintBreadcrumbs(
       rootBlueprintId,
@@ -204,7 +211,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     setSnap(sessionRef.current!.jump(nodeId, {
       blueprintId: displayBlueprintId,
       graph: displayGraph,
-      graphPath: [...drillPath],
     }))
     setViewMode('follow')
     setPinnedBlueprintId(undefined)
@@ -225,7 +231,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       setPinnedDrillPath([])
       return
     }
-    if (getSubProcess(node.data)) pinDrillPath([...drillPath, nodeId])
+    if (getSubFlow(node.data)) pinDrillPath([...drillPath, nodeId])
   }
   const traversed = useMemo(() => new Set(snap?.traversedEdgeIds ?? []), [snap?.traversedEdgeIds])
   // 打开蓝图浮层 / 进出自蓝图（含面包屑回看）时平移到高亮节点；同图内推进不抢视口。
@@ -233,13 +239,12 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     showBlueprint ? `${viewMode}:${displayBlueprintId}:${drillPath.join('/')}` : null,
     visibleActiveNodeId,
   )
-  const executingRootGraph =
+  const executingGraph =
     (snap?.activeBlueprintId
       ? blueprints[snap.activeBlueprintId]?.graph
       : undefined)
     ?? blueprints[rootBlueprintId]?.graph
     ?? graph
-  const executingGraph = resolveGraphAtPath(executingRootGraph, snap?.activeGraphPath ?? []) ?? executingRootGraph
   const currentNode = useMemo(
     () => executingGraph.nodes.find((n) => n.id === snap?.currentNodeId),
     [executingGraph, snap?.currentNodeId],
@@ -271,7 +276,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       onFocus={() => claimPlayerFocus(rootRef.current)}
       style={{ position: 'relative', width: '100%', height: '100%', background: '#000', overflow: 'hidden', outline: 'none' }}
     >
-      {/* 床轨：独立音频通道（视频恒 muted）。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
+      {/* 床轨：独立音频通道，不受视频原声开关影响。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
           「还没发过指令」不是停播令，若不重挂，重开会把上一局的曲子拖进新局。 */}
       <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} paused={paused} playbackRate={playbackRate} />
 
@@ -288,6 +293,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
         onPerformanceEnd={endPerformance}
         paused={paused}
         playbackRate={playbackRate}
+        videoAudioEnabled={videoAudioEnabled}
         placeholder={snap ? (snap.clip?.name ?? '（无演出）') : '加载中…'}
       />
 
@@ -303,6 +309,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
         >
           {[0.5, 1, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}
         </select>
+        <VideoAudioToggle enabled={videoAudioEnabled} onToggle={() => setVideoAudioEnabled((enabled) => !enabled)} />
+        <button style={toolBtn(false)} onClick={() => setRestartKey((k) => k + 1)}>重开</button>
         <button style={toolBtn(auto)} onClick={() => setAuto((v) => !v)}>{auto ? '停止演示' : '自动演示'}</button>
         <button style={toolBtn(showLogs)} onClick={() => setShowLogs((v) => !v)}>日志</button>
         <button style={toolBtn(showBlueprint)} onClick={() => setShowBlueprint((v) => !v)}>蓝图</button>
@@ -375,8 +383,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
               >
                 总览
               </button>
-              {drillLabels.map((item, index) => (
-                <span key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+              {drillPath.map((id, index) => (
+                <span key={id} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
                   <span style={{ color: '#697386' }}>›</span>
                   <button
                     type="button"
@@ -387,7 +395,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
                       cursor: 'pointer', fontSize: 12, fontWeight: index === drillPath.length - 1 ? 700 : 400,
                     }}
                   >
-                    {item.name}
+                    {displayGraph.nodes.find((node) => node.id === id)?.data.name ?? id}
                   </button>
                 </span>
               ))}
@@ -407,6 +415,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
             overlays={overlays}
             activeNodeId={visibleActiveNodeId}
             traversedEdgeIds={displayBlueprintId === snap?.activeBlueprintId ? traversed : undefined}
+            visibleNodeIds={visibleNodeIds}
             drillFitKey={`${displayBlueprintId}:${drillPath.join('/') || 'root'}`}
             revealNodeId={revealNodeId}
             onJump={jumpFromBlueprint}

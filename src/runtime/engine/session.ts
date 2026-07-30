@@ -94,7 +94,6 @@ export interface HudSnap {
 export interface CallStackFrameSnap {
   blueprintId: string
   callerNodeId: string
-  graphPath: string[]
   title?: string
 }
 /**
@@ -132,7 +131,6 @@ export interface SessionSnapshot {
   traversedEdgeIds: string[]
   log: string[]
   activeBlueprintId: string
-  activeGraphPath: string[]
   callStack: CallStackFrameSnap[]
 }
 
@@ -179,7 +177,6 @@ export class GraphSession {
       traversedEdgeIds: [],
       log: [],
       activeBlueprintId: this.runtime.getActiveBlueprintId(),
-      activeGraphPath: this.runtime.getActiveGraphPath(),
       callStack: this.projectCallStack(),
     }
   }
@@ -188,7 +185,6 @@ export class GraphSession {
     return this.runtime.state.callStack.map((f) => ({
       blueprintId: f.returnBlueprintId,
       callerNodeId: f.callerNodeId,
-      graphPath: [...f.returnGraphPath],
       title: this.blueprintTitles.get(f.returnBlueprintId),
     }))
   }
@@ -232,7 +228,7 @@ export class GraphSession {
   /** 点击运行时蓝图节点 → 跳转执行。 */
   jump(
     nodeId: string,
-    opts?: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string; graphPath?: string[] },
+    opts?: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string },
   ): SessionSnapshot {
     return this.apply(this.runtime.jumpToNode(nodeId, opts))
   }
@@ -322,7 +318,6 @@ export class GraphSession {
     this.snapshot.visited = [...s.visited]
     this.snapshot.traversedEdgeIds = [...s.traversedEdgeIds]
     this.snapshot.activeBlueprintId = this.runtime.getActiveBlueprintId()
-    this.snapshot.activeGraphPath = this.runtime.getActiveGraphPath()
     this.snapshot.callStack = this.projectCallStack()
     // 返回**新的对象引用**——GraphSession 内部快照是原地累积的，若直接返回同一引用，
     // React 的 setState 会因 Object.is 相等而跳过重渲染（引擎推进了、界面却不更新）。
@@ -340,8 +335,7 @@ export class GraphSession {
       })),
       visited: [...s.visited],
       traversedEdgeIds: [...s.traversedEdgeIds],
-      callStack: s.callStack.map((frame) => ({ ...frame, graphPath: [...frame.graphPath] })),
-      activeGraphPath: [...s.activeGraphPath],
+      callStack: [...s.callStack],
       log: [...s.log],
       hud: { ...s.hud, entities: { ...s.hud.entities }, vars: { ...s.hud.vars }, flags: { ...s.hud.flags } },
     }

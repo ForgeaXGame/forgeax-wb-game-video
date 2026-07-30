@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
 import { registerComponent, unregisterComponent } from '../../../runtime/registry/component-registry'
-import type { GameGraph, Overlay, OverlayEventRef } from '../../../runtime/schema/graph-schema'
+import type { GameGraph, OverlayEventRef } from '../../../runtime/schema/graph-schema'
 import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
 import { ComponentFormFields } from '../component-form-fields'
@@ -246,7 +246,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="subtitle-a"]')?.classList.contains('is-selected')).toBe(false)
   })
 
-  it('moves the design canvas with its children and keeps a manually shrunken canvas clipped', async () => {
+  it('keeps the design canvas fixed at 80% and clips content to it', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-overlay-fit-target')) {
         return {
@@ -273,102 +273,39 @@ describe('OverlaySchemeEditor selected child', () => {
         toJSON: () => ({}),
       }
     })
-    let latest: Overlay | undefined
-    function Harness(): JSX.Element {
-      const [overlay, setOverlay] = useState<Overlay>({
-        id: 'double-subtitle',
-        children: [
-          {
+    render(
+      <OverlaySchemeEditor
+        overlayId="double-subtitle"
+        overlay={{
+          id: 'double-subtitle',
+          children: [{
             id: 'subtitle-a',
             component: 'Dialogue',
             inputs: { text: 'A' },
             layout: { left: 0, top: 0, width: 1, height: 1 },
-          },
-          {
-            id: 'subtitle-b',
-            component: 'Dialogue',
-            inputs: { text: 'B' },
-            layout: { left: 0, top: 0, width: 1, height: 1 },
-          },
-        ],
-      })
-      latest = overlay
-      return (
-        <>
-          <OverlaySchemeEditor
-            overlayId={overlay.id}
-            overlay={overlay}
-            entities={{}}
-            variables={{}}
-            usageCount={0}
-            onRename={vi.fn()}
-            onRemove={vi.fn()}
-            onAddChild={vi.fn()}
-            onRemoveChild={vi.fn()}
-            onPatchChild={(childId, patch) => {
-              setOverlay((current) => ({
-                ...current,
-                children: current.children.map((child) =>
-                  child.id === childId
-                    ? {
-                        ...child,
-                        ...(patch.inputs ? { inputs: patch.inputs } : {}),
-                        ...(patch.layout ? { layout: { ...child.layout, ...patch.layout } } : {}),
-                      }
-                    : child),
-              }))
-            }}
-            onMoveCanvas={(moveDelta) => setOverlay((current) => ({
-              ...current,
-              children: current.children.map((child) => ({
-                ...child,
-                layout: {
-                  ...child.layout,
-                  left: (typeof child.layout?.left === 'number' ? child.layout.left : 0) + moveDelta.x,
-                  top: (typeof child.layout?.top === 'number' ? child.layout.top : 0) + moveDelta.y,
-                  right: undefined,
-                  bottom: undefined,
-                },
-              })),
-            }))}
-            onReactionsChange={vi.fn()}
-          />
-        </>
-      )
-    }
-    render(<Harness />)
+          }],
+        }}
+        entities={{}}
+        variables={{}}
+        usageCount={0}
+        onRename={vi.fn()}
+        onRemove={vi.fn()}
+        onAddChild={vi.fn()}
+        onRemoveChild={vi.fn()}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
 
-    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(50))
-    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(50)
+    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(80))
+    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(80)
     expect(screen.queryByRole('button', { name: /调整dialogue大小/ })).toBeNull()
-    expect(document.querySelectorAll('[data-overflow-child]')).not.toHaveLength(0)
+    expect(document.querySelectorAll('[data-overflow-child]')).toHaveLength(0)
     expect((document.querySelector('[data-overlay-content-clip]') as HTMLElement).style.clipPath).toContain('inset(')
-
-    const canvas = screen.getByRole('application', { name: '界面方案画布' })
-    expect(fireEvent.keyDown(window, { key: ' ', code: 'Space' })).toBe(false)
-    fireEvent.pointerDown(canvas, { button: 0, pointerId: 2, clientX: 60, clientY: 30 })
-    fireEvent.pointerMove(canvas, { pointerId: 2, clientX: 80, clientY: 40 })
-    fireEvent.pointerUp(canvas, { pointerId: 2, clientX: 80, clientY: 40 })
-    fireEvent.keyUp(window, { key: ' ', code: 'Space' })
-
-    await waitFor(() => {
-      expect((document.querySelector('[data-canvas-item="__overlay-canvas__"]') as HTMLElement).style.left).toBe('35%')
+    expect(document.querySelector('[data-overlay-design-canvas]')).toHaveStyle({
+      left: '10%', top: '10%', width: '80%', height: '80%',
     })
-    expect(latest?.children[0]?.layout?.left).toBeCloseTo(0.1)
-    expect(latest?.children[0]?.layout?.top).toBeCloseTo(0.1)
-    expect(latest?.children[1]?.layout?.left).toBeCloseTo(0.1)
-    expect(latest?.children[1]?.layout?.top).toBeCloseTo(0.1)
-    expect(screen.getAllByRole('button', { name: /调整覆盖物画布大小/ })).toHaveLength(8)
-
-    const resize = screen.getByRole('button', { name: '调整覆盖物画布大小：右下' })
-    fireEvent.pointerDown(resize, { pointerId: 3, clientX: 170, clientY: 85 })
-    fireEvent.pointerMove(resize, { pointerId: 3, clientX: 130, clientY: 65 })
-    fireEvent.pointerUp(resize, { pointerId: 3, clientX: 130, clientY: 65 })
-
-    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(30))
-    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(30)
-    expect(Object.prototype.hasOwnProperty.call(latest, 'layout')).toBe(false)
-    expect(document.querySelectorAll('[data-overflow-child]')).not.toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /调整覆盖物画布大小/ })).toBeNull()
   })
 
   it('defaults to the first child and immediately shows parameters and events below the canvas', () => {

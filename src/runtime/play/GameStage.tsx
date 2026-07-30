@@ -40,6 +40,8 @@ export interface GameStageProps {
   /** 播放壳控制；不传时保持历史行为（播放中、1 倍速）。 */
   paused?: boolean
   playbackRate?: number
+  /** 是否播放当前前台视频自带的音轨；预加载和退场视频始终静音。 */
+  videoAudioEnabled?: boolean
 }
 
 export interface PreloadVideo {
@@ -82,7 +84,7 @@ function playbackKey(videoSrc: string | undefined, clip: ClipSnap | undefined, v
 
 export function GameStage({
   videoSrc, clip, overlayMounts, skins, skinCtx, onEmit, onTick, onPerformanceEnd, placeholder, videoKey,
-  preloadVideos = EMPTY_PRELOADS, paused = false, playbackRate = 1,
+  preloadVideos = EMPTY_PRELOADS, paused = false, playbackRate = 1, videoAudioEnabled = false,
 }: GameStageProps): JSX.Element {
   const desired = useMemo<BufferedPlayback | null>(
     () => {
@@ -317,7 +319,7 @@ export function GameStage({
                 data-playback-key={playback.key}
                 src={playback.src}
                 autoPlay={isFront}
-                muted
+                muted={!videoAudioEnabled || !isFront}
                 playsInline
                 preload="auto"
                 loop={playback.loop}

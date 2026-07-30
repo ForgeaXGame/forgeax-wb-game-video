@@ -3,7 +3,7 @@
  *
  * 分工（SPEC §4.1）：引擎只抛资产 id + 播放意图，URL 与音频元素归壳层；解析器由调用方
  * 注入（同 `GamePlayer` 给视频注入 `resolveAsset` 的路子），故本文件不 import editor/宿主。
- * 与 `<video muted>` 无关：床轨是**独立通道**，不搭视频音轨（视频恒静音，见 GameStage）。
+ * 与视频原声开关无关：床轨是**独立通道**，不搭视频音轨。
  *
  * 无 UI（返回 `null`）：音频元素由本件自己 `createElement` 并挂到 `document.body`——
  * 挂上去而非游离，是为了 devtools 能看见「有几条轨在响」，测试也能直接查 DOM；
