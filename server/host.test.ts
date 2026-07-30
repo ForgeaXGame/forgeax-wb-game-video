@@ -1,6 +1,6 @@
 import type {
   MediaCapability,
-  ModelGateway,
+  ModelCapability,
 } from '@forgeax/workbench-host/contracts'
 import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -33,6 +33,10 @@ class MemoryFiles {
 
   async write(path: string, contents: Uint8Array): Promise<void> {
     this.entries.set(path, new Uint8Array(contents))
+  }
+
+  async delete(path: string): Promise<void> {
+    this.entries.delete(path)
   }
 
   async withLocks<T>(
@@ -68,20 +72,20 @@ class TraceMedia implements MediaCapability {
   }
 }
 
-class TraceModels implements ModelGateway {
+class TraceModels implements ModelCapability {
   readonly calls: unknown[] = []
 
-  async generateText(...args: Parameters<ModelGateway['generateText']>) {
+  async generateText(...args: Parameters<ModelCapability['generateText']>) {
     this.calls.push(['text', structuredClone(args)])
     return { text: '[]', model: 'trace' }
   }
 
-  async generateImage(...args: Parameters<ModelGateway['generateImage']>) {
+  async generateImage(...args: Parameters<ModelCapability['generateImage']>) {
     this.calls.push(['image', structuredClone(args)])
     return { assets: [], model: 'trace' }
   }
 
-  async generateVideo(...args: Parameters<ModelGateway['generateVideo']>) {
+  async generateVideo(...args: Parameters<ModelCapability['generateVideo']>) {
     this.calls.push(['video', structuredClone(args)])
     return { assets: [], model: 'trace' }
   }

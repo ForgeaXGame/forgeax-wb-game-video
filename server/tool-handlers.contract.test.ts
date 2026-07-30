@@ -28,6 +28,9 @@ function createContext(gameId = 'contract-game') {
       async write(path, bytes) {
         entries.set(path, new Uint8Array(bytes))
       },
+      async delete(path) {
+        entries.delete(path)
+      },
       async withLocks(_keys, operation) {
         return operation()
       },

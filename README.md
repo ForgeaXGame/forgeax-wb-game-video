@@ -41,7 +41,9 @@ handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提
 `@forgeax/workbench-host` 是同版本 vendored tarball。刷新该 tarball 后，先清理该包的
 本地 Bun cache 与 `node_modules/@forgeax/workbench-host`，再运行 `bun install --frozen-lockfile`；
 release contract 会校验 tarball integrity、已安装的 `extension.url()` 类型和完整 TypeScript 编译，
-避免旧 cache 静默保留同版本的过期声明。
+避免旧 cache 静默保留同版本的过期声明。源码 checkout 还会用
+`vendor/forgeax-workbench-host-0.1.0.provenance.json` 固定评审 commit、SHA-256、SHA-512
+和 Bun integrity；该 source-only 记录与 tarball 都不会进入发布包。
 
 ## 宿主集成
 

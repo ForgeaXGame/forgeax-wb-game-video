@@ -99,6 +99,20 @@ describe('release identity', () => {
     expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.1.0')
     expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.1.0')
     const archive = readFileSync(resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'))
+    const provenance = JSON.parse(readFileSync(
+      resolve(root, 'vendor/forgeax-workbench-host-0.1.0.provenance.json'),
+      'utf8',
+    ))
+    expect(provenance).toEqual({
+      schemaVersion: 1,
+      package: '@forgeax/workbench-host',
+      version: '0.1.0',
+      sourceCommit: '745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb',
+      archive: 'vendor/forgeax-workbench-host-0.1.0.tgz',
+      sha256: createHash('sha256').update(archive).digest('hex'),
+      sha512: createHash('sha512').update(archive).digest('hex'),
+      integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
+    })
     const integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
     expect(readFileSync(resolve(root, 'bun.lock'), 'utf8')).toContain(integrity)
     const extensionTypes = execFileSync('tar', [

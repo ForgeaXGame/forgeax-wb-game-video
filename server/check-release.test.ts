@@ -5,6 +5,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { validateRelease } from '../scripts/check-release.mjs'
@@ -15,6 +16,7 @@ const oldToolId = ['gv', 'id:get-graph'].join('')
 const oldStorageKey = ['game', 'video:graph:view'].join('')
 const oldDottedStorageKey = ['gv', 'id.nodePanel.previewW'].join('')
 const oldBrandName = ['reel', 'studio'].join('-')
+const reviewedWorkbenchHostCommit = '745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb'
 
 interface FixtureOptions {
   backendKeys?: string[]
@@ -35,6 +37,8 @@ interface FixtureOptions {
   oldIdentityDistSource?: string
   oldIdentityFiles?: Record<string, string>
   oldIdentitySource?: string
+  provenanceSha256?: string
+  provenanceSourceCommit?: string
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -48,6 +52,21 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   mkdirSync(resolve(root, 'schemas'), { recursive: true })
   mkdirSync(resolve(root, 'docs'), { recursive: true })
   mkdirSync(resolve(root, 'src/__tests__'), { recursive: true })
+  mkdirSync(resolve(root, 'vendor'), { recursive: true })
+  const hostArchive = Buffer.from('reviewed workbench host fixture')
+  const hostIntegrity = `sha512-${createHash('sha512').update(hostArchive).digest('base64')}`
+  writeFileSync(resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'), hostArchive)
+  writeJson(resolve(root, 'vendor/forgeax-workbench-host-0.1.0.provenance.json'), {
+    schemaVersion: 1,
+    package: '@forgeax/workbench-host',
+    version: '0.1.0',
+    sourceCommit: options.provenanceSourceCommit ?? reviewedWorkbenchHostCommit,
+    archive: 'vendor/forgeax-workbench-host-0.1.0.tgz',
+    sha256: options.provenanceSha256
+      ?? createHash('sha256').update(hostArchive).digest('hex'),
+    sha512: createHash('sha512').update(hostArchive).digest('hex'),
+    integrity: hostIntegrity,
+  })
 
   if (options.malformedPackage) {
     writeFileSync(resolve(root, 'package.json'), '{ invalid package JSON\n')
@@ -103,7 +122,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   writeFileSync(resolve(root, 'dist/index.html'), '<!doctype html>\n')
   writeFileSync(resolve(root, 'dist/index.js'), 'export {}\n')
   writeFileSync(resolve(root, 'SKILL.md'), '# Author guide\n')
-  writeFileSync(resolve(root, 'bun.lock'), options.lockSource ?? '{}\n')
+  writeFileSync(resolve(root, 'bun.lock'), options.lockSource ?? `${hostIntegrity}\n`)
   writeJson(resolve(root, 'schemas/get-graph.args.json'), { type: 'object' })
   if (!options.missingReturns) {
     writeJson(resolve(root, 'schemas/get-graph.returns.json'), { type: 'object' })
@@ -154,6 +173,17 @@ describe('validateRelease', () => {
     const fixtureRoot = createFixture('valid')
 
     expect(await validateRelease(fixtureRoot)).toEqual([])
+  })
+
+  it.each([
+    ['archive hash', { provenanceSha256: '0'.repeat(64) }],
+    ['reviewed source commit', { provenanceSourceCommit: '1'.repeat(40) }],
+  ])('rejects mismatched host vendor %s provenance', async (_label, options) => {
+    const fixtureRoot = createFixture(`bad-host-provenance-${_label.replaceAll(' ', '-')}`, options)
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('provenance'),
+    )
   })
 
   it('accumulates missing release entries without importing a missing backend', async () => {

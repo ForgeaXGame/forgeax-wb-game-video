@@ -120,13 +120,24 @@ function createContext(options: ContextOptions = {}): WorkbenchExtensionContext 
         await options.beforeWrite?.(path, new Uint8Array(bytes))
         state.set(path, new Uint8Array(bytes))
       },
+      async delete(path) {
+        expect(path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/])/)
+        state.delete(path)
+      },
       async withLocks(keys, operation) {
         options.onLocks?.(keys)
         return withFileStateLocks(state, keys, operation)
       },
     },
     media: options.media ?? new InMemoryMediaCapability(),
-    models: new InMemoryModelGateway(),
+    models: (() => {
+      const gateway = new InMemoryModelGateway()
+      return {
+        generateText: (input) => gateway.generateText('router-game', input),
+        generateImage: (input) => gateway.generateImage('router-game', input),
+        generateVideo: (input) => gateway.generateVideo('router-game', input),
+      }
+    })(),
   }
 }
 
@@ -378,6 +389,86 @@ describe('createWbGameVideoRouter', () => {
     expect(bodyJson(renamed)).toMatchObject({ data: { name: 'renamed' } })
     expect(removed.status).toBe(204)
     expect(bodyJson(afterDelete)).toMatchObject({ data: { items: [] } })
+  })
+
+  test('serves browser media content with full, open, suffix, HEAD and unsatisfied range semantics', async () => {
+    const context = createContext()
+    const created = await directImageUpload(
+      context,
+      'range.png',
+      encoder.encode('abcdef'),
+    )
+    const id = responseResourceId(created)
+    const path = `media/resources/${encodeURIComponent(id)}/content`
+    const router = createWbGameVideoRouter(context)
+
+    const full = await router.handle(request(path))
+    const exact = await router.handle(request(path, {
+      headers: { range: ['bytes=1-3'] },
+    }))
+    const open = await router.handle(request(path, {
+      headers: { range: ['bytes=2-'] },
+    }))
+    const suffix = await router.handle(request(path, {
+      headers: { range: ['bytes=-2'] },
+    }))
+    const head = await router.handle(request(path, { method: 'HEAD' }))
+    const rangedHead = await router.handle(request(path, {
+      method: 'HEAD',
+      headers: { range: ['bytes=0-1'] },
+    }))
+    const unsatisfied = await router.handle(request(path, {
+      headers: { range: ['bytes=99-'] },
+    }))
+
+    expect(full).toMatchObject({
+      status: 200,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-length': '6',
+        'content-type': 'image/png',
+      },
+      body: encoder.encode('abcdef'),
+    })
+    expect(exact).toMatchObject({
+      status: 206,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-length': '3',
+        'content-range': 'bytes 1-3/6',
+      },
+      body: encoder.encode('bcd'),
+    })
+    expect(open).toMatchObject({
+      status: 206,
+      headers: { 'content-range': 'bytes 2-5/6' },
+      body: encoder.encode('cdef'),
+    })
+    expect(suffix).toMatchObject({
+      status: 206,
+      headers: { 'content-range': 'bytes 4-5/6' },
+      body: encoder.encode('ef'),
+    })
+    expect(head).toMatchObject({
+      status: 200,
+      headers: { 'content-length': '6', 'accept-ranges': 'bytes' },
+      body: new Uint8Array(),
+    })
+    expect(rangedHead).toMatchObject({
+      status: 206,
+      headers: {
+        'content-length': '2',
+        'content-range': 'bytes 0-1/6',
+      },
+      body: new Uint8Array(),
+    })
+    expect(unsatisfied).toMatchObject({
+      status: 416,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-range': 'bytes */6',
+      },
+    })
   })
 
   test('reclaims hosted bytes when a browser media resource is deleted', async () => {
@@ -1520,7 +1611,7 @@ describe('createWbGameVideoRouter', () => {
     }
   })
 
-  test('serves a generated registry asset through its trusted media reference', async () => {
+  test('serves a generated registry asset with full, Range and HEAD semantics', async () => {
     const context = createContext()
     const hosted = await context.media.put(context.gameId, {
       filename: 'generated.png', contentType: 'image/png', bytes: encoder.encode('generated'),
@@ -1536,11 +1627,42 @@ describe('createWbGameVideoRouter', () => {
     })))
     const router = createWbGameVideoRouter(context)
 
-    const response = await router.handle(request('media/assets/generated-1'))
+    const path = 'media/assets/generated-1'
+    const full = await router.handle(request(path))
+    const ranged = await router.handle(request(path, {
+      headers: { range: ['bytes=2-5'] },
+    }))
+    const head = await router.handle(request(path, { method: 'HEAD' }))
+    const unsatisfied = await router.handle(request(path, {
+      headers: { range: ['bytes=99-'] },
+    }))
 
-    expect(response.status).toBe(200)
-    expect(response.headers?.['content-type']).toBe('image/png')
-    expect(decoder.decode(response.body)).toBe('generated')
+    expect(full).toMatchObject({
+      status: 200,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-length': '9',
+        'content-type': 'image/png',
+      },
+      body: encoder.encode('generated'),
+    })
+    expect(ranged).toMatchObject({
+      status: 206,
+      headers: {
+        'content-range': 'bytes 2-5/9',
+        'content-length': '4',
+      },
+      body: encoder.encode('nera'),
+    })
+    expect(head).toMatchObject({
+      status: 200,
+      headers: { 'accept-ranges': 'bytes', 'content-length': '9' },
+      body: new Uint8Array(),
+    })
+    expect(unsatisfied).toMatchObject({
+      status: 416,
+      headers: { 'content-range': 'bytes */9' },
+    })
   })
 
   test('rejects a forged generated registry media reference', async () => {

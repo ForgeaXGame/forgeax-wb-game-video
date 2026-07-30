@@ -265,15 +265,20 @@ const HOST_MEDIA_INTENT_JOURNAL_KEY = 'wbGameVideoMediaIntents'
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-type HostReclaimSource =
+type HostPersistedMediaSource =
   | 'wb-game-video-reference'
   | 'wb-game-video-generation'
+
+type HostReclaimSource =
+  | HostPersistedMediaSource
+  | 'wb-game-video-model-output'
 
 interface HostMediaReclaim {
   readonly registryId: string
   readonly assetId: string
   readonly source: HostReclaimSource
   readonly operationId: string | null
+  readonly fingerprint?: string
 }
 
 interface HostReclaimJournal {
@@ -283,13 +288,18 @@ interface HostReclaimJournal {
 
 interface HostMediaIntent {
   readonly registryId: string
-  readonly source: HostReclaimSource
+  readonly source: HostPersistedMediaSource
   readonly operationId: string
 }
 
 interface HostMediaIntentJournal {
   readonly version: 1
   readonly entries: readonly HostMediaIntent[]
+}
+
+interface KnownGeneratedSource {
+  readonly asset: HostMediaAsset
+  readonly body: MediaBody
 }
 
 function assertBoundedRelativePath(value: string, label = 'Game file path'): string {
@@ -341,6 +351,16 @@ function isHostReclaimSource(value: unknown): value is HostReclaimSource {
   return (
     value === 'wb-game-video-reference'
     || value === 'wb-game-video-generation'
+    || value === 'wb-game-video-model-output'
+  )
+}
+
+function isHostPersistedMediaSource(
+  value: unknown,
+): value is HostPersistedMediaSource {
+  return (
+    value === 'wb-game-video-reference'
+    || value === 'wb-game-video-generation'
   )
 }
 
@@ -363,6 +383,15 @@ function hostMediaReclaims(manifest: AssetManifest): HostMediaReclaim[] {
         entry.operationId !== null
         && (typeof entry.operationId !== 'string' || entry.operationId.length === 0)
       )
+      || (
+        entry.source === 'wb-game-video-model-output'
+          ? (
+              typeof entry.operationId !== 'string'
+              || typeof entry.fingerprint !== 'string'
+              || !/^sha256:[a-f0-9]{64}$/.test(entry.fingerprint)
+            )
+          : entry.fingerprint !== undefined
+      )
       || seenAssets.has(entry.assetId)
     ) {
       throw new Error('Invalid wb-game-video media reclaim journal')
@@ -373,6 +402,9 @@ function hostMediaReclaims(manifest: AssetManifest): HostMediaReclaim[] {
       assetId: entry.assetId,
       source: entry.source,
       operationId: entry.operationId,
+      ...(typeof entry.fingerprint === 'string'
+        ? { fingerprint: entry.fingerprint }
+        : {}),
     }
   })
 }
@@ -389,7 +421,7 @@ function hostMediaIntents(manifest: AssetManifest): HostMediaIntent[] {
       !isRecord(entry)
       || typeof entry.registryId !== 'string'
       || entry.registryId.length === 0
-      || !isHostReclaimSource(entry.source)
+      || !isHostPersistedMediaSource(entry.source)
       || typeof entry.operationId !== 'string'
       || entry.operationId.length === 0
       || seenRegistries.has(`${entry.source}\0${entry.registryId}`)
@@ -468,7 +500,7 @@ function reclaimForHostMedia(
   if (
     asset.metadata.registryId !== registryId
     || (
-      !isHostReclaimSource(source)
+      !isHostPersistedMediaSource(source)
     )
     || (
       operationId !== undefined
@@ -517,6 +549,7 @@ function sameHostMediaReclaim(
     && left.assetId === right.assetId
     && left.source === right.source
     && left.operationId === right.operationId
+    && left.fingerprint === right.fingerprint
   )
 }
 
@@ -711,6 +744,26 @@ function mediaIdempotencyKey(
   return `wb-game-video:${operation}:${hash.digest('hex')}`
 }
 
+function generatedSourceFingerprint(
+  asset: HostMediaAsset,
+  body: MediaBody,
+): string {
+  const hash = createHash('sha256')
+  for (const part of [
+    asset.id,
+    asset.type,
+    asset.contentType,
+    body.contentType,
+    body.bytes,
+  ]) {
+    const bytes = typeof part === 'string' ? Buffer.from(part) : part
+    hash.update(String(bytes.byteLength))
+    hash.update(':')
+    hash.update(bytes)
+  }
+  return `sha256:${hash.digest('hex')}`
+}
+
 function extForContentType(contentType: string): string {
   switch (contentType.toLowerCase().split(';', 1)[0]) {
     case 'image/jpeg': return 'jpg'
@@ -795,6 +848,10 @@ export function createHostAssetRegistry(
     let changed = false
 
     for (const intent of intents) {
+      if (intent.registryId !== requested.registryId) {
+        remaining.push(intent)
+        continue
+      }
       const candidates = hostedAssets.filter((asset) => (
         matchesHostMediaIntent(intent, asset)
       ))
@@ -850,11 +907,12 @@ export function createHostAssetRegistry(
   }
   const drainHostMediaReclaims = async (
     initialManifest: AssetManifest,
-    registryId: string,
+    registryId?: string,
+    knownGeneratedSources: ReadonlyMap<string, KnownGeneratedSource> = new Map(),
   ): Promise<AssetManifest> => {
     let manifest = initialManifest
     for (const reclaim of hostMediaReclaims(manifest)) {
-      if (reclaim.registryId !== registryId) continue
+      if (registryId !== undefined && reclaim.registryId !== registryId) continue
       const liveAssetIds = new Set(
         manifest.assets
           .map((asset) => normalizeMediaAsset(asset))
@@ -862,9 +920,53 @@ export function createHostAssetRegistry(
           .map((asset) => declaredHostMediaId(asset))
           .filter((assetId): assetId is string => assetId !== undefined),
       )
-      const candidate = (await context.media.list(context.gameId))
-        .find((asset) => asset.id === reclaim.assetId)
-      const observed = reclaimForHostMedia(registryId, candidate)
+      const candidates = (await context.media.list(context.gameId))
+        .filter((asset) => asset.id === reclaim.assetId)
+
+      if (reclaim.source === 'wb-game-video-model-output') {
+        if (candidates.length > 1) {
+          throw new Error(
+            `Ambiguous generated source media identity: ${reclaim.assetId}`,
+          )
+        }
+        const known = knownGeneratedSources.get(reclaim.assetId)
+        const candidate = candidates[0] ?? known?.asset
+        const body = candidates[0]
+          ? await context.media.read(context.gameId, reclaim.assetId)
+          : known?.body
+
+        if (candidate) {
+          if (liveAssetIds.has(reclaim.assetId)) {
+            throw new Error(
+              `Refusing to reclaim current host media reference: ${reclaim.assetId}`,
+            )
+          }
+          if (
+            !body
+            || generatedSourceFingerprint(candidate, body) !== reclaim.fingerprint
+          ) {
+            throw new Error(
+              `Refusing to reclaim mismatched generated source provenance: ${reclaim.assetId}`,
+            )
+          }
+          await context.media.delete(context.gameId, reclaim.assetId)
+        }
+        manifest = withHostMediaReclaims(
+          manifest,
+          hostMediaReclaims(manifest)
+            .filter((entry) => entry.assetId !== reclaim.assetId),
+        )
+        await writeHostManifest(context.files, manifest)
+        continue
+      }
+
+      if (candidates.length > 1) {
+        throw new Error(
+          `Multiple host media objects match one reclaim: ${reclaim.assetId}`,
+        )
+      }
+      const candidate = candidates[0]
+      const observed = reclaimForHostMedia(reclaim.registryId, candidate)
 
       if (
         candidate
@@ -900,6 +1002,7 @@ export function createHostAssetRegistry(
     index: number,
     current: MediaAsset | null,
     next: MediaAsset,
+    knownGeneratedSources: ReadonlyMap<string, KnownGeneratedSource> = new Map(),
   ): Promise<MediaAsset> => {
     const hostedAssets = await trustedMedia()
     const previousHostId = current
@@ -928,12 +1031,17 @@ export function createHostAssetRegistry(
       }
     }
     await writeHostManifest(context.files, persistedManifest)
-    await drainHostMediaReclaims(persistedManifest, next.id)
+    await drainHostMediaReclaims(
+      persistedManifest,
+      next.id,
+      knownGeneratedSources,
+    )
     return publicHostAsset(next, await trustedMedia())!
   }
   const upsertInManifest = async (
     manifest: AssetManifest,
     asset: MediaAsset,
+    knownGeneratedSources?: ReadonlyMap<string, KnownGeneratedSource>,
   ): Promise<MediaAsset> => {
     const index = manifest.assets.findIndex((entry) => (
       isRecord(entry) && entry.id === asset.id
@@ -960,14 +1068,25 @@ export function createHostAssetRegistry(
         index,
         normalizeMediaAsset(currentRecord),
         next,
+        knownGeneratedSources,
       )
     }
-    return persistHostAsset(manifest, index, null, next)
+    return persistHostAsset(
+      manifest,
+      index,
+      null,
+      next,
+      knownGeneratedSources,
+    )
   }
   const upsert = async (asset: MediaAsset): Promise<MediaAsset> => (
-    withManifestLock(async () => (
-      upsertInManifest(await readHostManifest(context.files), asset)
-    ))
+    withManifestLock(async () => {
+      const manifest = await drainHostMediaReclaims(
+        await readHostManifest(context.files),
+        asset.id,
+      )
+      return upsertInManifest(manifest, asset)
+    })
   )
 
   const getRaw = async (id: string): Promise<MediaAsset | null> => {
@@ -984,6 +1103,7 @@ export function createHostAssetRegistry(
     manifest: AssetManifest,
     id: string,
     patch: Partial<MediaAsset>,
+    knownGeneratedSources?: ReadonlyMap<string, KnownGeneratedSource>,
   ): Promise<MediaAsset | null> => {
     const index = manifest.assets.findIndex((entry) => (
       isRecord(entry) && entry.id === id
@@ -1004,15 +1124,25 @@ export function createHostAssetRegistry(
     ) {
       throw new Error(`Asset id is owned by another asset domain: ${id}`)
     }
-    return persistHostAsset(manifest, index, current, next)
+    return persistHostAsset(
+      manifest,
+      index,
+      current,
+      next,
+      knownGeneratedSources,
+    )
   }
   const update = async (
     id: string,
     patch: Partial<MediaAsset>,
   ): Promise<MediaAsset | null> => (
-    withManifestLock(async () => (
-      updateInManifest(await readHostManifest(context.files), id, patch)
-    ))
+    withManifestLock(async () => {
+      const manifest = await drainHostMediaReclaims(
+        await readHostManifest(context.files),
+        id,
+      )
+      return updateInManifest(manifest, id, patch)
+    })
   )
 
   return {
@@ -1065,8 +1195,12 @@ export function createHostAssetRegistry(
         operationId,
       }
       return withManifestLock(async () => {
-        const prepared = await prepareHostMediaOperation(
+        const manifest = await drainHostMediaReclaims(
           await readHostManifest(context.files),
+          input.registryId,
+        )
+        const prepared = await prepareHostMediaOperation(
+          manifest,
           intent,
         )
         const hosted = prepared.hosted ?? await context.media.put(context.gameId, {
@@ -1136,24 +1270,56 @@ export function createHostAssetRegistry(
       return { assetId: hosted.id }
     },
     async persistGenerated(generated, input) {
-      const body = await context.media.read(context.gameId, generated.id)
-      if (!body || body.bytes.byteLength === 0) {
-        throw new Error('Generated media is not readable through the host media capability')
-      }
-      const operationId = mediaIdempotencyKey('asset-generation', [
-        generated.id,
-        input.registryId,
-        body.contentType,
-        body.bytes,
-      ])
-      const intent: HostMediaIntent = {
-        registryId: input.registryId,
-        source: 'wb-game-video-generation',
-        operationId,
-      }
       return withManifestLock(async () => {
-        const prepared = await prepareHostMediaOperation(
+        const manifest = await drainHostMediaReclaims(
           await readHostManifest(context.files),
+          input.registryId,
+        )
+        const current = normalizeMediaAsset(
+          manifest.assets.find((entry) => (
+            isRecord(entry) && entry.id === input.registryId
+          )),
+        )
+        const currentHostId = current
+          ? trustedHostMediaId(current, await trustedMedia())
+          : undefined
+        const body = await context.media.read(context.gameId, generated.id)
+        if (!body || body.bytes.byteLength === 0) {
+          const hostedAssets = await trustedMedia()
+          const hostId = current
+            ? trustedHostMediaId(current, hostedAssets)
+            : undefined
+          const hosted = hostId ? hostedAssets.get(hostId) : undefined
+          if (
+            current?.status === 'ready'
+            && current.productionType === input.productionType
+            && current.sceneNodeId === input.sceneNodeId
+            && current.label === input.label
+            && current.prompt === input.prompt
+            && current.durationMs === input.durationMs
+            && hosted
+            && isRecord(hosted.metadata)
+            && hosted.metadata.source === 'wb-game-video-generation'
+            && hosted.metadata.registryId === input.registryId
+            && hosted.metadata.generatedAssetId === generated.id
+          ) {
+            return publicHostAsset(current, hostedAssets)!
+          }
+          throw new Error('Generated media is not readable through the host media capability')
+        }
+        const operationId = mediaIdempotencyKey('asset-generation', [
+          generated.id,
+          input.registryId,
+          body.contentType,
+          body.bytes,
+        ])
+        const intent: HostMediaIntent = {
+          registryId: input.registryId,
+          source: 'wb-game-video-generation',
+          operationId,
+        }
+        const prepared = await prepareHostMediaOperation(
+          manifest,
           intent,
         )
         const hosted = prepared.hosted ?? await context.media.put(context.gameId, {
@@ -1168,8 +1334,30 @@ export function createHostAssetRegistry(
             operationId: intent.operationId,
           },
         })
+        let committedManifest = completeHostMediaOperation(
+          prepared.manifest,
+          intent,
+          hosted,
+        )
+        const knownGeneratedSources = new Map<string, KnownGeneratedSource>()
+        if (
+          hosted.id !== generated.id
+          && currentHostId !== generated.id
+        ) {
+          committedManifest = enqueueHostMediaReclaim(
+            committedManifest,
+            {
+              registryId: input.registryId,
+              assetId: generated.id,
+              source: 'wb-game-video-model-output',
+              operationId,
+              fingerprint: generatedSourceFingerprint(generated, body),
+            },
+          )
+          knownGeneratedSources.set(generated.id, { asset: generated, body })
+        }
         const persisted = await updateInManifest(
-          completeHostMediaOperation(prepared.manifest, intent, hosted),
+          committedManifest,
           input.registryId,
           {
             kind: input.productionType === 'video_clip' ? 'video' : 'image',
@@ -1194,6 +1382,7 @@ export function createHostAssetRegistry(
               },
             },
           },
+          knownGeneratedSources,
         )
         if (!persisted) {
           throw new Error(`Generating asset disappeared: ${input.registryId}`)

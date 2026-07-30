@@ -6,9 +6,12 @@ import { fileURLToPath } from 'node:url'
 import {
   RuntimeRegistry,
   createWorkbenchHost,
+  createWorkbenchExtensionContext,
   mergeManifestLayers,
 } from '@forgeax/workbench-host/node'
 import type {
+  GameFileCapability,
+  GameVersionCapability,
   MediaAsset,
   MediaBody,
   MediaCapability,
@@ -43,16 +46,97 @@ class LocalDevWorkspace implements WorkspaceAdapter {
     this.gamesRoot = realpathSync(gamesRoot)
   }
 
-  async resolveGameRoot(gameId: string): Promise<string> {
+  private async openGameRoot(gameId: string, create: boolean): Promise<string> {
     assertGameId(gameId)
     const candidate = resolve(this.gamesRoot, gameId)
     if (!within(this.gamesRoot, candidate)) throw new TypeError('Game root is outside development workspace')
-    await mkdir(candidate, { recursive: true })
-    const resolvedCandidate = realpathSync(candidate)
+    if (create) await mkdir(candidate, { recursive: true })
+    let resolvedCandidate: string
+    try {
+      resolvedCandidate = realpathSync(candidate)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new TypeError('Game workspace was not found')
+      }
+      throw error
+    }
     if (!within(this.gamesRoot, resolvedCandidate)) {
       throw new TypeError('Game root is outside development workspace')
     }
     return resolvedCandidate
+  }
+
+  async resolveGameRoot(gameId: string): Promise<string> {
+    return this.openGameRoot(gameId, false)
+  }
+
+  /**
+   * Development-only revocable scope. Production embedding hosts must provide
+   * the native/RPC directory authority required by WorkspaceAdapter.
+   */
+  async withGameRoot<T>(
+    gameId: string,
+    options: Parameters<WorkspaceAdapter['withGameRoot']>[1],
+    operation: Parameters<WorkspaceAdapter['withGameRoot']>[2],
+  ): Promise<T> {
+    const gameRoot = await this.openGameRoot(gameId, options.create)
+    const bounded = createWorkbenchExtensionContext({ gameId, gameRoot }).files
+    let active = true
+    const assertActive = (): void => {
+      if (!active) throw new Error('Development game scope is closed')
+    }
+    const files: GameFileCapability = {
+      async list(path) {
+        assertActive()
+        return bounded.list(path)
+      },
+      async read(path) {
+        assertActive()
+        return bounded.read(path)
+      },
+      async write(path, contents) {
+        assertActive()
+        await bounded.write(path, contents)
+      },
+      async delete(path) {
+        assertActive()
+        await bounded.delete(path)
+      },
+      async withLocks(keys, work) {
+        assertActive()
+        return bounded.withLocks(keys, async () => {
+          assertActive()
+          return work()
+        })
+      },
+    }
+    const versions: GameVersionCapability = {
+      async ensureRepository() {
+        assertActive()
+        await options.versioning.ensureRepository(gameRoot)
+      },
+      async createVersion(message) {
+        assertActive()
+        return options.versioning.createVersion(gameRoot, message)
+      },
+      async currentVersion() {
+        assertActive()
+        return options.versioning.currentVersion(gameRoot)
+      },
+      async listVersions() {
+        assertActive()
+        return options.versioning.listVersions(gameRoot)
+      },
+      async readFileAtVersion(tag, path) {
+        assertActive()
+        return options.versioning.readFileAtVersion(gameRoot, tag, path)
+      },
+    }
+    try {
+      return await operation({ gameRoot, files, versions }) as T
+    } finally {
+      active = false
+    }
   }
 }
 

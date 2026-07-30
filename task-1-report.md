@@ -37,13 +37,14 @@ Base wb-game-video commit: `4ed77e4f409b324b2e8ba408510be40eccc49dd4`.
 
 ## Final verification
 
-- `bun run test`: 125 test files passed; 991 tests passed and 19 were skipped.
+- `bun test`: 222 server/release tests passed.
+- `bun run test`: 125 test files passed; 1003 tests passed and 19 were skipped.
 - `bun run lint`: browser/server TypeScript checks and module-boundary checks
   passed.
 - `bun run build`: frontend build, host bundle/declarations, and release
   validator passed.
-- `bun pm pack --dry-run --ignore-scripts`: 143 files; the vendored host
-  tarball was excluded.
+- `bun pm pack --destination <temp> --ignore-scripts`: 143 files; the vendored
+  host tarball and source-only provenance record were excluded.
 
 ## Vendor provenance
 
@@ -53,20 +54,25 @@ through the reviewed tarball at
 path is part of the release contract.
 
 - reviewed host commit:
-  `c1f98fc4a0bcb304de783f673fe08298640d0878`;
+  `745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb`;
 - tarball SHA-256:
-  `372d1bed3af2a912d4d7815488470eac96d944253b9c9ba8b443c6a7b3d04bc8`;
+  `23b755264445dc9dced830ae695164b856417f4c22e533312905e8559c88b3a2`;
 - tarball SHA-512 (hex):
-  `aa9b51e0104ad52e88a6cd6c1b6055fa50e994aaac6bb3bc26bff6321d9ac45d335a2ee88c2b5b93b37095c622c12f0ed038b5991265f393bdc1b049ce231aef`;
+  `f90299a6d5b68776a425e60f89d7436a188c29572404d59ff57d22b047b9d039bc0da184dbfff72bb74a656b52221443059ec4b8f3fafca034a259943efd8c89`;
 - Bun lock integrity:
-  `sha512-qptR4BBK1S6Ips1sG2BV+lDplKqsa7O8Jr/2Mh2axF0zWi7ojCtbk7NwlcYiwS8O0Di1mRJl85O9wbBJziMa7w==`.
+  `sha512-+QKZptW2h3akJeYPiddDahiMKVckBNWf9X0isEe50Dm8DaGE2//3K7dKZWtSIhRDBZ7EuPP6/KA0olmUPv2MiQ==`.
+
+The machine-readable source-only record is
+`vendor/forgeax-workbench-host-0.1.0.provenance.json`; release validation
+recomputes both hashes and requires the matching reviewed commit and lock
+integrity.
 
 ## Publication sequence
 
 This change does not publish, tag, push, or merge either package.
 
 1. Publish reviewed commit
-   `c1f98fc4a0bcb304de783f673fe08298640d0878` as
+   `745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb` as
    `@forgeax/workbench-host@0.1.0` first.
 2. Verify the registry artifact exposes the reviewed types and capabilities.
 3. Only then remove the wb-game-video `overrides` entry and vendored tarball,

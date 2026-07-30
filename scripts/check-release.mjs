@@ -4,6 +4,7 @@ import {
   realpath,
   stat,
 } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { extname, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -12,6 +13,9 @@ const PLATFORM_PACKAGE = '@forgeax/extension-platform'
 const PLATFORM_VERSION = '0.0.2'
 const WORKBENCH_HOST_PACKAGE = '@forgeax/workbench-host'
 const WORKBENCH_HOST_VERSION = '0.1.0'
+const REVIEWED_WORKBENCH_HOST_COMMIT = '745eb7d2d70d6cb7cdc9a2ec2c3970f469511ccb'
+const WORKBENCH_HOST_ARCHIVE = 'vendor/forgeax-workbench-host-0.1.0.tgz'
+const WORKBENCH_HOST_PROVENANCE = 'vendor/forgeax-workbench-host-0.1.0.provenance.json'
 const HOST_BACKEND_ENTRY = './dist/server/host.js'
 const REQUIRED_PACKAGE_EXPORTS = {
   '.': './dist/index.js',
@@ -252,6 +256,57 @@ async function validateNoLocalAbsolutePaths(packageRoot, pkg, errors) {
   }
 }
 
+async function validateHostVendorProvenance(packageRoot, errors) {
+  const provenance = await readJson(
+    resolve(packageRoot, WORKBENCH_HOST_PROVENANCE),
+    WORKBENCH_HOST_PROVENANCE,
+    errors,
+  )
+  if (!provenance) return
+
+  const expectedFields = {
+    schemaVersion: 1,
+    package: WORKBENCH_HOST_PACKAGE,
+    version: WORKBENCH_HOST_VERSION,
+    sourceCommit: REVIEWED_WORKBENCH_HOST_COMMIT,
+    archive: WORKBENCH_HOST_ARCHIVE,
+  }
+  for (const [field, expected] of Object.entries(expectedFields)) {
+    if (provenance[field] !== expected) {
+      errors.push(
+        `${WORKBENCH_HOST_PROVENANCE}.${field} must be ${JSON.stringify(expected)}; received ${JSON.stringify(provenance[field])}`,
+      )
+    }
+  }
+
+  let archive
+  try {
+    archive = await readFile(resolve(packageRoot, WORKBENCH_HOST_ARCHIVE))
+  } catch {
+    errors.push(`${WORKBENCH_HOST_ARCHIVE} is not readable`)
+    return
+  }
+  const sha256 = createHash('sha256').update(archive).digest('hex')
+  const sha512 = createHash('sha512').update(archive).digest('hex')
+  const integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
+  for (const [field, expected] of Object.entries({ sha256, sha512, integrity })) {
+    if (provenance[field] !== expected) {
+      errors.push(
+        `${WORKBENCH_HOST_PROVENANCE}.${field} does not match ${WORKBENCH_HOST_ARCHIVE}`,
+      )
+    }
+  }
+
+  try {
+    const lockSource = await readFile(resolve(packageRoot, 'bun.lock'), 'utf8')
+    if (!lockSource.includes(integrity)) {
+      errors.push(`bun.lock does not contain ${WORKBENCH_HOST_ARCHIVE} integrity`)
+    }
+  } catch {
+    errors.push('bun.lock is not readable')
+  }
+}
+
 function validatePackage(pkg, errors) {
   if (pkg.name !== PACKAGE_NAME) {
     errors.push(`package name must be ${PACKAGE_NAME}; received ${JSON.stringify(pkg.name)}`)
@@ -375,6 +430,7 @@ export async function validateRelease(root) {
     validatePackage(pkg, errors)
     await validateNoLocalAbsolutePaths(packageRoot, pkg, errors)
   }
+  await validateHostVendorProvenance(packageRoot, errors)
   if (manifest) await validateManifest(packageRoot, manifest, errors)
   if (pkg && manifest) {
     const expectedTag = `v${pkg.version}`

@@ -40,11 +40,83 @@ function mediaResponse(value: unknown): WorkbenchExtensionRouterResponse {
   return jsonResponse(200, { code: 0, message: 'ok', data: value })
 }
 
-function binaryResponse(contentType: string, body: Uint8Array): WorkbenchExtensionRouterResponse {
+interface ByteRange {
+  readonly start: number
+  readonly end: number
+}
+
+function singleByteRange(value: string, size: number): ByteRange | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim())
+  if (!match || (!match[1] && !match[2]) || size <= 0) return null
+  if (!match[1]) {
+    const suffix = Number(match[2])
+    if (!Number.isSafeInteger(suffix) || suffix <= 0) return null
+    return { start: Math.max(0, size - suffix), end: size - 1 }
+  }
+  const start = Number(match[1])
+  const requestedEnd = match[2] ? Number(match[2]) : size - 1
+  if (
+    !Number.isSafeInteger(start)
+    || !Number.isSafeInteger(requestedEnd)
+    || start < 0
+    || start >= size
+    || requestedEnd < start
+  ) {
+    return null
+  }
+  return { start, end: Math.min(requestedEnd, size - 1) }
+}
+
+function rangedBinaryResponse(
+  contentType: string,
+  bytes: Uint8Array,
+  rangeHeader: string | undefined,
+  head: boolean,
+): WorkbenchExtensionRouterResponse {
+  const baseHeaders = {
+    'accept-ranges': 'bytes',
+    'content-type': contentType,
+  }
+  if (rangeHeader === undefined) {
+    return {
+      status: 200,
+      headers: {
+        ...baseHeaders,
+        'content-length': String(bytes.byteLength),
+      },
+      body: head ? new Uint8Array() : bytes,
+    }
+  }
+  const range = singleByteRange(rangeHeader, bytes.byteLength)
+  if (!range) {
+    const response = jsonResponse(416, {
+      ok: false,
+      error: {
+        code: 'range_not_satisfiable',
+        target: 'wb-game-video',
+        message: 'Range Not Satisfiable',
+        retryable: false,
+      },
+    })
+    return {
+      ...response,
+      headers: {
+        ...response.headers,
+        'accept-ranges': 'bytes',
+        'content-range': `bytes */${bytes.byteLength}`,
+      },
+      body: head ? new Uint8Array() : response.body,
+    }
+  }
+  const body = bytes.slice(range.start, range.end + 1)
   return {
-    status: 200,
-    headers: { 'content-length': String(body.byteLength), 'content-type': contentType },
-    body,
+    status: 206,
+    headers: {
+      ...baseHeaders,
+      'content-length': String(body.byteLength),
+      'content-range': `bytes ${range.start}-${range.end}/${bytes.byteLength}`,
+    },
+    body: head ? new Uint8Array() : body,
   }
 }
 
@@ -254,15 +326,40 @@ export function createWbGameVideoRouter(
             return { status: 204, headers: { 'content-length': '0' }, body: new Uint8Array() }
           }
         }
-        if (parts.length === 4 && parts[0] === 'media' && parts[1] === 'resources' && parts[3] === 'content' && method === 'GET') {
+        if (
+          parts.length === 4
+          && parts[0] === 'media'
+          && parts[1] === 'resources'
+          && parts[3] === 'content'
+          && (method === 'GET' || method === 'HEAD')
+        ) {
           exactQuery(request.query, [])
           const body = await browserMedia.content(parts[2]!)
-          return body ? binaryResponse(body.contentType, body.bytes) : notFound()
+          return body
+            ? rangedBinaryResponse(
+                body.contentType,
+                body.bytes,
+                header(request, 'range'),
+                method === 'HEAD',
+              )
+            : notFound()
         }
-        if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'assets' && method === 'GET') {
+        if (
+          parts.length === 3
+          && parts[0] === 'media'
+          && parts[1] === 'assets'
+          && (method === 'GET' || method === 'HEAD')
+        ) {
           exactQuery(request.query, [])
           const body = await createHostAssetRegistry(context).readMedia(parts[2]!)
-          return body ? binaryResponse(body.contentType, body.bytes) : notFound()
+          return body
+            ? rangedBinaryResponse(
+                body.contentType,
+                body.bytes,
+                header(request, 'range'),
+                method === 'HEAD',
+              )
+            : notFound()
         }
 
         if (method === 'GET' && path === 'assets') {
