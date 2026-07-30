@@ -15,7 +15,6 @@ import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
 import { OverlaySchemeEditor, UsageBadge, DuplicateBadge } from './OverlaySchemeEditor'
 import { VersionPicker } from './VersionPicker'
 import { useGraphScenario, graphUndo, graphRedo } from '../persist/graphScenarioStore'
-import { getGameSlug } from '../persist/gameScope'
 import { NEW_COMPONENT_PRESETS, BASE_HUD_PREFIX, listCustomSchemeIds, listBaseHudIds } from '../demo/builtin-schemes'
 import { findDuplicateOverlays } from './overlay-dedup'
 import type { Formula } from '../persist/formula-authoring'
@@ -36,20 +35,16 @@ function allocId(prefix: string, existing: Record<string, unknown>): string {
   return id
 }
 
-export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario }: { tabs: ConfigTab[]; title?: string; icon?: string; scenario: GameScenario }): JSX.Element {
-  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
-  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
+export function GraphConfigView({ tabs, title = '配置', icon = '⚙' }: { tabs: ConfigTab[]; title?: string; icon?: string; scenario: GameScenario }): JSX.Element {
   const meta = useGraphScenario((s) => s.meta)
   const graph = useGraphScenario((s) => s.graph)
   const isDraft = useGraphScenario((s) => s.isDraft)
   const savedTip = useGraphScenario((s) => s.savedTip)
   const setMeta = useGraphScenario((s) => s.setMeta)
   const doCommit = useGraphScenario((s) => s.commit) // 保存 = 打版本
+  const saveOnly = useGraphScenario((s) => s.save)
+  const versioningSupported = useGraphScenario((s) => s.versioningSupported)
   const reset = useGraphScenario((s) => s.reset)
-  const ensureBoot = useGraphScenario((s) => s.ensureBoot)
-
-  useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
-
   // 键盘撤销/重做：Ctrl/⌘+Z 撤销，Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做；输入框内不拦截（留给原生文本撤销）。
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -240,7 +235,12 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: 'var(--work, #0e0c09)' }}>
       <div style={{ padding: 8, borderBottom: '1px solid var(--line-soft, #2e2924)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', color: 'var(--txt, #f6f1e9)' }}>
         <VersionPicker />
-        <button onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
+        <button
+          onClick={() => { if (versioningSupported) void doCommit(); else saveOnly() }}
+          title={versioningSupported ? '保存当前内容并打一个新版本（vN）' : '保存当前内容'}
+        >
+          💾 保存
+        </button>
         <button onClick={() => { if (confirm('重置为内置 demo 数据？当前未保存的编辑将丢失。')) reset() }}>↺ 重置</button>
         {isDraft ? (
           <span style={{ opacity: 0.85, fontSize: 12, color: '#ffc53d' }}>⚠ 未保存草稿</span>

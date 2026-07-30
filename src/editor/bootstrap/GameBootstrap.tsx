@@ -8,8 +8,7 @@ type PackageStatus = { state: PackageState; missing?: string[] }
 type PackageError = { code?: string; target?: string; hint?: string; retryable?: boolean }
 
 export interface GameBootstrapProps {
-  slug: string
-  onBoot: () => void
+  onBoot: (gameId: string) => void | Promise<void>
   children: ReactNode
 }
 
@@ -53,39 +52,54 @@ function packageError(cause: unknown, target: string): PackageError {
   }
 }
 
-export function GameBootstrap({ slug: _slug, onBoot, children }: GameBootstrapProps): JSX.Element | null {
+export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Element | null {
   const t = useT()
   const [state, setState] = useState<BootstrapState>({ kind: 'loading' })
   const onBootRef = useRef(onBoot)
   const mountedRef = useRef(true)
+  const statusRunRef = useRef(0)
 
   useEffect(() => {
     onBootRef.current = onBoot
   }, [onBoot])
 
-  useEffect(() => () => {
-    mountedRef.current = false
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
 
-  const bootExisting = useCallback(() => {
-    if (!mountedRef.current) return
-    setState({ kind: 'ready' })
-    onBootRef.current()
+  const bootExisting = useCallback(async (
+    gameId: string,
+    isCurrent: () => boolean = () => mountedRef.current,
+  ) => {
+    await onBootRef.current(gameId)
+    if (isCurrent()) setState({ kind: 'ready' })
   }, [])
 
   const readStatus = useCallback(async () => {
     if (!mountedRef.current) return
+    const statusRun = ++statusRunRef.current
+    const isCurrentRun = () => mountedRef.current && statusRunRef.current === statusRun
     setState({ kind: 'loading' })
+    let errorTarget = 'package status'
     try {
-      const status = statusOf(await getWorkbenchHost().gamePackage.status())
-      if (!mountedRef.current) return
-      if (status?.state === 'initialized') bootExisting()
+      const host = getWorkbenchHost()
+      const context = await host.ready()
+      if (!isCurrentRun()) return
+      const status = statusOf(await host.gamePackage.status())
+      if (!isCurrentRun()) return
+      if (status?.state === 'initialized') {
+        errorTarget = 'package'
+        await bootExisting(context.gameId, isCurrentRun)
+      }
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else if (status?.state === 'uninitialized') setState({ kind: 'guide' })
       else setState({ kind: 'error', retry: 'status', error: { target: 'package status', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {
-      if (!mountedRef.current) return
-      setState({ kind: 'error', retry: 'status', error: packageError(cause, 'package status') })
+      if (!isCurrentRun()) return
+      setState({ kind: 'error', retry: 'status', error: packageError(cause, errorTarget) })
     }
   }, [bootExisting])
 
@@ -95,9 +109,11 @@ export function GameBootstrap({ slug: _slug, onBoot, children }: GameBootstrapPr
     if (!mountedRef.current) return
     setState({ kind: 'loading' })
     try {
-      const status = statusOf(await getWorkbenchHost().gamePackage.initialize())
+      const host = getWorkbenchHost()
+      const context = await host.ready()
+      const status = statusOf(await host.gamePackage.initialize())
       if (!mountedRef.current) return
-      if (status?.state === 'initialized') bootExisting()
+      if (status?.state === 'initialized') await bootExisting(context.gameId)
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else setState({ kind: 'error', retry: 'initialize', error: { target: 'package', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {

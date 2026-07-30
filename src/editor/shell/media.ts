@@ -28,8 +28,8 @@ function kinoClient(): KinoVideoClient {
 }
 
 /** Stable Kino playback URL for a video resource id. */
-export function kinoVideoContentUrl(resourceId: string, gameId: string): string {
-  return kinoClient().playbackUrl(resourceId, gameId)
+export function kinoVideoContentUrl(resourceId: string): string {
+  return kinoClient().playbackUrl(resourceId)
 }
 
 /**
@@ -49,7 +49,7 @@ export function resolveMediaSrc(ref: string | undefined, game?: string): string 
   if (local) return local
   if (!game) return undefined
   if (REGISTRY_ASSET_ID.test(ref)) return registryMediaUrl(ref, game)
-  return kinoVideoContentUrl(ref, game)
+  return kinoVideoContentUrl(ref)
 }
 
 /**
@@ -111,7 +111,6 @@ export async function listVideoAssetInfos(
       throw new DOMException('Aborted', 'AbortError')
     }
     const page = await client.list({
-      game_id: game,
       media_type: 'video',
       page: pageNumber,
       page_size: pageSize,
@@ -139,8 +138,9 @@ export async function listVideoAssetInfos(
 
 /** Fetch one Kino video resource; surfaces API errors to callers. */
 export async function getKinoVideoResource(game: string, resourceId: string) {
+  void game
   try {
-    return await kinoClient().get(resourceId, game)
+    return await kinoClient().get(resourceId)
   } catch (error) {
     if (error instanceof KinoClientError) {
       throw error

@@ -44,7 +44,7 @@ const listAssets: WorkbenchToolHandler = async (context, args) => (
 
 const getAsset: WorkbenchToolHandler = async (context, args) => (
   createWbGameVideoService(context).getAsset(
-    getAssetIdFromArgs(args, context.gameId),
+    getAssetIdFromArgs(args),
   )
 )
 

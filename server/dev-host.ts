@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -122,6 +123,7 @@ class LocalDevVersions implements VersionAdapter {
 
 class InMemoryDevMedia implements MediaCapability {
   private readonly assets = new Map<string, Map<string, { asset: MediaAsset; body: MediaBody }>>()
+  private readonly receipts = new Map<string, { signature: string; asset: MediaAsset }>()
 
   async list(gameId: string, query: MediaQuery = {}): Promise<MediaAsset[]> {
     const assets = [...(this.assets.get(gameId)?.values() ?? [])]
@@ -138,6 +140,25 @@ class InMemoryDevMedia implements MediaCapability {
   }
 
   async put(gameId: string, input: MediaWriteInput): Promise<MediaAsset> {
+    const signature = createHash('sha256')
+      .update(input.filename)
+      .update('\0')
+      .update(input.contentType)
+      .update('\0')
+      .update(input.bytes)
+      .update('\0')
+      .update(JSON.stringify(input.metadata ?? null))
+      .digest('hex')
+    const receiptKey = input.idempotencyKey
+      ? `${gameId}\0${input.idempotencyKey}`
+      : undefined
+    const receipt = receiptKey ? this.receipts.get(receiptKey) : undefined
+    if (receipt) {
+      if (receipt.signature !== signature) {
+        throw new Error('Media idempotency key was reused with a different payload')
+      }
+      return structuredClone(receipt.asset)
+    }
     const type = input.contentType.startsWith('image/')
       ? 'image'
       : input.contentType.startsWith('video/') ? 'video' : 'audio'
@@ -155,7 +176,14 @@ class InMemoryDevMedia implements MediaCapability {
       body: { contentType: input.contentType, bytes: new Uint8Array(input.bytes) },
     })
     this.assets.set(gameId, gameAssets)
+    if (receiptKey) {
+      this.receipts.set(receiptKey, { signature, asset: structuredClone(asset) })
+    }
     return structuredClone(asset)
+  }
+
+  async delete(gameId: string, assetId: string): Promise<void> {
+    this.assets.get(gameId)?.delete(assetId)
   }
 }
 

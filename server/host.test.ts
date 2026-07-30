@@ -34,6 +34,13 @@ class MemoryFiles {
   async write(path: string, contents: Uint8Array): Promise<void> {
     this.entries.set(path, new Uint8Array(contents))
   }
+
+  async withLocks<T>(
+    _keys: readonly string[],
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return operation()
+  }
 }
 
 class TraceMedia implements MediaCapability {
@@ -54,6 +61,10 @@ class TraceMedia implements MediaCapability {
   ): Promise<Awaited<ReturnType<MediaCapability['put']>>> {
     this.calls.push(['put', structuredClone(args)])
     throw new Error('No media writes expected from this parity fixture')
+  }
+
+  async delete(...args: Parameters<MediaCapability['delete']>): Promise<void> {
+    this.calls.push(['delete', structuredClone(args)])
   }
 }
 
@@ -142,7 +153,7 @@ describe('wb-game-video host module', () => {
         (input: unknown) => Promise<unknown>
       >
       const expected = serviceMethod === 'getAsset'
-        ? await service.getAsset!(getAssetIdFromArgs(args, serviceRun.context.gameId))
+        ? await service.getAsset!(getAssetIdFromArgs(args))
         : await service[serviceMethod]!(structuredClone(args))
 
       expect(actual).toEqual(expected)

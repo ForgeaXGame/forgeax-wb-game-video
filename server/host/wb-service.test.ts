@@ -51,6 +51,10 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 class MemoryFiles implements BoundedGameFiles {
+  private static readonly queues = new WeakMap<
+    Map<string, Uint8Array>,
+    Map<string, Promise<void>>
+  >()
   readonly entries: Map<string, Uint8Array>
   readonly calls: string[] = []
 
@@ -91,12 +95,48 @@ class MemoryFiles implements BoundedGameFiles {
         .filter(Boolean),
     )].sort()
   }
+
+  async withLocks<T>(
+    keys: readonly string[],
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.calls.push(`locks:${[...keys].sort().join(',')}`)
+    const queues = MemoryFiles.queues.get(this.entries) ?? new Map<string, Promise<void>>()
+    MemoryFiles.queues.set(this.entries, queues)
+    const releases: Array<() => void> = []
+    for (const key of [...new Set(keys)].sort()) {
+      const previous = queues.get(key) ?? Promise.resolve()
+      let release!: () => void
+      const current = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const tail = previous.then(() => current)
+      queues.set(key, tail)
+      await previous
+      releases.push(() => {
+        release()
+        if (queues.get(key) === tail) queues.delete(key)
+      })
+    }
+    try {
+      return await operation()
+    } finally {
+      for (const release of releases.reverse()) release()
+      if (queues.size === 0) {
+        MemoryFiles.queues.delete(this.entries)
+      }
+    }
+  }
 }
 
 class MemoryMedia implements MediaCapability {
   readonly bodies = new Map<string, MediaBody>()
   readonly assets = new Map<string, HostMediaAsset>()
   readonly puts: MediaWriteInput[] = []
+  readonly receipts = new Map<string, {
+    readonly fingerprint: string
+    readonly asset: HostMediaAsset
+  }>()
   #sequence = 0
 
   async list(_gameId: string, query?: MediaQuery): Promise<HostMediaAsset[]> {
@@ -120,6 +160,22 @@ class MemoryMedia implements MediaCapability {
       bytes: new Uint8Array(input.bytes),
       metadata: input.metadata ? structuredClone(input.metadata) : undefined,
     })
+    const fingerprint = JSON.stringify({
+      filename: input.filename,
+      contentType: input.contentType,
+      bytes: [...input.bytes],
+      metadata: input.metadata ?? null,
+    })
+    const receiptKey = input.idempotencyKey
+      ? `${gameId}\0${input.idempotencyKey}`
+      : undefined
+    const receipt = receiptKey ? this.receipts.get(receiptKey) : undefined
+    if (receipt) {
+      if (receipt.fingerprint !== fingerprint) {
+        throw new TypeError('Media idempotency key was reused with a different payload')
+      }
+      return structuredClone(receipt.asset)
+    }
     const id = `${gameId}:media-${++this.#sequence}`
     this.bodies.set(id, {
       contentType: input.contentType,
@@ -136,7 +192,18 @@ class MemoryMedia implements MediaCapability {
       } : {}),
     }
     this.assets.set(id, structuredClone(asset))
+    if (receiptKey) {
+      this.receipts.set(receiptKey, {
+        fingerprint,
+        asset: structuredClone(asset),
+      })
+    }
     return asset
+  }
+
+  async delete(_gameId: string, assetId: string): Promise<void> {
+    this.bodies.delete(assetId)
+    this.assets.delete(assetId)
   }
 }
 
@@ -297,6 +364,7 @@ describe('createWbGameVideoService', () => {
     expect(JSON.parse(decoder.decode(files.entries.get('blueprint.json')))).toMatchObject({
       version: 'wb-game-video.graph.v1',
     })
+    expect(files.calls).toContain('locks:wb-game-video-graph-save')
     expect(cwd).not.toHaveBeenCalled()
   })
 
@@ -403,6 +471,390 @@ describe('createWbGameVideoService', () => {
     expect(media.puts).toHaveLength(2)
   })
 
+  test('durably retries an imported-reference replacement after old media reclamation fails', async () => {
+    const { context, files, media } = createContext()
+    const registry = createHostAssetRegistry(context)
+    const input = {
+      registryId: 'a-charref-hero',
+      relativePath: 'characters/hero/portrait/front.png',
+      filename: 'character-hero.png',
+      contentType: 'image/png',
+      productionType: 'character_ref' as const,
+      label: 'Hero',
+      sourceModule: 'wb-character',
+    }
+    await registry.importGameFile(input)
+    const [oldHosted] = await media.list(context.gameId)
+    files.entries.set(
+      input.relativePath,
+      new Uint8Array([90, 91, 92]),
+    )
+    const deleteSpy = vi.spyOn(media, 'delete')
+      .mockRejectedValueOnce(new Error('injected import replacement delete failure'))
+
+    await expect(registry.importGameFile(input)).rejects.toThrow(
+      'injected import replacement delete failure',
+    )
+    const failedManifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as {
+      assets: Array<{ id: string; provider?: { ref: string } }>
+      wbGameVideoReclaims?: {
+        version: number
+        entries: Array<{
+          registryId: string
+          assetId: string
+          source: string
+          operationId: string | null
+        }>
+      }
+    }
+    const replacementId = failedManifest.assets
+      .find((asset) => asset.id === input.registryId)!
+      .provider!.ref
+
+    expect(replacementId).not.toBe(oldHosted!.id)
+    expect(failedManifest.wbGameVideoReclaims).toEqual({
+      version: 1,
+      entries: [{
+        registryId: input.registryId,
+        assetId: oldHosted!.id,
+        source: 'wb-game-video-reference',
+        operationId: expect.any(String),
+      }],
+    })
+
+    await expect(registry.importGameFile(input)).resolves.toMatchObject({
+      id: input.registryId,
+      meta: {
+        hostMedia: { assetId: replacementId },
+      },
+    })
+    const recoveredManifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as Record<string, unknown>
+    const replacementBody = await media.read(context.gameId, replacementId)
+
+    expect(recoveredManifest).not.toHaveProperty('wbGameVideoReclaims')
+    expect((await media.list(context.gameId)).map((asset) => asset.id)).toEqual([
+      replacementId,
+    ])
+    expect(replacementBody?.bytes).toEqual(new Uint8Array([90, 91, 92]))
+    expect(deleteSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('reclaims media created before an imported-reference crash when changed bytes are retried', async () => {
+    const { context, files, media } = createContext()
+    const registry = createHostAssetRegistry(context)
+    const input = {
+      registryId: 'a-charref-crash',
+      relativePath: 'characters/hero/portrait/front.png',
+      filename: 'character-hero.png',
+      contentType: 'image/png',
+      productionType: 'character_ref' as const,
+      label: 'Hero',
+      sourceModule: 'wb-character',
+    }
+    const originalPut = media.put.bind(media)
+    vi.spyOn(media, 'put').mockImplementationOnce(async (gameId, value) => {
+      await originalPut(gameId, value)
+      throw new Error('simulated crash after host media put')
+    })
+
+    await expect(registry.importGameFile(input)).rejects.toThrow(
+      'simulated crash after host media put',
+    )
+    const [orphaned] = await media.list(context.gameId)
+    expect(orphaned).toBeDefined()
+    expect(JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    )).toHaveProperty('wbGameVideoMediaIntents')
+
+    files.entries.set(input.relativePath, new Uint8Array([90, 91, 92]))
+    await expect(registry.importGameFile(input)).resolves.toMatchObject({
+      id: input.registryId,
+      status: 'ready',
+    })
+
+    const remaining = await media.list(context.gameId)
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]!.id).not.toBe(orphaned!.id)
+    expect(await media.read(context.gameId, orphaned!.id)).toBeNull()
+    expect(JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    )).not.toHaveProperty('wbGameVideoMediaIntents')
+  })
+
+  test('durably retries generated-media replacement reclamation for the same registry id', async () => {
+    const { context, files, media } = createContext()
+    const registry = createHostAssetRegistry(context)
+    const registryId = 'a-img-replacement'
+    await registry.upsert({
+      id: registryId,
+      kind: 'image',
+      productionType: 'shot_image',
+      status: 'generating',
+      sourceModule: 'wb-game-video',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    const persistInput = {
+      registryId,
+      filenamePrefix: 'keyframe',
+      productionType: 'shot_image' as const,
+      sceneNodeId: 'node-1',
+      label: 'Keyframe',
+      prompt: 'A frame',
+    }
+    const firstGenerated: HostMediaAsset = {
+      id: 'model:first-generated',
+      type: 'image',
+      url: 'https://model.invalid/first-generated.png',
+      contentType: 'image/png',
+    }
+    media.bodies.set(firstGenerated.id, {
+      contentType: 'image/png',
+      bytes: new Uint8Array([1, 2, 3]),
+    })
+    await registry.persistGenerated(firstGenerated, persistInput)
+    const [oldHosted] = await media.list(context.gameId)
+    const secondGenerated: HostMediaAsset = {
+      id: 'model:second-generated',
+      type: 'image',
+      url: 'https://model.invalid/second-generated.png',
+      contentType: 'image/png',
+    }
+    media.bodies.set(secondGenerated.id, {
+      contentType: 'image/png',
+      bytes: new Uint8Array([7, 8, 9]),
+    })
+    const deleteSpy = vi.spyOn(media, 'delete')
+      .mockRejectedValueOnce(new Error('injected generated replacement delete failure'))
+
+    await expect(
+      registry.persistGenerated(secondGenerated, persistInput),
+    ).rejects.toThrow('injected generated replacement delete failure')
+    const failedManifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as {
+      assets: Array<{ id: string; provider?: { ref: string } }>
+      wbGameVideoReclaims?: {
+        version: number
+        entries: Array<{
+          registryId: string
+          assetId: string
+          source: string
+          operationId: string | null
+        }>
+      }
+    }
+    const replacementId = failedManifest.assets
+      .find((asset) => asset.id === registryId)!
+      .provider!.ref
+
+    expect(replacementId).not.toBe(oldHosted!.id)
+    expect(failedManifest.wbGameVideoReclaims).toEqual({
+      version: 1,
+      entries: [{
+        registryId,
+        assetId: oldHosted!.id,
+        source: 'wb-game-video-generation',
+        operationId: expect.any(String),
+      }],
+    })
+
+    await expect(
+      registry.persistGenerated(secondGenerated, persistInput),
+    ).resolves.toMatchObject({
+      id: registryId,
+      meta: {
+        hostMedia: { assetId: replacementId },
+      },
+    })
+    const recoveredManifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as Record<string, unknown>
+
+    expect(recoveredManifest).not.toHaveProperty('wbGameVideoReclaims')
+    expect((await media.list(context.gameId)).map((asset) => asset.id)).toEqual([
+      replacementId,
+    ])
+    expect(deleteSpy).toHaveBeenCalledTimes(2)
+  })
+
+  test('reclaims media created before a generated-asset crash when changed output is retried', async () => {
+    const { context, files, media } = createContext()
+    const registry = createHostAssetRegistry(context)
+    const registryId = 'a-img-crash'
+    await registry.upsert({
+      id: registryId,
+      kind: 'image',
+      productionType: 'shot_image',
+      status: 'generating',
+      sourceModule: 'wb-game-video',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    const input = {
+      registryId,
+      filenamePrefix: 'keyframe',
+      productionType: 'shot_image' as const,
+      sceneNodeId: 'node-1',
+      label: 'Keyframe',
+      prompt: 'A frame',
+    }
+    const firstGenerated: HostMediaAsset = {
+      id: 'model:crashed-generation',
+      type: 'image',
+      url: 'https://model.invalid/crashed-generation.png',
+      contentType: 'image/png',
+    }
+    media.bodies.set(firstGenerated.id, {
+      contentType: 'image/png',
+      bytes: new Uint8Array([1, 2, 3]),
+    })
+    const originalPut = media.put.bind(media)
+    vi.spyOn(media, 'put').mockImplementationOnce(async (gameId, value) => {
+      await originalPut(gameId, value)
+      throw new Error('simulated crash after generated media put')
+    })
+
+    await expect(
+      registry.persistGenerated(firstGenerated, input),
+    ).rejects.toThrow('simulated crash after generated media put')
+    const [orphaned] = await media.list(context.gameId)
+    expect(orphaned).toBeDefined()
+
+    const changedGenerated: HostMediaAsset = {
+      id: 'model:changed-generation',
+      type: 'image',
+      url: 'https://model.invalid/changed-generation.png',
+      contentType: 'image/png',
+    }
+    media.bodies.set(changedGenerated.id, {
+      contentType: 'image/png',
+      bytes: new Uint8Array([7, 8, 9]),
+    })
+    await expect(
+      registry.persistGenerated(changedGenerated, input),
+    ).resolves.toMatchObject({
+      id: registryId,
+      status: 'ready',
+    })
+
+    const remaining = await media.list(context.gameId)
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]!.id).not.toBe(orphaned!.id)
+    expect(await media.read(context.gameId, orphaned!.id)).toBeNull()
+    expect(JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    )).not.toHaveProperty('wbGameVideoMediaIntents')
+  })
+
+  test('refuses a reclaim journal entry that targets the current live host media reference', async () => {
+    const { context, files, media } = createContext()
+    const registryId = 'a-img-live'
+    const operationId = 'wb-game-video:test:live'
+    const hosted = await media.put(context.gameId, {
+      filename: 'live.png',
+      contentType: 'image/png',
+      bytes: new Uint8Array([3, 2, 1]),
+      metadata: {
+        source: 'wb-game-video-generation',
+        registryId,
+        operationId,
+      },
+    })
+    files.entries.set('assets/manifest.json', json({
+      version: 2,
+      assets: [{
+        id: registryId,
+        kind: 'image',
+        productionType: 'shot_image',
+        status: 'ready',
+        sourceModule: 'wb-game-video',
+        provider: { kind: 'local', ref: hosted.id },
+        meta: {
+          hostMedia: {
+            provenance: 'workbench-media-capability',
+            assetId: hosted.id,
+          },
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+      wbGameVideoReclaims: {
+        version: 1,
+        entries: [{
+          registryId,
+          assetId: hosted.id,
+          source: 'wb-game-video-generation',
+          operationId,
+        }],
+      },
+    }))
+    const deleteSpy = vi.spyOn(media, 'delete')
+
+    await expect(
+      createHostAssetRegistry(context).update(registryId, { label: 'Still live' }),
+    ).rejects.toThrow('Refusing to reclaim current host media reference')
+    const manifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as Record<string, unknown>
+
+    expect(deleteSpy).not.toHaveBeenCalled()
+    expect(manifest).toHaveProperty('wbGameVideoReclaims')
+    expect(await media.read(context.gameId, hosted.id)).not.toBeNull()
+  })
+
+  test('preserves a reclaim journal without deleting mismatched host media provenance', async () => {
+    const { context, files, media } = createContext()
+    const registryId = 'a-img-stale-reclaim'
+    const hosted = await media.put(context.gameId, {
+      filename: 'foreign.png',
+      contentType: 'image/png',
+      bytes: new Uint8Array([4, 5, 6]),
+      metadata: {
+        source: 'another-domain',
+        registryId,
+        operationId: 'foreign-operation',
+      },
+    })
+    files.entries.set('assets/manifest.json', json({
+      version: 2,
+      assets: [{
+        id: registryId,
+        kind: 'image',
+        productionType: 'shot_image',
+        status: 'generating',
+        sourceModule: 'wb-game-video',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+      wbGameVideoReclaims: {
+        version: 1,
+        entries: [{
+          registryId,
+          assetId: hosted.id,
+          source: 'wb-game-video-generation',
+          operationId: 'wb-game-video:test:stale',
+        }],
+      },
+    }))
+    const deleteSpy = vi.spyOn(media, 'delete')
+
+    await expect(
+      createHostAssetRegistry(context).update(registryId, { label: 'Retry' }),
+    ).rejects.toThrow('Refusing to reclaim host media with mismatched provenance')
+    const manifest = JSON.parse(
+      decoder.decode(files.entries.get('assets/manifest.json')),
+    ) as Record<string, unknown>
+
+    expect(deleteSpy).not.toHaveBeenCalled()
+    expect(manifest).toHaveProperty('wbGameVideoReclaims')
+    expect(await media.read(context.gameId, hosted.id)).not.toBeNull()
+  })
+
   test('serializes manifest mutations across separate host contexts for one game', async () => {
     const { context, files } = createContext()
     const secondFiles = new MemoryFiles({}, files.entries)
@@ -432,6 +884,9 @@ describe('createWbGameVideoService', () => {
       'concurrent-b',
     ])
     expect(files).not.toBe(secondFiles)
+    expect([...files.calls, ...secondFiles.calls]).toContain(
+      'locks:wb-game-video-assets-manifest',
+    )
   })
 
   test('continues the shared manifest mutation queue after a rejected operation', async () => {
@@ -1044,16 +1499,15 @@ describe('createWbGameVideoService', () => {
     )
     expect(getAssetIdFromArgs({
       id: 'asset-1',
-      gameSlug: '游戏一',
-    }, context.gameId)).toBe('asset-1')
+    })).toBe('asset-1')
     expect(() => getAssetIdFromArgs({
       id: 'asset-1',
-      gameSlug: 'another-game',
-    }, context.gameId)).toThrow('does not match')
+      gameSlug: context.gameId,
+    })).toThrow('additional properties')
     expect(() => getAssetIdFromArgs({
       id: 'asset-1',
       extra: true,
-    }, context.gameId)).toThrow('additional properties')
+    })).toThrow('additional properties')
     await expect(service.getAsset('asset-1')).resolves.toEqual({ asset: null })
     await expect(service.importCharacterRefs({
       characterIds: ['hero'],

@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../../i18n'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { getGameSlug } from '../persist/gameScope'
 import {
   VideoAssetLibrary,
   type VideoLibraryEntry,
@@ -53,7 +52,7 @@ export function GraphVideoView(): JSX.Element {
   const t = useT()
   const generatedGroup = t('videoAssets.group.generated')
   const uploadGroup = t('videoAssets.group.upload')
-  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
+  const game = useGraphScenario((state) => state.game)
   const videoController = useVideoAssets(game)
   const [regAssets, setRegAssets] = useState<MediaAsset[]>([])
   const [genBusy, setGenBusy] = useState(false)

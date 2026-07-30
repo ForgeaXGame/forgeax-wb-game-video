@@ -128,17 +128,6 @@ function exactQuery(
   return result
 }
 
-function assertBoundQuery(
-  query: Record<string, string>,
-  gameId: string,
-): void {
-  if (query.gameSlug !== undefined && query.gameSlug !== gameId) {
-    throw new WbServiceInputError(
-      'gameSlug does not match the host-bound game',
-    )
-  }
-}
-
 function parsePositiveInteger(value: string | undefined, label: string, allowZero = false): number {
   if (value === undefined || !/^(?:0|[1-9]\d*)$/.test(value)) {
     throw new WbServiceInputError(`${label} is invalid`)
@@ -240,6 +229,7 @@ export function createWbGameVideoRouter(
             type,
             contentType,
             request.body,
+            header(request, 'x-workbench-idempotency-key'),
           ))
         }
         if (method === 'POST' && path === 'media/resources/batch') {
@@ -249,6 +239,7 @@ export function createWbGameVideoRouter(
         if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'resources') {
           const id = parts[2]!
           if (method === 'GET') {
+            exactQuery(request.query, [])
             const value = await browserMedia.get(id)
             return value ? mediaResponse(value) : notFound()
           }
@@ -264,17 +255,19 @@ export function createWbGameVideoRouter(
           }
         }
         if (parts.length === 4 && parts[0] === 'media' && parts[1] === 'resources' && parts[3] === 'content' && method === 'GET') {
+          exactQuery(request.query, [])
           const body = await browserMedia.content(parts[2]!)
           return body ? binaryResponse(body.contentType, body.bytes) : notFound()
         }
         if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'assets' && method === 'GET') {
+          exactQuery(request.query, [])
           const body = await createHostAssetRegistry(context).readMedia(parts[2]!)
           return body ? binaryResponse(body.contentType, body.bytes) : notFound()
         }
 
         if (method === 'GET' && path === 'assets') {
           const query = exactQuery(request.query, [
-            'gameSlug', 'kind', 'productionType', 'sceneNodeId',
+            'kind', 'productionType', 'sceneNodeId',
           ])
           return jsonResponse(200, await service.listAssets(query))
         }
@@ -283,11 +276,8 @@ export function createWbGameVideoRouter(
           && parts.length === 2
           && parts[0] === 'assets'
         ) {
-          const query = exactQuery(request.query, ['gameSlug'])
-          const id = getAssetIdFromArgs({
-            id: parts[1]!,
-            ...query,
-          }, context.gameId)
+          exactQuery(request.query, [])
+          const id = getAssetIdFromArgs({ id: parts[1]! })
           return jsonResponse(200, await service.getAsset(id))
         }
         if (
@@ -296,8 +286,7 @@ export function createWbGameVideoRouter(
           && parts[0] === 'media'
           && parts[1] === 'bundled'
         ) {
-          const query = exactQuery(request.query, ['gameSlug'])
-          assertBoundQuery(query, context.gameId)
+          exactQuery(request.query, [])
           const response = await bundledMediaResponse(
             parts[2]!,
             header(request, 'range'),
@@ -326,8 +315,7 @@ export function createWbGameVideoRouter(
           return response
         }
         if (method === 'GET' && path === 'style-axes') {
-          const query = exactQuery(request.query, ['gameSlug'])
-          assertBoundQuery(query, context.gameId)
+          exactQuery(request.query, [])
           return jsonResponse(200, {
             styleAxes: await getHostStyleAxes(context) ?? null,
           })

@@ -33,6 +33,7 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const BLUEPRINT_FILE = 'blueprint.json'
 const PROJECT_FILE = 'project.json'
+const GRAPH_SAVE_LOCK = 'wb-game-video-graph-save'
 
 export class WbServiceInputError extends TypeError {
   readonly code = 'invalid_input'
@@ -125,23 +126,13 @@ function assertLogicalIdentifier(value: string, label: string): string {
   return value
 }
 
-function assertBoundGame(input: Record<string, unknown>, gameId: string): void {
-  if (input.gameSlug === undefined) return
-  const slug = stringValue(input.gameSlug, 'gameSlug', true)!
-  assertLogicalIdentifier(slug, 'gameSlug')
-  if (slug !== gameId) {
-    throw new WbServiceInputError('gameSlug does not match the host-bound game')
-  }
-}
-
 /**
  * Tool/router adapter for the published get-asset object schema. The business
  * service itself keeps the established `getAsset(assetId)` interface.
  */
-export function getAssetIdFromArgs(value: unknown, gameId: string): string {
+export function getAssetIdFromArgs(value: unknown): string {
   assertSchema('getAsset', value)
   const input = record(value)
-  assertBoundGame(input, gameId)
   return assertLogicalIdentifier(
     stringValue(input.id, 'id', true)!,
     'assetId',
@@ -214,11 +205,10 @@ function parseGraph(bytes: Uint8Array | null): GraphLibraryDocument | null {
   }
 }
 
-function shotScriptInput(value: unknown, gameId: string) {
+function shotScriptInput(value: unknown) {
   const input = record(value)
-  assertBoundGame(input, gameId)
   assertOnlyKeys(input, [
-    'gameSlug', 'sceneNodeId', 'nodeName', 'storyText', 'durationSeconds',
+    'sceneNodeId', 'nodeName', 'storyText', 'durationSeconds',
     'artStyle', 'styleKeywords', 'perspective', 'tone', 'characters',
     'location', 'interactive', 'choiceCount', 'styleAxes',
   ])
@@ -242,11 +232,10 @@ function shotScriptInput(value: unknown, gameId: string) {
   }
 }
 
-function keyframeInput(value: unknown, gameId: string): KeyframeInput {
+function keyframeInput(value: unknown): KeyframeInput {
   const input = record(value)
-  assertBoundGame(input, gameId)
   assertOnlyKeys(input, [
-    'gameSlug', 'sceneNodeId', 'nodeName', 'beat', 'variant', 'perspective',
+    'sceneNodeId', 'nodeName', 'beat', 'variant', 'perspective',
     'characters', 'location', 'refAssetIds', 'label', 'styleAxes', 'mode', 'grid',
   ])
   const mode = input.mode
@@ -288,11 +277,10 @@ function keyframeInput(value: unknown, gameId: string): KeyframeInput {
   }
 }
 
-function videoInput(value: unknown, gameId: string, maximumDuration: number): VideoGenInput {
+function videoInput(value: unknown, maximumDuration: number): VideoGenInput {
   const input = record(value)
-  assertBoundGame(input, gameId)
   assertOnlyKeys(input, [
-    'gameSlug', 'sceneNodeId', 'nodeName', 'seedancePrompt', 'storyText',
+    'sceneNodeId', 'nodeName', 'seedancePrompt', 'storyText',
     'durationSeconds', 'artStyle', 'styleKeywords', 'characterRefIds',
     'sceneRefIds', 'continuityFirstFrameId', 'label', 'generateAudio',
     'styleAxes', 'extend', 'transitionHint',
@@ -342,8 +330,7 @@ export function createWbGameVideoService(
   return {
     async getGraph(value = {}) {
       assertSchema('getGraph', value)
-      const input = record(value)
-      assertBoundGame(input, context.gameId)
+      record(value)
       const [blueprint] = await Promise.all([
         context.files.read(BLUEPRINT_FILE),
         context.files.read(PROJECT_FILE),
@@ -356,7 +343,6 @@ export function createWbGameVideoService(
     async saveGraph(value) {
       assertSchema('saveGraph', value)
       const input = record(value)
-      assertBoundGame(input, context.gameId)
       if (input.project === undefined) {
         return { ok: false, errors: ['缺少 project'] }
       }
@@ -368,16 +354,18 @@ export function createWbGameVideoService(
       }
       const errors = validateDocument(project)
       if (errors.length) return { ok: false, errors, gameSlug: context.gameId }
-      await context.files.write(
-        BLUEPRINT_FILE,
-        encoder.encode(JSON.stringify(project, null, 2)),
-      )
-      if (!await context.files.read(PROJECT_FILE)) {
+      await context.files.withLocks([GRAPH_SAVE_LOCK], async () => {
         await context.files.write(
-          PROJECT_FILE,
-          encoder.encode(JSON.stringify(projectMetadata(context.gameId), null, 2)),
+          BLUEPRINT_FILE,
+          encoder.encode(JSON.stringify(project, null, 2)),
         )
-      }
+        if (!await context.files.read(PROJECT_FILE)) {
+          await context.files.write(
+            PROJECT_FILE,
+            encoder.encode(JSON.stringify(projectMetadata(context.gameId), null, 2)),
+          )
+        }
+      })
       return { ok: true, versions: [], gameSlug: context.gameId }
     },
     async listVideos(value) {
@@ -390,7 +378,6 @@ export function createWbGameVideoService(
     async listAssets(value) {
       assertSchema('listAssets', value)
       const input = record(value)
-      assertBoundGame(input, context.gameId)
       const filter: AssetFilter = {}
       if (input.kind !== undefined) {
         if (!['image', 'video', 'audio'].includes(String(input.kind))) {
@@ -425,8 +412,7 @@ export function createWbGameVideoService(
     async importCharacterRefs(value) {
       assertSchema('importCharacterRefs', value)
       const input = record(value)
-      assertBoundGame(input, context.gameId)
-      assertOnlyKeys(input, ['gameSlug'])
+      assertOnlyKeys(input, [])
       try {
         return { refs: await importCharacterRefsFromHost(context, registry) }
       } catch (error) {
@@ -436,8 +422,7 @@ export function createWbGameVideoService(
     async importSceneRefs(value) {
       assertSchema('importSceneRefs', value)
       const input = record(value)
-      assertBoundGame(input, context.gameId)
-      assertOnlyKeys(input, ['gameSlug'])
+      assertOnlyKeys(input, [])
       try {
         return { refs: await importSceneRefsFromHost(context, registry) }
       } catch (error) {
@@ -446,7 +431,7 @@ export function createWbGameVideoService(
     },
     async generateShotScript(value) {
       assertSchema('generateShotScript', value)
-      const input = shotScriptInput(value, context.gameId)
+      const input = shotScriptInput(value)
       try {
         return { shots: await generation.generateShotScript(input) }
       } catch (error) {
@@ -455,7 +440,7 @@ export function createWbGameVideoService(
     },
     async generateKeyframe(value) {
       assertSchema('generateKeyframe', value)
-      const input = keyframeInput(value, context.gameId)
+      const input = keyframeInput(value)
       try {
         return { asset: await generation.generateKeyframe(input) }
       } catch (error) {
@@ -464,7 +449,7 @@ export function createWbGameVideoService(
     },
     async generateVideo(value) {
       assertSchema('generateVideo', value)
-      const input = videoInput(value, context.gameId, 60)
+      const input = videoInput(value, 60)
       try {
         return { asset: await generation.generateVideo(input) }
       } catch (error) {
@@ -473,7 +458,7 @@ export function createWbGameVideoService(
     },
     async generateNodeVideo(value) {
       assertSchema('generateNodeVideo', value)
-      const input = videoInput(value, context.gameId, 120)
+      const input = videoInput(value, 120)
       try {
         return { assets: await generation.generateNodeVideo(input) }
       } catch (error) {

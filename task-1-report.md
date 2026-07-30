@@ -1,58 +1,78 @@
 # Task 1 — host-module release contract
 
-Base commit: `4b2a545c4cb2ef9d5c6d85d2d419dbe655a0ada8`.
+Base wb-game-video commit: `4ed77e4f409b324b2e8ba408510be40eccc49dd4`.
 
 ## Delivered
 
-- Moved the package and extension manifest release version to `0.2.0`.
-- Added exact peer and development requirements for
-  `@forgeax/workbench-host@0.1.0`, while preserving
-  `@forgeax/extension-platform@0.0.2` exactly. A reviewed host `0.1.0`
-  tarball is vendored at `vendor/forgeax-workbench-host-0.1.0.tgz`; the
-  relative `file:vendor/...` override makes local development reproducible
-  until the package is published.
-- Published the package root as `./dist/index.js` and the host subpath as
-  `./dist/server/host.js`; the manifest backend now points to the latter.
-- Configured tsup to emit ESM bundles, declarations, and source maps for both
-  package exports. Vite remains responsible for the browser application build.
-- Added release-contract coverage for metadata and compiled `host`/`tools`
-  exports. `server/host.ts` is deliberately a temporary contract bridge: it
-  re-exports the current tool map and exposes no Task 4 HTTP-host behavior.
+- The package and extension manifest release version are `0.2.0`.
+- Peer and development requirements remain exact:
+  `@forgeax/workbench-host@0.1.0` and
+  `@forgeax/extension-platform@0.0.2`.
+- The package root exports `./dist/index.js`; the host subpath and manifest
+  backend both resolve to `./dist/server/host.js`.
+- The host module exposes the game package seed, all 11 tools, and the shared
+  extension router through one `WorkbenchExtensionContext`.
+- All 11 manifest-declared tool argument schemas derive game identity from
+  that context and expose no caller-selected `gameSlug`.
+- The reviewed host tarball includes durable media idempotency and deletion,
+  bounded cross-process file locks, optional version/component handshake
+  endpoints, atomic per-file game-package patching, and the matching browser
+  client capabilities.
+- Package load failures now reach the bootstrap error UI instead of being
+  interpreted as an empty blueprint, and imported/generated media records a
+  durable manifest intent before the host media write.
 
-## Verification
+## Focused verification
 
-- RED: `bun test server/release-contract.test.ts server/check-release.test.ts`
-  failed on the intended old version, missing dependency, and missing exports.
-- GREEN: focused release tests passed: 35 tests, 0 failures.
-- `bun run build` passed, including `node scripts/check-release.mjs`.
-- Review follow-up: from a fresh detached checkout, `bun install --frozen-lockfile
-  --offline` passed, then the exact focused release command passed 42 tests before
-  a full build. The full build/release validator and `bun pm pack --dry-run
-  --ignore-scripts` also passed; the dry-run package listed no `vendor/` files.
-- Vendor refresh: two independent packs of reviewed commit `e99d2eff` were
-  byte-identical; frozen offline install, backend build, and a focused typecheck
-  of `server/intake/characters.ts` passed with `BoundedGameFiles.list` available.
-  The refreshed package dry-run still listed no `vendor/` files.
+- RED: `bun test server/release-contract.test.ts` failed because the public
+  `get-graph` args schema still exposed `gameSlug`.
+- GREEN:
+  `bun test server/release-contract.test.ts server/check-release.test.ts`
+  passed 44 tests with 0 failures after all 11 manifest-declared args schemas
+  were updated.
+- The release contract calculates the vendored tarball SHA-512 at test time,
+  requires the matching `bun.lock` integrity, builds the backend, imports the
+  compiled host module in Bun and Node ESM, and confirms that `vendor/` is not
+  in the package `files` allowlist.
 
-## Dependency-resolution note
+## Final verification
+
+- `bun run test`: 125 test files passed; 991 tests passed and 19 were skipped.
+- `bun run lint`: browser/server TypeScript checks and module-boundary checks
+  passed.
+- `bun run build`: frontend build, host bundle/declarations, and release
+  validator passed.
+- `bun pm pack --dry-run --ignore-scripts`: 143 files; the vendored host
+  tarball was excluded.
+
+## Vendor provenance
 
 `@forgeax/workbench-host@0.1.0` is not yet published. Development resolves it
-through the committed, reviewed tarball rather than a machine-local symlink.
-The peer and development specs remain exactly `0.1.0`; Bun's lockfile records
-the tarball with a relative `vendor/...` resolution and integrity only. Neither
-the package nor the lockfile contains an absolute path.
-
-Current vendor provenance:
+through the reviewed tarball at
+`vendor/forgeax-workbench-host-0.1.0.tgz`; no machine-local symlink or absolute
+path is part of the release contract.
 
 - reviewed host commit:
-  `e99d2effb11f3074fe397cabc09c1e46147f5e1e`;
+  `c1f98fc4a0bcb304de783f673fe08298640d0878`;
 - tarball SHA-256:
-  `c837f55be9e8a63bebcb72372c2a5fa853940a0511ad1d9db91c7c597877b2ff`;
+  `372d1bed3af2a912d4d7815488470eac96d944253b9c9ba8b443c6a7b3d04bc8`;
+- tarball SHA-512 (hex):
+  `aa9b51e0104ad52e88a6cd6c1b6055fa50e994aaac6bb3bc26bff6321d9ac45d335a2ee88c2b5b93b37095c622c12f0ed038b5991265f393bdc1b049ce231aef`;
 - Bun lock integrity:
-  `sha512-7qcqlD6ONfb3yUeUzzPikEGXNEpNjonf+ZZ2EYbbNd7F8BK+61LiZRNu3jhuip4FWE4K9yieAxhJIgHpf5H79w==`.
+  `sha512-qptR4BBK1S6Ips1sG2BV+lDplKqsa7O8Jr/2Mh2axF0zWi7ojCtbk7NwlcYiwS8O0Di1mRJl85O9wbBJziMa7w==`.
 
-After `@forgeax/workbench-host@0.1.0` is published, remove its `overrides`
-entry, delete `vendor/forgeax-workbench-host-0.1.0.tgz`, regenerate `bun.lock`,
-and re-run the offline-install and pack checks below. The package `files`
-allowlist intentionally excludes `vendor/`, so the development bootstrap is
-never included in the published wb-game-video package.
+## Publication sequence
+
+This change does not publish, tag, push, or merge either package.
+
+1. Publish reviewed commit
+   `c1f98fc4a0bcb304de783f673fe08298640d0878` as
+   `@forgeax/workbench-host@0.1.0` first.
+2. Verify the registry artifact exposes the reviewed types and capabilities.
+3. Only then remove the wb-game-video `overrides` entry and vendored tarball,
+   regenerate `bun.lock`, and rerun frozen install, tests, build, and package
+   dry-run checks.
+4. Publish `@forgeax/wb-game-video@0.2.0` last.
+
+The package `files` allowlist intentionally excludes `vendor/`, so this local
+bootstrap artifact is never included in the published wb-game-video package.

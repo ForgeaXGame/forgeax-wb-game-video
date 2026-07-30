@@ -2,6 +2,8 @@ import type {
   CreateKinoResourceInput,
   DirectUploadInstruction,
   DirectUploadResponse,
+  ExternalKinoResourceDTO,
+  ExternalKinoVideoClient,
   KinoMediaType,
   KinoResourceDTO,
   KinoVideoClient,
@@ -127,8 +129,8 @@ function isCrossOriginHttpUrl(instructionUrl: string, origin: string): boolean {
   }
 }
 
-/** A server-issued Kino upload must stay on the ordinary `/api` proxy, never the COS/S3 proxy. */
-function kinoUploadUrl(instructionUrl: string): URL | null {
+/** A legacy external Kino upload stays on the ordinary `/api` proxy, never the COS/S3 proxy. */
+function legacyExternalKinoUploadUrl(instructionUrl: string): URL | null {
   try {
     const target = new URL(instructionUrl)
     if (target.protocol !== 'http:' && target.protocol !== 'https:') {
@@ -153,12 +155,12 @@ export function resolveUploadTransportUrl(
   ) {
     return instructionUrl
   }
-  const kinoUpload = kinoUploadUrl(instructionUrl)
-  if (kinoUpload) {
+  const legacyKinoUpload = legacyExternalKinoUploadUrl(instructionUrl)
+  if (legacyKinoUpload) {
     if (!isCrossOriginHttpUrl(instructionUrl, origin)) {
       return instructionUrl
     }
-    return new URL(`${kinoUpload.pathname}${kinoUpload.search}`, origin).toString()
+    return new URL(`${legacyKinoUpload.pathname}${legacyKinoUpload.search}`, origin).toString()
   }
   if (!isCrossOriginHttpUrl(instructionUrl, origin)) {
     return instructionUrl
@@ -194,7 +196,6 @@ export interface PreparedVideoCreateInput {
 }
 
 export interface PreparedVideoUpload {
-  gameId: string
   replacementResourceId?: string
   fileIdentity: VideoFileIdentity
   response: DirectUploadResponse
@@ -255,8 +256,8 @@ export function assertMediaUploadFile(mediaType: BrowserUploadMediaType, file: F
   }
 }
 
-export interface UploadProviderResourceOptions {
-  client: KinoVideoClient
+export interface UploadExternalKinoResourceOptions {
+  client: ExternalKinoVideoClient
   transport?: UploadTransport
   gameId: string
   mediaType: BrowserUploadMediaType
@@ -270,19 +271,19 @@ export interface UploadProviderResourceOptions {
 }
 
 /**
- * Standard prepare → PUT → create pipeline for non-replacement resources.
- * The browser calls the `/api/v1/kino` route, while the server selects the
- * active Local, S3, COS, or Kino provider.
- * Video replacement and retry behavior builds on the lower-level primitives below.
+ * Explicit legacy-provider prepare → PUT → create pipeline.
+ * Workbench-hosted media uses the handshake-bound `KinoVideoClient` path below.
  */
-export async function uploadProviderResource(options: UploadProviderResourceOptions): Promise<KinoResourceDTO> {
+export async function uploadExternalKinoResource(
+  options: UploadExternalKinoResourceOptions,
+): Promise<ExternalKinoResourceDTO> {
   assertMediaUploadFile(options.mediaType, options.file)
   assertNotAborted(options.signal)
   const requestOptions = options.signal ? { signal: options.signal } : undefined
   const response = await options.client.prepareUpload({
     game_id: options.gameId,
     file_name: options.file.name,
-    mime_type: options.file.type as Parameters<KinoVideoClient['prepareUpload']>[0]['mime_type'],
+    mime_type: options.file.type as Parameters<ExternalKinoVideoClient['prepareUpload']>[0]['mime_type'],
     bytes: options.file.size,
     extension: fileExtension(options.file.name),
   }, requestOptions)
@@ -305,7 +306,6 @@ export async function uploadProviderResource(options: UploadProviderResourceOpti
 export interface UploadVideoResourceOptions {
   client: KinoVideoClient
   transport?: UploadTransport
-  gameId: string
   file: File
   durationMs?: number
   type?: CreateKinoResourceInput['type']
@@ -358,13 +358,12 @@ function fileIdentity(file: File): VideoFileIdentity {
   }
 }
 
-function uploadKey(gameId: string, file: File, resourceId?: string): string {
+function uploadKey(file: File, resourceId?: string): string {
   if (resourceId) {
-    return JSON.stringify([gameId, 'replace', resourceId])
+    return JSON.stringify(['replace', resourceId])
   }
   const identity = fileIdentity(file)
   return JSON.stringify([
-    gameId,
     resourceId,
     identity.name,
     identity.size,
@@ -580,14 +579,12 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
 
 async function prepareVideoUpload(
   client: KinoVideoClient,
-  gameId: string,
   file: File,
   createInput: PreparedVideoCreateInput,
   replacementResourceId?: string,
   signal?: AbortSignal,
 ): Promise<PreparedVideoUpload> {
   const response = await client.prepareUpload({
-    game_id: gameId,
     file_name: file.name,
     mime_type: VIDEO_UPLOAD_MIME,
     bytes: file.size,
@@ -600,7 +597,6 @@ async function prepareVideoUpload(
   }, { signal })
 
   return {
-    gameId,
     replacementResourceId,
     fileIdentity: fileIdentity(file),
     response,
@@ -625,7 +621,6 @@ async function transferPreparedVideoUpload(
 
 function buildCreatePayload(prepared: PreparedVideoUpload): CreateKinoResourceInput {
   return {
-    game_id: prepared.gameId,
     media_type: 'video',
     url: prepared.objectUrl,
     name: prepared.createInput.name,
@@ -692,7 +687,6 @@ async function runVideoResourceUpload(
 
   const prepared = await prepareVideoUpload(
     options.client,
-    options.gameId,
     options.file,
     createInput,
     replacementResourceId,
@@ -743,7 +737,7 @@ async function runLockedVideoResourceUpload(
 ): Promise<KinoResourceDTO> {
   assertMp4File(options.file)
   assertNotAborted(options.signal)
-  const key = uploadKey(options.gameId, options.file, replacementResourceId)
+  const key = uploadKey(options.file, replacementResourceId)
   if (inFlightUploads.has(key)) {
     throw new VideoUploadError('Upload already in progress', 'upload_in_progress')
   }

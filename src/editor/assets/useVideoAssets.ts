@@ -76,7 +76,7 @@ function toListItem(dto: KinoResourceDTO, client: KinoVideoClient): VideoAssetLi
     id: dto.resource_id,
     label: dto.name?.trim() || dto.resource_id,
     url: appendVideoRevision(
-      client.playbackUrl(dto.resource_id, dto.game_id),
+      client.playbackUrl(dto.resource_id),
       dto.updated_at,
     ),
     durMs: dto.source_meta?.duration_ms,
@@ -143,7 +143,6 @@ export function useVideoAssets(
       setLocalError(null)
       try {
         const result = await client.list({
-          game_id: gameId,
           media_type: 'video',
           page: targetPage,
           page_size: pageSize,
@@ -241,7 +240,6 @@ export function useVideoAssets(
       try {
         const sharedOptions = {
           client,
-          gameId,
           file,
           onProgress: (value: number) => {
             if (mountedRef.current && generation === uploadGeneration.current) {
@@ -312,12 +310,11 @@ export function useVideoAssets(
       setMutating(true)
       setLocalError(null)
       try {
-        const current = await client.get(resourceId, gameId, {
+        const current = await client.get(resourceId, {
           signal: abortRef.current?.signal,
         })
         const resource = await client.update(resourceId, {
           resource_id: resourceId,
-          game_id: gameId,
           media_type: 'video',
           url: current.url,
           name: nextName,
@@ -409,7 +406,7 @@ export function useVideoAssets(
       setMutating(true)
       setLocalError(null)
       try {
-        await client.delete(resourceId, gameId, {
+        await client.delete(resourceId, {
           signal: abortRef.current?.signal,
         })
         if (!mountedRef.current || generation !== crudGeneration.current) {

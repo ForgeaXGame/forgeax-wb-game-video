@@ -21,6 +21,9 @@ function isJsonContentType(value: string | null): boolean {
 
 /** Parses only successful, explicitly JSON extension-router responses. */
 export async function readExtensionJson(response: Response): Promise<unknown> {
+  if (!response.ok) {
+    throw new ExtensionResponseError(response.status, `Extension request failed (${response.status})`)
+  }
   if (!isJsonContentType(response.headers.get('content-type'))) {
     throw new ExtensionResponseError(response.status, 'Extension returned a non-JSON response')
   }
@@ -29,9 +32,6 @@ export async function readExtensionJson(response: Response): Promise<unknown> {
     body = await response.json()
   } catch {
     throw new ExtensionResponseError(response.status, 'Extension returned malformed JSON')
-  }
-  if (!response.ok) {
-    throw new ExtensionResponseError(response.status, `Extension request failed (${response.status})`)
   }
   return body
 }

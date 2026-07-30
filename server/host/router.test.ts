@@ -37,6 +37,42 @@ type ContextOptions = {
   readonly onList?: (path: string) => void
   readonly onRead?: (path: string) => void
   readonly beforeWrite?: (path: string, bytes: Uint8Array) => void | Promise<void>
+  readonly onLocks?: (keys: readonly string[]) => void
+}
+
+const fileStateLockQueues = new WeakMap<
+  Map<string, Uint8Array>,
+  Map<string, Promise<void>>
+>()
+
+async function withFileStateLocks<T>(
+  state: Map<string, Uint8Array>,
+  keys: readonly string[],
+  operation: () => Promise<T>,
+): Promise<T> {
+  const queues = fileStateLockQueues.get(state) ?? new Map<string, Promise<void>>()
+  fileStateLockQueues.set(state, queues)
+  const releases: Array<() => void> = []
+  for (const key of [...new Set(keys)].sort()) {
+    const previous = queues.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = previous.then(() => current)
+    queues.set(key, tail)
+    await previous
+    releases.push(() => {
+      release()
+      if (queues.get(key) === tail) queues.delete(key)
+    })
+  }
+  try {
+    return await operation()
+  } finally {
+    for (const release of releases.reverse()) release()
+    if (queues.size === 0) fileStateLockQueues.delete(state)
+  }
 }
 
 function createFileState(): Map<string, Uint8Array> {
@@ -83,6 +119,10 @@ function createContext(options: ContextOptions = {}): WorkbenchExtensionContext 
         expect(path).not.toMatch(/^(?:\/|[A-Za-z]:[\\/])/)
         await options.beforeWrite?.(path, new Uint8Array(bytes))
         state.set(path, new Uint8Array(bytes))
+      },
+      async withLocks(keys, operation) {
+        options.onLocks?.(keys)
+        return withFileStateLocks(state, keys, operation)
       },
     },
     media: options.media ?? new InMemoryMediaCapability(),
@@ -138,7 +178,6 @@ function uploadPrepareRequest(
     method: 'POST',
     headers: { 'content-type': ['application/json'] },
     json: {
-      game_id: 'router-game',
       file_name: 'large.png',
       mime_type: 'image/png',
       bytes,
@@ -196,7 +235,6 @@ function finalizePreparedImage(
     method: 'POST',
     headers: { 'content-type': ['application/json'] },
     json: {
-      game_id: 'router-game',
       media_type: 'image',
       url: prepared.object_url,
       name,
@@ -208,6 +246,7 @@ function directImageUpload(
   context: WorkbenchExtensionContext,
   name: string,
   body: Uint8Array,
+  idempotencyKey: string | null = `router-test-direct-${name}-${directUploadSequence += 1}`,
 ) {
   return createWbGameVideoRouter(context).handle({
     ...request('media/resources', {
@@ -216,11 +255,16 @@ function directImageUpload(
         'content-type': ['image/png'],
         'x-workbench-media-name': [name],
         'x-workbench-media-type': ['image'],
+        ...(idempotencyKey !== null
+          ? { 'x-workbench-idempotency-key': [idempotencyKey] }
+          : {}),
       },
     }),
     body,
   })
 }
+
+let directUploadSequence = 0
 
 function responseResourceId(response: { body?: Uint8Array }): string {
   return (bodyJson(response) as { data: { resource_id: string } }).data.resource_id
@@ -272,6 +316,7 @@ describe('createWbGameVideoRouter', () => {
           'content-type': ['image/png'],
           'x-workbench-media-name': ['cover.png'],
           'x-workbench-media-type': ['image'],
+          'x-workbench-idempotency-key': ['router-contract-cover'],
         },
       }),
       body: encoder.encode('cover'),
@@ -309,6 +354,7 @@ describe('createWbGameVideoRouter', () => {
           'content-type': ['image/png'],
           'x-workbench-media-name': ['cover.png'],
           'x-workbench-media-type': ['image'],
+          'x-workbench-idempotency-key': ['router-persistence-cover'],
         },
       }),
       body: encoder.encode('cover'),
@@ -334,6 +380,128 @@ describe('createWbGameVideoRouter', () => {
     expect(bodyJson(afterDelete)).toMatchObject({ data: { items: [] } })
   })
 
+  test('reclaims hosted bytes when a browser media resource is deleted', async () => {
+    const context = createContext()
+    const created = await directImageUpload(context, 'delete-me.png', encoder.encode('body'))
+    const id = responseResourceId(created)
+    const hostedBefore = await context.media.list(context.gameId)
+
+    const removed = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    )
+    const removedAgain = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    )
+
+    expect(hostedBefore).toHaveLength(1)
+    expect(removed.status).toBe(204)
+    expect(removedAgain.status).toBe(204)
+    expect(await context.media.list(context.gameId)).toEqual([])
+    expect(await context.media.read(context.gameId, hostedBefore[0]!.id)).toBeNull()
+  })
+
+  test('allows a new upload when the host reuses an id reclaimed by a tombstone', async () => {
+    const context = createContext()
+    const first = await directImageUpload(
+      context,
+      'repeat.png',
+      encoder.encode('same-body'),
+      'repeat-request-1',
+    )
+    const removed = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(responseResourceId(first))}`, {
+        method: 'DELETE',
+      }),
+    )
+    const second = await directImageUpload(
+      context,
+      'repeat.png',
+      encoder.encode('same-body'),
+      'repeat-request-2',
+    )
+
+    expect(first.status).toBe(200)
+    expect(removed.status).toBe(204)
+    expect(second.status).toBe(200)
+    expect(await context.media.list(context.gameId)).toHaveLength(1)
+  })
+
+  test('rejects a direct-upload key after its completed resource was deleted', async () => {
+    const context = createContext()
+    const first = await directImageUpload(
+      context,
+      'retired.png',
+      encoder.encode('body'),
+      'retired-request',
+    )
+    await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(responseResourceId(first))}`, {
+        method: 'DELETE',
+      }),
+    )
+
+    const reused = await directImageUpload(
+      context,
+      'retired.png',
+      encoder.encode('body'),
+      'retired-request',
+    )
+
+    expect(reused.status).toBe(400)
+    expect(await context.media.list(context.gameId)).toEqual([])
+  })
+
+  test('resumes a tombstoned media reclaim after the host delete temporarily fails', async () => {
+    const media = new InMemoryMediaCapability()
+    const context = createContext({ media })
+    const created = await directImageUpload(context, 'retry-delete.png', encoder.encode('body'))
+    const id = responseResourceId(created)
+    const deleteSpy = vi.spyOn(media, 'delete')
+      .mockRejectedValueOnce(new Error('injected host delete failure'))
+
+    const failed = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    )
+    const retried = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    )
+
+    expect(failed.status).toBe(500)
+    expect(retried.status).toBe(204)
+    expect(deleteSpy).toHaveBeenCalledTimes(2)
+    expect(await media.list(context.gameId)).toEqual([])
+  })
+
+  test('rejects a corrupted reclaim list that targets another live resource', async () => {
+    const state = createFileState()
+    const context = createContext({ state })
+    const first = await directImageUpload(context, 'first.png', encoder.encode('first'))
+    const second = await directImageUpload(context, 'second.png', encoder.encode('second'))
+    const firstId = responseResourceId(first)
+    const secondId = responseResourceId(second)
+    const indexPath = 'assets/wb-game-video-media.json'
+    const persisted = JSON.parse(decoder.decode(state.get(indexPath))) as Array<{
+      resource_id: string
+      host_id: string
+      deleted: boolean
+      reclaim_ids?: string[]
+    }>
+    const firstRecord = persisted.find((record) => record.resource_id === firstId)!
+    const secondRecord = persisted.find((record) => record.resource_id === secondId)!
+    firstRecord.deleted = true
+    firstRecord.reclaim_ids = [secondRecord.host_id]
+    state.set(indexPath, encoder.encode(JSON.stringify(persisted)))
+
+    const refused = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(firstId)}`, { method: 'DELETE' }),
+    )
+    const victim = await context.media.read(context.gameId, secondRecord.host_id)
+
+    expect(refused.status).toBe(500)
+    expect(decoder.decode(victim?.bytes)).toBe('second')
+    expect(await context.media.list(context.gameId)).toHaveLength(2)
+  })
+
   test('serializes browser media index mutations across concurrent router instances', async () => {
     const context = createContext()
     const upload = (name: string) => createWbGameVideoRouter(context).handle({
@@ -343,6 +511,7 @@ describe('createWbGameVideoRouter', () => {
           'content-type': ['image/png'],
           'x-workbench-media-name': [name],
           'x-workbench-media-type': ['image'],
+          'x-workbench-idempotency-key': [`router-concurrent-${name}`],
         },
       }),
       body: encoder.encode(name),
@@ -353,6 +522,129 @@ describe('createWbGameVideoRouter', () => {
 
     expect(responses.map((response) => response.status)).toEqual([200, 200])
     expect(bodyJson(listed)).toMatchObject({ data: { total: 2 } })
+  })
+
+  test('delegates browser media coordination to game-root scoped host locks', async () => {
+    const state = createFileState()
+    const firstLocks: string[][] = []
+    const secondLocks: string[][] = []
+    const first = createContext({
+      state,
+      onLocks: (keys) => firstLocks.push([...keys]),
+    })
+    const second = createContext({
+      state,
+      media: first.media,
+      onLocks: (keys) => secondLocks.push([...keys]),
+    })
+
+    const prepared = await prepareImageUpload(first, 4)
+    await putPreparedImage(second, prepared, encoder.encode('body'))
+    const finalized = await finalizePreparedImage(first, prepared, 'locked')
+
+    expect(finalized.status).toBe(200)
+    expect([...firstLocks, ...secondLocks]).toEqual(expect.arrayContaining([
+      ['wb-game-video-browser-media-allocation'],
+      [expect.stringMatching(/^wb-game-video-browser-media-slot-\d+$/)],
+      ['wb-game-video-browser-media-index'],
+    ]))
+  })
+
+  test('retries a crashed finalization without duplicating the hosted media object', async () => {
+    const state = createFileState()
+    const media = new InMemoryMediaCapability()
+    let failIndexCommit = true
+    const crashing = createContext({
+      state,
+      media,
+      beforeWrite(path) {
+        if (path === 'assets/wb-game-video-media.json' && failIndexCommit) {
+          failIndexCommit = false
+          throw new Error('injected browser media index failure')
+        }
+      },
+    })
+    const prepared = await prepareImageUpload(crashing, 4)
+    await putPreparedImage(crashing, prepared, encoder.encode('body'))
+
+    const failed = await finalizePreparedImage(crashing, prepared, 'recoverable')
+    const recovered = createContext({ state, media })
+    const retried = await finalizePreparedImage(recovered, prepared, 'recoverable')
+    const hosted = await media.list(recovered.gameId)
+
+    expect(failed.status).toBe(500)
+    expect(retried.status).toBe(200)
+    expect(hosted).toHaveLength(1)
+    expect(bodyJson(retried)).toMatchObject({
+      data: { url: hosted[0]!.url },
+    })
+  })
+
+  test('retries a keyed direct upload without duplicating the hosted media object', async () => {
+    const state = createFileState()
+    const media = new InMemoryMediaCapability()
+    let failIndexCommit = true
+    const crashing = createContext({
+      state,
+      media,
+      beforeWrite(path) {
+        if (path === 'assets/wb-game-video-media.json' && failIndexCommit) {
+          failIndexCommit = false
+          throw new Error('injected direct upload index failure')
+        }
+      },
+    })
+
+    const failed = await directImageUpload(
+      crashing,
+      'direct.png',
+      encoder.encode('body'),
+      'direct-request-1',
+    )
+    const recovered = createContext({ state, media })
+    const retried = await directImageUpload(
+      recovered,
+      'direct.png',
+      encoder.encode('body'),
+      'direct-request-1',
+    )
+
+    expect(failed.status).toBe(500)
+    expect(retried.status).toBe(200)
+    expect(await media.list(recovered.gameId)).toHaveLength(1)
+  })
+
+  test('rejects reuse of a direct-upload key for different request metadata', async () => {
+    const context = createContext()
+    const first = await directImageUpload(
+      context,
+      'first.png',
+      encoder.encode('same-body'),
+      'same-request-key',
+    )
+    const mismatched = await directImageUpload(
+      context,
+      'second.png',
+      encoder.encode('same-body'),
+      'same-request-key',
+    )
+
+    expect(first.status).toBe(200)
+    expect(mismatched.status).toBe(500)
+    expect(await context.media.list(context.gameId)).toHaveLength(1)
+  })
+
+  test('requires a caller idempotency key for direct uploads', async () => {
+    const context = createContext()
+    const response = await directImageUpload(
+      context,
+      'direct.png',
+      encoder.encode('body'),
+      null,
+    )
+
+    expect(response.status).toBe(400)
+    expect(await context.media.list(context.gameId)).toEqual([])
   })
 
   test('stores same-named direct uploads as distinct resources without overwriting the first body', async () => {
@@ -429,7 +721,6 @@ describe('createWbGameVideoRouter', () => {
       method: 'POST',
       headers: { 'content-type': ['application/json'] },
       json: {
-        game_id: 'router-game',
         media_type: 'image',
         url: preparation.object_url,
         name: 'large',
@@ -516,7 +807,6 @@ describe('createWbGameVideoRouter', () => {
       method: 'POST',
       headers: { 'content-type': ['application/json'] },
       json: {
-        game_id: 'router-game',
         media_type: 'image',
         url: preparation.object_url,
         name: 'incomplete',
@@ -645,7 +935,7 @@ describe('createWbGameVideoRouter', () => {
     )
   })
 
-  test('retires an expired uncommitted finalizing upload without retrying media storage', async () => {
+  test('reconciles an expired finalizing upload through the idempotent media receipt', async () => {
     const state = createFileState()
     const media = new InMemoryMediaCapability()
     const putSpy = vi.spyOn(media, 'put')
@@ -671,12 +961,15 @@ describe('createWbGameVideoRouter', () => {
       status: 'finalizing',
       resourceId: expect.any(String),
     })
-    expect(retried.status).toBe(409)
-    expect(afterRetry).toMatchObject({ status: 'expired' })
+    expect(retried.status).toBe(200)
+    expect(afterRetry).toMatchObject({
+      status: 'finalized',
+      resourceId: afterFailure.resourceId,
+    })
     expect(state.get(chunkPath)).toEqual(new Uint8Array())
-    expect(await media.list(context.gameId)).toHaveLength(0)
-    expect(bodyJson(listed)).toMatchObject({ data: { total: 0 } })
-    expect(putSpy).toHaveBeenCalledTimes(1)
+    expect(await media.list(context.gameId)).toHaveLength(1)
+    expect(bodyJson(listed)).toMatchObject({ data: { total: 1 } })
+    expect(putSpy).toHaveBeenCalledTimes(2)
   })
 
   test('cleans an expired committed finalizing upload without a duplicate media put', async () => {
@@ -789,7 +1082,7 @@ describe('createWbGameVideoRouter', () => {
   test.each([
     [{ bytes: 20 * 1024 * 1024 + 1 }, 'image size above its 20 MiB limit'],
     [{ file_name: '../escape.png' }, 'unsafe file name'],
-    [{ game_id: 'another-game' }, 'unbound game id'],
+    [{ game_id: 'another-game' }, 'caller-selected game id'],
     [{ mime_type: 'application/octet-stream' }, 'unsupported media type'],
     [{
       file_name: 'large.mp4',
@@ -835,7 +1128,6 @@ describe('createWbGameVideoRouter', () => {
       method: 'POST',
       headers: { 'content-type': ['application/json'] },
       json: {
-        game_id: 'router-game',
         resources: [
           { media_type: 'image', url: firstUrl, name: 'first', type: 'UPLOAD' },
           { media_type: 'image', url: secondUrl, name: 'second', type: 'UPLOAD' },
@@ -856,7 +1148,6 @@ describe('createWbGameVideoRouter', () => {
     const current = (bodyJson(fetched) as {
       data: {
         resource_id: string
-        game_id: string
         media_type: string
         url: string
         type?: string
@@ -869,7 +1160,6 @@ describe('createWbGameVideoRouter', () => {
       headers: { 'content-type': ['application/json'] },
       json: {
         resource_id: current.resource_id,
-        game_id: current.game_id,
         media_type: current.media_type,
         url: current.url,
         name: 'renamed',
@@ -912,7 +1202,6 @@ describe('createWbGameVideoRouter', () => {
       method: 'POST',
       headers: { 'content-type': ['application/json'] },
       json: {
-        game_id: 'router-game',
         resources: [
           { media_type: 'image', url: prepared.object_url, name: 'first' },
           { media_type: 'image', url: prepared.object_url, name: 'duplicate' },
@@ -938,6 +1227,7 @@ describe('createWbGameVideoRouter', () => {
           'content-type': ['image/png'],
           'x-workbench-media-name': ['original.png'],
           'x-workbench-media-type': ['image'],
+          'x-workbench-idempotency-key': ['router-replacement-original'],
         },
       }),
       body: encoder.encode('old'),
@@ -963,7 +1253,6 @@ describe('createWbGameVideoRouter', () => {
       method: 'POST',
       headers: { 'content-type': ['application/json'] },
       json: {
-        game_id: 'router-game',
         media_type: 'image',
         url: prepared.object_url,
         name: 'replacement',
@@ -993,7 +1282,39 @@ describe('createWbGameVideoRouter', () => {
       data: { resource_id: id, name: 'replacement-renamed' },
     })
     expect(decoder.decode(content.body)).toBe('new')
+    expect(await context.media.list(context.gameId)).toHaveLength(1)
     expect(missing.status).toBe(400)
+  })
+
+  test('resumes replacement reclamation after the host delete temporarily fails', async () => {
+    const media = new InMemoryMediaCapability()
+    const context = createContext({ media })
+    const original = await directImageUpload(
+      context,
+      'replace-retry.png',
+      encoder.encode('old'),
+    )
+    const id = responseResourceId(original)
+    const prepared = await prepareImageUpload(context, 3, {
+      file_name: 'replace-retry.png',
+      client_resource_id: id,
+      replace_existing: true,
+    })
+    await putPreparedImage(context, prepared, encoder.encode('new'))
+    const deleteSpy = vi.spyOn(media, 'delete')
+      .mockRejectedValueOnce(new Error('injected replacement delete failure'))
+
+    const failed = await finalizePreparedImage(context, prepared, 'replacement')
+    const retried = await finalizePreparedImage(context, prepared, 'replacement')
+    const content = await createWbGameVideoRouter(context).handle(
+      request(`media/resources/${encodeURIComponent(id)}/content`),
+    )
+
+    expect(failed.status).toBe(500)
+    expect(retried.status).toBe(200)
+    expect(deleteSpy).toHaveBeenCalledTimes(2)
+    expect(await media.list(context.gameId)).toHaveLength(1)
+    expect(decoder.decode(content.body)).toBe('new')
   })
 
   test('does not alias a replacement upload to another same-named host resource', async () => {
@@ -1057,18 +1378,20 @@ describe('createWbGameVideoRouter', () => {
       replace_existing: true,
     })
     await putPreparedImage(context, prepared, encoder.encode('new-body'))
+    const [originalHosted] = await context.media.list(context.gameId)
     const removed = await createWbGameVideoRouter(context).handle(
       request(`media/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     )
     const before = await context.media.list(context.gameId)
     const finalized = await finalizePreparedImage(context, prepared, 'replacement')
     const after = await context.media.list(context.gameId)
-    const originalBody = await context.media.read(context.gameId, before[0]!.id)
+    const originalBody = await context.media.read(context.gameId, originalHosted!.id)
 
     expect(removed.status).toBe(204)
     expect(finalized.status).toBe(400)
-    expect(after.map((item) => item.id)).toEqual(before.map((item) => item.id))
-    expect(decoder.decode(originalBody!.bytes)).toBe('original-body')
+    expect(before).toEqual([])
+    expect(after).toEqual([])
+    expect(originalBody).toBeNull()
   })
 
   test('caps active upload sessions and their declared per-game size', async () => {
@@ -1372,6 +1695,9 @@ describe('createWbGameVideoRouter', () => {
     ['assets/asset-1', { productionType: ['shot_image'] }],
     ['style-axes', { kind: ['image'] }],
     ['media/bundled/dazhao', { range: ['bytes=0-3'] }],
+    ['media/resources/resource-1', { game_id: ['other-game'] }],
+    ['media/resources/resource-1/content', { gameSlug: ['other-game'] }],
+    ['media/assets/asset-1', { game_id: ['other-game'] }],
   ])('rejects unknown or repeated GET query keys for %s', async (path, query) => {
     const router = createWbGameVideoRouter(createContext())
     const response = await router.handle(request(path, { query }))
@@ -1388,18 +1714,17 @@ describe('createWbGameVideoRouter', () => {
     })
   })
 
-  test('accepts the published GET filters and rejects a mismatched gameSlug', async () => {
+  test('accepts published GET filters and rejects caller-selected game ids', async () => {
     const router = createWbGameVideoRouter(createContext())
     const accepted = await router.handle(request('assets', {
       query: {
-        gameSlug: ['router-game'],
         kind: ['image'],
         productionType: ['shot_image'],
         sceneNodeId: ['node-1'],
       },
     }))
     const rejected = await router.handle(request('assets/asset-1', {
-      query: { gameSlug: ['another-game'] },
+      query: { gameSlug: ['router-game'] },
     }))
 
     expect(accepted.status).toBe(200)

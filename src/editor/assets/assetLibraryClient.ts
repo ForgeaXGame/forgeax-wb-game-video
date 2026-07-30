@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_KINO_RESOURCE_PAGE_SIZE,
   type DirectUploadResponse,
-  type KinoResourceDTO,
-  type KinoVideoClient,
+  type ExternalKinoResourceDTO,
+  type ExternalKinoVideoClient,
 } from './kino-api'
 import {
   assertMediaUploadFile,
   BROWSER_UPLOAD_POLICIES,
-  uploadProviderResource,
+  uploadExternalKinoResource,
   VideoUploadError,
   type UploadTransport,
 } from './video-upload'
@@ -28,10 +28,10 @@ export interface ManagedAsset {
 }
 
 export interface AssetLibraryClient {
-  list(gameId: string, kind: ManagedAssetKind, options?: { signal?: AbortSignal }): Promise<ManagedAsset[]>
-  upload(gameId: string, kind: ManagedAssetKind, file: File, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
-  rename(gameId: string, id: string, name: string, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
-  remove(gameId: string, id: string, options?: { signal?: AbortSignal }): Promise<void>
+  list(kind: ManagedAssetKind, options?: { signal?: AbortSignal }): Promise<ManagedAsset[]>
+  upload(kind: ManagedAssetKind, file: File, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
+  rename(id: string, name: string, options?: { signal?: AbortSignal }): Promise<ManagedAsset>
+  remove(id: string, options?: { signal?: AbortSignal }): Promise<void>
 }
 
 const MAX_ASSET_LIBRARY_PAGES = 100
@@ -43,30 +43,32 @@ export class AssetLibraryUploadError extends Error {
   }
 }
 
-export interface CreateKinoAssetLibraryClientOptions {
-  client?: KinoVideoClient
+export interface CreateExternalKinoAssetLibraryClientOptions {
+  client: ExternalKinoVideoClient
   transport?: UploadTransport
+  gameId: string
 }
 
 function displayName(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, '') || fileName
 }
 
-function bytes(resource: KinoResourceDTO): number | undefined {
+function bytes(resource: ExternalKinoResourceDTO): number | undefined {
   const value = resource.source_meta?.extra?.bytes
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
 function toManagedAsset(
-  resource: KinoResourceDTO,
+  resource: ExternalKinoResourceDTO,
   kind: ManagedAssetKind,
-  client: KinoVideoClient,
+  client: ExternalKinoVideoClient,
+  gameId: string,
 ): ManagedAsset {
   return {
     id: resource.resource_id,
     kind,
     name: resource.name || resource.resource_id,
-    url: client.playbackUrl(resource.resource_id, resource.game_id),
+    url: client.playbackUrl(resource.resource_id, gameId),
     mime: resource.source_meta?.mime_type,
     bytes: bytes(resource),
     updatedAt: resource.updated_at,
@@ -78,14 +80,20 @@ function toManagedAsset(
  * Production adapter for assets in Kino's provider-backed resource API.
  * Resources are always previewed through its authenticated content endpoint.
  */
-export function createKinoAssetLibraryClient(
-  options: CreateKinoAssetLibraryClientOptions = {},
+export function createKinoAssetLibraryClient(): AssetLibraryClient {
+  return createHostAssetLibraryClient()
+}
+
+/** Explicit legacy-provider adapter. Its game binding never enters Workbench host requests. */
+export function createExternalKinoAssetLibraryClient(
+  options: CreateExternalKinoAssetLibraryClientOptions,
 ): AssetLibraryClient {
-  if (!options.client) return createHostAssetLibraryClient()
   const client = options.client
+  const gameId = options.gameId
+  if (!gameId) throw new TypeError('External Kino asset adapter requires a bound game id')
 
   return {
-    async list(gameId, kind, requestOptions) {
+    async list(kind, requestOptions) {
       const resources = new Map<string, ManagedAsset>()
       for (let page = 1; page <= MAX_ASSET_LIBRARY_PAGES; page += 1) {
         const response = await client.list({
@@ -95,27 +103,27 @@ export function createKinoAssetLibraryClient(
           page_size: MAX_KINO_RESOURCE_PAGE_SIZE,
         }, requestOptions)
         for (const resource of response.items) {
-          resources.set(resource.resource_id, toManagedAsset(resource, kind, client))
+          resources.set(resource.resource_id, toManagedAsset(resource, kind, client, gameId))
         }
         if (response.items.length === 0 || resources.size >= response.total) break
       }
       return [...resources.values()]
     },
 
-    async upload(gameId, kind, file, requestOptions) {
+    async upload(kind, file, requestOptions) {
       try {
-        const resource = await uploadProviderResource({
+        const resource = await uploadExternalKinoResource({
           client,
           transport: options.transport,
           gameId,
           mediaType: kind,
           file,
-        name: displayName(file.name),
+          name: displayName(file.name),
           source: 'wb-game-video',
           sourceMeta: { extra: { bytes: file.size } },
           signal: requestOptions?.signal,
         })
-        return toManagedAsset(resource, kind, client)
+        return toManagedAsset(resource, kind, client, gameId)
       } catch (error) {
         if (!(error instanceof VideoUploadError)) throw error
         const policy = BROWSER_UPLOAD_POLICIES[kind]
@@ -143,7 +151,7 @@ export function createKinoAssetLibraryClient(
       }
     },
 
-    async rename(gameId, id, name, requestOptions) {
+    async rename(id, name, requestOptions) {
       const resource = await client.get(id, gameId, requestOptions)
       const updated = await client.update(id, {
         resource_id: id,
@@ -159,16 +167,25 @@ export function createKinoAssetLibraryClient(
       if (updated.media_type !== 'image' && updated.media_type !== 'audio' && updated.media_type !== 'font') {
         throw new AssetLibraryUploadError('只能重命名图片、音频或字体资产')
       }
-      return toManagedAsset(updated, updated.media_type, client)
+      return toManagedAsset(updated, updated.media_type, client, gameId)
     },
 
-    async remove(gameId, id, requestOptions) {
+    async remove(id, requestOptions) {
       await client.delete(id, gameId, requestOptions)
     },
   }
 }
 
-function hostResource(resource: KinoResourceDTO, kind: ManagedAssetKind): ManagedAsset {
+interface HostMediaResource {
+  resource_id: string
+  media_type?: string
+  name?: string
+  url?: string
+  source_meta?: { mime_type?: string }
+  updated_at?: number
+}
+
+function hostResource(resource: HostMediaResource, kind: ManagedAssetKind): ManagedAsset {
   return {
     id: resource.resource_id,
     kind,
@@ -189,20 +206,19 @@ function hostEnvelope(value: unknown): unknown {
 function createHostAssetLibraryClient(): AssetLibraryClient {
   const request = (path: string, init?: RequestInit) => getWorkbenchHost().extension.fetch(path, init)
   return {
-    async list(_gameId, kind, options) {
+    async list(kind, options) {
       const response = await request(`media/resources?media_type=${encodeURIComponent(kind)}`, { signal: options?.signal })
-      const data = hostEnvelope(await readExtensionJson(response)) as { items?: KinoResourceDTO[] }
+      const data = hostEnvelope(await readExtensionJson(response)) as { items?: HostMediaResource[] }
       if (!Array.isArray(data.items)) throw new Error('Extension returned an invalid media list')
       return data.items.map((item) => hostResource(item, kind))
     },
-    async upload(gameId, kind, file, options) {
+    async upload(kind, file, options) {
       assertMediaUploadFile(kind, file)
       const preparedResponse = await request('media/image-assets/upload', {
         method: 'POST',
         signal: options?.signal,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          game_id: gameId,
           file_name: file.name,
           mime_type: file.type,
           bytes: file.size,
@@ -247,7 +263,6 @@ function createHostAssetLibraryClient(): AssetLibraryClient {
         signal: options?.signal,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          game_id: gameId,
           media_type: kind,
           url: prepared.object_url,
           name: displayName(file.name),
@@ -256,22 +271,22 @@ function createHostAssetLibraryClient(): AssetLibraryClient {
           source_meta: { mime_type: file.type, extra: { bytes: file.size } },
         }),
       })
-      return hostResource(hostEnvelope(await readExtensionJson(response)) as KinoResourceDTO, kind)
+      return hostResource(hostEnvelope(await readExtensionJson(response)) as HostMediaResource, kind)
     },
-    async rename(_gameId, id, name, options) {
+    async rename(id, name, options) {
       const response = await request(`media/resources/${encodeURIComponent(id)}`, {
         method: 'PUT',
         signal: options?.signal,
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name }),
       })
-      const resource = hostEnvelope(await readExtensionJson(response)) as KinoResourceDTO
+      const resource = hostEnvelope(await readExtensionJson(response)) as HostMediaResource
       if (resource.media_type !== 'image' && resource.media_type !== 'audio' && resource.media_type !== 'font') {
         throw new AssetLibraryUploadError('只能重命名图片、音频或字体资产')
       }
       return hostResource(resource, resource.media_type)
     },
-    async remove(_gameId, id, options) {
+    async remove(id, options) {
       const response = await request(`media/resources/${encodeURIComponent(id)}`, {
         method: 'DELETE', signal: options?.signal,
       })
@@ -299,7 +314,7 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : '资产操作失败'
 }
 
-export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): AssetLibraryController {
+export function useAssetLibrary(client?: AssetLibraryClient): AssetLibraryController {
   const [items, setItems] = useState<ManagedAsset[]>([])
   const [loading, setLoading] = useState(Boolean(client))
   const [error, setError] = useState<string | null>(client ? null : UNAVAILABLE_MESSAGE)
@@ -321,9 +336,9 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     setError(null)
     try {
       const results = await Promise.all([
-        client.list(gameId, 'image', { signal: abort.signal }),
-        client.list(gameId, 'audio', { signal: abort.signal }),
-        client.list(gameId, 'font', { signal: abort.signal }),
+        client.list('image', { signal: abort.signal }),
+        client.list('audio', { signal: abort.signal }),
+        client.list('font', { signal: abort.signal }),
       ])
       if (!abort.signal.aborted) setItems(results.flat())
     } catch (cause) {
@@ -331,7 +346,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     } finally {
       if (!abort.signal.aborted) setLoading(false)
     }
-  }, [client, gameId])
+  }, [client])
 
   useEffect(() => {
     void refresh()
@@ -346,7 +361,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     setUploading(kind)
     setError(null)
     try {
-      const asset = await client.upload(gameId, kind, file)
+      const asset = await client.upload(kind, file)
       setItems((current) => [asset, ...current.filter((item) => item.id !== asset.id)])
       return asset
     } catch (cause) {
@@ -355,7 +370,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     } finally {
       setUploading(null)
     }
-  }, [client, gameId])
+  }, [client])
 
   const rename = useCallback(async (id: string, name: string) => {
     if (!client) {
@@ -367,7 +382,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     setMutating(true)
     setError(null)
     try {
-      const asset = await client.rename(gameId, id, nextName)
+      const asset = await client.rename(id, nextName)
       setItems((current) => current.map((item) => item.id === id ? asset : item))
       return asset
     } catch (cause) {
@@ -376,7 +391,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     } finally {
       setMutating(false)
     }
-  }, [client, gameId])
+  }, [client])
 
   const remove = useCallback(async (id: string) => {
     if (!client) {
@@ -386,7 +401,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     setMutating(true)
     setError(null)
     try {
-      await client.remove(gameId, id)
+      await client.remove(id)
       setItems((current) => current.filter((item) => item.id !== id))
     } catch (cause) {
       setError(message(cause))
@@ -394,7 +409,7 @@ export function useAssetLibrary(gameId: string, client?: AssetLibraryClient): As
     } finally {
       setMutating(false)
     }
-  }, [client, gameId])
+  }, [client])
 
   return { available: Boolean(client), loading, error, uploading, mutating, items, refresh, upload, rename, remove }
 }

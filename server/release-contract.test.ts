@@ -163,38 +163,20 @@ describe('release identity', () => {
     expect(contract).not.toMatch(/版本快照|version snapshot|keep-10|留\s*10|up to 10/i)
     expect(contract).not.toMatch(/\.forgeax\/games\/<slug>\/game-video/)
     expect(contract).not.toMatch(/(视频生成|video generation|generation).{0,24}(已删|deleted)/i)
-    expect(contract).toContain('.forgeax/games/<slug>/blueprint.json')
+    expect(contract).not.toContain('.forgeax/games/<slug>/blueprint.json')
+    expect(contract).toContain('blueprint.json')
     expect(contract).toContain('wb-game-video:generate-node-video')
     expect(contract).toContain('wb-game-video:import-scene-refs')
   })
 
-  it('uses the same safe Unicode game-id contract in every tool args schema', () => {
-    const schemaFiles = [
-      'generate-keyframe.args.json',
-      'generate-node-video.args.json',
-      'generate-shot-script.args.json',
-      'generate-video.args.json',
-      'get-asset.args.json',
-      'get-graph.args.json',
-      'import-character-refs.args.json',
-      'import-scene-refs.args.json',
-      'list-assets.args.json',
-      'save-graph.args.json',
-    ]
+  it('derives game identity from the host binding for every public tool', () => {
+    expect(manifest.provides.tools).toHaveLength(11)
 
-    for (const file of schemaFiles) {
-      const schema = JSON.parse(readFileSync(resolve(root, 'schemas', file), 'utf8'))
-      const gameSlug = schema.properties.gameSlug
-      const pattern = new RegExp(gameSlug.pattern)
-      expect(pattern.test('中'), file).toBe(true)
-      expect(pattern.test('a'), file).toBe(true)
-      expect(pattern.test(''), file).toBe(false)
-      expect(pattern.test('.'), file).toBe(false)
-      expect(pattern.test('..'), file).toBe(false)
-      expect(pattern.test('a/b'), file).toBe(false)
-      expect(pattern.test('a\\b'), file).toBe(false)
-      expect(gameSlug.description, file).toContain('host-bound game')
-      expect(gameSlug.description, file).not.toMatch(/active game|active-game/)
+    for (const tool of manifest.provides.tools) {
+      const schemaPath = resolve(root, tool.args)
+      const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
+      expect(schema.properties, tool.id).not.toHaveProperty('gameSlug')
+      expect(schema.required ?? [], tool.id).not.toContain('gameSlug')
     }
   })
 

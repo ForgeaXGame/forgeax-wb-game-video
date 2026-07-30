@@ -28,11 +28,15 @@ function createContext(gameId = 'contract-game') {
       async write(path, bytes) {
         entries.set(path, new Uint8Array(bytes))
       },
+      async withLocks(_keys, operation) {
+        return operation()
+      },
     },
     media: {
       async list() { return [] },
       async read() { return null },
       async put() { throw new Error('not needed by graph contract') },
+      async delete() {},
     },
     models: {
       async generateText() { throw new Error('not needed by graph contract') },
@@ -68,12 +72,12 @@ describe('host tool context contract', () => {
       const { context } = createContext(gameId)
       await expect(tools['wb-game-video:get-graph']!(
         context,
-        { gameSlug: gameId },
+        {},
       )).resolves.toMatchObject({ gameSlug: gameId })
     }
   })
 
-  test('rejects host-specific path fields and a gameSlug outside the injected binding', async () => {
+  test('rejects host-specific path and caller-selected game fields', async () => {
     const { context } = createContext('bound')
 
     await expect(tools['wb-game-video:get-graph']!(
@@ -83,6 +87,6 @@ describe('host tool context contract', () => {
     await expect(tools['wb-game-video:get-graph']!(
       context,
       { gameSlug: 'other' },
-    )).rejects.toThrow('host-bound game')
+    )).rejects.toThrow('additional properties')
   })
 })

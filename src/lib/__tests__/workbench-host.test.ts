@@ -58,4 +58,16 @@ describe('getWorkbenchHost', () => {
       headers: { 'content-type': 'application/json' },
     }))).rejects.toMatchObject({ status: 404 })
   })
+
+  test('reports HTTP status before inspecting a non-JSON error body', async () => {
+    const { readExtensionJson } = await import('../workbench-host')
+
+    await expect(readExtensionJson(new Response('<html>bad gateway</html>', {
+      status: 502,
+      headers: { 'content-type': 'text/html' },
+    }))).rejects.toMatchObject({
+      status: 502,
+      message: 'Extension request failed (502)',
+    })
+  })
 })

@@ -105,7 +105,6 @@ describe('节点面板的写回路径（patchNodeData + patchNodeBgm）', () => 
 describe('audio picker fallbacks', () => {
   const resource = (id: string, name?: string): KinoResourceDTO => ({
     resource_id: id,
-    game_id: 'demo',
     media_type: 'audio',
     name,
     url: `/api/v1/kino/resources/${id}/content`,

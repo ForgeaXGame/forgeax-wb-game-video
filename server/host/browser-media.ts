@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type {
   MediaBody,
 } from '@forgeax/workbench-host/contracts'
@@ -23,6 +23,7 @@ type BrowserMediaRecord = {
   readonly created_at: number
   updated_at: number
   deleted: boolean
+  reclaim_ids?: string[]
 }
 
 type UploadSession = {
@@ -44,7 +45,6 @@ type UploadSession = {
 }
 
 type KinoCreateInput = {
-  game_id: string
   media_type: BrowserMediaType
   url: string
   name?: string
@@ -64,9 +64,8 @@ const UPLOAD_ID_PATTERN = /^[0-9a-f]{32}$/
 const UPLOAD_REFERENCE_PATTERN = /^workbench-upload:([0-9a-f]{32})$/
 const HOST_FILENAME_PREFIX = 'wb-game-video-host-'
 const RESOURCE_ID_PREFIX = 'wb-game-video-resource-'
-const uploadSlotQueues = new Map<string, Promise<void>>()
-const uploadAllocationQueues = new Map<string, Promise<void>>()
-const indexQueues = new Map<string, Promise<void>>()
+const UPLOAD_ALLOCATION_LOCK = 'wb-game-video-browser-media-allocation'
+const BROWSER_MEDIA_INDEX_LOCK = 'wb-game-video-browser-media-index'
 
 const MEDIA_POLICIES: Readonly<Record<BrowserMediaType, {
   readonly maxBytes: number
@@ -144,10 +143,9 @@ function mediaTypeForContentType(value: string): BrowserMediaType {
   throw new WbServiceInputError('mime_type is invalid')
 }
 
-function resource(record: BrowserMediaRecord, url: string, gameId: string) {
+function resource(record: BrowserMediaRecord, url: string) {
   return {
     resource_id: record.resource_id,
-    game_id: gameId,
     media_type: record.media_type,
     name: record.name,
     ...(record.type === undefined ? {} : { type: record.type }),
@@ -183,6 +181,11 @@ function browserMediaRecord(value: unknown): BrowserMediaRecord {
     || !Number.isSafeInteger(record.created_at)
     || !Number.isSafeInteger(record.updated_at)
     || typeof record.deleted !== 'boolean'
+    || (record.reclaim_ids !== undefined && (
+      !Array.isArray(record.reclaim_ids)
+      || record.reclaim_ids.some((id) => typeof id !== 'string' || !id)
+      || new Set(record.reclaim_ids).size !== record.reclaim_ids.length
+    ))
   ) {
     throw new Error('Invalid persisted browser media record')
   }
@@ -206,23 +209,37 @@ async function readBrowserMedia(context: WorkbenchExtensionContext): Promise<Bro
 
 function assertBrowserMediaIdentities(records: readonly BrowserMediaRecord[]): void {
   const resourceOwners = new Map<string, number>()
+  const liveResourceOwners = new Map<string, number>()
   const hostOwners = new Map<string, number>()
+  const liveHostOwners = new Set<string>()
   const uploadOwners = new Set<string>()
   for (const [index, record] of records.entries()) {
     if (
       resourceOwners.has(record.resource_id)
-      || hostOwners.has(hostMediaId(record))
       || (record.upload_id !== undefined && uploadOwners.has(record.upload_id))
     ) {
       throw new Error('Invalid persisted browser media index')
     }
     resourceOwners.set(record.resource_id, index)
-    hostOwners.set(hostMediaId(record), index)
+    if (!record.deleted) {
+      const hostId = hostMediaId(record)
+      if (hostOwners.has(hostId)) {
+        throw new Error('Invalid persisted browser media index')
+      }
+      liveResourceOwners.set(record.resource_id, index)
+      hostOwners.set(hostId, index)
+      liveHostOwners.add(hostId)
+    }
     if (record.upload_id !== undefined) uploadOwners.add(record.upload_id)
   }
-  for (const [resourceId, resourceOwner] of resourceOwners) {
+  for (const [resourceId, resourceOwner] of liveResourceOwners) {
     const hostOwner = hostOwners.get(resourceId)
     if (hostOwner !== undefined && hostOwner !== resourceOwner) {
+      throw new Error('Invalid persisted browser media index')
+    }
+  }
+  for (const record of records) {
+    if (record.reclaim_ids?.some((assetId) => liveHostOwners.has(assetId))) {
       throw new Error('Invalid persisted browser media index')
     }
   }
@@ -246,6 +263,44 @@ function hostMediaId(record: BrowserMediaRecord): string {
   return record.host_id ?? record.resource_id
 }
 
+function appendReclaims(
+  record: BrowserMediaRecord,
+  ids: readonly (string | undefined)[],
+): void {
+  const currentHostId = record.deleted ? undefined : hostMediaId(record)
+  const reclaimIds = new Set(record.reclaim_ids ?? [])
+  for (const id of ids) {
+    if (id && id !== currentHostId) reclaimIds.add(id)
+  }
+  if (reclaimIds.size > 0) record.reclaim_ids = [...reclaimIds].sort()
+  else delete record.reclaim_ids
+}
+
+async function reclaimPendingMedia(
+  context: WorkbenchExtensionContext,
+  records: BrowserMediaRecord[],
+  record: BrowserMediaRecord,
+): Promise<void> {
+  const pending = record.reclaim_ids ?? []
+  if (pending.length === 0) return
+  const hostedAssets = new Map(
+    (await context.media.list(context.gameId)).map((asset) => [asset.id, asset]),
+  )
+  const reclaimedCurrentHost = record.deleted
+    && record.host_id !== undefined
+    && pending.includes(record.host_id)
+  for (const assetId of pending) {
+    const hosted = hostedAssets.get(assetId)
+    if (hosted && hosted.metadata?.source !== 'wb-game-video-browser') {
+      throw new Error('Refusing to reclaim media not owned by wb-game-video')
+    }
+    await context.media.delete(context.gameId, assetId)
+  }
+  delete record.reclaim_ids
+  if (reclaimedCurrentHost) delete record.host_id
+  await writeBrowserMedia(context, records)
+}
+
 function hostFilename(uploadId: string): string {
   return `${HOST_FILENAME_PREFIX}${uploadId}`
 }
@@ -254,7 +309,8 @@ function uniqueResourceId(records: readonly BrowserMediaRecord[]): string {
   let id: string
   do {
     id = `${RESOURCE_ID_PREFIX}${randomUUID().replaceAll('-', '')}`
-  } while (records.some((record) => record.resource_id === id || hostMediaId(record) === id))
+  } while (records.some((record) =>
+    record.resource_id === id || (!record.deleted && hostMediaId(record) === id)))
   return id
 }
 
@@ -264,6 +320,17 @@ function uniqueUploadId(records: readonly BrowserMediaRecord[]): string {
     id = randomUUID().replaceAll('-', '')
   } while (records.some((record) => record.upload_id === id))
   return id
+}
+
+function framedSha256(parts: readonly (string | Uint8Array)[]): string {
+  const hash = createHash('sha256')
+  for (const part of parts) {
+    const bytes = typeof part === 'string' ? encoder.encode(part) : part
+    hash.update(String(bytes.byteLength))
+    hash.update(':')
+    hash.update(bytes)
+  }
+  return hash.digest('hex')
 }
 
 function uploadSessionPath(id: string): string {
@@ -296,35 +363,13 @@ async function readUploadSlot(
   return uploadSession(value, id)
 }
 
-async function withQueueLock<T>(
-  queues: Map<string, Promise<void>>,
-  scope: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const previous = queues.get(scope) ?? Promise.resolve()
-  let release!: () => void
-  const current = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const tail = previous.then(() => current)
-  queues.set(scope, tail)
-  await previous
-  try {
-    return await operation()
-  } finally {
-    release()
-    if (queues.get(scope) === tail) queues.delete(scope)
-  }
-}
-
 function withUploadSlotLock<T>(
   context: WorkbenchExtensionContext,
   slot: number,
   operation: () => Promise<T>,
 ): Promise<T> {
-  return withQueueLock(
-    uploadSlotQueues,
-    `wb-game-video-browser-media-slot:${context.gameRoot}:${slot}`,
+  return context.files.withLocks(
+    [`wb-game-video-browser-media-slot-${slot}`],
     operation,
   )
 }
@@ -333,19 +378,14 @@ function withUploadAllocationLock<T>(
   context: WorkbenchExtensionContext,
   operation: () => Promise<T>,
 ): Promise<T> {
-  return withQueueLock(
-    uploadAllocationQueues,
-    `wb-game-video-browser-media-allocation:${context.gameRoot}`,
-    operation,
-  )
+  return context.files.withLocks([UPLOAD_ALLOCATION_LOCK], operation)
 }
 
 async function withBrowserIndexLock<T>(
   context: WorkbenchExtensionContext,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const scope = `wb-game-video-browser-media:${context.gameRoot}`
-  return withQueueLock(indexQueues, scope, operation)
+  return context.files.withLocks([BROWSER_MEDIA_INDEX_LOCK], operation)
 }
 
 function uploadSession(value: unknown, expectedId: string): UploadSession {
@@ -458,22 +498,25 @@ async function cleanupExpiredUploads(context: WorkbenchExtensionContext): Promis
         return
       }
       if (session.status === 'finalizing') {
-        const committed = await withBrowserIndexLock(context, async () =>
-          (await readBrowserMedia(context)).some((record) =>
+        const committed = await withBrowserIndexLock(context, async () => {
+          const records = await readBrowserMedia(context)
+          const record = records.find((record) =>
             !record.deleted
             && record.resource_id === session.resourceId
-            && record.upload_id === session.id,
-          ))
+            && record.upload_id === session.id)
+          if (!record) return false
+          await reclaimPendingMedia(context, records, record)
+          return true
+        })
         if (committed) {
           await clearUploadChunks(context, session)
           session.status = 'finalized'
           await writeUploadSession(context, session)
           return
         }
-        if (Date.now() < session.expiresAt) return
-        await clearUploadChunks(context, session)
-        session.status = 'expired'
-        await writeUploadSession(context, session)
+        // A finalizing session may already have a durable host-media receipt.
+        // Keep its chunks available so an idempotent retry can reconcile the
+        // browser index instead of orphaning the hosted object.
         return
       }
       if (Date.now() < session.expiresAt) return
@@ -516,14 +559,10 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
 
 function kinoCreateInput(
   value: unknown,
-  context: WorkbenchExtensionContext,
 ): KinoCreateInput {
   const input = exactObject(value, [
-    'game_id', 'media_type', 'url', 'name', 'type', 'remark', 'source', 'source_meta',
+    'media_type', 'url', 'name', 'type', 'remark', 'source', 'source_meta',
   ], 'resource')
-  if (nonEmptyString(input.game_id, 'game_id') !== context.gameId) {
-    throw new WbServiceInputError('game_id does not match the host-bound game')
-  }
   const mediaType = browserMediaType(
     typeof input.media_type === 'string' ? input.media_type : undefined,
   )
@@ -541,7 +580,6 @@ function kinoCreateInput(
     throw new WbServiceInputError('source_meta must be an object')
   }
   return {
-    game_id: context.gameId,
     media_type: mediaType,
     url,
     ...(input.name === undefined ? {} : { name: input.name as string }),
@@ -571,13 +609,16 @@ async function finalizeBrowserUpload(
     if (session.status === 'finalized') {
       if (!session.resourceId) throw new Error('Invalid finalized upload session')
       await clearUploadChunks(context, session)
-      const records = await readBrowserMedia(context)
-      const record = records.find((item) => item.resource_id === session.resourceId && !item.deleted)
-      const locator = record
-        ? (await browserMediaLocators(context)).get(hostMediaId(record))
-        : undefined
-      if (!record || !locator) throw new Error('Finalized upload resource is unavailable')
-      return resource(record, locator, context.gameId)
+      return withBrowserIndexLock(context, async () => {
+        const records = await readBrowserMedia(context)
+        const record = records.find((item) =>
+          item.resource_id === session.resourceId && !item.deleted)
+        if (!record) throw new Error('Finalized upload resource is unavailable')
+        await reclaimPendingMedia(context, records, record)
+        const locator = (await browserMediaLocators(context)).get(hostMediaId(record))
+        if (!locator) throw new Error('Finalized upload resource is unavailable')
+        return resource(record, locator)
+      })
     }
     if (session.nextIndex !== session.chunkCount) {
       throw new WbServiceInputError('Prepared upload is incomplete')
@@ -591,18 +632,13 @@ async function finalizeBrowserUpload(
           && record.upload_id === session.id)
         : undefined
       if (committed) {
+        await reclaimPendingMedia(context, records, committed)
         await clearUploadChunks(context, session)
         session.status = 'finalized'
         await writeUploadSession(context, session)
         const locator = (await browserMediaLocators(context)).get(hostMediaId(committed))
         if (!locator) throw new Error('Finalized upload resource is unavailable')
-        return resource(committed, locator, context.gameId)
-      }
-      if (session.status === 'finalizing' && Date.now() >= session.expiresAt) {
-        await clearUploadChunks(context, session)
-        session.status = 'expired'
-        await writeUploadSession(context, session)
-        throw new UploadConflictError('Upload session is expired')
+        return resource(committed, locator)
       }
       const replacementIndex = session.replaceExisting && session.clientResourceId
         ? records.findIndex((item) =>
@@ -617,7 +653,10 @@ async function finalizeBrowserUpload(
       const resourceId = session.resourceId ?? current?.resource_id ?? uniqueResourceId(records)
       if (records.some((record, index) =>
         index !== replacementIndex
-        && (record.resource_id === resourceId || hostMediaId(record) === resourceId)
+        && (
+          record.resource_id === resourceId
+          || (!record.deleted && hostMediaId(record) === resourceId)
+        )
       )) {
         throw new Error('Browser resource id aliases another host media id')
       }
@@ -646,6 +685,7 @@ async function finalizeBrowserUpload(
         filename: hostFilename(session.id),
         contentType: session.contentType,
         bytes: combined,
+        idempotencyKey: `wb-game-video:browser-upload:${session.id}`,
         metadata: { source: 'wb-game-video-browser', uploadId: session.id },
       })
       const now = Date.now()
@@ -659,30 +699,41 @@ async function finalizeBrowserUpload(
         ...(input.remark === undefined ? {} : { remark: input.remark }),
         ...(input.source === undefined ? {} : { source: input.source }),
         source_meta: {
-        ...(input.source_meta ?? {}),
-        mime_type: session.contentType,
-        extra: {
-          ...(
-            input.source_meta?.extra
-            && typeof input.source_meta.extra === 'object'
-            && !Array.isArray(input.source_meta.extra)
-              ? input.source_meta.extra as Record<string, unknown>
-              : {}
-          ),
-          bytes: session.totalSize,
+          ...(input.source_meta ?? {}),
+          mime_type: session.contentType,
+          extra: {
+            ...(
+              input.source_meta?.extra
+              && typeof input.source_meta.extra === 'object'
+              && !Array.isArray(input.source_meta.extra)
+                ? input.source_meta.extra as Record<string, unknown>
+                : {}
+            ),
+            bytes: session.totalSize,
+          },
         },
-      },
         created_at: current?.created_at ?? now,
         updated_at: now,
         deleted: false,
+      }
+      if (current) {
+        appendReclaims(record, [
+          ...(current.reclaim_ids ?? []),
+          hostMediaId(current),
+        ])
       }
       if (records.some((item, index) =>
         index !== replacementIndex
         && (
           item.resource_id === record.resource_id
-          || hostMediaId(item) === record.resource_id
-          || item.resource_id === hosted.id
-          || hostMediaId(item) === hosted.id
+          || (
+            !item.deleted
+            && (
+              hostMediaId(item) === record.resource_id
+              || item.resource_id === hosted.id
+              || hostMediaId(item) === hosted.id
+            )
+          )
         )
       )) {
         throw new Error('Host media id already exists in the browser media index')
@@ -690,10 +741,11 @@ async function finalizeBrowserUpload(
       if (replacementIndex >= 0) records[replacementIndex] = record
       else records.push(record)
       await writeBrowserMedia(context, records)
+      await reclaimPendingMedia(context, records, record)
       await clearUploadChunks(context, session)
       session.status = 'finalized'
       await writeUploadSession(context, session)
-      return resource(record, hosted.url, context.gameId)
+      return resource(record, hosted.url)
     })
   })
 }
@@ -710,18 +762,15 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
         )
         .flatMap((record) => {
           const locator = locators.get(hostMediaId(record))
-          return locator ? [resource(record, locator, context.gameId)] : []
+          return locator ? [resource(record, locator)] : []
         })
     },
 
     async prepareUpload(value: unknown) {
       const input = exactObject(value, [
-        'game_id', 'file_name', 'mime_type', 'bytes', 'extension',
+        'file_name', 'mime_type', 'bytes', 'extension',
         'client_resource_id', 'replace_existing',
       ], 'upload preparation')
-      if (nonEmptyString(input.game_id, 'game_id') !== context.gameId) {
-        throw new WbServiceInputError('game_id does not match the host-bound game')
-      }
       const fileName = safeFileName(input.file_name)
       const contentType = nonEmptyString(input.mime_type, 'mime_type')
       const mediaType = mediaTypeForContentType(contentType)
@@ -874,14 +923,11 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
     },
 
     async create(value: unknown) {
-      return finalizeBrowserUpload(context, kinoCreateInput(value, context))
+      return finalizeBrowserUpload(context, kinoCreateInput(value))
     },
 
     async batch(value: unknown) {
-      const input = exactObject(value, ['game_id', 'resources'], 'resource batch')
-      if (nonEmptyString(input.game_id, 'game_id') !== context.gameId) {
-        throw new WbServiceInputError('game_id does not match the host-bound game')
-      }
+      const input = exactObject(value, ['resources'], 'resource batch')
       if (!Array.isArray(input.resources) || input.resources.length === 0 || input.resources.length > 100) {
         throw new WbServiceInputError('resources must contain between 1 and 100 items')
       }
@@ -893,8 +939,7 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
           ...exactObject(value, [
             'media_type', 'url', 'name', 'type', 'remark', 'source', 'source_meta',
           ], 'batch resource'),
-          game_id: context.gameId,
-        }, context)
+        })
         if (seenUploads.has(resourceInput.url)) {
           skippedCount += 1
           continue
@@ -910,8 +955,16 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
       type: BrowserMediaType,
       contentType: string,
       body: Uint8Array,
+      idempotencyKey?: string,
     ) {
       const fileName = safeFileName(name)
+      if (
+        !idempotencyKey
+        || idempotencyKey.length > 200
+        || /[\u0000-\u001f\u007f]/.test(idempotencyKey)
+      ) {
+        throw new WbServiceInputError('A valid x-workbench-idempotency-key is required')
+      }
       if (
         !MEDIA_POLICIES[type].mimeTypes.includes(contentType)
         || body.byteLength <= 0
@@ -921,14 +974,35 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
       }
       return withBrowserIndexLock(context, async () => {
         const records = await readBrowserMedia(context)
-        const uploadId = uniqueUploadId(records)
+        const durableKey = framedSha256(['caller-key', idempotencyKey])
+        const uploadId = durableKey.slice(0, 32)
+        if (records.some((record) =>
+          record.deleted && record.upload_id === uploadId)) {
+          throw new WbServiceInputError(
+            'x-workbench-idempotency-key belongs to a deleted resource',
+          )
+        }
         const resourceId = uniqueResourceId(records)
         const hosted = await context.media.put(context.gameId, {
           filename: hostFilename(uploadId),
           contentType,
           bytes: body,
-          metadata: { source: 'wb-game-video-browser', uploadId },
+          idempotencyKey: `wb-game-video:browser-direct:${durableKey}`,
+          metadata: {
+            source: 'wb-game-video-browser',
+            uploadId,
+            originalName: fileName,
+            mediaType: type,
+          },
         })
+        const committed = records.find((item) =>
+          !item.deleted && item.upload_id === uploadId)
+        if (committed) {
+          if (hostMediaId(committed) !== hosted.id) {
+            throw new Error('Direct upload receipt conflicts with browser media index')
+          }
+          return resource(committed, hosted.url)
+        }
         const now = Date.now()
         const record: BrowserMediaRecord = {
           resource_id: resourceId,
@@ -942,14 +1016,19 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
         }
         if (records.some((item) =>
           item.resource_id === record.resource_id
-          || hostMediaId(item) === record.resource_id
-          || item.resource_id === hosted.id
-          || hostMediaId(item) === hosted.id
+          || (
+            !item.deleted
+            && (
+              hostMediaId(item) === record.resource_id
+              || item.resource_id === hosted.id
+              || hostMediaId(item) === hosted.id
+            )
+          )
         )) {
           throw new Error('Host media id already exists in the browser media index')
         }
         await writeBrowserMedia(context, [...records, record])
-        return resource(record, hosted.url, context.gameId)
+        return resource(record, hosted.url)
       })
     },
 
@@ -958,55 +1037,52 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
         .find((item) => item.resource_id === id && !item.deleted)
       if (!record) return null
       const locator = (await browserMediaLocators(context)).get(hostMediaId(record))
-      return locator ? resource(record, locator, context.gameId) : null
+      return locator ? resource(record, locator) : null
     },
 
     async update(id: string, value: unknown) {
       return withBrowserIndexLock(context, async () => {
         const records = await readBrowserMedia(context)
-      const index = records.findIndex((item) => item.resource_id === id)
-      const record = index < 0 ? undefined : records[index]
-      if (!record || record.deleted) return null
-      const input = exactObject(value, [
-        'resource_id', 'game_id', 'media_type', 'url', 'name',
-        'type', 'remark', 'source', 'source_meta',
-      ], 'resource update')
-      if (typeof input.name !== 'string') {
-        throw new WbServiceInputError('Media rename requires name')
-      }
-      if (input.resource_id !== undefined && input.resource_id !== record.resource_id) {
-        throw new WbServiceInputError('resource_id does not match the route')
-      }
-      if (input.game_id !== undefined && input.game_id !== context.gameId) {
-        throw new WbServiceInputError('game_id does not match the host-bound game')
-      }
-      if (input.media_type !== undefined && input.media_type !== record.media_type) {
-        throw new WbServiceInputError('media_type cannot be changed')
-      }
-      if (input.source_meta !== undefined && (
-        !input.source_meta
-        || typeof input.source_meta !== 'object'
-        || Array.isArray(input.source_meta)
-      )) {
-        throw new WbServiceInputError('source_meta must be an object')
-      }
-      for (const key of ['type', 'remark', 'source'] as const) {
-        if (input[key] !== undefined && typeof input[key] !== 'string') {
-          throw new WbServiceInputError(`${key} must be a string`)
+        const index = records.findIndex((item) => item.resource_id === id)
+        const record = index < 0 ? undefined : records[index]
+        if (!record || record.deleted) return null
+        const input = exactObject(value, [
+          'resource_id', 'media_type', 'url', 'name',
+          'type', 'remark', 'source', 'source_meta',
+        ], 'resource update')
+        if (typeof input.name !== 'string') {
+          throw new WbServiceInputError('Media rename requires name')
         }
-      }
-      record.name = input.name
-      if (input.type !== undefined) record.type = input.type as string
-      if (input.remark !== undefined) record.remark = input.remark as string
-      if (input.source !== undefined) record.source = input.source as string
-      if (input.source_meta !== undefined) {
-        record.source_meta = input.source_meta as Record<string, unknown>
-      }
-      record.updated_at = Date.now()
-      records[index] = record
-      await writeBrowserMedia(context, records)
-      const locator = (await browserMediaLocators(context)).get(hostMediaId(record))
-        return locator ? resource(record, locator, context.gameId) : null
+        if (input.resource_id !== undefined && input.resource_id !== record.resource_id) {
+          throw new WbServiceInputError('resource_id does not match the route')
+        }
+        if (input.media_type !== undefined && input.media_type !== record.media_type) {
+          throw new WbServiceInputError('media_type cannot be changed')
+        }
+        if (input.source_meta !== undefined && (
+          !input.source_meta
+          || typeof input.source_meta !== 'object'
+          || Array.isArray(input.source_meta)
+        )) {
+          throw new WbServiceInputError('source_meta must be an object')
+        }
+        for (const key of ['type', 'remark', 'source'] as const) {
+          if (input[key] !== undefined && typeof input[key] !== 'string') {
+            throw new WbServiceInputError(`${key} must be a string`)
+          }
+        }
+        record.name = input.name
+        if (input.type !== undefined) record.type = input.type as string
+        if (input.remark !== undefined) record.remark = input.remark as string
+        if (input.source !== undefined) record.source = input.source as string
+        if (input.source_meta !== undefined) {
+          record.source_meta = input.source_meta as Record<string, unknown>
+        }
+        record.updated_at = Date.now()
+        records[index] = record
+        await writeBrowserMedia(context, records)
+        const locator = (await browserMediaLocators(context)).get(hostMediaId(record))
+        return locator ? resource(record, locator) : null
       })
     },
 
@@ -1015,10 +1091,14 @@ export function createBrowserMediaService(context: WorkbenchExtensionContext) {
         const records = await readBrowserMedia(context)
         const index = records.findIndex((item) => item.resource_id === id)
         const record = index < 0 ? undefined : records[index]
-        if (!record || record.deleted) return false
-        record.deleted = true
-        records[index] = record
-        await writeBrowserMedia(context, records)
+        if (!record) return false
+        if (!record.deleted) {
+          record.deleted = true
+          appendReclaims(record, [hostMediaId(record)])
+          records[index] = record
+          await writeBrowserMedia(context, records)
+        }
+        await reclaimPendingMedia(context, records, record)
         return true
       })
     },

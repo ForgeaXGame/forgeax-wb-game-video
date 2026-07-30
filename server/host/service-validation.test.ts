@@ -8,7 +8,6 @@ const accepted: Array<[ServiceSchemaName, unknown]> = [
   ['getGraph', {}],
   ['saveGraph', { project: {} }],
   ['listAssets', {
-    gameSlug: '游戏一',
     kind: 'image',
     productionType: 'shot_image',
     sceneNodeId: 'node-1',
@@ -16,7 +15,7 @@ const accepted: Array<[ServiceSchemaName, unknown]> = [
   ['listVideos', {}],
   ['getAsset', { id: 'asset-1' }],
   ['importCharacterRefs', {}],
-  ['importSceneRefs', { gameSlug: '游戏一' }],
+  ['importSceneRefs', {}],
   ['generateShotScript', {
     nodeName: 'Opening',
     storyText: 'Hero enters',
@@ -49,6 +48,8 @@ const accepted: Array<[ServiceSchemaName, unknown]> = [
 
 const rejected: Array<[ServiceSchemaName, unknown]> = [
   ['getGraph', { cwd: '/private/secret' }],
+  ['listAssets', { gameSlug: '游戏一' }],
+  ['importSceneRefs', { gameSlug: '游戏一' }],
   ['saveGraph', { project: {}, cwd: '/private/secret' }],
   ['saveGraph', {}],
   ['listAssets', { kind: 'audio' }],

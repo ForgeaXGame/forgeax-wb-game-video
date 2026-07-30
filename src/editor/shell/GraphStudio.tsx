@@ -21,7 +21,6 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { bootEditorSkins } from '../init'
 import { BgmPlayer, GameStage } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { removeMountGraph } from '../video/graphMaterialOps'
 import { resolveMediaSrc } from './media'
@@ -81,8 +80,7 @@ const PREVIEW_OPEN_KEY = 'wb-game-video.nodePanel.previewOpen'
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
   ensureToolbarStyle()
-  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
-  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
+  const game = useGraphScenario((state) => state.game)
   const playRootRef = useRef<HTMLDivElement | null>(null)
   const [playRootEl, setPlayRootEl] = useState<HTMLElement | null>(null)
   const bindPlayRoot = (el: HTMLDivElement | null) => {
@@ -123,9 +121,10 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const variables = useGraphScenario((s) => s.meta.variables)
   // meta.formulas 在 schema 里存为 `Record<string, unknown>`（runtime ↛ editor）；编辑器侧窄化回 Formula。
   const formulas = useGraphScenario((s) => s.meta.formulas) as Record<string, Formula> | undefined
-  const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   // 保存 = 打版本：一次性存 blueprint + 组件（服务端钩子）+ git tag vN。
   const doCommit = useGraphScenario((s) => s.commit)
+  const saveOnly = useGraphScenario((s) => s.save)
+  const versioningSupported = useGraphScenario((s) => s.versioningSupported)
   const reset = useGraphScenario((s) => s.reset)
   const applyLayout = useGraphScenario((s) => s.applyLayout)
   const bumpRun = useGraphScenario((s) => s.bumpRun)
@@ -189,7 +188,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const audio = useAudioAssets(game)
   const audioOptions = useMemo(() => audioAssetOptions(audio.items), [audio.items])
 
-  useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
   useEffect(() => {
     const seen = new Set<string>()
     const kino: VideoOption[] = []
@@ -455,7 +453,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       {/* 顶部工具条：历史版本 → 保存 → 重置 → 草稿提示，不含画布编辑手势 */}
       <div className="gv-graph-toolbar" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <VersionPicker />
-        <button type="button" onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
+        <button
+          type="button"
+          onClick={() => { if (versioningSupported) void doCommit(); else saveOnly() }}
+          title={versioningSupported ? '保存当前内容并打一个新版本（vN）' : '保存当前内容'}
+        >
+          💾 保存
+        </button>
         <button
           type="button"
           style={{ display: 'none' }}

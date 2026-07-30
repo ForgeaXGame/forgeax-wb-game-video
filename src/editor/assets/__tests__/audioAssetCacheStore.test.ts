@@ -22,7 +22,6 @@ vi.mock('../kino-api', async () => {
 function resource(id: string, name?: string): KinoResourceDTO {
   return {
     resource_id: id,
-    game_id: 'project-a',
     media_type: 'audio',
     name,
     url: `/api/v1/kino/resources/${id}/content`,
@@ -52,9 +51,9 @@ describe('audioAssetCacheStore', () => {
     expect(second.result.current.items).toEqual(first.result.current.items)
     expect(list).toHaveBeenCalledTimes(1)
     expect(list).toHaveBeenCalledWith(expect.objectContaining({
-      game_id: 'project-a',
       media_type: 'audio',
     }))
+    expect(list.mock.calls[0]?.[0]).not.toHaveProperty('game_id')
 
     first.unmount()
     second.unmount()

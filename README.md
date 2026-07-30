@@ -4,9 +4,15 @@
 
 ## 当前契约
 
-- 图文档权威文件是项目根下 `.forgeax/games/<slug>/blueprint.json`；首次保存同时补齐 `project.json`。
-- 未保存草稿留在浏览器 localStorage。空项目启动为空库；内置 Nodia demo 只在用户显式选择“重置”时载入。
-- `wb-game-video:save-graph` 覆盖保存整份文档，`title` 当前忽略，成功返回 `{ ok: true, versions: [], gameSlug }`。
+- 图文档权威文件是宿主绑定游戏工作区内的逻辑路径 `blueprint.json`；首次保存同时补齐
+  `project.json`。物理目录布局由宿主 workspace adapter 决定。
+- 未保存草稿留在浏览器 localStorage。未初始化项目由 `GameBootstrap` 引导用户显式创建
+  Nodia seed；已初始化 package 读取失败会进入可重试错误页，不会自动写入空蓝图。
+- 游戏身份只来自宿主：后端读取 `WorkbenchExtensionContext.gameId`，浏览器等待 nonce-bound
+  handshake 后读取 `ExtensionClient.ready()` 返回的 `gameId`。11 个 AI 工具都不接受调用者提供的
+  `gameSlug`。
+- `wb-game-video:save-graph` 覆盖保存整份文档，`title` 当前忽略，成功返回
+  `{ ok: true, versions: [], gameSlug }`，其中 `gameSlug` 是宿主绑定 id 的回显。
 - 运行时组件位于 [`src/runtime/component-host`](./src/runtime/component-host)，图中只保存组件 id 与可序列化输入。
 - 扩展同时提供 11 个 AI 工具：图读写、内置视频列表、镜头脚本/关键帧/视频生成、素材查询和角色/场景引用导入。完整调用契约见 [`SKILL.md`](./SKILL.md)。
 
@@ -40,54 +46,50 @@ release contract 会校验 tarball integrity、已安装的 `extension.url()` �
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
-`@forgeax/workbench-host@0.1.0`。它导出 `@forgeax/wb-game-video/host`，其中的
-`host` 提供游戏包 seed、11 个工具和共享扩展 HTTP 服务；工具调用和 HTTP 路由使用同一
-个 capability-backed service。生产宿主将该导出加载到自己的 host，并注入 workspace、
-versioning、media 和 model adapters。Arrival 与 ForgeaX 都只需把各自的游戏根解析器与
-服务 adapter 注入 `createWorkbenchHost`；扩展不读取全局 active game，也不从环境推导服务地址。
-
-Arrival 宿主把当前游戏的 `cwd` 绑定为 workspace adapter 的根，并注入其已配置的媒体与模型
-服务；扩展只提供自己的 `host` 模块：
+`@forgeax/workbench-host@0.1.0`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
+提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
+创建唯一的 `WorkbenchExtensionContext`：
 
 ```ts
-import videoGameWorkbenchExtension from '@forgeax/wb-game-video/host'
+import { host as videoGameWorkbenchExtension } from '@forgeax/wb-game-video/host'
+import { createWorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 
-arrivalWorkbench.register(videoGameWorkbenchExtension, {
-  workspace: arrivalWorkspaceFor(request.cwd),
-  versioning: arrivalVersions,
-  media: arrivalMedia,
-  models: arrivalModels,
+const context = createWorkbenchExtensionContext({
+  gameId: resolvedGame.id,
+  gameRoot: resolvedGame.root,
+  media: hostMedia,
+  models: hostModels,
 })
+
+const router = videoGameWorkbenchExtension.createRouter?.(context)
 ```
 
-ForgeaX 宿主以 `projectRoot/.forgeax/games/<game>` 解析 workspace，并在同一个 host composition
-root 注入其 adapters：
+`gameId` 与 `gameRoot` 在进入扩展前就由宿主解析完成。扩展后端只使用 context 注入的能力：
 
-```ts
-import videoGameWorkbenchExtension from '@forgeax/wb-game-video/host'
+- `files` 提供限定在游戏根内的读写、目录枚举和跨进程 `withLocks`；
+- `media` 提供素材读写、幂等落盘与回收；
+- `models` 提供文本、图片和视频生成；
+- `gameId` 是工具调用和 HTTP router 的唯一游戏身份。
 
-forgeaxWorkbench.register(videoGameWorkbenchExtension, {
-  workspace: forgeaxWorkspaceFor(request.projectRoot, request.game),
-  versioning: forgeaxVersions,
-  media: forgeaxMedia,
-  models: forgeaxModels,
-})
-```
+扩展不会再适配任何宿主产品专用的请求形状，也不会读取进程环境、全局 active-game 文件或
+请求中的 `gameSlug` 来选择游戏。
 
-两段代码中的 `register` 代表各宿主对 `createWorkbenchHost` 的封装；它们传入的是 capability
-adapters，而不是 URL、端口或全局 active-game 状态。
+浏览器端在初始化前必须等待 `createExtensionClient().ready()`。这次 nonce-bound handshake
+返回精确的 `gameId`、`runtimeId`、capability 列表和宿主端点；浏览器不得从 URL query、
+location 或默认 slug 推导这些值。包读写和扩展请求分别使用 `gamePackage` 与
+`extension.fetch()`。版本入口仅在 `versions.supported()` 为 true 时显示，组件模块仅使用
+`gameComponents.moduleUrl()` 返回的 handshake 端点；缺少相应 capability 时按“不支持”处理，
+不得拼接备用 URL。
 
-`@forgeax/extension-platform` 的 peer 与开发依赖都精确固定为 `0.0.2`。后端显式适配两种宿主上下文：
+### 发布顺序
 
-- Arrival：`gameId` + `cwd`（当前游戏根）+ `extensionDir`。
-- ForgeaX：`game` + `projectRoot` + `cwd`（扩展安装根）；游戏根派生为
-  `projectRoot/.forgeax/games/<game>`。
+当前 vendored host 只用于本地、CI 和评审，本次变更不发布任何包。正式发布必须按以下顺序：
 
-两种形态会按需归一为 `boundGameId`、`gameRoot` 和 `extensionRoot`。`list-videos` 只读取
-扩展自带资源，因此仅要求 `extensionRoot`，无需绑定游戏；图读写、生成和共享素材等游戏相关
-工具要求 `boundGameId + gameRoot`。后端不会读取 `.forgeax/active-game.json`，也不会从
-进程当前目录猜游戏。可选 `gameSlug` 必须与宿主绑定 id 逐字一致；中文和单字符 id 合法，
-空值、`.`、`..` 及含 `/` 或 `\` 的值非法。
+1. 先发布已经过评审的 `@forgeax/workbench-host@0.1.0`；
+2. 从 registry 验证其类型与能力契约，再移除本仓 `overrides` 和 vendored tarball、重新生成
+   `bun.lock`；
+3. 完成 frozen install、测试、构建和 pack 检查后，最后发布
+   `@forgeax/wb-game-video@0.2.0`。
 
 ## 代码导航
 

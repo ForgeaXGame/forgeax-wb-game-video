@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('gvaImageUrl', () => {
   it('builds a same-origin, revisioned image URL', () => {
-    expect(gvaImageUrl('a-img-1/2', 'demo game', 42)).toBe(
+    expect(gvaImageUrl('a-img-1/2', 42)).toBe(
       'https://host.test/extension/runtime/media/resources/a-img-1%2F2/content?v=42',
     )
   })
@@ -31,7 +31,7 @@ describe('deleteReferenceImage', () => {
       JSON.stringify({ code: 0, message: 'ok', data: null }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     ))
-    await deleteReferenceImage('demo game', 'a-img-1')
+    await deleteReferenceImage('a-img-1')
 
     expect(client.extension.fetch).toHaveBeenCalledWith(
       'media/resources/a-img-1',
@@ -49,7 +49,7 @@ describe('deleteReferenceImage', () => {
       { status: 403, headers: { 'content-type': 'application/json' } },
     ))
 
-    await expect(deleteReferenceImage('demo', 'a-charref-hero')).rejects.toEqual(
+    await expect(deleteReferenceImage('a-charref-hero')).rejects.toEqual(
       new ImageUploadError('Only uploaded images can be deleted'),
     )
   })

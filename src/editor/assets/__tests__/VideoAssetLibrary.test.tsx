@@ -29,7 +29,6 @@ function apiEntry(id: string, label = id): VideoLibraryEntry {
 function uploadedResource(id: string): KinoResourceDTO {
   return {
     resource_id: id,
-    game_id: 'demo',
     media_type: 'video',
     url: `http://object/${id}`,
     name: id,
