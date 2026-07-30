@@ -1,6 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSubProcess } from '../../../runtime/schema/graph-schema'
 import type { BlueprintDoc, GameScenario } from '../../../runtime/schema/graph-schema'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { GraphStudio } from '../GraphStudio'
@@ -119,38 +118,6 @@ describe('GraphStudio 节点配置分栏', () => {
     fireEvent.keyUp(document, { key: 'Delete', code: 'Delete' })
     await waitFor(() => {
       expect(useGraphScenario.getState().graph.nodes.some((node) => node.id === 'intro')).toBe(false)
-    })
-  })
-
-  it('下钻子流程后添加节点只写入当前子图', async () => {
-    const childEntry = {
-      id: 'child-entry', type: 'perf' as const, position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '子流程入口' },
-    }
-    const rootGraph = {
-      nodes: [{
-        id: 'process', type: 'perf' as const, position: { x: 0, y: 0 }, inputs: [], outputs: [],
-        data: { name: '回合', subProcess: { entry: childEntry.id, graph: { nodes: [childEntry], edges: [] } } },
-      }],
-      edges: [],
-    }
-    const rootScenario: GameScenario = { version: 'wb-game-video.graph.v1', graph: rootGraph }
-    useGraphScenario.setState({
-      demo: rootScenario,
-      blueprints: { [MAIN_ID]: { id: MAIN_ID, title: 'Main', entry: 'process', graph: rootGraph } },
-      activeBlueprintId: MAIN_ID,
-      graph: rootGraph,
-      selectedNodeId: null,
-    })
-
-    render(<GraphStudio scenario={rootScenario} />)
-    fireEvent.click(screen.getByTitle('双击或点此下钻子流程'))
-    await waitFor(() => expect(screen.getByTestId('rf__node-child-entry')).toBeTruthy())
-
-    fireEvent.click(screen.getByRole('button', { name: '＋ 添加节点' }))
-    await waitFor(() => {
-      const savedRoot = useGraphScenario.getState().graph
-      expect(savedRoot.nodes.map((node) => node.id)).toEqual(['process'])
-      expect(getSubProcess(savedRoot.nodes[0]!.data)!.graph.nodes).toHaveLength(2)
     })
   })
 

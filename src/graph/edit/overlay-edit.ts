@@ -8,7 +8,6 @@
  *   继续跟随共享方案（prototype + sparse override，见 `runtime/schema/expand-overlay.ts`）。
  */
 import type { GameScenario, GraphLibraryDocument, OverlayChild, OverlayNode, GameGraph } from '../../runtime/schema/graph-schema'
-import { getSubProcess } from '../../runtime/schema/graph-schema'
 import type { Overlay } from '../../runtime/schema/node-config-schema'
 import { overlayMountId } from '../../runtime/schema/node-config-schema'
 import { mergeChild, resolveMountChildren } from '../../runtime/schema/expand-overlay'
@@ -115,10 +114,7 @@ export function forkSchemeForEdit(scenario: GameScenario, nodeId: string): GameS
 /** 某 overlay 是否被 scenario 中任一图（根 graph + manifest.packs）挂载引用。 */
 export function isOverlayReferenced(scenario: GameScenario, overlayId: string): boolean {
   const inGraph = (g: GameGraph): boolean =>
-    g.nodes.some((n) =>
-      (n.data.overlayNodes ?? []).some((m) => m.overlay === overlayId)
-      || (getSubProcess(n.data) ? inGraph(getSubProcess(n.data)!.graph) : false),
-    )
+    g.nodes.some((n) => (n.data.overlayNodes ?? []).some((m) => m.overlay === overlayId))
   if (inGraph(scenario.graph)) return true
   const bps = (scenario as GraphLibraryDocument).manifest?.packs
   return !!bps && Object.values(bps).some((d) => inGraph(d.graph))

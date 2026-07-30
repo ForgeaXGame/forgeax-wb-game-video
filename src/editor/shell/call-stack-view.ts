@@ -2,8 +2,7 @@
  * 试玩「蓝图」浮层：调用栈 → 面包屑 / pinned 高亮（编辑器调试 UI 专用）。
  * runtime 只暴露 SessionSnapshot.activeBlueprintId + callStack；折叠规则不住引擎。
  */
-import { getSubProcess, type GameGraph } from '../../runtime/schema/graph-schema'
-import { resolveGraphAtPath } from '../../graph/edit/graph-scope'
+import { getSubFlow, type GameGraph } from '../../runtime/schema/graph-schema'
 
 export interface BlueprintCrumb {
   blueprintId: string
@@ -68,25 +67,33 @@ export function subflowMembers(graph: GameGraph, entryId: string): Set<string> {
   return members
 }
 
-/** 显式嵌套后，每层图天然只包含自己的直属节点。 */
+/** 根视图只展示父流程和容器；下钻后只展示当前容器拥有的节点。 */
 export function visibleSubflowNodeIds(graph: GameGraph, drillPath: readonly string[]): Set<string> {
-  const scoped = resolveGraphAtPath(graph, drillPath) ?? graph
-  return new Set(scoped.nodes.map((node) => node.id))
+  if (drillPath.length > 0) {
+    const container = graph.nodes.find((node) => node.id === drillPath[drillPath.length - 1])
+    const entry = container ? getSubFlow(container.data) : undefined
+    if (entry) return subflowMembers(graph, entry)
+  }
+
+  const hidden = new Set<string>()
+  for (const node of graph.nodes) {
+    const entry = getSubFlow(node.data)
+    if (!entry) continue
+    for (const member of subflowMembers(graph, entry)) hidden.add(member)
+  }
+  return new Set(graph.nodes.map((node) => node.id).filter((id) => !hidden.has(id)))
 }
 
 /** 当前蓝图里仍在栈上的同图子流程容器，按外到内顺序组成跟随下钻路径。 */
 export function activeSubflowPath(
   graph: GameGraph,
-  callStack: ReadonlyArray<{ blueprintId: string; callerNodeId: string; graphPath?: string[] }>,
+  callStack: ReadonlyArray<{ blueprintId: string; callerNodeId: string }>,
   activeBlueprintId: string,
 ): string[] {
-  let path: string[] = []
-  for (const frame of callStack) {
-    if (frame.blueprintId !== activeBlueprintId) continue
-    const parentPath = frame.graphPath ?? path
-    const parent = resolveGraphAtPath(graph, parentPath)
-    const node = parent?.nodes.find((candidate) => candidate.id === frame.callerNodeId)
-    if (node && getSubProcess(node.data)) path = [...parentPath, frame.callerNodeId]
-  }
-  return path
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]))
+  return callStack.flatMap((frame) => {
+    if (frame.blueprintId !== activeBlueprintId) return []
+    const node = nodes.get(frame.callerNodeId)
+    return node && getSubFlow(node.data) ? [frame.callerNodeId] : []
+  })
 }

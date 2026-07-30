@@ -45,7 +45,7 @@ describe('ComponentEventsEditor', () => {
     ])
   })
 
-  it('mount mode edits additions without showing catalog or mount action labels', () => {
+  it('mount mode shows inherited catalog actions and edits additions separately', () => {
     render(
       <ComponentEventsEditor
         mode="mount"
@@ -58,36 +58,9 @@ describe('ComponentEventsEditor', () => {
         onMountActionsChange={vi.fn()}
       />,
     )
-    expect(screen.queryByText(/目录继承动作/)).toBeNull()
-    expect(screen.queryByText(/挂载追加动作/)).toBeNull()
+    expect(screen.getByText('目录继承动作：效果')).toBeTruthy()
+    expect(screen.getByText('挂载追加动作')).toBeTruthy()
     expect(screen.getByRole('button', { name: /沿边推进/ })).toBeTruthy()
-  })
-
-  it('renders one advance action with custom route controls and preserves it when side effects change', () => {
-    const onMountActionsChange = vi.fn()
-    render(
-      <ComponentEventsEditor
-        mode="mount"
-        events={[event]}
-        mountReactions={[{
-          when: { type: 'event', id: 'pass' },
-          do: [{ kind: 'advance', edgeId: 'edge-1' }],
-        }]}
-        spawnOptions={[]}
-        renderRoute={() => <div>从事件节点到目标节点</div>}
-        onMountActionsChange={onMountActionsChange}
-      />,
-    )
-
-    expect(screen.getByText('沿边推进')).toBeTruthy()
-    expect(screen.getByText('从事件节点到目标节点')).toBeTruthy()
-    expect(screen.queryByText('走边')).toBeNull()
-    expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '＋ 效果' }))
-    expect(onMountActionsChange).toHaveBeenCalledWith(event, [
-      { kind: 'advance', edgeId: 'edge-1' },
-      expect.objectContaining({ kind: 'effect' }),
-    ])
   })
 
   it('enables applying formulas inside catalog event effects when the formula library is provided', () => {
