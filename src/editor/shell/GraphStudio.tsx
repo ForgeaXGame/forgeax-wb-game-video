@@ -12,7 +12,8 @@ import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
-import { useAudioAssets } from '../assets/audioAssetCacheStore'
+import { createKinoAssetLibraryClient } from '../assets/assetLibraryClient'
+import { useProjectAssets } from '../assets/projectAssetCacheStore'
 import { audioAssetOptions } from './bgm-authoring'
 import { NodePreviewStage } from './NodePreviewStage'
 import { VersionPicker } from './VersionPicker'
@@ -77,6 +78,7 @@ const FORM_W_MIN = 280
 const SPLITTER_W = 5
 const PREVIEW_OPEN_KEY = 'wb-game-video.nodePanel.previewOpen'
 
+const kinoAssetLibraryClient = createKinoAssetLibraryClient()
 
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
@@ -186,7 +188,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
   const kinoResources = useKinoVideoResources(game)
   // 节点面板「音乐」下拉候选（与「视频」同款）：Kino media_type=audio，展示形状在壳层拼。
-  const audio = useAudioAssets(game)
+  const audio = useProjectAssets(game, 'audio', kinoAssetLibraryClient)
   const audioOptions = useMemo(() => audioAssetOptions(audio.items), [audio.items])
 
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])

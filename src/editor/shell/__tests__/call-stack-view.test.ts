@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { blueprintBreadcrumbs, deepestCallerOnBlueprint } from '../call-stack-view'
+import type { GameGraph } from '../../../runtime/schema/graph-schema'
+import {
+  activeSubflowPath,
+  blueprintBreadcrumbs,
+  deepestCallerOnBlueprint,
+  subflowMembers,
+  visibleSubflowNodeIds,
+} from '../call-stack-view'
+
+const graph: GameGraph = {
+  nodes: [
+    { id: 'start', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '开始' } },
+    { id: 'turn', type: 'subflow', position: { x: 100, y: 0 }, inputs: [], outputs: [], data: { name: '我方回合', subFlow: 'skill' } },
+    { id: 'end', type: 'perf', position: { x: 200, y: 0 }, inputs: [], outputs: [], data: { name: '结束' } },
+    { id: 'skill', type: 'perf', position: { x: 100, y: 100 }, inputs: [], outputs: [], data: { name: '选择技能' } },
+    { id: 'hit', type: 'perf', position: { x: 200, y: 100 }, inputs: [], outputs: [], data: { name: '攻击' } },
+  ],
+  edges: [
+    { id: 'main-1', source: 'start', target: 'turn', sourceHandle: 'default', targetHandle: 'in' },
+    { id: 'main-2', source: 'turn', target: 'end', sourceHandle: 'default', targetHandle: 'in' },
+    { id: 'turn-1', source: 'skill', target: 'hit', sourceHandle: 'default', targetHandle: 'in' },
+  ],
+}
 
 describe('blueprintBreadcrumbs', () => {
   it('collapses same-graph subflow frames', () => {
@@ -35,5 +57,24 @@ describe('deepestCallerOnBlueprint', () => {
     ]
     expect(deepestCallerOnBlueprint(stack, 'main', 'pack')).toBe('combat')
     expect(deepestCallerOnBlueprint(stack, 'pack', 'pack')).toBeNull()
+  })
+})
+
+describe('subflow scope view', () => {
+  it('collects members without leaking back into the parent flow', () => {
+    expect([...subflowMembers(graph, 'skill')]).toEqual(['skill', 'hit'])
+  })
+
+  it('shows containers at root and only owned members after drilling', () => {
+    expect([...visibleSubflowNodeIds(graph, [])]).toEqual(['start', 'turn', 'end'])
+    expect([...visibleSubflowNodeIds(graph, ['turn'])]).toEqual(['skill', 'hit'])
+  })
+
+  it('derives the active same-blueprint subflow path from runtime frames', () => {
+    expect(activeSubflowPath(graph, [
+      { blueprintId: 'main', callerNodeId: 'turn' },
+      { blueprintId: 'main', callerNodeId: 'not-a-subflow' },
+      { blueprintId: 'other', callerNodeId: 'turn' },
+    ], 'main')).toEqual(['turn'])
   })
 })
