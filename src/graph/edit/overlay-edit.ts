@@ -112,16 +112,27 @@ export function forkSchemeForEdit(scenario: GameScenario, nodeId: string): GameS
   return ensureNodeOverlay(scenario, nodeId)
 }
 
-/** 某 overlay 是否被 scenario 中任一图（根 graph + manifest.packs）挂载引用。 */
+/** 汇总多张蓝图中每个 overlay 的挂载引用次数。 */
+export function countOverlayReferences(graphs: Iterable<GameGraph>): Record<string, number> {
+  const counts: Record<string, number> = {}
+  const visit = (graph: GameGraph): void => {
+    for (const node of graph.nodes) {
+      for (const mount of node.data.overlayNodes ?? []) {
+        counts[mount.overlay] = (counts[mount.overlay] ?? 0) + 1
+      }
+      const process = getSubProcess(node.data)
+      if (process) visit(process.graph)
+    }
+  }
+  for (const graph of graphs) visit(graph)
+  return counts
+}
+
+/** 某 overlay 是否被 scenario 中任一图（含内嵌子流程）挂载引用；库文档以 manifest.packs 为 SSOT。 */
 export function isOverlayReferenced(scenario: GameScenario, overlayId: string): boolean {
-  const inGraph = (g: GameGraph): boolean =>
-    g.nodes.some((n) =>
-      (n.data.overlayNodes ?? []).some((m) => m.overlay === overlayId)
-      || (getSubProcess(n.data) ? inGraph(getSubProcess(n.data)!.graph) : false),
-    )
-  if (inGraph(scenario.graph)) return true
   const bps = (scenario as GraphLibraryDocument).manifest?.packs
-  return !!bps && Object.values(bps).some((d) => inGraph(d.graph))
+  const graphs = bps ? Object.values(bps).map((doc) => doc.graph) : [scenario.graph]
+  return (countOverlayReferences(graphs)[overlayId] ?? 0) > 0
 }
 
 /** 从目录移除无人引用的节点本地副本（仅 `node:` 前缀，避免误删共享方案）。 */

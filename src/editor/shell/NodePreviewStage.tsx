@@ -337,6 +337,7 @@ export function NodePreviewStage({
   function pauseForScrub(): void {
     const v = videoRef.current
     if (v && !v.paused) { try { v.pause() } catch { /* ignore */ } }
+    setIsVideoPlaying(false)
   }
   function togglePlay(): void {
     const v = videoRef.current
@@ -582,7 +583,7 @@ export function NodePreviewStage({
                       >
                         {children.map((child) => (
                           <span key={child.id} style={{ display: 'contents' }}>
-                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout)}
+                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout, isVideoPlaying)}
                           </span>
                         ))}
                       </div>
@@ -602,9 +603,14 @@ export function NodePreviewStage({
                 focusMount(id)
               }}
               onMove={(id, position) => {
+                pauseForScrub()
                 patchMountPosition(id, position)
               }}
+              onInteractionChange={(active) => {
+                if (active) pauseForScrub()
+              }}
               onReorder={(id, direction) => {
+                pauseForScrub()
                 reorderMount(id, direction)
               }}
             />
@@ -622,8 +628,8 @@ export function NodePreviewStage({
         </button>
       </div>
 
-      {/* 「添加控件」= 覆盖物挂载入口：前 5 个未挂载覆盖物点击直接挂载，「更多」展开完整列表。 */}
-      <div className="nps-addbar">
+      {/* 「添加控件」= 覆盖物挂载入口：前 5 个未挂载覆盖物点击直接挂载，「更多」展开完整列表。 先暂时隐藏 */}
+      <div className="nps-addbar" style={{ display: 'none' }}>
         <span className="nps-addbar-label">添加控件</span>
         {primaryCandidateIds.length === 0 && moreCandidateIds.length === 0 ? (
           <span className="nps-addbar-empty">已挂载全部覆盖物</span>
@@ -686,8 +692,7 @@ export function NodePreviewStage({
           focusMount(mid)
           const it = materials.find((m) => m.key === key)
           if (it) {
-            // 选中即定格到该覆盖物可见窗的**中段**并暂停：贴纸的入场动画此时已播完、完整呈现，
-            // 便于看清 + 选中 + 拖拽；seek 到起点（0 帧）会停在动画 from{opacity:0} 看不到贴纸。
+            // 选中即定格到该覆盖物可见窗的中段并暂停；动画按该局部时刻精确定帧。
             seekTo(it.startMs + (it.endMs - it.startMs) / 2)
             pauseForScrub()
           }
