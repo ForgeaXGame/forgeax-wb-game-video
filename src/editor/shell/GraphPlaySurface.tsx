@@ -16,7 +16,7 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { getComponent } from '../../runtime/registry/component-registry'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc } from './media'
-import { BgmPlayer, GameStage, useClipPerformanceEnd } from '../../runtime/play'
+import { BgmPlayer, GameStage, VideoAudioToggle, useClipPerformanceEnd } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { useRevealOnScopeChange } from './useRevealOnScopeChange'
@@ -92,6 +92,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
 
   const [restartKey, setRestartKey] = useState(0)
   const [auto, setAuto] = useState(false)
+  const [videoAudioEnabled, setVideoAudioEnabled] = useState(false)
   const [showBlueprint, setShowBlueprint] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [viewMode, setViewMode] = useState<'follow' | 'pinned'>('follow')
@@ -267,7 +268,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       onFocus={() => claimPlayerFocus(rootRef.current)}
       style={{ position: 'relative', width: '100%', height: '100%', background: '#000', overflow: 'hidden', outline: 'none' }}
     >
-      {/* 床轨：独立音频通道（视频恒 muted）。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
+      {/* 床轨：独立音频通道，不受视频原声开关影响。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
           「还没发过指令」不是停播令，若不重挂，重开会把上一局的曲子拖进新局。 */}
       <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} />
 
@@ -282,11 +283,13 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
         onEmit={(elementId, key) => { const s = sessionRef.current; if (s) setSnap(s.emitEvent(elementId, key)) }}
         onTick={(nowMs) => { const s = sessionRef.current; if (s) setSnap(s.tick(nowMs)) }}
         onPerformanceEnd={endPerformance}
+        videoAudioEnabled={videoAudioEnabled}
         placeholder={snap ? (snap.clip?.name ?? '（无演出）') : '加载中…'}
       />
 
       {/* 控制条：右上角悬浮 */}
       <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', gap: 6, alignItems: 'center', padding: 4, borderRadius: 10, background: 'rgba(27,23,19,0.7)' }}>
+        <VideoAudioToggle enabled={videoAudioEnabled} onToggle={() => setVideoAudioEnabled((enabled) => !enabled)} />
         <button style={toolBtn(false)} onClick={() => setRestartKey((k) => k + 1)}>重开</button>
         <button style={toolBtn(auto)} onClick={() => setAuto((v) => !v)}>{auto ? '停止演示' : '自动演示'}</button>
         <button style={toolBtn(showLogs)} onClick={() => setShowLogs((v) => !v)}>日志</button>

@@ -37,6 +37,8 @@ export interface GameStageProps {
   videoKey?: string
   /** 当前节点的后继候选；提前加载并保留 DOM，实际切换时不再设置 src。 */
   preloadVideos?: PreloadVideo[]
+  /** 是否播放当前前台视频自带的音轨；预加载和退场视频始终静音。 */
+  videoAudioEnabled?: boolean
 }
 
 export interface PreloadVideo {
@@ -79,7 +81,7 @@ function playbackKey(videoSrc: string | undefined, clip: ClipSnap | undefined, v
 
 export function GameStage({
   videoSrc, clip, overlayMounts, skins, skinCtx, onEmit, onTick, onPerformanceEnd, placeholder, videoKey,
-  preloadVideos = EMPTY_PRELOADS,
+  preloadVideos = EMPTY_PRELOADS, videoAudioEnabled = false,
 }: GameStageProps): JSX.Element {
   const desired = useMemo<BufferedPlayback | null>(
     () => {
@@ -304,7 +306,7 @@ export function GameStage({
                 data-playback-key={playback.key}
                 src={playback.src}
                 autoPlay={isFront}
-                muted
+                muted={!videoAudioEnabled || !isFront}
                 playsInline
                 preload="auto"
                 loop={playback.loop}

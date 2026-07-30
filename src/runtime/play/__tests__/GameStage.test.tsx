@@ -103,6 +103,49 @@ describe('GameStage buffered playback', () => {
     expect(promoted).toHaveStyle({ opacity: '1' })
   })
 
+  it('only enables audio on the visible video slot', () => {
+    const nextClip = clip('b')
+    const { container, rerender } = render(
+      <GameStage
+        {...props({
+          videoAudioEnabled: true,
+          preloadVideos: [{ videoSrc: '/b.mp4', clip: nextClip }],
+        })}
+      />,
+    )
+    const first = videoFor(container, '/a.mp4')
+    const preloaded = videoFor(container, '/b.mp4')
+
+    expect(first.muted).toBe(false)
+    expect(preloaded.muted).toBe(true)
+
+    fireEvent.loadedData(first)
+    fireEvent.loadedData(preloaded)
+    rerender(
+      <GameStage
+        {...props({
+          videoSrc: '/b.mp4',
+          clip: nextClip,
+          videoAudioEnabled: true,
+        })}
+      />,
+    )
+    fireEvent.loadedData(preloaded)
+    submitFrame(preloaded)
+
+    expect(first.muted).toBe(true)
+    expect(preloaded.muted).toBe(false)
+  })
+
+  it('keeps the foreground video muted until audio is explicitly enabled', () => {
+    const { container, rerender } = render(<GameStage {...props()} />)
+    const video = videoFor(container, '/a.mp4')
+
+    expect(video.muted).toBe(true)
+    rerender(<GameStage {...props({ videoAudioEnabled: true })} />)
+    expect(video.muted).toBe(false)
+  })
+
   it('ignores media events from the retained old video', () => {
     const onTick = vi.fn()
     const onPerformanceEnd = vi.fn()

@@ -20,7 +20,7 @@ import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
-import { BgmPlayer, GameStage } from '../../runtime/play'
+import { BgmPlayer, GameStage, VideoAudioToggle } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
@@ -159,6 +159,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [panelW, setPanelW] = useState(0)
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
   const [playOpen, setPlayOpen] = useState(false)
+  const [videoAudioEnabled, setVideoAudioEnabled] = useState(false)
   /** 「从此试玩」钉住的入口；浮层「重开」始终回到此节点（可随后沿边/事件前进）。 */
   const [playFromNodeId, setPlayFromNodeId] = useState<string | null>(null)
   /** 每次 start / 从此试玩 递增，强制 <video> remount——末节点同 id 再 jump 时否则 key 不变、播完不重开。 */
@@ -586,6 +587,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 {snap.currentNodeId ? ` · ${snap.clip?.name || playNameOf(snap.currentNodeId)}` : ''}
               </span>
               <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <VideoAudioToggle
+                  compact
+                  enabled={videoAudioEnabled}
+                  onToggle={() => setVideoAudioEnabled((enabled) => !enabled)}
+                />
                 <button onClick={restartPlayFrom} title={playFromNodeId ? `重开 · 回到 ${nameOf(playFromNodeId)}` : '重开'} style={{ background: 'none', border: 'none', color: '#f08840', cursor: 'pointer', padding: 0 }}>▶ 重开</button>
                 <button onClick={() => setPlayOpen(false)} title="隐藏" style={{ background: 'none', border: 'none', color: '#9aa2b1', cursor: 'pointer', padding: 0 }}>✕</button>
               </span>
@@ -598,7 +604,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
               onFocus={() => claimPlayerFocus(playRootRef.current)}
               style={{ position: 'relative', height: 180, background: '#000', outline: 'none' }}
             >
-              {/* 床轨：独立音频通道（视频恒 muted）。挂在浮层里 → 关掉试玩即随卸载停播；
+              {/* 床轨：独立音频通道，不受视频原声开关影响。挂在浮层里 → 关掉试玩即随卸载停播；
                   key 随 session 重建换 → 重开不把上一局的曲子拖进新局（同 GraphPlaySurface）。 */}
               <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} />
 
@@ -617,6 +623,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 onEmit={(elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key))}
                 onTick={(nowMs) => setSnap(sessionRef.current.tick(nowMs))}
                 onPerformanceEnd={endPerformance}
+                videoAudioEnabled={videoAudioEnabled}
               />
             </div>
             </PlayerRootContext.Provider>
