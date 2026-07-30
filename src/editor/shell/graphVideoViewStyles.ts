@@ -17,10 +17,14 @@ export const GRAPH_VIDEO_VIEW_CSS = `
   height: 4px;
   appearance: none;
   border-radius: 999px;
-  background: linear-gradient(to right, var(--gc-accent) 0 var(--gvv-progress), var(--gc-line-soft) var(--gvv-progress) 100%);
+  background: transparent;
   cursor: pointer;
 }
-.gvv-timeline::-webkit-slider-runnable-track { height: 4px; background: transparent; border-radius: inherit; }
+.gvv-timeline::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: inherit;
+  background: linear-gradient(to right, var(--gc-accent) 0 var(--gvv-progress), var(--gc-line-soft) var(--gvv-progress) 100%);
+}
 .gvv-timeline::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
