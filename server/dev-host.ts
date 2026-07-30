@@ -36,14 +36,22 @@ function within(root: string, candidate: string): boolean {
 }
 
 class LocalDevWorkspace implements WorkspaceAdapter {
-  constructor(private readonly gamesRoot: string) {}
+  private readonly gamesRoot: string
+
+  constructor(gamesRoot: string) {
+    this.gamesRoot = realpathSync(gamesRoot)
+  }
 
   async resolveGameRoot(gameId: string): Promise<string> {
     assertGameId(gameId)
     const candidate = resolve(this.gamesRoot, gameId)
     if (!within(this.gamesRoot, candidate)) throw new TypeError('Game root is outside development workspace')
     await mkdir(candidate, { recursive: true })
-    return realpathSync(candidate)
+    const resolvedCandidate = realpathSync(candidate)
+    if (!within(this.gamesRoot, resolvedCandidate)) {
+      throw new TypeError('Game root is outside development workspace')
+    }
+    return resolvedCandidate
   }
 }
 
@@ -187,7 +195,7 @@ export function createDevWorkbenchHost(
 
   return createWorkbenchHost({
     registry,
-    workspace: new LocalDevWorkspace(realpathSync(gamesRoot)),
+    workspace: new LocalDevWorkspace(gamesRoot),
     versioning: new LocalDevVersions(),
     media: options.media ?? new InMemoryDevMedia(),
     models: options.models ?? unavailableModels,

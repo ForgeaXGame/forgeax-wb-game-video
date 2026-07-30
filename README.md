@@ -17,7 +17,7 @@
 ```bash
 git clone https://github.com/ForgeaXGame/forgeax-wb-game-video.git
 cd forgeax-wb-game-video
-bun install
+bun install --frozen-lockfile
 bun run dev
 bun run test
 bun run lint
@@ -32,6 +32,11 @@ handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提
 `bun test` 是无 DOM 的 server/release-contract gate；浏览器、React 与 Vite 覆盖使用
 完整的 `bun run test`（Vitest）。
 
+`@forgeax/workbench-host` 是同版本 vendored tarball。刷新该 tarball 后，先清理该包的
+本地 Bun cache 与 `node_modules/@forgeax/workbench-host`，再运行 `bun install --frozen-lockfile`；
+release contract 会校验 tarball integrity、已安装的 `extension.url()` 类型和完整 TypeScript 编译，
+避免旧 cache 静默保留同版本的过期声明。
+
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
@@ -40,6 +45,37 @@ handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提
 个 capability-backed service。生产宿主将该导出加载到自己的 host，并注入 workspace、
 versioning、media 和 model adapters。Arrival 与 ForgeaX 都只需把各自的游戏根解析器与
 服务 adapter 注入 `createWorkbenchHost`；扩展不读取全局 active game，也不从环境推导服务地址。
+
+Arrival 宿主把当前游戏的 `cwd` 绑定为 workspace adapter 的根，并注入其已配置的媒体与模型
+服务；扩展只提供自己的 `host` 模块：
+
+```ts
+import videoGameWorkbenchExtension from '@forgeax/wb-game-video/host'
+
+arrivalWorkbench.register(videoGameWorkbenchExtension, {
+  workspace: arrivalWorkspaceFor(request.cwd),
+  versioning: arrivalVersions,
+  media: arrivalMedia,
+  models: arrivalModels,
+})
+```
+
+ForgeaX 宿主以 `projectRoot/.forgeax/games/<game>` 解析 workspace，并在同一个 host composition
+root 注入其 adapters：
+
+```ts
+import videoGameWorkbenchExtension from '@forgeax/wb-game-video/host'
+
+forgeaxWorkbench.register(videoGameWorkbenchExtension, {
+  workspace: forgeaxWorkspaceFor(request.projectRoot, request.game),
+  versioning: forgeaxVersions,
+  media: forgeaxMedia,
+  models: forgeaxModels,
+})
+```
+
+两段代码中的 `register` 代表各宿主对 `createWorkbenchHost` 的封装；它们传入的是 capability
+adapters，而不是 URL、端口或全局 active-game 状态。
 
 `@forgeax/extension-platform` 的 peer 与开发依赖都精确固定为 `0.0.2`。后端显式适配两种宿主上下文：
 

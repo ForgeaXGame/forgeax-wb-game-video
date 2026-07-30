@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -62,7 +63,7 @@ beforeAll(() => {
   const backendPath = resolve(root, 'dist/server/host.js')
   execFileSync('bun', ['run', 'build:backend'], { cwd: root, stdio: 'pipe' })
   compiledBackendUrl = pathToFileURL(backendPath).href
-})
+}, 60_000)
 
 describe('release identity', () => {
   it('keeps legacy Vite-owned host routes out of production runtime source', () => {
@@ -79,6 +80,7 @@ describe('release identity', () => {
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax/wb-game-video')
     expect(pkg.version).toBe('0.2.0')
+    expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
     expect(manifest.version).toBe('0.2.0')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
@@ -91,11 +93,20 @@ describe('release identity', () => {
     expect(Object.keys(tools)).toEqual(expectedTools)
   })
 
-  it('declares the host platform as an exact peer and dev dependency', () => {
+  it('pins the exact host dependency and installed extension URL API', () => {
     expect(pkg.peerDependencies['@forgeax/extension-platform']).toBe('0.0.2')
     expect(pkg.devDependencies['@forgeax/extension-platform']).toBe('0.0.2')
     expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.1.0')
     expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.1.0')
+    const archive = readFileSync(resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'))
+    const integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
+    expect(readFileSync(resolve(root, 'bun.lock'), 'utf8')).toContain(integrity)
+    const extensionTypes = execFileSync('tar', [
+      '-xOf',
+      resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'),
+      'package/dist/extension/index.d.ts',
+    ], { encoding: 'utf8' })
+    expect(extensionTypes).toContain('url(path: string): string;')
   })
 
   it('exports the compiled host module with the declared tool map', async () => {

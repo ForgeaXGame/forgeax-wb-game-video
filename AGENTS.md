@@ -45,7 +45,7 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
   `--port` 覆盖为其它端口。
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run dev
 bun run test
 bun run lint
@@ -54,7 +54,8 @@ bun run build
 
 `bun test` 只跑 server/release-contract gate；需要浏览器环境的完整测试使用 `bun run test`。
 
-发布前 `bun run build` 必须成功；它会依次生成前端、后端、standalone 产物并执行 release validator。
+发布前 `bun run build` 必须成功；它会依次生成前端、后端产物并执行 release validator。Vite
+只作为本地开发适配器，不再生成或发布 standalone host。
 
 ## 目录
 
