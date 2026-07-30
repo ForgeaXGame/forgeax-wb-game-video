@@ -19,3 +19,10 @@ export { useVideoContentRect } from './useVideoContentRect'
 export { computeVideoContentRect, pointerToVideoNorm, type VideoContentRect } from './videoContentRect'
 export { MissingVideoNotice } from './MissingVideoNotice'
 export { useClipPerformanceEnd } from './useClipPerformanceEnd'
+export {
+  PlaybackClockProvider,
+  usePlaybackClock,
+  usePlaybackTimeout,
+  useControlledPlaybackTimeout,
+  type PlaybackControl,
+} from '../playback-clock'

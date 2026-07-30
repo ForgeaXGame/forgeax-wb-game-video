@@ -16,7 +16,7 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { getComponent } from '../../runtime/registry/component-registry'
 import { bootEditorSkins } from '../init'
 import { resolveMediaSrc } from './media'
-import { BgmPlayer, GameStage, VideoAudioToggle, useClipPerformanceEnd } from '../../runtime/play'
+import { BgmPlayer, GameStage, PlaybackClockProvider, useClipPerformanceEnd, useControlledPlaybackTimeout, VideoAudioToggle } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { useRevealOnScopeChange } from './useRevealOnScopeChange'
@@ -93,6 +93,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
 
   const [restartKey, setRestartKey] = useState(0)
   const [auto, setAuto] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const [videoAudioEnabled, setVideoAudioEnabled] = useState(false)
   const [showBlueprint, setShowBlueprint] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
@@ -141,20 +143,21 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const resolveBgm = useCallback((id: string | undefined) => resolveMediaSrc(id, game), [game])
   const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap?.clip?.nodeId, restartKey)
 
-  useEffect(() => {
-    // 无视频：durationMs 到点推进；有视频：durationMs 作播放时长上限，走 <video> onTimeUpdate。
-    if (!snap || snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
-    const t = setTimeout(() => endPerformance(), snap.clip.durationMs)
-    return () => clearTimeout(t)
-  }, [snap?.clip?.nodeId, snap?.phase, snap?.clip?.durationMs, snap?.clip?.mediaId, endPerformance])
+  useControlledPlaybackTimeout(
+    endPerformance,
+    snap?.clip?.durationMs,
+    { paused, rate: playbackRate },
+    !snap || snap.phase === 'ended' || !!snap.clip?.mediaId,
+    `${restartKey}:${snap?.clip?.nodeId ?? ''}`,
+  )
 
   useEffect(() => {
-    if (!auto || !snap) return
+    if (!auto || paused || !snap) return
     const target = autoEmitTarget(snap)
     if (!target) return
-    const t = setTimeout(() => setSnap(sessionRef.current!.emitEvent(target.elementId, target.key)), 700)
+    const t = setTimeout(() => setSnap(sessionRef.current!.emitEvent(target.elementId, target.key)), 700 / playbackRate)
     return () => clearTimeout(t)
-  }, [auto, snap?.currentNodeId, snap?.overlayMounts])
+  }, [auto, paused, playbackRate, snap?.currentNodeId, snap?.overlayMounts])
 
   const rootBlueprintId = rootBlueprintIdRef.current || mainBlueprintId
   const displayBlueprintId =
@@ -264,6 +267,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
 
   // 游戏 overlay 舞台 = 视频实际显示矩形（有黑边时锚在视频那块，不铺满容器）。
   return (
+    <PlaybackClockProvider value={{ paused, rate: playbackRate }}>
     <PlayerRootContext.Provider value={rootEl}>
     <div
       ref={rootRef}
@@ -274,7 +278,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     >
       {/* 床轨：独立音频通道，不受视频原声开关影响。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
           「还没发过指令」不是停播令，若不重挂，重开会把上一局的曲子拖进新局。 */}
-      <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} />
+      <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} paused={paused} playbackRate={playbackRate} />
 
       {/* 演出画面 + 叠层：共享 runtime/play 的 GameStage（视频舞台锚定内容矩形，HUD/QTE/交互随视频走）。 */}
       <GameStage
@@ -284,15 +288,27 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
         overlayMounts={snap?.overlayMounts ?? []}
         skins={skins ?? undefined}
         skinCtx={skinCtx}
-        onEmit={(elementId, key) => { const s = sessionRef.current; if (s) setSnap(s.emitEvent(elementId, key)) }}
+        onEmit={(elementId, key) => { const s = sessionRef.current; if (!paused && s) setSnap(s.emitEvent(elementId, key)) }}
         onTick={(nowMs) => { const s = sessionRef.current; if (s) setSnap(s.tick(nowMs)) }}
         onPerformanceEnd={endPerformance}
+        paused={paused}
+        playbackRate={playbackRate}
         videoAudioEnabled={videoAudioEnabled}
         placeholder={snap ? (snap.clip?.name ?? '（无演出）') : '加载中…'}
       />
 
       {/* 控制条：右上角悬浮 */}
       <div style={{ position: 'absolute', top: 10, right: 12, display: 'flex', gap: 6, alignItems: 'center', padding: 4, borderRadius: 10, background: 'rgba(27,23,19,0.7)' }}>
+        <button style={toolBtn(false)} onClick={() => { setPaused(false); setRestartKey((k) => k + 1) }}>重开</button>
+        <button style={toolBtn(paused)} onClick={() => setPaused((value) => !value)} aria-label={paused ? '继续试玩' : '暂停试玩'}>{paused ? '继续' : '暂停'}</button>
+        <select
+          aria-label="试玩倍速"
+          value={playbackRate}
+          onChange={(event) => setPlaybackRate(Number(event.target.value))}
+          style={{ ...toolBtn(false), padding: '5px 8px' }}
+        >
+          {[0.5, 1, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}
+        </select>
         <VideoAudioToggle enabled={videoAudioEnabled} onToggle={() => setVideoAudioEnabled((enabled) => !enabled)} />
         <button style={toolBtn(false)} onClick={() => setRestartKey((k) => k + 1)}>重开</button>
         <button style={toolBtn(auto)} onClick={() => setAuto((v) => !v)}>{auto ? '停止演示' : '自动演示'}</button>
@@ -428,5 +444,6 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       )}
     </div>
     </PlayerRootContext.Provider>
+    </PlaybackClockProvider>
   )
 }
