@@ -27,13 +27,6 @@
       "name": "莲花妖线索",
       "initial": 0
     },
-    "mineFirst": {
-      "id": "mineFirst",
-      "name": "我方先手",
-      "initial": 1,
-      "min": 0,
-      "max": 1
-    },
     "combo": {
       "id": "combo",
       "name": "连击段数",
@@ -544,24 +537,12 @@
                 {
                   "when": {
                     "type": "event",
-                    "id": "pass"
+                    "id": "kou"
                   },
                   "do": [
                     {
                       "kind": "advance",
                       "edgeId": "e-door-pass"
-                    }
-                  ]
-                },
-                {
-                  "when": {
-                    "type": "event",
-                    "id": "fail"
-                  },
-                  "do": [
-                    {
-                      "kind": "advance",
-                      "edgeId": "e-door-fail"
                     }
                   ]
                 }
@@ -582,31 +563,7 @@
                   "trigger": {
                     "when": "enter"
                   },
-                  "inputs": {
-                    "glyph": "叩",
-                    "events": [
-                      {
-                        "id": "pass",
-                        "label": "叩中"
-                      },
-                      {
-                        "id": "fail",
-                        "label": "错过"
-                      }
-                    ],
-                    "cues": [
-                      {
-                        "id": "kou-0",
-                        "x": 0.58,
-                        "y": 0.39,
-                        "appearAt": 0,
-                        "targetAt": 1000,
-                        "endAt": 6100
-                      }
-                    ],
-                    "timeoutMs": 6100,
-                    "defaultEvent": "fail"
-                  },
+                  "inputs": {},
                   "component": "InkKou",
                   "layout": {
                     "left": 0,
@@ -621,7 +578,11 @@
                 }
               ]
             }
-          ]
+          ],
+          "routingSettlement": {
+            "type": "at",
+            "ms": 6100
+          }
         }
       },
       {
@@ -661,8 +622,7 @@
                   },
                   "inputs": {
                     "speaker": "小魂",
-                    "text": "……你也是来渡河的吗？",
-                    "color": "#ffd54a"
+                    "text": "……你也是来渡河的吗？"
                   },
                   "component": "Dialogue",
                   "layout": {
@@ -1280,133 +1240,6 @@
         }
       },
       {
-        "id": "enter",
-        "type": "perf",
-        "position": {
-          "x": 4000,
-          "y": 260
-        },
-        "inputs": [],
-        "outputs": [],
-        "data": {
-          "name": "进战待机",
-          "durationMs": 3000,
-          "media": {
-            "kind": "VIDEO",
-            "ref": "idle01"
-          },
-          "mediaPlayMode": "once",
-          "overlayNodes": [
-            {
-              "overlay": "base:battleHpBar",
-              "layout": {
-                "left": 0,
-                "top": 0,
-                "width": 1,
-                "height": 1
-              },
-              "id": "battleHud",
-              "removed": [
-                "battleHpBar-0"
-              ],
-              "added": [
-                {
-                  "id": "playerHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                },
-                {
-                  "id": "bossHp",
-                  "component": "battleHpBar",
-                  "trigger": {
-                    "when": "enter"
-                  },
-                  "inputs": {
-                    "bind": "ent-boss",
-                    "label": "小怪"
-                  },
-                  "layout": {
-                    "left": 0,
-                    "top": 0,
-                    "width": 1,
-                    "height": 1
-                  },
-                  "window": {
-                    "startMs": 0
-                  }
-                }
-              ]
-            }
-          ],
-          "reactions": [
-            {
-              "when": {
-                "type": "complete",
-                "if": {
-                  "all": [
-                    {
-                      "type": "attrCompare",
-                      "left": "ent-player",
-                      "right": "ent-boss",
-                      "attr": "speed",
-                      "op": "gte"
-                    }
-                  ]
-                }
-              },
-              "do": [
-                {
-                  "kind": "effect",
-                  "effects": [
-                    {
-                      "id": "first-me",
-                      "kind": "var",
-                      "varId": "mineFirst",
-                      "op": "set",
-                      "value": 1
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "when": {
-                "type": "complete"
-              },
-              "do": [
-                {
-                  "kind": "effect",
-                  "effects": [
-                    {
-                      "id": "first-foe",
-                      "kind": "var",
-                      "varId": "mineFirst",
-                      "op": "set",
-                      "value": 0
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      {
         "id": "a_my",
         "type": "perf",
         "position": {
@@ -1455,7 +1288,7 @@
           "mediaPlayMode": "loop",
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -1464,18 +1297,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -1489,12 +1325,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -1605,54 +1442,7 @@
                   "trigger": {
                     "when": "enter"
                   },
-                  "inputs": {
-                    "events": [
-                      {
-                        "id": "light",
-                        "label": "轻攻击"
-                      },
-                      {
-                        "id": "heavy",
-                        "label": "重攻击",
-                        "condition": {
-                          "all": [
-                            {
-                              "type": "var",
-                              "varId": "qi",
-                              "op": "gte",
-                              "value": 2
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "id": "medit",
-                        "label": "冥想"
-                      },
-                      {
-                        "id": "ult",
-                        "label": "灭世",
-                        "condition": {
-                          "all": [
-                            {
-                              "type": "var",
-                              "varId": "qi",
-                              "op": "gte",
-                              "value": 5
-                            },
-                            {
-                              "type": "var",
-                              "varId": "lizhi",
-                              "op": "gte",
-                              "value": 4
-                            }
-                          ]
-                        }
-                      }
-                    ],
-                    "x": 0.5,
-                    "y": 0.88
-                  },
+                  "inputs": {},
                   "component": "BattleSkill",
                   "layout": {
                     "left": 0,
@@ -1687,7 +1477,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -1696,18 +1486,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -1721,12 +1514,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -1742,7 +1536,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -1751,7 +1545,7 @@
               },
               "id": "pu",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -1761,13 +1555,11 @@
                     "ms": 1000
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack)"
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -1857,7 +1649,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -1866,18 +1658,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -1891,12 +1686,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -1912,7 +1708,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -1921,7 +1717,7 @@
               },
               "id": "pu2",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -1931,13 +1727,11 @@
                     "ms": 600
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -2019,7 +1813,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2028,18 +1822,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2053,12 +1850,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2074,7 +1872,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2083,7 +1881,7 @@
               },
               "id": "zhong",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -2093,13 +1891,11 @@
                     "ms": 1700
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -2195,7 +1991,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2204,18 +2000,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2229,12 +2028,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2250,7 +2050,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2259,7 +2059,7 @@
               },
               "id": "z2",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -2269,13 +2069,11 @@
                     "ms": 2500
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -2363,7 +2161,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2372,18 +2170,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2397,12 +2198,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2418,7 +2220,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:GainFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2427,7 +2229,7 @@
               },
               "id": "fuzhu",
               "removed": [
-                "floatText-0"
+                "GainFloatText-0"
               ],
               "added": [
                 {
@@ -2437,12 +2239,9 @@
                     "ms": 2000
                   },
                   "inputs": {
-                    "text": "+30",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#5fbf7f"
+                    "value": 30
                   },
-                  "component": "floatText",
+                  "component": "GainFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -2526,7 +2325,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2535,18 +2334,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2560,12 +2362,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2581,7 +2384,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2590,7 +2393,7 @@
               },
               "id": "ult",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -2600,13 +2403,11 @@
                     "ms": 7000
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-player.attr.attack * 3)"
+                    "value": {
+                      "expr": "-(entity.ent-player.attr.attack * 3)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -2689,7 +2490,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2698,18 +2499,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2723,12 +2527,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2749,7 +2554,7 @@
                 {
                   "when": {
                     "type": "event",
-                    "id": "pass"
+                    "id": "parry"
                   },
                   "do": [
                     {
@@ -2761,7 +2566,7 @@
                 {
                   "when": {
                     "type": "event",
-                    "id": "good"
+                    "id": "dodge"
                   },
                   "do": [
                     {
@@ -2823,33 +2628,7 @@
                   "trigger": {
                     "when": "enter"
                   },
-                  "inputs": {
-                    "qteKind": "parry",
-                    "durationMs": 2600,
-                    "events": [
-                      {
-                        "id": "pass",
-                        "label": "受击防反"
-                      },
-                      {
-                        "id": "good",
-                        "label": "受击闪避"
-                      },
-                      {
-                        "id": "fail",
-                        "label": "受击"
-                      }
-                    ],
-                    "defaultEvent": "fail",
-                    "cues": [
-                      {
-                        "id": "parry-0",
-                        "appearAt": 0,
-                        "targetAt": 1300,
-                        "endAt": 2600
-                      }
-                    ]
-                  },
+                  "inputs": {},
                   "component": "BattleParry",
                   "layout": {
                     "left": 0,
@@ -2885,7 +2664,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2894,18 +2673,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -2919,12 +2701,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -2940,7 +2723,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -2949,7 +2732,7 @@
               },
               "id": "block",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -2959,13 +2742,11 @@
                     "ms": 1800
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -3024,7 +2805,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3033,18 +2814,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -3058,12 +2842,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -3079,7 +2864,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3088,7 +2873,7 @@
               },
               "id": "dodgeP",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -3098,13 +2883,11 @@
                     "ms": 2000
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ffd54a",
-                    "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -3163,7 +2946,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3172,18 +2955,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -3197,12 +2983,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -3218,7 +3005,7 @@
               ]
             },
             {
-              "overlay": "base:floatText",
+              "overlay": "base:DamageFloatText",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3227,7 +3014,7 @@
               },
               "id": "hurt",
               "removed": [
-                "floatText-0"
+                "DamageFloatText-0"
               ],
               "added": [
                 {
@@ -3237,13 +3024,11 @@
                     "ms": 10
                   },
                   "inputs": {
-                    "text": "{v}",
-                    "x": 0.5,
-                    "y": 0.42,
-                    "color": "#ff5a5a",
-                    "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                    "value": {
+                      "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                    }
                   },
-                  "component": "floatText",
+                  "component": "DamageFloatText",
                   "layout": {
                     "left": 0,
                     "top": 0,
@@ -3302,7 +3087,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3311,18 +3096,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -3336,12 +3124,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -3377,7 +3166,7 @@
           },
           "overlayNodes": [
             {
-              "overlay": "base:battleHpBar",
+              "overlay": "base:BattlePlayerHpBar",
               "layout": {
                 "left": 0,
                 "top": 0,
@@ -3386,18 +3175,21 @@
               },
               "id": "battleHud",
               "removed": [
-                "battleHpBar-0"
+                "BattlePlayerHpBar-0"
               ],
               "added": [
                 {
                   "id": "playerHp",
-                  "component": "battleHpBar",
+                  "component": "BattlePlayerHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-player",
-                    "label": "空藏"
+                    "current": 300,
+                    "max": 300,
+                    "label": "空藏",
+                    "qi": 0,
+                    "qiMax": 5
                   },
                   "layout": {
                     "left": 0,
@@ -3411,12 +3203,13 @@
                 },
                 {
                   "id": "bossHp",
-                  "component": "battleHpBar",
+                  "component": "BattleEnemyHpBar",
                   "trigger": {
                     "when": "enter"
                   },
                   "inputs": {
-                    "bind": "ent-boss",
+                    "current": 700,
+                    "max": 700,
                     "label": "小怪"
                   },
                   "layout": {
@@ -3447,14 +3240,14 @@
         "id": "e-door-pass",
         "source": "n_door",
         "target": "n_soul",
-        "sourceHandle": "pass",
+        "sourceHandle": "kou",
         "targetHandle": "in"
       },
       {
         "id": "e-door-fail",
         "source": "n_door",
         "target": "n_river",
-        "sourceHandle": "fail",
+        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
@@ -3565,14 +3358,14 @@
       {
         "id": "e-getlight",
         "source": "n_getlight",
-        "target": "enter",
+        "target": "a_my",
         "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nolight",
         "source": "n_nolight",
-        "target": "enter",
+        "target": "a_my",
         "sourceHandle": "default",
         "targetHandle": "in"
       },
@@ -3593,41 +3386,14 @@
       {
         "id": "e-lotus",
         "source": "n_lotus",
-        "target": "enter",
+        "target": "a_my",
         "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
         "id": "e-nolotus",
         "source": "n_nolotus",
-        "target": "enter",
-        "sourceHandle": "default",
-        "targetHandle": "in"
-      },
-      {
-        "id": "e-init-me",
-        "source": "enter",
         "target": "a_my",
-        "sourceHandle": "default",
-        "targetHandle": "in",
-        "data": {
-          "condition": {
-            "all": [
-              {
-                "type": "attrCompare",
-                "left": "ent-player",
-                "right": "ent-boss",
-                "attr": "speed",
-                "op": "gte"
-              }
-            ]
-          }
-        }
-      },
-      {
-        "id": "e-init-foe",
-        "source": "enter",
-        "target": "b_ai",
         "sourceHandle": "default",
         "targetHandle": "in"
       },
@@ -3689,14 +3455,14 @@
         "id": "e-tele-pass",
         "source": "tele",
         "target": "block",
-        "sourceHandle": "pass",
+        "sourceHandle": "parry",
         "targetHandle": "in"
       },
       {
         "id": "e-tele-good",
         "source": "tele",
         "target": "dodgeP",
-        "sourceHandle": "good",
+        "sourceHandle": "dodge",
         "targetHandle": "in"
       },
       {
@@ -3751,25 +3517,6 @@
         "source": "a_my",
         "target": "b_ai",
         "sourceHandle": "default",
-        "targetHandle": "in",
-        "data": {
-          "condition": {
-            "all": [
-              {
-                "type": "var",
-                "varId": "mineFirst",
-                "op": "eq",
-                "value": 1
-              }
-            ]
-          }
-        }
-      },
-      {
-        "id": "e-amy-loop",
-        "source": "a_my",
-        "target": "enter",
-        "sourceHandle": "default",
         "targetHandle": "in"
       },
       {
@@ -3813,28 +3560,51 @@
         }
       },
       {
-        "id": "e-bai-loop",
-        "source": "b_ai",
-        "target": "enter",
-        "sourceHandle": "default",
-        "targetHandle": "in",
-        "data": {
-          "condition": {
-            "all": [
-              {
-                "type": "var",
-                "varId": "mineFirst",
-                "op": "eq",
-                "value": 1
-              }
-            ]
-          }
-        }
-      },
-      {
         "id": "e-bai-my",
         "source": "b_ai",
         "target": "a_my",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-river-mo-default",
+        "source": "n_river",
+        "target": "n_land",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-land-mo-default",
+        "source": "n_land",
+        "target": "n_mengpo",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-tea-mo-default",
+        "source": "n_tea",
+        "target": "n_nodrink",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-nodrink-mo-default",
+        "source": "n_nodrink",
+        "target": "n_nofollow",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-follow-mo-default",
+        "source": "n_follow",
+        "target": "n_nolight",
+        "sourceHandle": "default",
+        "targetHandle": "in"
+      },
+      {
+        "id": "e-nofollow-mo-default",
+        "source": "n_nofollow",
+        "target": "n_nolotus",
         "sourceHandle": "default",
         "targetHandle": "in"
       }
@@ -3892,24 +3662,12 @@
                       {
                         "when": {
                           "type": "event",
-                          "id": "pass"
+                          "id": "kou"
                         },
                         "do": [
                           {
                             "kind": "advance",
                             "edgeId": "e-door-pass"
-                          }
-                        ]
-                      },
-                      {
-                        "when": {
-                          "type": "event",
-                          "id": "fail"
-                        },
-                        "do": [
-                          {
-                            "kind": "advance",
-                            "edgeId": "e-door-fail"
                           }
                         ]
                       }
@@ -3930,31 +3688,7 @@
                         "trigger": {
                           "when": "enter"
                         },
-                        "inputs": {
-                          "glyph": "叩",
-                          "events": [
-                            {
-                              "id": "pass",
-                              "label": "叩中"
-                            },
-                            {
-                              "id": "fail",
-                              "label": "错过"
-                            }
-                          ],
-                          "cues": [
-                            {
-                              "id": "kou-0",
-                              "x": 0.58,
-                              "y": 0.39,
-                              "appearAt": 0,
-                              "targetAt": 1000,
-                              "endAt": 6100
-                            }
-                          ],
-                          "timeoutMs": 6100,
-                          "defaultEvent": "fail"
-                        },
+                        "inputs": {},
                         "component": "InkKou",
                         "layout": {
                           "left": 0,
@@ -3969,7 +3703,11 @@
                       }
                     ]
                   }
-                ]
+                ],
+                "routingSettlement": {
+                  "type": "at",
+                  "ms": 6100
+                }
               }
             },
             {
@@ -4009,8 +3747,7 @@
                         },
                         "inputs": {
                           "speaker": "小魂",
-                          "text": "……你也是来渡河的吗？",
-                          "color": "#ffd54a"
+                          "text": "……你也是来渡河的吗？"
                         },
                         "component": "Dialogue",
                         "layout": {
@@ -4628,133 +4365,6 @@
               }
             },
             {
-              "id": "enter",
-              "type": "perf",
-              "position": {
-                "x": 4000,
-                "y": 260
-              },
-              "inputs": [],
-              "outputs": [],
-              "data": {
-                "name": "进战待机",
-                "durationMs": 3000,
-                "media": {
-                  "kind": "VIDEO",
-                  "ref": "idle01"
-                },
-                "mediaPlayMode": "once",
-                "overlayNodes": [
-                  {
-                    "overlay": "base:battleHpBar",
-                    "layout": {
-                      "left": 0,
-                      "top": 0,
-                      "width": 1,
-                      "height": 1
-                    },
-                    "id": "battleHud",
-                    "removed": [
-                      "battleHpBar-0"
-                    ],
-                    "added": [
-                      {
-                        "id": "playerHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      },
-                      {
-                        "id": "bossHp",
-                        "component": "battleHpBar",
-                        "trigger": {
-                          "when": "enter"
-                        },
-                        "inputs": {
-                          "bind": "ent-boss",
-                          "label": "小怪"
-                        },
-                        "layout": {
-                          "left": 0,
-                          "top": 0,
-                          "width": 1,
-                          "height": 1
-                        },
-                        "window": {
-                          "startMs": 0
-                        }
-                      }
-                    ]
-                  }
-                ],
-                "reactions": [
-                  {
-                    "when": {
-                      "type": "complete",
-                      "if": {
-                        "all": [
-                          {
-                            "type": "attrCompare",
-                            "left": "ent-player",
-                            "right": "ent-boss",
-                            "attr": "speed",
-                            "op": "gte"
-                          }
-                        ]
-                      }
-                    },
-                    "do": [
-                      {
-                        "kind": "effect",
-                        "effects": [
-                          {
-                            "id": "first-me",
-                            "kind": "var",
-                            "varId": "mineFirst",
-                            "op": "set",
-                            "value": 1
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "when": {
-                      "type": "complete"
-                    },
-                    "do": [
-                      {
-                        "kind": "effect",
-                        "effects": [
-                          {
-                            "id": "first-foe",
-                            "kind": "var",
-                            "varId": "mineFirst",
-                            "op": "set",
-                            "value": 0
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            },
-            {
               "id": "a_my",
               "type": "perf",
               "position": {
@@ -4803,7 +4413,7 @@
                 "mediaPlayMode": "loop",
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -4812,18 +4422,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -4837,12 +4450,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -4953,54 +4567,7 @@
                         "trigger": {
                           "when": "enter"
                         },
-                        "inputs": {
-                          "events": [
-                            {
-                              "id": "light",
-                              "label": "轻攻击"
-                            },
-                            {
-                              "id": "heavy",
-                              "label": "重攻击",
-                              "condition": {
-                                "all": [
-                                  {
-                                    "type": "var",
-                                    "varId": "qi",
-                                    "op": "gte",
-                                    "value": 2
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "id": "medit",
-                              "label": "冥想"
-                            },
-                            {
-                              "id": "ult",
-                              "label": "灭世",
-                              "condition": {
-                                "all": [
-                                  {
-                                    "type": "var",
-                                    "varId": "qi",
-                                    "op": "gte",
-                                    "value": 5
-                                  },
-                                  {
-                                    "type": "var",
-                                    "varId": "lizhi",
-                                    "op": "gte",
-                                    "value": 4
-                                  }
-                                ]
-                              }
-                            }
-                          ],
-                          "x": 0.5,
-                          "y": 0.88
-                        },
+                        "inputs": {},
                         "component": "BattleSkill",
                         "layout": {
                           "left": 0,
@@ -5035,7 +4602,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5044,18 +4611,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5069,12 +4639,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5090,7 +4661,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5099,7 +4670,7 @@
                     },
                     "id": "pu",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -5109,13 +4680,11 @@
                           "ms": 1000
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack)"
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -5205,7 +4774,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5214,18 +4783,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5239,12 +4811,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5260,7 +4833,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5269,7 +4842,7 @@
                     },
                     "id": "pu2",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -5279,13 +4852,11 @@
                           "ms": 600
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 13 / 10)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -5367,7 +4938,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5376,18 +4947,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5401,12 +4975,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5422,7 +4997,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5431,7 +5006,7 @@
                     },
                     "id": "zhong",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -5441,13 +5016,11 @@
                           "ms": 1700
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 18 / 10)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -5543,7 +5116,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5552,18 +5125,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5577,12 +5153,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5598,7 +5175,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5607,7 +5184,7 @@
                     },
                     "id": "z2",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -5617,13 +5194,11 @@
                           "ms": 2500
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 24 / 10)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -5711,7 +5286,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5720,18 +5295,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5745,12 +5323,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5766,7 +5345,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:GainFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5775,7 +5354,7 @@
                     },
                     "id": "fuzhu",
                     "removed": [
-                      "floatText-0"
+                      "GainFloatText-0"
                     ],
                     "added": [
                       {
@@ -5785,12 +5364,9 @@
                           "ms": 2000
                         },
                         "inputs": {
-                          "text": "+30",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#5fbf7f"
+                          "value": 30
                         },
-                        "component": "floatText",
+                        "component": "GainFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -5874,7 +5450,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5883,18 +5459,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -5908,12 +5487,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -5929,7 +5509,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -5938,7 +5518,7 @@
                     },
                     "id": "ult",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -5948,13 +5528,11 @@
                           "ms": 7000
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-player.attr.attack * 3)"
+                          "value": {
+                            "expr": "-(entity.ent-player.attr.attack * 3)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -6037,7 +5615,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6046,18 +5624,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6071,12 +5652,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6097,7 +5679,7 @@
                       {
                         "when": {
                           "type": "event",
-                          "id": "pass"
+                          "id": "parry"
                         },
                         "do": [
                           {
@@ -6109,7 +5691,7 @@
                       {
                         "when": {
                           "type": "event",
-                          "id": "good"
+                          "id": "dodge"
                         },
                         "do": [
                           {
@@ -6171,33 +5753,7 @@
                         "trigger": {
                           "when": "enter"
                         },
-                        "inputs": {
-                          "qteKind": "parry",
-                          "durationMs": 2600,
-                          "events": [
-                            {
-                              "id": "pass",
-                              "label": "受击防反"
-                            },
-                            {
-                              "id": "good",
-                              "label": "受击闪避"
-                            },
-                            {
-                              "id": "fail",
-                              "label": "受击"
-                            }
-                          ],
-                          "defaultEvent": "fail",
-                          "cues": [
-                            {
-                              "id": "parry-0",
-                              "appearAt": 0,
-                              "targetAt": 1300,
-                              "endAt": 2600
-                            }
-                          ]
-                        },
+                        "inputs": {},
                         "component": "BattleParry",
                         "layout": {
                           "left": 0,
@@ -6233,7 +5789,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6242,18 +5798,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6267,12 +5826,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6288,7 +5848,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6297,7 +5857,7 @@
                     },
                     "id": "block",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -6307,13 +5867,11 @@
                           "ms": 1800
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 21)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -6372,7 +5930,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6381,18 +5939,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6406,12 +5967,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6427,7 +5989,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6436,7 +5998,7 @@
                     },
                     "id": "dodgeP",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -6446,13 +6008,11 @@
                           "ms": 2000
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ffd54a",
-                          "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack - entity.ent-player.attr.defense / 4)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -6511,7 +6071,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6520,18 +6080,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6545,12 +6108,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6566,7 +6130,7 @@
                     ]
                   },
                   {
-                    "overlay": "base:floatText",
+                    "overlay": "base:DamageFloatText",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6575,7 +6139,7 @@
                     },
                     "id": "hurt",
                     "removed": [
-                      "floatText-0"
+                      "DamageFloatText-0"
                     ],
                     "added": [
                       {
@@ -6585,13 +6149,11 @@
                           "ms": 10
                         },
                         "inputs": {
-                          "text": "{v}",
-                          "x": 0.5,
-                          "y": 0.42,
-                          "color": "#ff5a5a",
-                          "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                          "value": {
+                            "expr": "-(entity.ent-boss.attr.attack + var.yezhang * 45)"
+                          }
                         },
-                        "component": "floatText",
+                        "component": "DamageFloatText",
                         "layout": {
                           "left": 0,
                           "top": 0,
@@ -6650,7 +6212,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6659,18 +6221,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6684,12 +6249,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6725,7 +6291,7 @@
                 },
                 "overlayNodes": [
                   {
-                    "overlay": "base:battleHpBar",
+                    "overlay": "base:BattlePlayerHpBar",
                     "layout": {
                       "left": 0,
                       "top": 0,
@@ -6734,18 +6300,21 @@
                     },
                     "id": "battleHud",
                     "removed": [
-                      "battleHpBar-0"
+                      "BattlePlayerHpBar-0"
                     ],
                     "added": [
                       {
                         "id": "playerHp",
-                        "component": "battleHpBar",
+                        "component": "BattlePlayerHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-player",
-                          "label": "空藏"
+                          "current": 300,
+                          "max": 300,
+                          "label": "空藏",
+                          "qi": 0,
+                          "qiMax": 5
                         },
                         "layout": {
                           "left": 0,
@@ -6759,12 +6328,13 @@
                       },
                       {
                         "id": "bossHp",
-                        "component": "battleHpBar",
+                        "component": "BattleEnemyHpBar",
                         "trigger": {
                           "when": "enter"
                         },
                         "inputs": {
-                          "bind": "ent-boss",
+                          "current": 700,
+                          "max": 700,
                           "label": "小怪"
                         },
                         "layout": {
@@ -6795,14 +6365,14 @@
               "id": "e-door-pass",
               "source": "n_door",
               "target": "n_soul",
-              "sourceHandle": "pass",
+              "sourceHandle": "kou",
               "targetHandle": "in"
             },
             {
               "id": "e-door-fail",
               "source": "n_door",
               "target": "n_river",
-              "sourceHandle": "fail",
+              "sourceHandle": "default",
               "targetHandle": "in"
             },
             {
@@ -6913,14 +6483,14 @@
             {
               "id": "e-getlight",
               "source": "n_getlight",
-              "target": "enter",
+              "target": "a_my",
               "sourceHandle": "default",
               "targetHandle": "in"
             },
             {
               "id": "e-nolight",
               "source": "n_nolight",
-              "target": "enter",
+              "target": "a_my",
               "sourceHandle": "default",
               "targetHandle": "in"
             },
@@ -6941,41 +6511,14 @@
             {
               "id": "e-lotus",
               "source": "n_lotus",
-              "target": "enter",
+              "target": "a_my",
               "sourceHandle": "default",
               "targetHandle": "in"
             },
             {
               "id": "e-nolotus",
               "source": "n_nolotus",
-              "target": "enter",
-              "sourceHandle": "default",
-              "targetHandle": "in"
-            },
-            {
-              "id": "e-init-me",
-              "source": "enter",
               "target": "a_my",
-              "sourceHandle": "default",
-              "targetHandle": "in",
-              "data": {
-                "condition": {
-                  "all": [
-                    {
-                      "type": "attrCompare",
-                      "left": "ent-player",
-                      "right": "ent-boss",
-                      "attr": "speed",
-                      "op": "gte"
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "id": "e-init-foe",
-              "source": "enter",
-              "target": "b_ai",
               "sourceHandle": "default",
               "targetHandle": "in"
             },
@@ -7037,14 +6580,14 @@
               "id": "e-tele-pass",
               "source": "tele",
               "target": "block",
-              "sourceHandle": "pass",
+              "sourceHandle": "parry",
               "targetHandle": "in"
             },
             {
               "id": "e-tele-good",
               "source": "tele",
               "target": "dodgeP",
-              "sourceHandle": "good",
+              "sourceHandle": "dodge",
               "targetHandle": "in"
             },
             {
@@ -7099,25 +6642,6 @@
               "source": "a_my",
               "target": "b_ai",
               "sourceHandle": "default",
-              "targetHandle": "in",
-              "data": {
-                "condition": {
-                  "all": [
-                    {
-                      "type": "var",
-                      "varId": "mineFirst",
-                      "op": "eq",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "id": "e-amy-loop",
-              "source": "a_my",
-              "target": "enter",
-              "sourceHandle": "default",
               "targetHandle": "in"
             },
             {
@@ -7161,28 +6685,51 @@
               }
             },
             {
-              "id": "e-bai-loop",
-              "source": "b_ai",
-              "target": "enter",
-              "sourceHandle": "default",
-              "targetHandle": "in",
-              "data": {
-                "condition": {
-                  "all": [
-                    {
-                      "type": "var",
-                      "varId": "mineFirst",
-                      "op": "eq",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            },
-            {
               "id": "e-bai-my",
               "source": "b_ai",
               "target": "a_my",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-river-mo-default",
+              "source": "n_river",
+              "target": "n_land",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-land-mo-default",
+              "source": "n_land",
+              "target": "n_mengpo",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-tea-mo-default",
+              "source": "n_tea",
+              "target": "n_nodrink",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-nodrink-mo-default",
+              "source": "n_nodrink",
+              "target": "n_nofollow",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-follow-mo-default",
+              "source": "n_follow",
+              "target": "n_nolight",
+              "sourceHandle": "default",
+              "targetHandle": "in"
+            },
+            {
+              "id": "e-nofollow-mo-default",
+              "source": "n_nofollow",
+              "target": "n_nolotus",
               "sourceHandle": "default",
               "targetHandle": "in"
             }
