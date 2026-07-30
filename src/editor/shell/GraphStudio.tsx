@@ -224,6 +224,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     () => canvasGraph.nodes.find((n) => n.id === selected) ?? null,
     [canvasGraph, selected],
   )
+  const selectedIsBlueprintEntry = !!selectedNode
+    && activeBlueprintId !== mainBlueprintId
+    && blueprints[activeBlueprintId]?.entry === selectedNode.id
+  const selectedCanConfigurePerformance = !!selectedNode
+    && !selectedIsBlueprintEntry
+    && !getSubFlow(selectedNode.data)
+    && !getSubFlowPack(selectedNode.data)
+  const effectivePreviewOpen = previewOpen && selectedCanConfigurePerformance
   /** 预览台读投影场景：canvasGraph（下钻时为包内图）+ 目录 overlays + 实体/变量（meta 缺省回落 demo）。 */
   const previewScenario = useMemo<GameScenario>(
     () => ({
@@ -623,8 +631,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           style={{
             // 展开预览时让节点面板最多占主区 90%，给 3:2 分栏足够空间；收起时仍给画布留至少 20%。
             // 预览收起时只留表单宽度——否则表单会被拉到 960px，面板照旧占地方，收起就白收了。
-            width: previewOpen ? 'clamp(960px, 66vw, 1380px)' : `clamp(${FORM_W_MIN}px, 28vw, 500px)`,
-            maxWidth: previewOpen ? '90%' : '80%',
+            width: effectivePreviewOpen ? 'clamp(960px, 66vw, 1380px)' : `clamp(${FORM_W_MIN}px, 28vw, 500px)`,
+            maxWidth: effectivePreviewOpen ? '90%' : '80%',
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
@@ -642,14 +650,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
             style={{
               flex: 1,
               minHeight: 0,
-              display: previewOpen ? 'grid' : 'flex',
-              gridTemplateColumns: previewOpen
+              display: effectivePreviewOpen ? 'grid' : 'flex',
+              gridTemplateColumns: effectivePreviewOpen
                 ? `${previewW == null ? `minmax(${PREVIEW_W_MIN}px, 3fr)` : `${previewW}px`} ${SPLITTER_W}px minmax(${FORM_W_MIN}px, 2fr)`
                 : undefined,
               overflowX: 'auto',
             }}
           >
-            {selectedNode && previewOpen ? (
+            {selectedNode && effectivePreviewOpen ? (
               <>
                 <div
                   data-testid="node-preview-column"
@@ -697,8 +705,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 focusedLifecycleIndex={focusedLifecycleIndex}
                 onFocusMount={focusMount}
                 onFocusLifecycle={focusLifecycle}
-                previewOpen={previewOpen}
-                onTogglePreview={togglePreview}
+                previewOpen={effectivePreviewOpen}
+                onTogglePreview={selectedCanConfigurePerformance ? togglePreview : undefined}
+                isBlueprintEntry={selectedIsBlueprintEntry}
                 onChange={setCanvasGraph}
                 onPacksChange={setPacks}
                 onEnsureOverlay={(overlay) => {
