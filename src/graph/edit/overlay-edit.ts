@@ -119,8 +119,8 @@ export function countOverlayReferences(graphs: Iterable<GameGraph>): Record<stri
       for (const mount of node.data.overlayNodes ?? []) {
         counts[mount.overlay] = (counts[mount.overlay] ?? 0) + 1
       }
-      const process = getSubProcess(node.data)
-      if (process) visit(process.graph)
+      const nested = (node.data as typeof node.data & { subProcess?: { graph?: GameGraph } }).subProcess?.graph
+      if (nested) visit(nested)
     }
   }
   for (const graph of graphs) visit(graph)

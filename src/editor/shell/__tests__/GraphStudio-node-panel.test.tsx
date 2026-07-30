@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameScenario } from '../../../runtime/schema/graph-schema'
+import { disconnect } from '../../../graph/edit/graph-edit'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { GraphStudio } from '../GraphStudio'
 
@@ -151,5 +152,49 @@ describe('GraphStudio 节点配置分栏', () => {
     expect(screen.queryByText('界面', { selector: 'b' })).toBeNull()
     expect(screen.queryByText('结算', { selector: 'b' })).toBeNull()
     expect(screen.queryByText('响应规则', { selector: 'b' })).toBeNull()
+  })
+
+  it('下钻子流程后新增节点和删除边只修改子蓝图', async () => {
+    const childGraph = {
+      nodes: [
+        { id: 'child-entry', type: 'perf' as const, position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '入口' } },
+        { id: 'child-after', type: 'perf' as const, position: { x: 240, y: 0 }, inputs: [], outputs: [], data: { name: '后续' } },
+      ],
+      edges: [{ id: 'child-edge', source: 'child-entry', target: 'child-after', sourceHandle: 'default', targetHandle: 'in' }],
+    }
+    const child: BlueprintDoc = { id: 'bp-child', title: 'Child', entry: 'child-entry', graph: childGraph }
+    const mainGraph = {
+      nodes: [{
+        id: 'container',
+        type: 'perf' as const,
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [],
+        data: { name: '子流程', subFlowPack: { id: child.id } },
+      }],
+      edges: [],
+    }
+    const main: BlueprintDoc = { id: MAIN_ID, title: 'Main', entry: 'container', graph: mainGraph }
+    useGraphScenario.setState({
+      blueprints: { [main.id]: main, [child.id]: child },
+      mainBlueprintId: main.id,
+      activeBlueprintId: main.id,
+      graph: mainGraph,
+      selectedNodeId: null,
+    })
+
+    render(<GraphStudio scenario={{ ...SCENARIO, graph: mainGraph }} />)
+    fireEvent.doubleClick(screen.getByTestId('rf__node-container'))
+    await waitFor(() => expect(useGraphScenario.getState().activeBlueprintId).toBe(child.id))
+
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加节点' }))
+    await waitFor(() => expect(useGraphScenario.getState().blueprints[child.id]!.graph.nodes).toHaveLength(3))
+    expect(useGraphScenario.getState().blueprints[main.id]!.graph).toEqual(mainGraph)
+
+    act(() => useGraphScenario.getState().setGraph((graph) => disconnect(graph, 'child-edge')))
+    const state = useGraphScenario.getState()
+    expect(state.blueprints[child.id]!.graph.edges).toHaveLength(0)
+    expect(state.blueprints[child.id]!.graph.nodes).toHaveLength(3)
+    expect(state.blueprints[main.id]!.graph).toEqual(mainGraph)
   })
 })

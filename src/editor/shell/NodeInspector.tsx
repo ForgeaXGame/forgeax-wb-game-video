@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
-import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
+import { getSubFlowPack } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { createOverlayMount, overlayMountId } from '../../runtime/schema/node-config-schema'
@@ -22,7 +22,6 @@ import {
   updateNodeData,
   upsertBranchEdge,
   makeEmptySubFlowPack,
-  attachSameGraphSubflow,
   type NodeDataPatch,
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
@@ -1033,9 +1032,8 @@ export function NodeInspector({
     ? '__unavailable__'
     : bgmRef
 
-  const nestRef = getSubFlow(d)
   const nestPack = getSubFlowPack(d)
-  const nestMode: 'none' | 'subflow' | 'pack' = nestPack ? 'pack' : nestRef ? 'subflow' : 'none'
+  const nestMode: 'none' | 'subflow' = nestPack ? 'subflow' : 'none'
   /** 容器与子蓝图入口都不是演出节点，不开放演出、界面或规则配置。 */
   const canConfigurePerformance = nestMode === 'none' && !isBlueprintEntry
   // 作用域 BGM：读原始值（不过 getNodeBgm），与面板下拉一致。
@@ -1122,38 +1120,22 @@ export function NodeInspector({
   const targetNodeOptions: OptItem[] = nodeIds
     .filter((id) => id !== node.id)
     .map((id) => ({ value: id, label: nodeLabel(id) }))
-  const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
+  const createAndAttachSubflow = () => {
+    if (!onPacksChange) return
+    const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子流程` })
+    onPacksChange([...packs, pack])
+    patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+  }
+  const setNestMode = (mode: 'none' | 'subflow') => {
     if (mode === 'none') {
       patchData({ subFlow: undefined, subFlowPack: undefined })
-      return
-    }
-    if (mode === 'subflow') {
-      // 只改嵌套属性；入口用新建专用节点（见 attachSameGraphSubflow），不自动下钻。
-      onChange(attachSameGraphSubflow(graph, node.id))
       return
     }
     if (nestPack) {
       patchData({ subFlow: undefined })
       return
     }
-    const existing = eligiblePacks[0]
-    if (existing) {
-      patchData({ subFlow: undefined, subFlowPack: { id: existing.id, version: existing.version } })
-      return
-    }
-    if (!onPacksChange) {
-      patchData({ subFlow: undefined, subFlowPack: { id: 'pack', version: '1' } })
-      return
-    }
-    const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
-    onPacksChange([...packs, pack])
-    patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
-  }
-  const createAndAttachPack = () => {
-    if (!onPacksChange) return
-    const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
-    onPacksChange([...packs, pack])
-    patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+    createAndAttachSubflow()
   }
   return (
     // 根上刻意不设 overflow：一旦它成为滚动容器，下方吸顶头部条就只相对它定位——而它高度随内容、
@@ -1253,23 +1235,17 @@ export function NodeInspector({
       {row('嵌套', (
         <select
           value={nestMode}
-          onChange={(e) => setNestMode(e.target.value as 'none' | 'subflow' | 'pack')}
+          onChange={(e) => setNestMode(e.target.value as 'none' | 'subflow')}
           style={{ flex: 1 }}
-          title="无 / 同图子流程 / 外部子蓝图（互斥）"
+          title="无 / 子流程（独立蓝图作用域）"
         >
           <option value="none">无</option>
-          <option value="subflow">同图子流程</option>
-          <option value="pack">子蓝图</option>
+          <option value="subflow">子流程</option>
         </select>
       ))}
-      {nestMode === 'subflow' && row('子流程入口', (
-        <span style={{ flex: 1, opacity: 0.85 }} title="由同图子流程自动创建/绑定，不可手改">
-          {nestRef ? nodeLabel(nestRef) : '（未绑定）'}
-        </span>
-      ))}
-      {nestMode === 'pack' && (
+      {nestMode === 'subflow' && (
         <>
-          {row('子蓝图包', (
+          {row('子流程蓝图', (
             <select
               value={packKey}
               onChange={(e) => {
@@ -1287,7 +1263,7 @@ export function NodeInspector({
                 patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
               }}
               style={{ flex: 1 }}
-              title="引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑"
+              title="子流程使用独立蓝图；双击容器下钻编辑"
             >
               {eligiblePacks.length === 0 ? <option value="">无</option> : null}
               {eligiblePacks.map((p) => (
@@ -1296,8 +1272,8 @@ export function NodeInspector({
             </select>
           ))}
           {row('', (
-            <button type="button" onClick={createAndAttachPack} disabled={!onPacksChange} title="新建空子蓝图并挂到本节点">
-              ＋ 新建子蓝图
+            <button type="button" onClick={createAndAttachSubflow} disabled={!onPacksChange} title="新建独立子流程并挂到本节点">
+              ＋ 新建子流程
             </button>
           ))}
         </>
