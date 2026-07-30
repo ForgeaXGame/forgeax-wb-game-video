@@ -70,6 +70,22 @@ describe('GameStage buffered playback', () => {
     expect(next).toHaveStyle({ opacity: '1' })
   })
 
+  it('pauses and resumes the active video while applying playback rate', () => {
+    const pause = vi.spyOn(window.HTMLMediaElement.prototype, 'pause')
+    const play = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+    const { container, rerender } = render(<GameStage {...props({ paused: true, playbackRate: 2 })} />)
+    const video = videoFor(container, '/a.mp4')
+    fireEvent.loadedData(video)
+
+    expect(video.playbackRate).toBe(2)
+    expect(pause).toHaveBeenCalled()
+    const playsWhilePaused = play.mock.calls.length
+
+    rerender(<GameStage {...props({ paused: false, playbackRate: 0.5 })} />)
+    expect(video.playbackRate).toBe(0.5)
+    expect(play.mock.calls.length).toBeGreaterThan(playsWhilePaused)
+  })
+
   it('reuses a preloaded video element instead of assigning its src during the switch', () => {
     const nextClip = clip('b')
     const { container, rerender } = render(

@@ -20,7 +20,7 @@ import { VersionPicker } from './VersionPicker'
 import { PlayerRootContext } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
 import { bootEditorSkins } from '../init'
-import { BgmPlayer, GameStage } from '../../runtime/play'
+import { BgmPlayer, GameStage, PlaybackClockProvider, useControlledPlaybackTimeout } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
@@ -350,6 +350,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
    * 「从此试玩」才能 jump 到该图节点。`playNonce`：从此试玩/钉住重开时强制吃最新图。
    */
   const [playNonce, setPlayNonce] = useState(0)
+  const [playPaused, setPlayPaused] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const pendingJumpRef = useRef<string | null>(null)
   const session = useMemo(
     () => {
@@ -402,16 +404,17 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   /** 床轨解析器（引擎只抛资产 id，URL 归壳层）；稳定引用，避免每帧让 BgmPlayer 重跑 effect。 */
   const resolveBgm = useCallback((id: string | undefined) => resolveMediaSrc(id, game), [game])
 
-  useEffect(() => {
-    // 无视频：durationMs 到点推进（逻辑节拍节点）。
-    // 有视频：durationMs 作播放时长上限，改由 <video> onTimeUpdate 处理（见 videoDurationCapReached）。
-    if (snap.phase === 'ended' || !snap.clip?.durationMs || snap.clip.mediaId) return
-    const t = setTimeout(() => endPerformance(), snap.clip.durationMs)
-    return () => clearTimeout(t)
-  }, [snap.clip?.nodeId, snap.phase, snap.clip?.durationMs, snap.clip?.mediaId, endPerformance])
+  useControlledPlaybackTimeout(
+    endPerformance,
+    snap.clip?.durationMs,
+    { paused: playPaused, rate: playbackRate },
+    snap.phase === 'ended' || !!snap.clip?.mediaId,
+    `${runKey}:${playEpoch}:${snap.clip?.nodeId ?? ''}`,
+  )
 
   /** 从此试玩：钉住入口 + 打开浮层 + 以当前蓝图最新图重建 session 再 seek。 */
   const jump = useCallback((nodeId: string) => {
+    setPlayPaused(false)
     setPlayFromNodeId(nodeId)
     setPlayOpen(true)
     pendingJumpRef.current = nodeId
@@ -419,6 +422,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [])
   /** 浮层重开：回到钉住的入口节点；无钉住时回退整局 bumpRun。 */
   const restartPlayFrom = useCallback(() => {
+    setPlayPaused(false)
     if (!playFromNodeId) {
       bumpRun()
       return
@@ -586,10 +590,27 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 {snap.currentNodeId ? ` · ${snap.clip?.name || playNameOf(snap.currentNodeId)}` : ''}
               </span>
               <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  onClick={() => setPlayPaused((value) => !value)}
+                  title={playPaused ? '继续试玩' : '暂停试玩'}
+                  aria-label={playPaused ? '继续试玩' : '暂停试玩'}
+                  style={{ background: 'none', border: 'none', color: playPaused ? '#f5bd75' : '#c9d1e0', cursor: 'pointer', padding: 0 }}
+                >
+                  {playPaused ? '▶' : 'Ⅱ'}
+                </button>
+                <select
+                  aria-label="试玩倍速"
+                  value={playbackRate}
+                  onChange={(event) => setPlaybackRate(Number(event.target.value))}
+                  style={{ border: '1px solid #403830', borderRadius: 4, background: '#1b1713', color: '#c9d1e0', fontSize: 10, padding: '1px 2px' }}
+                >
+                  {[0.5, 1, 1.5, 2].map((rate) => <option key={rate} value={rate}>{rate}x</option>)}
+                </select>
                 <button onClick={restartPlayFrom} title={playFromNodeId ? `重开 · 回到 ${nameOf(playFromNodeId)}` : '重开'} style={{ background: 'none', border: 'none', color: '#f08840', cursor: 'pointer', padding: 0 }}>▶ 重开</button>
                 <button onClick={() => setPlayOpen(false)} title="隐藏" style={{ background: 'none', border: 'none', color: '#9aa2b1', cursor: 'pointer', padding: 0 }}>✕</button>
               </span>
             </div>
+            <PlaybackClockProvider value={{ paused: playPaused, rate: playbackRate }}>
             <PlayerRootContext.Provider value={playRootEl}>
             <div
               ref={bindPlayRoot}
@@ -600,7 +621,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
             >
               {/* 床轨：独立音频通道（视频恒 muted）。挂在浮层里 → 关掉试玩即随卸载停播；
                   key 随 session 重建换 → 重开不把上一局的曲子拖进新局（同 GraphPlaySurface）。 */}
-              <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} />
+              <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} paused={playPaused} playbackRate={playbackRate} />
 
               {/* 演出 + 叠层：共享 runtime/play 的 GameStage。videoKey 带 playEpoch → 同节点再 jump 强制 remount。 */}
               <GameStage
@@ -614,12 +635,15 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   hud: snap.hud,
                   condition: { state: session.runtime.state, visited: session.runtime.state.visited },
                 }}
-                onEmit={(elementId, key) => setSnap(sessionRef.current.emitEvent(elementId, key))}
+                onEmit={(elementId, key) => { if (!playPaused) setSnap(sessionRef.current.emitEvent(elementId, key)) }}
                 onTick={(nowMs) => setSnap(sessionRef.current.tick(nowMs))}
                 onPerformanceEnd={endPerformance}
+                paused={playPaused}
+                playbackRate={playbackRate}
               />
             </div>
             </PlayerRootContext.Provider>
+            </PlaybackClockProvider>
           </div>
         )}
       </div>
