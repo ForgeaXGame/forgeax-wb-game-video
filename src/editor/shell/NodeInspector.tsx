@@ -888,10 +888,14 @@ function EdgeRouteEditor({
       {row('权重', (
         <input
           type="number"
-          value={edge.data?.weight ?? 0}
-          onChange={(ev) => onPatchData({ weight: Number(ev.target.value) || undefined })}
+          value={edge.data?.weight ?? ''}
+          onChange={(ev) => {
+            const value = ev.target.value
+            onPatchData({ weight: value === '' ? undefined : Number(value) })
+          }}
           style={{ flex: 1 }}
-          title="多条无条件默认推进边时按权重随机；0=未设"
+          placeholder="未设"
+          title="多条无条件默认推进边时按权重随机；留空表示未设"
         />
       ))}
       <button type="button" style={{ color: '#ff6b6b', marginTop: 4 }} onClick={onDelete}>🗑 删除边</button>
