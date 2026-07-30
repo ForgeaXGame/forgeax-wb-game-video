@@ -10,7 +10,26 @@ export const GRAPH_VIDEO_VIEW_CSS = `
 .gvv-controls button { flex: none; width: 32px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--gc-accent-line); background: var(--gc-accent-soft); color: var(--gc-text); border-radius: 7px; cursor: pointer; font-size: 13px; line-height: 1; }
 .gvv-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .gvv-time { color: var(--gc-faint); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.gvv-timeline { min-width: 72px; flex: 1; accent-color: var(--gc-accent); cursor: pointer; }
+.gvv-timeline {
+  --gvv-progress: 0%;
+  min-width: 72px;
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--gc-accent) 0 var(--gvv-progress), var(--gc-line-soft) var(--gvv-progress) 100%);
+  cursor: pointer;
+}
+.gvv-timeline::-webkit-slider-runnable-track { height: 4px; background: transparent; border-radius: inherit; }
+.gvv-timeline::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  appearance: none;
+  border: 2px solid var(--gc-panel2);
+  border-radius: 50%;
+  background: var(--gc-accent);
+}
 .gvv-controls .gvv-loop,
 .gvv-controls .gvv-mute { position: relative; }
 .gvv-controls .gvv-loop:not(.is-on)::after {

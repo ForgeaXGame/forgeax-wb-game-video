@@ -48,7 +48,10 @@ export function GraphVideoPreviewPanel({
     function reportPlayhead(ms: number): void {
       const next = Math.max(0, Math.min(maxMs, Math.round(ms)))
       playheadMsRef.current = next
-      if (timelineRef.current) timelineRef.current.value = String(next)
+      if (timelineRef.current) {
+        timelineRef.current.value = String(next)
+        timelineRef.current.style.setProperty('--gvv-progress', `${(next / maxMs) * 100}%`)
+      }
       if (timeRef.current) timeRef.current.textContent = `${fmtTime(next)} / ${fmtTime(maxMs)}`
     }
 
