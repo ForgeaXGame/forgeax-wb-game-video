@@ -6,23 +6,24 @@ import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
+import { resolveTextValue } from '../numericValue'
 
 export const DialogueManifest: ComponentManifest = {
   id: 'Dialogue',
   label: '字幕/对白',
   inputs: [
-    { key: 'speaker', label: '说话人', valueType: 'string' },
-    { key: 'text', label: '台词', valueType: 'string', default: '……' },
+    { key: 'speaker', label: '说话人', valueType: 'string', component: 'numberExpr' },
+    { key: 'text', label: '台词', valueType: 'string', default: '……', component: 'numberExpr' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color' },
     { key: 'fontSize', label: '字号', valueType: 'number' },
   ],
   events: [],
 }
 
-export function Dialogue({ overlay }: OverlayProps): ReactNode {
+export function Dialogue({ overlay, ctx }: OverlayProps): ReactNode {
   injectCss('dialogue', DIALOGUE_CSS)
-  const speaker = typeof overlay.inputs.speaker === 'string' ? overlay.inputs.speaker : ''
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '……'
+  const speaker = resolveTextValue(overlay.inputs.speaker, ctx) ?? ''
+  const text = resolveTextValue(overlay.inputs.text, ctx) || '……'
   const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2 })
 
   return (

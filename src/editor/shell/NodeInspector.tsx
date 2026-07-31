@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Entity, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
-import { getSubFlowPack, getSubFlow } from '../../runtime/schema/graph-schema'
+import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
 import { patchNodeBgm, type AudioOption } from './bgm-authoring'
 import type { NodeAction, OverlayReaction, Reaction, OverlayEventRef } from '../../runtime/schema/node-config-schema'
 import { createOverlayMount, overlayMountId } from '../../runtime/schema/node-config-schema'
@@ -22,7 +22,7 @@ import {
   updateNodeData,
   upsertBranchEdge,
   makeEmptySubFlowPack,
-  attachSameGraphSubflow,
+  attachSubProcess,
   type NodeDataPatch,
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
@@ -867,7 +867,6 @@ export function NodeInspector({
   onFocusLifecycle,
   previewOpen,
   onTogglePreview,
-  isBlueprintEntry = false,
   onChange,
   onPacksChange,
   onEnsureOverlay,
@@ -911,8 +910,6 @@ export function NodeInspector({
   previewOpen?: boolean
   /** 传了才渲染头部弧形把手：切换宿主左侧预览区的展开/收起。 */
   onTogglePreview?: () => void
-  /** 当前节点是否为非主蓝图的入口标识节点；此类节点只承担蓝图入口语义。 */
-  isBlueprintEntry?: boolean
   onChange: (g: GameGraph) => void
   onPacksChange?: (packs: SubFlowPackDef[]) => void
   /**
@@ -938,9 +935,12 @@ export function NodeInspector({
   // 曲子再随 ref 一起写进去。换节点 = 换一份草稿。
   const [draftBgmMode, setDraftBgmMode] = useState<'push' | 'replace'>('push')
   const [draftBgmModeNode, setDraftBgmModeNode] = useState(nodeId)
+  /** 「嵌套=子蓝图」但尚未挂包：不落盘空指针/不自动建库，只撑住面板模式。 */
+  const [packModeUnbound, setPackModeUnbound] = useState(false)
   if (nodeId !== draftBgmModeNode) {
     setDraftBgmModeNode(nodeId)
     setDraftBgmMode('push')
+    setPackModeUnbound(false)
   }
   const mountCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   useEffect(() => {
@@ -975,11 +975,17 @@ export function NodeInspector({
     ? '__unavailable__'
     : bgmRef
 
-  const nestRef = getSubFlow(d)
+  const nestProcess = getSubProcess(d)
   const nestPack = getSubFlowPack(d)
-  const nestMode: 'none' | 'subflow' | 'pack' = nestPack ? 'pack' : nestRef ? 'subflow' : 'none'
-  /** 容器与子蓝图入口都不是演出节点，不开放演出、界面或规则配置。 */
-  const canConfigurePerformance = nestMode === 'none' && !isBlueprintEntry
+  const nestMode: 'none' | 'process' | 'pack' = nestPack
+    ? 'pack'
+    : nestProcess
+      ? 'process'
+      : packModeUnbound
+        ? 'pack'
+        : 'none'
+  /** 只有容器不是演出节点；入口仍是可完整配置的第一个业务节点。 */
+  const canConfigurePerformance = nestMode === 'none'
   // 作用域 BGM：读原始值（不过 getNodeBgm），与面板下拉一致。
   const bgm = d.bgm
   // 手写/AI 生成的非法 mode 在下拉里显示成 push（validate 会把它判 error），别让 select 变成
@@ -1068,38 +1074,33 @@ export function NodeInspector({
   const targetNodeOptions: OptItem[] = nodeIds
     .filter((id) => id !== node.id)
     .map((id) => ({ value: id, label: nodeLabel(id) }))
-  const setNestMode = (mode: 'none' | 'subflow' | 'pack') => {
+  const setNestMode = (mode: 'none' | 'process' | 'pack') => {
     if (mode === 'none') {
-      patchData({ subFlow: undefined, subFlowPack: undefined })
+      if (nestProcess && typeof confirm === 'function' && !confirm('取消内嵌子流程会删除其中的全部节点和连线，继续吗？')) return
+      setPackModeUnbound(false)
+      patchData({ subProcess: undefined, subFlowPack: undefined })
       return
     }
-    if (mode === 'subflow') {
-      // 只改嵌套属性；入口用新建专用节点（见 attachSameGraphSubflow），不自动下钻。
-      onChange(attachSameGraphSubflow(graph, node.id))
+    if (mode === 'process') {
+      setPackModeUnbound(false)
+      onChange(attachSubProcess(graph, node.id))
       return
     }
+    // 子蓝图：只切模式，不自动建库、不预挂第一个候选；挂包走下拉或「＋ 新建子蓝图」。
     if (nestPack) {
-      patchData({ subFlow: undefined })
+      setPackModeUnbound(false)
+      patchData({ subProcess: undefined })
       return
     }
-    const existing = eligiblePacks[0]
-    if (existing) {
-      patchData({ subFlow: undefined, subFlowPack: { id: existing.id, version: existing.version } })
-      return
-    }
-    if (!onPacksChange) {
-      patchData({ subFlow: undefined, subFlowPack: { id: 'pack', version: '1' } })
-      return
-    }
-    const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
-    onPacksChange([...packs, pack])
-    patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+    setPackModeUnbound(true)
+    patchData({ subProcess: undefined, subFlowPack: undefined })
   }
   const createAndAttachPack = () => {
     if (!onPacksChange) return
     const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
+    setPackModeUnbound(false)
     onPacksChange([...packs, pack])
-    patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+    patchData({ subProcess: undefined, subFlowPack: { id: pack.id, version: pack.version } })
   }
   return (
     // 根上刻意不设 overflow：一旦它成为滚动容器，下方吸顶头部条就只相对它定位——而它高度随内容、
@@ -1199,18 +1200,18 @@ export function NodeInspector({
       {row('嵌套', (
         <select
           value={nestMode}
-          onChange={(e) => setNestMode(e.target.value as 'none' | 'subflow' | 'pack')}
+          onChange={(e) => setNestMode(e.target.value as 'none' | 'process' | 'pack')}
           style={{ flex: 1 }}
-          title="无 / 同图子流程 / 外部子蓝图（互斥）"
+          title="无 / 私有内嵌子流程 / 外部子蓝图（互斥）"
         >
           <option value="none">无</option>
-          <option value="subflow">同图子流程</option>
+          <option value="process">内嵌子流程</option>
           <option value="pack">子蓝图</option>
         </select>
       ))}
-      {nestMode === 'subflow' && row('子流程入口', (
-        <span style={{ flex: 1, opacity: 0.85 }} title="由同图子流程自动创建/绑定，不可手改">
-          {nestRef ? nodeLabel(nestRef) : '（未绑定）'}
+      {nestMode === 'process' && row('子流程入口', (
+        <span style={{ flex: 1, opacity: 0.85 }} title="入口属于容器私有子图，不可跨层连接">
+          {nestProcess?.entry ?? '（未绑定）'}
         </span>
       ))}
       {nestMode === 'pack' && (
@@ -1221,6 +1222,7 @@ export function NodeInspector({
               onChange={(e) => {
                 const v = e.target.value
                 if (!v) {
+                  setPackModeUnbound(true)
                   patchData({ subFlowPack: undefined })
                   return
                 }
@@ -1230,12 +1232,13 @@ export function NodeInspector({
                   alert(`不能引用「${pack.title ?? pack.id}」：会造成蓝图引用环（自身或间接引用回本蓝图）。`)
                   return
                 }
-                patchData({ subFlow: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+                setPackModeUnbound(false)
+                patchData({ subProcess: undefined, subFlowPack: { id: pack.id, version: pack.version } })
               }}
               style={{ flex: 1 }}
               title="引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑"
             >
-              {eligiblePacks.length === 0 ? <option value="">无</option> : null}
+              <option value="">无</option>
               {eligiblePacks.map((p) => (
                 <option key={`${p.id}@${p.version}`} value={`${p.id}@${p.version}`}>{packLabel(p)}</option>
               ))}

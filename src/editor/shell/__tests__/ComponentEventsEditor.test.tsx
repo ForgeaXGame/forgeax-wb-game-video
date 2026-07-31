@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
@@ -113,7 +113,8 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: '应用公式' })).not.toBeDisabled()
+    const content = screen.getByRole('combobox', { name: '数值内容' })
+    expect(content.querySelector('option[value="formula:formula-damage"]')).toBeTruthy()
   })
 })
 
@@ -363,7 +364,17 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const current = screen.getByText('当前血量').closest('label')!.querySelector('input') as HTMLInputElement
+    const currentField = screen.getByText('当前血量').parentElement!
+    expect(screen.getByText(/不能增删组件或调整组件大小/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /调整BattlePlayerHpBar大小/ })).toBeNull()
+    expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
+    expect(currentField.style.columnGap).toBe('8px')
+    expect(currentField.style.fontSize).toBe('11px')
+    const modeRow = screen.getByRole('radiogroup', { name: '血量方式' }).parentElement!
+    expect(modeRow.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
+    expect(screen.getByRole('radio', { name: '分别设置' })).toHaveAttribute('aria-checked', 'true')
+    const current = currentField
+      .querySelector('input[aria-label="常量数值"]') as HTMLInputElement
     expect(current.disabled).toBe(false)
     fireEvent.change(current, { target: { value: '60' } })
     expect(onPatchChild).toHaveBeenCalledWith('hp', {
@@ -371,7 +382,39 @@ describe('OverlaySchemeEditor selected child', () => {
     })
   })
 
-  it('keeps catalog event actions disabled for locked base schemes', () => {
+  it('renders entity name references from rule metadata in the interface canvas', () => {
+    const { container } = render(
+      <OverlaySchemeEditor
+        overlayId="base:BattleEnemyHpBar"
+        overlay={{
+          id: 'base:BattleEnemyHpBar',
+          children: [{
+            id: 'hp',
+            component: 'BattleEnemyHpBar',
+            inputs: { label: { ref: 'entity.ent-player.name' } },
+          }],
+        }}
+        entities={{
+          'ent-player': { id: 'ent-player', name: '空藏', attrs: { hp: 80 } },
+          'ent-boss': { id: 'ent-boss', name: '小怪', attrs: { hp: 100 } },
+        }}
+        variables={{}}
+        usageCount={0}
+        locked
+        onRename={vi.fn()}
+        onRemove={vi.fn()}
+        onAddChild={vi.fn()}
+        onRemoveChild={vi.fn()}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.ks-hud-boss-name')?.textContent).toBe('空藏')
+  })
+
+  it('keeps base structure locked while allowing catalog event actions', () => {
+    const onReactionsChange = vi.fn()
     render(
       <OverlaySchemeEditor
         overlayId="base:InkYingMo"
@@ -385,11 +428,17 @@ describe('OverlaySchemeEditor selected child', () => {
         onAddChild={vi.fn()}
         onRemoveChild={vi.fn()}
         onPatchChild={vi.fn()}
-        onReactionsChange={vi.fn()}
+        onReactionsChange={onReactionsChange}
       />,
     )
-    expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(true)
+    expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(false)
     expect(screen.getByText('choice:ying')).toBeTruthy()
+    const effectButtons = screen.getAllByRole('button', { name: '＋ 效果' })
+    const spawnButtons = screen.getAllByRole('button', { name: '＋ 生成组件' })
+    expect(effectButtons[0]).not.toBeDisabled()
+    expect(spawnButtons[0]).not.toBeDisabled()
+    fireEvent.click(effectButtons[0]!)
+    expect(onReactionsChange).toHaveBeenCalled()
   })
 
   it('does not render an event section for a component without exported events', () => {
@@ -465,9 +514,9 @@ describe('ComponentFormFields defaults', () => {
     )
 
     expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
-    const applyFormula = screen.getByRole('button', { name: '应用公式' })
-    expect(applyFormula).not.toBeDisabled()
-    fireEvent.click(applyFormula)
+    fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
+      target: { value: `formula:${formula.id}` },
+    })
     expect(onChange).toHaveBeenCalledWith({
       value: {
         expr: '-12',
@@ -477,6 +526,118 @@ describe('ComponentFormFields defaults', () => {
           holeBindings: {},
         },
       },
+    })
+  })
+
+  it('shows inferred state content without rewriting the stored expression', () => {
+    const onChange = vi.fn()
+    render(
+      <ComponentFormFields
+        componentId="DamageFloatText"
+        values={{ value: { expr: 'entity.hero.attr.hp' } }}
+        pickers={{
+          entities: {
+            hero: { id: 'hero', name: '主角', attrs: { hp: 80, attack: 12 } },
+          },
+          variables: {
+            qi: { id: 'qi', name: '气力', initial: 2 },
+          },
+        }}
+        onChange={onChange}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:hero:hp')
+    expect(screen.getByText(/常量：10 · 状态：entity\.hero\.attr\.hp \/ var\.qi/)).toBeTruthy()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('switches hp bars between bound and custom value modes', () => {
+    const onChange = vi.fn()
+    let latest: Record<string, unknown> = {}
+    function Harness(): JSX.Element {
+      const [values, setValues] = useState<Record<string, unknown>>({})
+      latest = values
+      return (
+        <ComponentFormFields
+          componentId="BattlePlayerHpBar"
+          values={values}
+          pickers={{
+            entities: {
+              'ent-player': {
+                id: 'ent-player',
+                name: '空藏',
+                attrs: { hp: 80, hpMax: 100 },
+              },
+            },
+          }}
+          onChange={(next) => {
+            setValues(next)
+            onChange(next)
+          }}
+        />
+      )
+    }
+    render(<Harness />)
+
+    expect(screen.getByRole('radio', { name: '绑定属性' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('绑定对象')).toBeTruthy()
+    expect(screen.queryByText('当前血量')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: '分别设置' }))
+
+    const currentField = screen.getByText('当前血量').parentElement!
+    const maxField = screen.getByText('最大血量').parentElement!
+    const qiField = screen.getByText('当前气力').parentElement!
+    const qiMaxField = screen.getByText('气力上限').parentElement!
+    const labelField = screen.getByText('显示名').parentElement!
+    const current = within(currentField).getByRole('combobox', { name: '数值内容' })
+    expect(currentField.style.display).toBe('grid')
+    expect(currentField.style.gridTemplateColumns).toBe('max-content minmax(0, 1fr)')
+    expect(currentField.style.flexBasis).toBe('100%')
+    expect(maxField.style.flexBasis).toBe('100%')
+    expect(qiField.style.flexBasis).toBe('100%')
+    expect(qiMaxField.style.flexBasis).toBe('100%')
+    expect(labelField.style.flexBasis).toBe('100%')
+    expect(labelField.compareDocumentPosition(currentField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('绑定对象')).toBeNull()
+    expect(current).toHaveValue('entity:ent-player:hp')
+    expect(within(maxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:ent-player:hpMax')
+    expect(within(qiField).getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
+    expect(within(qiMaxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
+    expect(within(labelField).getByRole('combobox', { name: '文本内容' })).toHaveValue('literal')
+    expect(latest.current).toBeTruthy()
+    expect(latest.max).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('radio', { name: '绑定属性' }))
+    expect(latest.current).toBeUndefined()
+    expect(latest.max).toBeUndefined()
+    expect(screen.getByText('绑定对象')).toBeTruthy()
+    expect(onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses the dynamic text picker for subtitle speaker and text', () => {
+    const onChange = vi.fn()
+    render(
+      <ComponentFormFields
+        componentId="Dialogue"
+        values={{}}
+        pickers={{
+          entities: {
+            hero: { id: 'hero', name: '空藏', attrs: { hp: 80 } },
+          },
+          variables: {
+            qi: { id: 'qi', name: '气力', initial: 3 },
+          },
+        }}
+        onChange={onChange}
+      />,
+    )
+
+    const pickers = screen.getAllByRole('combobox', { name: '文本内容' })
+    expect(pickers).toHaveLength(2)
+    fireEvent.change(pickers[0]!, { target: { value: 'entity-name:hero' } })
+    expect(onChange).toHaveBeenCalledWith({
+      speaker: { ref: 'entity.hero.name' },
     })
   })
 })

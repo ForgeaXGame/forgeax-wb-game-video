@@ -24,6 +24,7 @@ export {
   BattleSkillManifest,
   DamageFloatTextManifest,
   GainFloatTextManifest,
+  TextOptionManifest,
   BattlePlayerHpBarManifest,
   BattleEnemyHpBarManifest,
 } from './component-host/components'

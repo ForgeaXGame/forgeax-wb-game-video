@@ -52,6 +52,7 @@ const DYNAMIC_SCHEME: Overlay = {
     makeNewComponentPreset('BattleParry', 'qte-parry'),
     makeNewComponentPreset('InkYingMo', 'choice-yingmo'),
     makeNewComponentPreset('BattleSkill', 'choice-skills'),
+    makeNewComponentPreset('TextOption', 'text-option'),
     makeNewComponentPreset('DamageFloatText', 'damage-float'),
     makeNewComponentPreset('GainFloatText', 'gain-float'),
   ],
@@ -80,6 +81,18 @@ export function listCustomSchemeIds(overlays: Record<string, Overlay> | undefine
   return sortSchemeIds(
     Object.keys(overlays ?? {}).filter((id) => !id.startsWith('node:') && !id.startsWith(BASE_HUD_PREFIX)),
   )
+}
+
+/**
+ * 界面 tab 的「自定义覆盖物」列表：沿用通用排序，但让 overlays 中最先写入的自定义方案置顶。
+ * 新建方案会 prepend 到 overlays，因此它在后续重渲染和重新载入后仍保持列表第一项。
+ */
+export function listInterfaceCustomSchemeIds(overlays: Record<string, Overlay> | undefined): string[] {
+  const all = overlays ?? {}
+  const ids = listCustomSchemeIds(all)
+  const firstStoredId = Object.keys(all).find((id) => ids.includes(id))
+  if (!firstStoredId) return ids
+  return [firstStoredId, ...ids.filter((id) => id !== firstStoredId)]
 }
 
 /**
@@ -115,6 +128,7 @@ export const NEW_COMPONENT_PRESETS: Array<{
   { id: 'BattleParry', label: 'QTE · 防反', make: (id) => makeNewComponentPreset('BattleParry', id) },
   { id: 'InkYingMo', label: '选项 · 應默', make: (id) => makeNewComponentPreset('InkYingMo', id) },
   { id: 'BattleSkill', label: '选项 · 技能条', make: (id) => makeNewComponentPreset('BattleSkill', id) },
+  { id: 'TextOption', label: '交互 · 文字', make: (id) => makeNewComponentPreset('TextOption', id) },
   { id: 'DamageFloatText', label: '飘字 · 伤害', make: (id) => makeNewComponentPreset('DamageFloatText', id) },
   { id: 'GainFloatText', label: '飘字 · 增益', make: (id) => makeNewComponentPreset('GainFloatText', id) },
   { id: 'BattlePlayerHpBar', label: 'HUD · 我方血条', make: (id) => makeNewComponentPreset('BattlePlayerHpBar', id) },
