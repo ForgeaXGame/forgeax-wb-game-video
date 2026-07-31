@@ -152,15 +152,15 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 
 ### `numberExpr`：把"允许表达式"收敛成 `ComponentInput.component` 标记
 
-编辑器判断"这个输入允许动态取值"，走的是同一套 `ComponentInput.component` 机制（跟
-`color`/`entity`/`attr` 同源）：`numberExpr` 的 number 字段存 `NumOrExpr`
-（`number | { expr: string; pick?: ValuePick }`），string 字段存文本或 `{ ref: string }`。
-两者共享内容选择体验，但分别交给数值表达式引擎和字符串引用解析器。
+编辑器判断"这个输入允许表达式"，走的是同一套 `ComponentInput.component` 机制（跟
+`color`/`entity`/`attr` 同源）：新增取值 `numberExpr`，语义 = 该字段存
+`NumOrExpr`（`number | { expr: string; pick?: ValuePick }`，`graph-schema.ts`），渲染器换成
+既有的 `ValueExprEditor`（经 `editors.tsx` 的 `ValueInput` 薄封装）。
 
-**边界（务必遵守）**：`numberExpr` 只表示编辑器允许写数值或表达式，运行时消费方仍必须明确
-求值。`GraphEffect.value`、`NodeAction.spawn.inputs` 由引擎求值；`components/new` 下的动态
-飘字与玩家/敌方血条通过 `components/numericValue.ts` 求值。其它挂载态组件的 number 字段不会
-因为打了 `numberExpr` 标记就自动解表达式，新增标记时必须同时补运行时消费。
+**边界（务必遵守）**：运行时只在三处真正对 `{expr}` 求值——`GraphEffect.value`、
+`NodeAction.spawn.inputs`（引擎 `resolveBind` 统一求值）、`floatText.expr`（组件 `render()`
+钩子显式 `evalExpr`）。`OverlayChild.inputs` 里其余挂载态组件的 number 字段引擎不解 `{expr}`，
+**不要**给这些字段打 `numberExpr` 标记——打了也不会生效，是假承诺。
 
 落地范围：
 
@@ -180,13 +180,15 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
   （绑定 `pickers?.entities/variables`）。新增 `SpawnInputsEditor.pickers?: EditorPickerCtx`
   参数，经 `NodeInspector.tsx` → 直传、`SettlementEditor.tsx` → `SettlementSpawnEditor.tsx`
   两层补传 `entities`/`variables`。
-- `ComponentFormFields`（`component-form-fields.tsx`）的通用 `numberExpr` 分支直接列出具体实体属性、
-  变量和具名公式；固定值使用普通输入框。简单历史引用只生成临时编辑视图，不会在展示时补 sidecar
-  或改写原值；无 sidecar 的复杂表达式保持只读。无默认值的字段直接平铺完整控件，并以
-  “使用组件实时值”表示未覆盖；选择具体内容后才写入，切回实时值时删除覆盖。
-- `components/numericValue.ts` 是新组件共享的只读求值器：数值接受 number、旧字符串表达式和
-  `{ expr }`；文本接受字面量和 `{ ref }`，例如 `entity.ent-player.name`。数值从运行态求值时
-  克隆当前位置的 RNG，保证 React 渲染中的 `rand()` / `chance()` 不推进游戏随机状态。
+- `ComponentFormFields`（`component-form-fields.tsx`）新增通用 `numberExpr` 分支，供以后新组件
+  在 manifest 里打标记即可直接获得表达式下拉——当前没有强制消费者，是预留入口。
+- `NumOrExpr` → 求值器认的字符串源码这步转换（`number`→`String`／`{expr}`→`.expr`）**不设跨模块共享
+  helper**：三个真正求值的消费方（`FloatText.tsx` 的 `resolveFloatTextDisplay`、`graphMaterialOps.ts` 的
+  `floatPreviewParams`、`previewResolve.ts` 的 `resolveFloatTextPreviewLabel`）各自在本地写一个不
+  导出的小函数，与 `apply-effects.ts::resolveValue` 处理 `GraphEffect.value` 的既有写法一致——
+  `runtime/engine/expr.ts` 只认字符串，不感知 `NumOrExpr` 这个「值形状」概念，也不引入
+  schema 的类型依赖。同理，`FloatTextParams.expr` 也不声明成 `NumOrExpr`，
+  而是本地最窄类型 `number | { expr: string }`（不含 `pick`，也不从 schema import `NumOrExpr`）。
 
 ## 8. 运算符符号化统一：`OpSymbolButtons` + Effect 层减/除靠取反/取倒数（2026-07-20，已完成）
 
