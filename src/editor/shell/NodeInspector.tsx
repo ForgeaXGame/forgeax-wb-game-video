@@ -167,7 +167,7 @@ function HoverCard({
       ref={anchorRef}
       data-focus-anchor={anchorId}
       className={nested ? `${HOVER_CARD_CLASS} ${HOVER_CARD_NESTED}` : HOVER_CARD_CLASS}
-      style={accent ? { outline: '1px solid #f08840', outlineOffset: 1, background: 'rgba(240,136,64,.08)' } : undefined}
+      style={accent ? { outline: '1px solid #f08840', outlineOffset: 1 } : undefined}
     >
       <div
         style={{
@@ -411,9 +411,7 @@ function LifecycleReactionsEditor({
               border: `1px solid ${focused ? '#5ad4c0' : '#2a2a2a'}`,
               borderRadius: 6,
               padding: 6,
-              background: focused ? 'rgba(90,212,192,.12)' : undefined,
-              boxShadow: focused ? '0 0 0 2px rgba(90,212,192,.38), 0 0 14px rgba(90,212,192,.12)' : undefined,
-              transition: 'border-color 120ms ease, background 120ms ease, box-shadow 120ms ease',
+              transition: 'border-color 120ms ease',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>

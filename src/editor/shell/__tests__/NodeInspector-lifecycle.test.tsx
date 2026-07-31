@@ -52,7 +52,8 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(first).toHaveAttribute('data-selected', 'false')
     expect(second).toHaveAttribute('data-selected', 'true')
     expect(second?.style.border).toContain('#5ad4c0')
-    expect(second?.style.boxShadow).not.toBe('')
+    expect(second?.style.background).toBe('')
+    expect(second?.style.boxShadow).toBe('')
     expect(screen.getByText('结算')).toBeTruthy()
     expect(screen.getByRole('button', { name: '＋ 结算' })).toBeTruthy()
     expect(screen.queryByText('生命周期效果')).toBeNull()
@@ -136,7 +137,10 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    expect(container.querySelector('[data-focus-anchor="mount:mount-b"]')).toBeTruthy()
+    const focusedMount = container.querySelector<HTMLElement>('[data-focus-anchor="mount:mount-b"]')
+    expect(focusedMount).toBeTruthy()
+    expect(focusedMount?.style.outline).toContain('#f08840')
+    expect(focusedMount?.style.background).toBe('')
     expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth', block: 'center', inline: 'nearest' })
     scrollIntoView.mockClear()
     rerender(
