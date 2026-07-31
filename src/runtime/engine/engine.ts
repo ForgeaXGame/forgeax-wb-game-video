@@ -466,8 +466,11 @@ export class GraphRuntime {
     this.activeBlueprintId = this.rootBlueprintId
     this.activeGraphPath = []
     this.switchGraph(this.rootGraph)
-    const entry = this.rootGraph.nodes[0]
-    if (!entry) {
+    // 跟 BlueprintDoc.entry，不是 nodes[] 创建顺序——作者把节点接到入口前时 entry 会前移，
+    // 但数组首位仍可能是旧节点。
+    const preferred = this.packsByKey.get(this.rootBlueprintId)?.entry
+    const entryId = resolveGraphEntry(this.rootGraph, preferred)
+    if (!entryId) {
       this.setPhase('ended')
       return this.drain()
     }
@@ -475,7 +478,7 @@ export class GraphRuntime {
     this.returningTo = new Set()
     // 文档床先压：入口节点/容器自己的层要叠在它上面。
     this.unwindBgmToDocBed(true)
-    this.enterNode(entry.id)
+    this.enterNode(entryId)
     return this.drain()
   }
 

@@ -240,6 +240,29 @@ describe('subflow pack (subFlowPack)', () => {
     rt.start()
     expect(rt.state.currentNodeId).toBe('n-start')
   })
+
+  it('start follows BlueprintDoc.entry even when that node is not nodes[0]', () => {
+    const graph: GameGraph = {
+      nodes: [
+        node('later', { durationMs: 100 }),
+        node('root', { durationMs: 100 }),
+      ],
+      edges: [{ id: 'e', source: 'root', target: 'later', sourceHandle: 'default', targetHandle: 'in' }],
+    }
+    const scn: GameScenario = {
+      ...scnOf(graph),
+      manifest: {
+        version: 'wb-game-video.blueprint-manifest.v1',
+        mainPackId: 'bp-main',
+        packs: {
+          'bp-main': { id: 'bp-main', title: '主蓝图', entry: 'root', graph },
+        },
+      },
+    } as GameScenario
+    const rt = new GraphRuntime(scn.graph, scn, undefined, [], 'bp-main')
+    rt.start()
+    expect(rt.state.currentNodeId).toBe('root')
+  })
 })
 
 describe('transition component', () => {
