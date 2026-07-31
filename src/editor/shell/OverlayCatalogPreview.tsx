@@ -278,6 +278,14 @@ export interface OverlayCatalogPreviewProps {
   onDesignCanvasChange?: (box: CanvasBox, moveDelta?: { x: number; y: number }) => void
   /** 交互热区重叠冲突集变化时回调（DOM 实测得出）——供上层做参数列表标红 / banner。 */
   onWarnChange?: (ids: Set<string>) => void
+  /** 是否显示 80% 白色虚线设计框；基础界面只读预览关闭。 */
+  showDesignCanvas?: boolean
+  /** 只在预览中把每个组件的真实内容居中，不修改持久化 layout。 */
+  centerChildren?: boolean
+  /** 是否显示只读预览时刻拖条；缺省仅在非交互预览中显示。 */
+  showTimeScrubber?: boolean
+  /** 非交互预览也显示组件内容边界选择框；基础界面使用。 */
+  showSelectionFrames?: boolean
 }
 
 export function OverlayCatalogPreview({
@@ -291,6 +299,10 @@ export function OverlayCatalogPreview({
   designCanvas = DEFAULT_OVERLAY_DESIGN_CANVAS,
   onDesignCanvasChange,
   onWarnChange,
+  showDesignCanvas = true,
+  centerChildren = false,
+  showTimeScrubber,
+  showSelectionFrames = false,
 }: OverlayCatalogPreviewProps): JSX.Element {
   injectStyleOnce('overlay-catalog-preview', PREVIEW_CSS)
   bootEditorSkins()
@@ -323,6 +335,9 @@ export function OverlayCatalogPreview({
   const pendingSnapRef = useRef<{ childId: string; left: number; top: number } | null>(null)
 
   const interactive = !!(onAddChild || onPatchChildLayout || onDesignCanvasChange)
+  const showInteractionLayer = interactive || showSelectionFrames
+  const measureContent = interactive || centerChildren
+  const showScrubber = showTimeScrubber ?? !interactive
   const overlayCanvasRect = designCanvas
   const contentClipRect = interactive ? overlayCanvasRect : FULL_STAGE_CANVAS
   const clipStyle = useMemo<CSSProperties>(() => ({
@@ -400,7 +415,7 @@ export function OverlayCatalogPreview({
   // 取非零尺寸的 union，保证框完整覆盖内容 + 可点热区；无可测则回退整层（= 满屏，对真·满屏皮肤正确）。
   // 复用热区那段的 stage 归一 + 签名 diff 范式。图片等异步内容用捕获阶段 load 监听 + rAF 重量。
   useLayoutEffect(() => {
-    if (!interactive) return
+    if (!measureContent) return
     const stage = stageRef.current
     if (!stage) return
     let raf = 0
@@ -426,7 +441,15 @@ export function OverlayCatalogPreview({
           const rc = wrap.getBoundingClientRect() // 无可测内容（真·全屏皮肤）→ 回退整层
           l = rc.left; t = rc.top; r = rc.right; b = rc.bottom
         }
-        next[child.id] = { left: (l - sr.left) / W, top: (t - sr.top) / H, w: (r - l) / W, h: (b - t) / H }
+        const prior = centerChildren ? contentBoxes[child.id] : undefined
+        const appliedX = prior ? 0.5 - prior.left - prior.w / 2 : 0
+        const appliedY = prior ? 0.5 - prior.top - prior.h / 2 : 0
+        next[child.id] = {
+          left: (l - sr.left) / W - appliedX,
+          top: (t - sr.top) / H - appliedY,
+          w: (r - l) / W,
+          h: (b - t) / H,
+        }
       }
       const sig = Object.entries(next)
         .map(([id, x]) => `${id}:${x.left.toFixed(3)},${x.top.toFixed(3)},${x.w.toFixed(3)},${x.h.toFixed(3)}`)
@@ -442,7 +465,7 @@ export function OverlayCatalogPreview({
     const onLoad = (): void => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure) }
     stage.addEventListener('load', onLoad, true)
     return () => { cancelAnimationFrame(raf); stage.removeEventListener('load', onLoad, true) }
-  }, [overlay.children, timeMs, interactive, stagePx.w, stagePx.h])
+  }, [centerChildren, contentBoxes, overlay.children, timeMs, measureContent, stagePx.w, stagePx.h])
 
   const overlayBounds = useMemo(
     () => unionOverlayContentBounds(overlay.children.map((child) => child.id), contentBoxes),
@@ -553,18 +576,26 @@ export function OverlayCatalogPreview({
 
   const interactionItems = useMemo<CanvasInteractionItem[]>(() => {
     const children: CanvasInteractionItem[] = overlay.children.map((child) => {
-      const box = interactionBox(child)
+      const measured = interactionBox(child)
+      const box = centerChildren
+        ? {
+            ...measured,
+            left: 0.5 - measured.width / 2,
+            top: 0.5 - measured.height / 2,
+          }
+        : measured
       return {
         id: child.id,
         label: child.component,
         position: { x: box.left, y: box.top },
         frame: { kind: 'box' as const, ...box },
         zIndex: num(child.layout?.zIndex, 0),
-        movable: true,
+        movable: !!onPatchChildLayout,
         resizable: false,
         warn: warnIds.has(child.id),
       }
     })
+    if (!showDesignCanvas) return children
     return [
       {
         id: OVERLAY_CANVAS_ITEM_ID,
@@ -578,7 +609,18 @@ export function OverlayCatalogPreview({
       },
       ...children,
     ]
-  }, [contentBoxes, overlay.children, overlayCanvasRect.height, overlayCanvasRect.left, overlayCanvasRect.top, overlayCanvasRect.width, warnIds])
+  }, [
+    centerChildren,
+    contentBoxes,
+    onPatchChildLayout,
+    overlay.children,
+    overlayCanvasRect.height,
+    overlayCanvasRect.left,
+    overlayCanvasRect.top,
+    overlayCanvasRect.width,
+    showDesignCanvas,
+    warnIds,
+  ])
 
   return (
     <div className="ocp-root">
@@ -601,20 +643,33 @@ export function OverlayCatalogPreview({
           {overlay.children.length === 0 ? (
             <div className="ocp-empty">{interactive ? '从右侧组件库拖组件到这里' : '此方案暂无组件'}</div>
           ) : (
-            overlay.children.map((child) => (
-              <div
-                key={child.id}
-                ref={(el) => { previewRefs.current[child.id] = el }}
-                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-              >
-                {renderOverlayChildPreview(
-                  child,
-                  reg,
-                  ctx,
-                  timeMs,
-                )}
-              </div>
-            ))
+            overlay.children.map((child) => {
+              const content = centerChildren ? contentBoxes[child.id] : undefined
+              const translateX = content ? 0.5 - content.left - content.w / 2 : 0
+              const translateY = content ? 0.5 - content.top - content.h / 2 : 0
+              return (
+                <div
+                  key={child.id}
+                  ref={(el) => { previewRefs.current[child.id] = el }}
+                  data-overlay-centered-child={centerChildren ? child.id : undefined}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    transform: content
+                      ? `translate(${translateX * 100}%, ${translateY * 100}%)`
+                      : undefined,
+                  }}
+                >
+                  {renderOverlayChildPreview(
+                    child,
+                    reg,
+                    ctx,
+                    timeMs,
+                  )}
+                </div>
+              )
+            })
           )}
           {interactive && hotAreas.map((a, i) => (
             <div
@@ -638,11 +693,11 @@ export function OverlayCatalogPreview({
             }}
           />
         ))}
-        {interactive &&
+        {showInteractionLayer &&
           <OverlayCanvasInteraction
             stageRef={stageRef}
             items={interactionItems}
-            selectedId={overlayCanvasSelected ? OVERLAY_CANVAS_ITEM_ID : (selectedChildId || null)}
+            selectedId={showDesignCanvas && overlayCanvasSelected ? OVERLAY_CANVAS_ITEM_ID : (selectedChildId || null)}
             onSelect={(id) => {
               if (id === OVERLAY_CANVAS_ITEM_ID) {
                 setOverlayCanvasSelected(true)
@@ -664,6 +719,7 @@ export function OverlayCatalogPreview({
                 })
                 return
               }
+              if (!onPatchChildLayout) return
               const item = interactionItems.find((candidate) => candidate.id === id)
               if (!item || item.frame.kind !== 'box') return
               moveChild(id, item.frame, position.x, position.y)
@@ -679,8 +735,8 @@ export function OverlayCatalogPreview({
                   if (id !== OVERLAY_CANVAS_ITEM_ID) reorder(id, direction)
                 }
               : undefined}
-            ariaLabel="界面方案画布"
-            spaceDragId={OVERLAY_CANVAS_ITEM_ID}
+            ariaLabel={interactive ? '界面方案画布' : '基础界面组件边界'}
+            spaceDragId={showDesignCanvas ? OVERLAY_CANVAS_ITEM_ID : undefined}
             renderFrame={(item, state) => (
               item.id === OVERLAY_CANVAS_ITEM_ID ? null :
               <>
@@ -699,9 +755,9 @@ export function OverlayCatalogPreview({
             )}
           />}
       </div>
-      {interactive ? <OverlayBoundsReadout box={overlayCanvasRect} /> : null}
+      {interactive && showDesignCanvas ? <OverlayBoundsReadout box={overlayCanvasRect} /> : null}
       {/* 预览时刻拖条：仅只读预览态显示（规则 tab 等）；界面 tab 可交互态不显，画布固定 t=400ms 渲染。 */}
-      {!interactive && (
+      {showScrubber && (
         <label className="ocp-scrub">
           <span>预览时刻</span>
           <input type="range" min={0} max={3000} step={50} value={timeMs} onChange={(e) => setTimeMs(Number(e.target.value))} />

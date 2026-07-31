@@ -399,6 +399,16 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
+    expect(screen.getByText('基础界面不能增删或拖动组件；可以修改参数，目录事件保持只读。')).toBeTruthy()
+    expect(document.querySelector('[data-canvas-item="__overlay-canvas__"]')).toBeNull()
+    expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
+    expect(document.querySelector('.ocp-stage')).toBeTruthy()
+    expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
+    expect(document.querySelector('[data-canvas-item="hp"]')).toHaveClass('is-selected')
+    expect(screen.queryByLabelText('覆盖物画布 宽%')).toBeNull()
+    expect(screen.queryByLabelText('覆盖物画布 高%')).toBeNull()
+    expect(screen.queryByText('覆盖物画布尺寸')).toBeNull()
+    expect(screen.queryByRole('button', { name: /调整覆盖物画布大小/ })).toBeNull()
     const current = screen.getByText('当前血量').closest('label')!.querySelector('input') as HTMLInputElement
     expect(current.disabled).toBe(false)
     fireEvent.change(current, { target: { value: '60' } })
@@ -408,7 +418,7 @@ describe('OverlaySchemeEditor selected child', () => {
   })
 
   it('keeps catalog event actions disabled for locked base schemes', () => {
-    render(
+    const { container } = render(
       <OverlaySchemeEditor
         overlayId="base:inkYingMo"
         overlay={{ id: 'base:inkYingMo', children: [{ id: 'choice', component: 'inkYingMo', inputs: {} }] }}
@@ -424,6 +434,12 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
+    expect(container.querySelector('[data-canvas-item="__overlay-canvas__"]')).toBeNull()
+    expect(container.querySelector('[data-overlay-centered-child="choice"]')).toBeTruthy()
+    expect(screen.queryByText('覆盖物画布尺寸')).toBeNull()
+    expect(screen.queryByLabelText('界面方案画布')).toBeNull()
+    expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
+    expect(container.querySelector('[data-canvas-item="choice"]')).toHaveClass('is-selected')
     expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(true)
     expect(screen.getByText('choice:ying')).toBeTruthy()
   })

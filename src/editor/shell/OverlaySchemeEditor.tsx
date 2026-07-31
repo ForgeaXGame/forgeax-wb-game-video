@@ -1,7 +1,8 @@
 /**
  * OverlaySchemeEditor —— 单个「界面方案」（overlay）的展示 + 编辑。
  * 右栏两列：左 = 标题 + 画布（拖拽定位、选中）+ 组件清单（仅显示 + 选中联动，不含参数配置）；
- * 右 = 组件库（拖 chip 落地）。组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
+ * 右 = 组件库（拖 chip 落地）。基础界面保留只读居中预览，但不显示设计框且不允许拖动。
+ * 组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
@@ -111,7 +112,7 @@ export interface OverlaySchemeEditorProps {
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
-   * 可编辑 inputs/layout；不可删除方案、增删组件或修改目录事件动作。
+   * 可编辑 inputs；目录事件只读；组件只读居中预览，不可删除方案、增删组件或拖动。
    */
   locked?: boolean
   /** 与本方案内容重复的其它方案 id（component+位置+参数等价，见 overlay-dedup.ts）；空 = 无重复。 */
@@ -218,7 +219,7 @@ export function OverlaySchemeEditor({
         </div>
         <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
           {overlayId}
-          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础组件方案（单组件，不可增删）</span>}
+          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础界面（单组件，位置固定）</span>}
         </div>
         {duplicateOf.length > 0 && (
           <div
@@ -252,13 +253,21 @@ export function OverlaySchemeEditor({
                   return id
                 }
           }
-          onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
+          onPatchChildLayout={locked
+            ? undefined
+            : (childId, patch) => onPatchChild(childId, { layout: patch })}
           designCanvas={designCanvas}
-          onDesignCanvasChange={(box, moveDelta) => {
-            setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
-            if (moveDelta) onMoveCanvas?.(moveDelta)
-          }}
-          onWarnChange={setWarnIds}
+          onDesignCanvasChange={locked
+            ? undefined
+            : (box, moveDelta) => {
+                setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
+                if (moveDelta) onMoveCanvas?.(moveDelta)
+              }}
+          onWarnChange={locked ? undefined : setWarnIds}
+          showDesignCanvas={!locked}
+          centerChildren={locked}
+          showTimeScrubber={false}
+          showSelectionFrames={locked}
         />
 
         {/* 组件清单：仅显示画布里有哪些组件 + 与画布双向选中，不含参数配置。 */}
@@ -326,7 +335,7 @@ export function OverlaySchemeEditor({
             </div>
             {locked ? (
               <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
+                基础界面不能增删或拖动组件；可以修改参数，目录事件保持只读。
               </div>
             ) : null}
             <ComponentFormFields
@@ -368,7 +377,7 @@ export function OverlaySchemeEditor({
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可调整参数和组件位置。
+          基础界面固定为单组件，预览中居中显示且不可拖动。
         </div>
       ) : (
         <ComponentLibrary />
