@@ -8,10 +8,8 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import {
-  DEFAULT_OVERLAY_DESIGN_CANVAS,
   OverlayCatalogPreview,
 } from './OverlayCatalogPreview'
-import type { CanvasBox } from './OverlayCanvasInteraction'
 import { ComponentLibrary } from './ComponentLibrary'
 import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
@@ -112,7 +110,7 @@ export interface OverlaySchemeEditorProps {
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
-   * 可编辑 inputs；目录事件只读；组件只读居中预览，不可删除方案、增删组件或拖动。
+   * 可编辑 inputs 和目录事件动作；组件只读居中预览，不可删除方案、增删组件或拖动。
    */
   locked?: boolean
   /** 与本方案内容重复的其它方案 id（component+位置+参数等价，见 overlay-dedup.ts）；空 = 无重复。 */
@@ -129,8 +127,6 @@ export interface OverlaySchemeEditorProps {
     childId: string,
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
-  /** 编辑器本地设计画布整体移动时，批量平移方案 children；不写 Overlay 级字段。 */
-  onMoveCanvas?: (moveDelta: { x: number; y: number }) => void
   onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
 }
 
@@ -149,12 +145,9 @@ export function OverlaySchemeEditor({
   onAddChild,
   onRemoveChild,
   onPatchChild,
-  onMoveCanvas,
   onReactionsChange,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
-  const [designCanvases, setDesignCanvases] = useState<Record<string, CanvasBox>>({})
-  const designCanvas = designCanvases[overlayId] ?? DEFAULT_OVERLAY_DESIGN_CANVAS
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
   const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
@@ -256,13 +249,6 @@ export function OverlaySchemeEditor({
           onPatchChildLayout={locked
             ? undefined
             : (childId, patch) => onPatchChild(childId, { layout: patch })}
-          designCanvas={designCanvas}
-          onDesignCanvasChange={locked
-            ? undefined
-            : (box, moveDelta) => {
-                setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
-                if (moveDelta) onMoveCanvas?.(moveDelta)
-              }}
           onWarnChange={locked ? undefined : setWarnIds}
           showDesignCanvas={!locked}
           centerChildren={locked}
@@ -335,7 +321,7 @@ export function OverlaySchemeEditor({
             </div>
             {locked ? (
               <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                基础界面不能增删或拖动组件；可以修改参数，目录事件保持只读。
+                基础界面不能增删或拖动组件；可以修改参数和事件动作。
               </div>
             ) : null}
             <ComponentFormFields
@@ -343,6 +329,7 @@ export function OverlaySchemeEditor({
               values={selectedChild.inputs ?? {}}
               pickers={{ entities, variables, formulas }}
               density="compact"
+              labelWidth="4em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
             />
             {selectedEvents.length > 0 ? (
@@ -350,12 +337,11 @@ export function OverlaySchemeEditor({
                 <div style={{ fontSize: 11, fontWeight: 600, margin: '10px 0 6px' }}>事件</div>
                 {locked ? (
                   <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                    基础组件方案的目录事件动作只读；节点挂载仍可追加动作。
+                    这里配置的事件动作会被所有使用该基础界面的挂载继承。
                   </div>
                 ) : null}
                 <fieldset
                   data-testid="overlay-event-editor"
-                  disabled={locked}
                   style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                 >
                   <ComponentEventsEditor
@@ -365,7 +351,7 @@ export function OverlaySchemeEditor({
                     spawnOptions={spawnOptions}
                     overlays={overlays}
                     pickers={{ entities, variables, formulas }}
-                    onCatalogChange={locked ? undefined : onReactionsChange}
+                    onCatalogChange={onReactionsChange}
                   />
                 </fieldset>
               </>

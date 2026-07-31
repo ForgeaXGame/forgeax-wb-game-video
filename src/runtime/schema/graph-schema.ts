@@ -246,15 +246,16 @@ export interface DocumentBgm {
  *   - 后面某个节点配 `mode: 'stop'` → 结束当前这层，回到上一层还没结束的那首；
  *   - `jump` / 清局 → 引擎整体退栈（`unwindBgmToDocBed`）。
  *
- * 容器（`subFlow` / `subFlowPack`）**不是**作用域：容器上的 `bgm` 与普通节点同一规则，弹回外层
+ * 容器（`subProcess` / `subFlowPack`）**不是**作用域：容器上的 `bgm` 与普通节点同一规则，弹回外层
  * 不结束它。想要「出了这个子流程就结束」只能在包的每个出口终端上写 `mode: 'stop'`；被硬打断
  * 弹出容器（没走终端）时这首会漏到调用方继续播。反过来也成立——**配 BGM 不得要求作者改蓝图
  * 结构**（D11）：一段平铺节点共用一首曲子只需在头一个节点上配一次，不必包进容器。
  *
- * 内层节点不配 `bgm` 即继承当前栈顶（一律不动栈）。
+ * 内层节点不配 `bgm` 即继承当前栈顶（一律不动栈）。只配 `volume` 时不换曲、不新建作用域层，
+ * 仅调整当前栈顶的音量；当前没有 BGM 时无操作。
  */
 export interface NodeBgm {
-  /** `mode: 'stop'` 时可省（那一条不引入新曲子）；其余情况必填。 */
+  /** `mode: 'stop'` 或仅调整当前 BGM 音量时可省；其余情况必填。 */
   ref?: AudioRef
   /**
    * - `push`（默认）：起播并**记住**当前正响的那首，一直播到有人结束它。
@@ -262,7 +263,7 @@ export interface NodeBgm {
    * - `stop`：结束当前这层，回到上一层还没结束的那首。文档床是地板，弹不掉（D13）。
    */
   mode?: 'push' | 'replace' | 'stop'
-  /** 0..1，默认 1。 */
+  /** 0..1；随曲目起播时默认 1，未配曲目时表示仅调整当前 BGM 音量。 */
   volume?: number
   fadeInMs?: number
   fadeOutMs?: number
@@ -277,9 +278,9 @@ export interface NodeBgm {
  * 图节点 `data` **基类**（普通演出节点）。
  *
  * 子流程 / 子蓝图容器用特化类型：
- *   - `SubFlowNodeData` — 同图下钻
+ *   - `SubProcessNodeData` — 节点私有的内嵌子图
  *   - `SubFlowPackNodeData` — 跨图 pack 引用
- * `GameNode.data` = `GameNodeData` 联合；读写嵌套字段用 `getSubFlow` / `getSubFlowPack`。
+ * `GameNode.data` = `GameNodeData` 联合；读写嵌套字段用 `getSubProcess` / `getSubFlowPack`。
  *
  * 覆盖物一律经 `overlayNodes` 引用并展开；视频上只能挂 Overlay，不能直挂裸组件。
  */
@@ -323,11 +324,19 @@ export interface SubFlowPack {
 }
 
 /**
- * 同图子流程容器：首次进入压栈并跳到 `subFlow`；
- * 子流程叶子无自动出边时弹回，容器不重播、沿 `out` 续走。回环用显式边。
+ * 内嵌子流程本体。`entry` 只允许指向直属 `graph.nodes`；父子图之间不得直接连边。
  */
-export interface SubFlowNodeData extends NodeData {
-  subFlow: string
+export interface SubProcess {
+  entry: string
+  graph: GameGraph
+}
+
+/**
+ * 节点私有的内嵌子流程容器：首次进入压栈并切到 `subProcess.graph`；
+ * 子图叶子无自动出边时弹回，容器不重播、沿父图出边续走。
+ */
+export interface SubProcessNodeData extends NodeData {
+  subProcess: SubProcess
 }
 
 /**
@@ -338,13 +347,16 @@ export interface SubFlowPackNodeData extends NodeData {
 }
 
 /** 图上节点 data 联合（基类 ∪ 子流程特化）。 */
-export type GameNodeData = NodeData | SubFlowNodeData | SubFlowPackNodeData
+export type GameNodeData = NodeData | SubProcessNodeData | SubFlowPackNodeData
 
-export function getSubFlow(d: GameNodeData): string | undefined {
-  const rec = d as SubFlowNodeData & { subFlowRef?: string }
-  // subFlow 为现行字段；subFlowRef 为更名兼容（旧草稿/落盘）。
-  const v = rec.subFlow ?? rec.subFlowRef
-  return typeof v === 'string' && v.length > 0 ? v : undefined
+export function getSubProcess(d: GameNodeData): SubProcess | undefined {
+  const process = (d as SubProcessNodeData).subProcess
+  return process
+    && typeof process === 'object'
+    && typeof process.entry === 'string'
+    && isGameGraph(process.graph)
+    ? process
+    : undefined
 }
 
 export function getSubFlowPack(d: GameNodeData): SubFlowPack | undefined {
@@ -355,7 +367,8 @@ export function getSubFlowPack(d: GameNodeData): SubFlowPack | undefined {
 /**
  * 读节点作用域 BGM；**没有可用意图**的形状一律丢弃（非对象、只有 fade / mode 参数没曲子等）。
  *
- * 「可用意图」= 有可播的 `ref`（非空字符串）**或** `mode === 'stop'`（结束当前层，本就不带曲子）。
+ * 「可用意图」= 有可播的 `ref`（非空字符串）、`mode === 'stop'`（结束当前层，本就不带曲子），
+ * **或**没有 ref 但有合法 `volume`（只调整当前栈顶音量）。
  * 不能只看 `ref`：那会把 `win.data.bgm = { mode: 'stop' }` 静默吃掉——作者配了「结束音乐」却
  * 一直听到战斗曲，且全程无报错。落盘的非法形状由 `validate.ts` fail-loud（读原始值），这里只
  * 保证引擎拿到的每一份 `bgm` 都真的有事可做。
@@ -364,11 +377,18 @@ export function getNodeBgm(d: GameNodeData): NodeBgm | undefined {
   const b = (d as NodeData).bgm
   if (!b || typeof b !== 'object') return undefined
   if (b.mode === 'stop') return b
-  return typeof b.ref === 'string' && b.ref.length > 0 ? b : undefined
+  if (typeof b.ref === 'string' && b.ref.length > 0) return b
+  return b.ref === undefined
+    && typeof b.volume === 'number'
+    && Number.isFinite(b.volume)
+    && b.volume >= 0
+    && b.volume <= 1
+    ? b
+    : undefined
 }
 
 export function isSubflowContainerData(d: GameNodeData): boolean {
-  return getSubFlow(d) != null || getSubFlowPack(d) != null
+  return getSubProcess(d) != null || getSubFlowPack(d) != null
 }
 
 /**
