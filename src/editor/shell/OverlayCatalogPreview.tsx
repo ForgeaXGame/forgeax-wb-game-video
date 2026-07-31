@@ -128,27 +128,46 @@ function percentValue(value: number): string {
 
 function OverlayBoundsReadout({ box }: { box: CanvasBox }): JSX.Element {
   return (
-    <div style={{ marginTop: 2 }}>
-      <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>
-        覆盖物画布尺寸
+    <div
+      data-overlay-bounds-readout
+      style={{
+        marginTop: 2,
+        display: 'grid',
+        gridTemplateColumns: 'max-content repeat(2, minmax(70px, 1fr))',
+        alignItems: 'center',
+        gap: 8,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ fontSize: 11, opacity: 0.7, whiteSpace: 'nowrap' }}>
+        虚拟画布尺寸
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
-        {([
-          ['width', '宽%'],
-          ['height', '高%'],
-        ] as const).map(([key, label]) => (
-          <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, fontSize: 10, opacity: 0.85 }}>
-            <span>{label}</span>
-            <input
-              type="number"
-              value={percentValue(box[key])}
-              aria-label={`覆盖物画布 ${label}`}
-              readOnly
-              style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontSize: 11 }}
-            />
-          </label>
-        ))}
-      </div>
+      {([
+        ['width', '宽%'],
+        ['height', '高%'],
+      ] as const).map(([key, label]) => (
+        <label
+          key={key}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'max-content minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: 4,
+            minWidth: 0,
+            fontSize: 10,
+            opacity: 0.85,
+          }}
+        >
+          <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+          <input
+            type="number"
+            value={percentValue(box[key])}
+            aria-label={`覆盖物画布 ${label}`}
+            readOnly
+            style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontSize: 11 }}
+          />
+        </label>
+      ))}
     </div>
   )
 }

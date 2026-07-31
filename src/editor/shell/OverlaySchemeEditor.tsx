@@ -195,6 +195,19 @@ export function OverlaySchemeEditor({
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedChildId, onRemoveChild, locked])
 
+  const confirmRemove = (): void => {
+    const label = overlay.title?.trim() || overlayId
+    const usageWarning = usageCount > 0
+      ? `当前仍被 ${usageCount} 个节点引用，删除后这些挂载将无法解析界面。`
+      : ''
+    if (
+      typeof window !== 'undefined'
+      && typeof window.confirm === 'function'
+      && !window.confirm(`确定删除自定义界面方案「${label}」？${usageWarning}`)
+    ) return
+    onRemove()
+  }
+
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
       {/* ── 左列：标题 + 画布 + 组件清单 ── */}
@@ -208,7 +221,7 @@ export function OverlaySchemeEditor({
           />
           <UsageBadge count={usageCount} />
           <DuplicateBadge others={duplicateOf} />
-          {!locked && <button style={del} onClick={onRemove}>删除</button>}
+          {!locked && <button style={del} onClick={confirmRemove}>删除</button>}
         </div>
         <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
           {overlayId}

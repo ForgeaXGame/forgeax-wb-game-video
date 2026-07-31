@@ -218,6 +218,34 @@ describe('NodeInspector overlay events', () => {
 })
 
 describe('OverlaySchemeEditor selected child', () => {
+  it('requires confirmation before deleting a custom interface scheme', () => {
+    const onRemove = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <OverlaySchemeEditor
+        overlayId="custom-hud"
+        overlay={{ id: 'custom-hud', title: '战斗界面', children: [] }}
+        entities={{}}
+        variables={{}}
+        usageCount={2}
+        onRename={vi.fn()}
+        onRemove={onRemove}
+        onAddChild={vi.fn()}
+        onRemoveChild={vi.fn()}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    expect(confirm).toHaveBeenCalledWith('确定删除自定义界面方案「战斗界面」？当前仍被 2 个节点引用，删除后这些挂载将无法解析界面。')
+    expect(onRemove).not.toHaveBeenCalled()
+
+    confirm.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    expect(onRemove).toHaveBeenCalledTimes(1)
+  })
+
   it('defaults overlapping components to the visually topmost child', async () => {
     const { container } = render(
       <OverlaySchemeEditor
@@ -300,6 +328,10 @@ describe('OverlaySchemeEditor selected child', () => {
 
     await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(80))
     expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(80)
+    expect(document.querySelector('[data-overlay-bounds-readout]')).toHaveStyle({
+      display: 'grid',
+      alignItems: 'center',
+    })
     expect(screen.queryByRole('button', { name: /调整dialogue大小/ })).toBeNull()
     expect(document.querySelectorAll('[data-overflow-child]')).toHaveLength(0)
     expect((document.querySelector('[data-overlay-content-clip]') as HTMLElement).style.clipPath).toContain('inset(')
@@ -373,7 +405,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
     expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
     expect(document.querySelector('[data-canvas-item="hp"]')).toHaveClass('is-selected')
-    expect(screen.queryByText('覆盖物画布尺寸')).toBeNull()
+    expect(screen.queryByText('虚拟画布尺寸')).toBeNull()
     expect(screen.queryByRole('button', { name: /调整BattlePlayerHpBar大小/ })).toBeNull()
     expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
     expect(currentField.style.columnGap).toBe('8px')
@@ -440,7 +472,7 @@ describe('OverlaySchemeEditor selected child', () => {
     )
     expect(container.querySelector('[data-overlay-design-canvas]')).toBeNull()
     expect(container.querySelector('[data-overlay-centered-child="choice"]')).toBeTruthy()
-    expect(screen.queryByText('覆盖物画布尺寸')).toBeNull()
+    expect(screen.queryByText('虚拟画布尺寸')).toBeNull()
     expect(screen.queryByLabelText('界面方案画布')).toBeNull()
     expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
     expect(container.querySelector('[data-canvas-item="choice"]')).toHaveClass('is-selected')
