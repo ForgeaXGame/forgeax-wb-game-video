@@ -49,7 +49,7 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
     expect(screen.getByText('嵌套', { selector: 'label > span:first-child' })).toBeTruthy()
   })
 
-  it('子蓝图包没有候选时显示“无”，有候选时只显示实际蓝图', () => {
+  it('子蓝图包下拉始终保留“无”，有候选时一并列出实际蓝图', () => {
     const graph = graphWith({ name: '容器', subFlowPack: { id: 'missing', version: '1' } })
     const { rerender } = render(<NodeInspector graph={graph} nodeId="node" onChange={vi.fn()} />)
     const emptySelect = screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')
@@ -64,8 +64,31 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
       />,
     )
     const populatedSelect = screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')
-    expect(within(populatedSelect).queryByRole('option', { name: '无' })).toBeNull()
+    expect(within(populatedSelect).getByRole('option', { name: '无' })).toBeTruthy()
     expect(within(populatedSelect).getByRole('option', { name: '战斗 (missing@1)' })).toBeTruthy()
+  })
+
+  it('切到子蓝图时不自动建库、不预挂候选，仅进入未挂包模式', () => {
+    const graph = graphWith({ name: '回合' })
+    const onChange = vi.fn()
+    const onPacksChange = vi.fn()
+    render(
+      <NodeInspector
+        graph={graph}
+        nodeId="node"
+        packs={[{ id: 'bp-child', version: '1', title: '战斗', entry: 'entry', graph: { nodes: [], edges: [] } }]}
+        onChange={onChange}
+        onPacksChange={onPacksChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByTitle('无 / 私有内嵌子流程 / 外部子蓝图（互斥）'), { target: { value: 'pack' } })
+
+    expect(onPacksChange).not.toHaveBeenCalled()
+    const nextGraph = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(nextGraph.nodes[0]!.data).not.toHaveProperty('subFlowPack')
+    expect(screen.getByTitle('无 / 私有内嵌子流程 / 外部子蓝图（互斥）')).toHaveProperty('value', 'pack')
+    expect(within(screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')).getByRole('option', { name: '无' })).toBeTruthy()
   })
 
   it('新建内嵌子流程时只在私有子图创建入口，不向父图追加节点', () => {

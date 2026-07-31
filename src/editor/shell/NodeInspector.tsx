@@ -998,9 +998,12 @@ export function NodeInspector({
   // 曲子再随 ref 一起写进去。换节点 = 换一份草稿。
   const [draftBgmMode, setDraftBgmMode] = useState<'push' | 'replace'>('push')
   const [draftBgmModeNode, setDraftBgmModeNode] = useState(nodeId)
+  /** 「嵌套=子蓝图」但尚未挂包：不落盘空指针/不自动建库，只撑住面板模式。 */
+  const [packModeUnbound, setPackModeUnbound] = useState(false)
   if (nodeId !== draftBgmModeNode) {
     setDraftBgmModeNode(nodeId)
     setDraftBgmMode('push')
+    setPackModeUnbound(false)
   }
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
@@ -1032,7 +1035,13 @@ export function NodeInspector({
 
   const nestProcess = getSubProcess(d)
   const nestPack = getSubFlowPack(d)
-  const nestMode: 'none' | 'process' | 'pack' = nestPack ? 'pack' : nestProcess ? 'process' : 'none'
+  const nestMode: 'none' | 'process' | 'pack' = nestPack
+    ? 'pack'
+    : nestProcess
+      ? 'process'
+      : packModeUnbound
+        ? 'pack'
+        : 'none'
   /** 只有容器不是演出节点；入口仍是可完整配置的第一个业务节点。 */
   const canConfigurePerformance = nestMode === 'none'
   // 作用域 BGM：读原始值（不过 getNodeBgm），与面板下拉一致。
@@ -1122,33 +1131,28 @@ export function NodeInspector({
   const setNestMode = (mode: 'none' | 'process' | 'pack') => {
     if (mode === 'none') {
       if (nestProcess && typeof confirm === 'function' && !confirm('取消内嵌子流程会删除其中的全部节点和连线，继续吗？')) return
+      setPackModeUnbound(false)
       patchData({ subProcess: undefined, subFlowPack: undefined })
       return
     }
     if (mode === 'process') {
+      setPackModeUnbound(false)
       onChange(attachSubProcess(graph, node.id))
       return
     }
+    // 子蓝图：只切模式，不自动建库、不预挂第一个候选；挂包走下拉或「＋ 新建子蓝图」。
     if (nestPack) {
+      setPackModeUnbound(false)
       patchData({ subProcess: undefined })
       return
     }
-    const existing = eligiblePacks[0]
-    if (existing) {
-      patchData({ subProcess: undefined, subFlowPack: { id: existing.id, version: existing.version } })
-      return
-    }
-    if (!onPacksChange) {
-      patchData({ subProcess: undefined, subFlowPack: { id: 'pack', version: '1' } })
-      return
-    }
-    const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
-    onPacksChange([...packs, pack])
-    patchData({ subProcess: undefined, subFlowPack: { id: pack.id, version: pack.version } })
+    setPackModeUnbound(true)
+    patchData({ subProcess: undefined, subFlowPack: undefined })
   }
   const createAndAttachPack = () => {
     if (!onPacksChange) return
     const pack = makeEmptySubFlowPack({ title: `${d.name || node.id}·子蓝图` })
+    setPackModeUnbound(false)
     onPacksChange([...packs, pack])
     patchData({ subProcess: undefined, subFlowPack: { id: pack.id, version: pack.version } })
   }
@@ -1272,6 +1276,7 @@ export function NodeInspector({
               onChange={(e) => {
                 const v = e.target.value
                 if (!v) {
+                  setPackModeUnbound(true)
                   patchData({ subFlowPack: undefined })
                   return
                 }
@@ -1281,12 +1286,13 @@ export function NodeInspector({
                   alert(`不能引用「${pack.title ?? pack.id}」：会造成蓝图引用环（自身或间接引用回本蓝图）。`)
                   return
                 }
+                setPackModeUnbound(false)
                 patchData({ subProcess: undefined, subFlowPack: { id: pack.id, version: pack.version } })
               }}
               style={{ flex: 1 }}
               title="引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑"
             >
-              {eligiblePacks.length === 0 ? <option value="">无</option> : null}
+              <option value="">无</option>
               {eligiblePacks.map((p) => (
                 <option key={`${p.id}@${p.version}`} value={`${p.id}@${p.version}`}>{packLabel(p)}</option>
               ))}
