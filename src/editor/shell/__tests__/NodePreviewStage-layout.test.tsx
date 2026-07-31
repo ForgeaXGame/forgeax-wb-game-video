@@ -51,6 +51,9 @@ describe('NodePreviewStage overlay layout', () => {
 
     expect(container.querySelector('.gc-preview-ring')).toBeNull()
     expect(container.querySelector('.gc-preview-label')).toBeNull()
+    expect(container.querySelector('[data-node-preview-overlay-scale="none"]')).not.toBeNull()
+    expect(container.querySelector('[data-overlay-scale-root]')).toBeNull()
+    expect(container.querySelector('[data-overlay-logical-stage]')).toBeNull()
   })
 
   it('moves a mounted overlay without writing or changing width/height', async () => {

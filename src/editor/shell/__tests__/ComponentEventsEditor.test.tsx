@@ -247,7 +247,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="subtitle-a"]')?.classList.contains('is-selected')).toBe(false)
   })
 
-  it('keeps the design canvas fixed at 80% and clips content to it', async () => {
+  it('uses an 80% editor viewport backed by full-stage logical coordinates', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-overlay-fit-target')) {
         return {
@@ -304,6 +304,9 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(document.querySelectorAll('[data-overflow-child]')).toHaveLength(0)
     expect((document.querySelector('[data-overlay-content-clip]') as HTMLElement).style.clipPath).toContain('inset(')
     expect(document.querySelector('[data-overlay-design-canvas]')).toHaveStyle({
+      left: '10%', top: '10%', width: '80%', height: '80%',
+    })
+    expect(document.querySelector('[data-overlay-coordinate-stage]')).toHaveStyle({
       left: '10%', top: '10%', width: '80%', height: '80%',
     })
     expect(screen.queryByRole('button', { name: /调整覆盖物画布大小/ })).toBeNull()
