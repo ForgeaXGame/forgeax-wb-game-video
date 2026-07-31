@@ -15,6 +15,7 @@ const NEW_COMPONENT_IDS = [
   'GainFloatText',
   'InkYingMo',
   'InkKou',
+  'StatusNotice',
   'TextOption',
 ] as const
 
