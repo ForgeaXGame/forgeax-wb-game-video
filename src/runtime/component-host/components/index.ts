@@ -19,6 +19,7 @@ import { DialogueManifest } from './new/Dialogue'
 import { GainFloatTextManifest } from './new/GainFloatText'
 import { InkKouManifest } from './new/InkKou'
 import { InkYingMoManifest } from './new/InkYingMo'
+import { TextOptionManifest } from './new/TextOption'
 
 export {
   BattleEnemyHpBarManifest,
@@ -30,6 +31,7 @@ export {
   GainFloatTextManifest,
   InkKouManifest,
   InkYingMoManifest,
+  TextOptionManifest,
 }
 export { default as newComponents } from './new'
 
