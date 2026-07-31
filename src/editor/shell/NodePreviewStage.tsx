@@ -261,7 +261,11 @@ export function NodePreviewStage({
   const previewSkinReg = useMemo(() => createCoreSkinRegistry(), [])
   const previewSkinCtx = useMemo((): SkinCtx => {
     const st = projectNodePreviewState(scenario, node, playheadMs, maxMs)
-    const toHudEnt = (attrs: Record<string, number>, attrMeta?: Record<string, { max?: number; initial?: number }>) => {
+    const toHudEnt = (
+      attrs: Record<string, number>,
+      attrMeta?: Record<string, { max?: number; initial?: number }>,
+      name?: string,
+    ) => {
       const attrMax: Record<string, number> = {}
       const initialAttrs: Record<string, number> = {}
       for (const [k, v] of Object.entries(attrs)) {
@@ -269,6 +273,7 @@ export function NodePreviewStage({
         initialAttrs[k] = attrMeta?.[k]?.initial ?? attrMeta?.[k]?.max ?? v
       }
       return {
+        name,
         hp: attrs.hp ?? 0,
         maxHp: attrMeta?.hp?.max ?? attrs.hp ?? 0,
         attrs: { ...attrs },
@@ -277,11 +282,14 @@ export function NodePreviewStage({
       }
     }
     const hudEntities: SkinCtx['hud']['entities'] = Object.fromEntries(
-      Object.entries(st.entities).map(([id, e]) => [id, toHudEnt(e.attrs, e.attrMeta)]),
+      Object.entries(st.entities).map(([id, e]) => [
+        id,
+        toHudEnt(e.attrs, e.attrMeta, scenario.entities?.[id]?.name?.trim() || id),
+      ]),
     )
     // 与目录预览一致：缺实体时给常见战斗 id 兜底，避免血条 bind 后渲成 null。
-    if (!hudEntities['ent-player']) hudEntities['ent-player'] = toHudEnt({ hp: 72 }, { hp: { max: 100 } })
-    if (!hudEntities['ent-boss']) hudEntities['ent-boss'] = toHudEnt({ hp: 58 }, { hp: { max: 100 } })
+    if (!hudEntities['ent-player']) hudEntities['ent-player'] = toHudEnt({ hp: 72 }, { hp: { max: 100 } }, 'ent-player')
+    if (!hudEntities['ent-boss']) hudEntities['ent-boss'] = toHudEnt({ hp: 58 }, { hp: { max: 100 } }, 'ent-boss')
     return {
       hud: { entities: hudEntities, vars: { qi: 3, ...st.vars }, score: st.score, flags: st.flags },
       // 编辑器预览：用初始态做门控求值（无 visited）

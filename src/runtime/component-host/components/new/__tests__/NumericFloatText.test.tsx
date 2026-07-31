@@ -71,6 +71,14 @@ describe('numeric float text components', () => {
           }}
           ctx={ctx}
         />
+        <GainFloatText
+          overlay={{
+            elementId: 'legacy-string-expression',
+            component: 'GainFloatText',
+            inputs: { value: 'entity.hero.attr.attack + var.bonus + 1' },
+          }}
+          ctx={ctx}
+        />
       </>,
     )
 
@@ -78,6 +86,7 @@ describe('numeric float text components', () => {
     expect(screen.getByText('+50')).toBeTruthy()
     expect(screen.getByText('-23')).toBeTruthy()
     expect(screen.getByText('+10')).toBeTruthy()
+    expect(screen.getByText('+24')).toBeTruthy()
   })
 
   it('uses each skin default appearance and accepts its optional text overrides', () => {
