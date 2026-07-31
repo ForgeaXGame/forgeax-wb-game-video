@@ -148,6 +148,8 @@ function HoverCard({
   children,
   nested,
   accent,
+  anchorRef,
+  anchorId,
 }: {
   header: ReactNode
   children: ReactNode
@@ -155,10 +157,15 @@ function HoverCard({
   nested?: boolean
   /** 聚焦态：橙色描边 + 微高亮底（预览台选中该挂载时）。 */
   accent?: boolean
+  /** 时间轴选中后滚入右侧可视区的卡片根节点。 */
+  anchorRef?: (element: HTMLDivElement | null) => void
+  anchorId?: string
 }): JSX.Element {
   ensureHoverCardStyle()
   return (
     <div
+      ref={anchorRef}
+      data-focus-anchor={anchorId}
       className={nested ? `${HOVER_CARD_CLASS} ${HOVER_CARD_NESTED}` : HOVER_CARD_CLASS}
       style={accent ? { outline: '1px solid #f08840', outlineOffset: 1, background: 'rgba(240,136,64,.08)' } : undefined}
     >
@@ -322,6 +329,7 @@ function LifecycleReactionsEditor({
   reactions,
   durationMs,
   focusedIndex,
+  focusAnchorRevision,
   onFocusIndex,
   pickers,
   entities,
@@ -336,6 +344,7 @@ function LifecycleReactionsEditor({
   reactions: Reaction[] | undefined
   durationMs?: number
   focusedIndex?: number | null
+  focusAnchorRevision?: number
   onFocusIndex?: (lifecycleIndex: number | null) => void
   pickers?: EditorPickerCtx
   entities?: Record<string, Entity>
@@ -373,8 +382,8 @@ function LifecycleReactionsEditor({
 
   useEffect(() => {
     if (focusedIndex == null) return
-    itemRefs.current[focusedIndex]?.scrollIntoView?.({ block: 'nearest' })
-  }, [focusedIndex])
+    itemRefs.current[focusedIndex]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+  }, [focusedIndex, focusAnchorRevision])
 
   useEffect(() => {
     if (focusedIndex != null && focusedIndex >= settlements.length) onFocusIndex?.(null)
@@ -855,6 +864,7 @@ export function NodeInspector({
   formulas,
   focusedMountId,
   focusedLifecycleIndex,
+  focusAnchorRevision,
   onFocusMount,
   onFocusLifecycle,
   previewOpen,
@@ -893,6 +903,8 @@ export function NodeInspector({
   focusedMountId?: string | null
   /** 预览台时间轴当前选中的结算（子集序号）；本区域据此高亮对应配置块。 */
   focusedLifecycleIndex?: number | null
+  /** 每次从预览/时间轴发起选中都会递增；确保重复选同一项也重新滚动。 */
+  focusAnchorRevision?: number
   /** 点击某挂载卡片标题时上抛（与预览台双向联动）；再次点同一张 = 取消聚焦（回到全展开）。 */
   onFocusMount?: (mountId: string | null) => void
   /** 点击某条结算时上抛（与时间轴菱形双向联动）。 */
@@ -932,6 +944,11 @@ export function NodeInspector({
     setDraftBgmModeNode(nodeId)
     setDraftBgmMode('push')
   }
+  const mountCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  useEffect(() => {
+    if (!focusedMountId) return
+    mountCardRefs.current[focusedMountId]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+  }, [focusedMountId, focusAnchorRevision])
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
   const d = node.data
@@ -1289,6 +1306,8 @@ export function NodeInspector({
               <HoverCard
                 key={`${mid}-${i}`}
                 accent={focused}
+                anchorId={`mount:${mid}`}
+                anchorRef={(element) => { mountCardRefs.current[mid] = element }}
                 header={(
                   <div
                     style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1, cursor: onFocusMount ? 'pointer' : undefined }}
@@ -1432,6 +1451,7 @@ export function NodeInspector({
           reactions={d.reactions}
           durationMs={d.durationMs}
           focusedIndex={focusedLifecycleIndex}
+          focusAnchorRevision={focusAnchorRevision}
           onFocusIndex={onFocusLifecycle}
           pickers={pickers}
           entities={entities}

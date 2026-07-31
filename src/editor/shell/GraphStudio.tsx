@@ -139,15 +139,23 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [focusedMountId, setFocusedMountId] = useState<string | null>(null)
   // 节点配置面板：时间轴上选中的生命周期效果（子集序号，见 isLifecycleReaction 注释）。
   const [focusedLifecycleIndex, setFocusedLifecycleIndex] = useState<number | null>(null)
+  // 独立于选中值：重复点击同一个时间轴条目也要再次把右侧锚点滚进可视区。
+  const [focusAnchorRevision, setFocusAnchorRevision] = useState(0)
   useEffect(() => { setFocusedMountId(null); setFocusedLifecycleIndex(null) }, [selected])
   // 面板里同一时刻只该有一个聚焦对象：选覆盖物就松开效果，反之亦然。
   const focusMount = useCallback((id: string | null) => {
     setFocusedMountId(id)
-    if (id != null) setFocusedLifecycleIndex(null)
+    if (id != null) {
+      setFocusedLifecycleIndex(null)
+      setFocusAnchorRevision((revision) => revision + 1)
+    }
   }, [])
   const focusLifecycle = useCallback((index: number | null) => {
     setFocusedLifecycleIndex(index)
-    if (index != null) setFocusedMountId(null)
+    if (index != null) {
+      setFocusedMountId(null)
+      setFocusAnchorRevision((revision) => revision + 1)
+    }
   }, [])
   // 节点配置面板：左侧预览区宽度（px，可拖调，localStorage 记忆）。
   const [previewW, setPreviewW] = useState<number | null>(() => {
@@ -736,6 +744,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 formulas={formulas}
                 focusedMountId={focusedMountId}
                 focusedLifecycleIndex={focusedLifecycleIndex}
+                focusAnchorRevision={focusAnchorRevision}
                 onFocusMount={focusMount}
                 onFocusLifecycle={focusLifecycle}
                 previewOpen={effectivePreviewOpen}
