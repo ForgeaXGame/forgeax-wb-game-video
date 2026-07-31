@@ -24,6 +24,7 @@ export {
   BattleSkillManifest,
   DamageFloatTextManifest,
   GainFloatTextManifest,
+  StatusNoticeManifest,
   TextOptionManifest,
   BattlePlayerHpBarManifest,
   BattleEnemyHpBarManifest,
