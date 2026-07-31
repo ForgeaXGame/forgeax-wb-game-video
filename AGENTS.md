@@ -10,6 +10,11 @@
 - 运行入口是根 `graph`；私有子流程从节点 `data.subProcess.graph` 解析，可复用子蓝图从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
 - `subProcess.entry` 只指向直属子图节点；父子图不得直接连边，同一蓝图的全部嵌套层共享节点/边 id 命名空间。
 
+## 组件修改边界
+
+- 除非用户明确指定，所有组件相关改动只面向新组件，不修改旧组件的实现、manifest、预设、编辑行为或测试预期。
+- 新组件实现位于 `src/runtime/component-host/components/new/`。修改共享编辑器或运行时基础设施时，必须用新组件 id 明确限定行为，确保旧 component id 行为不变。
+
 ## 持久化与启动
 
 - 权威蓝图：`.forgeax/games/<slug>/blueprint.json`。
