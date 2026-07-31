@@ -157,6 +157,17 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       setFocusAnchorRevision((revision) => revision + 1)
     }
   }, [])
+  const clearPreviewFocusFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (focusedMountId == null && focusedLifecycleIndex == null) return
+    const target = event.target instanceof Element ? event.target : null
+    const mountAnchor = target?.closest('[data-focus-anchor]')
+    if (focusedMountId != null && mountAnchor?.getAttribute('data-focus-anchor') === `mount:${focusedMountId}`) return
+    const settlementAnchor = target?.closest('[data-settlement-index]')
+    if (focusedLifecycleIndex != null && settlementAnchor?.getAttribute('data-settlement-index') === String(focusedLifecycleIndex)) return
+    if (target?.closest('.gc-mclip.is-selected, .gc-point-mark.is-selected, .gc-condition-band.is-selected')) return
+    setFocusedMountId(null)
+    setFocusedLifecycleIndex(null)
+  }, [focusedLifecycleIndex, focusedMountId])
   // 节点配置面板：左侧预览区宽度（px，可拖调，localStorage 记忆）。
   const [previewW, setPreviewW] = useState<number | null>(() => {
     if (typeof window === 'undefined') return null
@@ -474,7 +485,10 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     if (drillStack.length > 0) setDrillStack((s) => s.slice(0, -1))
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}>
+    <div
+      onPointerDownCapture={clearPreviewFocusFromPointer}
+      style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}
+    >
       {/* 顶部工具条：历史版本 → 保存 → 重置 → 草稿提示，不含画布编辑手势 */}
       <div className="gv-graph-toolbar" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <VersionPicker />

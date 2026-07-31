@@ -38,6 +38,38 @@ const SCENARIO: GameScenario = {
 const MAIN_ID = 'bp-main'
 const MAIN_DOC: BlueprintDoc = { id: MAIN_ID, title: 'Main', entry: 'intro', graph: SCENARIO.graph }
 
+const FOCUS_SCENARIO: GameScenario = {
+  version: 'wb-game-video.graph.v1',
+  graph: {
+    nodes: [{
+      id: 'intro',
+      type: 'perf',
+      position: { x: 0, y: 0 },
+      inputs: [],
+      outputs: [],
+      data: {
+        name: 'Intro',
+        durationMs: 3_000,
+        overlayNodes: [{ id: 'mount-hud', overlay: 'hud' }],
+        reactions: [{
+          when: { type: 'at', ms: 1_000 },
+          do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -20 }] }],
+        }],
+      },
+    }],
+    edges: [],
+  },
+  ui: {
+    overlays: {
+      hud: {
+        id: 'hud',
+        title: 'HUD',
+        children: [{ id: 'damage', component: 'DamageFloatText', window: { startMs: 500, endMs: 2_500 }, trigger: { when: 'enter' }, inputs: { value: 20 } }],
+      },
+    },
+  },
+}
+
 describe('GraphStudio 节点配置分栏', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -119,6 +151,41 @@ describe('GraphStudio 节点配置分栏', () => {
     await waitFor(() => {
       expect(useGraphScenario.getState().graph.nodes.some((node) => node.id === 'intro')).toBe(false)
     })
+  })
+
+  it('点击预览工作区的其他区域会清空选中态，当前对象自身与配置块除外', async () => {
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    useGraphScenario.setState({
+      demo: FOCUS_SCENARIO,
+      blueprints: { [MAIN_ID]: { ...MAIN_DOC, graph: FOCUS_SCENARIO.graph } },
+      graph: FOCUS_SCENARIO.graph,
+      meta: { ui: FOCUS_SCENARIO.ui },
+      selectedNodeId: 'intro',
+    })
+    const { container } = render(<GraphStudio scenario={FOCUS_SCENARIO} />)
+
+    const clip = await waitFor(() => container.querySelector<HTMLElement>('.gc-mclip.is-mount')!)
+    fireEvent.pointerDown(clip, { pointerId: 1, clientX: 10, clientY: 10 })
+    await waitFor(() => expect(clip).toHaveClass('is-selected'))
+
+    const mountCard = container.querySelector<HTMLElement>('[data-focus-anchor="mount:mount-hud"]')!
+    expect(mountCard.style.outline).not.toBe('')
+    fireEvent.pointerDown(mountCard)
+    expect(clip).toHaveClass('is-selected')
+
+    const play = screen.getByRole('button', { name: '播放' })
+    fireEvent.pointerDown(play)
+    fireEvent.click(play)
+    await waitFor(() => {
+      expect(clip).not.toHaveClass('is-selected')
+      expect(mountCard.style.outline).toBe('')
+    })
+
+    const settlement = screen.getByRole('slider', { name: /结算 · ent-player\.hp add -20/ })
+    fireEvent.pointerDown(settlement, { pointerId: 2, clientX: 20, clientY: 20 })
+    await waitFor(() => expect(settlement.closest('.gc-point-mark')).toHaveClass('is-selected'))
+    fireEvent.pointerDown(container.querySelector('.gc-mtimeline-canvas')!, { pointerId: 3, clientX: 200, clientY: 200 })
+    await waitFor(() => expect(settlement.closest('.gc-point-mark')).not.toHaveClass('is-selected'))
   })
 
   it('子蓝图入口标识节点不展示演出配置和可编辑预览', () => {
