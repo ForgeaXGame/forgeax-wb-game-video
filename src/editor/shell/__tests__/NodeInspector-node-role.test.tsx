@@ -25,14 +25,14 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
   it.each([
     ['同图子流程容器', { name: '容器', subFlow: 'entry' }],
     ['子蓝图容器', { name: '容器', subFlowPack: { id: 'bp-child', version: '1', entry: 'legacy-entry' } }],
-  ] as const)('%s 不开放演出、界面、结算和响应规则配置', (_name, data) => {
+  ] as const)('%s 不开放演出、界面和结算配置', (_name, data) => {
     render(<NodeInspector graph={graphWith(data)} nodeId="node" onChange={vi.fn()} />)
 
     expectPerformanceFieldsHidden()
     expect(screen.queryByText('入口覆盖')).toBeNull()
   })
 
-  it('子蓝图入口标识节点不开放演出、界面、结算和响应规则配置', () => {
+  it('子蓝图入口标识节点不开放演出、界面和结算配置', () => {
     render(
       <NodeInspector
         graph={graphWith({ name: '入口' })}
@@ -52,7 +52,7 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
     expect(screen.getByText('播放', { selector: 'label > span:first-child' })).toBeTruthy()
     expect(screen.getByText('界面', { selector: 'b' })).toBeTruthy()
     expect(screen.getByText('结算', { selector: 'b' })).toBeTruthy()
-    expect(screen.getByText('响应规则', { selector: 'b' })).toBeTruthy()
+    expect(screen.queryByText('响应规则', { selector: 'b' })).toBeNull()
   })
 
   it('子蓝图包没有候选时显示“无”，有候选时只显示实际蓝图', () => {

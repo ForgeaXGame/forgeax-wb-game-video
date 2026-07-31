@@ -709,10 +709,15 @@ export class GraphRuntime {
     return this.drain()
   }
 
-  /** 施加 reaction.do 中的 effect（生命周期相位：enter/at/exit/complete，只改状态、不换节点）。 */
-  private runEffectActions(actions: NodeAction[]): void {
+  /** 结算动作：按序施加 effect，或沿当前结算节点的真实出边推进。 */
+  private runSettlementActions(node: GameNode, actions: NodeAction[]): void {
     for (const a of actions) {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
+      else if (a.kind === 'advance' && !this.redirect && !this.inExit) {
+        const edge = this.edgeById(a.edgeId)
+        if (edge?.source === node.id) this.redirect = { goto: edge.target }
+      }
+      if (this.redirect) return
     }
   }
 
@@ -749,7 +754,7 @@ export class GraphRuntime {
   /** 施加节点某生命周期相位（enter/exit）reactions 的副作用。 */
   private applyPhaseReactionEffects(node: GameNode, phase: 'enter' | 'exit'): void {
     for (const r of node.data.reactions ?? []) {
-      if (r.when.type === phase) this.runEffectActions(r.do)
+      if (r.when.type === phase) this.runSettlementActions(node, r.do)
       if (this.redirect) return
     }
   }
@@ -761,7 +766,7 @@ export class GraphRuntime {
       const r = reactions[i]!
       if (r.when.type !== 'at' || this.firedAtReactions.has(i) || r.when.ms > elapsedMs) continue
       this.firedAtReactions.add(i)
-      this.runEffectActions(r.do)
+      this.runSettlementActions(node, r.do)
       if (this.redirect) return
     }
   }
@@ -777,7 +782,7 @@ export class GraphRuntime {
     const chosen =
       completes.find((r) => r.when.type === 'complete' && r.when.if && evaluateCondition(r.when.if, target)) ??
       completes.find((r) => r.when.type === 'complete' && !r.when.if)
-    if (chosen) this.runEffectActions(chosen.do)
+    if (chosen) this.runSettlementActions(node, chosen.do)
   }
 
   private mountLayoutFor(el: OverlayInstanceChild): Layout | undefined {

@@ -40,6 +40,28 @@ describe('exit reaction', () => {
   })
 })
 
+describe('timed settlement advance', () => {
+  it('follows the configured edge when an at settlement reaches its timestamp', () => {
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 5000,
+          reactions: [{ when: { type: 'at', ms: 1200 }, do: [{ kind: 'advance', edgeId: 'e-next' }] }],
+        }),
+        node('b', { durationMs: 5000 }),
+      ],
+      edges: [{ id: 'e-next', source: 'a', target: 'b', sourceHandle: 'default', targetHandle: 'in' }],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph))
+    rt.start()
+
+    rt.tick(1199)
+    expect(rt.state.currentNodeId).toBe('a')
+    rt.tick(1200)
+    expect(rt.state.currentNodeId).toBe('b')
+  })
+})
+
 describe('element window (startMs/endMs)', () => {
   it('shows presentation at startMs and removes at endMs', () => {
     const graph: GameGraph = {

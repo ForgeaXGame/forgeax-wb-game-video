@@ -77,4 +77,29 @@ describe('NodeInspector · 结算选中联动', () => {
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions).toHaveLength(1)
   })
+
+  it('统一呈现定时与数值变化结算，动作只开放效果和沿边推进', () => {
+    const onChange = vi.fn()
+    render(
+      <NodeInspector
+        graph={graphWith([
+          lifecycle(500, 'ent-player'),
+          { when: { type: 'watch', of: 'entity.ent-player.attr.hp', on: 'dec' }, do: [] },
+        ])}
+        nodeId="gate"
+        onChange={onChange}
+      />,
+    )
+
+    const triggerSelects = screen.getAllByTitle('触发条件') as HTMLSelectElement[]
+    expect(triggerSelects.map((select) => select.value)).toEqual(['at', 'watch'])
+    expect(screen.queryByText('响应规则')).toBeNull()
+    expect(screen.queryByRole('button', { name: '＋ 生成组件' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: '＋ 效果' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '＋ 沿边推进' })).toHaveLength(2)
+
+    fireEvent.change(triggerSelects[0]!, { target: { value: 'hidden' } })
+    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(next.nodes[0]?.data.reactions?.[0]?.when.type).toBe('hidden')
+  })
 })

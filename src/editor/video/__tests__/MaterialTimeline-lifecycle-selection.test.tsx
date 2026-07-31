@@ -74,4 +74,41 @@ describe('MaterialTimeline · 结算选中联动', () => {
       Number.parseFloat(getComputedStyle(viewport).height),
     )
   })
+
+  it('派生界面时刻显示空心菱形且不可拖，非定时触发显示条件条', () => {
+    const onSelectPointMarker = vi.fn()
+    const onPointMarkerChange = vi.fn()
+    const { container } = render(
+      <MaterialTimeline
+        materials={[]}
+        maxMs={3_000}
+        playheadMs={0}
+        selectedMaterialKey={null}
+        onSelectMaterial={vi.fn()}
+        onPatchMaterial={vi.fn()}
+        pointMarkers={[
+          { id: 'life:0', ms: 800, kind: 'derived', draggable: false, label: 'n_door 出现 → 效果' },
+        ]}
+        conditionMarkers={[
+          { id: 'life:1', label: 'ent-player.hp 减少 → 沿边推进' },
+        ]}
+        selectedPointMarkerId="life:1"
+        onSelectPointMarker={onSelectPointMarker}
+        onPointMarkerChange={onPointMarkerChange}
+      />,
+    )
+
+    const derived = screen.getByRole('slider', { name: /n_door 出现/ })
+    expect(derived).toHaveClass('is-derived')
+    expect(derived.closest('.gc-point-mark')).toHaveClass('is-derived')
+    fireEvent.pointerDown(derived)
+    expect(onSelectPointMarker).toHaveBeenCalledWith('life:0')
+    expect(onPointMarkerChange).not.toHaveBeenCalled()
+
+    const condition = screen.getByRole('button', { name: /ent-player\.hp 减少/ })
+    expect(condition).toHaveClass('is-selected')
+    fireEvent.pointerDown(condition)
+    expect(onSelectPointMarker).toHaveBeenLastCalledWith('life:1')
+    expect(container.querySelector('.gc-condition-lane')).toBeTruthy()
+  })
 })
