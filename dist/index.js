@@ -517,7 +517,8 @@ function getNodeBgm(d) {
   const b = d.bgm;
   if (!b || typeof b !== "object") return void 0;
   if (b.mode === "stop") return b;
-  return typeof b.ref === "string" && b.ref.length > 0 ? b : void 0;
+  if (typeof b.ref === "string" && b.ref.length > 0) return b;
+  return b.ref === void 0 && typeof b.volume === "number" && Number.isFinite(b.volume) && b.volume >= 0 && b.volume <= 1 ? b : void 0;
 }
 function isSubflowContainerData(d) {
   return getSubFlow(d) != null || getSubFlowPack(d) != null;
@@ -2192,6 +2193,24 @@ var BgmStack = class {
     };
   }
   /**
+   * 不换曲、不新建层，只调整当前栈顶音量。栈空或音量未变化时没有播放指令。
+   * 更新后的音量写回栈帧，因此被上层曲目盖住再恢复时仍保持该值。
+   */
+  setVolume(volume) {
+    const sounding = this.top();
+    if (!sounding || sounding.volume === volume) return null;
+    const frame = Object.freeze({ ...sounding, volume });
+    this.stack[this.stack.length - 1] = frame;
+    return {
+      ref: frame.ref,
+      volume: frame.volume,
+      fadeInMs: 0,
+      fadeOutMs: 0,
+      loop: frame.loop,
+      restart: false
+    };
+  }
+  /**
    * 作者在某节点写了 `mode: 'stop'`：结束**当前这层**，回到上一层还没结束的那首。
    * 与 owner 无关——`stop` 是就近显式表达，写它的节点通常压根没开过层（§6.1 的 `win`/`lose`）。
    *
@@ -2782,6 +2801,7 @@ var GraphRuntime = class {
    *
    * - `mode: 'stop'` → `stack.stop()`：结束当前这层，回到上一层还没结束的（写它的节点通常压根
    *   没开过层，故与 owner 无关）。
+   * - 只有 `volume` → `stack.setVolume()`：不换曲、不新建层；当前没有 BGM 时无操作。
    * - 其余 → `stack.apply()` 开一层，从此一直响，直到别处 `mode: 'stop'` 或 `jump`/清局结束它。
    *   容器与普通节点同一条规则：`callStack` 深度与这一层的寿命无关。
    */
@@ -2789,10 +2809,14 @@ var GraphRuntime = class {
     const bgm = getNodeBgm(node.data);
     if (!bgm) return;
     if (bgm.mode === "stop") return this.emitBgmCommand(this.bgm.stop());
+    if (!bgm.ref) {
+      if (bgm.volume !== void 0) this.emitBgmCommand(this.bgm.setVolume(bgm.volume));
+      return;
+    }
     const owner = this.bgmOwner(node.id);
     const input = {
       owner,
-      // 非 stop 分支必有非空 ref —— `getNodeBgm` 的守卫已保证（`bgm-schema.test.ts` 钉住）。
+      // stop / volume-only 已在上面分流，余下分支必有非空 ref。
       ref: bgm.ref,
       mode: bgm.mode,
       volume: bgm.volume,
@@ -2802,7 +2826,7 @@ var GraphRuntime = class {
     };
     const top = this.bgm.top();
     if (top?.owner !== owner) return this.emitBgmCommand(this.bgm.apply(input));
-    if (top.ref === input.ref && !bgm.restart) return;
+    if (top.ref === input.ref && top.volume === (input.volume ?? 1) && !bgm.restart) return;
     this.emitBgmCommand(this.bgm.apply({ ...input, mode: "replace" }));
   }
   /**
@@ -5826,10 +5850,10 @@ function patchNodeBgm(current2, patch) {
   const merged = { ...current2, ...patch };
   if (merged.mode === "stop") return { mode: "stop" };
   const ref = cleanRef(merged.ref);
-  if (!ref) return void 0;
+  const volume = cleanVolume(merged.volume);
+  if (!ref) return volume === void 0 ? void 0 : { volume };
   const out = { ref };
   if (merged.mode === "replace") out.mode = "replace";
-  const volume = cleanVolume(merged.volume);
   if (volume !== void 0) out.volume = volume;
   const fadeInMs = cleanMs(merged.fadeInMs);
   if (fadeInMs !== void 0) out.fadeInMs = fadeInMs;
@@ -9630,7 +9654,7 @@ function NodeInspector({
   const nestPack = getSubFlowPack(d);
   const nestMode = nestPack ? "pack" : nestRef ? "subflow" : "none";
   const bgm = d.bgm;
-  const bgmMode = bgm?.mode === "replace" || bgm?.mode === "stop" ? bgm.mode : bgm ? "push" : draftBgmMode;
+  const bgmMode = bgm?.mode === "replace" || bgm?.mode === "stop" ? bgm.mode : bgm?.ref ? "push" : draftBgmMode;
   const packKey = nestPack ? nestPack.version ? `${nestPack.id}@${nestPack.version}` : nestPack.id : "";
   const packLabel = (p) => {
     const title = p.title?.trim();
@@ -10175,7 +10199,33 @@ function NodeInspector({
               ]
             }
           )),
-          bgm ? /* @__PURE__ */ jsx25(Fragment8, { children: row4("\u91CD\u8FDB\u65F6", /* @__PURE__ */ jsxs22(
+          row4("\u97F3\u91CF", /* @__PURE__ */ jsxs22("span", { style: { display: "flex", gap: 8, alignItems: "center", width: "100%", minWidth: 0 }, children: [
+            /* @__PURE__ */ jsx25(
+              "input",
+              {
+                type: "checkbox",
+                "aria-label": "\u8BBE\u7F6E BGM \u97F3\u91CF",
+                checked: bgm?.volume !== void 0,
+                onChange: (e) => patchData({ bgm: patchNodeBgm(bgm, { volume: e.target.checked ? 1 : void 0 }) })
+              }
+            ),
+            /* @__PURE__ */ jsx25(
+              "input",
+              {
+                type: "range",
+                "aria-label": "BGM \u97F3\u91CF",
+                min: 0,
+                max: 1,
+                step: 0.01,
+                value: bgm?.volume ?? 1,
+                disabled: bgm?.volume === void 0,
+                onChange: (e) => patchData({ bgm: patchNodeBgm(bgm, { volume: Number(e.target.value) }) }),
+                style: { flex: 1, minWidth: 0 }
+              }
+            ),
+            /* @__PURE__ */ jsx25("span", { style: { width: 48, textAlign: "right", fontVariantNumeric: "tabular-nums" }, children: bgm?.volume === void 0 ? "\u672A\u8BBE\u7F6E" : `${Math.round(bgm.volume * 100)}%` })
+          ] })),
+          bgm?.ref ? /* @__PURE__ */ jsx25(Fragment8, { children: row4("\u91CD\u8FDB\u65F6", /* @__PURE__ */ jsxs22(
             "span",
             {
               style: { display: "flex", gap: 4, alignItems: "center", fontSize: 11, opacity: 0.85 },
@@ -13926,11 +13976,12 @@ function checkBgm(raw, at, audio, issues, position) {
   const b = typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const isStop = position === "node" && b.mode === "stop";
   const ref = b.ref;
-  if (!isStop && (typeof ref !== "string" || ref.trim().length === 0)) {
+  const isVolumeOnly = position === "node" && ref === void 0 && b.volume !== void 0;
+  if (!isStop && !isVolumeOnly && (typeof ref !== "string" || ref.trim().length === 0)) {
     issues.push({
       level: "error",
       code: "bgm.ref.empty",
-      msg: position === "node" ? "bgm.ref \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u53EA\u6709 mode: 'stop' \u90A3\u4E00\u6761\u53EF\u4EE5\u4E0D\u5E26\uFF1B\u5426\u5219 runtime \u9759\u9ED8\u4E22\u5F03\u8BE5 bgm \u914D\u7F6E\uFF09" : "bgm.ref \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5426\u5219 runtime \u9759\u9ED8\u4E22\u5F03\u8BE5 bgm \u914D\u7F6E\uFF09",
+      msg: position === "node" ? "bgm.ref \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u53EA\u6709 mode: 'stop' \u6216\u4EC5\u914D\u7F6E volume \u65F6\u53EF\u4EE5\u4E0D\u5E26\uFF1B\u5426\u5219 runtime \u9759\u9ED8\u4E22\u5F03\u8BE5 bgm \u914D\u7F6E\uFF09" : "bgm.ref \u5FC5\u987B\u662F\u975E\u7A7A\u5B57\u7B26\u4E32\uFF08\u5426\u5219 runtime \u9759\u9ED8\u4E22\u5F03\u8BE5 bgm \u914D\u7F6E\uFF09",
       at
     });
   }
