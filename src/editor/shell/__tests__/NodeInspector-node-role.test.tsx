@@ -31,21 +31,21 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
       ], edges: [] } },
     }],
     ['子蓝图容器', { name: '容器', subFlowPack: { id: 'bp-child', version: '1', entry: 'legacy-entry' } }],
-  ] as const)('%s 不开放演出、界面、结算和响应规则配置', (_name, data) => {
+  ] as const)('%s 不开放演出、界面和结算配置', (_name, data) => {
     render(<NodeInspector graph={graphWith(data)} nodeId="node" onChange={vi.fn()} />)
 
     expectPerformanceFieldsHidden()
     expect(screen.queryByText('入口覆盖')).toBeNull()
   })
 
-  it('入口和普通演出节点都可配置演出、界面、结算和响应规则', () => {
+  it('普通演出节点可配置演出、界面和结算，但不再展示响应规则', () => {
     render(<NodeInspector graph={graphWith({ name: '演出' })} nodeId="node" onChange={vi.fn()} />)
 
     expect(screen.getByText('视频', { selector: 'label > span:first-child' })).toBeTruthy()
     expect(screen.getByText('播放', { selector: 'label > span:first-child' })).toBeTruthy()
     expect(screen.getByText('界面', { selector: 'b' })).toBeTruthy()
     expect(screen.getByText('结算', { selector: 'b' })).toBeTruthy()
-    expect(screen.getByText('响应规则', { selector: 'b' })).toBeTruthy()
+    expect(screen.queryByText('响应规则', { selector: 'b' })).toBeNull()
     expect(screen.getByText('嵌套', { selector: 'label > span:first-child' })).toBeTruthy()
   })
 
