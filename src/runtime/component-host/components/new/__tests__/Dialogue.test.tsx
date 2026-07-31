@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { SkinCtx } from '../../../rendererRegistry'
 import { Dialogue, DialogueManifest } from '../Dialogue'
 
 afterEach(cleanup)
@@ -7,8 +8,8 @@ afterEach(cleanup)
 describe('components/new Dialogue', () => {
   it('declares its authoring inputs and renders speaker, text, and self-contained CSS', () => {
     expect(DialogueManifest.inputs).toEqual([
-      { key: 'speaker', label: '说话人', valueType: 'string' },
-      { key: 'text', label: '台词', valueType: 'string', default: '……' },
+      { key: 'speaker', label: '说话人', valueType: 'string', component: 'numberExpr' },
+      { key: 'text', label: '台词', valueType: 'string', default: '……', component: 'numberExpr' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color' },
       { key: 'fontSize', label: '字号', valueType: 'number' },
     ])
@@ -62,5 +63,40 @@ describe('components/new Dialogue', () => {
 
     expect(container.querySelector('.gv-dialogue-speaker')).toBeNull()
     expect(screen.getByText('……')).toHaveClass('gv-dialogue-text')
+  })
+
+  it('resolves speaker and text from state references', () => {
+    const ctx: SkinCtx = {
+      hud: {
+        entities: {
+          hero: {
+            name: '空藏',
+            hp: 80,
+            maxHp: 100,
+            attrs: { hp: 80 },
+            attrMax: { hp: 100 },
+          },
+        },
+        vars: { qi: 3 },
+        flags: {},
+        score: 0,
+      },
+    }
+    render(
+      <Dialogue
+        overlay={{
+          elementId: 'line-3',
+          component: 'Dialogue',
+          inputs: {
+            speaker: { ref: 'entity.hero.name' },
+            text: { ref: 'var.qi' },
+          },
+        }}
+        ctx={ctx}
+      />,
+    )
+
+    expect(screen.getByText('空藏')).toHaveClass('gv-dialogue-speaker')
+    expect(screen.getByText('3')).toHaveClass('gv-dialogue-text')
   })
 })

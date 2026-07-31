@@ -10,10 +10,10 @@ beforeAll(() => {
 const overlays = () => NODIA_DEMO.ui?.overlays
 
 describe('toFXView', () => {
-  it('derives handles: enter has default outputs; wait has skill event outputs', () => {
+  it('derives handles: narrative handoff has a default output; wait has skill event outputs', () => {
     const fx = toFXView(NODIA_DEMO.graph, overlays())
-    const enter = fx.nodes.find((n) => n.id === 'enter')!
-    const outIds = enter.outputs.map((h) => h.data?.flowId)
+    const handoff = fx.nodes.find((n) => n.id === 'n_nolotus')!
+    const outIds = handoff.outputs.map((h) => h.data?.flowId)
     expect(outIds).toContain('default')
 
     const wait = fx.nodes.find((n) => n.id === 'wait')!
@@ -26,7 +26,7 @@ describe('toFXView', () => {
   it('every node has a single input handle; edges carry source/target handles', () => {
     const fx = toFXView(NODIA_DEMO.graph, overlays())
     expect(fx.nodes.every((n) => n.inputs.length === 1 && n.inputs[0]!.data?.flowId === 'in')).toBe(true)
-    const e = fx.edges.find((x) => x.source === 'enter' && x.target === 'a_my')!
+    const e = fx.edges.find((x) => x.source === 'n_nolotus' && x.target === 'a_my')!
     expect(e.sourceHandle).toBe('source:default')
     expect(e.targetHandle).toBe('target:in')
   })
@@ -37,8 +37,8 @@ describe('toFXView', () => {
     const light = wait.outputs.find((h) => h.data?.flowId === 'light')!
     expect(light.label).toBe('轻攻击')
     expect(light.data?.displayLabel).toBe('轻攻击')
-    const enter = fx.nodes.find((n) => n.id === 'enter')!
-    const def = enter.outputs.find((h) => h.data?.flowId === 'default')!
+    const handoff = fx.nodes.find((n) => n.id === 'n_nolotus')!
+    const def = handoff.outputs.find((h) => h.data?.flowId === 'default')!
     expect(def.label).toBe('默认推进')
   })
 

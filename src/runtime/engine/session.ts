@@ -77,6 +77,8 @@ export interface OverlayMountSnap {
   children: OverlayChildSnap[]
 }
 export interface HudEntitySnap {
+  /** 实体显示名，供挂载态组件做字符串绑定。 */
+  name?: string
   /** 约定便捷字段（= attrs.hp / attrMeta.hp.max）。 */
   hp: number
   maxHp: number
@@ -143,6 +145,7 @@ export class GraphSession {
   snapshot: SessionSnapshot
   private readonly nodesById: Map<string, GameNode>
   private readonly blueprintTitles: Map<string, string>
+  private readonly entityNames: Record<string, string>
   private pendingEntryReason: string | undefined
   /** 已发出的 `bgm` 指令条数；本局单调递增，作快照里那条指令的身份（见 BgmSnapshot）。 */
   private bgmSeq = 0
@@ -165,6 +168,9 @@ export class GraphSession {
     // 开跑用根 graph；依赖解析在 GraphRuntime 内走 manifest.packs（或 opts.packs 注入）。
     this.runtime = new GraphRuntime(scenario.graph, scenario, components, opts.packs ?? [], rootId)
     this.nodesById = new Map(scenario.graph.nodes.map((n) => [n.id, n]))
+    this.entityNames = Object.fromEntries(
+      Object.entries(scenario.entities ?? {}).map(([id, entity]) => [id, entity.name?.trim() || id]),
+    )
     this.snapshot = this.freshSnapshot()
   }
 
@@ -207,6 +213,7 @@ export class GraphSession {
         if (initialAttrs[k] === undefined && m.initial !== undefined) initialAttrs[k] = m.initial
       }
       entities[id] = {
+        name: this.entityNames[id] ?? id,
         hp: attrs.hp ?? 0,
         maxHp: e.attrMeta?.hp?.max ?? attrs.hp ?? 0,
         attrs,
