@@ -109,7 +109,7 @@ export interface OverlaySchemeEditorProps {
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
-   * 可编辑 inputs/layout；不可删除方案、增删组件或修改目录事件动作。
+   * 可编辑 inputs、位置和目录事件动作；不可删除方案、增删组件或调整组件大小。
    */
   locked?: boolean
   /** 与本方案内容重复的其它方案 id（component+位置+参数等价，见 overlay-dedup.ts）；空 = 无重复。 */
@@ -211,7 +211,7 @@ export function OverlaySchemeEditor({
         </div>
         <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
           {overlayId}
-          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础组件方案（单组件，不可增删）</span>}
+          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础界面（单组件，大小固定）</span>}
         </div>
         {duplicateOf.length > 0 && (
           <div
@@ -314,7 +314,7 @@ export function OverlaySchemeEditor({
             </div>
             {locked ? (
               <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
+                基础界面不能增删组件或调整组件大小；可以修改参数、位置和事件动作。
               </div>
             ) : null}
             <ComponentFormFields
@@ -322,6 +322,7 @@ export function OverlaySchemeEditor({
               values={selectedChild.inputs ?? {}}
               pickers={{ entities, variables, formulas }}
               density="compact"
+              labelWidth="4em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
             />
             {selectedEvents.length > 0 ? (
@@ -329,12 +330,11 @@ export function OverlaySchemeEditor({
                 <div style={{ fontSize: 11, fontWeight: 600, margin: '10px 0 6px' }}>事件</div>
                 {locked ? (
                   <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                    基础组件方案的目录事件动作只读；节点挂载仍可追加动作。
+                    这里配置的事件动作会被所有使用该基础界面的挂载继承。
                   </div>
                 ) : null}
                 <fieldset
                   data-testid="overlay-event-editor"
-                  disabled={locked}
                   style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                 >
                   <ComponentEventsEditor
@@ -344,7 +344,7 @@ export function OverlaySchemeEditor({
                     spawnOptions={spawnOptions}
                     overlays={overlays}
                     pickers={{ entities, variables, formulas }}
-                    onCatalogChange={locked ? undefined : onReactionsChange}
+                    onCatalogChange={onReactionsChange}
                   />
                 </fieldset>
               </>
@@ -356,7 +356,7 @@ export function OverlaySchemeEditor({
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可调整参数和组件位置。
+          基础界面固定为单组件，不能增删或调整组件大小。
         </div>
       ) : (
         <ComponentLibrary />

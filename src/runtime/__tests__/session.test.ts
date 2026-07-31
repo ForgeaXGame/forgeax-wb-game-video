@@ -12,7 +12,7 @@ describe('GraphSession (playable view model)', () => {
     const session = new GraphSession(makeNodiaDemo({ bossHp: 30 }))
 
     session.start() // 起点 = 叙事 n_open
-    let snap = session.jump('a_my') // seek 到我方回合容器并进入 wait
+    let snap = session.jump('a_my') // seek 到我方回合容器，立即下钻到 wait
     expect(snap.clip?.nodeId).toBe('wait')
     expect(snap.hud.entities['ent-boss']!.hp).toBe(30)
 
@@ -32,7 +32,7 @@ describe('GraphSession (playable view model)', () => {
   it('exposes execution state for blueprint visualization (visited/traversed)', () => {
     const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
     session.start()
-    session.jump('a_my')
+    session.jump('a_my') // → wait（技能）
     session.emitEvent('wait/skill', 'light') // → 轻攻击演出
     session.tick(1000) // 命中时机(at:1000ms) → 结算(boss 掉 80, 仍存活)
     const snap = session.performanceEnd() // returns → a_my → b_ai → tele（防反 QTE）
