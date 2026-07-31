@@ -18,6 +18,7 @@ const audioSelect = () => screen.getByTitle(/与资产库音频一致/) as HTMLS
 /** 勾选框按可及名字取（行容器是 `<label>`，名字含行内文字）。 */
 const checkbox = (name: RegExp) => screen.getByRole('checkbox', { name })
 const queryCheckbox = (name: RegExp) => screen.queryByRole('checkbox', { name })
+const volumeSlider = () => screen.getByRole('slider', { name: /音量/ }) as HTMLInputElement
 
 const LIB: AudioOption[] = [
   { id: 'a-aud-battle', label: '战斗床 (a-aud-battle)' },
@@ -94,6 +95,23 @@ describe('NodeInspector · 作用域 BGM', () => {
     cleanup()
     renderPanel(graphWith({ name: 'A', bgm: { ref: 'a-aud-battle' } }))
     expect(checkbox(/从头重播/)).toBeTruthy()
+  })
+
+  it('选定 BGM 曲目后可配置音量，并按 0..1 写回', () => {
+    const onChange = renderPanel(graphWith({ name: 'A', bgm: { ref: 'a-aud-battle' } }))
+    expect(volumeSlider().value).toBe('1')
+    expect(screen.getByText('100%')).toBeTruthy()
+
+    fireEvent.change(volumeSlider(), { target: { value: '0.35' } })
+    expect(lastData(onChange).bgm).toEqual({ ref: 'a-aud-battle', volume: 0.35 })
+  })
+
+  it('未选曲目或结束当前音乐时不显示音量配置', () => {
+    renderPanel(graphWith({ name: 'A' }))
+    expect(screen.queryByRole('slider', { name: /音量/ })).toBeNull()
+    cleanup()
+    renderPanel(graphWith({ name: 'A', bgm: { mode: 'stop' } }))
+    expect(screen.queryByRole('slider', { name: /音量/ })).toBeNull()
   })
 
   it('空态选「结束当前音乐」→ 落 { mode: "stop" }（不需要 ref）', () => {
