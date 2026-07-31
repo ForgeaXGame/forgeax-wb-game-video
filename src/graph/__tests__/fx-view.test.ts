@@ -2,12 +2,14 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { toFXView } from '../canvas/fx-view'
 import { NODIA_DEMO } from '../../editor/demo/demo'
 import { registerCoreSkins } from '../../runtime/component-host/components'
+import { getSubProcess } from '../../runtime/schema/graph-schema'
 
 beforeAll(() => {
     registerCoreSkins()
 })
 
 const overlays = () => NODIA_DEMO.ui?.overlays
+const processGraph = (id: string) => getSubProcess(NODIA_DEMO.graph.nodes.find((n) => n.id === id)!.data)!.graph
 
 describe('toFXView', () => {
   it('derives handles: narrative handoff has a default output; wait has skill event outputs', () => {
@@ -32,7 +34,7 @@ describe('toFXView', () => {
   })
 
   it('output handles carry Chinese display labels', () => {
-    const fx = toFXView(NODIA_DEMO.graph, overlays())
+    const fx = toFXView(processGraph('a_my'), overlays())
     const wait = fx.nodes.find((n) => n.id === 'wait')!
     const light = wait.outputs.find((h) => h.data?.flowId === 'light')!
     expect(light.label).toBe('轻攻击')
@@ -42,10 +44,11 @@ describe('toFXView', () => {
     expect(def.label).toBe('默认推进')
   })
 
-  it('leaf / container badges from overlayNode / subFlow*', () => {
+  it('leaf / container badges from overlayNode / subProcess', () => {
     const fx = toFXView(NODIA_DEMO.graph, overlays())
     expect(fx.nodes.find((n) => n.id === 'win')!.type).toBe('default')
-    const tele = fx.nodes.find((n) => n.id === 'tele')!
+    expect(fx.nodes.find((n) => n.id === 'b_ai')!.data.badge).toBeTruthy()
+    const tele = toFXView(processGraph('b_ai'), overlays()).nodes.find((n) => n.id === 'tele')!
     // 有 overlay 则 badge=overlay；否则空（旧 qte-on-timeline 已迁走）
     expect(['overlay', '']).toContain(tele.data.badge)
   })

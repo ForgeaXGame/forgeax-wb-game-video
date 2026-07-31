@@ -1,7 +1,8 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
+import { getSubProcess } from '../../../runtime/schema/graph-schema'
 import { NodeInspector } from '../NodeInspector'
 
 function graphWith(data: GameNodeData): GameGraph {
@@ -23,7 +24,12 @@ afterEach(cleanup)
 
 describe('NodeInspector · 蓝图节点角色约束', () => {
   it.each([
-    ['同图子流程容器', { name: '容器', subFlow: 'entry' }],
+    ['内嵌子流程容器', {
+      name: '容器',
+      subProcess: { entry: 'entry', graph: { nodes: [
+        { id: 'entry', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [], data: { name: '入口' } },
+      ], edges: [] } },
+    }],
     ['子蓝图容器', { name: '容器', subFlowPack: { id: 'bp-child', version: '1', entry: 'legacy-entry' } }],
   ] as const)('%s 不开放演出、界面、结算和响应规则配置', (_name, data) => {
     render(<NodeInspector graph={graphWith(data)} nodeId="node" onChange={vi.fn()} />)
@@ -72,5 +78,23 @@ describe('NodeInspector · 蓝图节点角色约束', () => {
     const populatedSelect = screen.getByTitle('引用蓝图库中的子蓝图；双击容器跳到该蓝图编辑')
     expect(within(populatedSelect).queryByRole('option', { name: '无' })).toBeNull()
     expect(within(populatedSelect).getByRole('option', { name: '战斗 (missing@1)' })).toBeTruthy()
+  })
+
+  it('新建内嵌子流程时只在私有子图创建入口，不向父图追加节点', () => {
+    const graph = graphWith({ name: '回合' })
+    const onChange = vi.fn()
+    render(
+      <NodeInspector
+        graph={graph}
+        nodeId="node"
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByTitle('无 / 私有内嵌子流程 / 外部子蓝图（互斥）'), { target: { value: 'process' } })
+
+    const nextGraph = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(nextGraph.nodes).toHaveLength(1)
+    expect(getSubProcess(nextGraph.nodes[0]!.data)?.graph.nodes).toHaveLength(1)
   })
 })

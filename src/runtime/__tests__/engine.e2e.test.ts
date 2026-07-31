@@ -3,7 +3,7 @@ import { GraphRuntime } from '../engine/engine'
 import { registerCoreSkins } from '../component-host/components'
 import { makeNodiaDemo } from '../../editor/demo/demo'
 import { validateScenario } from '../validate/validate'
-import { getSubFlow } from '../schema/graph-schema'
+import { getSubProcess } from '../schema/graph-schema'
 
 const callers = (rt: GraphRuntime) => rt.state.callStack.map((f) => f.callerNodeId)
 
@@ -21,8 +21,8 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
     const scn = makeNodiaDemo()
     const aMy = scn.graph.nodes.find((n) => n.id === 'a_my')
     const bAi = scn.graph.nodes.find((n) => n.id === 'b_ai')
-    expect(getSubFlow(aMy!.data)).toBe('wait')
-    expect(getSubFlow(bAi!.data)).toBe('tele')
+    expect(getSubProcess(aMy!.data)?.entry).toBe('wait')
+    expect(getSubProcess(bAi!.data)?.entry).toBe('tele')
   })
 
   it('quick win: light skill kills a low-hp boss → flow ends (no forced banner)', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GraphSession } from '../engine/session'
 import { makeNodiaDemo } from '../../editor/demo/demo'
+import { getSubProcess } from '../schema/graph-schema'
 
 function overlayChild(snap: ReturnType<GraphSession['start']>, component: string) {
   return snap.overlayMounts.flatMap((m) => m.children).find((c) => c.component === component)
@@ -49,9 +50,11 @@ describe('GraphSession (playable view model)', () => {
   })
 
   it('jump seeks to any node (debug)', () => {
-    const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
+    const scenario = makeNodiaDemo({ bossHp: 700 })
+    const session = new GraphSession(scenario)
     session.start()
-    const snap = session.jump('wait')
+    const playerTurn = getSubProcess(scenario.graph.nodes.find((node) => node.id === 'a_my')!.data)!
+    const snap = session.jump('wait', { graph: playerTurn.graph, graphPath: ['a_my'] })
     // 跳到战斗待机 → 技能 overlay 可见
     expect(snap.currentNodeId).toBe('wait')
     expect(overlayChild(snap, 'BattleSkill')?.elementId).toBe('wait/skill')
