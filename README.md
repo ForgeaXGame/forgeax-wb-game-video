@@ -38,17 +38,14 @@ handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提
 `bun test` 是无 DOM 的 server/release-contract gate；浏览器、React 与 Vite 覆盖使用
 完整的 `bun run test`（Vitest）。
 
-`@forgeax/workbench-host` 是同版本 vendored tarball。刷新该 tarball 后，先清理该包的
-本地 Bun cache 与 `node_modules/@forgeax/workbench-host`，再运行 `bun install --frozen-lockfile`；
-release contract 会校验 tarball integrity、已安装的 `extension.url()` 类型和完整 TypeScript 编译，
-避免旧 cache 静默保留同版本的过期声明。源码 checkout 还会用
-`vendor/forgeax-workbench-host-0.1.0.provenance.json` 固定评审 commit、SHA-256、SHA-512
-和 Bun integrity；该 source-only 记录与 tarball 都不会进入发布包。
+`@forgeax/workbench-host@0.2.0` 通过 registry 安装。开发和 CI 使用
+`bun install --frozen-lockfile`，以 `bun.lock` 固定已发布的 Host 契约；不需要也不应配置本地
+tarball、路径 override 或 vendored provenance。
 
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
-`@forgeax/workbench-host@0.1.0`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
+`@forgeax/workbench-host@0.2.0`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
 提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
 创建唯一的 `WorkbenchExtensionContext`：
 
@@ -66,6 +63,8 @@ const response = await workspace.withGameRoot(
       files: scope.files,
       media: hostMedia,
       models: hostModels,
+      videoGeneration: hostVideoGeneration,
+      services: hostServices,
     })
     const router = videoGameWorkbenchExtension.createRouter?.(context)
     if (!router) throw new Error('wb-game-video router is unavailable')
@@ -87,6 +86,8 @@ const response = await workspace.withGameRoot(
 - `files` 提供限定在游戏根内的读写、目录枚举和跨进程 `withLocks`；
 - `media` 提供素材读写、幂等落盘与回收；
 - `models` 提供文本、图片和视频生成；
+- `videoGeneration` 是宿主的视频生成 job facade；
+- `services` 是宿主限定范围的服务访问 facade；
 - `gameId` 是工具调用和 HTTP router 的唯一游戏身份。
 
 扩展不会再适配任何宿主产品专用的请求形状，也不会读取进程环境、全局 active-game 文件或
@@ -101,13 +102,12 @@ location 或默认 slug 推导这些值。包读写和扩展请求分别使用 `
 
 ### 发布顺序
 
-当前 vendored host 只用于本地、CI 和评审，本次变更不发布任何包。正式发布必须按以下顺序：
+发布必须按以下顺序：
 
-1. 先发布已经过评审的 `@forgeax/workbench-host@0.1.0`；
-2. 从 registry 验证其类型与能力契约，再移除本仓 `overrides` 和 vendored tarball、重新生成
-   `bun.lock`；
+1. 先发布已经过评审的 `@forgeax/workbench-host@0.2.0`；
+2. 从 registry 验证其类型与能力契约，并更新 `bun.lock`；
 3. 完成 frozen install、测试、构建和 pack 检查后，最后发布
-   `@forgeax/wb-game-video@0.2.0`。
+   `@forgeax/wb-game-video@0.2.1`。
 
 ## 代码导航
 

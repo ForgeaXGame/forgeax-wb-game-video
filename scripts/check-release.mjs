@@ -13,10 +13,10 @@ const PLATFORM_VERSION = '0.0.2'
 const WORKBENCH_HOST_PACKAGE = '@forgeax/workbench-host'
 const WORKBENCH_HOST_VERSION = '0.2.0'
 const HOST_BACKEND_ENTRY = './dist/server/host.js'
-const VIDEO_GENERATION_TOOL_IDS = new Set([
+const VIDEO_GENERATION_TOOL_IDS = [
   'wb-game-video:generate-video',
   'wb-game-video:generate-node-video',
-])
+]
 const REQUIRED_VIDEO_CAPABILITY = { id: 'media.video.generate', version: 1 }
 const FORBIDDEN_PROVIDER_INTEGRATION_TEXT = [
   'wb-asset-canvas',
@@ -355,18 +355,24 @@ async function validateManifest(packageRoot, manifest, errors) {
       tool?.returns,
       errors,
     )
-    if (VIDEO_GENERATION_TOOL_IDS.has(tool?.id)) {
-      const actual = tool?.requiresCapabilities
-      if (
-        !Array.isArray(actual)
-        || actual.length !== 1
-        || actual[0]?.id !== REQUIRED_VIDEO_CAPABILITY.id
-        || actual[0]?.version !== REQUIRED_VIDEO_CAPABILITY.version
-      ) {
-        errors.push(
-          `provides.tools[${index}].requiresCapabilities must be exactly ${JSON.stringify([REQUIRED_VIDEO_CAPABILITY])}`,
-        )
-      }
+  }
+
+  for (const requiredToolId of VIDEO_GENERATION_TOOL_IDS) {
+    const index = tools.findIndex((tool) => tool?.id === requiredToolId)
+    if (index === -1) {
+      errors.push(`provides.tools must include required video generation tool ${JSON.stringify(requiredToolId)}`)
+      continue
+    }
+    const actual = tools[index]?.requiresCapabilities
+    if (
+      !Array.isArray(actual)
+      || actual.length !== 1
+      || actual[0]?.id !== REQUIRED_VIDEO_CAPABILITY.id
+      || actual[0]?.version !== REQUIRED_VIDEO_CAPABILITY.version
+    ) {
+      errors.push(
+        `provides.tools[${index}].requiresCapabilities must be exactly ${JSON.stringify([REQUIRED_VIDEO_CAPABILITY])}`,
+      )
     }
   }
 

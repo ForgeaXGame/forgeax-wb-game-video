@@ -13,6 +13,11 @@ import { validateRelease } from '../scripts/check-release.mjs'
 
 const fixtureBase = mkdtempSync(resolve(import.meta.dirname, '.check-release-'))
 const toolId = 'wb-game-video:get-graph'
+const videoGenerationToolIds = [
+  'wb-game-video:generate-video',
+  'wb-game-video:generate-node-video',
+] as const
+const videoGenerationRequirement = [{ id: 'media.video.generate', version: 1 }]
 const oldToolId = ['gv', 'id:get-graph'].join('')
 const oldStorageKey = ['game', 'video:graph:view'].join('')
 const oldDottedStorageKey = ['gv', 'id.nodePanel.previewW'].join('')
@@ -117,6 +122,12 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
             args: './schemas/get-graph.args.json',
             returns: './schemas/get-graph.returns.json',
           },
+          ...videoGenerationToolIds.map((id) => ({
+            id,
+            args: './schemas/get-graph.args.json',
+            returns: './schemas/get-graph.returns.json',
+            requiresCapabilities: videoGenerationRequirement,
+          })),
         ],
       },
     })
@@ -130,7 +141,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
     writeJson(resolve(root, 'schemas/get-graph.returns.json'), { type: 'object' })
   }
   if (!options.missingBackend) {
-    const keys = options.backendKeys ?? [toolId]
+    const keys = options.backendKeys ?? [toolId, ...videoGenerationToolIds]
     const namedKeys = options.namedToolKeys ?? keys
     writeFileSync(
       resolve(root, 'dist/server/host.js'),
@@ -184,29 +195,46 @@ describe('validateRelease', () => {
     const missingCapabilityRoot = createFixture('missing-video-capability')
     const manifestPath = resolve(missingCapabilityRoot, 'forgeax-extension.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-    manifest.provides.tools.push(
-      {
-        id: 'wb-game-video:generate-video',
-        args: './schemas/get-graph.args.json',
-        returns: './schemas/get-graph.returns.json',
-      },
-      {
-        id: 'wb-game-video:generate-node-video',
-        args: './schemas/get-graph.args.json',
-        returns: './schemas/get-graph.returns.json',
-      },
+    const generateVideo = manifest.provides.tools.find(
+      (tool: { id: string }) => tool.id === videoGenerationToolIds[0],
     )
+    generateVideo.requiresCapabilities = []
     writeJson(manifestPath, manifest)
 
     expect(await validateRelease(missingCapabilityRoot)).toContainEqual(
       expect.stringContaining('requiresCapabilities'),
     )
 
-    const providerWiringRoot = createFixture('provider-wiring', {
-      forbiddenPublishedText: 'arrival-kino',
-    })
-    expect(await validateRelease(providerWiringRoot)).toContainEqual(
-      expect.stringContaining('forbidden provider integration text'),
+    for (const forbiddenPublishedText of [
+      'wb-asset-canvas',
+      'arrival-kino',
+      '/api/v1/kino',
+    ]) {
+      const providerWiringRoot = createFixture(`provider-wiring-${forbiddenPublishedText.replaceAll('/', '-')}`, {
+        forbiddenPublishedText,
+      })
+      expect(await validateRelease(providerWiringRoot)).toContainEqual(
+        expect.stringContaining('forbidden provider integration text'),
+      )
+    }
+  })
+
+  it('requires both generation tool IDs even when manifest and compiled handlers agree', async () => {
+    const fixtureRoot = createFixture('missing-generation-tool')
+    const manifestPath = resolve(fixtureRoot, 'forgeax-extension.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    const remainingToolIds = [toolId, videoGenerationToolIds[0]]
+    manifest.provides.tools = manifest.provides.tools.filter(
+      (tool: { id: string }) => remainingToolIds.includes(tool.id),
+    )
+    writeJson(manifestPath, manifest)
+    writeFileSync(
+      resolve(fixtureRoot, 'dist/server/host.js'),
+      `export const host = {}\nexport const tools = {${remainingToolIds.map((id) => `${JSON.stringify(id)}: async () => ({})`).join(',')}}\n`,
+    )
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining(videoGenerationToolIds[1]),
     )
   })
 
