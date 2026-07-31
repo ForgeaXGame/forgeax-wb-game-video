@@ -398,8 +398,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     playOpen ? `${snap.activeBlueprintId}:${snap.activeGraphPath.join('/')}` : null,
     playOpen ? snap.currentNodeId : null,
   )
-  // playEpoch：同节点 jump 重播时清闸（clip.nodeId 不变）
-  const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap.clip?.nodeId, `${runKey}:${playEpoch}`)
+  // clipSeq 区分每次实际开演；playEpoch 继续覆盖 jump / session 重建。
+  const endPerformance = useClipPerformanceEnd(sessionRef, setSnap, snap.clipSeq, `${runKey}:${playEpoch}`)
 
   // 切到另一张蓝图时清掉「从此试玩」钉住（节点 id 只在原图语义下有效）。
   useEffect(() => {
@@ -440,7 +440,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     snap.clip?.durationMs,
     { paused: playPaused, rate: playbackRate },
     snap.phase === 'ended' || !!snap.clip?.mediaId,
-    `${runKey}:${playEpoch}:${snap.clip?.nodeId ?? ''}`,
+    `${runKey}:${playEpoch}:${snap.clipSeq}`,
   )
 
   /** 从此试玩：钉住入口 + 打开浮层 + 以当前蓝图最新图重建 session 再 seek。 */
@@ -661,10 +661,10 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   key 随 session 重建换 → 重开不把上一局的曲子拖进新局（同 GraphPlaySurface）。 */}
               <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} paused={playPaused} playbackRate={playbackRate} />
 
-              {/* 演出 + 叠层：共享 runtime/play 的 GameStage。videoKey 带 playEpoch → 同节点再 jump 强制 remount。 */}
+              {/* 演出 + 叠层：clipSeq 区分同名/重入节点，playEpoch 区分 jump 和 session 重建。 */}
               <GameStage
                 videoSrc={videoSrc}
-                videoKey={`${snap.clip?.nodeId ?? 'clip'}-${playEpoch}`}
+                videoKey={`${snap.clipSeq}-${playEpoch}`}
                 clip={snap.clip}
                 preloadVideos={preloadVideos}
                 overlayMounts={snap.overlayMounts}
