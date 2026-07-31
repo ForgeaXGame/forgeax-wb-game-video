@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -39,6 +40,7 @@ interface FixtureOptions {
   oldIdentitySource?: string
   provenanceSha256?: string
   provenanceSourceCommit?: string
+  forbiddenPublishedText?: string
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -73,14 +75,14 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'package.json'), {
       name: options.packageName ?? '@forgeax/wb-game-video',
-      version: '0.2.0',
+      version: '0.2.1',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.1.0',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.0',
       },
       devDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.1.0',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.0',
       },
       exports: options.packageExports ?? {
         '.': './dist/index.js',
@@ -97,7 +99,7 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   } else {
     writeJson(resolve(root, 'forgeax-extension.json'), {
       id: '@forgeax/wb-game-video',
-      version: options.manifestVersion ?? '0.2.0',
+      version: options.manifestVersion ?? '0.2.1',
       entry: {
         frontend: './dist/index.html',
         backend: options.manifestBackend ?? './dist/server/host.js',
@@ -156,6 +158,9 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
   if (options.oldIdentitySource) {
     writeFileSync(resolve(root, 'src/active.ts'), options.oldIdentitySource)
   }
+  if (options.forbiddenPublishedText) {
+    writeFileSync(resolve(root, 'dist/server/provider-wiring.js'), options.forbiddenPublishedText)
+  }
   for (const [path, source] of Object.entries(options.oldIdentityFiles ?? {})) {
     mkdirSync(resolve(root, dirname(path)), { recursive: true })
     writeFileSync(resolve(root, path), source)
@@ -175,14 +180,33 @@ describe('validateRelease', () => {
     expect(await validateRelease(fixtureRoot)).toEqual([])
   })
 
-  it.each([
-    ['archive hash', { provenanceSha256: '0'.repeat(64) }],
-    ['reviewed source commit', { provenanceSourceCommit: '1'.repeat(40) }],
-  ])('rejects mismatched host vendor %s provenance', async (_label, options) => {
-    const fixtureRoot = createFixture(`bad-host-provenance-${_label.replaceAll(' ', '-')}`, options)
+  it('requires host video capability annotations and rejects provider wiring in published text', async () => {
+    const missingCapabilityRoot = createFixture('missing-video-capability')
+    const manifestPath = resolve(missingCapabilityRoot, 'forgeax-extension.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    manifest.provides.tools.push(
+      {
+        id: 'wb-game-video:generate-video',
+        args: './schemas/get-graph.args.json',
+        returns: './schemas/get-graph.returns.json',
+      },
+      {
+        id: 'wb-game-video:generate-node-video',
+        args: './schemas/get-graph.args.json',
+        returns: './schemas/get-graph.returns.json',
+      },
+    )
+    writeJson(manifestPath, manifest)
 
-    expect(await validateRelease(fixtureRoot)).toContainEqual(
-      expect.stringContaining('provenance'),
+    expect(await validateRelease(missingCapabilityRoot)).toContainEqual(
+      expect.stringContaining('requiresCapabilities'),
+    )
+
+    const providerWiringRoot = createFixture('provider-wiring', {
+      forbiddenPublishedText: 'arrival-kino',
+    })
+    expect(await validateRelease(providerWiringRoot)).toContainEqual(
+      expect.stringContaining('forbidden provider integration text'),
     )
   })
 
@@ -248,11 +272,11 @@ describe('validateRelease', () => {
 
   it('reports the package-derived tag when manifest version differs', async () => {
     const badVersionRoot = createFixture('bad-version', {
-      manifestVersion: '0.2.1',
+      manifestVersion: '0.2.2',
     })
 
     expect(await validateRelease(badVersionRoot)).toContainEqual(
-      expect.stringContaining('v0.2.0'),
+      expect.stringContaining('v0.2.1'),
     )
   })
 

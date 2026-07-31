@@ -1,10 +1,24 @@
 import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
+import type { ServiceCapability, VideoGenerationGateway } from '@forgeax/workbench-host/contracts'
 import { describe, expect, test } from 'vitest'
 import { makeNodiaDemo } from '../src/editor/demo/demo'
 import tools from './tool-handlers'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+
+const unavailableVideoGeneration: VideoGenerationGateway = {
+  async start() { throw new Error('Video generation is unavailable in this test context') },
+  async get() { throw new Error('Video generation is unavailable in this test context') },
+  async cancel() { throw new Error('Video generation is unavailable in this test context') },
+  async generateVideo() { throw new Error('Video generation is unavailable in this test context') },
+}
+
+const unavailableServices: ServiceCapability = {
+  async scope() { throw new Error('Services are unavailable in this test context') },
+  async request() { throw new Error('Services are unavailable in this test context') },
+  async stageMedia() { throw new Error('Services are unavailable in this test context') },
+}
 
 function createContext(gameId = 'contract-game') {
   const entries = new Map<string, Uint8Array>([
@@ -46,6 +60,8 @@ function createContext(gameId = 'contract-game') {
       async generateImage() { throw new Error('not needed by graph contract') },
       async generateVideo() { throw new Error('not needed by graph contract') },
     },
+    videoGeneration: unavailableVideoGeneration,
+    services: unavailableServices,
   }
   return { context, entries }
 }

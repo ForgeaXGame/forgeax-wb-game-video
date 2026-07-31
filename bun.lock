@@ -18,7 +18,7 @@
       },
       "devDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "0.1.0",
+        "@forgeax/workbench-host": "0.2.0",
         "@testing-library/jest-dom": "^7.0.0",
         "@testing-library/react": "^16.3.2",
         "@types/node": "^22.10.0",
@@ -34,12 +34,9 @@
       },
       "peerDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "0.1.0",
+        "@forgeax/workbench-host": "0.2.0",
       },
     },
-  },
-  "overrides": {
-    "@forgeax/workbench-host": "file:vendor/forgeax-workbench-host-0.1.0.tgz",
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "https://registry.npmmirror.com/@adobe/css-tools/-/css-tools-4.5.0.tgz", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],
@@ -146,7 +143,7 @@
 
     "@forgeax/extension-platform": ["@forgeax/extension-platform@0.0.2", "https://mirrors.tencent.com/npm/@forgeax/extension-platform/-/extension-platform-0.0.2.tgz", {}, "sha512-FvPk1d/s1x1jM4T0IAaTZrzniKzpIY/FRXQMgXsxt9MI94YH9msm0yo3GCYHEfsn2E9X0s0qmHGDqk5Kx2LSNA=="],
 
-    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.1.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-qXeVrYZgFsmvrt24/1hpSkXb9RaXMNjEhRiP73FWKHMRmE7SNx2XbesO/kZSDhjZcB9z2h2pkIBaTThF8dpLHA=="],
+    "@forgeax/workbench-host": ["@forgeax/workbench-host@0.2.0", "https://mirrors.tencent.com/npm/@forgeax/workbench-host/-/workbench-host-0.2.0.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-cbtgtF/OaysajSxMopavOkjI9hdGc0Xzyy6lgyWw4DZUVIJSTLmlXQYK4llbe9QWLL6a3BsuWMzJfNIYn6P9Ew=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

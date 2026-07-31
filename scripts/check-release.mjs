@@ -4,7 +4,6 @@ import {
   realpath,
   stat,
 } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
 import { extname, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -12,11 +11,26 @@ const PACKAGE_NAME = '@forgeax/wb-game-video'
 const PLATFORM_PACKAGE = '@forgeax/extension-platform'
 const PLATFORM_VERSION = '0.0.2'
 const WORKBENCH_HOST_PACKAGE = '@forgeax/workbench-host'
-const WORKBENCH_HOST_VERSION = '0.1.0'
-const REVIEWED_WORKBENCH_HOST_COMMIT = '15a573679ad058e4d04fadea2f5c90abb29d2245'
-const WORKBENCH_HOST_ARCHIVE = 'vendor/forgeax-workbench-host-0.1.0.tgz'
-const WORKBENCH_HOST_PROVENANCE = 'vendor/forgeax-workbench-host-0.1.0.provenance.json'
+const WORKBENCH_HOST_VERSION = '0.2.0'
 const HOST_BACKEND_ENTRY = './dist/server/host.js'
+const VIDEO_GENERATION_TOOL_IDS = new Set([
+  'wb-game-video:generate-video',
+  'wb-game-video:generate-node-video',
+])
+const REQUIRED_VIDEO_CAPABILITY = { id: 'media.video.generate', version: 1 }
+const FORBIDDEN_PROVIDER_INTEGRATION_TEXT = [
+  'wb-asset-canvas',
+  'arrival-kino',
+  '/api/v1/kino',
+]
+const PUBLISHED_TEXT_PATHS = [
+  'dist',
+  'forgeax-extension.json',
+  'package.json',
+  'schemas',
+  'README.md',
+  'SKILL.md',
+]
 const REQUIRED_PACKAGE_EXPORTS = {
   '.': './dist/index.js',
   './host': HOST_BACKEND_ENTRY,
@@ -256,57 +270,6 @@ async function validateNoLocalAbsolutePaths(packageRoot, pkg, errors) {
   }
 }
 
-async function validateHostVendorProvenance(packageRoot, errors) {
-  const provenance = await readJson(
-    resolve(packageRoot, WORKBENCH_HOST_PROVENANCE),
-    WORKBENCH_HOST_PROVENANCE,
-    errors,
-  )
-  if (!provenance) return
-
-  const expectedFields = {
-    schemaVersion: 1,
-    package: WORKBENCH_HOST_PACKAGE,
-    version: WORKBENCH_HOST_VERSION,
-    sourceCommit: REVIEWED_WORKBENCH_HOST_COMMIT,
-    archive: WORKBENCH_HOST_ARCHIVE,
-  }
-  for (const [field, expected] of Object.entries(expectedFields)) {
-    if (provenance[field] !== expected) {
-      errors.push(
-        `${WORKBENCH_HOST_PROVENANCE}.${field} must be ${JSON.stringify(expected)}; received ${JSON.stringify(provenance[field])}`,
-      )
-    }
-  }
-
-  let archive
-  try {
-    archive = await readFile(resolve(packageRoot, WORKBENCH_HOST_ARCHIVE))
-  } catch {
-    errors.push(`${WORKBENCH_HOST_ARCHIVE} is not readable`)
-    return
-  }
-  const sha256 = createHash('sha256').update(archive).digest('hex')
-  const sha512 = createHash('sha512').update(archive).digest('hex')
-  const integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
-  for (const [field, expected] of Object.entries({ sha256, sha512, integrity })) {
-    if (provenance[field] !== expected) {
-      errors.push(
-        `${WORKBENCH_HOST_PROVENANCE}.${field} does not match ${WORKBENCH_HOST_ARCHIVE}`,
-      )
-    }
-  }
-
-  try {
-    const lockSource = await readFile(resolve(packageRoot, 'bun.lock'), 'utf8')
-    if (!lockSource.includes(integrity)) {
-      errors.push(`bun.lock does not contain ${WORKBENCH_HOST_ARCHIVE} integrity`)
-    }
-  } catch {
-    errors.push('bun.lock is not readable')
-  }
-}
-
 function validatePackage(pkg, errors) {
   if (pkg.name !== PACKAGE_NAME) {
     errors.push(`package name must be ${PACKAGE_NAME}; received ${JSON.stringify(pkg.name)}`)
@@ -392,6 +355,19 @@ async function validateManifest(packageRoot, manifest, errors) {
       tool?.returns,
       errors,
     )
+    if (VIDEO_GENERATION_TOOL_IDS.has(tool?.id)) {
+      const actual = tool?.requiresCapabilities
+      if (
+        !Array.isArray(actual)
+        || actual.length !== 1
+        || actual[0]?.id !== REQUIRED_VIDEO_CAPABILITY.id
+        || actual[0]?.version !== REQUIRED_VIDEO_CAPABILITY.version
+      ) {
+        errors.push(
+          `provides.tools[${index}].requiresCapabilities must be exactly ${JSON.stringify([REQUIRED_VIDEO_CAPABILITY])}`,
+        )
+      }
+    }
   }
 
   if (backendPath) {
@@ -416,6 +392,35 @@ async function validateManifest(packageRoot, manifest, errors) {
   }
 }
 
+async function findForbiddenProviderIntegrationText(packageRoot, errors) {
+  const pending = [...PUBLISHED_TEXT_PATHS]
+  while (pending.length > 0) {
+    const packagePath = pending.pop()
+    const absolutePath = resolve(packageRoot, packagePath)
+    let info
+    try {
+      info = await stat(absolutePath)
+    } catch {
+      continue
+    }
+    if (info.isDirectory()) {
+      const entries = await readdir(absolutePath, { withFileTypes: true })
+      for (const entry of entries) {
+        pending.push(`${packagePath}/${entry.name}`)
+      }
+      continue
+    }
+    if (!info.isFile() || !isTextFile(packagePath)) continue
+    const source = await readFile(absolutePath, 'utf8')
+    const forbidden = FORBIDDEN_PROVIDER_INTEGRATION_TEXT.find((text) => source.includes(text))
+    if (forbidden) {
+      errors.push(
+        `forbidden provider integration text ${JSON.stringify(forbidden)} in published file ${packagePath}`,
+      )
+    }
+  }
+}
+
 export async function validateRelease(root) {
   const packageRoot = resolve(root)
   const errors = []
@@ -430,8 +435,8 @@ export async function validateRelease(root) {
     validatePackage(pkg, errors)
     await validateNoLocalAbsolutePaths(packageRoot, pkg, errors)
   }
-  await validateHostVendorProvenance(packageRoot, errors)
   if (manifest) await validateManifest(packageRoot, manifest, errors)
+  await findForbiddenProviderIntegrationText(packageRoot, errors)
   if (pkg && manifest) {
     const expectedTag = `v${pkg.version}`
     if (manifest.version !== pkg.version) {

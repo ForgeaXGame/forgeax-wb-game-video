@@ -10,7 +10,9 @@ import type {
   MediaQuery,
   MediaWriteInput,
   ModelCapability,
+  ServiceCapability,
   TextGenerationInput,
+  VideoGenerationGateway,
   VideoGenerationInput,
 } from '@forgeax/workbench-host/contracts'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -27,6 +29,19 @@ import {
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const originalForgeaxServerPort = process.env.FORGEAX_SERVER_PORT
+
+const unavailableVideoGeneration: VideoGenerationGateway = {
+  async start() { throw new Error('Video generation is unavailable in this test context') },
+  async get() { throw new Error('Video generation is unavailable in this test context') },
+  async cancel() { throw new Error('Video generation is unavailable in this test context') },
+  async generateVideo() { throw new Error('Video generation is unavailable in this test context') },
+}
+
+const unavailableServices: ServiceCapability = {
+  async scope() { throw new Error('Services are unavailable in this test context') },
+  async request() { throw new Error('Services are unavailable in this test context') },
+  async stageMedia() { throw new Error('Services are unavailable in this test context') },
+}
 
 function json(value: unknown): Uint8Array {
   return encoder.encode(JSON.stringify(value))
@@ -302,6 +317,8 @@ function createContext() {
     files,
     media,
     models,
+    videoGeneration: unavailableVideoGeneration,
+    services: unavailableServices,
   }
   return { context, files, media, models }
 }

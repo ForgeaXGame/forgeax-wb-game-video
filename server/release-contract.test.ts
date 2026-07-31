@@ -1,5 +1,4 @@
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -79,10 +78,10 @@ describe('release identity', () => {
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax/wb-game-video')
-    expect(pkg.version).toBe('0.2.0')
+    expect(pkg.version).toBe('0.2.1')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe('0.2.0')
+    expect(manifest.version).toBe('0.2.1')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),
@@ -96,31 +95,22 @@ describe('release identity', () => {
   it('pins the exact host dependency and installed extension URL API', () => {
     expect(pkg.peerDependencies['@forgeax/extension-platform']).toBe('0.0.2')
     expect(pkg.devDependencies['@forgeax/extension-platform']).toBe('0.0.2')
-    expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.1.0')
-    expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.1.0')
-    const archive = readFileSync(resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'))
-    const provenance = JSON.parse(readFileSync(
-      resolve(root, 'vendor/forgeax-workbench-host-0.1.0.provenance.json'),
-      'utf8',
-    ))
-    expect(provenance).toEqual({
-      schemaVersion: 1,
-      package: '@forgeax/workbench-host',
-      version: '0.1.0',
-      sourceCommit: '15a573679ad058e4d04fadea2f5c90abb29d2245',
-      archive: 'vendor/forgeax-workbench-host-0.1.0.tgz',
-      sha256: createHash('sha256').update(archive).digest('hex'),
-      sha512: createHash('sha512').update(archive).digest('hex'),
-      integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
-    })
-    const integrity = `sha512-${createHash('sha512').update(archive).digest('base64')}`
-    expect(readFileSync(resolve(root, 'bun.lock'), 'utf8')).toContain(integrity)
-    const extensionTypes = execFileSync('tar', [
-      '-xOf',
-      resolve(root, 'vendor/forgeax-workbench-host-0.1.0.tgz'),
-      'package/dist/extension/index.d.ts',
-    ], { encoding: 'utf8' })
-    expect(extensionTypes).toContain('url(path: string): string;')
+    expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.2.0')
+    expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.2.0')
+    expect(pkg.overrides?.['@forgeax/workbench-host']).toBeUndefined()
+  })
+
+  it('declares the Host video-generation capability for both generation tools', () => {
+    const requiredCapability = [{ id: 'media.video.generate', version: 1 }]
+    for (const toolId of [
+      'wb-game-video:generate-video',
+      'wb-game-video:generate-node-video',
+    ]) {
+      const tool = manifest.provides.tools.find(
+        (entry: { id: string }) => entry.id === toolId,
+      )
+      expect(tool?.requiresCapabilities).toEqual(requiredCapability)
+    }
   })
 
   it('exports the compiled host module with the declared tool map', async () => {

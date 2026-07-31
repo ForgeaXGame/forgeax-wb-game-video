@@ -1,6 +1,8 @@
 import type {
   MediaCapability,
   ModelCapability,
+  ServiceCapability,
+  VideoGenerationGateway,
 } from '@forgeax/workbench-host/contracts'
 import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -9,6 +11,19 @@ import { getAssetIdFromArgs, createWbGameVideoService } from './host/wb-service'
 import { host, tools } from './host'
 
 const encoder = new TextEncoder()
+
+const unavailableVideoGeneration: VideoGenerationGateway = {
+  async start() { throw new Error('Video generation is unavailable in this test context') },
+  async get() { throw new Error('Video generation is unavailable in this test context') },
+  async cancel() { throw new Error('Video generation is unavailable in this test context') },
+  async generateVideo() { throw new Error('Video generation is unavailable in this test context') },
+}
+
+const unavailableServices: ServiceCapability = {
+  async scope() { throw new Error('Services are unavailable in this test context') },
+  async request() { throw new Error('Services are unavailable in this test context') },
+  async stageMedia() { throw new Error('Services are unavailable in this test context') },
+}
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -102,6 +117,8 @@ function createContext() {
       files,
       media,
       models,
+      videoGeneration: unavailableVideoGeneration,
+      services: unavailableServices,
     } satisfies WorkbenchExtensionContext,
     media,
     models,

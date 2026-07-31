@@ -1,4 +1,5 @@
 import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
+import type { ServiceCapability, VideoGenerationGateway } from '@forgeax/workbench-host/contracts'
 import {
   InMemoryMediaCapability,
   InMemoryModelGateway,
@@ -14,6 +15,19 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 let bundledDirectory = ''
 let bundledFile = ''
+
+const unavailableVideoGeneration: VideoGenerationGateway = {
+  async start() { throw new Error('Video generation is unavailable in this test context') },
+  async get() { throw new Error('Video generation is unavailable in this test context') },
+  async cancel() { throw new Error('Video generation is unavailable in this test context') },
+  async generateVideo() { throw new Error('Video generation is unavailable in this test context') },
+}
+
+const unavailableServices: ServiceCapability = {
+  async scope() { throw new Error('Services are unavailable in this test context') },
+  async request() { throw new Error('Services are unavailable in this test context') },
+  async stageMedia() { throw new Error('Services are unavailable in this test context') },
+}
 
 beforeAll(async () => {
   bundledDirectory = await mkdtemp(join(tmpdir(), 'wb-game-video-router-media-'))
@@ -138,6 +152,8 @@ function createContext(options: ContextOptions = {}): WorkbenchExtensionContext 
         generateVideo: (input) => gateway.generateVideo('router-game', input),
       }
     })(),
+    videoGeneration: unavailableVideoGeneration,
+    services: unavailableServices,
   }
 }
 

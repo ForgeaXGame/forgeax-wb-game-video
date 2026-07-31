@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax/wb-game-video",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "kind": "workbench",
   "displayName": { "zh": "视频游戏", "en": "Video Game Studio" },
   "description": {
@@ -99,6 +99,9 @@
         "id": "wb-game-video:generate-video",
         "args": "./schemas/generate-video.args.json",
         "returns": "./schemas/generate-video.returns.json",
+        "requiresCapabilities": [
+          { "id": "media.video.generate", "version": 1 }
+        ],
         "exposedToAI": true,
         "description": {
           "zh": "第3步·为一节点生成一段视频（≤15s 单段），落共享素材层（video_clip）。必传 characterRefIds+sceneRefIds（缺则报错，绝不静默降级）。可传 styleAxes 覆盖三轴、extend+transitionHint 做显式续接。把返回 asset.id 绑到 node.data.media.ref。超长节点用 wb-game-video:generate-node-video。",
@@ -109,6 +112,9 @@
         "id": "wb-game-video:generate-node-video",
         "args": "./schemas/generate-node-video.args.json",
         "returns": "./schemas/generate-node-video.returns.json",
+        "requiresCapabilities": [
+          { "id": "media.video.generate", "version": 1 }
+        ],
         "exposedToAI": true,
         "description": {
           "zh": "第3步(超长版)·为一节点生成成片，durationSeconds > 15s 时自动按 15s 拆段，第2段起前置 V-PROMPT-15 延长块 + 首帧续接。必传 character/scene 参考图。返回 assets[]（按段序，单段时长度为1）。",
