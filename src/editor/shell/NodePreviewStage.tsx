@@ -42,7 +42,6 @@ import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { isSettlementReaction, overlayMountId, type NodeAction, type OverlayInstanceChild } from '../../runtime/schema/node-config-schema'
 import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { findMountOwningChild } from '../../graph/edit/overlay-edit'
 import { setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { elementStartMs } from '../../graph/canvas/timeline-geometry'
 import { overlayFitTargets } from './overlay-fit-targets'
@@ -242,14 +241,17 @@ export function NodePreviewStage({
     [scenario, node, playheadMs, maxMs],
   )
   const previewMountGroups = useMemo(() => {
+    const mountsById = new Map(
+      (node.data.overlayNodes ?? []).map((mount) => [overlayMountId(mount), mount] as const),
+    )
     const groups = new Map<string, {
       mount: NonNullable<GameNode['data']['overlayNodes']>[number]
       children: typeof previewSkinChildren
     }>()
     for (const child of previewSkinChildren) {
-      const mount = findMountOwningChild(scenario, node, child.id)
+      const mountId = child.source.mountId
+      const mount = mountsById.get(mountId)
       if (!mount) continue
-      const mountId = overlayMountId(mount)
       const group = groups.get(mountId)
       if (group) group.children.push(child)
       else groups.set(mountId, { mount, children: [child] })
@@ -262,7 +264,7 @@ export function NodePreviewStage({
         resolveMountChildren(overlays, value.mount).map((child) => child.layout),
       ) ?? {},
     }))
-  }, [overlays, previewSkinChildren, scenario, node])
+  }, [overlays, previewSkinChildren, node])
   const videoFx = useMemo(
     () => resolveVideoFxForNode(node, overlays, playheadMs, maxMs),
     [node, overlays, playheadMs, maxMs],
@@ -653,6 +655,7 @@ export function NodePreviewStage({
                     <div
                       key={mountId}
                       ref={(element) => { mountPreviewRefs.current[mountId] = element }}
+                      data-preview-mount-id={mountId}
                       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
                     >
                       {children.map((child) => (
