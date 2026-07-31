@@ -7,6 +7,7 @@ import { DamageFloatText, DamageFloatTextManifest } from './DamageFloatText'
 import { GainFloatText, GainFloatTextManifest } from './GainFloatText'
 import { InkYingMo, InkYingMoManifest } from './InkYingMo'
 import { InkKou, InkKouManifest } from './InkKou'
+import { StatusNotice, StatusNoticeManifest } from './StatusNotice'
 import { TextOption, TextOptionManifest } from './TextOption'
 
 export default [
@@ -19,5 +20,6 @@ export default [
   { component: GainFloatText, manifest: GainFloatTextManifest },
   { component: InkYingMo, manifest: InkYingMoManifest },
   { component: InkKou, manifest: InkKouManifest },
+  { component: StatusNotice, manifest: StatusNoticeManifest },
   { component: TextOption, manifest: TextOptionManifest },
 ]
