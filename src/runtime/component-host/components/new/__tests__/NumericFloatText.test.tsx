@@ -111,7 +111,7 @@ describe('numeric float text components', () => {
         overlay={{ elementId: 'slow-damage', component: 'DamageFloatText', inputs: { value: -25, durationMs: 2400 } }}
       />,
     )
-    expect(screen.getByText('-25').parentElement).toHaveStyle({ '--gv-float-duration': '2400ms' })
+    expect(screen.getByText('-25').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
     expect(resolveNumericFloatDurationMs(undefined)).toBe(1100)
     expect(resolveNumericFloatDurationMs(0)).toBe(1100)
   })

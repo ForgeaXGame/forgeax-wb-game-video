@@ -73,10 +73,10 @@ export function resolveTextAppearance(
   } as CSSProperties
 }
 
-/** 飘字动画的总时长；冻结预览时同时带上当前时间轴位置。 */
-export function floatAnimationStyle(durationMs: number, previewTimeMs?: number): CSSProperties {
+/** 统一动画总时长与冻结预览时间轴的 CSS 变量契约。 */
+export function animationTimingStyle(durationMs: number, previewTimeMs?: number): CSSProperties {
   return {
-    ['--gv-float-duration']: `${durationMs}ms`,
+    ['--gv-animation-duration']: `${durationMs}ms`,
     ...(previewTimeMs == null ? {} : previewTStyle(previewTimeMs)),
   } as CSSProperties
 }
