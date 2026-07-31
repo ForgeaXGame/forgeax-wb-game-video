@@ -35,7 +35,7 @@ import { ComponentEventsEditor } from './ComponentEventsEditor'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 
 /**
- * 「音乐动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
+ * 「播放动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
  * 语义全压在这一条 tooltip 里。逐句对着 `bgm-stack.ts` 核过：
  * - push：`apply` 压新帧，旧帧留在下面，等这层被结束时 `resume` 回到它；
  * - replace：只换栈顶帧的播放字段，被顶掉的那首**没有**留在栈上（栈空、或栈顶是弹不掉的
@@ -929,7 +929,7 @@ export function NodeInspector({
   onRemoveMount?: (mountId: string) => void
   onJump?: (id: string) => void
 }): JSX.Element {
-  // 「音乐动作」在还没选曲子时也得选得动：`patchNodeBgm` 对「没有 ref 且不是 stop」的配置一律
+  // 「播放动作」在还没选曲子时也得选得动：`patchNodeBgm` 对「没有 ref 且不是 stop」的配置一律
   // 删键（不留 `{ ref: '' }` 这种 validate 判 error、runtime 静默丢弃的残留），所以空态下
   // push / replace 落不了盘，下拉会自己弹回「起播」。落不了盘的那一步先记在这儿，等作者选了
   // 曲子再随 ref 一起写进去。换节点 = 换一份草稿。
@@ -1507,10 +1507,10 @@ export function NodeInspector({
 
       {/* 作用域 BGM：本节点作为 owner 的床轨。不填 = 不动 BGM 栈（继续播上层那首），旧图零行为变化。 */}
       <div style={{ marginTop: 10, borderTop: '1px solid #333', paddingTop: 6 }}>
-        <b>音乐（作用域 BGM）</b>
-        {/* 「音乐动作」在空态也得在：`{ mode: 'stop' }` 是一条没有 ref 的配置，藏到「填了 ref 之后」
+        <b>BGM</b>
+        {/* 「播放动作」在空态也得在：`{ mode: 'stop' }` 是一条没有 ref 的配置，藏到「填了 ref 之后」
             作者就永远选不到它（v2 里 win / lose 全靠这条收尾）。 */}
-        {row('音乐动作', (
+        {row('播放动作', (
           <select
             value={bgmMode}
             onChange={(e) => {
@@ -1532,7 +1532,7 @@ export function NodeInspector({
             它在 stop 上没有落点（patchNodeBgm 也会把它收掉）。 */}
         {bgmMode === 'stop' ? null : (
           <>
-            {row('音乐', (
+            {row('BGM曲目', (
               <select
                 value={selectedAudioValue}
                 onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { ref: e.target.value, mode: bgmMode }) })}
