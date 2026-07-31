@@ -30,7 +30,7 @@ import { createCoreSkinRegistry } from '../../runtime/component-host/components'
 import { resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { CATALOG_CSS } from './catalogCss'
 import { renderOverlayChildPreview } from './overlayChildPreview'
-import { PreviewClockProvider, previewClockLayerClassName } from './previewClock'
+import { advancePreviewMediaClock, PreviewClockProvider, previewClockLayerClassName, type PreviewMediaClock } from './previewClock'
 import { projectNodePreviewState } from './nodePreviewState'
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
@@ -203,6 +203,7 @@ export function NodePreviewStage({
 
   const contentAnchorRef = useRef<HTMLDivElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const mediaClockRef = useRef<PreviewMediaClock | null>(null)
   const [playheadMs, setPlayheadMs] = useState(0)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(true)
@@ -319,6 +320,7 @@ export function NodePreviewStage({
 
   // 换节点/换视频：清播放态与选中（视频因 key 变化 remount 自动重播）。
   useEffect(() => {
+    mediaClockRef.current = null
     setPlayheadMs(0)
     setVideoDurationMs(null)
     setLoadError(false)
@@ -340,7 +342,9 @@ export function NodePreviewStage({
           setPlayheadMs(capMs ?? maxMs)
           return
         }
-        setPlayheadMs(Math.max(0, Math.min(maxMs, nowMs)))
+        const nextClock = advancePreviewMediaClock(mediaClockRef.current, nowMs, maxMs, playMode === 'loop')
+        mediaClockRef.current = nextClock
+        setPlayheadMs(nextClock.playheadMs)
       }
       raf = requestAnimationFrame(tick)
     }
@@ -350,6 +354,7 @@ export function NodePreviewStage({
 
   function seekTo(ms: number): void {
     const target = Math.max(0, Math.min(maxMs, Math.round(ms)))
+    mediaClockRef.current = { mediaMs: target, playheadMs: target }
     const v = videoRef.current
     if (v) { try { v.currentTime = target / 1000 } catch { /* metadata 未就绪 */ } }
     setPlayheadMs(target)
@@ -364,7 +369,7 @@ export function NodePreviewStage({
     if (!v) return
     if (v.paused) {
       // 已播到末尾再点播放 = 从头重播。
-      if (playheadMs >= maxMs - 40) seekTo(0)
+      if (playMode !== 'loop' && playheadMs >= maxMs - 40) seekTo(0)
       void v.play().catch(() => { /* autoplay 限制 */ })
     } else {
       v.pause()
@@ -605,8 +610,18 @@ export function NodePreviewStage({
             onPlay={() => setIsVideoPlaying(true)}
             onPause={() => setIsVideoPlaying(false)}
             onVolumeChange={(e) => setIsMuted(e.currentTarget.muted)}
-            onSeeked={(e) => setPlayheadMs(Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000))))}
-            onEnded={() => { setIsVideoPlaying(false); setPlayheadMs(maxMs) }}
+            onSeeked={(e) => {
+              // 自定义时间轴 seekTo 已同步重置语义时钟；播放中的原生 loop seek 不得让结算倒带。
+              if (!e.currentTarget.paused) return
+              const target = Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000)))
+              mediaClockRef.current = { mediaMs: target, playheadMs: target }
+              setPlayheadMs(target)
+            }}
+            onEnded={() => {
+              mediaClockRef.current = { mediaMs: maxMs, playheadMs: maxMs }
+              setIsVideoPlaying(false)
+              setPlayheadMs(maxMs)
+            }}
             onError={() => { setLoadError(true); setIsVideoPlaying(false) }}
           />
         ) : (

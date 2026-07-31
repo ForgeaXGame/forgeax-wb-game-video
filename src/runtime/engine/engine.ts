@@ -632,20 +632,27 @@ export class GraphRuntime {
    * 不 drain——供 tick 与 onPerformanceEnd 共用（片尾也必须先冲刷 at，再决定是否 advance）。
    */
   private flushTimeline(elapsedMs: number): void {
-    this.state.elapsedMs = elapsedMs
     const node = this.node(this.state.currentNodeId)
+    const previousMs = this.state.elapsedMs
+    const loopWrapped = node?.data.mediaPlayMode === 'loop' && elapsedMs + 50 < previousMs
+    // 媒体 loop 会把 currentTime 拉回 0；节点逻辑时钟只能前进。回绕时补齐作者声明的节点末端，
+    // 确保片尾结算/界面消失执行一次，随后视频可以继续独立循环。
+    const timelineMs = loopWrapped
+      ? Math.max(previousMs, node?.data.durationMs ?? previousMs)
+      : Math.max(previousMs, elapsedMs)
+    this.state.elapsedMs = timelineMs
     if (!node || this.state.phase !== 'playing') return
 
     for (const el of this.childrenOf(node)) {
-      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
+      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= timelineMs && !this.fired.has(el.id)) {
         this.runElement(el)
         if (this.redirect) break
       }
     }
-    if (!this.redirect) this.applyAtReactionEffects(node, elapsedMs)
+    if (!this.redirect) this.applyAtReactionEffects(node, timelineMs)
 
-    this.tickWindows(node, elapsedMs)
-    this.reapSpawns(elapsedMs)
+    this.tickWindows(node, timelineMs)
+    this.reapSpawns(timelineMs)
     if (this.consumeRedirect()) return
 
     const settlement = node.data.routingSettlement
@@ -653,7 +660,7 @@ export class GraphRuntime {
       !this.routingSettled &&
       settlement?.type === 'at' &&
       Number.isFinite(settlement.ms) &&
-      elapsedMs >= settlement.ms
+      timelineMs >= settlement.ms
     ) {
       this.routingSettled = true
       this.advanceAuto()

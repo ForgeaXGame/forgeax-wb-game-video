@@ -62,6 +62,33 @@ describe('timed settlement advance', () => {
   })
 })
 
+describe('looping video clock isolation', () => {
+  it('finishes node calculations once when media currentTime wraps', () => {
+    const graph: GameGraph = {
+      nodes: [node('a', {
+        durationMs: 1000,
+        mediaPlayMode: 'loop',
+        reactions: [{
+          when: { type: 'at', ms: 950 },
+          do: [{ kind: 'effect', effects: [{ kind: 'var', varId: 'mark', op: 'add', value: 1 }] }],
+        }],
+      })],
+      edges: [],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph, { variables: { mark: { id: 'mark', initial: 0 } } }))
+    rt.start()
+
+    rt.tick(900)
+    expect(rt.state.vars.mark).toBe(0)
+    rt.tick(20) // video loop: currentTime returned to the first frame
+    expect(rt.state.elapsedMs).toBe(1000)
+    expect(rt.state.vars.mark).toBe(1)
+    rt.tick(500)
+    expect(rt.state.elapsedMs).toBe(1000)
+    expect(rt.state.vars.mark).toBe(1)
+  })
+})
+
 describe('element window (startMs/endMs)', () => {
   it('shows presentation at startMs and removes at endMs', () => {
     const graph: GameGraph = {
