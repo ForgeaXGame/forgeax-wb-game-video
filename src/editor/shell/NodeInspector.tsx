@@ -1606,6 +1606,22 @@ export function NodeInspector({
             ))}
             {bgm ? (
               <>
+                {row('音量', (
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', minWidth: 0 }}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={bgm.volume ?? 1}
+                      onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { volume: Number(e.target.value) }) })}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <span style={{ width: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {Math.round((bgm.volume ?? 1) * 100)}%
+                    </span>
+                  </span>
+                ))}
                 {row('重进时', (
                   <span
                     style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, opacity: 0.85 }}
