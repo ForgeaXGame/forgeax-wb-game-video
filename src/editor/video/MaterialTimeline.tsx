@@ -798,9 +798,9 @@ const MATERIAL_TIMELINE_CSS = `
   background: #8ff0e0;
   box-shadow: 0 0 14px rgba(90,212,192,.95);
 }
-/* 选中：菱形加白边 + 竖线转实线，和右侧被高亮的配置块对上。 */
+/* 选中：菱形加白边，竖线仍保持虚线，只提高对比度与右侧高亮配置块对应。 */
 .mtl-root .gc-point-mark.is-selected .gc-life-head { border-color: #f6f1e9; }
-.mtl-root .gc-point-mark.is-selected { border-left-style: solid; color: rgba(90,212,192,.9); }
+.mtl-root .gc-point-mark.is-selected { border-left-style: dashed; color: rgba(90,212,192,.9); }
 .mtl-root .gc-mdrop {
   position: absolute;
   width: 3px;

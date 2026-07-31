@@ -37,7 +37,9 @@ describe('MaterialTimeline · 结算选中联动', () => {
     expect(first).toHaveStyle({ left: '9px' })
     expect(second).toHaveStyle({ left: '-9px' })
     expect(first.closest('.gc-point-mark')).not.toHaveClass('is-selected')
-    expect(second.closest('.gc-point-mark')).toHaveClass('is-selected')
+    const selectedMarker = second.closest('.gc-point-mark')!
+    expect(selectedMarker).toHaveClass('is-selected')
+    expect(getComputedStyle(selectedMarker).borderLeftStyle).toBe('dashed')
 
     fireEvent.pointerDown(first)
     expect(onSelectPointMarker).toHaveBeenCalledWith('life:0')

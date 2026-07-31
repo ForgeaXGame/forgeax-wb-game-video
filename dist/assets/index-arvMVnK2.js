@@ -1515,9 +1515,9 @@ ${WE}
   background: #8ff0e0;
   box-shadow: 0 0 14px rgba(90,212,192,.95);
 }
-/* 选中：菱形加白边 + 竖线转实线，和右侧被高亮的配置块对上。 */
+/* 选中：菱形加白边，竖线仍保持虚线，只提高对比度与右侧高亮配置块对应。 */
 .mtl-root .gc-point-mark.is-selected .gc-life-head { border-color: #f6f1e9; }
-.mtl-root .gc-point-mark.is-selected { border-left-style: solid; color: rgba(90,212,192,.9); }
+.mtl-root .gc-point-mark.is-selected { border-left-style: dashed; color: rgba(90,212,192,.9); }
 .mtl-root .gc-mdrop {
   position: absolute;
   width: 3px;
@@ -2282,4 +2282,4 @@ ${((r=this.state.errorInfo)==null?void 0:r.componentStack)??"(none)"}
 
 JS stack:
 ${((o=this.state.error)==null?void 0:o.stack)??"(none)"}`}render(){if(!this.state.error)return this.props.children;const n=this.composeStack();return u.jsxs("div",{style:{position:"fixed",inset:16,zIndex:99999,padding:24,background:"#fff5f5",border:"2px solid #e54d4d",borderRadius:12,color:"#3b1313",fontFamily:"ui-monospace, Consolas, monospace",fontSize:13,lineHeight:1.5,overflow:"auto",boxShadow:"0 12px 40px rgba(0,0,0,0.18)"},children:[u.jsx("div",{style:{fontSize:18,fontWeight:700,marginBottom:12},children:"页面渲染崩溃"}),u.jsx("div",{style:{marginBottom:12,color:"#7a2424"},children:"游戏运行异常。可尝试下方按钮恢复，或复制错误信息反馈给开发。"}),u.jsxs("div",{style:{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"},children:[u.jsx("button",{type:"button",onClick:this.handleClearAll,style:{padding:"6px 14px",borderRadius:8,border:"1px solid #d97706",background:"#fffbeb",color:"#92400e",cursor:"pointer"},children:"清除本地缓存并重载"}),u.jsx("button",{type:"button",onClick:()=>void this.handleCopy(),style:{padding:"6px 14px",borderRadius:8,border:"1px solid #e54d4d",background:this.state.copied?"#e54d4d":"#fff",color:this.state.copied?"#fff":"#7a2424",cursor:"pointer"},children:this.state.copied?"已复制 ✓":"复制错误信息"}),u.jsx("button",{type:"button",onClick:()=>location.reload(),style:{padding:"6px 14px",borderRadius:8,border:"1px solid #888",background:"#fff",color:"#333",cursor:"pointer"},children:"刷新"})]}),u.jsxs("details",{style:{marginBottom:8},children:[u.jsx("summary",{style:{cursor:"pointer",color:"#7a2424"},children:"错误详情"}),u.jsx("pre",{style:{background:"#fff",padding:12,border:"1px solid #f0caca",borderRadius:8,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"8px 0 0",maxHeight:300,overflow:"auto"},children:n})]})]})}}const bp=new URLSearchParams(location.search).get("surface");bp==="graphstudio"||bp==="graphplay"?V0.createRoot(ih).render(u.jsx(ab,{children:u.jsx("div",{style:{position:"fixed",inset:0},children:bp==="graphplay"?u.jsx(RB,{scenario:fo}):u.jsx(S2,{scenario:fo})})})):V0.createRoot(ih).render(u.jsx(ab,{children:u.jsx(TB,{})}));
-//# sourceMappingURL=index-u68c0z2A.js.map
+//# sourceMappingURL=index-arvMVnK2.js.map
