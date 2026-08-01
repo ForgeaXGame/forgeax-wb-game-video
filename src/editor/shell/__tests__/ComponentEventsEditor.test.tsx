@@ -8,6 +8,7 @@ import type { Entity, GameGraph, OverlayEventRef } from '../../../runtime/schema
 import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
 import { ComponentFormFields } from '../component-form-fields'
+import { ensureEntityAttribute } from '../metaCatalog'
 import { NodeInspector } from '../NodeInspector'
 import { OverlaySchemeEditor } from '../OverlaySchemeEditor'
 
@@ -767,6 +768,54 @@ describe('ComponentFormFields defaults', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加 hp' }))
 
     expect(within(attr).getByRole('option', { name: 'hp' })).toBeTruthy()
+    expect(within(attr).queryByRole('option', { name: 'hp（未在对象中声明）' })).toBeNull()
+  })
+
+  it('creates a missing hp attribute only after an explicit confirmation', () => {
+    function Harness(): JSX.Element {
+      const [entities, setEntities] = useState<Record<string, Entity>>({
+        'ent-player': { id: 'ent-player', name: '主角', attrs: {} },
+      })
+      return (
+        <>
+          <ComponentFormFields
+            componentId="BattlePlayerHpBar"
+            values={{}}
+            pickers={{ entities }}
+            onChange={vi.fn()}
+            onCreateEntityAttribute={(request) => {
+              setEntities((current) => ensureEntityAttribute(current, request) ?? current)
+            }}
+          />
+          <output data-testid="entity-catalog">{JSON.stringify(entities)}</output>
+        </>
+      )
+    }
+    render(<Harness />)
+
+    const attr = screen.getByRole('combobox', { name: '绑定属性' })
+    expect(within(attr).getByRole('option', { name: 'hp（未在对象中声明）' })).toBeTruthy()
+    expect(screen.getByTestId('entity-catalog')).not.toHaveTextContent('"hp"')
+
+    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
+    const prompt = screen.getByRole('alertdialog', { name: '确认创建属性 hp' })
+    expect(prompt).toHaveTextContent('实体「主角（ent-player）」')
+    expect(prompt).toHaveTextContent('属性「生命（hp）」')
+    expect(prompt).toHaveTextContent('初始值 100')
+    expect(prompt).toHaveTextContent('范围 0–100')
+
+    fireEvent.click(within(prompt).getByRole('button', { name: '取消' }))
+    expect(screen.getByTestId('entity-catalog')).not.toHaveTextContent('"hp"')
+
+    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
+
+    expect(screen.getByTestId('entity-catalog')).toHaveTextContent('"attrs":{"hp":100}')
+    expect(screen.getByTestId('entity-catalog')).toHaveTextContent('"label":"生命"')
+    expect(screen.getByTestId('entity-catalog')).toHaveTextContent('"initial":100')
+    expect(screen.getByTestId('entity-catalog')).toHaveTextContent('"min":0')
+    expect(screen.getByTestId('entity-catalog')).toHaveTextContent('"max":100')
+    expect(within(attr).getByRole('option', { name: '生命（hp）' })).toBeTruthy()
     expect(within(attr).queryByRole('option', { name: 'hp（未在对象中声明）' })).toBeNull()
   })
 

@@ -2,8 +2,45 @@
  * 场景 meta 目录 —— 实体 / 属性 / 变量下拉选项（展示名称，写入 id）。
  * 新数据格式：EntitySpec→Entity、VarSpec→Variable（Variable 不再有 number/flag 之分）。
  */
-import type { Entity, Variable } from '../../runtime/schema/graph-schema'
+import type { AttrMeta, Entity, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
+
+export interface EntityAttributeCreateRequest {
+  entityId: string
+  attrId: string
+  initialValue: number
+  meta?: AttrMeta
+}
+
+export function ensureEntityAttribute(
+  entities: Record<string, Entity> | undefined,
+  request: EntityAttributeCreateRequest,
+): Record<string, Entity> | undefined {
+  if (!entities) return entities
+  const entry = Object.entries(entities).find(([key, entity]) =>
+    key === request.entityId || entity.id === request.entityId)
+  if (!entry) return entities
+
+  const [key, entity] = entry
+  if (
+    Object.hasOwn(entity.attrs ?? {}, request.attrId)
+    || Object.hasOwn(entity.attrMeta ?? {}, request.attrId)
+  ) {
+    return entities
+  }
+
+  const attrMeta = request.meta
+    ? { ...entity.attrMeta, [request.attrId]: request.meta }
+    : entity.attrMeta
+  return {
+    ...entities,
+    [key]: {
+      ...entity,
+      attrs: { ...entity.attrs, [request.attrId]: request.initialValue },
+      ...(attrMeta ? { attrMeta } : {}),
+    },
+  }
+}
 
 export function findEntity(
   entities: Record<string, Entity> | undefined,

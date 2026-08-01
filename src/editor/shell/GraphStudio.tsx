@@ -38,6 +38,7 @@ import {
   graphPathLabels, resolveGraphAtPath, resolveGraphEntryAtPath, updateGraphAtPath, validGraphPath,
 } from '../../graph/edit/graph-scope'
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
+import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
 
 interface PlayAnchor {
   nodeId: string
@@ -95,6 +96,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const runKey = useGraphScenario((s) => s.runKey)
   const setGraph = useGraphScenario((s) => s.setGraph)
   const setMeta = useGraphScenario((s) => s.setMeta)
+  const createEntityAttribute = useCallback((request: EntityAttributeCreateRequest) => {
+    setMeta((current) => {
+      const entities = ensureEntityAttribute(current.entities, request)
+      return entities && entities !== current.entities ? { ...current, entities } : current
+    })
+  }, [setMeta])
   // 节点配置「引用蓝图」下拉：由 blueprints 派生为 SubFlowPackDef 列表（不落盘 packs）；
   // 含 main（子蓝图可引用主蓝图），自引用/成环由 isRefAllowed 过滤。
   const blueprints = useGraphScenario((s) => s.blueprints)
@@ -814,6 +821,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 onRemoveMount={(mountId) => {
                   editPreviewScenario((s, n) => removeMountGraph(s, n, mountId))
                 }}
+                onCreateEntityAttribute={createEntityAttribute}
                 onJump={jump}
               />
             </div>
