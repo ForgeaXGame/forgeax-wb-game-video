@@ -15,7 +15,7 @@ import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
 import type { Formula } from '../persist/formula-authoring'
-import { ComponentFormFields } from './component-form-fields'
+import { ComponentFormFields, type EntityAttributeCreateHandler } from './component-form-fields'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
@@ -128,6 +128,7 @@ export interface OverlaySchemeEditorProps {
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
   onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
+  onCreateEntityAttribute?: EntityAttributeCreateHandler
 }
 
 export function OverlaySchemeEditor({
@@ -146,6 +147,7 @@ export function OverlaySchemeEditor({
   onRemoveChild,
   onPatchChild,
   onReactionsChange,
+  onCreateEntityAttribute,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
@@ -344,6 +346,7 @@ export function OverlaySchemeEditor({
               density="compact"
               labelWidth="4em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
+              onCreateEntityAttribute={onCreateEntityAttribute}
             />
             {selectedEvents.length > 0 ? (
               <>
