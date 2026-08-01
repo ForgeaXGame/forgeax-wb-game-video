@@ -134,6 +134,113 @@ describe('GraphStudio 节点配置分栏', () => {
     })
   })
 
+  it('切换节点时保持节点预览的声音开关', async () => {
+    const videoScenario: GameScenario = {
+      ...SCENARIO,
+      graph: {
+        ...SCENARIO.graph,
+        nodes: SCENARIO.graph.nodes.map((node) => ({
+          ...node,
+          data: { ...node.data, media: { kind: 'VIDEO', ref: `${node.id}-video` } },
+        })),
+      },
+    }
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    useGraphScenario.setState({
+      demo: videoScenario,
+      blueprints: { [MAIN_ID]: { ...MAIN_DOC, graph: videoScenario.graph } },
+      graph: videoScenario.graph,
+      selectedNodeId: 'intro',
+    })
+
+    const { container } = render(<GraphStudio scenario={videoScenario} />)
+    const firstVideo = await waitFor(() => container.querySelector<HTMLVideoElement>('.nps-frame video')!)
+    expect(firstVideo.muted).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: '取消静音' }))
+    await waitFor(() => {
+      expect(firstVideo.muted).toBe(false)
+      expect(screen.getByRole('button', { name: '静音' })).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByTestId('rf__node-second'))
+    const secondVideo = await waitFor(() => {
+      const video = container.querySelector<HTMLVideoElement>('.nps-frame video')
+      expect(video).not.toBe(firstVideo)
+      return video!
+    })
+    expect(secondVideo.muted).toBe(false)
+    expect(screen.getByRole('button', { name: '静音' })).toBeTruthy()
+  })
+
+  it('试玩浮层与已展开的节点视频预览互斥，关闭后恢复预览', async () => {
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '▶ 从此试玩' }))
+
+    await waitFor(() => {
+      expect(screen.getByTitle('隐藏')).toBeTruthy()
+      expect(screen.queryByTestId('node-preview-column')).toBeNull()
+      expect(screen.getByRole('button', { name: '展开预览区' })).toBeTruthy()
+    })
+    expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
+
+    fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
+    await waitFor(() => {
+      expect(screen.queryByTitle('隐藏')).toBeNull()
+      expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+      expect(screen.getByRole('button', { name: '收起预览区' })).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '▶ 从此试玩' }))
+    await waitFor(() => expect(screen.getByTitle('隐藏')).toBeTruthy())
+    fireEvent.click(screen.getByTitle('隐藏'))
+    await waitFor(() => {
+      expect(screen.queryByTitle('隐藏')).toBeNull()
+      expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+      expect(screen.getByRole('button', { name: '收起预览区' })).toBeTruthy()
+    })
+    expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
+  })
+
+  it('在时间轴当前选中时刻添加结算', async () => {
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    useGraphScenario.setState({
+      demo: FOCUS_SCENARIO,
+      blueprints: { [MAIN_ID]: { ...MAIN_DOC, graph: FOCUS_SCENARIO.graph } },
+      graph: FOCUS_SCENARIO.graph,
+      meta: { ui: FOCUS_SCENARIO.ui },
+      selectedNodeId: 'intro',
+    })
+    const { container } = render(<GraphStudio scenario={FOCUS_SCENARIO} />)
+    const timeline = container.querySelector<HTMLElement>('.gc-mtimeline-canvas')!
+    vi.spyOn(timeline, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 200,
+      bottom: 100,
+      width: 200,
+      height: 100,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(container.querySelector('.gc-mtimeline-ruler')!, {
+      pointerId: 7,
+      clientX: 100,
+    })
+    fireEvent.pointerUp(timeline, { pointerId: 7, clientX: 100 })
+    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+
+    await waitFor(() => {
+      const reactions = useGraphScenario.getState().graph.nodes[0]?.data.reactions ?? []
+      expect(reactions.at(-1)?.when).toEqual({ type: 'at', ms: 1_500 })
+    })
+  })
+
   it('配置面板打开时屏蔽 Delete，关闭面板后恢复删除', async () => {
     useGraphScenario.setState({ selectedNodeId: null })
     render(<GraphStudio scenario={SCENARIO} />)

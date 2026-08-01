@@ -463,7 +463,7 @@ export function MaterialTimeline({
                 style={{ left: `${mk.ms * pxPerMs}px` }}
                 title={`${mk.label} · ${fmtDur(mk.ms)}（可拖）`}
               >
-                {/* 结算是整节点的"到此刻收尾"，故用贯穿竖线；只有菱形头可抓，竖线可点会挡住材料条命中。 */}
+                {/* 参考线只画到菱形：继续精确标出时刻，但不穿过下方时间轴行。 */}
                 <span
                   className="gc-point-head"
                   style={{ left: `${pointHeadOffsetPx(mk.ms, maxMs)}px` }}
@@ -493,12 +493,15 @@ export function MaterialTimeline({
             const dragKey = `${POINT_DRAG_PREFIX}${mk.id}`
             const derived = mk.kind === 'derived' || mk.draggable === false
             return (
-              // 贯穿竖线 + 效果轨上的菱形是一体的：包裹层零宽、按 ms 定位，竖线让"这一刻"能跟
-              // 上方覆盖物条对齐着读，菱形则落在自己那一轨上被抓。
+              // 竖线 + 效果轨菱形是一体的：包裹层零宽、按 ms 定位，竖线只从顶部画到菱形，
+              // 让时刻与上方覆盖物条对齐，同时不干扰菱形下方的时间轴行。
               <div
                 key={mk.id}
                 className={`gc-point-mark is-lifecycle${derived ? ' is-derived' : ''}${drag?.key === dragKey ? ' is-dragging' : ''}${selectedPointMarkerId === mk.id ? ' is-selected' : ''}`}
-                style={{ left: `${mk.ms * pxPerMs}px` }}
+                style={{
+                  left: `${mk.ms * pxPerMs}px`,
+                  height: `${layerTop(lifecycleTrack) + 16}px`,
+                }}
               >
                 <span
                   className={`gc-life-head${derived ? ' is-derived' : ''}`}
@@ -756,13 +759,13 @@ const MATERIAL_TIMELINE_CSS = `
   background: var(--gc-accent);
   box-shadow: 0 0 8px rgba(240,136,64,.85);
 }
-/* 节点级时刻标记：竖虚线 + 可拖菱形。与橙色播放头刻意区分——播放头是"现在播到哪"，
+/* 节点级时刻标记：菱形上方的竖虚线 + 可拖菱形。与橙色播放头刻意区分——播放头是"现在播到哪"，
    这些是"这一刻会发生一件事"。路由结算=蓝紫，动作结算=青绿；两种菱形错开高度，
    同一 ms 上重合时也还能各自抓到。 */
 .mtl-root .gc-point-mark {
   position: absolute;
   top: 0;
-  bottom: 0;
+  height: 10px;
   width: 0;
   z-index: 7;
   pointer-events: none;

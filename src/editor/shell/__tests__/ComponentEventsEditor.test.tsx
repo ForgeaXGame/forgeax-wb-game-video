@@ -664,7 +664,7 @@ describe('ComponentFormFields defaults', () => {
     expect(latest).toEqual({ bind: 'hero', attr: 'rage' })
     expect(attr).toHaveValue('rage')
     expect(within(attr).getByRole('option', { name: 'rage' })).toBeTruthy()
-    expect(within(attr).getByRole('option', { name: '耐力（stamina）' })).toBeTruthy()
+    expect(within(attr).getByRole('option', { name: '耐力' })).toBeTruthy()
 
     fireEvent.change(attr, { target: { value: 'stamina' } })
     expect(latest).toEqual({ bind: 'hero', attr: 'stamina' })

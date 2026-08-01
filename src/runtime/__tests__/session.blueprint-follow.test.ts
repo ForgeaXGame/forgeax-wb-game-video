@@ -68,4 +68,70 @@ describe('SessionSnapshot blueprint location', () => {
     expect(snap.callStack).toEqual([])
     expect(snap.clipSeq).toBe(3)
   })
+
+  it('exposes a 2410ms HP-watch advance edge for child-blueprint play visualization', () => {
+    const battleGraph: GameGraph = {
+      nodes: [
+        node('entry', { durationMs: 100 }),
+        node('battle', {
+          durationMs: 5000,
+          reactions: [
+            {
+              when: { type: 'at', ms: 2410 },
+              do: [{
+                kind: 'effect',
+                effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'set', value: 50 }],
+              }],
+            },
+            {
+              when: { type: 'watch', of: 'entity.ent-boss.attr.hp', on: 'dec' },
+              do: [{ kind: 'advance', edgeId: 'battle-to-fail' }],
+            },
+          ],
+        }),
+        node('fail', { durationMs: 100 }),
+      ],
+      edges: [
+        { id: 'entry-to-battle', source: 'entry', target: 'battle', sourceHandle: 'default', targetHandle: 'in' },
+        {
+          id: 'battle-to-fail',
+          source: 'battle',
+          target: 'fail',
+          sourceHandle: 'settlement-advance:battle-to-fail',
+          targetHandle: 'in',
+        },
+      ],
+    }
+    const scenario = {
+      ...scnOf(battleGraph, {
+        entities: {
+          'ent-boss': {
+            id: 'ent-boss',
+            name: '小怪',
+            kind: 'boss',
+            attrs: { hp: 100 },
+            attrMeta: { hp: { max: 100 } },
+          },
+        },
+      }),
+      manifest: {
+        version: 'wb-game-video.blueprint-manifest.v1' as const,
+        mainPackId: 'battle-pack',
+        packs: {
+          'battle-pack': { id: 'battle-pack', title: '战斗子蓝图', entry: 'entry', graph: battleGraph },
+        },
+      },
+    }
+    const session = new GraphSession(scenario, { rootBlueprintId: 'battle-pack' })
+
+    let snap = session.start()
+    snap = session.performanceEnd()
+    expect(snap.currentNodeId).toBe('battle')
+
+    snap = session.tick(2410)
+    expect(snap.currentNodeId).toBe('fail')
+    expect(snap.activeBlueprintId).toBe('battle-pack')
+    expect(snap.traversedEdgeIds).toContain('battle-to-fail')
+    expect(snap.entryReason).toContain('settlement-advance:battle-to-fail')
+  })
 })

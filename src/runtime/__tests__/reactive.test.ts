@@ -18,6 +18,87 @@ const dmgOverlay: Overlay = {
 }
 
 describe('watch reaction (数值变化 → spawn)', () => {
+  it('fires a numeric equality settlement only when the value reaches the exact target', () => {
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 5000,
+          reactions: [
+            { when: { type: 'at', ms: 100 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'set', value: 51 }] }] },
+            { when: { type: 'at', ms: 200 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'set', value: 50 }] }] },
+            {
+              when: { type: 'state', condition: { all: [{ type: 'attr', entityId: 'ent-player', attr: 'hp', op: 'eq', value: 50 }] } },
+              do: [{ kind: 'advance', edgeId: 'e-equal' }],
+            },
+          ],
+        }),
+        node('equal'),
+      ],
+      edges: [{ id: 'e-equal', source: 'a', target: 'equal', sourceHandle: 'settlement-advance:e-equal', targetHandle: 'in' }],
+    }
+    const scn = scnOf(graph)
+    const rt = new GraphRuntime(graph, scn)
+    rt.start()
+
+    rt.tick(100)
+    expect(rt.state.currentNodeId).toBe('a')
+
+    rt.tick(200)
+    expect(rt.state.currentNodeId).toBe('equal')
+    expect(rt.state.traversedEdgeIds.has('e-equal')).toBe(true)
+  })
+
+  it('fires a non-equality state condition when it changes from false to true', () => {
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 5000,
+          reactions: [
+            { when: { type: 'at', ms: 100 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'set', value: 50 }] }] },
+            {
+              when: { type: 'state', condition: { all: [{ type: 'attr', entityId: 'ent-player', attr: 'hp', op: 'lte', value: 100 }] } },
+              do: [{ kind: 'advance', edgeId: 'e-lte' }],
+            },
+          ],
+        }),
+        node('lte'),
+      ],
+      edges: [{ id: 'e-lte', source: 'a', target: 'lte', sourceHandle: 'settlement-advance:e-lte', targetHandle: 'in' }],
+    }
+    const scn = scnOf(graph)
+    const rt = new GraphRuntime(graph, scn)
+    rt.start()
+    rt.tick(100)
+
+    expect(rt.state.currentNodeId).toBe('lte')
+    expect(rt.state.traversedEdgeIds.has('e-lte')).toBe(true)
+  })
+
+  it('does not repeat a state settlement while its condition remains true', () => {
+    const graph: GameGraph = {
+      nodes: [node('a', {
+        durationMs: 5000,
+        reactions: [
+          { when: { type: 'at', ms: 100 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'set', value: 50 }] }] },
+          { when: { type: 'at', ms: 200 }, do: [{ kind: 'effect', effects: [{ kind: 'var', varId: 'qi', op: 'add', value: 1 }] }] },
+          {
+            when: { type: 'state', condition: { all: [{ type: 'attr', entityId: 'ent-player', attr: 'hp', op: 'lte', value: 100 }] } },
+            do: [{ kind: 'effect', effects: [{ kind: 'var', varId: 'qi', op: 'add', value: 1 }] }],
+          },
+        ],
+      })],
+      edges: [],
+    }
+    const scn = scnOf(graph)
+    const rt = new GraphRuntime(graph, scn)
+    rt.start()
+
+    rt.tick(100)
+    expect(rt.state.vars.qi).toBe(1)
+    rt.tick(200)
+    expect(rt.state.vars.qi).toBe(2)
+  })
+
   it('routes advance to an edge in the active nested subProcess graph', () => {
     const graph: GameGraph = {
       nodes: [node('turn', { subProcess: { entry: 'atk', graph: {
@@ -43,6 +124,38 @@ describe('watch reaction (数值变化 → spawn)', () => {
     expect(rt.state.currentNodeId).toBe('done')
     expect(rt.getActiveGraphPath()).toEqual(['turn'])
     expect(rt.state.callStack.map((frame) => frame.callerNodeId)).toEqual(['turn'])
+    expect(rt.state.traversedEdgeIds.has('e-inner')).toBe(true)
+  })
+
+  it('holds a watch-selected edge until the node settlement', () => {
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 5000,
+          routingSettlement: { type: 'complete' },
+          reactions: [
+            { when: { type: 'at', ms: 100 }, do: [{ kind: 'effect', effects: [{ id: 'q', kind: 'var', varId: 'qi', op: 'add', value: 1 }] }] },
+            { when: { type: 'watch', of: 'var.qi', on: 'inc' }, do: [{ kind: 'advance', edgeId: 'e-next' }] },
+          ],
+        }),
+        node('b', { durationMs: 100 }),
+      ],
+      edges: [{
+        id: 'e-next',
+        source: 'a',
+        target: 'b',
+        sourceHandle: 'settlement-advance:e-next',
+        targetHandle: 'in',
+        data: { transition: 'onSettlement' },
+      }],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph))
+    rt.start()
+
+    rt.tick(100)
+    expect(rt.state.currentNodeId).toBe('a')
+    rt.onPerformanceEnd()
+    expect(rt.state.currentNodeId).toBe('b')
   })
 
   it('spawns a transient float with abs(delta) when watched hp decreases', () => {

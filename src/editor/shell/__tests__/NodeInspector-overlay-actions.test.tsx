@@ -34,7 +34,10 @@ describe('NodeInspector · 界面事件动作入口', () => {
     expect(screen.queryByRole('button', { name: '＋ 生成组件' })).toBeNull()
     expect(screen.getByText('界面')).toBeTruthy()
     expect(screen.queryByText('覆盖物事件')).toBeNull()
-    expect((screen.getByTitle(/从目录追加一张 overlay 挂载/) as HTMLSelectElement).options[0]?.text).toBe('＋ 添加界面')
+    const overlaySelect = screen.getByTitle(/从目录追加一张 overlay 挂载/) as HTMLSelectElement
+    expect(overlaySelect.options[0]?.text).toBe('＋ 添加界面')
+    expect([...overlaySelect.options].find((option) => option.value === overlay.id)?.text).toBe(overlay.title)
+    expect(overlaySelect.textContent).not.toContain(`(${overlay.id})`)
     expect(screen.queryByText(/尚未挂载/)).toBeNull()
   })
 

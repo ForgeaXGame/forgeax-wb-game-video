@@ -40,9 +40,33 @@ describe('MaterialTimeline · 结算选中联动', () => {
     const selectedMarker = second.closest('.gc-point-mark')!
     expect(selectedMarker).toHaveClass('is-selected')
     expect(getComputedStyle(selectedMarker).borderLeftStyle).toBe('dashed')
+    expect(getComputedStyle(selectedMarker).height).toBe('84px')
 
     fireEvent.pointerDown(first)
     expect(onSelectPointMarker).toHaveBeenCalledWith('life:0')
+  })
+
+  it('时刻参考线止于菱形，不再贯穿菱形下方的轨道', () => {
+    render(
+      <MaterialTimeline
+        materials={[]}
+        maxMs={3_000}
+        playheadMs={0}
+        selectedMaterialKey={null}
+        editable={false}
+        onSelectMaterial={vi.fn()}
+        onPatchMaterial={vi.fn()}
+        pointMarkers={[
+          { id: 'settlement', ms: 1_000, kind: 'settlement', label: '路由结算' },
+          { id: 'life:0', ms: 2_000, kind: 'lifecycle', label: '播到 2000ms 时结算' },
+        ]}
+      />,
+    )
+
+    const routeMarker = screen.getByRole('slider', { name: '路由结算' }).closest('.gc-point-mark')!
+    const lifecycleMarker = screen.getByRole('slider', { name: '播到 2000ms 时结算' }).closest('.gc-point-mark')!
+    expect(getComputedStyle(routeMarker).height).toBe('10px')
+    expect(getComputedStyle(lifecycleMarker).height).toBe('84px')
   })
 
   it('第 7 条轨道出现后才开启纵向滚动', () => {

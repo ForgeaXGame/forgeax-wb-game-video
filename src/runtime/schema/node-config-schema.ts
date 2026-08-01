@@ -109,7 +109,7 @@ export interface OverlayReaction {
  * - exit：离开节点前
  * - complete：节点收尾自动推进（`if` 缺省 = 无条件）
  * - event：组件事件（挂 mount.reactions；do = effect/spawn/advance）
- * - state：历史局级规则相位（已不再消费；需要时再补回）
+ * - state：GraphCondition 从不成立变为成立时触发；编辑器与出边复用同一套条件配置。
  * - watch：观察某表达式(`of`)的值变化（`on` change/inc/dec）→ do（effect/spawn/advance）；
  *   在每个写屏障处重采样比对（pull-diff）。局部量 prev/next/delta 供 do 内 `{expr}` 使用。
  * - shown / hidden：某 overlay 组件实例**出现 / 消失**时触发（`of` = childId / mountId/childId / overlayId/childId）。
@@ -141,12 +141,12 @@ export function isLifecycleReaction(r: Reaction): boolean {
 }
 
 /**
- * 作者界面统一呈现的「结算」：定时相位 + 数值/界面条件触发；event/state 仍由各自入口管理。
+ * 作者界面统一呈现的「结算」：定时相位 + 数值变化 / 状态条件 / 界面条件触发；event 仍由组件入口管理。
  * 编辑器和时间轴以这个子集内的序号双向定位，不能使用会随数组重排漂移的绝对下标。
  */
 export function isSettlementReaction(r: Reaction): boolean {
   const t = r.when.type
-  return isLifecycleReaction(r) || t === 'watch' || t === 'shown' || t === 'hidden'
+  return isLifecycleReaction(r) || t === 'watch' || t === 'state' || t === 'shown' || t === 'hidden'
 }
 
 /** Overlay 聚合后的事件（编辑器下拉项）。 */

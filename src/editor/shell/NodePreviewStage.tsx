@@ -41,9 +41,13 @@ import { type MaterialItem, type TimelineConditionMarker, type TimelinePointMark
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
-import { isSettlementReaction, overlayMountId, type NodeAction, type OverlayInstanceChild } from '../../runtime/schema/node-config-schema'
+import {
+  isSettlementReaction,
+  overlayMountId,
+  type NodeAction,
+  type OverlayInstanceChild,
+} from '../../runtime/schema/node-config-schema'
 import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { findMountOwningChild } from '../../graph/edit/overlay-edit'
 import { setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { elementStartMs } from '../../graph/canvas/timeline-geometry'
 import { overlayFitTargets } from './overlay-fit-targets'
@@ -175,9 +179,12 @@ export function NodePreviewStage({
   scenario,
   node,
   game,
+  muted,
   focusedMountId,
   focusedLifecycleIndex,
   onEditScenario,
+  onMutedChange,
+  onSelectedTimeChange,
   onFocusMount,
   onFocusLifecycle,
 }: {
@@ -186,12 +193,18 @@ export function NodePreviewStage({
   /** 当前选中节点（canvasGraph 内；随编辑实时换引用）。 */
   node: GameNode
   game: string
+  /** GraphStudio 统一持有的节点预览静音状态，切换节点时保持。 */
+  muted: boolean
   /** 右侧表单当前聚焦的挂载 id（预览据此高亮对应叠层/时间轴条）。 */
   focusedMountId?: string | null
   /** 右侧表单当前聚焦的结算（生命周期子集序号）；时间轴据此高亮对应菱形。 */
   focusedLifecycleIndex?: number | null
   /** 写回通道：主图走 setScenario，子蓝图下钻由上层分流到包图（见 GraphStudio）。 */
   onEditScenario: (fn: (s: GameScenario, n: GameNode) => GameScenario) => void
+  /** 更新 GraphStudio 统一持有的节点预览静音状态。 */
+  onMutedChange: (muted: boolean) => void
+  /** 用户在时间轴定位时上报插入游标；视频播放逐帧推进不触发。 */
+  onSelectedTimeChange?: (ms: number) => void
   /** 选中某挂载覆盖物时上抛（右侧表单据此聚焦该卡片；传 null = 清空聚焦）。 */
   onFocusMount?: (mountId: string | null) => void
   /** 点中某结算菱形时上抛，让右侧对应配置块高亮。 */
@@ -206,7 +219,6 @@ export function NodePreviewStage({
   const mediaClockRef = useRef<PreviewMediaClock | null>(null)
   const [playheadMs, setPlayheadMs] = useState(0)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
-  const [isMuted, setIsMuted] = useState(true)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -247,10 +259,13 @@ export function NodePreviewStage({
       mount: NonNullable<GameNode['data']['overlayNodes']>[number]
       children: typeof previewSkinChildren
     }>()
+    const mountsById = new Map(
+      (node.data.overlayNodes ?? []).map((mount) => [overlayMountId(mount), mount] as const),
+    )
     for (const child of previewSkinChildren) {
-      const mount = findMountOwningChild(scenario, node, child.id)
+      const mountId = child.source.mountId
+      const mount = mountsById.get(mountId)
       if (!mount) continue
-      const mountId = overlayMountId(mount)
       const group = groups.get(mountId)
       if (group) group.children.push(child)
       else groups.set(mountId, { mount, children: [child] })
@@ -263,7 +278,7 @@ export function NodePreviewStage({
         resolveMountChildren(overlays, value.mount).map((child) => child.layout),
       ) ?? {},
     }))
-  }, [overlays, previewSkinChildren, scenario, node])
+  }, [overlays, previewSkinChildren, node])
   const videoFx = useMemo(
     () => resolveVideoFxForNode(node, overlays, playheadMs, maxMs),
     [node, overlays, playheadMs, maxMs],
@@ -366,6 +381,7 @@ export function NodePreviewStage({
     const v = videoRef.current
     if (v) { try { v.currentTime = target / 1000 } catch { /* metadata 未就绪 */ } }
     setPlayheadMs(target)
+    onSelectedTimeChange?.(target)
   }
   function pauseForScrub(): void {
     const v = videoRef.current
@@ -384,10 +400,8 @@ export function NodePreviewStage({
     }
   }
   function toggleMute(): void {
-    const v = videoRef.current
-    if (!v) return
-    v.muted = !v.muted
-    setIsMuted(v.muted)
+    if (!videoRef.current) return
+    onMutedChange(!muted)
   }
 
   // ── 写回（全部走 graphMaterialOps 既有映射，无新协议字段） ─────────────────
@@ -432,6 +446,11 @@ export function NodePreviewStage({
       if (reaction.when.type === 'watch') {
         const direction = reaction.when.on === 'inc' ? '增加' : reaction.when.on === 'dec' ? '减少' : '变化'
         conditionMarkers.push({ id, label: `${reaction.when.of || '未选数值'} ${direction} → ${actionLabel}` })
+        return
+      }
+      if (reaction.when.type === 'state') {
+        const count = reaction.when.condition.all.length
+        conditionMarkers.push({ id, label: `${count ? `满足 ${count} 项条件` : '未配置条件'} → ${actionLabel}` })
         return
       }
       if (reaction.when.type === 'shown' || reaction.when.type === 'hidden') {
@@ -607,7 +626,7 @@ export function NodePreviewStage({
             src={previewSrc}
             style={{ filter: videoFx.filter, transform: videoFx.transform }}
             autoPlay
-            muted
+            muted={muted}
             playsInline
             loop={playMode === 'loop'}
             onLoadedMetadata={(e) => {
@@ -617,7 +636,6 @@ export function NodePreviewStage({
             }}
             onPlay={() => setIsVideoPlaying(true)}
             onPause={() => setIsVideoPlaying(false)}
-            onVolumeChange={(e) => setIsMuted(e.currentTarget.muted)}
             onSeeked={(e) => {
               // 自定义时间轴 seekTo 已同步重置语义时钟；播放中的原生 loop seek 不得让结算倒带。
               if (!e.currentTarget.paused) return
@@ -699,8 +717,8 @@ export function NodePreviewStage({
           {isVideoPlaying ? '⏸' : '▶'}
         </button>
         <span className="nps-time">{fmtTime(playheadMs)} / {fmtTime(maxMs)}</span>
-        <button type="button" className="nps-mute" onClick={toggleMute} title={isMuted ? '取消静音' : '静音'} aria-label={isMuted ? '取消静音' : '静音'}>
-          {isMuted ? '🔇' : '🔊'}
+        <button type="button" className="nps-mute" onClick={toggleMute} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
+          {muted ? '🔇' : '🔊'}
         </button>
       </div>
 

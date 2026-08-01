@@ -4,6 +4,7 @@
  */
 import type { Entity, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
+import { authoringOptionLabel } from '../authoring-option-label'
 
 export function findEntity(
   entities: Record<string, Entity> | undefined,
@@ -21,7 +22,7 @@ export function listEntityOptions(
     const id = e.id ?? key
     const name = (e.name ?? '').trim()
     const kind = (e.kind ?? '').trim()
-    const label = name ? `${name}（${id}）` : kind ? `${kind} · ${id}` : id
+    const label = name ? authoringOptionLabel(name, id) : kind ? `${kind} · ${id}` : id
     return { id, label }
   })
 }
@@ -34,7 +35,7 @@ export function listAttrOptions(ent: Entity | undefined): Array<{ id: string; la
   ])
   return [...keys].sort().map((id) => {
     const label = ent.attrMeta?.[id]?.label?.trim()
-    return { id, label: label ? `${label}（${id}）` : id }
+    return { id, label: authoringOptionLabel(label, id) }
   })
 }
 
@@ -49,7 +50,7 @@ export function listVarOptions(
   return Object.entries(variables ?? {}).map(([key, v]) => {
     const id = v.id ?? key
     const name = (v.name ?? '').trim()
-    return { id, label: name ? `${name}（${id}）` : id }
+    return { id, label: authoringOptionLabel(name, id) }
   })
 }
 
@@ -60,7 +61,7 @@ export function listFormulaOptions(
   return Object.entries(formulas ?? {}).map(([key, f]) => {
     const id = f.id ?? key
     const name = (f.name ?? '').trim()
-    return { id, label: name ? `${name}（${id}）` : id }
+    return { id, label: authoringOptionLabel(name, id) }
   })
 }
 

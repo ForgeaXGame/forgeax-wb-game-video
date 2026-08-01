@@ -132,9 +132,15 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [focusedMountId, setFocusedMountId] = useState<string | null>(null)
   // 节点配置面板：时间轴上选中的生命周期效果（子集序号，见 isLifecycleReaction 注释）。
   const [focusedLifecycleIndex, setFocusedLifecycleIndex] = useState<number | null>(null)
+  // 用户在当前节点时间轴上选中的插入时刻；未选择、切节点或预览卸载时为 null。
+  const [selectedPreviewTimeMs, setSelectedPreviewTimeMs] = useState<number | null>(null)
   // 独立于选中值：重复点击同一个时间轴条目也要再次把右侧锚点滚进可视区。
   const [focusAnchorRevision, setFocusAnchorRevision] = useState(0)
-  useEffect(() => { setFocusedMountId(null); setFocusedLifecycleIndex(null) }, [selected])
+  useEffect(() => {
+    setFocusedMountId(null)
+    setFocusedLifecycleIndex(null)
+    setSelectedPreviewTimeMs(null)
+  }, [selected])
   // 面板里同一时刻只该有一个聚焦对象：选覆盖物就松开效果，反之亦然。
   const focusMount = useCallback((id: string | null) => {
     setFocusedMountId(id)
@@ -171,6 +177,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [previewOpen, setPreviewOpen] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem(PREVIEW_OPEN_KEY) === '1',
   )
+  // 节点预览共享同一静音偏好；只属于当前编辑器会话，不写入蓝图协议或本地持久化。
+  const [isNodePreviewMuted, setIsNodePreviewMuted] = useState(true)
   const setPreviewOpenPersisted = useCallback((open: boolean) => {
     setPreviewOpen(open)
     if (typeof window !== 'undefined') window.localStorage.setItem(PREVIEW_OPEN_KEY, open ? '1' : '0')
@@ -186,6 +194,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [panelW, setPanelW] = useState(0)
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
   const [playOpen, setPlayOpen] = useState(false)
+  const togglePreviewSurface = useCallback(() => {
+    if (playOpen) {
+      setPlayOpen(false)
+      setPreviewOpenPersisted(true)
+      return
+    }
+    togglePreview()
+  }, [playOpen, setPreviewOpenPersisted, togglePreview])
   const [videoAudioEnabled, setVideoAudioEnabled] = useState(false)
   /** 「从此试玩」钉住的入口；浮层「重开」始终回到此节点（可随后沿边/事件前进）。 */
   const [playFrom, setPlayFrom] = useState<PlayAnchor | null>(null)
@@ -284,7 +300,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const selectedCanConfigurePerformance = !!selectedNode
     && !getSubProcess(selectedNode.data)
     && !getSubFlowPack(selectedNode.data)
-  const effectivePreviewOpen = previewOpen && selectedCanConfigurePerformance
+  // 试玩浮层与节点预览互斥显示，但不改 previewOpen：关闭试玩后恢复用户原有预览状态。
+  const effectivePreviewOpen = previewOpen && !playOpen && selectedCanConfigurePerformance
+  useEffect(() => {
+    if (!effectivePreviewOpen) setSelectedPreviewTimeMs(null)
+  }, [effectivePreviewOpen])
   /** 预览台读投影场景：canvasGraph（下钻时为包内图）+ 目录 overlays + 实体/变量（meta 缺省回落 demo）。 */
   const previewScenario = useMemo<GameScenario>(
     () => ({
@@ -760,9 +780,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                     scenario={previewScenario}
                     node={selectedNode}
                     game={game}
+                    muted={isNodePreviewMuted}
                     focusedMountId={focusedMountId}
                     focusedLifecycleIndex={focusedLifecycleIndex}
                     onEditScenario={editPreviewScenario}
+                    onMutedChange={setIsNodePreviewMuted}
+                    onSelectedTimeChange={setSelectedPreviewTimeMs}
                     onFocusMount={focusMount}
                     onFocusLifecycle={focusLifecycle}
                   />
@@ -790,11 +813,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 formulas={formulas}
                 focusedMountId={focusedMountId}
                 focusedLifecycleIndex={focusedLifecycleIndex}
+                settlementInsertMs={effectivePreviewOpen ? selectedPreviewTimeMs ?? undefined : undefined}
                 focusAnchorRevision={focusAnchorRevision}
                 onFocusMount={focusMount}
                 onFocusLifecycle={focusLifecycle}
                 previewOpen={effectivePreviewOpen}
-                onTogglePreview={selectedCanConfigurePerformance ? togglePreview : undefined}
+                onTogglePreview={selectedCanConfigurePerformance ? togglePreviewSurface : undefined}
                 onChange={setCanvasGraph}
                 onPacksChange={setPacks}
                 onEnsureOverlay={(overlay) => {

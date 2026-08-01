@@ -114,8 +114,9 @@ export class GraphRuntime {
   private inExit = false // 跑 exit 元素期间抑制规则消费，避免退出时自跳环
   private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subProcess 下钻、直接续 out
 
-  // 响应式：watch 上次采样值（key = 反应作用域#下标）；每个写屏障重采样比对。
-  private watchPrev = new Map<string, number>()
+  // 响应式：变化值与状态条件基线（key = 反应作用域#下标）；每个写屏障重采样比对。
+  private numericReactionPrev = new Map<string, number>()
+  private stateConditionPrev = new Map<string, boolean>()
   // 组件生命周期：本次节点访问内已 shown / 已 hidden 的运行态 child id。
   private shownChildren = new Set<string>()
   private hiddenFired = new Set<string>()
@@ -616,17 +617,17 @@ export class GraphRuntime {
     }
   }
 
-  /** perf 进入：重置本节点态 + seedWatch + 发 playClip（换片清上一节点叠层）+ 相位置 playing。 */
+  /** perf 进入：重置本节点态 + 条件基线 + 发 playClip（换片清上一节点叠层）+ 相位置 playing。 */
   private beginPerform(node: GameNode): void {
     this.fired = new Set()
     this.firedAtReactions = new Set()
     this.windowShown = new Set()
     this.windowRemoved = new Set()
-    // 组件生命周期 / spawn 游标随节点重置；watch 基线按当前态重建（本节点内的变化才 fire）。
+    // 组件生命周期 / spawn 游标随节点重置；条件基线按当前态重建（本节点内的变化才 fire）。
     this.shownChildren = new Set()
     this.hiddenFired = new Set()
     this.pendingSpawns = []
-    this.seedWatch()
+    this.seedReactiveConditions()
     // 先发 playClip（换片会清空上一节点的叠层/交互）；随后 enter 元素产生的 overlay/interaction 才不会被反清。
     this.emit({
       type: 'playClip',
@@ -776,7 +777,10 @@ export class GraphRuntime {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
       else if (a.kind === 'advance' && !this.redirect && !this.inExit) {
         const route = this.scopedEdgeInScope(a.edgeId, scope)
-        if (route?.edge.source === node.id) this.redirect = { route }
+        if (route?.edge.source === node.id) {
+          this.requestReactionRoute(route)
+          return
+        }
       }
       if (this.redirect) return
     }
@@ -904,6 +908,14 @@ export class GraphRuntime {
     const { route, resetGlobals } = this.redirect
     this.redirect = null
     const cur = this.node(this.state.currentNodeId)
+    // 与普通 traverse 保持同一份可视化事实：显式结算/条件推进同样是一条真实走过的边。
+    this.emit({
+      type: 'routeInfo',
+      via: route.edge.sourceHandle ?? 'default',
+      target: route.edge.target,
+      reason: describeCondition(route.edge.data?.condition, this.condTarget()),
+    })
+    this.state.traversedEdgeIds.add(route.edge.id)
     // 硬打断会清掉边所属作用域之下的调用帧，但那是局内路径 → BGM 栈原样，等某处 `mode: 'stop'`。
     // `resetGlobals` 这一路**目前没有任何调用方**：`this.redirect` 只在一处赋值，且只写 route。
     // 留着这两个分支纯粹是
@@ -926,10 +938,10 @@ export class GraphRuntime {
   private applyAndReact(effects: GraphEffect[]): void {
     applyEffects(this.state, effects)
     this.emit({ type: 'stateChanged' })
-    this.checkWatch()
+    this.checkReactiveConditions()
   }
 
-  // ── 响应式 watch（pull-diff 于写屏障）────────────────────────────────────────
+  // ── 响应式条件结算（pull-diff 于写屏障）──────────────────────────────────────
   private evalCtx(locals?: Record<string, number>): EvalCtx {
     return {
       vars: this.state.vars,
@@ -950,65 +962,76 @@ export class GraphRuntime {
   }
 
   /**
-   * 当前作用域内的 watch 反应，带稳定 key：
+   * 当前作用域内的 watch / state 条件反应，带稳定 key：
    * 当前节点 + 各挂载 + **调用栈上的子流程容器节点**（容器级 watch 覆盖整段子流程，
    * 如「我方回合」容器上的 watch 在其技能子节点执行期间仍生效）。
    */
-  private activeWatchReactions(): Array<{ key: string; r: Reaction; scope: GraphScope }> {
+  private activeReactiveConditions(): Array<{ key: string; r: Reaction; scope: GraphScope }> {
     const out: Array<{ key: string; r: Reaction; scope: GraphScope }> = []
     const node = this.node(this.state.currentNodeId)
     if (node) {
       ;(node.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch') out.push({ key: `n:${node.id}#${i}`, r, scope: this.activeScope() })
+        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `n:${node.id}#${i}`, r, scope: this.activeScope() })
       })
       nodeOverlayMounts(node).forEach((m) => {
         const mid = overlayMountId(m)
         ;(m.reactions ?? []).forEach((r, i) => {
-          if (r.when.type === 'watch') out.push({ key: `m:${node.id}:${mid}#${i}`, r, scope: this.activeScope() })
+          if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `m:${node.id}:${mid}#${i}`, r, scope: this.activeScope() })
         })
       })
     }
-    // 调用栈上的容器（我方回合/敌方回合/子蓝图）：其 watch 在整段子流程内生效。
+    // 调用栈上的容器（我方回合/敌方回合/子蓝图）：其数值反应在整段子流程内生效。
     this.state.callStack.forEach((frame, d) => {
       const container = frame.returnGraph.nodes.find((n) => n.id === frame.callerNodeId)
       ;(container?.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch') out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r, scope: this.frameScope(d) })
+        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r, scope: this.frameScope(d) })
       })
     })
     return out
   }
 
-  /** 进入节点时对活跃 watch 建立基线（不触发），使本节点内的后续变化才 fire。 */
-  private seedWatch(): void {
-    for (const { key, r } of this.activeWatchReactions()) {
-      if (r.when.type !== 'watch') continue
-      this.watchPrev.set(key, this.safeEval(r.when.of))
+  /** 进入节点时建立基线（不触发），使本节点内后续的变化或条件成立才 fire。 */
+  private seedReactiveConditions(): void {
+    for (const { key, r } of this.activeReactiveConditions()) {
+      if (r.when.type === 'watch') this.numericReactionPrev.set(key, this.safeEval(r.when.of))
+      else if (r.when.type === 'state') this.stateConditionPrev.set(key, evaluateCondition(r.when.condition, this.condTarget()))
     }
   }
 
-  /** 写屏障后重采样：对每个 watch 反应比对 prev/next，按 on 命中即跑 do（注入 prev/next/delta）。 */
-  private checkWatch(): void {
+  /** 写屏障后重采样：watch 按变化方向命中；state 仅在 false → true 时命中。 */
+  private checkReactiveConditions(): void {
     if (this.inExit || this.state.phase === 'ended') return
-    for (const { key, r, scope } of this.activeWatchReactions()) {
-      if (r.when.type !== 'watch') continue
-      const next = this.safeEval(r.when.of)
-      if (!this.watchPrev.has(key)) {
-        this.watchPrev.set(key, next)
-        continue
+    for (const { key, r, scope } of this.activeReactiveConditions()) {
+      if (r.when.type === 'watch') {
+        const next = this.safeEval(r.when.of)
+        if (!this.numericReactionPrev.has(key)) {
+          this.numericReactionPrev.set(key, next)
+          continue
+        }
+        const prev = this.numericReactionPrev.get(key)!
+        if (next === prev) continue
+        const on = r.when.on ?? 'change'
+        const fire = on === 'inc' ? next > prev : on === 'dec' ? next < prev : true
+        // 先更新基线再跑 do，避免 do 内改状态导致自触发。
+        this.numericReactionPrev.set(key, next)
+        if (!fire) continue
+        this.runReactiveActions(r.do, { prev, next, delta: next - prev }, scope)
+      } else if (r.when.type === 'state') {
+        const next = evaluateCondition(r.when.condition, this.condTarget())
+        if (!this.stateConditionPrev.has(key)) {
+          this.stateConditionPrev.set(key, next)
+          continue
+        }
+        const prev = this.stateConditionPrev.get(key)!
+        this.stateConditionPrev.set(key, next)
+        if (prev || !next) continue
+        this.runReactiveActions(r.do, undefined, scope)
       }
-      const prev = this.watchPrev.get(key)!
-      if (next === prev) continue
-      const on = r.when.on ?? 'change'
-      const fire = on === 'inc' ? next > prev : on === 'dec' ? next < prev : true
-      // 先更新基线再跑 do，避免 do 内改状态导致自触发。
-      this.watchPrev.set(key, next)
-      if (!fire) continue
-      this.runReactiveActions(r.do, { prev, next, delta: next - prev }, scope)
       if (this.redirect) return
     }
   }
 
-  /** watch / shown / hidden / 非阻塞 emit 的 do：effect / spawn / advance；advance → 硬打断（redirect 到边 target）。 */
+  /** watch / shown / hidden / 非阻塞 emit 的 do：advance 可立即 redirect，也可锁定路线等待结算点。 */
   private runReactiveActions(actions: NodeAction[], locals?: Record<string, number>, scope = this.activeScope()): void {
     for (const a of actions) {
       if (a.kind === 'effect') {
@@ -1019,7 +1042,10 @@ export class GraphRuntime {
         // exit 期不接受 advance（避免与正在进行的 consumeRedirect 自跳环）。
         if (!this.redirect && !this.inExit) {
           const route = this.scopedEdgeInScope(a.edgeId, scope)
-          if (route) this.redirect = { route }
+          if (route) {
+            this.requestReactionRoute(route)
+            return
+          }
         }
       }
       if (this.redirect) return
@@ -1253,17 +1279,26 @@ export class GraphRuntime {
     this.enterNode(edge.target)
   }
 
-  /** 事件边：立即跳转，或锁定首个选择等待节点统一结算。 */
-  private requestEventRoute(scoped: ScopedEdge): boolean {
+  /** 锁定首个延迟选择；返回 true 表示应等待节点的统一结算点。 */
+  private deferRouteUntilSettlement(scoped: ScopedEdge): boolean {
     const edge = scoped.edge
-    if (edge.data?.transition !== 'onSettlement' || this.routingSettled) {
-      this.traverseEventEdge(scoped)
-      return true
-    }
+    if (edge.data?.transition !== 'onSettlement' || this.routingSettled) return false
     if (!this.pendingRoute && this.state.currentNodeId) {
       this.pendingRoute = { settleNodeId: this.state.currentNodeId, route: scoped }
     }
-    return false
+    return true
+  }
+
+  /** 结算/响应动作：立即边保持既有 redirect 顺序；延迟边等待统一结算点。 */
+  private requestReactionRoute(scoped: ScopedEdge): void {
+    if (!this.deferRouteUntilSettlement(scoped)) this.redirect = { route: scoped }
+  }
+
+  /** 事件边：立即跳转，或锁定首个选择等待节点统一结算。 */
+  private requestEventRoute(scoped: ScopedEdge): boolean {
+    if (this.deferRouteUntilSettlement(scoped)) return false
+    this.traverseEventEdge(scoped)
+    return true
   }
 
   /** 保留容器挂载事件从容器边离开时清调用栈的既有语义。 */

@@ -29,7 +29,7 @@ import type {
   Reaction,
   Trigger,
 } from '../../runtime/schema/graph-schema'
-import type { NodeAction } from '../../runtime/schema/node-config-schema'
+import type { NodeAction, OverlayInstanceChild } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/component-host/components/Choice'
 import type { FloatTextParams } from '../../runtime/component-host/components/FloatText'
 import type { QteCue } from '../../runtime/component-host/components/Qte'
@@ -46,6 +46,7 @@ import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
 import type { OverlaySnap } from '../../runtime/engine/session'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
+import { authoringOptionLabel } from '../authoring-option-label'
 import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import {
   type PreviewEvalContext,
@@ -77,7 +78,7 @@ import {
   resetOverride,
 } from '../../graph/edit/overlay-edit'
 import { createOverlayMount, overlayMountId } from '../../runtime/schema/node-config-schema'
-import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import {
   STAGE_FILL_LAYOUT,
   layoutIsEffectivelyEmpty,
@@ -339,11 +340,13 @@ export function listSpawnTemplateOptions(
   const out: Array<{ value: string; label: string }> = []
   for (const ov of Object.values(overlays)) {
     for (const c of ov.children) {
-      const label = componentTypeLabel(c.component)
-      const title = ov.title?.trim()
+      const value = `${ov.id}/${c.id}`
+      const name = [ov.title?.trim(), componentTypeLabel(c.component)]
+        .filter((part, index, all) => part && all.indexOf(part) === index)
+        .join(' · ')
       out.push({
-        value: `${ov.id}/${c.id}`,
-        label: title ? `${label} · ${title}/${c.id}` : `${label} · ${ov.id}/${c.id}`,
+        value,
+        label: authoringOptionLabel(name, value),
       })
     }
   }
@@ -1119,7 +1122,7 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
       key: `mount:${mid}`,
       id: mid,
       kind: 'mount' as MaterialKind,
-      label: title ? (mid === mount.overlay ? title : `${title} · ${mid}`) : mid,
+      label: authoringOptionLabel(title, mid),
       startMs: start ?? 0,
       endMs: end ?? maxMs,
       zIndex: i,
@@ -1472,11 +1475,12 @@ export function previewSkinChildrenInWindow(
   node: GameNode | undefined,
   ms: number,
   maxMs: number,
-): OverlayChild[] {
+): OverlayInstanceChild[] {
   if (!node) return []
-  const out: OverlayChild[] = []
+  const out: OverlayInstanceChild[] = []
   // 与运行时一致：扫全部挂载（内容轨 + 常驻 HUD 方案），不能只看 primary。
-  for (const el of mountedChildrenOf(scenario, node)) {
+  // 必须保留实例 source.mountId；重复挂载同一方案时，裸 childId 无法区分所属挂载。
+  for (const el of expandNodeChildren(scenario, node)) {
     const sp = childVisibleSpan(el, maxMs)
     if (!sp) continue
     if (ms < sp.start || ms > sp.end) continue

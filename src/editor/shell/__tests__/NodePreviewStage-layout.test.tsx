@@ -14,6 +14,29 @@ afterEach(() => {
 })
 
 describe('NodePreviewStage overlay layout', () => {
+  it('shows state condition settlements in the timeline condition lane', () => {
+    const current = node('n1', {
+      reactions: [{
+        when: { type: 'state', condition: { all: [{ type: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'eq', value: 50 }] } },
+        do: [],
+      }],
+    })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+
+    render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={scenario.graph.nodes[0]!}
+        game="test"
+        muted
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTitle('满足 1 项条件 → 未配置动作')).toBeTruthy()
+  })
+
   it('never falls back to a ring and label when the real interface skin is not visible', () => {
     const current = node('n1', {
       overlayNodes: [{ overlay: 'qte-overlay' }],
@@ -45,7 +68,9 @@ describe('NodePreviewStage overlay layout', () => {
         scenario={scenario}
         node={current}
         game="test"
+        muted
         onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
       />,
     )
 
@@ -112,8 +137,10 @@ describe('NodePreviewStage overlay layout', () => {
           scenario={scenario}
           node={currentNode}
           game="test"
+          muted
           focusedMountId="hud"
           onEditScenario={(edit) => setScenario((value) => edit(value, value.graph.nodes[0]!))}
+          onMutedChange={vi.fn()}
           onFocusMount={vi.fn()}
         />
       )
@@ -149,6 +176,78 @@ describe('NodePreviewStage overlay layout', () => {
       expect(layout?.height).toBe(1)
     })
     expect((container.querySelector('[data-canvas-item="hud"]') as HTMLElement).style.width).toBe('40%')
+  })
+
+  it('keeps duplicate mounts independently selectable and movable', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 200,
+      bottom: 100,
+      width: 200,
+      height: 100,
+      toJSON: () => ({}),
+    })
+    const overlayId = 'base:DamageFloatText'
+    const secondMountId = `${overlayId}__2`
+    const current = node('n1', {
+      overlayNodes: [
+        { overlay: overlayId, layout: { left: 0.1, top: 0.1, width: 0.2, height: 0.2 } },
+        { id: secondMountId, overlay: overlayId, layout: { left: 0.6, top: 0.6, width: 0.2, height: 0.2 } },
+      ],
+    })
+    const initialScenario = scnOf(
+      { nodes: [current], edges: [] },
+      {
+        ui: {
+          overlays: {
+            [overlayId]: {
+              id: overlayId,
+              title: '伤害飘字',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                trigger: { when: 'enter' },
+                inputs: { value: -25 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    let latestScenario = initialScenario
+    function Harness(): JSX.Element {
+      const [scenario, setScenario] = useState(initialScenario)
+      latestScenario = scenario
+      return (
+        <NodePreviewStage
+          scenario={scenario}
+          node={scenario.graph.nodes[0]!}
+          game="test"
+          muted
+          focusedMountId={secondMountId}
+          onEditScenario={(edit) => setScenario((value) => edit(value, value.graph.nodes[0]!))}
+          onMutedChange={vi.fn()}
+          onFocusMount={vi.fn()}
+        />
+      )
+    }
+    const { container } = render(<Harness />)
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.gc-preview-skin-layer > div')).toHaveLength(2)
+      expect(container.querySelector(`[data-canvas-item="${overlayId}"]`)).not.toBeNull()
+      expect(container.querySelector(`[data-canvas-item="${secondMountId}"]`)).toHaveClass('is-selected')
+    })
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await waitFor(() => {
+      const mounts = latestScenario.graph.nodes[0]?.data.overlayNodes ?? []
+      expect(mounts[0]?.layout?.left).toBe(0.1)
+      expect(mounts[1]?.layout?.left).toBeCloseTo(0.605)
+    })
   })
 
   it('promotes a position-only stage overlay to a full-size mount on first move', async () => {
@@ -209,8 +308,10 @@ describe('NodePreviewStage overlay layout', () => {
           scenario={scenario}
           node={scenario.graph.nodes[0]!}
           game="test"
+          muted
           focusedMountId="dialogues"
           onEditScenario={(edit) => setScenario((value) => edit(value, value.graph.nodes[0]!))}
+          onMutedChange={vi.fn()}
           onFocusMount={vi.fn()}
         />
       )
@@ -288,8 +389,10 @@ describe('NodePreviewStage overlay layout', () => {
           scenario={scenario}
           node={scenario.graph.nodes[0]!}
           game="test"
+          muted
           focusedMountId="float"
           onEditScenario={(edit) => setScenario((value) => edit(value, value.graph.nodes[0]!))}
+          onMutedChange={vi.fn()}
           onFocusMount={vi.fn()}
         />
       )

@@ -771,7 +771,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
     const mats = collectMaterialsFromNode(withMount, nodeA, 8000)
     expect(mats.some((m) => m.id === 'hp-player' && m.kind === 'component')).toBe(true)
     const skinKids = previewSkinChildrenInWindow(withMount, nodeA, 100, 8000)
-    expect(skinKids.some((c) => c.id === 'hp-player' && c.component === 'BattlePlayerHpBar')).toBe(true)
+    expect(skinKids.some((c) => c.id === 'scheme-static/hp-player' && c.component === 'BattlePlayerHpBar')).toBe(true)
     const extras = listSchemeMountTabs(withMount, nodeA).flatMap((t) => t.components)
     expect(extras.some((c) => c.id === 'scheme-static/hp-player' && c.label === '我方')).toBe(true)
   })
@@ -1196,10 +1196,15 @@ describe('graphMaterialOps · 同模板多挂载', () => {
     ])
     expect(expandNodeOverlays(twice.ui?.overlays, mountedNode).flatMap((mount) => mount.children.map((child) => child.id)))
       .toEqual(['n_door/damage', 'n_door__2/damage'])
+    expect(previewSkinChildrenInWindow(twice, mountedNode, 0, 3000).map((child) => [child.id, child.source.mountId]))
+      .toEqual([
+        ['n_door/damage', 'n_door'],
+        ['n_door__2/damage', 'n_door__2'],
+      ])
     expect(collectMountItemsFromNode(twice, mountedNode, 3000).map((item) => [item.key, item.label]))
       .toEqual([
         ['mount:n_door', '叩门界面'],
-        ['mount:n_door__2', '叩门界面 · n_door__2'],
+        ['mount:n_door__2', '叩门界面'],
       ])
 
     const removedSecond = removeMountGraph(twice, mountedNode, 'n_door__2')

@@ -780,7 +780,7 @@ function defaultClause(
 }
 
 const opSelect = (op: CmpOp, onChange: (op: CmpOp) => void): JSX.Element => (
-  <select value={op} onChange={(e) => onChange(e.target.value as CmpOp)}>
+  <select aria-label="比较运算符" value={op} onChange={(e) => onChange(e.target.value as CmpOp)}>
     {CMP_OPS.map((o) => (
       <option key={o} value={o}>{CMP_LABEL[o]}</option>
     ))}
@@ -805,7 +805,7 @@ function ClauseRow({
   return (
     <div style={box}>
       <div style={rowStyle}>
-        <select value={clause.type} onChange={(e) => onChange(defaultClause(e.target.value as ClauseType, entities, variables))}>
+        <select aria-label="条件字段类型" value={clause.type} onChange={(e) => onChange(defaultClause(e.target.value as ClauseType, entities, variables))}>
           {CLAUSE_TYPES.map((t) => (
             <option key={t} value={t}>{CLAUSE_LABEL[t] ?? t}</option>
           ))}
@@ -833,7 +833,7 @@ function ClauseRow({
             />
           ))}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <input aria-label="比较值" type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'attrCompare' && (
@@ -866,7 +866,7 @@ function ClauseRow({
             />
           ))}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <input aria-label="比较值" type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'flag' && (
@@ -898,7 +898,7 @@ function ClauseRow({
       {clause.type === 'score' && (
         <>
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <input aria-label="比较值" type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'hasItem' && (
