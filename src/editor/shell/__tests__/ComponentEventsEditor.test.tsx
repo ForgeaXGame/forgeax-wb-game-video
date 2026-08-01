@@ -364,7 +364,7 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const currentField = screen.getByText('当前血量').parentElement!
+    const currentField = screen.getByText('当前值来源').parentElement!
     expect(screen.getByText(/不能增删组件或调整组件大小/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /调整BattlePlayerHpBar大小/ })).toBeNull()
     expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
@@ -497,6 +497,39 @@ describe('ComponentFormFields defaults', () => {
     unregisterComponent('test-default-input')
   })
 
+  it('fills a declared numeric default only after an emptied input loses focus', () => {
+    registerComponent('test-number-default-input', {
+      inputs: [{ key: 'hp', label: '血量', valueType: 'number', default: 60 }],
+    })
+    const onChange = vi.fn()
+    function Harness(): JSX.Element {
+      const [values, setValues] = useState<Record<string, unknown>>({ hp: 60 })
+      return (
+        <ComponentFormFields
+          componentId="test-number-default-input"
+          values={values}
+          onChange={(next) => {
+            setValues(next)
+            onChange(next)
+          }}
+        />
+      )
+    }
+    render(<Harness />)
+
+    const input = screen.getByDisplayValue('60')
+    fireEvent.change(input, { target: { value: '' } })
+
+    expect(input).toHaveValue(null)
+    expect(onChange).toHaveBeenNthCalledWith(1, {})
+
+    fireEvent.blur(input)
+
+    expect(input).toHaveValue(60)
+    expect(onChange).toHaveBeenNthCalledWith(2, { hp: 60 })
+    unregisterComponent('test-number-default-input')
+  })
+
   it('edits damage float text as either a fixed number or an applied formula', () => {
     const formula: Formula = {
       id: 'formula-float-damage',
@@ -582,11 +615,20 @@ describe('ComponentFormFields defaults', () => {
 
     expect(screen.getByRole('radio', { name: '绑定属性' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText('绑定对象')).toBeTruthy()
-    expect(screen.queryByText('当前血量')).toBeNull()
+    expect(screen.getByText('当前值属性')).toBeTruthy()
+    expect(screen.getByText('最大值来源')).toBeTruthy()
+    expect(screen.queryByText('当前值来源')).toBeNull()
+    const boundMax = within(screen.getByText('最大值来源').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })
+    fireEvent.change(boundMax, { target: { value: 'entity:ent-player:hpMax' } })
+    expect(screen.getByRole('radio', { name: '绑定属性' })).toHaveAttribute('aria-checked', 'true')
+    expect(latest.current).toBeUndefined()
+    expect(latest.max).toBeTruthy()
+
     fireEvent.click(screen.getByRole('radio', { name: '分别设置' }))
 
-    const currentField = screen.getByText('当前血量').parentElement!
-    const maxField = screen.getByText('最大血量').parentElement!
+    const currentField = screen.getByText('当前值来源').parentElement!
+    const maxField = screen.getByText('最大值来源').parentElement!
     const qiField = screen.getByText('当前气力').parentElement!
     const qiMaxField = screen.getByText('气力上限').parentElement!
     const labelField = screen.getByText('显示名').parentElement!
@@ -610,9 +652,10 @@ describe('ComponentFormFields defaults', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: '绑定属性' }))
     expect(latest.current).toBeUndefined()
-    expect(latest.max).toBeUndefined()
+    expect(latest.max).toBeTruthy()
     expect(screen.getByText('绑定对象')).toBeTruthy()
-    expect(onChange).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('最大值来源')).toBeTruthy()
+    expect(onChange).toHaveBeenCalledTimes(3)
   })
 
   it('lists configured properties and repairs the property when the bound object changes', () => {
@@ -656,7 +699,7 @@ describe('ComponentFormFields defaults', () => {
     render(<Harness />)
 
     const entity = screen.getByRole('combobox', { name: '绑定对象' })
-    const attr = screen.getByRole('combobox', { name: '绑定属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(entity).toHaveValue('ent-player')
     expect(attr).toHaveValue('hp')
 
@@ -685,7 +728,7 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    const attr = screen.getByRole('combobox', { name: '绑定属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(attr).toHaveValue('hp')
     expect(within(attr).getByRole('option', { name: 'hp（未在对象中声明）' })).toBeTruthy()
   })
@@ -716,7 +759,7 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    const attr = screen.getByRole('combobox', { name: '绑定属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(within(attr).getByRole('option', { name: 'hp（未在对象中声明）' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '添加 hp' }))

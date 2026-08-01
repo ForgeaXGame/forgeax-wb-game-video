@@ -38,6 +38,7 @@ import {
   graphPathLabels, resolveGraphAtPath, resolveGraphEntryAtPath, updateGraphAtPath, validGraphPath,
 } from '../../graph/edit/graph-scope'
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
+import { runtimeRuleSignature } from './runtime-rule-signature'
 
 interface PlayAnchor {
   nodeId: string
@@ -397,11 +398,11 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setSelected(id)
   }
 
-  // 实体键签名：草稿曾缺 entities 被回填后必须重建 session，否则 HUD bind 全空、血条永不出现。
-  const entitySig = useGraphScenario((s) => {
-    const e = s.meta.entities ?? s.demo?.entities
-    return e ? Object.keys(e).sort().join(',') : ''
-  })
+  // 规则的运行时字段变化后重建 session：新试玩读取最新模板，不把新值热灌进旧运行态。
+  const runtimeRulesSig = useGraphScenario((s) => runtimeRuleSignature(
+    s.meta.entities ?? s.demo?.entities,
+    s.meta.variables ?? s.demo?.variables,
+  ))
   /**
    * 试玩 session 以**当前选中蓝图**为根（`playScn`），不是永远主蓝图——子蓝图可独立跑，
    * 「从此试玩」才能 jump 到该图节点。`playNonce`：从此试玩/钉住重开时强制吃最新图。
@@ -417,7 +418,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     },
     // runKey：工具条整局重开；activeBlueprintId：切库；playNonce：从此试玩吃最新图
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [runKey, entitySig, activeBlueprintId, playNonce],
+    [runKey, runtimeRulesSig, activeBlueprintId, playNonce],
   )
   const sessionRef = useRef(session)
   sessionRef.current = session

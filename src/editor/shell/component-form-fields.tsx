@@ -461,6 +461,11 @@ function renderInput(
               value={typeof val === 'number' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value === '' ? undefined : Number(e.target.value))}
+              onBlur={(e) => {
+                if (e.currentTarget.value === '' && typeof inp.default === 'number') {
+                  onPatch(inp.key, inp.default)
+                }
+              }}
               style={{ width: compact ? 56 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
               title={hint}
             />,
@@ -558,10 +563,11 @@ export function ComponentFormFields({
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
   const availableInputs = excludeKeys?.length ? allInputs.filter((inp) => !excludeKeys.includes(inp.key)) : allInputs
   const hpBar = isHpBarComponent(componentId)
-  const hpMode: HpValueMode = values.current !== undefined || values.max !== undefined ? 'custom' : 'bound'
+  // 绑定模式也允许显式选择 max 的任意数值来源；只有 current 被单独配置时才进入「分别设置」。
+  const hpMode: HpValueMode = values.current !== undefined ? 'custom' : 'bound'
   const inputs = hpBar
     ? availableInputs.filter((input) => hpMode === 'bound'
-      ? input.key !== 'current' && input.key !== 'max'
+      ? input.key !== 'current'
       : input.key !== 'bind' && input.key !== 'attr')
     : availableInputs
   if (!inputs.length) {
@@ -571,7 +577,7 @@ export function ComponentFormFields({
   const setHpMode = (mode: HpValueMode): void => {
     if (!hpBar || mode === hpMode) return
     if (mode === 'bound') {
-      const { current: _current, max: _max, ...rest } = values
+      const { current: _current, ...rest } = values
       onChange(rest)
       return
     }

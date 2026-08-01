@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSubProcess } from '../../../runtime/schema/graph-schema'
 import type { BlueprintDoc, GameScenario } from '../../../runtime/schema/graph-schema'
 import { disconnect } from '../../../graph/edit/graph-edit'
+import { GraphSession } from '../../../runtime/engine/session'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { GraphStudio } from '../GraphStudio'
 
@@ -104,6 +105,32 @@ describe('GraphStudio 节点配置分栏', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+  })
+
+  it('实体规则数值变化时用最新模板重建试玩 session', async () => {
+    useGraphScenario.setState({
+      meta: {
+        entities: {
+          player: { id: 'player', attrs: { hpMax: 100 } },
+        },
+      },
+    })
+    const start = vi.spyOn(GraphSession.prototype, 'start')
+    render(<GraphStudio scenario={SCENARIO} />)
+    const startsBeforeRuleChange = start.mock.calls.length
+
+    act(() => {
+      useGraphScenario.setState((state) => ({
+        meta: {
+          ...state.meta,
+          entities: {
+            player: { id: 'player', attrs: { hpMax: 200 } },
+          },
+        },
+      }))
+    })
+
+    await waitFor(() => expect(start.mock.calls.length).toBeGreaterThan(startsBeforeRuleChange))
   })
 
   it('记忆已有节点的展开状态，但新增节点时强制收起', async () => {

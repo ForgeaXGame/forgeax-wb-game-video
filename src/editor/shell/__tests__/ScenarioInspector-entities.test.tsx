@@ -74,4 +74,61 @@ describe('ScenarioInspector entity attributes', () => {
     expect(screen.getByRole('textbox', { name: '属性「maxhp」的 id' })).toHaveValue('maxhp')
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":10,"maxhp":0}')
   })
+
+  it('keeps paired attribute metadata in sync when either value changes', () => {
+    render(
+      <EntityHarness
+        initial={{
+          hero: {
+            id: 'hero',
+            name: '主角',
+            attrs: { stamina: 40, staminaMax: 100 },
+            attrMeta: { stamina: { label: '耐力', min: 0, initial: 300, max: 300 } },
+          },
+        }}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('属性「staminaMax」的数值'), {
+      target: { value: '120' },
+    })
+    expect(screen.getByTestId('entities-state')).toHaveTextContent(
+      '"stamina":{"label":"耐力","min":0,"initial":40,"max":120}',
+    )
+
+    fireEvent.change(screen.getByLabelText('属性「stamina」的数值'), {
+      target: { value: '75' },
+    })
+
+    expect(screen.getByTestId('entities-state')).toHaveTextContent(
+      '"stamina":{"label":"耐力","min":0,"initial":75,"max":120}',
+    )
+  })
+
+  it('allows a required attribute value to stay empty until blur', () => {
+    render(
+      <EntityHarness
+        initial={{
+          hero: {
+            id: 'hero',
+            attrs: { hp: 60, hpMax: 100 },
+            attrMeta: { hp: { initial: 60, max: 100 } },
+          },
+        }}
+      />,
+    )
+
+    const hpInput = screen.getByLabelText('属性「hp」的数值')
+    fireEvent.focus(hpInput)
+    fireEvent.change(hpInput, { target: { value: '' } })
+
+    expect(hpInput).toHaveValue('')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":60')
+
+    fireEvent.blur(hpInput)
+
+    expect(hpInput).toHaveValue('0')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":0,"hpMax":100}')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":{"initial":0,"max":100}')
+  })
 })

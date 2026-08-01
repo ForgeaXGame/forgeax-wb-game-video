@@ -35,6 +35,7 @@ import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
+import { LooseNumberInput } from './TermChainEditor'
 
 /**
  * 「播放动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -130,14 +131,12 @@ function RouteTimingEditor({
       ))}
       {timing === 'at' ? row('结算时间', (
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1 }}>
-          <input
-            type="number"
-            min={0}
-            step={100}
+          <LooseNumberInput
             value={routingSettlement?.type === 'at' ? routingSettlement.ms : 0}
-            onChange={(event) => onChange('onSettlement', {
+            emptyValue={0}
+            onChange={(value) => onChange('onSettlement', {
               type: 'at',
-              ms: Math.max(0, Number(event.target.value) || 0),
+              ms: Math.max(0, value),
             })}
             style={{ flex: 1, minWidth: 0 }}
           />
@@ -542,13 +541,11 @@ function LifecycleReactionsEditor({
             {triggerType === 'at' ? (
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
                 <span style={{ fontSize: 12, opacity: 0.8, flexShrink: 0 }}>播到</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={100}
+                <LooseNumberInput
                   value={atMs}
+                  emptyValue={0}
                   title={durationMs ? `本节点演出 ${durationMs}ms` : undefined}
-                  onChange={(e) => patchAt(i, { ...r, when: { type: 'at', ms: Math.max(0, Number(e.target.value) || 0) } })}
+                  onChange={(value) => patchAt(i, { ...r, when: { type: 'at', ms: Math.max(0, value) } })}
                   style={{ width: 88, minWidth: 0 }}
                 />
                 <span style={{ fontSize: 11, opacity: 0.65, flexShrink: 0 }}>ms</span>

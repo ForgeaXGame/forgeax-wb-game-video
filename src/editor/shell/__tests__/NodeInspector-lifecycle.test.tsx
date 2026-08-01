@@ -284,7 +284,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(screen.getByTitle('触发条件')).toHaveValue('condition')
     expect(screen.getByRole('combobox', { name: '条件类型' })).toHaveValue('state')
     expect(screen.getByRole('combobox', { name: '比较运算符' })).toHaveValue('eq')
-    expect(screen.getByRole('spinbutton', { name: '比较值' })).toHaveValue(50)
+    expect(screen.getByRole('textbox', { name: '比较值' })).toHaveValue('50')
     expect(['gte', 'lte', 'gt', 'lt', 'eq', 'neq']).toEqual(
       Array.from((screen.getByRole('combobox', { name: '比较运算符' }) as HTMLSelectElement).options).map((option) => option.value),
     )

@@ -19,6 +19,7 @@ import type { FormulaAstNode, FormulaHoleBinding } from '../persist/formula-auth
 import { parseFormulaText, previewFormula, serializeFormula } from '../persist/formula-authoring'
 import { formulaHoles, type FormulaHole } from './formulaApply'
 import { AttrPicker, EntityPicker, VariablePicker } from './scenario-pickers'
+import { LooseNumberInput } from './TermChainEditor'
 
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }
 const FORMULA_EXAMPLE = 'max(?攻击力 * ?技能倍率 - ?防御力, 0)'
@@ -330,12 +331,12 @@ function TrialPanel({
         {holes.map((h) => (
           <label key={h.holeId} className="gc-fx-trial-row">
             <span className="gc-fx-trial-label">{h.label ?? h.holeId}</span>
-            <input
-              type="number"
+            <LooseNumberInput
               className="gc-fx-trial-input"
               value={sample(h)}
+              emptyValue={0}
               aria-label={`样例值 ${h.label ?? h.holeId}`}
-              onChange={(e) => setValues((prev) => ({ ...prev, [h.holeId]: Number(e.target.value) || 0 }))}
+              onChange={(value) => setValues((prev) => ({ ...prev, [h.holeId]: value }))}
             />
           </label>
         ))}

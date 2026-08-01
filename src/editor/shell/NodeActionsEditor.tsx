@@ -61,7 +61,7 @@ export function NodeActionsEditor({
                 </select>
               ))}
               {field('存活ms', (
-                <input type="number" value={action.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...action, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1, minWidth: 0 }} />
+                <input type="number" value={action.ttlMs ?? ''} onChange={(e) => patchAt(i, { ...action, ttlMs: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ flex: 1, minWidth: 0 }} />
               ))}
               <SpawnInputsEditor from={action.from} inputs={action.inputs} overlays={overlays} pickers={pickers} onChange={(inputs) => patchAt(i, { ...action, inputs })} />
             </>

@@ -13,8 +13,8 @@ const ctx: SkinCtx = {
         name: '空藏',
         hp: 75,
         maxHp: 100,
-        attrs: { hp: 75, attack: 20 },
-        attrMax: { hp: 100, attack: 20 },
+        attrs: { hp: 75, hpMax: 150, attack: 20 },
+        attrMax: { hp: 100, hpMax: 150, attack: 20 },
       },
       'ent-boss': {
         name: '小怪',
@@ -47,10 +47,10 @@ describe('numeric hp bar components', () => {
     ])
     expect(BattlePlayerHpBarManifest.inputs).toEqual(expect.arrayContaining([
       { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-player', component: 'entity' },
-      { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp', component: 'attr' },
+      { key: 'attr', label: '当前值属性', valueType: 'string', default: 'hp', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-      { key: 'current', label: '当前血量', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '最大血量', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '最大值来源', valueType: 'number', component: 'numberExpr' },
       { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
       { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
     ]))
@@ -63,10 +63,10 @@ describe('numeric hp bar components', () => {
     ])
     expect(BattleEnemyHpBarManifest.inputs).toEqual(expect.arrayContaining([
       { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-boss', component: 'entity' },
-      { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp', component: 'attr' },
+      { key: 'attr', label: '当前值属性', valueType: 'string', default: 'hp', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-      { key: 'current', label: '当前血量', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '最大血量', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '最大值来源', valueType: 'number', component: 'numberExpr' },
     ]))
   })
 
@@ -111,5 +111,20 @@ describe('numeric hp bar components', () => {
     expect(fillWidth(container, '.ks-hud-hp-fill')).toBe('50%')
     expect(container.querySelector('.ks-hud-rage')?.getAttribute('aria-label')).toBe('气力 3/4')
     expect(container.querySelector('.ks-hud-hp-name')?.textContent).toBe('空藏')
+  })
+
+  it('keeps the current value bound while max reads any selected entity property', () => {
+    const { container } = render(
+      <BattlePlayerHpBar
+        overlay={{
+          elementId: 'player-bound-max',
+          component: 'BattlePlayerHpBar',
+          inputs: { max: { expr: 'entity.ent-player.attr.hpMax' } },
+        }}
+        ctx={ctx}
+      />,
+    )
+
+    expect(fillWidth(container, '.ks-hud-hp-fill')).toBe('50%')
   })
 })
