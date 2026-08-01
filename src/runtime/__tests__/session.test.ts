@@ -59,4 +59,25 @@ describe('GraphSession (playable view model)', () => {
     expect(snap.currentNodeId).toBe('wait')
     expect(overlayChild(snap, 'BattleSkill')?.elementId).toBe('wait/skill')
   })
+
+  it('restores an in-memory checkpoint including globals and nested execution cursors', () => {
+    const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
+    session.start()
+    const entry = session.jump('a_my')
+    expect(entry.currentNodeId).toBe('wait')
+    const checkpoint = session.createCheckpoint()
+
+    session.emitEvent('wait/skill', 'light')
+    const advanced = session.tick(1000)
+    const damagedHp = advanced.hud.entities['ent-boss']!.hp
+    expect(damagedHp).toBeLessThan(700)
+
+    const restored = session.restoreCheckpoint(checkpoint)
+    expect(restored.currentNodeId).toBe('wait')
+    expect(restored.hud.entities['ent-boss']!.hp).toBe(700)
+    expect(overlayChild(restored, 'BattleSkill')?.elementId).toBe('wait/skill')
+
+    session.emitEvent('wait/skill', 'light')
+    expect(session.tick(1000).hud.entities['ent-boss']!.hp).toBe(damagedHp)
+  })
 })

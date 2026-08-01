@@ -20,8 +20,8 @@
  * `patchData → onChange → store` 数据流，本组件只多一个订阅者，天然实时；也不自动回写
  * `durationMs`（只影响本地播放头与时间轴上限，对齐 `videoDurationCapReached` 契约）。
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { GameNode, GameScenario, Layout } from '../../runtime/schema/graph-schema'
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { bootEditorSkins } from '../init'
@@ -36,19 +36,16 @@ import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
-import { type MaterialItem, type TimelineConditionMarker, type TimelinePointMarker } from '../video/materialTimelineShared'
+import { type MaterialItem } from '../video/materialTimelineShared'
+import { collectNodeTimelineMarkers } from '../video/nodeTimelineMarkers'
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import {
-  isSettlementReaction,
   overlayMountId,
-  type NodeAction,
-  type OverlayInstanceChild,
 } from '../../runtime/schema/node-config-schema'
-import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
-import { elementStartMs } from '../../graph/canvas/timeline-geometry'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
   OverlayCanvasInteraction,
@@ -64,12 +61,16 @@ import {
   previewSkinChildrenInWindow,
   shiftMountWindowGraph,
 } from '../video/graphMaterialOps'
+import { FlowNodePreviewStage, type FlowNodePreviewState } from './FlowNodePreviewStage'
+
+export type { FlowNodePreviewState } from './FlowNodePreviewStage'
 
 /**
  * `--gc-*` 变量在 CATALOG_CSS 里挂 `.gc-tab` 作用域（GraphVideoView 外壳）；
  * 蓝图面板没有 gc-tab 祖先，这里自持一份同值变量，保证 gc-frame/gc-preview-* 类渲染一致。
  */
 const NPS_CSS = `
+.nps-shell { display: flex; flex: 1; min-height: 0; flex-direction: column; background: var(--work, #0e0c09); }
 .nps-root {
   --gc-bg: var(--work, #0e0c09);
   --gc-panel: var(--panel, #1b1713);
@@ -105,6 +106,23 @@ const NPS_CSS = `
 .nps-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
 .nps-time { color: var(--gc-faint); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nps-controls .nps-mute { margin-left: auto; }
+.nps-controls .nps-timeline-toggle {
+  margin-left: auto; padding: 0; color: var(--gc-muted); transition:
+    background var(--motion-duration-base, 150ms) var(--motion-ease-out, ease),
+    border-color var(--motion-duration-base, 150ms) var(--motion-ease-out, ease),
+    color var(--motion-duration-fast, 110ms) var(--motion-ease-out, ease);
+}
+.nps-controls .nps-mute + .nps-timeline-toggle { margin-left: 0; }
+.nps-controls .nps-timeline-toggle:hover { color: var(--gc-text); }
+.nps-timeline-toggle-icon {
+  position: relative; flex: none; width: 16px; height: 16px; display: block;
+}
+.nps-timeline-toggle-icon::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+  box-sizing: border-box; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: translate(-50%, -50%) rotate(45deg); transform-origin: center;
+}
+.nps-timeline-toggle-icon.is-collapse::before { transform: translate(-50%, -50%) rotate(225deg); }
 .nps-fx-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
 .nps-fx-layer > div { position: absolute; inset: 0; }
 .nps-addbar { position: relative; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; flex: none; }
@@ -151,30 +169,102 @@ function fmtTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function effectsBrief(actions: NodeAction[]): string {
-  const effects = actions.flatMap((action) => (action.kind === 'effect' ? action.effects : []))
-  const spawns = actions.filter((action) => action.kind === 'spawn').length
-  const parts = effects.slice(0, 2).map((effect) => {
-    if (effect.kind === 'attr') return `${effect.entityId}.${effect.attr} ${effect.op} ${String(effect.value)}`
-    if (effect.kind === 'var') return `${effect.varId} ${effect.op} ${String(effect.value)}`
-    if (effect.kind === 'flag') return `${effect.varId} = ${effect.value}`
-    return `${effect.itemId} ${effect.op === 'give' ? '+' : '-'}${effect.count}`
-  })
-  if (effects.length > 2) parts.push(`等 ${effects.length} 项`)
-  if (spawns > 0) parts.push(`刷出 ${spawns} 个瞬态组件`)
-  if (actions.some((action) => action.kind === 'advance')) parts.push('沿边推进')
-  return parts.length ? parts.join(' · ') : '未配置动作'
+export interface NodePreviewStageProps {
+  /** 读投影场景：canvasGraph（主图或下钻包图）+ ui.overlays + entities/variables。 */
+  scenario: GameScenario
+  /** 当前选中节点（canvasGraph 内；随编辑实时换引用）。 */
+  node: GameNode
+  game: string
+  /** GraphStudio 统一持有的节点预览静音状态，切换节点时保持。 */
+  muted: boolean
+  focusedMountId?: string | null
+  focusedLifecycleIndex?: number | null
+  onEditScenario: (fn: (s: GameScenario, n: GameNode) => GameScenario) => void
+  onMutedChange: (muted: boolean) => void
+  onSelectedTimeChange?: (ms: number) => void
+  onFocusMount?: (mountId: string | null) => void
+  onFocusLifecycle?: (lifecycleIndex: number | null) => void
+  /** 通用组件只消费模式；切换模式的控件由宿主提供。默认 edit。 */
+  mode?: 'edit' | 'preview'
+  /** 时间轴展开/收起配置。默认隐藏切换按钮，时间轴初始展开。 */
+  timelineDisclosure?: NodePreviewTimelineDisclosure
+  flow?: FlowNodePreviewState
 }
 
-function matchesReactionTarget(of: string, child: OverlayInstanceChild): boolean {
-  const source = child.source
-  return of === source.childId
-    || of === child.id
-    || of === `${source.mountId}/${source.childId}`
-    || of === `${source.overlayId}/${source.childId}`
+export interface NodePreviewTimelineDisclosure {
+  /** 是否在播放控制条展示展开/收起按钮。默认 false。 */
+  showToggle?: boolean
+  /** 受控展开状态；省略时使用组件内部状态。 */
+  expanded?: boolean
+  /** 非受控初始状态。默认 true。 */
+  defaultExpanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
+  /** 根据当前展开状态替换按钮图标。 */
+  renderToggleIcon?: (expanded: boolean) => ReactNode
 }
 
-export function NodePreviewStage({
+export function NodePreviewStage(props: NodePreviewStageProps): JSX.Element {
+  bootEditorSkins()
+  injectStyleOnce('graph-catalog', CATALOG_CSS)
+  injectStyleOnce('node-preview-stage', NPS_CSS)
+  const mode = props.mode ?? 'edit'
+  const timelineId = useId()
+  const disclosure = props.timelineDisclosure
+  const [uncontrolledTimelineExpanded, setUncontrolledTimelineExpanded] = useState(
+    disclosure?.defaultExpanded ?? true,
+  )
+  const timelineExpanded = disclosure?.expanded ?? uncontrolledTimelineExpanded
+  const showTimelineToggle = disclosure?.showToggle ?? false
+  const toggleTimeline = (): void => {
+    const next = !timelineExpanded
+    setUncontrolledTimelineExpanded(next)
+    disclosure?.onExpandedChange?.(next)
+  }
+  const timelineToggle = showTimelineToggle ? (
+    <button
+      type="button"
+      className="nps-timeline-toggle"
+      aria-label={timelineExpanded ? '收起时间轴' : '展开时间轴'}
+      title={timelineExpanded ? '收起时间轴' : '展开时间轴'}
+      aria-expanded={timelineExpanded}
+      aria-controls={timelineId}
+      onClick={toggleTimeline}
+    >
+      {disclosure?.renderToggleIcon?.(timelineExpanded) ?? (
+        <span className={`nps-timeline-toggle-icon${timelineExpanded ? ' is-collapse' : ''}`} aria-hidden />
+      )}
+    </button>
+  ) : null
+  return (
+    <div className="nps-shell">
+      {mode === 'preview' && props.flow
+        ? (
+            <FlowNodePreviewStage
+              flow={props.flow}
+              timelineId={timelineId}
+              timelineExpanded={timelineExpanded}
+              timelineToggle={timelineToggle}
+            />
+          )
+        : (
+            <EditableNodePreviewStage
+              {...props}
+              timelineId={timelineId}
+              timelineExpanded={timelineExpanded}
+              timelineToggle={timelineToggle}
+            />
+          )}
+    </div>
+  )
+}
+
+interface EditableNodePreviewStageProps extends NodePreviewStageProps {
+  timelineId: string
+  timelineExpanded: boolean
+  timelineToggle: ReactNode
+}
+
+function EditableNodePreviewStage({
   scenario,
   node,
   game,
@@ -186,33 +276,10 @@ export function NodePreviewStage({
   onSelectedTimeChange,
   onFocusMount,
   onFocusLifecycle,
-}: {
-  /** 读投影场景：canvasGraph（主图或下钻包图）+ ui.overlays + entities/variables。 */
-  scenario: GameScenario
-  /** 当前选中节点（canvasGraph 内；随编辑实时换引用）。 */
-  node: GameNode
-  game: string
-  /** GraphStudio 统一持有的节点预览静音状态，切换节点时保持。 */
-  muted: boolean
-  /** 右侧表单当前聚焦的挂载 id（预览据此高亮对应叠层/时间轴条）。 */
-  focusedMountId?: string | null
-  /** 右侧表单当前聚焦的结算（生命周期子集序号）；时间轴据此高亮对应菱形。 */
-  focusedLifecycleIndex?: number | null
-  /** 写回通道：主图走 setScenario，子蓝图下钻由上层分流到包图（见 GraphStudio）。 */
-  onEditScenario: (fn: (s: GameScenario, n: GameNode) => GameScenario) => void
-  /** 更新 GraphStudio 统一持有的节点预览静音状态。 */
-  onMutedChange: (muted: boolean) => void
-  /** 用户在时间轴定位时上报插入游标；视频播放逐帧推进不触发。 */
-  onSelectedTimeChange?: (ms: number) => void
-  /** 选中某挂载覆盖物时上抛（右侧表单据此聚焦该卡片；传 null = 清空聚焦）。 */
-  onFocusMount?: (mountId: string | null) => void
-  /** 点中某结算菱形时上抛，让右侧对应配置块高亮。 */
-  onFocusLifecycle?: (lifecycleIndex: number | null) => void
-}): JSX.Element {
-  bootEditorSkins()
-  injectStyleOnce('graph-catalog', CATALOG_CSS)
-  injectStyleOnce('node-preview-stage', NPS_CSS)
-
+  timelineId,
+  timelineExpanded,
+  timelineToggle,
+}: EditableNodePreviewStageProps): JSX.Element {
   const contentAnchorRef = useRef<HTMLDivElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaClockRef = useRef<PreviewMediaClock | null>(null)
@@ -419,56 +486,10 @@ export function NodePreviewStage({
     if (selectedMountId === item.id) focusMount(null)
   }
 
-  const settlementTimeline = useMemo((): {
-    pointMarkers: TimelinePointMarker[]
-    conditionMarkers: TimelineConditionMarker[]
-  } => {
-    const pointMarkers: TimelinePointMarker[] = []
-    const conditionMarkers: TimelineConditionMarker[] = []
-    const settlement = node.data.routingSettlement
-    if (settlement?.type === 'at') {
-      pointMarkers.push({ id: 'settlement', ms: settlement.ms, kind: 'settlement', label: '结算时刻 · 延迟事件边在此刻提交并离开节点' })
-    }
-    const children = expandNodeChildren(scenario, node)
-    ;(node.data.reactions ?? []).filter(isSettlementReaction).forEach((reaction, settlementIndex) => {
-      const id = `life:${settlementIndex}`
-      const actionLabel = effectsBrief(reaction.do)
-      if (reaction.when.type === 'at' || reaction.when.type === 'enter') {
-        pointMarkers.push({
-          id,
-          ms: reaction.when.type === 'at' ? reaction.when.ms : 0,
-          kind: 'lifecycle',
-          label: `结算 · ${actionLabel}`,
-        })
-        return
-      }
-      if (reaction.when.type === 'watch') {
-        const direction = reaction.when.on === 'inc' ? '增加' : reaction.when.on === 'dec' ? '减少' : '变化'
-        conditionMarkers.push({ id, label: `${reaction.when.of || '未选数值'} ${direction} → ${actionLabel}` })
-        return
-      }
-      if (reaction.when.type === 'state') {
-        const count = reaction.when.condition.all.length
-        conditionMarkers.push({ id, label: `${count ? `满足 ${count} 项条件` : '未配置条件'} → ${actionLabel}` })
-        return
-      }
-      if (reaction.when.type === 'shown' || reaction.when.type === 'hidden') {
-        const when = reaction.when
-        const child = children.find((candidate) => matchesReactionTarget(when.of, candidate))
-        const ms = when.type === 'shown'
-          ? (child ? elementStartMs(child) : null)
-          : child?.window?.endMs ?? null
-        const phase = when.type === 'shown' ? '出现' : '消失'
-        const label = `${when.of || '未选界面'} ${phase} → ${actionLabel}`
-        if (ms != null) {
-          pointMarkers.push({ id, ms, kind: 'derived', draggable: false, label })
-        } else {
-          conditionMarkers.push({ id, label })
-        }
-      }
-    })
-    return { pointMarkers, conditionMarkers }
-  }, [node, overlays, scenario])
+  const settlementTimeline = useMemo(
+    () => collectNodeTimelineMarkers(scenario, node),
+    [node, scenario],
+  )
   const { pointMarkers, conditionMarkers } = settlementTimeline
 
   const lifecycleIndexOf = (id: string): number | null => {
@@ -718,6 +739,7 @@ export function NodePreviewStage({
         <button type="button" className="nps-mute" onClick={toggleMute} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
           {muted ? '🔇' : '🔊'}
         </button>
+        {timelineToggle}
       </div>
 
       {/* 「添加控件」= 覆盖物挂载入口：前 5 个未挂载覆盖物点击直接挂载，「更多」展开完整列表。 先暂时隐藏 */}
@@ -767,38 +789,42 @@ export function NodePreviewStage({
         ) : null}
       </div>
 
-      <MaterialTimeline
-        materials={materials}
-        maxMs={maxMs}
-        playheadMs={playheadMs}
-        selectedMaterialKey={selectedMountId ? `mount:${selectedMountId}` : null}
-        pointMarkers={pointMarkers}
-        conditionMarkers={conditionMarkers}
-        selectedPointMarkerId={focusedLifecycleIndex != null ? `life:${focusedLifecycleIndex}` : null}
-        context="video"
-        editable
-        emptyHint="该节点暂无挂载覆盖物——用上方「添加控件」挂载一张覆盖物"
-        onSeek={seekTo}
-        onScrubStart={pauseForScrub}
-        onSelectMaterial={(key) => {
-          const mid = key.startsWith('mount:') ? key.slice('mount:'.length) : null
-          focusMount(mid)
-          const it = materials.find((m) => m.key === key)
-          if (it) {
-            // 选中即定格到该覆盖物可见窗的中段并暂停；动画按该局部时刻精确定帧。
-            seekTo(it.startMs + (it.endMs - it.startMs) / 2)
-            pauseForScrub()
-          }
-        }}
-        onPatchMaterial={patchMaterial}
-        onPointMarkerChange={movePointMarker}
-        onSelectPointMarker={(id) => {
-          const lifecycleIndex = lifecycleIndexOf(id)
-          if (lifecycleIndex != null) onFocusLifecycle?.(lifecycleIndex)
-        }}
-        onDeleteMaterial={deleteMaterial}
-        onDropTemplate={(template, atMs) => mountOverlay(template, atMs)}
-      />
+      {timelineExpanded ? (
+        <div id={timelineId}>
+          <MaterialTimeline
+            materials={materials}
+            maxMs={maxMs}
+            playheadMs={playheadMs}
+            selectedMaterialKey={selectedMountId ? `mount:${selectedMountId}` : null}
+            pointMarkers={pointMarkers}
+            conditionMarkers={conditionMarkers}
+            selectedPointMarkerId={focusedLifecycleIndex != null ? `life:${focusedLifecycleIndex}` : null}
+            context="video"
+            editable
+            emptyHint="该节点暂无挂载覆盖物——用上方「添加控件」挂载一张覆盖物"
+            onSeek={seekTo}
+            onScrubStart={pauseForScrub}
+            onSelectMaterial={(key) => {
+              const mid = key.startsWith('mount:') ? key.slice('mount:'.length) : null
+              focusMount(mid)
+              const it = materials.find((m) => m.key === key)
+              if (it) {
+                // 选中即定格到该覆盖物可见窗的中段并暂停；动画按该局部时刻精确定帧。
+                seekTo(it.startMs + (it.endMs - it.startMs) / 2)
+                pauseForScrub()
+              }
+            }}
+            onPatchMaterial={patchMaterial}
+            onPointMarkerChange={movePointMarker}
+            onSelectPointMarker={(id) => {
+              const lifecycleIndex = lifecycleIndexOf(id)
+              if (lifecycleIndex != null) onFocusLifecycle?.(lifecycleIndex)
+            }}
+            onDeleteMaterial={deleteMaterial}
+            onDropTemplate={(template, atMs) => mountOverlay(template, atMs)}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

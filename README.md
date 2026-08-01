@@ -46,6 +46,7 @@ bun run build
 | 覆盖组件与渲染注册 | [`src/runtime/component-host`](./src/runtime/component-host) |
 | 蓝图画布 | [`src/graph`](./src/graph) |
 | 编辑器、持久化和 demo | [`src/editor`](./src/editor) |
+| 节点预览/编辑通用组件接入 API | [`docs/node-preview-stage-api.md`](./docs/node-preview-stage-api.md) |
 | AI 工具后端 | [`server/tool-handlers.ts`](./server/tool-handlers.ts) |
 | 扩展声明 | [`forgeax-extension.json`](./forgeax-extension.json) |
 

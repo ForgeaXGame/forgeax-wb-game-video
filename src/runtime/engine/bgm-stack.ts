@@ -185,6 +185,11 @@ export class BgmStack {
     return [...this.stack]
   }
 
+  /** 编辑器时间轴回放恢复用；只恢复内存态，不发播放指令。 */
+  restore(frames: readonly BgmStackFrame[]): void {
+    this.stack.splice(0, this.stack.length, ...frames.map((frame) => Object.freeze({ ...frame })))
+  }
+
   /** 结束若干层后「回到新栈顶」（或栈空则停播）的指令；`leaving` 只贡献淡出时长。 */
   private resume(leaving: BgmStackFrame | undefined): BgmPlaybackCommand {
     const fadeOutMs = leaving?.fadeOutMs ?? 0

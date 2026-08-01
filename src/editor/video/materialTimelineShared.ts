@@ -12,7 +12,7 @@
  * 未落入默认六槽的挂载组件一律用 `component`（默认图标），时间轴仍会显示。
  * `mount` = 挂载级条目（蓝图节点配置面板专用，一份挂载一条；不出现在视频 tab 的 child 级时间轴）。
  */
-export type MaterialKind = 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx' | 'component' | 'mount'
+export type MaterialKind = 'video' | 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx' | 'component' | 'mount'
 
 /** 时间轴上的一段材料（由 scene 派生，见 CatalogTabs.collectMaterials）。 */
 export interface MaterialItem {
@@ -73,6 +73,15 @@ export interface TimelinePointMarker {
 export interface TimelineConditionMarker {
   id: string
   label: string
+}
+
+/** 全流程预览在同一时间轴上展示的节点片段；仅为编辑器内存投影，不进入蓝图协议。 */
+export interface TimelineSegment {
+  id: string
+  label: string
+  startMs: number
+  endMs: number
+  active?: boolean
 }
 
 export const TIMELINE_RULER_H = 24
@@ -157,6 +166,8 @@ export function buildMaterialTicks(maxMs: number, pxPerMs: number): Array<{ ms: 
 
 export function materialLabel(kind: MaterialKind): string {
   switch (kind) {
+    case 'video':
+      return '视频'
     case 'subtitle':
       return '字幕'
     case 'overlay':
@@ -172,7 +183,7 @@ export function materialLabel(kind: MaterialKind): string {
     case 'component':
       return '组件'
     case 'mount':
-      return '覆盖物'
+      return '界面'
   }
 }
 
@@ -204,6 +215,8 @@ export function canDeleteMaterial(kind: MaterialKind): boolean {
 
 export function materialClass(kind: MaterialKind): string {
   switch (kind) {
+    case 'video':
+      return 'is-video'
     case 'subtitle':
       return 'is-subtitle'
     case 'overlay':
