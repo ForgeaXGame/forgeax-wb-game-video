@@ -281,7 +281,7 @@ describe('NodeInspector · 作用域 BGM', () => {
       .toEqual([
         ['__unavailable__', '（当前音乐不在素材库）'],
         ['', '（空）'],
-        ['a-aud-1', '战斗床 (a-aud-1)'],
+        ['a-aud-1', '战斗床'],
       ])
     expect(selector!.value).toBe('__unavailable__')
     expect(selector!.textContent).not.toContain('bgm-battle')

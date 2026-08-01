@@ -23,6 +23,7 @@ import { buildDefaults, getComponent, getComponentManifest } from '../../runtime
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
 import { ValueExprEditor } from './ValueExprEditor'
 import { TextValueEditor, type TextOrRef } from './TextValueEditor'
+import { LooseNumberInput } from './TermChainEditor'
 import {
   decodeEffectOperation,
   encodeEffectOperation,
@@ -682,7 +683,7 @@ function EffectRow({
               <option value="take">{OP_LABEL.take}</option>
             </select>
           ))}
-          {field('数量', <input type="number" value={eff.count} onChange={(e) => onChange({ ...eff, count: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('数量', <LooseNumberInput value={eff.count} emptyValue={0} onChange={(count) => onChange({ ...eff, count })} style={{ width: 90 }} />)}
         </>
       )}
     </div>
@@ -780,7 +781,7 @@ function defaultClause(
 }
 
 const opSelect = (op: CmpOp, onChange: (op: CmpOp) => void): JSX.Element => (
-  <select value={op} onChange={(e) => onChange(e.target.value as CmpOp)}>
+  <select aria-label="比较运算符" value={op} onChange={(e) => onChange(e.target.value as CmpOp)}>
     {CMP_OPS.map((o) => (
       <option key={o} value={o}>{CMP_LABEL[o]}</option>
     ))}
@@ -805,7 +806,7 @@ function ClauseRow({
   return (
     <div style={box}>
       <div style={rowStyle}>
-        <select value={clause.type} onChange={(e) => onChange(defaultClause(e.target.value as ClauseType, entities, variables))}>
+        <select aria-label="条件字段类型" value={clause.type} onChange={(e) => onChange(defaultClause(e.target.value as ClauseType, entities, variables))}>
           {CLAUSE_TYPES.map((t) => (
             <option key={t} value={t}>{CLAUSE_LABEL[t] ?? t}</option>
           ))}
@@ -833,7 +834,7 @@ function ClauseRow({
             />
           ))}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <LooseNumberInput aria-label="比较值" value={clause.value} emptyValue={0} onChange={(value) => onChange({ ...clause, value })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'attrCompare' && (
@@ -866,7 +867,7 @@ function ClauseRow({
             />
           ))}
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <LooseNumberInput aria-label="比较值" value={clause.value} emptyValue={0} onChange={(value) => onChange({ ...clause, value })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'flag' && (
@@ -898,13 +899,13 @@ function ClauseRow({
       {clause.type === 'score' && (
         <>
           {field('op', opSelect(clause.op, (op) => onChange({ ...clause, op })))}
-          {field('值', <input type="number" value={clause.value} onChange={(e) => onChange({ ...clause, value: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('值', <LooseNumberInput aria-label="比较值" value={clause.value} emptyValue={0} onChange={(value) => onChange({ ...clause, value })} style={{ width: 90 }} />)}
         </>
       )}
       {clause.type === 'hasItem' && (
         <>
           {field('道具', <input value={clause.itemId} onChange={(e) => onChange({ ...clause, itemId: e.target.value })} style={{ flex: 1 }} />)}
-          {field('数量', <input type="number" value={clause.count ?? 1} onChange={(e) => onChange({ ...clause, count: Number(e.target.value) || 0 })} style={{ width: 90 }} />)}
+          {field('数量', <LooseNumberInput value={clause.count ?? 1} emptyValue={1} onChange={(count) => onChange({ ...clause, count })} style={{ width: 90 }} />)}
         </>
       )}
     </div>

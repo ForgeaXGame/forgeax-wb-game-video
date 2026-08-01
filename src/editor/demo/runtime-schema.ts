@@ -260,7 +260,7 @@ export interface Reaction {
  * 触发面（闭合）：
  * - enter/at(ms)/exit/complete：节点生命周期
  * - event：组件事件（挂 mount.reactions）
- * - state：局级规则相位（历史字段，已不再消费）
+ * - state：GraphCondition 从不成立变为成立；与出边复用同一套条件配置
  * - watch：观察表达式变化（change/inc/dec）
  * - shown/hidden：某 overlay 组件实例出现/消失
  */

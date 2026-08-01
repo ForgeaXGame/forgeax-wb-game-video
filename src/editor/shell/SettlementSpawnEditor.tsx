@@ -6,6 +6,7 @@ import type { CSSProperties, JSX } from 'react'
 import type { Entity, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { SpawnInputsEditor } from './spawn-inputs-editor'
+import { LooseNumberInput } from './TermChainEditor'
 
 export interface SettlementSpawnValue {
   from: string
@@ -88,19 +89,15 @@ export function SettlementSpawnEditor({
           </div>
           <div style={rowStyle}>
             <span style={lbl}>存活ms</span>
-            <input
-              type="number"
-              min={100}
-              max={ttlCap}
-              step={100}
+            <LooseNumberInput
               value={ttlShown}
+              emptyValue={ttlCap}
               style={{ width: 100 }}
               title={`最长 ${ttlCap}ms（本节点时长）；本版不跨节点`}
-              onChange={(e) => {
-                const n = Number(e.target.value)
+              onChange={(ttlMs) => {
                 onChange({
                   ...value,
-                  ttlMs: Number.isFinite(n) ? Math.min(Math.max(100, n), ttlCap) : ttlCap,
+                  ttlMs: Math.min(Math.max(100, ttlMs), ttlCap),
                 })
               }}
             />

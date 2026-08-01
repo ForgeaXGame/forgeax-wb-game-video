@@ -10,10 +10,10 @@ export const BattleEnemyHpBarManifest: ComponentManifest = {
   label: '敌方水墨血条',
   inputs: [
     { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-boss', component: 'entity' },
-    { key: 'attr', label: '绑定属性', valueType: 'string', default: 'hp', component: 'attr' },
+    { key: 'attr', label: '当前值属性', valueType: 'string', default: 'hp', component: 'attr' },
     { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-    { key: 'current', label: '当前血量', valueType: 'number', component: 'numberExpr' },
-    { key: 'max', label: '最大血量', valueType: 'number', component: 'numberExpr' },
+    { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
+    { key: 'max', label: '最大值来源', valueType: 'number', component: 'numberExpr' },
   ],
   events: [],
 }

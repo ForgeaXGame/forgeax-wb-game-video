@@ -1197,10 +1197,15 @@ describe('graphMaterialOps · 同模板多挂载', () => {
     ])
     expect(expandNodeOverlays(twice.ui?.overlays, mountedNode).flatMap((mount) => mount.children.map((child) => child.id)))
       .toEqual(['n_door/damage', 'n_door__2/damage'])
+    expect(previewSkinChildrenInWindow(twice, mountedNode, 0, 3000).map((child) => [child.id, child.source.mountId]))
+      .toEqual([
+        ['n_door/damage', 'n_door'],
+        ['n_door__2/damage', 'n_door__2'],
+      ])
     expect(collectMountItemsFromNode(twice, mountedNode, 3000).map((item) => [item.key, item.label]))
       .toEqual([
         ['mount:n_door', '叩门界面'],
-        ['mount:n_door__2', '叩门界面 · n_door__2'],
+        ['mount:n_door__2', '叩门界面'],
       ])
 
     const removedSecond = removeMountGraph(twice, mountedNode, 'n_door__2')

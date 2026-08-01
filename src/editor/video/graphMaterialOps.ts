@@ -47,6 +47,7 @@ import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
 import type { OverlaySnap } from '../../runtime/engine/session'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
+import { authoringOptionLabel } from '../authoring-option-label'
 import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import {
   type PreviewEvalContext,
@@ -340,11 +341,13 @@ export function listSpawnTemplateOptions(
   const out: Array<{ value: string; label: string }> = []
   for (const ov of Object.values(overlays)) {
     for (const c of ov.children) {
-      const label = componentTypeLabel(c.component)
-      const title = ov.title?.trim()
+      const value = `${ov.id}/${c.id}`
+      const name = [ov.title?.trim(), componentTypeLabel(c.component)]
+        .filter((part, index, all) => part && all.indexOf(part) === index)
+        .join(' · ')
       out.push({
-        value: `${ov.id}/${c.id}`,
-        label: title ? `${label} · ${title}/${c.id}` : `${label} · ${ov.id}/${c.id}`,
+        value,
+        label: authoringOptionLabel(name, value),
       })
     }
   }
@@ -1120,7 +1123,7 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
       key: `mount:${mid}`,
       id: mid,
       kind: 'mount' as MaterialKind,
-      label: title ? (mid === mount.overlay ? title : `${title} · ${mid}`) : mid,
+      label: authoringOptionLabel(title, mid),
       startMs: start ?? 0,
       endMs: end ?? maxMs,
       zIndex: i,
@@ -1476,7 +1479,8 @@ export function previewSkinChildrenInWindow(
 ): OverlayInstanceChild[] {
   if (!node) return []
   const out: OverlayInstanceChild[] = []
-  // 保留运行态实例来源，重复挂载同一 overlay 时 child id 和 mount 布局仍按实例隔离。
+  // 与运行时一致：扫全部挂载（内容轨 + 常驻 HUD 方案），不能只看 primary。
+  // 必须保留实例 source.mountId；重复挂载同一方案时，裸 childId 无法区分所属挂载。
   for (const el of expandNodeChildren(scenario, node)) {
     const sp = childVisibleSpan(el, maxMs)
     if (!sp) continue

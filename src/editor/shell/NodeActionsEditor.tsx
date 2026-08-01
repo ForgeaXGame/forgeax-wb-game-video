@@ -19,7 +19,6 @@ function field(label: string, control: ReactNode): JSX.Element {
 
 export function NodeActionsEditor({
   actions,
-  edgeOptions = [],
   spawnOptions,
   overlays,
   pickers,
@@ -62,18 +61,13 @@ export function NodeActionsEditor({
                 </select>
               ))}
               {field('存活ms', (
-                <input type="number" value={action.ttlMs ?? 0} onChange={(e) => patchAt(i, { ...action, ttlMs: Number(e.target.value) || undefined })} style={{ flex: 1, minWidth: 0 }} />
+                <input type="number" value={action.ttlMs ?? ''} onChange={(e) => patchAt(i, { ...action, ttlMs: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ flex: 1, minWidth: 0 }} />
               ))}
               <SpawnInputsEditor from={action.from} inputs={action.inputs} overlays={overlays} pickers={pickers} onChange={(inputs) => patchAt(i, { ...action, inputs })} />
             </>
           ) : null}
           {action.kind === 'advance' && renderAdvance ? renderAdvance(action, i) : null}
-          {action.kind === 'advance' && !renderAdvance ? field('走边', (
-            <select value={action.edgeId} onChange={(e) => patchAt(i, { kind: 'advance', edgeId: e.target.value })} style={{ flex: 1, minWidth: 0 }}>
-              <option value="">（选出边）</option>
-              {edgeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          )) : null}
+          {action.kind === 'advance' && !renderAdvance ? <div style={{ fontSize: 11, color: '#ce9178' }}>请选择目标节点</div> : null}
         </div>
       ))}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -82,7 +76,7 @@ export function NodeActionsEditor({
           <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
         ) : null}
         {allowAdvance && !actions.some((action) => action.kind === 'advance') ? (
-          <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: edgeOptions[0]?.value ?? '' }])}>＋ 沿边推进</button>
+          <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: '' }])}>＋ 沿边推进</button>
         ) : null}
       </div>
     </div>

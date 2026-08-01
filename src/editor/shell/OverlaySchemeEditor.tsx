@@ -15,6 +15,7 @@ import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
 import type { Formula } from '../persist/formula-authoring'
+import { authoringOptionLabel } from '../authoring-option-label'
 import { ComponentFormFields, type EntityAttributeCreateHandler } from './component-form-fields'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 
@@ -162,10 +163,13 @@ export function OverlaySchemeEditor({
     : []
   const overlays = overlayCatalog ?? { [overlay.id]: overlay }
   const spawnOptions = Object.values(overlays).flatMap((definition) =>
-    definition.children.map((child) => ({
-      value: `${definition.id}/${child.id}`,
-      label: `${definition.title?.trim() || definition.id} · ${componentTypeLabel(child.component)} · ${child.id}`,
-    })))
+    definition.children.map((child) => {
+      const value = `${definition.id}/${child.id}`
+      const name = [definition.title?.trim(), componentTypeLabel(child.component)]
+        .filter((part, index, all) => part && all.indexOf(part) === index)
+        .join(' · ')
+      return { value, label: authoringOptionLabel(name, value) }
+    }))
 
   // 进入方案时默认选中视觉最上层组件（zIndex 高者优先，同层级后渲染者优先）；
   // 双字幕等完全重叠时，默认选择因此与眼前实际可见的那一层一致。

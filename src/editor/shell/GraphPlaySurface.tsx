@@ -26,6 +26,7 @@ import {
   deepestCallerOnBlueprint,
 } from './call-stack-view'
 import { graphPathLabels, resolveGraphAtPath } from '../../graph/edit/graph-scope'
+import { runtimeRuleSignature } from './runtime-rule-signature'
 
 function autoEmitTarget(snap: SessionSnapshot): { elementId: string; key: string } | null {
   // 自动演示：找首个可 emit 的挂载组件，抛其首个非 default 事件。
@@ -113,11 +114,11 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     return () => releasePlayerFocus(el)
   }, [])
 
-  // 实体从空被回填后要重建 session（否则 HUD bind 不到 ent-*）。
-  const entitySig = useGraphScenario((s) => {
-    const e = s.meta.entities ?? s.demo?.entities
-    return e ? Object.keys(e).sort().join(',') : ''
-  })
+  // 规则的运行时字段变化后重建 session：新试玩读取最新模板，不把新值热灌进旧运行态。
+  const runtimeRulesSig = useGraphScenario((s) => runtimeRuleSignature(
+    s.meta.entities ?? s.demo?.entities,
+    s.meta.variables ?? s.demo?.variables,
+  ))
   useEffect(() => {
     if (!ready) return
     const st = useGraphScenario.getState()
@@ -128,7 +129,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     sessionRef.current = s
     setSkins(s.skins)
     setSnap(s.start())
-  }, [restartKey, ready, entitySig])
+  }, [restartKey, ready, runtimeRulesSig])
 
   const videoSrc = resolveMediaSrc(snap?.clip?.mediaId, game)
   const preloadVideos = useMemo(
@@ -136,7 +137,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       videoSrc: resolveMediaSrc(candidate.mediaId, game),
       clip: candidate,
     })) ?? [],
-    [snap?.currentNodeId, game, restartKey, entitySig],
+    [snap?.currentNodeId, game, restartKey, runtimeRulesSig],
   )
   /** 床轨解析器（引擎只抛资产 id，URL 归壳层）；稳定引用，避免每帧让 BgmPlayer 重跑 effect。 */
   const resolveBgm = useCallback((id: string | undefined) => resolveMediaSrc(id, game), [game])

@@ -8,6 +8,7 @@ import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
 import { FormulaTextEditor } from './FormulaTextEditor'
+import { LooseNumberInput } from './TermChainEditor'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -331,12 +332,12 @@ export function ScenarioInspector({
                 onChange={(e) => setVariables({ ...variables, [key]: { ...v, id: key, name: e.target.value } })}
                 style={{ width: '100%', minWidth: 0 }}
               />
-              <input
-                type="number"
+              <LooseNumberInput
                 value={v.initial ?? 0}
                 aria-label={`${v.id} 的初值`}
                 title="初值"
-                onChange={(e) => setVariables({ ...variables, [key]: { ...v, id: key, initial: Number(e.target.value) || 0 } })}
+                emptyValue={0}
+                onChange={(initial) => setVariables({ ...variables, [key]: { ...v, id: key, initial } })}
                 style={{ width: '100%', minWidth: 0 }}
               />
               <button
@@ -437,6 +438,39 @@ function EntityRow({
   const [editableAttrIds, setEditableAttrIds] = useState<Set<string>>(() => new Set())
   const setAttrs = (a: Record<string, number>) => onChange({ ...ent, id: entKey, attrs: a })
   const setAttrMeta = (m: Record<string, AttrMeta>) => onChange({ ...ent, id: entKey, attrMeta: m })
+  const setAttrValue = (attrId: string, value: number) => {
+    const nextAttrs = { ...attrs, [attrId]: value }
+    const nextMeta = { ...attrMeta }
+
+    // `<attr>Max` is the editor's established pairing convention (hp/hpMax,
+    // stamina/staminaMax, ...). Rules author both the runtime seed in attrs and
+    // its template metadata, so keep both halves coherent in one edit.
+    const pairedBase = attrId.endsWith('Max')
+      ? attrId.slice(0, -3)
+      : Object.hasOwn(nextAttrs, `${attrId}Max`)
+        ? attrId
+        : ''
+    if (
+      pairedBase
+      && Object.hasOwn(nextAttrs, pairedBase)
+      && Object.hasOwn(nextAttrs, `${pairedBase}Max`)
+    ) {
+      nextMeta[pairedBase] = {
+        ...nextMeta[pairedBase],
+        initial: nextAttrs[pairedBase],
+        max: nextAttrs[`${pairedBase}Max`],
+      }
+    } else if (nextMeta[attrId]?.initial !== undefined) {
+      nextMeta[attrId] = { ...nextMeta[attrId], initial: value }
+    }
+
+    onChange({
+      ...ent,
+      id: entKey,
+      attrs: nextAttrs,
+      attrMeta: Object.keys(nextMeta).length ? nextMeta : undefined,
+    })
+  }
   const renameAttr = (currentId: string, nextId: string): string | undefined => {
     const id = nextId.trim()
     if (!id) return '属性 id 不能为空'
@@ -520,10 +554,11 @@ function EntityRow({
             onChange={(e) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: e.target.value || undefined } })}
             style={{ flex: 1 }}
           />
-          <input
-            type="number"
+          <LooseNumberInput
             value={av}
-            onChange={(e) => setAttrs({ ...attrs, [ak]: Number(e.target.value) || 0 })}
+            aria-label={`属性「${ak}」的数值`}
+            emptyValue={0}
+            onChange={(value) => setAttrValue(ak, value)}
             style={{ width: 70 }}
             title="当前/初始数值"
           />

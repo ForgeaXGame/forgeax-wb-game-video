@@ -193,7 +193,7 @@ describe('missing video notices across play surfaces', () => {
       .toEqual([
         ['__unavailable__', '（当前视频不在素材库）'],
         ['', '（无演出）'],
-        ['kino-clip', 'clip.mp4'],
+        ['kino-clip', 'clip.mp4 (kino-clip)'],
       ])
     expect(selector!.textContent).not.toContain('missing-stable-id')
     expect(selector!.textContent).not.toContain('上传 ·')
