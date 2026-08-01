@@ -25,6 +25,7 @@ import {
 import { findDuplicateOverlays } from './overlay-dedup'
 import type { Formula } from '../persist/formula-authoring'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
+import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -94,6 +95,12 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   const selLocked = selOverlay.startsWith(BASE_HUD_PREFIX)
 
   const setOverlays = (overlays: Record<string, Overlay>) => setMeta({ ...meta, ui: { ...meta.ui, overlays } })
+  const createEntityAttribute = (request: EntityAttributeCreateRequest) => {
+    setMeta((current) => {
+      const entities = ensureEntityAttribute(current.entities, request)
+      return entities && entities !== current.entities ? { ...current, entities } : current
+    })
+  }
   const addScheme = () => {
     const id = allocId('scheme-', allOverlays)
     setOverlays({ [id]: { id, title: '新方案', children: [] }, ...allOverlays })
@@ -259,6 +266,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   onPatchChild={(c, patch) => patchOverlayChild(selOverlay, c, patch)}
                   onReactionsChange={(reactions) =>
                     setOverlays({ ...allOverlays, [selOverlay]: { ...ov, reactions } })}
+                  onCreateEntityAttribute={createEntityAttribute}
                 />
               )
             }}

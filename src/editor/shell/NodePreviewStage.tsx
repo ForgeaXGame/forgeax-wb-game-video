@@ -34,7 +34,6 @@ import { advancePreviewMediaClock, PreviewClockProvider, previewClockLayerClassN
 import { projectNodePreviewState } from './nodePreviewState'
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
-import { ScaledOverlayContent } from '../../runtime/play/ScaledOverlayContent'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
 import { type MaterialItem, type TimelineConditionMarker, type TimelinePointMarker } from '../video/materialTimelineShared'
@@ -664,28 +663,27 @@ export function NodePreviewStage({
           </div>
         ) : null}
         <div ref={contentAnchorRef} className="gc-content-anchor" style={previewContentStyle}>
-          <div className="gc-preview-overlays">
-            <ScaledOverlayContent>
-              {previewSkinChildren.length > 0 ? (
-                <PreviewClockProvider value={previewClockValue}>
-                  <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
-                    {previewMountGroups.map(({ mountId, children, layout }) => (
-                      <div
-                        key={mountId}
-                        ref={(element) => { mountPreviewRefs.current[mountId] = element }}
-                        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-                      >
-                        {children.map((child) => (
-                          <span key={child.id} style={{ display: 'contents' }}>
-                            {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout, isVideoPlaying)}
-                          </span>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </PreviewClockProvider>
-              ) : null}
-            </ScaledOverlayContent>
+          <div className="gc-preview-overlays" data-node-preview-overlay-scale="none">
+            {previewSkinChildren.length > 0 ? (
+              <PreviewClockProvider value={previewClockValue}>
+                <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
+                  {previewMountGroups.map(({ mountId, children, layout }) => (
+                    <div
+                      key={mountId}
+                      ref={(element) => { mountPreviewRefs.current[mountId] = element }}
+                      data-preview-mount-id={mountId}
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+                    >
+                      {children.map((child) => (
+                        <span key={child.id} style={{ display: 'contents' }}>
+                          {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout, isVideoPlaying)}
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </PreviewClockProvider>
+            ) : null}
             <OverlayCanvasInteraction
               stageRef={contentAnchorRef}
               items={interactionItems}

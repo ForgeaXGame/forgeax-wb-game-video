@@ -26,10 +26,11 @@ import type {
   NumOrExpr,
   Overlay,
   OverlayChild,
+  OverlayInstanceChild,
   Reaction,
   Trigger,
 } from '../../runtime/schema/graph-schema'
-import type { NodeAction, OverlayInstanceChild } from '../../runtime/schema/node-config-schema'
+import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/component-host/components/Choice'
 import type { FloatTextParams } from '../../runtime/component-host/components/FloatText'
 import type { QteCue } from '../../runtime/component-host/components/Qte'

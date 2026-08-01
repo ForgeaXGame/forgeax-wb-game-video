@@ -29,7 +29,7 @@ import {
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
-import { ComponentFormFields, summarizeComponentInputs } from './component-form-fields'
+import { ComponentFormFields, summarizeComponentInputs, type EntityAttributeCreateHandler } from './component-form-fields'
 import { overlayDisplayLabel, PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
@@ -1008,6 +1008,7 @@ export function NodeInspector({
   onEnsureOverlay,
   onDropOverlayIfOrphan,
   onRemoveMount,
+  onCreateEntityAttribute,
   onJump,
 }: {
   graph: GameGraph
@@ -1065,6 +1066,8 @@ export function NodeInspector({
    * 未传则回落为只改 `overlayNodes`（旧行为，边会残留）。
    */
   onRemoveMount?: (mountId: string) => void
+  /** 新血条绑定缺失 hp 时，经面板二次确认后补建到场景实体目录。 */
+  onCreateEntityAttribute?: EntityAttributeCreateHandler
   onJump?: (id: string) => void
 }): JSX.Element {
   // 「音乐动作」在还没选曲子时也得选得动：没有 ref 的 push / replace 落不了盘（volume-only
@@ -1541,6 +1544,7 @@ export function NodeInspector({
                               pickers={pickers}
                               excludeKeys={['x', 'y']}
                               density="compact"
+                              onCreateEntityAttribute={onCreateEntityAttribute}
                             />
                           </div>
                         </details>
