@@ -33,7 +33,14 @@ import { resolveEventReactions, resolveOverlayReaction, completeReactions } from
 import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../schema/node-config-schema'
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
-import { BgmStack, DOC_BGM_OWNER, type BgmApplyInput, type BgmOwner, type BgmPlaybackCommand } from './bgm-stack'
+import {
+  BgmStack,
+  DOC_BGM_OWNER,
+  type BgmApplyInput,
+  type BgmOwner,
+  type BgmPlaybackCommand,
+  type BgmStackFrame,
+} from './bgm-stack'
 import { initState } from './engine-init'
 import { defaultComponentRegistry, type ComponentRegistry } from '../registry/component-registry'
 import type { RuntimeDirective, RenderOverlayDirective } from './directives'
@@ -46,6 +53,7 @@ import {
   type NodeKindRegistry,
   type NodeRuntimeCtx,
 } from '../nodes'
+import { createRng } from './rng'
 
 export type GraphPhase = 'idle' | 'playing' | 'ended'
 
@@ -77,6 +85,37 @@ interface GraphScope {
 
 interface ScopedEdge extends GraphScope {
   edge: GameEdge
+}
+
+interface GraphRuntimeCheckpointData {
+  activeGraph: GameGraph
+  activeBlueprintId: string
+  activeGraphPath: string[]
+  state: RuntimeState
+  bgmFrames: readonly BgmStackFrame[]
+  fired: Set<string>
+  firedAtReactions: Set<number>
+  windowShown: Set<string>
+  windowRemoved: Set<string>
+  chain: number
+  redirect: { route: ScopedEdge; resetGlobals?: boolean } | null
+  inExit: boolean
+  returningTo: Set<string>
+  numericReactionPrev: Map<string, number>
+  stateConditionPrev: Map<string, boolean>
+  shownChildren: Set<string>
+  hiddenFired: Set<string>
+  pendingSpawns: Array<{ elementId: string; nodeId: string; removeAtMs: number }>
+  spawnSeq: number
+  pendingRoute: { settleNodeId: string; route: ScopedEdge } | null
+  routingSettled: boolean
+  queue: RuntimeDirective[]
+}
+
+/** 仅内存的运行时恢复点；不属于游戏配置或持久化协议。 */
+export interface GraphRuntimeCheckpoint {
+  readonly kind: 'wb-game-video.runtime-checkpoint.v1'
+  readonly payload: unknown
 }
 
 const CHAIN_GUARD = 200
@@ -165,6 +204,65 @@ export class GraphRuntime {
 
   getActiveGraphPath(): string[] {
     return [...this.activeGraphPath]
+  }
+
+  /** 捕获完整可变执行态，供编辑器在已走过的时间轴片段间无损回放。 */
+  createCheckpoint(): GraphRuntimeCheckpoint {
+    const data: GraphRuntimeCheckpointData = {
+      activeGraph: this.activeGraph,
+      activeBlueprintId: this.activeBlueprintId,
+      activeGraphPath: [...this.activeGraphPath],
+      state: cloneRuntimeState(this.state),
+      bgmFrames: this.bgm.frames().map((frame) => ({ ...frame })),
+      fired: new Set(this.fired),
+      firedAtReactions: new Set(this.firedAtReactions),
+      windowShown: new Set(this.windowShown),
+      windowRemoved: new Set(this.windowRemoved),
+      chain: this.chain,
+      redirect: cloneRedirect(this.redirect),
+      inExit: this.inExit,
+      returningTo: new Set(this.returningTo),
+      numericReactionPrev: new Map(this.numericReactionPrev),
+      stateConditionPrev: new Map(this.stateConditionPrev),
+      shownChildren: new Set(this.shownChildren),
+      hiddenFired: new Set(this.hiddenFired),
+      pendingSpawns: this.pendingSpawns.map((spawn) => ({ ...spawn })),
+      spawnSeq: this.spawnSeq,
+      pendingRoute: clonePendingRoute(this.pendingRoute),
+      routingSettled: this.routingSettled,
+      queue: [...this.queue],
+    }
+    return { kind: 'wb-game-video.runtime-checkpoint.v1', payload: data }
+  }
+
+  /** 恢复 `createCheckpoint` 捕获的状态；不执行节点、边或副作用。 */
+  restoreCheckpoint(checkpoint: GraphRuntimeCheckpoint): void {
+    if (checkpoint.kind !== 'wb-game-video.runtime-checkpoint.v1') {
+      throw new Error('unsupported graph runtime checkpoint')
+    }
+    const data = checkpoint.payload as GraphRuntimeCheckpointData
+    this.switchGraph(data.activeGraph)
+    this.activeBlueprintId = data.activeBlueprintId
+    this.activeGraphPath = [...data.activeGraphPath]
+    Object.assign(this.state, cloneRuntimeState(data.state))
+    this.bgm.restore(data.bgmFrames)
+    this.fired = new Set(data.fired)
+    this.firedAtReactions = new Set(data.firedAtReactions)
+    this.windowShown = new Set(data.windowShown)
+    this.windowRemoved = new Set(data.windowRemoved)
+    this.chain = data.chain
+    this.redirect = cloneRedirect(data.redirect)
+    this.inExit = data.inExit
+    this.returningTo = new Set(data.returningTo)
+    this.numericReactionPrev = new Map(data.numericReactionPrev)
+    this.stateConditionPrev = new Map(data.stateConditionPrev)
+    this.shownChildren = new Set(data.shownChildren)
+    this.hiddenFired = new Set(data.hiddenFired)
+    this.pendingSpawns = data.pendingSpawns.map((spawn) => ({ ...spawn }))
+    this.spawnSeq = data.spawnSeq
+    this.pendingRoute = clonePendingRoute(data.pendingRoute)
+    this.routingSettled = data.routingSettled
+    this.queue = [...data.queue]
   }
 
   /**
@@ -1331,6 +1429,55 @@ export class GraphRuntime {
     this.setPhase('ended')
     this.pendingRoute = null
   }
+}
+
+function cloneRuntimeState(state: RuntimeState): RuntimeState {
+  return {
+    vars: { ...state.vars },
+    varMeta: state.varMeta
+      ? Object.fromEntries(Object.entries(state.varMeta).map(([key, meta]) => [key, { ...meta }]))
+      : undefined,
+    entities: Object.fromEntries(Object.entries(state.entities).map(([id, entity]) => [id, {
+      attrs: { ...entity.attrs },
+      attrMeta: entity.attrMeta
+        ? Object.fromEntries(Object.entries(entity.attrMeta).map(([key, meta]) => [key, { ...meta }]))
+        : undefined,
+    }])),
+    flags: { ...state.flags },
+    score: state.score,
+    items: state.items ? { ...state.items } : undefined,
+    rng: state.rng ? createRng(state.rng.getState().seed, state.rng.getState().step) : undefined,
+    appliedOnce: state.appliedOnce ? new Set(state.appliedOnce) : undefined,
+    currentNodeId: state.currentNodeId,
+    phase: state.phase,
+    elapsedMs: state.elapsedMs,
+    visited: new Set(state.visited),
+    traversedEdgeIds: new Set(state.traversedEdgeIds),
+    callStack: state.callStack.map((frame) => ({
+      ...frame,
+      returnGraphPath: [...frame.returnGraphPath],
+    })),
+    log: [...state.log],
+  }
+}
+
+function cloneScopedEdge(route: ScopedEdge): ScopedEdge {
+  return {
+    ...route,
+    graphPath: [...route.graphPath],
+  }
+}
+
+function cloneRedirect(
+  redirect: { route: ScopedEdge; resetGlobals?: boolean } | null,
+): { route: ScopedEdge; resetGlobals?: boolean } | null {
+  return redirect ? { ...redirect, route: cloneScopedEdge(redirect.route) } : null
+}
+
+function clonePendingRoute(
+  pending: { settleNodeId: string; route: ScopedEdge } | null,
+): { settleNodeId: string; route: ScopedEdge } | null {
+  return pending ? { ...pending, route: cloneScopedEdge(pending.route) } : null
 }
 
 function control(): Omit<RuntimeState, keyof MutableState> {

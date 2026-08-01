@@ -140,14 +140,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [focusedMountId, setFocusedMountId] = useState<string | null>(null)
   // 节点配置面板：时间轴上选中的生命周期效果（子集序号，见 isLifecycleReaction 注释）。
   const [focusedLifecycleIndex, setFocusedLifecycleIndex] = useState<number | null>(null)
-  // 用户在当前节点时间轴上选中的插入时刻；未选择、切节点或预览卸载时为 null。
-  const [selectedPreviewTimeMs, setSelectedPreviewTimeMs] = useState<number | null>(null)
+  // 时间轴按当前 px/ms 比例算出的结算插入时刻；未选择、切节点或预览卸载时为 null。
+  const [settlementInsertTimeMs, setSettlementInsertTimeMs] = useState<number | null>(null)
   // 独立于选中值：重复点击同一个时间轴条目也要再次把右侧锚点滚进可视区。
   const [focusAnchorRevision, setFocusAnchorRevision] = useState(0)
   useEffect(() => {
     setFocusedMountId(null)
     setFocusedLifecycleIndex(null)
-    setSelectedPreviewTimeMs(null)
+    setSettlementInsertTimeMs(null)
   }, [selected])
   // 面板里同一时刻只该有一个聚焦对象：选覆盖物就松开效果，反之亦然。
   const focusMount = useCallback((id: string | null) => {
@@ -311,7 +311,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // 试玩浮层与节点预览互斥显示，但不改 previewOpen：关闭试玩后恢复用户原有预览状态。
   const effectivePreviewOpen = previewOpen && !playOpen && selectedCanConfigurePerformance
   useEffect(() => {
-    if (!effectivePreviewOpen) setSelectedPreviewTimeMs(null)
+    if (!effectivePreviewOpen) setSettlementInsertTimeMs(null)
   }, [effectivePreviewOpen])
   /** 预览台读投影场景：canvasGraph（下钻时为包内图）+ 目录 overlays + 实体/变量（meta 缺省回落 demo）。 */
   const previewScenario = useMemo<GameScenario>(
@@ -793,7 +793,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                     focusedLifecycleIndex={focusedLifecycleIndex}
                     onEditScenario={editPreviewScenario}
                     onMutedChange={setIsNodePreviewMuted}
-                    onSelectedTimeChange={setSelectedPreviewTimeMs}
+                    onSelectedTimeChange={(_ms, selection) => setSettlementInsertTimeMs(selection.settlementInsertMs)}
                     onFocusMount={focusMount}
                     onFocusLifecycle={focusLifecycle}
                   />
@@ -821,7 +821,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 formulas={formulas}
                 focusedMountId={focusedMountId}
                 focusedLifecycleIndex={focusedLifecycleIndex}
-                settlementInsertMs={effectivePreviewOpen ? selectedPreviewTimeMs ?? undefined : undefined}
+                settlementInsertMs={effectivePreviewOpen ? settlementInsertTimeMs ?? undefined : undefined}
                 focusAnchorRevision={focusAnchorRevision}
                 onFocusMount={focusMount}
                 onFocusLifecycle={focusLifecycle}

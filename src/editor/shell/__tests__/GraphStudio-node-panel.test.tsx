@@ -232,7 +232,7 @@ describe('GraphStudio 节点配置分栏', () => {
     expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
   })
 
-  it('在时间轴当前选中时刻添加结算', async () => {
+  it('按时间轴像素比例在当前指针前添加不重叠的结算', async () => {
     window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
     useGraphScenario.setState({
       demo: FOCUS_SCENARIO,
@@ -264,7 +264,12 @@ describe('GraphStudio 节点配置分栏', () => {
 
     await waitFor(() => {
       const reactions = useGraphScenario.getState().graph.nodes[0]?.data.reactions ?? []
-      expect(reactions.at(-1)?.when).toEqual({ type: 'at', ms: 1_500 })
+      // 3s / 200px，14px 的视觉间距换算为 210ms：1500ms → 1290ms。
+      expect(reactions.at(-1)?.when).toEqual({ type: 'at', ms: 1_290 })
+    })
+    await waitFor(() => {
+      expect(container.querySelector('.gc-point-mark.is-lifecycle.is-selected')).toBeTruthy()
+      expect(container.querySelector('[data-lifecycle-effect-index][data-selected="true"]')).toBeTruthy()
     })
   })
 

@@ -8,6 +8,7 @@ import {
   type MaterialItem,
   type TimelineConditionMarker,
   type TimelinePointMarker,
+  type TimelineSegment,
   TIMELINE_LAYER_STEP,
   TIMELINE_LAYER_TOP,
   TIMELINE_MIN_TRACKS,
@@ -39,7 +40,6 @@ const CLIP_LABEL_MIN_PX = 56
 const POINT_EDGE_OFFSET_PX = 9
 /** 为横向滚动条预留空间，避免它挤占第 6 轨后误触发纵向滚动条。 */
 const TIMELINE_SCROLLBAR_RESERVE_PX = 18
-
 function pointHeadOffsetPx(ms: number, maxMs: number): number {
   if (ms <= 0) return POINT_EDGE_OFFSET_PX
   if (ms >= maxMs) return -POINT_EDGE_OFFSET_PX
@@ -67,11 +67,21 @@ export interface MaterialTimelineProps {
   context?: 'video' | 'story'
   /** 是否允许拖动编辑材料（剧情树只读预览时可关）。默认 true。 */
   editable?: boolean
+  /** 是否允许点选材料/结算标记。默认 true；流程预览关闭以避免联动编辑表单。 */
+  selectable?: boolean
+  /** 全流程预览的节点片段背景与边界；省略时保持单节点时间轴外观。 */
+  segments?: TimelineSegment[]
+  /** fit=总时长始终铺满视口；append=首段铺满视口，后续片段按同一 px/ms 向右追加。 */
+  widthMode?: 'fit' | 'append'
   emptyHint?: string
   /** 提供时，点击/拖动 ruler 或画布空白处即 seek 播放头到该时刻（宿主据此暂停播放并同步 <video>）。 */
   onSeek?: (ms: number) => void
   /** 一次手动拖拽（scrub）开始时触发一次 —— 宿主用它把正在播放的视频自动暂停。 */
   onScrubStart?: () => void
+  /** 一次手动拖拽结束时触发一次 —— 宿主恢复播放头的自动滚动策略。 */
+  onScrubEnd?: () => void
+  /** 持续拖动播放头的灵敏度；1 = 指针与时间轴等比例，默认 1。按下定位不受影响。 */
+  seekDragSensitivity?: number
   onSelectMaterial: (key: string) => void
   onPatchMaterial: (
     item: MaterialItem,
@@ -123,9 +133,14 @@ export function MaterialTimeline({
   selectedMaterialKey,
   isTimedQteNode = false,
   editable = true,
+  selectable = true,
+  segments,
+  widthMode = 'fit',
   emptyHint = '打开素材库，把控件加入当前节点时间轴',
   onSeek,
   onScrubStart,
+  onScrubEnd,
+  seekDragSensitivity = 1,
   onSelectMaterial,
   onPatchMaterial,
   onDeleteMaterial,
@@ -148,6 +163,10 @@ export function MaterialTimeline({
     activeMode === 'audio' ? audioList : materials
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const timelineViewportRef = useRef<HTMLDivElement | null>(null)
+  const seekDragActiveRef = useRef(false)
+  const normalizedSeekDragSensitivity = Number.isFinite(seekDragSensitivity)
+    ? Math.max(0, seekDragSensitivity)
+    : 1
   const [zoom, setZoom] = useState(1)
   const [viewportW, setViewportW] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -167,8 +186,12 @@ export function MaterialTimeline({
     lifecycleMarkers.length ? lifecycleTrack + 2 : 0,
     conditionMarkers?.length ? conditionTrack + 2 : 0,
   )
-  // 缩放：画布宽 = 视口宽 × zoom（zoom=1 恰好铺满，无横向滚动）。
-  const canvasPx = Math.max(1, (viewportW || 1) * zoom)
+  // 流程预览锁定首段建立的 px/ms；后续片段等比例追加，视口通过横向滚动跟随。
+  const firstSegmentMs = segments?.[0]
+    ? Math.max(1, segments[0].endMs - segments[0].startMs)
+    : maxMs
+  const durationWidthScale = widthMode === 'append' ? maxMs / firstSegmentMs : 1
+  const canvasPx = Math.max(1, (viewportW || 1) * zoom * durationWidthScale)
   const pxPerMs = canvasPx / maxMs
   const canvasHeight = TIMELINE_LAYER_TOP + trackCount * TIMELINE_LAYER_STEP + 8
   const viewportHeight = TIMELINE_LAYER_TOP
@@ -202,7 +225,7 @@ export function MaterialTimeline({
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
         setZoom((z) => {
           const next = clampZoom(z * factor)
-          const nextCanvas = Math.max(1, (viewportW || 1) * next)
+          const nextCanvas = Math.max(1, (viewportW || 1) * next * durationWidthScale)
           requestAnimationFrame(() => {
             if (timelineViewportRef.current) {
               timelineViewportRef.current.scrollLeft = ratio * nextCanvas - localX
@@ -217,7 +240,7 @@ export function MaterialTimeline({
     }
     vp.addEventListener('wheel', onWheel, { passive: false })
     return () => vp.removeEventListener('wheel', onWheel)
-  }, [canvasPx, viewportW])
+  }, [canvasPx, viewportW, durationWidthScale])
 
   // 把当前拖拽的 patch 派发给对应回写（组件→onPatchMaterial / 音频→onPatchAudio）。
   function dispatchPatch(key: string, patch: { startMs?: number; endMs?: number; zIndex?: number; markerMs?: number }): void {
@@ -238,7 +261,11 @@ export function MaterialTimeline({
     e.preventDefault()
     e.stopPropagation()
     // 音频条仅显示 + 拖动，不进 material 选中/检视器流。
-    if (activeMode === 'material') onSelectMaterial(item.key)
+    if (activeMode === 'material' && selectable) onSelectMaterial(item.key)
+    if (!editable && !selectable && onSeek) {
+      beginSeek(e)
+      return
+    }
     // 让视口拿到焦点，Delete/Backspace 键删除才有落点（不滚动画面）。
     timelineViewportRef.current?.focus({ preventScroll: true })
     if (!editable) return
@@ -261,7 +288,10 @@ export function MaterialTimeline({
   function onPointerMove(e: React.PointerEvent): void {
     if (!drag) return
     if (drag.key === '__seek__') {
-      seekFromPointer(e)
+      const rect = e.currentTarget.getBoundingClientRect()
+      if (rect.width <= 0 || !onSeek) return
+      const deltaMs = ((e.clientX - drag.pointerX) / rect.width) * maxMs * normalizedSeekDragSensitivity
+      onSeek(clampMs(drag.startMs + deltaMs, 0, maxMs))
       return
     }
     if (drag.key.startsWith(POINT_DRAG_PREFIX)) {
@@ -297,29 +327,33 @@ export function MaterialTimeline({
   }
 
   function onPointerUp(): void {
+    if (seekDragActiveRef.current) {
+      seekDragActiveRef.current = false
+      onScrubEnd?.()
+    }
     setDrag(null)
   }
 
-  // ruler 上按下/拖动即 seek 播放头（宿主可选消费）。
-  function seekFromPointer(e: React.PointerEvent): void {
-    if (!onSeek) return
+  function seekMsFromPointer(clientX: number): number | null {
     const canvas = timelineRef.current
-    if (!canvas) return
+    if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    if (rect.width <= 0) return
-    const ratio = (e.clientX - rect.left) / rect.width
-    onSeek(clampMs(ratio * maxMs, 0, maxMs))
+    if (rect.width <= 0) return null
+    return clampMs(((clientX - rect.left) / rect.width) * maxMs, 0, maxMs)
   }
 
-  // 手动拖拽播放头（scrub）：ruler 与画布空白处按下都进入 seek-drag，拖到哪播放头到哪。
+  // 按下先绝对定位；随后以较低灵敏度围绕该点微调，避免几像素就跨过大量视频时刻。
   function beginSeek(e: React.PointerEvent): void {
     if (!onSeek) return
+    const anchorMs = seekMsFromPointer(e.clientX)
+    if (anchorMs == null) return
     e.preventDefault()
     e.stopPropagation()
     onScrubStart?.() // 宿主据此暂停正在播放的视频
+    seekDragActiveRef.current = true
     timelineRef.current?.setPointerCapture(e.pointerId)
-    setDrag({ key: '__seek__', mode: 'move', pointerX: e.clientX, startMs: 0, endMs: 0, zIndex: 0 })
-    seekFromPointer(e)
+    setDrag({ key: '__seek__', mode: 'move', pointerX: e.clientX, startMs: anchorMs, endMs: anchorMs, zIndex: 0 })
+    onSeek(anchorMs)
   }
 
   // 画布空白处（非控件、非 ruler）按下也可拖拽播放头。控件的 pointerdown 会 stopPropagation，
@@ -359,7 +393,7 @@ export function MaterialTimeline({
 
   return (
     <div
-      className="mtl-root"
+      className={`mtl-root${editable ? '' : ' is-readonly'}`}
       style={{ '--gc-timeline-h': `${viewportHeight}px` } as CSSProperties}
     >
       <div className="gc-materialbar">
@@ -453,6 +487,21 @@ export function MaterialTimeline({
               aria-hidden
             />
           ))}
+          {segments?.map((segment) => (
+            <div
+              key={segment.id}
+              className={`gc-flow-segment${segment.active ? ' is-active' : ''}`}
+              style={{
+                left: `${segment.startMs * pxPerMs}px`,
+                width: `${Math.max(1, (segment.endMs - segment.startMs) * pxPerMs)}px`,
+                height: `${canvasHeight}px`,
+              }}
+              title={`${segment.label} · ${fmtDur(segment.startMs)} - ${fmtDur(segment.endMs)}`}
+              aria-hidden
+            >
+              <span>{segment.label}</span>
+            </div>
+          ))}
           <div className="gc-playhead" style={{ left: `${playheadMs * pxPerMs}px` }} aria-hidden />
           {settlementMarkers.map((mk) => {
             const dragKey = `${POINT_DRAG_PREFIX}${mk.id}`
@@ -461,14 +510,14 @@ export function MaterialTimeline({
                 key={mk.id}
                 className={`gc-point-mark is-settlement${drag?.key === dragKey ? ' is-dragging' : ''}`}
                 style={{ left: `${mk.ms * pxPerMs}px` }}
-                title={`${mk.label} · ${fmtDur(mk.ms)}（可拖）`}
+                title={`${mk.label} · ${fmtDur(mk.ms)}（${editable ? '可拖' : '只读'}）`}
               >
                 {/* 参考线只画到菱形：继续精确标出时刻，但不穿过下方时间轴行。 */}
                 <span
                   className="gc-point-head"
                   style={{ left: `${pointHeadOffsetPx(mk.ms, maxMs)}px` }}
                   role="slider"
-                  tabIndex={0}
+                  tabIndex={editable ? 0 : -1}
                   aria-label={mk.label}
                   aria-valuenow={mk.ms}
                   aria-valuemin={0}
@@ -510,17 +559,17 @@ export function MaterialTimeline({
                     top: `${layerTop(lifecycleTrack) + 16}px`,
                   }}
                   role="slider"
-                  tabIndex={0}
+                  tabIndex={selectable || editable ? 0 : -1}
                   aria-label={mk.label}
                   aria-valuenow={mk.ms}
                   aria-valuemin={0}
                   aria-valuemax={maxMs}
-                  title={`${mk.label} · ${fmtDur(mk.ms)}${derived ? '（由界面窗口决定）' : '（可拖）'}`}
+                  title={`${mk.label} · ${fmtDur(mk.ms)}${derived ? '（由界面窗口决定）' : editable ? '（可拖）' : '（只读）'}`}
                   onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     // 按下即选（与材料条一致）：只想让右侧高亮时不必真的拖动。
-                    onSelectPointMarker?.(mk.id)
+                    if (selectable) onSelectPointMarker?.(mk.id)
                     if (derived || !editable || !onPointMarkerChange) return
                     timelineRef.current?.setPointerCapture(e.pointerId)
                     setDrag({ key: dragKey, mode: 'move', pointerX: e.clientX, startMs: mk.ms, endMs: mk.ms, zIndex: 0 })
@@ -545,8 +594,10 @@ export function MaterialTimeline({
                     onPointerDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      onSelectPointMarker?.(marker.id)
+                      if (selectable) onSelectPointMarker?.(marker.id)
                     }}
+                    tabIndex={selectable ? 0 : -1}
+                    aria-disabled={!selectable}
                   >
                     <span aria-hidden>↻</span>
                     <span>{marker.label}</span>
@@ -597,7 +648,8 @@ export function MaterialTimeline({
                       className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}${m.overridden ? ' is-overridden' : ''}`}
                       style={{ left: `${left}px`, width: `${width}px`, top: `${layerTop(m.zIndex)}px` }}
                       onPointerDown={(e) => onPointerDown(e, m, 'move')}
-                      title={`${materialDisplayLabel(m)} · ${fmtDur(m.startMs)} - ${fmtDur(m.endMs)}${m.overridden ? ' · 已脱离方案跟随' : ''}`}
+                      aria-label={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''}`}
+                      title={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''} · ${fmtDur(m.startMs)} - ${fmtDur(m.endMs)}${m.overridden ? ' · 已脱离方案跟随' : ''}`}
                     >
                       {editable ? (
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
@@ -637,7 +689,10 @@ export function MaterialTimeline({
                         style={{ left: `${m.markerMs * pxPerMs}px`, top: `${layerTop(m.zIndex) + 16}px` }}
                         title={`命中判定点（计分锚点）· ${fmtDur(m.markerMs)}`}
                         aria-label="命中判定点"
-                        onPointerDown={(e) => (editable ? onPointerDown(e, m, 'marker') : onSelectMaterial(m.key))}
+                        onPointerDown={(e) => {
+                          if (editable) onPointerDown(e, m, 'marker')
+                          else if (selectable) onSelectMaterial(m.key)
+                        }}
                       />
                     ) : null}
                   </Fragment>
@@ -705,6 +760,8 @@ const MATERIAL_TIMELINE_CSS = `
   touch-action: none;
 }
 .mtl-root .gc-mtimeline-canvas.is-seekable { cursor: text; }
+.mtl-root.is-readonly .gc-mtimeline-canvas.is-seekable,
+.mtl-root.is-readonly .gc-mtimeline-ruler.is-seekable { cursor: ew-resize; }
 .mtl-root .gc-mtimeline-viewport:focus-visible { outline: 1px solid var(--gc-accent-line); outline-offset: -1px; }
 .mtl-root .gc-mtimeline-ruler {
   position: sticky;
@@ -723,6 +780,33 @@ const MATERIAL_TIMELINE_CSS = `
   pointer-events: none;
   z-index: 1;
 }
+.mtl-root .gc-flow-segment {
+  position: absolute;
+  top: 0;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(184,174,160,.3);
+  background: rgba(255,255,255,.018);
+  pointer-events: none;
+  z-index: 0;
+}
+.mtl-root .gc-flow-segment:nth-of-type(even) { background: rgba(255,255,255,.032); }
+.mtl-root .gc-flow-segment.is-active {
+  background: rgba(240,136,64,.065);
+  border-right-color: rgba(240,136,64,.45);
+}
+.mtl-root .gc-flow-segment > span {
+  position: absolute;
+  top: 23px;
+  left: 5px;
+  right: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(184,174,160,.72);
+  font-size: 9px;
+  line-height: 10px;
+}
+.mtl-root .gc-flow-segment.is-active > span { color: #f5bd75; }
 .mtl-root .gc-mtick {
   position: absolute;
   top: 0;
@@ -786,6 +870,12 @@ const MATERIAL_TIMELINE_CSS = `
   cursor: ew-resize;
   pointer-events: auto;
 }
+.mtl-root.is-readonly .gc-point-head,
+.mtl-root.is-readonly .gc-life-head,
+.mtl-root.is-readonly .gc-mclip,
+.mtl-root.is-readonly .gc-mmarker,
+.mtl-root.is-readonly .gc-condition-band { cursor: default; }
+.mtl-root .gc-condition-band[aria-disabled="true"] { pointer-events: none; }
 .mtl-root .gc-point-head:hover,
 .mtl-root .gc-point-mark.is-dragging .gc-point-head {
   filter: brightness(1.35);
@@ -997,6 +1087,13 @@ const MATERIAL_TIMELINE_CSS = `
 }
 .mtl-root .gc-mclip.is-subtitle { border-color: rgba(95,201,128,.58); color: #d6ffe2; }
 .mtl-root .gc-mclip.is-subtitle::before { background: #62c980; }
+.mtl-root .gc-mclip.is-video {
+  justify-content: flex-start;
+  border-color: rgba(95,163,247,.62);
+  color: #dcecff;
+  background: rgba(38,70,108,.42);
+}
+.mtl-root .gc-mclip.is-video::before { background: #5fa3f7; }
 .mtl-root .gc-mclip.is-overlay { border-color: rgba(240,136,64,.58); color: #ffd8bf; }
 .mtl-root .gc-mclip.is-overlay::before { background: var(--gc-accent); }
 .mtl-root .gc-mclip.is-qte { border-color: rgba(95,163,247,.58); color: #cfe4ff; }

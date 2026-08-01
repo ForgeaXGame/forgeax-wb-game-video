@@ -654,10 +654,14 @@ function LifecycleReactionsEditor({
       })}
       <button
         type="button"
-        onClick={() => commit([...settlements, {
-          when: { type: 'at', ms: Math.max(0, Math.round(insertMs ?? 0)) },
-          do: [{ kind: 'effect', effects: [createDefaultEffect('attr', entities ?? pickers?.entities, variables ?? pickers?.variables)] }],
-        }])}
+        onClick={() => {
+          const nextIndex = settlements.length
+          commit([...settlements, {
+            when: { type: 'at', ms: Math.max(0, Math.round(insertMs ?? 0)) },
+            do: [{ kind: 'effect', effects: [createDefaultEffect('attr', entities ?? pickers?.entities, variables ?? pickers?.variables)] }],
+          }])
+          onFocusIndex?.(nextIndex)
+        }}
       >
         ＋ 结算
       </button>
@@ -1436,8 +1440,7 @@ export function NodeInspector({
               getComponentManifest,
               { mountId: mid, prefixMount: multi },
             )
-            const mountTitle = overlays?.[mount.overlay]?.title?.trim() || PRESET_SCHEME_BY_ID[mount.overlay]?.title?.trim()
-            const titleText = mountTitle && mountTitle !== mid ? `${mountTitle} (${mid})` : mid
+            const titleText = overlayDisplayLabel(mount.overlay, overlays)
             // 聚焦联动：有聚焦时只展开该挂载，其余折叠为标题行；无聚焦 = 全展开（默认）。
             const focused = focusedMountId === mid
             const expanded = !focusedMountId || focused

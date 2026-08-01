@@ -14,6 +14,61 @@ afterEach(() => {
 })
 
 describe('NodePreviewStage overlay layout', () => {
+  it('keeps mode controls host-owned and exposes a configurable timeline disclosure', () => {
+    const current = node('n1', { durationMs: 3_000 })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+    const renderToggleIcon = vi.fn((expanded: boolean) => (
+      <span data-testid="custom-timeline-icon">{expanded ? 'collapse' : 'expand'}</span>
+    ))
+
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        timelineDisclosure={{ showToggle: true, renderToggleIcon }}
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('group', { name: '节点预览模式' })).toBeNull()
+    expect(container.querySelector('.mtl-root')).not.toBeNull()
+    const collapse = screen.getByRole('button', { name: '收起时间轴' })
+    expect(collapse).toHaveAttribute('aria-expanded', 'true')
+    expect(collapse.closest('.nps-controls')).not.toBeNull()
+    expect(screen.getByTestId('custom-timeline-icon')).toHaveTextContent('collapse')
+
+    fireEvent.click(collapse)
+    expect(container.querySelector('.mtl-root')).toBeNull()
+    const expand = screen.getByRole('button', { name: '展开时间轴' })
+    expect(expand).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('custom-timeline-icon')).toHaveTextContent('expand')
+
+    fireEvent.click(expand)
+    expect(container.querySelector('.mtl-root')).not.toBeNull()
+    expect(renderToggleIcon).toHaveBeenLastCalledWith(true)
+  })
+
+  it('hides the timeline disclosure button by default without hiding the timeline', () => {
+    const current = node('n1', { durationMs: 3_000 })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /时间轴/ })).toBeNull()
+    expect(container.querySelector('.mtl-root')).not.toBeNull()
+  })
+
   it('shows state condition settlements in the timeline condition lane', () => {
     const current = node('n1', {
       reactions: [{
