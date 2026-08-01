@@ -72,4 +72,33 @@ describe('NodeInspector · 界面事件动作入口', () => {
       { id: 'n_door__2', overlay: 'n_door', layout: { left: 0, top: 0, width: 1, height: 1 } },
     ])
   })
+
+  it('界面配置标题只展示名称，不拼接 overlay id', () => {
+    const overlay = { id: 'base:InkKou', title: '叩击', children: [] }
+    const graph: GameGraph = {
+      nodes: [{
+        id: 'gate',
+        type: 'perf',
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [],
+        data: { name: '慈悲狱门口', overlayNodes: [{ overlay: overlay.id }] },
+      }],
+      edges: [],
+    }
+
+    const { container } = render(
+      <NodeInspector
+        graph={graph}
+        nodeId="gate"
+        overlays={{ [overlay.id]: overlay }}
+        onChange={vi.fn()}
+      />,
+    )
+
+    const mountCard = container.querySelector('[data-focus-anchor="mount:base:InkKou"]')
+    expect(mountCard).toBeTruthy()
+    expect(mountCard).toHaveTextContent('叩击')
+    expect(mountCard).not.toHaveTextContent('叩击 (base:InkKou)')
+  })
 })

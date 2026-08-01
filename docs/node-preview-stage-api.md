@@ -76,6 +76,7 @@ import {
   NodePreviewStage,
   type FlowNodePreviewState,
   type NodePreviewStageProps,
+  type NodePreviewTimeSelection,
   type NodePreviewTimelineDisclosure,
 } from './NodePreviewStage'
 ```
@@ -92,7 +93,7 @@ import {
 | `onMutedChange` | `(muted) => void` | ✅ | - | 单节点预览切换视频原声时通知宿主。 |
 | `focusedMountId` | `string / null` |  | `undefined` | 受控的覆盖物挂载选中项，用于与外部配置面板双向联动。 |
 | `focusedLifecycleIndex` | `number / null` |  | `undefined` | 受控的生命周期结算选中序号，用于与外部配置面板双向联动。 |
-| `onSelectedTimeChange` | `(ms) => void` |  | - | 单节点播放头选中时刻变化通知，可用于“在当前时刻添加结算”。 |
+| `onSelectedTimeChange` | `(ms, selection) => void` |  | - | 单节点播放头选中时刻变化通知；`selection.settlementInsertMs` 按当前时间轴比例提供与指针不重叠的建议结算时刻。 |
 | `onFocusMount` | `(mountId) => void` |  | - | 用户在视频舞台或时间轴选中覆盖物挂载时通知宿主。 |
 | `onFocusLifecycle` | `(index) => void` |  | - | 用户在时间轴选中生命周期结算点时通知宿主。 |
 | `mode` | `'edit' / 'preview'` |  | `'edit'` | 选择单节点编辑表面或全流程预览表面。 |
@@ -210,7 +211,7 @@ const editScenario = useCallback(
   onEditScenario={editScenario}
   onMutedChange={setMuted}
   onFocusMount={setFocusedMountId}
-  onSelectedTimeChange={setSettlementInsertMs}
+  onSelectedTimeChange={(_ms, selection) => setSettlementInsertMs(selection.settlementInsertMs)}
 />
 ```
 

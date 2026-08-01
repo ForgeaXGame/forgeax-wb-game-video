@@ -36,7 +36,7 @@ import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { MATERIAL_DND_MIME, MaterialTimeline } from '../video/MaterialTimeline'
-import { type MaterialItem } from '../video/materialTimelineShared'
+import { settlementInsertMsBeforePlayhead, type MaterialItem } from '../video/materialTimelineShared'
 import { collectNodeTimelineMarkers } from '../video/nodeTimelineMarkers'
 import { useVideoContentRect } from '../../runtime/play/useVideoContentRect'
 import { PRESET_SCHEME_BY_ID, overlayDisplayLabel } from './schemeOverlays'
@@ -181,7 +181,7 @@ export interface NodePreviewStageProps {
   focusedLifecycleIndex?: number | null
   onEditScenario: (fn: (s: GameScenario, n: GameNode) => GameScenario) => void
   onMutedChange: (muted: boolean) => void
-  onSelectedTimeChange?: (ms: number) => void
+  onSelectedTimeChange?: (ms: number, selection: NodePreviewTimeSelection) => void
   onFocusMount?: (mountId: string | null) => void
   onFocusLifecycle?: (lifecycleIndex: number | null) => void
   /** 通用组件只消费模式；切换模式的控件由宿主提供。默认 edit。 */
@@ -189,6 +189,11 @@ export interface NodePreviewStageProps {
   /** 时间轴展开/收起配置。默认隐藏切换按钮，时间轴初始展开。 */
   timelineDisclosure?: NodePreviewTimelineDisclosure
   flow?: FlowNodePreviewState
+}
+
+export interface NodePreviewTimeSelection {
+  /** 按当前 px/ms 比例与播放头错开的建议结算时刻；优先在左侧，起点空间不足时放右侧。 */
+  settlementInsertMs: number
 }
 
 export interface NodePreviewTimelineDisclosure {
@@ -281,6 +286,7 @@ function EditableNodePreviewStage({
   timelineToggle,
 }: EditableNodePreviewStageProps): JSX.Element {
   const contentAnchorRef = useRef<HTMLDivElement | null>(null)
+  const timelineHostRef = useRef<HTMLDivElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaClockRef = useRef<PreviewMediaClock | null>(null)
   const [playheadMs, setPlayheadMs] = useState(0)
@@ -447,7 +453,11 @@ function EditableNodePreviewStage({
     const v = videoRef.current
     if (v) { try { v.currentTime = target / 1000 } catch { /* metadata 未就绪 */ } }
     setPlayheadMs(target)
-    onSelectedTimeChange?.(target)
+    const timelineCanvas = timelineHostRef.current?.querySelector<HTMLElement>('.gc-mtimeline-canvas')
+    const canvasPx = timelineCanvas?.getBoundingClientRect().width ?? 0
+    onSelectedTimeChange?.(target, {
+      settlementInsertMs: settlementInsertMsBeforePlayhead(target, maxMs, canvasPx),
+    })
   }
   function pauseForScrub(): void {
     const v = videoRef.current
@@ -790,7 +800,7 @@ function EditableNodePreviewStage({
       </div>
 
       {timelineExpanded ? (
-        <div id={timelineId}>
+        <div id={timelineId} ref={timelineHostRef}>
           <MaterialTimeline
             materials={materials}
             maxMs={maxMs}

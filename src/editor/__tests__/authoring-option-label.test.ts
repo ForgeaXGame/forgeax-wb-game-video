@@ -8,9 +8,10 @@ describe('authoringOptionLabel', () => {
     expect(authoringOptionLabel('战斗床 (a-aud-battle)', 'a-aud-battle')).toBe('战斗床')
   })
 
-  it('没有中文名称时保留英文名称和技术 id 兜底', () => {
+  it('有英文名称时也只展示名称；没有名称时才回退技术 id', () => {
     expect(authoringOptionLabel('Enemy HP Bar', 'base:BattleEnemyHpBar'))
-      .toBe('Enemy HP Bar (base:BattleEnemyHpBar)')
+      .toBe('Enemy HP Bar')
+    expect(authoringOptionLabel('zhonggongji2.mp4', 'zhonggongji2')).toBe('zhonggongji2.mp4')
     expect(authoringOptionLabel(undefined, 'edge-ms9xy8nc')).toBe('edge-ms9xy8nc')
   })
 })

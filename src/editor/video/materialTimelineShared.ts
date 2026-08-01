@@ -96,6 +96,29 @@ export const ZOOM_MAX = 20
 
 /** 前端时间输入分度：0.01 秒（底层仍存毫秒）。 */
 export const TIME_STEP_SEC = 0.01
+/** 结算菱形与 2px 播放头之间的最小中心距：覆盖菱形半宽、播放头半宽和少量视觉间隙。 */
+export const TIMELINE_SETTLEMENT_CLEARANCE_PX = 14
+
+/**
+ * 根据当前时间轴比例，把结算点放到播放头左侧一个不会重叠的像素距离。
+ * 时间结果向上取到 10ms 网格，避免取整后视觉间距反而小于目标；起点左侧空间不足时
+ * 改放到播放头右侧同等距离，既不产生负数，也不让 0ms 附近重新重叠。
+ */
+export function settlementInsertMsBeforePlayhead(
+  playheadMs: number,
+  maxMs: number,
+  canvasPx: number,
+): number {
+  if (!(maxMs > 0)) return 0
+  const currentMs = clampMs(playheadMs, 0, maxMs)
+  if (!(canvasPx > 0)) return currentMs
+  const stepMs = TIME_STEP_SEC * 1000
+  const clearanceMs = Math.ceil((TIMELINE_SETTLEMENT_CLEARANCE_PX * maxMs / canvasPx) / stepMs) * stepMs
+  const beforeMs = currentMs - clearanceMs
+  return beforeMs >= 0
+    ? clampMs(beforeMs, 0, maxMs)
+    : clampMs(currentMs + clearanceMs, 0, maxMs)
+}
 
 export function msToSec(ms: number): number {
   return Math.round(ms) / 1000

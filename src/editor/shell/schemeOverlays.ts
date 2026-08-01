@@ -15,7 +15,7 @@ export const PRESET_SCHEME_BY_ID: Readonly<Record<string, Overlay>> = Object.fro
   PRESET_SCHEME_OVERLAYS.map((o) => [o.id, o]),
 )
 
-/** 覆盖物展示名：中文 title 只显示标题；无中文标题时保留 id 兜底。 */
+/** 覆盖物展示名：有 title 时只显示标题；没有 title 时回退 id。 */
 export function overlayDisplayLabel(
   id: string,
   overlays?: Record<string, Overlay>,

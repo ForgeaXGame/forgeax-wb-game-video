@@ -35,14 +35,16 @@ afterEach(() => {
 })
 
 describe('NodeInspector · 结算选中联动', () => {
-  it('新增结算使用时间轴插入时刻，没有时回落到 0ms', () => {
+  it('新增结算使用宿主计算的时间轴插入时刻，没有时回落到 0ms', () => {
     const onChange = vi.fn()
+    const onFocusLifecycle = vi.fn()
     const emptyGraph = graphWith([])
     const { rerender } = render(
       <NodeInspector
         graph={emptyGraph}
         nodeId="gate"
         settlementInsertMs={1_350}
+        onFocusLifecycle={onFocusLifecycle}
         onChange={onChange}
       />,
     )
@@ -50,6 +52,7 @@ describe('NodeInspector · 结算选中联动', () => {
     fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
     let next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when).toEqual({ type: 'at', ms: 1_350 })
+    expect(onFocusLifecycle).toHaveBeenLastCalledWith(0)
 
     onChange.mockClear()
     rerender(<NodeInspector graph={emptyGraph} nodeId="gate" onChange={onChange} />)
