@@ -31,6 +31,8 @@ import {
   ValueExprEditor,
   type ValueExprAttributeCreateConfig,
   type ValueExprEntityCreateConfig,
+  type ValueExprFormulaCreateConfig,
+  type ValueExprVariableCreateConfig,
 } from './ValueExprEditor'
 import { TextValueEditor, type TextOrRef } from './TextValueEditor'
 import { LooseNumberInput } from './TermChainEditor'
@@ -405,6 +407,9 @@ export function ValueInput({
   allowAttribute,
   createAttribute,
   createEntity,
+  createVariable,
+  createFormula,
+  stackControls,
 }: {
   value: NumOrExpr | string | undefined
   defaultValue?: number
@@ -417,6 +422,9 @@ export function ValueInput({
   allowAttribute?: (entity: Entity | undefined, attrId: string) => boolean
   createAttribute?: ValueExprAttributeCreateConfig
   createEntity?: ValueExprEntityCreateConfig
+  createVariable?: ValueExprVariableCreateConfig
+  createFormula?: ValueExprFormulaCreateConfig
+  stackControls?: boolean
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
   fieldLabels?: { source: string; value: string }
@@ -438,7 +446,10 @@ export function ValueInput({
         allowAttribute={allowAttribute}
         createAttribute={createAttribute}
         createEntity={createEntity}
+        createVariable={createVariable}
+        createFormula={createFormula}
         fieldLabels={fieldLabels}
+        stackControls={stackControls}
       />
     </div>
   )
@@ -454,6 +465,9 @@ export function TextValueInput({
   entityNameOnly,
   createAttribute,
   createEntity,
+  createVariable,
+  createFormula,
+  stackControls,
 }: {
   value: TextOrRef | undefined
   onChange: (v: TextOrRef) => void
@@ -464,6 +478,9 @@ export function TextValueInput({
   entityNameOnly?: boolean
   createAttribute?: ValueExprAttributeCreateConfig
   createEntity?: ValueExprEntityCreateConfig
+  createVariable?: ValueExprVariableCreateConfig
+  createFormula?: ValueExprFormulaCreateConfig
+  stackControls?: boolean
 }): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -476,6 +493,9 @@ export function TextValueInput({
         entityNameOnly={entityNameOnly}
         createAttribute={createAttribute}
         createEntity={createEntity}
+        createVariable={createVariable}
+        createFormula={createFormula}
+        stackControls={stackControls}
         onChange={onChange}
       />
     </div>
