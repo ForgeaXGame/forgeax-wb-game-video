@@ -576,44 +576,35 @@ describe('ComponentFormFields defaults', () => {
     unregisterComponent('test-number-default-input')
   })
 
-  it('edits damage float text as either a fixed number or an applied formula', () => {
-    const formula: Formula = {
-      id: 'formula-float-damage',
-      name: '飘字伤害',
-      ast: { t: 'num', id: 'n0', v: -12 },
-    }
+  it('edits damage float text parameter as a literal or state reference', () => {
     const onChange = vi.fn()
     render(
       <ComponentFormFields
         componentId="DamageFloatText"
         values={{}}
-        pickers={{ formulas: { [formula.id]: formula } }}
+        pickers={{
+          entities: {
+            hero: { id: 'hero', name: '主角', attrs: { hp: 80 } },
+          },
+        }}
         onChange={onChange}
       />,
     )
 
-    expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
-    fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
-      target: { value: `formula:${formula.id}` },
+    fireEvent.change(screen.getByRole('combobox', { name: '文本内容' }), {
+      target: { value: 'entity-attr:hero:hp' },
     })
     expect(onChange).toHaveBeenCalledWith({
-      value: {
-        expr: '-12',
-        pick: {
-          mode: 'formula',
-          formulaId: formula.id,
-          holeBindings: {},
-        },
-      },
+      parameter: { ref: 'entity.hero.attr.hp' },
     })
   })
 
-  it('shows inferred state content without rewriting the stored expression', () => {
+  it('shows a referenced float parameter without rewriting it', () => {
     const onChange = vi.fn()
     render(
       <ComponentFormFields
         componentId="DamageFloatText"
-        values={{ value: { expr: 'entity.hero.attr.hp' } }}
+        values={{ parameter: { ref: 'entity.hero.attr.hp' } }}
         pickers={{
           entities: {
             hero: { id: 'hero', name: '主角', attrs: { hp: 80, attack: 12 } },
@@ -626,8 +617,7 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:hero:hp')
-    expect(screen.getByText(/常量：10 · 状态：entity\.hero\.attr\.hp \/ var\.qi/)).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: '文本内容' })).toHaveValue('entity-attr:hero:hp')
     expect(onChange).not.toHaveBeenCalled()
   })
 
@@ -962,7 +952,7 @@ describe('ComponentFormFields defaults', () => {
     expect(within(attr).queryByRole('option', { name: 'hp（实体无该属性）' })).toBeNull()
   })
 
-  it('uses the dynamic text picker for subtitle speaker and text', () => {
+  it('uses the dynamic text picker for subtitle speaker only', () => {
     const onChange = vi.fn()
     render(
       <ComponentFormFields
@@ -981,7 +971,7 @@ describe('ComponentFormFields defaults', () => {
     )
 
     const pickers = screen.getAllByRole('combobox', { name: '文本内容' })
-    expect(pickers).toHaveLength(2)
+    expect(pickers).toHaveLength(1)
     fireEvent.change(pickers[0]!, { target: { value: 'entity-name:hero' } })
     expect(onChange).toHaveBeenCalledWith({
       speaker: { ref: 'entity.hero.name' },

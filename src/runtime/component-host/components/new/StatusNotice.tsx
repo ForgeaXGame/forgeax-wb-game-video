@@ -11,7 +11,7 @@ export const StatusNoticeManifest: ComponentManifest = {
   label: '状态提示',
   inputs: [
     { key: 'fixedText', label: '固定文本', valueType: 'string', default: '获得道具' },
-    { key: 'parameter', label: '参数', valueType: 'string', default: '〈xxx〉' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '〈xxx〉' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#f0f0f0' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 2.4 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1600 },

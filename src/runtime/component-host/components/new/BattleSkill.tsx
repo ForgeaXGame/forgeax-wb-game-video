@@ -17,6 +17,9 @@ export const BattleSkillManifest: ComponentManifest = {
     { id: 'ult', label: '灭世' },
   ],
   inputs: [
+    { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+    { key: 'heavyCost', label: '重攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 2 },
+    { key: 'ultCost', label: '灭世气力消耗', valueType: 'number', component: 'numberExpr', default: 5 },
     { key: 'lightKey', label: '轻攻击按键', valueType: 'string', default: 'X' },
     { key: 'heavyKey', label: '重攻击按键', valueType: 'string', default: 'A' },
     { key: 'meditKey', label: '冥想按键', valueType: 'string', default: 'S' },
@@ -25,6 +28,9 @@ export const BattleSkillManifest: ComponentManifest = {
 }
 
 export interface BattleSkillProps {
+  qi?: number
+  heavyCost?: number
+  ultCost?: number
   lightKey?: string
   heavyKey?: string
   meditKey?: string
@@ -34,6 +40,9 @@ export interface BattleSkillProps {
 }
 
 export function BattleSkill({
+  qi = 0,
+  heavyCost = 2,
+  ultCost = 5,
   lightKey: lightKeyInput = 'X',
   heavyKey: heavyKeyInput = 'A',
   meditKey: meditKeyInput = 'S',
@@ -51,9 +60,11 @@ export function BattleSkill({
   const heavyKey = resolveKey(heavyKeyInput, 'A')
   const meditKey = resolveKey(meditKeyInput, 'S')
   const ultKey = resolveKey(ultKeyInput, 'B')
+  const heavyLocked = qi < heavyCost
+  const ultLocked = qi < ultCost
 
-  function pick(id: string): void {
-    if (preview || pickedRef.current) return
+  function pick(id: string, locked = false): void {
+    if (preview || locked || pickedRef.current) return
     pickedRef.current = true
     setPicked(id)
     emit?.(id)
@@ -64,15 +75,15 @@ export function BattleSkill({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.repeat || !keyOk()) return
       if (sameKey(event.key, lightKey)) pick('light')
-      else if (sameKey(event.key, heavyKey)) pick('heavy')
+      else if (sameKey(event.key, heavyKey)) pick('heavy', heavyLocked)
       else if (sameKey(event.key, meditKey)) pick('medit')
-      else if (sameKey(event.key, ultKey)) pick('ult')
+      else if (sameKey(event.key, ultKey)) pick('ult', ultLocked)
       else return
       event.preventDefault()
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [heavyKey, keyOk, lightKey, meditKey, preview, ultKey])
+  }, [heavyKey, heavyLocked, keyOk, lightKey, meditKey, preview, ultKey, ultLocked])
 
   return (
     <div className="pvb-skills" aria-label="技能选择">
@@ -80,7 +91,7 @@ export function BattleSkill({
         <span className="pvb-sk-key" aria-hidden="true">{lightKey}</span>
         <span className="pvb-sk-nm">轻攻击</span>
       </button>
-      <button type="button" className={`pvb-skill${picked === 'heavy' ? ' selected' : ''}`} aria-label={`重攻击 ${heavyKey}`} disabled={preview || !!picked} onClick={() => pick('heavy')}>
+      <button type="button" className={`pvb-skill${picked === 'heavy' ? ' selected' : ''}`} aria-label={`重攻击 ${heavyKey}`} disabled={preview || !!picked || heavyLocked} onClick={() => pick('heavy', heavyLocked)}>
         <span className="pvb-sk-key" aria-hidden="true">{heavyKey}</span>
         <span className="pvb-sk-nm">重攻击</span>
       </button>
@@ -88,7 +99,7 @@ export function BattleSkill({
         <span className="pvb-sk-key" aria-hidden="true">{meditKey}</span>
         <span className="pvb-sk-nm">冥想</span>
       </button>
-      <button type="button" className={`pvb-skill${picked === 'ult' ? ' selected' : ''}`} aria-label={`灭世 ${ultKey}`} disabled={preview || !!picked} onClick={() => pick('ult')}>
+      <button type="button" className={`pvb-skill${picked === 'ult' ? ' selected' : ''}`} aria-label={`灭世 ${ultKey}`} disabled={preview || !!picked || ultLocked} onClick={() => pick('ult', ultLocked)}>
         <span className="pvb-sk-key" aria-hidden="true">{ultKey}</span>
         <span className="pvb-sk-nm">灭世</span>
       </button>
