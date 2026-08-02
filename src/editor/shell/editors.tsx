@@ -79,6 +79,13 @@ const CMP_OPS: CmpOp[] = ['gte', 'lte', 'gt', 'lt', 'eq', 'neq']
 const CMP_LABEL: Record<CmpOp, string> = { gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '=', neq: '≠' }
 const EFFECT_KIND_LABEL: Record<string, string> = { attr: '属性', var: '变量', flag: '标记', item: '道具' }
 const OP_LABEL: Record<string, string> = { give: '给予', take: '取走' }
+const NUMERIC_OP_LABEL: Record<EffectDisplayOp, string> = {
+  add: '+',
+  sub: '−',
+  mul: '×',
+  div: '÷',
+  set: '=',
+}
 const CLAUSE_LABEL: Record<string, string> = {
   attrRatio: '属性比例', attr: '属性值', attrCompare: '属性比较', var: '变量', flag: '标记', visited: '到过节点', score: '分数', hasItem: '拥有道具',
 }
@@ -512,10 +519,14 @@ function summarizeEffect(
   const attrLabel = (entityId: string, attr: string) =>
     listAttrOptions(findEntity(entities, entityId)).find((a) => a.id === attr)?.label ?? attr
   switch (eff.kind) {
-    case 'attr':
-      return `${kind} · ${entLabel(eff.entityId)} 的 ${attrLabel(eff.entityId, eff.attr)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
-    case 'var':
-      return `${kind} · ${varLabel(eff.varId)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
+    case 'attr': {
+      const operation = decodeEffectOperation(eff.op, eff.value)
+      return `${kind} · ${entLabel(eff.entityId)} 的 ${attrLabel(eff.entityId, eff.attr)} ${NUMERIC_OP_LABEL[operation.op]} ${formatEffectValue(operation.value)}`
+    }
+    case 'var': {
+      const operation = decodeEffectOperation(eff.op, eff.value)
+      return `${kind} · ${varLabel(eff.varId)} ${NUMERIC_OP_LABEL[operation.op]} ${formatEffectValue(operation.value)}`
+    }
     case 'flag':
       return `${kind} · ${varLabel(eff.varId)} 设为 ${eff.value ? '是' : '否'}`
     case 'item':
@@ -747,7 +758,8 @@ export function EffectsEditor({
 
 // ── condition（GraphCondition = { all: GraphClause[] }）────────────────────────
 type ClauseType = GraphClause['type']
-const CLAUSE_TYPES: ClauseType[] = ['attrRatio', 'attr', 'attrCompare', 'var', 'flag', 'visited', 'score', 'hasItem']
+// score 当前没有写入效果或正式业务来源，不再提供新建入口；历史 score 条件仍可编辑。
+const CLAUSE_TYPES: ClauseType[] = ['attrRatio', 'attr', 'attrCompare', 'var', 'flag', 'visited', 'hasItem']
 
 function defaultClause(
   type: ClauseType,
@@ -803,11 +815,14 @@ function ClauseRow({
   onChange: (c: GraphClause) => void
   onDelete: () => void
 } & MetaCatalogProps): JSX.Element {
+  const clauseTypes = clause.type === 'score'
+    ? [...CLAUSE_TYPES, 'score' as ClauseType]
+    : CLAUSE_TYPES
   return (
     <div style={box}>
       <div style={rowStyle}>
         <select aria-label="条件字段类型" value={clause.type} onChange={(e) => onChange(defaultClause(e.target.value as ClauseType, entities, variables))}>
-          {CLAUSE_TYPES.map((t) => (
+          {clauseTypes.map((t) => (
             <option key={t} value={t}>{CLAUSE_LABEL[t] ?? t}</option>
           ))}
         </select>

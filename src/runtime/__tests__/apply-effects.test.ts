@@ -37,10 +37,31 @@ describe('applyEffects', () => {
     expect(st.entities['ent-boss']!.attrs.hp).toBe(700 - 110)
   })
 
+  it('applies the reversible subtraction wrapper used by the authoring UI', () => {
+    const st = state()
+    applyEffects(st, [{
+      kind: 'attr',
+      entityId: 'ent-boss',
+      attr: 'hp',
+      op: 'add',
+      value: { expr: '-(100)' },
+    }])
+    expect(st.entities['ent-boss']!.attrs.hp).toBe(600)
+  })
+
   it('clamps attr to attrMeta min (hp not below 0)', () => {
     const st = state()
     applyEffects(st, [{ id: 'd', kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -9999 }])
     expect(st.entities['ent-boss']!.attrs.hp).toBe(0)
+  })
+
+  it('heals a damaged attr without exceeding attrMeta max', () => {
+    const st = state()
+    applyEffects(st, [
+      { kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -180 },
+      { kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: 999 },
+    ])
+    expect(st.entities['ent-player']!.attrs.hp).toBe(300)
   })
 
   it('clamps var to its varMeta min/max', () => {

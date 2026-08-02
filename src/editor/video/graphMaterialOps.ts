@@ -42,6 +42,7 @@ import {
   hasOptionEventsInput,
   isPositionable,
 } from '../shell/editors'
+import { decodeEffectOperation, encodeEffectOperation } from '../shell/valueExprPick'
 import { INTERACTION_SKINS } from '../../runtime/component-host/components'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
@@ -750,19 +751,18 @@ export function parseDamageFromContent(content: string): number {
 function settleEffectId(floatId: string): string {
   return `${floatId}-settle`
 }
-function hpEffect(
+export function createDamageHpEffect(
   entities: Record<string, Entity> | undefined,
   target: 'boss' | 'player',
   amount: NumOrExpr,
   floatId: string,
 ): GraphEffect {
+  const encoded = encodeEffectOperation('sub', amount)
   return {
     kind: 'attr',
     entityId: firstEntityId(entities, target),
     attr: 'hp',
-    op: 'add',
-    // 常量沿用旧语义（数值取绝对值后自动按扣血取负）；选取式公式的正负号完全由用户在条款里选（−=扣血/+=回血）。
-    value: typeof amount === 'number' ? -Math.abs(amount) : amount,
+    ...encoded,
     id: settleEffectId(floatId),
   }
 }
@@ -780,18 +780,24 @@ export function settleElementFor(scenario: GameScenario, node: GameNode | undefi
     r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
   )
 }
-function settleHpEffect(settle: Reaction | undefined): { value?: NumOrExpr; entityId?: string } | undefined {
+function settleHpEffect(
+  settle: Reaction | undefined,
+): Extract<GraphEffect, { kind: 'attr' }> | undefined {
   for (const a of settle?.do ?? []) {
     if (a.kind !== 'effect') continue
     const hp = a.effects.find((e) => e.kind === 'attr' && e.attr === 'hp')
-    if (hp) return hp as { value?: NumOrExpr; entityId?: string }
+    if (hp?.kind === 'attr') return hp
   }
   return undefined
 }
 /** 结算 reaction 的绝对伤害（公式态时取不到常量，返回 0）。 */
 export function settleDamage(settle: Reaction | undefined): number {
   const hp = settleHpEffect(settle)
-  return hp && typeof hp.value === 'number' ? Math.abs(hp.value) : 0
+  if (!hp) return 0
+  const operation = decodeEffectOperation(hp.op, hp.value)
+  return operation.op === 'sub' && typeof operation.value === 'number'
+    ? Math.abs(operation.value)
+    : 0
 }
 /** 结算 reaction 里 hp effect 的原始值（常量或 `{expr,pick}`），供检视器公式编辑器回填。 */
 export function settleValue(settle: Reaction | undefined): NumOrExpr | undefined {
@@ -1830,7 +1836,7 @@ export function addMaterialGraph(
     const s1 = addOverlayChild(scenario, node.id, float)
     const s1Node = findNode(s1.graph, node.id) ?? node
     // 结算副作用挂节点 reaction（默认对 boss 扣 100，与飘字同相位出现）。
-    const s2 = upsertSettleEffects(s1, s1Node, id, floatSettleWhen(float), [hpEffect(entities, 'boss', 100, id)])
+    const s2 = upsertSettleEffects(s1, s1Node, id, floatSettleWhen(float), [createDamageHpEffect(entities, 'boss', 100, id)])
     return { scenario: s2, selectKey: `overlay:${id}` }
   }
   if (template === 'filter' || template === 'fx') {

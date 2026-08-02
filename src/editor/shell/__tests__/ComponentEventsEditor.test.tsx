@@ -400,7 +400,7 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const currentField = screen.getByText('当前值来源').parentElement!
+    const currentField = screen.getByText('当前值覆盖').parentElement!
     expect(screen.getByText(/不能增删或拖动组件/)).toBeTruthy()
     expect(document.querySelector('[data-overlay-design-canvas]')).toBeNull()
     expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
@@ -411,9 +411,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
     expect(currentField.style.columnGap).toBe('8px')
     expect(currentField.style.fontSize).toBe('11px')
-    const modeRow = screen.getByRole('radiogroup', { name: '血量方式' }).parentElement!
-    expect(modeRow.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
-    expect(screen.getByRole('radio', { name: '分别设置' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('radiogroup', { name: '血量方式' })).toBeNull()
     const current = currentField
       .querySelector('input[aria-label="常量数值"]') as HTMLInputElement
     expect(current.disabled).toBe(false)
@@ -631,7 +629,7 @@ describe('ComponentFormFields defaults', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('switches hp bars between bound and custom value modes', () => {
+  it('keeps bound values and optional current/max overrides in one form', () => {
     const onChange = vi.fn()
     let latest: Record<string, unknown> = {}
     function Harness(): JSX.Element {
@@ -659,25 +657,20 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    expect(screen.getByRole('radio', { name: '绑定属性' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText('绑定对象')).toBeTruthy()
     expect(screen.getByText('当前值属性')).toBeTruthy()
-    expect(screen.getByText('最大值来源')).toBeTruthy()
-    expect(screen.queryByText('当前值来源')).toBeNull()
-    const boundMax = within(screen.getByText('最大值来源').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })
-    fireEvent.change(boundMax, { target: { value: 'entity:ent-player:hpMax' } })
-    expect(screen.getByRole('radio', { name: '绑定属性' })).toHaveAttribute('aria-checked', 'true')
-    expect(latest.current).toBeUndefined()
-    expect(latest.max).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('radio', { name: '分别设置' }))
-
-    const currentField = screen.getByText('当前值来源').parentElement!
-    const maxField = screen.getByText('最大值来源').parentElement!
+    const currentField = screen.getByText('当前值覆盖').parentElement!
+    const maxField = screen.getByText('最大值覆盖').parentElement!
     const qiField = screen.getByText('当前气力').parentElement!
     const qiMaxField = screen.getByText('气力上限').parentElement!
     const labelField = screen.getByText('显示名').parentElement!
+    expect(within(currentField).getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
+    expect(within(maxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
+    const max = within(maxField)
+      .getByRole('combobox', { name: '数值内容' })
+    fireEvent.change(max, { target: { value: 'entity:ent-player:hpMax' } })
+    expect(latest.current).toBeUndefined()
+    expect(latest.max).toBeTruthy()
     const current = within(currentField).getByRole('combobox', { name: '数值内容' })
     expect(currentField.style.display).toBe('grid')
     expect(currentField.style.gridTemplateColumns).toBe('max-content minmax(0, 1fr)')
@@ -687,21 +680,16 @@ describe('ComponentFormFields defaults', () => {
     expect(qiMaxField.style.flexBasis).toBe('100%')
     expect(labelField.style.flexBasis).toBe('100%')
     expect(labelField.compareDocumentPosition(currentField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.queryByText('绑定对象')).toBeNull()
-    expect(current).toHaveValue('entity:ent-player:hp')
+    expect(screen.getByText('绑定对象')).toBeTruthy()
+    expect(current).toHaveValue('empty')
     expect(within(maxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:ent-player:hpMax')
     expect(within(qiField).getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
     expect(within(qiMaxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
     expect(within(labelField).getByRole('combobox', { name: '文本内容' })).toHaveValue('literal')
+    fireEvent.change(current, { target: { value: 'entity:ent-player:hp' } })
     expect(latest.current).toBeTruthy()
     expect(latest.max).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('radio', { name: '绑定属性' }))
-    expect(latest.current).toBeUndefined()
-    expect(latest.max).toBeTruthy()
-    expect(screen.getByText('绑定对象')).toBeTruthy()
-    expect(screen.getByText('最大值来源')).toBeTruthy()
-    expect(onChange).toHaveBeenCalledTimes(3)
+    expect(onChange).toHaveBeenCalledTimes(2)
   })
 
   it('lists configured properties and repairs the property when the bound object changes', () => {

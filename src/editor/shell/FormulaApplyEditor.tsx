@@ -13,9 +13,9 @@ import { LooseNumberInput } from './TermChainEditor'
 import { VariablePicker } from './scenario-pickers'
 import {
   compileFormula,
+  formulaHoleBindingIssues,
   formulaHoles,
   formulaPreview,
-  missingFormulaHoles,
   missingFormulaVariables,
 } from './formulaApply'
 import { findEntity, findFormula, listAttrOptions, listFormulaOptions } from './valueExprPick'
@@ -63,7 +63,9 @@ export function FormulaApplyEditor({
   const options = listFormulaOptions(formulas)
   const formula = findFormula(formulas, formulaId)
   const holes = formula ? formulaHoles(formula) : []
-  const missingHoles = formula ? missingFormulaHoles(formula, holeBindings) : []
+  const bindingIssues = formula
+    ? formulaHoleBindingIssues(formula, holeBindings, entities ?? {})
+    : []
   const missingVariables = formula ? missingFormulaVariables(formula, holeBindings, variables) : []
   const needsVariableBinding = holes.some((hole) => hole.kind === 'var')
   const hasDeclaredVariables = Object.keys(variables ?? {}).length > 0
@@ -83,7 +85,7 @@ export function FormulaApplyEditor({
   const compiledLabel = compiled == null ? '' : typeof compiled === 'number' ? String(compiled) : compiled.expr
   // 填满全部留空位后，拿样例实体/变量值实时算出结果（≈ 值），替代与顶部「公式：」重复的编译串展示。
   const ctx = useMemo(() => sampleCtx(entities, variables), [entities, variables])
-  const sampleValue = compiledLabel && missingHoles.length === 0
+  const sampleValue = compiledLabel && bindingIssues.length === 0 && missingVariables.length === 0
     ? tryEvalExpr(compiledLabel, { ...ctx, rng: createRng(0) })
     : null
 
@@ -118,10 +120,34 @@ export function FormulaApplyEditor({
           ) : (
             holes.map((h) => {
               const binding = holeBindings[h.holeId]
+              const label = h.label ?? '留空位'
+              const bindingKind = binding?.kind ?? ''
               return (
-                <div key={h.holeId} style={{ ...row, border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6 }}>
-                  <span style={holeLbl}>{h.label ?? '留空位'}{h.kind === 'entityAttr' && h.suggestAttr ? `（约定：${h.suggestAttr}）` : ''}</span>
-                  {h.kind === 'entityAttr' && (
+                <div
+                  key={h.holeId}
+                  role="group"
+                  aria-label={`参数：${label}`}
+                  style={{ ...row, border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6 }}
+                >
+                  <span style={holeLbl}>{label}{h.kind === 'entityAttr' && h.suggestAttr ? `（约定：${h.suggestAttr}）` : ''}</span>
+                  {h.kind === 'number' && (
+                    <select
+                      aria-label={`${label}来源`}
+                      value={bindingKind}
+                      onChange={(event) => {
+                        const kind = event.target.value
+                        if (kind === 'number') setHole(h.holeId, { kind: 'number', value: 0 })
+                        if (kind === 'entityAttr') setHole(h.holeId, { kind: 'entityAttr', entityId: '', attr: undefined })
+                        if (kind === 'var') setHole(h.holeId, { kind: 'var', varId: '' })
+                      }}
+                    >
+                      <option value="">选择来源…</option>
+                      <option value="number">固定值</option>
+                      <option value="entityAttr">实体属性</option>
+                      <option value="var">变量</option>
+                    </select>
+                  )}
+                  {(h.kind === 'entityAttr' || (h.kind === 'number' && binding?.kind === 'entityAttr')) && (
                     <>
                       <EntitySelect
                         value={binding?.kind === 'entityAttr' ? binding.entityId : ''}
@@ -136,15 +162,15 @@ export function FormulaApplyEditor({
                       />
                     </>
                   )}
-                  {h.kind === 'number' && (
+                  {h.kind === 'number' && binding?.kind === 'number' && (
                     <LooseNumberInput
-                      value={binding?.kind === 'number' ? binding.value : 0}
+                      value={binding.value}
                       onChange={(value) => setHole(h.holeId, { kind: 'number', value })}
-                      aria-label={h.label ?? '数值'}
+                      aria-label={label}
                       style={{ width: 120 }}
                     />
                   )}
-                  {h.kind === 'var' && (
+                  {(h.kind === 'var' || (h.kind === 'number' && binding?.kind === 'var')) && (
                     <VariablePicker
                       value={binding?.kind === 'var' ? binding.varId : ''}
                       variables={variables}
@@ -156,9 +182,11 @@ export function FormulaApplyEditor({
               )
             })
           )}
-          {missingHoles.length > 0 ? (
+          {bindingIssues.length > 0 ? (
             <p role="alert" style={{ ...hint, color: '#ffb86c', fontWeight: 600 }}>
-              还缺 {missingHoles.length} 个留空位未填。补全后才会用于结算。
+              参数绑定未完成：
+              {bindingIssues.map((issue) => `${issue.label}（${issue.reason}）`).join('、')}。
+              补全后才会用于结算。
             </p>
           ) : sampleValue != null ? (
             <p style={hint}>≈ {sampleValue}<span style={{ opacity: 0.6 }}>（按样例实体/变量值试算）</span></p>

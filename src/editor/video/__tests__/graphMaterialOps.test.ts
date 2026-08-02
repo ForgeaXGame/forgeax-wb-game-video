@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { GameNode, GameScenario } from '../../../runtime/schema/graph-schema'
+import type { GameNode, GameScenario, NumOrExpr } from '../../../runtime/schema/graph-schema'
 import type { OverlayChild } from '../../../runtime/schema/node-config-schema'
 import type { QteCue } from '../../../runtime/component-host/components/Qte'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
@@ -12,6 +12,7 @@ import {
   choiceElement,
   collectMaterialsFromNode,
   collectMountItemsFromNode,
+  createDamageHpEffect,
   deleteMaterialGraph,
   findElement,
   findNode,
@@ -1110,7 +1111,43 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
     const { scenario, node: n, floatId } = seedFloat()
     const fx = overlayEffects(scenario, n, floatId)
     expect(fx).toHaveLength(1)
-    expect(fx[0]).toMatchObject({ kind: 'attr', attr: 'hp', op: 'add', value: -100, id: `${floatId}-settle` })
+    expect(fx[0]).toMatchObject({
+      kind: 'attr',
+      attr: 'hp',
+      op: 'add',
+      value: { expr: '-(100)' },
+      id: `${floatId}-settle`,
+    })
+    const preview = activePreviewOverlaysFromNode(scenario, n, 0, 8000)
+      .find((overlay) => overlay.id === `overlay:${floatId}`)
+    expect(preview?.label).toBe('-100')
+  })
+
+  it('常量和公式伤害统一编码为减法语义，并保留公式参数 sidecar', () => {
+    const formulaPick = {
+      mode: 'formula',
+      formulaId: 'damage',
+      holeBindings: {
+        attacker: { kind: 'entityAttr', entityId: 'ent-player', attr: 'attack' },
+        defender: { kind: 'entityAttr', entityId: 'ent-boss', attr: 'defense' },
+      },
+    }
+    const formulaValue = {
+      expr: 'entity.ent-player.attr.attack - entity.ent-boss.attr.defense',
+      pick: formulaPick,
+    } as unknown as NumOrExpr
+
+    expect(createDamageHpEffect(undefined, 'boss', formulaValue, 'float-1')).toMatchObject({
+      kind: 'attr',
+      entityId: 'ent-boss',
+      attr: 'hp',
+      op: 'add',
+      value: {
+        expr: '-(entity.ent-player.attr.attack - entity.ent-boss.attr.defense)',
+        pick: formulaPick,
+      },
+      id: 'float-1-settle',
+    })
   })
 
   it('effects 往返：EffectsEditor 产出的完整列表写入后可读回，首条打上定位 id', () => {

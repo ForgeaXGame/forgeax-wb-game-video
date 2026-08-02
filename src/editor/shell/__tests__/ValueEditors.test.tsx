@@ -80,4 +80,37 @@ describe('numberExpr dropdown labels', () => {
       },
     })
   })
+
+  it('opens application-time source binding for text formula parameters', () => {
+    const reusable: Formula = {
+      id: 'reusable',
+      name: '通用伤害',
+      ast: {
+        t: 'bin',
+        id: 'damage',
+        op: '-',
+        a: { t: 'hole', id: 'attacker', holeId: 'attacker', kind: 'number', label: '攻击方属性' },
+        b: { t: 'hole', id: 'defender', holeId: 'defender', kind: 'number', label: '防御方属性' },
+      },
+    }
+    const onChange = vi.fn()
+    render(
+      <ValueExprEditor
+        value={0}
+        entities={entities}
+        variables={variables}
+        formulas={{ reusable }}
+        onChange={onChange}
+      />,
+    )
+
+    const content = screen.getByRole('combobox', { name: '数值内容' })
+    const formulaOption = within(content).getByRole('option', { name: '通用伤害' }) as HTMLOptionElement
+    fireEvent.change(content, { target: { value: formulaOption.value } })
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      expr: '0',
+      pick: { mode: 'formula', formulaId: 'reusable', holeBindings: {} },
+    }))
+  })
 })

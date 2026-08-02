@@ -783,7 +783,7 @@ export interface FieldNode {
   children?: FieldNode[]
 }
 
-/** 由 scenario 的实体/变量派生可监听字段树：entity.<id>.attr.<name> / var.<id> / score。 */
+/** 由 scenario 的实体/变量派生可监听字段树：entity.<id>.attr.<name> / var.<id>。 */
 function buildFieldTree(
   entities: Record<string, Entity> | undefined,
   variables: Record<string, Variable> | undefined,
@@ -809,7 +809,6 @@ function buildFieldTree(
   return [
     { seg: 'entity', label: '实体', children: ents },
     { seg: 'var', label: '变量', children: vars },
-    { seg: 'score', label: '分数' },
   ]
 }
 
