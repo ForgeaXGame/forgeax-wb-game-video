@@ -81,8 +81,8 @@ export function GamePlayer({ scenario, game, resolveAsset }: GamePlayerProps): J
         onFocus={() => claimPlayerFocus(rootRef.current)}
         style={{ position: 'relative', width: '100%', height: '100%', background: '#000', color: '#fff', outline: 'none' }}
       >
-        {/* 床轨：独立音频通道，与视频原声开关无关；无 UI。 */}
-        <BgmPlayer bgm={snap.bgm} resolveAsset={resolveBgm} active={snap.phase !== 'ended'} />
+        {/* 床轨：独立音频通道，与视频共用试玩声音开关；无独立 UI。 */}
+        <BgmPlayer bgm={snap.bgm} resolveAsset={resolveBgm} active={snap.phase !== 'ended'} muted={!videoAudioEnabled} />
         <GameStage
           videoSrc={videoSrc}
           videoKey={`clip-${snap.clipSeq}`}

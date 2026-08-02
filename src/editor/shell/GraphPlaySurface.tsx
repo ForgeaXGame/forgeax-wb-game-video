@@ -273,9 +273,9 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
       onFocus={() => claimPlayerFocus(rootRef.current)}
       style={{ position: 'relative', width: '100%', height: '100%', background: '#000', overflow: 'hidden', outline: 'none' }}
     >
-      {/* 床轨：独立音频通道，不受视频原声开关影响。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
+      {/* 床轨：独立音频通道，与视频共用试玩声音开关。按 restartKey 重挂 —— 新会话的 `bgm` 快照从 null 起，
           「还没发过指令」不是停播令，若不重挂，重开会把上一局的曲子拖进新局。 */}
-      <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} paused={paused} playbackRate={playbackRate} active={snap?.phase !== 'ended'} />
+      <BgmPlayer key={restartKey} bgm={snap?.bgm ?? null} resolveAsset={resolveBgm} paused={paused} playbackRate={playbackRate} active={snap?.phase !== 'ended'} muted={!videoAudioEnabled} />
 
       {/* 演出画面 + 叠层：共享 runtime/play 的 GameStage（视频舞台锚定内容矩形，HUD/QTE/交互随视频走）。 */}
       <GameStage

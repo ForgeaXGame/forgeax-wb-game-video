@@ -35,6 +35,19 @@ afterEach(() => {
 })
 
 describe('BgmPlayer', () => {
+  it('切换静音时保持同一条床轨和播放头', () => {
+    const same = cmd()
+    const { rerender } = render(<BgmPlayer bgm={same} resolveAsset={resolve} muted />)
+    const deck = document.querySelector<HTMLAudioElement>('audio[data-gv-bgm="active"]')!
+    deck.currentTime = 12
+    expect(deck.muted).toBe(true)
+
+    rerender(<BgmPlayer bgm={same} resolveAsset={resolve} muted={false} />)
+    expect(document.querySelector('audio[data-gv-bgm="active"]')).toBe(deck)
+    expect(deck.muted).toBe(false)
+    expect(deck.currentTime).toBe(12)
+  })
+
   it('bgm=null 不建任何音频元素（「本局还没发过指令」≠ 停播令）', () => {
     render(<BgmPlayer bgm={null} resolveAsset={resolve} />)
     expect(decks()).toHaveLength(0)
