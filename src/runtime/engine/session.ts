@@ -22,6 +22,8 @@ export interface GraphSessionOptions {
   packs?: readonly SubFlowPackDef[]
   /** 试玩根蓝图 id；缺省 `manifest.mainPackId` 或 `__root__`。 */
   rootBlueprintId?: string
+  /** 本会话的确定性随机种子；缺省 0，宿主的新游戏入口应显式生成。 */
+  rngSeed?: number
 }
 
 const MAX_LOGS = 60
@@ -189,7 +191,14 @@ export class GraphSession {
       }
     }
     // 开跑用根 graph；依赖解析在 GraphRuntime 内走 manifest.packs（或 opts.packs 注入）。
-    this.runtime = new GraphRuntime(scenario.graph, scenario, components, opts.packs ?? [], rootId)
+    this.runtime = new GraphRuntime(
+      scenario.graph,
+      scenario,
+      components,
+      opts.packs ?? [],
+      rootId,
+      opts.rngSeed,
+    )
     this.nodesById = new Map(scenario.graph.nodes.map((n) => [n.id, n]))
     this.entityNames = Object.fromEntries(
       Object.entries(scenario.entities ?? {}).map(([id, entity]) => [id, entity.name?.trim() || id]),

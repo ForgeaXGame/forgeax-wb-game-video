@@ -184,6 +184,7 @@ export class GraphRuntime {
     components: ComponentRegistry = defaultComponentRegistry,
     packs: readonly SubFlowPackDef[] = [],
     rootBlueprintId?: string,
+    private readonly rngSeed = 0,
   ) {
     this.rootGraph = graph
     this.activeGraph = graph
@@ -195,7 +196,7 @@ export class GraphRuntime {
     this.components = components
     this.loadDependencyTable(scenario, packs)
     this.indexGraph(graph)
-    this.state = { ...initState(scenario), ...control() }
+    this.state = { ...initState(scenario, rngSeed), ...control() }
   }
 
   getActiveBlueprintId(): string {
@@ -625,7 +626,7 @@ export class GraphRuntime {
   }
 
   private resetGlobalsState(): void {
-    const base = initState(this.scenario)
+    const base = initState(this.scenario, this.rngSeed)
     this.state.vars = base.vars
     this.state.varMeta = base.varMeta
     this.state.entities = base.entities

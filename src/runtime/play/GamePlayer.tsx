@@ -19,6 +19,7 @@ import { useClipPerformanceEnd } from './useClipPerformanceEnd'
 import { GameStage } from './GameStage'
 import { BgmPlayer } from './BgmPlayer'
 import { VideoAudioToggle } from './VideoAudioToggle'
+import { createSessionSeed } from './sessionSeed'
 
 /** 媒体解析注入契约:节点媒体 id → 可播 url(宿主实现)。 */
 export type ResolveAsset = (mediaId: string | undefined, game: string) => string | undefined
@@ -29,11 +30,16 @@ export interface GamePlayerProps {
   game: string
   /** 媒体解析器（宿主注入）。 */
   resolveAsset: ResolveAsset
+  /** 固定 seed 可用于回放/调试；缺省时每个新会话自动生成。 */
+  rngSeed?: number
 }
 
-export function GamePlayer({ scenario, game, resolveAsset }: GamePlayerProps): JSX.Element {
+export function GamePlayer({ scenario, game, resolveAsset, rngSeed }: GamePlayerProps): JSX.Element {
   registerBuiltins()
-  const session = useMemo(() => new GraphSession(scenario), [scenario])
+  const session = useMemo(
+    () => new GraphSession(scenario, { rngSeed: rngSeed ?? createSessionSeed() }),
+    [scenario, rngSeed],
+  )
   const sessionRef = useRef(session)
   sessionRef.current = session
   const rootRef = useRef<HTMLDivElement | null>(null)

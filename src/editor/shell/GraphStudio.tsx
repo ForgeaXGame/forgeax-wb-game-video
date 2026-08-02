@@ -10,6 +10,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { GameGraph, GameScenario, SubFlowPackDef } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
+import { createSessionSeed } from '../../runtime/play/sessionSeed'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
 import { createKinoAssetLibraryClient } from '../assets/assetLibraryClient'
@@ -421,7 +422,10 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const session = useMemo(
     () => {
       const st = useGraphScenario.getState()
-      return new GraphSession(st.playScn(), { rootBlueprintId: st.activeBlueprintId })
+      return new GraphSession(st.playScn(), {
+        rootBlueprintId: st.activeBlueprintId,
+        rngSeed: createSessionSeed(),
+      })
     },
     // runKey：工具条整局重开；activeBlueprintId：切库；playNonce：从此试玩吃最新图
     // eslint-disable-next-line react-hooks/exhaustive-deps
