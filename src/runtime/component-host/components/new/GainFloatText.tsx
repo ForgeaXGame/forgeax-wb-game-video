@@ -11,7 +11,7 @@ export const GainFloatTextManifest: ComponentManifest = {
   label: '增益飘字',
   inputs: [
     { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
-    { key: 'parameter', label: '参数', valueType: 'string', default: '+50' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '+50' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ffd54a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },

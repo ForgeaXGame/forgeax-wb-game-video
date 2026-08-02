@@ -31,6 +31,7 @@ export function resolveComponentInputs(
 
   for (const input of inputDefs) {
     if (input.component !== 'numberExpr') continue
+    if (input.key === 'parameter') continue
 
     const raw = rawInputs[input.key] !== undefined ? rawInputs[input.key] : input.default
 
@@ -60,7 +61,10 @@ export function resolveComponentInputs(
     const raw = Object.prototype.hasOwnProperty.call(rawInputs, 'parameter')
       ? rawInputs.parameter
       : parameterDef.default
-    resolved.parameter = resolveTextParameter(raw, ctx, fallback)
+    const reference = parameterDef.component === 'numberExpr' && parameterDef.valueType === 'string'
+      ? resolveTextValue(raw, ctx)
+      : undefined
+    resolved.parameter = resolveTextParameter(reference ?? raw, ctx, fallback)
   }
 
   const durationDef = inputDefs.find((input) => input.key === 'durationMs')
