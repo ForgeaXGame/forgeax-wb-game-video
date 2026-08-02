@@ -20,8 +20,8 @@ const ctx: SkinCtx = {
         name: '小怪',
         hp: 240,
         maxHp: 300,
-        attrs: { hp: 240, defense: 10 },
-        attrMax: { hp: 300, defense: 10 },
+        attrs: { hp: 240, hpMax: 300, defense: 10 },
+        attrMax: { hp: 300, hpMax: 300, defense: 10 },
       },
     },
     vars: { qi: 2 },
@@ -35,10 +35,8 @@ function fillWidth(container: HTMLElement, selector: string): string {
 }
 
 describe('numeric hp bar components', () => {
-  it('declare entity binding and optional numeric overrides', () => {
+  it('declares only the values each component needs', () => {
     expect(BattlePlayerHpBarManifest.inputs?.map((input) => input.key)).toEqual([
-      'bind',
-      'attr',
       'label',
       'current',
       'max',
@@ -46,51 +44,59 @@ describe('numeric hp bar components', () => {
       'qiMax',
     ])
     expect(BattlePlayerHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '绑定对象', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '当前值属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-      { key: 'current', label: '当前值覆盖', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '最大值覆盖', valueType: 'number', component: 'numberExpr' },
-      { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '血量', valueType: 'number', required: true, component: 'numberExpr' },
+      { key: 'max', label: '最大血量', valueType: 'number', required: true, component: 'numberExpr' },
+      { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr', default: 3 },
       { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
     ]))
     expect(BattleEnemyHpBarManifest.inputs?.map((input) => input.key)).toEqual([
-      'bind',
-      'attr',
       'label',
       'current',
       'max',
     ])
     expect(BattleEnemyHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '绑定对象', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '当前值属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-      { key: 'current', label: '当前值覆盖', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '最大值覆盖', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '血量', valueType: 'number', required: true, component: 'numberExpr' },
+      { key: 'max', label: '最大血量', valueType: 'number', required: true, component: 'numberExpr' },
     ]))
   })
 
-  it('reads current, max, and qi from the configured HUD entity attribute', () => {
+  it('reads direct entity expressions for current, max, and qi', () => {
     const player = render(
       <BattlePlayerHpBar
-        overlay={{ elementId: 'player', component: 'BattlePlayerHpBar', inputs: { bind: 'ent-player', attr: 'hp' } }}
+        overlay={{
+          elementId: 'player',
+          component: 'BattlePlayerHpBar',
+          inputs: {
+            current: { expr: 'entity.ent-player.attr.hp' },
+            max: { expr: 'entity.ent-player.attr.hpMax' },
+          },
+        }}
         ctx={ctx}
       />,
     )
-    expect(fillWidth(player.container, '.ks-hud-hp-fill')).toBe('75%')
+    expect(fillWidth(player.container, '.ks-hud-hp-fill')).toBe('50%')
     expect(player.container.querySelector('.ks-hud-rage')?.getAttribute('aria-label')).toBe('气力 2/5')
     player.unmount()
 
     const enemy = render(
       <BattleEnemyHpBar
-        overlay={{ elementId: 'enemy', component: 'BattleEnemyHpBar', inputs: { bind: 'ent-boss', attr: 'hp' } }}
+        overlay={{
+          elementId: 'enemy',
+          component: 'BattleEnemyHpBar',
+          inputs: {
+            current: { expr: 'entity.ent-boss.attr.hp' },
+            max: { expr: 'entity.ent-boss.attr.hpMax' },
+          },
+        }}
         ctx={ctx}
       />,
     )
     expect(fillWidth(enemy.container, '.ks-hud-boss-fill')).toBe('80%')
   })
 
-  it('binds arbitrary rule entity and property ids at runtime', () => {
+  it('reads arbitrary entity properties through direct expressions', () => {
     const customCtx: SkinCtx = {
       hud: {
         entities: {
@@ -112,7 +118,10 @@ describe('numeric hp bar components', () => {
         overlay={{
           elementId: 'custom-entity',
           component: 'BattleEnemyHpBar',
-          inputs: { bind: 'ent-0', attr: 'vitality' },
+          inputs: {
+            current: { expr: 'entity.ent-0.attr.vitality' },
+            max: 90,
+          },
         }}
         ctx={customCtx}
       />,
@@ -144,13 +153,16 @@ describe('numeric hp bar components', () => {
     expect(container.querySelector('.ks-hud-hp-name')?.textContent).toBe('空藏')
   })
 
-  it('keeps the current value bound while max reads any selected entity property', () => {
+  it('lets current and max independently select entity properties', () => {
     const { container } = render(
       <BattlePlayerHpBar
         overlay={{
           elementId: 'player-bound-max',
           component: 'BattlePlayerHpBar',
-          inputs: { bind: 'ent-player', attr: 'hp', max: { expr: 'entity.ent-player.attr.hpMax' } },
+          inputs: {
+            current: { expr: 'entity.ent-player.attr.hp' },
+            max: { expr: 'entity.ent-player.attr.hpMax' },
+          },
         }}
         ctx={ctx}
       />,

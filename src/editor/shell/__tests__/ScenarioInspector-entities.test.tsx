@@ -95,7 +95,7 @@ describe('ScenarioInspector entity attributes', () => {
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":{"initial":0,"max":100}')
   })
 
-  it('makes a newly created attribute immediately available to component bindings', () => {
+  it('keeps unrelated newly created attributes out of hp value pickers', () => {
     function Harness(): JSX.Element {
       const [value, setValue] = useState<ScenarioMeta>({
         entities: { hero: { id: 'hero', name: '主角', attrs: {} } },
@@ -105,7 +105,7 @@ describe('ScenarioInspector entity attributes', () => {
           <ScenarioInspector value={value} section="entities" onChange={setValue} />
           <ComponentFormFields
             componentId="BattlePlayerHpBar"
-            values={{ bind: 'hero' }}
+            values={{ label: '我方', current: 0, max: 0 }}
             pickers={{ entities: value.entities }}
             onChange={() => undefined}
           />
@@ -114,13 +114,18 @@ describe('ScenarioInspector entity attributes', () => {
     }
     render(<Harness />)
 
-    const attrSelect = screen.getByRole('combobox', { name: '当前值属性' })
-    expect(within(attrSelect).queryByRole('option', { name: 'attr0' })).toBeNull()
+    const hpSelect = within(screen.getByText('血量').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })
+    fireEvent.click(hpSelect)
+    expect(screen.queryByRole('menuitem', { name: '实体属性' })).toBeNull()
+    fireEvent.click(hpSelect)
 
     fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))
 
     expect(screen.getByLabelText('属性「attr0」的数值')).toHaveValue('0')
-    expect(within(attrSelect).getByRole('option', { name: 'attr0' })).toBeTruthy()
+    fireEvent.click(hpSelect)
+    expect(screen.queryByRole('menuitem', { name: '实体属性' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'attr0' })).toBeNull()
   })
 
   it('clamps authored current values when a paired maximum is reduced', () => {

@@ -36,6 +36,8 @@ export interface Formula {
   name?: string
   description?: string
   ast: FormulaAstNode
+  /** 新建但尚未填写表达式；底层保留占位 AST，编辑器显示为空。 */
+  draftEmpty?: boolean
 }
 
 /** 按 kind 区分的留空位绑定；应用公式时每个 holeId 填一份。 */
@@ -349,7 +351,15 @@ export function normalizeHoleBinding(raw: unknown): FormulaHoleBinding | undefin
 }
 
 function migrateFormula(f: LegacyFormula): Formula {
-  if (f.ast) return { id: f.id, name: f.name, description: f.description, ast: f.ast }
+  if (f.ast) {
+    return {
+      id: f.id,
+      name: f.name,
+      description: f.description,
+      ast: f.ast,
+      ...(f.draftEmpty ? { draftEmpty: true } : {}),
+    }
+  }
   const ast = Array.isArray(f.terms) ? legacyTermsToAst(f.terms) : { t: 'num' as const, id: 'n0', v: 0 }
   return { id: f.id, name: f.name, description: f.description, ast }
 }

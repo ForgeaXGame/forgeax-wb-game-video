@@ -36,6 +36,28 @@ describe('FormulaTextEditor hole guidance', () => {
 })
 
 describe('FormulaTextEditor input state', () => {
+  it('renders a new draft formula empty and commits the first expression normally', () => {
+    const onChange = vi.fn()
+    const onEmpty = vi.fn()
+    render(
+      <FormulaTextEditor
+        ast={{ t: 'num', id: 'n0', v: 0 }}
+        empty
+        onEmpty={onEmpty}
+        onChange={onChange}
+      />,
+    )
+
+    const input = screen.getByRole('textbox', { name: '公式表达式' })
+    expect(input).toHaveValue('')
+
+    fireEvent.change(input, { target: { value: '25' } })
+    fireEvent.blur(input)
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ t: 'num', v: 25 }))
+    expect(onEmpty).not.toHaveBeenCalled()
+  })
+
   it('selects the initial zero so the first edit replaces it', () => {
     const onChange = vi.fn()
     render(

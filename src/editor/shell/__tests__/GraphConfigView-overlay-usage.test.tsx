@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph, GameScenario } from '../../../runtime/schema/graph-schema'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
@@ -24,6 +24,13 @@ function graphWithOverlay(nodeId: string, overlay: string): GameGraph {
 
 function blueprint(id: string, graph: GameGraph): BlueprintDoc {
   return { id, title: id, entry: graph.nodes[0]?.id ?? 'entry', graph }
+}
+
+function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
+  fireEvent.click(trigger)
+  for (const label of labels) {
+    fireEvent.click(screen.getByRole('menuitem', { name: label }))
+  }
 }
 
 afterEach(() => {
@@ -87,7 +94,7 @@ describe('GraphConfigView overlay usage', () => {
     expect((useGraphScenario.getState().meta.ui?.overlays?.['scheme-2'])?.title).toBe('新方案 2')
   })
 
-  it('creates a missing hp attribute from the interface scheme entry', () => {
+  it('stores a direct entity hp selection from the interface scheme entry', () => {
     const graph: GameGraph = { nodes: [], edges: [] }
     const overlays = {
       hud: {
@@ -96,11 +103,11 @@ describe('GraphConfigView overlay usage', () => {
         children: [{
           id: 'hp',
           component: 'BattlePlayerHpBar',
-          inputs: { bind: 'hero', attr: 'hp' },
+          inputs: { label: '我方', current: 0, max: 100 },
         }],
       },
     }
-    const entities = { hero: { id: 'hero', name: '主角', attrs: {} } }
+    const entities = { hero: { id: 'hero', name: '主角', attrs: { hp: 80, hpMax: 100 } } }
     useGraphScenario.setState({
       game: 'game-nodia-fighting',
       booted: true,
@@ -113,15 +120,82 @@ describe('GraphConfigView overlay usage', () => {
     const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
     render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
-    fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
+    const hpSelect = within(screen.getByText('血量').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })
+    fireEvent.click(hpSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '主角' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'hp' }))
 
-    expect(useGraphScenario.getState().meta.entities?.hero?.attrs?.hp).toBe(100)
-    expect(useGraphScenario.getState().meta.entities?.hero?.attrMeta?.hp).toMatchObject({
-      label: '生命',
-      initial: 100,
-      min: 0,
-      max: 100,
+    expect(useGraphScenario.getState().meta.ui?.overlays?.hud?.children[0]?.inputs?.current).toEqual({
+      expr: 'entity.hero.attr.hp',
+      pick: {
+        mode: 'pick',
+        terms: [{
+          source: 'entity',
+          refId: 'hero',
+          attr: 'hp',
+          op: '+',
+          constValue: undefined,
+        }],
+      },
     })
+  })
+
+  it('keeps a confirmed interface entity and attribute in the shared rule catalog', () => {
+    const graph: GameGraph = { nodes: [], edges: [] }
+    const overlays = {
+      hud: {
+        id: 'hud',
+        title: '战斗界面',
+        children: [{
+          id: 'hp',
+          component: 'BattleEnemyHpBar',
+          inputs: { label: '敌方', current: 0, max: 100 },
+        }],
+      },
+    }
+    const entities = {}
+    useGraphScenario.setState({
+      game: 'game-nodia-fighting',
+      booted: true,
+      blueprints: { main: blueprint('main', graph) },
+      mainBlueprintId: 'main',
+      activeBlueprintId: 'main',
+      graph,
+      meta: { entities, ui: { overlays } },
+    })
+    const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
+    render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
+
+    const hpPicker = within(screen.getByText('血量').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })
+    chooseCascade(hpPicker, '实体属性', '配置「敌方」实体')
+    fireEvent.click(screen.getByRole('menuitem', { name: '确认创建并选择' }))
+
+    expect(useGraphScenario.getState().meta.entities?.['ent-boss']).toMatchObject({
+      id: 'ent-boss',
+      name: '敌方',
+    })
+    expect(useGraphScenario.getState().meta.entities?.['ent-boss']?.attrs?.hp).toBe(100)
+    expect(useGraphScenario.getState().meta.entities?.['ent-boss']?.attrMeta?.hp).toMatchObject({
+      label: '当前血量',
+      initial: 100,
+    })
+
+    cleanup()
+    render(
+      <GraphConfigView
+        tabs={[
+          { section: 'entities', label: '实体' },
+          { section: 'variables', label: '变量' },
+          { section: 'formulas', label: '公式' },
+        ]}
+        scenario={scenario}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: '实体 ID' })).toHaveValue('ent-boss')
+    expect(screen.getByLabelText('属性「hp」的数值')).toHaveValue('100')
   })
 })

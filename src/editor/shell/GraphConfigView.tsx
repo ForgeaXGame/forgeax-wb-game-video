@@ -25,7 +25,12 @@ import {
 import { findDuplicateOverlays } from './overlay-dedup'
 import type { Formula } from '../persist/formula-authoring'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
-import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
+import {
+  ensureEntity,
+  ensureEntityAttribute,
+  type EntityAttributeCreateRequest,
+  type EntityCreateRequest,
+} from './metaCatalog'
 import type { ScenarioIdRename } from '../persist/scenario-id'
 import { collectItemIds } from './itemCatalog'
 import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
@@ -102,11 +107,19 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   // 基础覆盖物方案只锁结构：单组件不可增删；inputs/layout 可编辑。
   const selLocked = selOverlay.startsWith(BASE_HUD_PREFIX)
 
-  const setOverlays = (overlays: Record<string, Overlay>) => setMeta({ ...meta, ui: { ...meta.ui, overlays } })
+  const setOverlays = (overlays: Record<string, Overlay>) => {
+    setMeta((current) => ({ ...current, ui: { ...current.ui, overlays } }))
+  }
   const createEntityAttribute = (request: EntityAttributeCreateRequest) => {
     setMeta((current) => {
       const entities = ensureEntityAttribute(current.entities, request)
       return entities && entities !== current.entities ? { ...current, entities } : current
+    })
+  }
+  const createEntity = (request: EntityCreateRequest) => {
+    setMeta((current) => {
+      const entities = ensureEntity(current.entities, request)
+      return entities !== current.entities ? { ...current, entities } : current
     })
   }
   const addScheme = () => {
@@ -283,6 +296,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   onReactionsChange={(reactions) =>
                     setOverlays({ ...allOverlays, [selOverlay]: { ...ov, reactions } })}
                   onCreateEntityAttribute={createEntityAttribute}
+                  onCreateEntity={createEntity}
                 />
               )
             }}

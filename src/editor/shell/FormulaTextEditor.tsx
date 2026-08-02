@@ -108,16 +108,20 @@ function FormulaSyntax({ text }: { text: string }): JSX.Element {
 
 export function FormulaTextEditor({
   ast,
+  empty = false,
   entities,
   variables,
+  onEmpty,
   onChange,
 }: {
   ast: FormulaAstNode
+  empty?: boolean
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
+  onEmpty?: () => void
   onChange: (ast: FormulaAstNode) => void
 }): JSX.Element {
-  const canonical = previewFormula(ast)
+  const canonical = empty ? '' : previewFormula(ast)
   const [draft, setDraft] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
@@ -139,7 +143,7 @@ export function FormulaTextEditor({
   // 结构摘要 / 试算面板都基于「当前文本能否解析成 AST」——解析成功用新 AST，失败沿用旧 AST。
   const liveAst = useMemo<FormulaAstNode | null>(() => {
     const src = text.trim()
-    if (!src) return { t: 'num', id: 'n0', v: 0 }
+    if (!src) return null
     try {
       return parseFormulaText(normalizedText(src))
     } catch {
@@ -150,13 +154,16 @@ export function FormulaTextEditor({
   const holes = useMemo<FormulaHole[]>(() => (liveAst ? formulaHoles({ id: '', ast: liveAst }) : []), [liveAst])
   const refs = useMemo(() => (liveAst ? collectRefs(liveAst) : null), [liveAst])
   const hasHole = holes.length > 0
-  const sampleValue = !error && !hasHole ? tryEvalExpr(text, { ...ctx, rng: createRng(0) }) : null
+  const sampleValue = text.trim() && !error && !hasHole
+    ? tryEvalExpr(text, { ...ctx, rng: createRng(0) })
+    : null
 
   /** 校验并（成功时）回写 AST。 */
   function commit(next: string): void {
     const src = next.trim()
     if (!src) {
-      onChange({ t: 'num', id: 'n0', v: 0 })
+      if (onEmpty) onEmpty()
+      else onChange({ t: 'num', id: 'n0', v: 0 })
       setDraft(null)
       setError(null)
       return
@@ -222,6 +229,7 @@ export function FormulaTextEditor({
           spellCheck={false}
           rows={2}
           value={text}
+          placeholder="输入公式"
           onFocus={(e) => {
             if (draft == null && canonical === '0') {
               e.currentTarget.select()

@@ -270,12 +270,16 @@ const PREVIEW_CSS = `
   font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 3px;
   background: var(--gc-accent, #c8955a); color: #1a1510; pointer-events: none;
   font-variant-numeric: tabular-nums; font-weight: 600;
+  opacity: 0; visibility: hidden; transition: opacity .12s ease;
 }
 .ocp-align-tag {
   position:absolute; left:2px; bottom:2px; white-space:nowrap;
   font-size:9px; line-height:1; padding:2px 5px; border-radius:3px;
   background:rgba(72,155,149,.92); color:#f2fffd; pointer-events:none; font-weight:600;
+  opacity:0; visibility:hidden; transition:opacity .12s ease;
 }
+.oci-frame.is-hovered > .ocp-dim,
+.oci-frame.is-hovered > .ocp-align-tag { opacity:1; visibility:visible; }
 `
 
 function mockHudCtx(entities: Record<string, Entity> | undefined, variables: Record<string, Variable> | undefined): SkinCtx {

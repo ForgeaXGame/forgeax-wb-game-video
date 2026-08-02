@@ -21,7 +21,11 @@ import type { Formula } from '../persist/formula-authoring'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { buildDefaults, getComponent, getComponentManifest } from '../../runtime/registry/component-registry'
 import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
-import { ValueExprEditor } from './ValueExprEditor'
+import {
+  ValueExprEditor,
+  type ValueExprAttributeCreateConfig,
+  type ValueExprEntityCreateConfig,
+} from './ValueExprEditor'
 import { TextValueEditor, type TextOrRef } from './TextValueEditor'
 import { LooseNumberInput } from './TermChainEditor'
 import {
@@ -386,13 +390,25 @@ export function ValueInput({
   itemIds,
   effectOp,
   onClear,
+  emptyWhenUndefined,
   emptyLabel,
+  preferredEntityIds,
+  preferredAttrIds,
+  allowAttribute,
+  createAttribute,
+  createEntity,
 }: {
   value: NumOrExpr | string | undefined
   defaultValue?: number
   onChange: (v: NumOrExpr) => void
   onClear?: () => void
+  emptyWhenUndefined?: boolean
   emptyLabel?: string
+  preferredEntityIds?: readonly string[]
+  preferredAttrIds?: readonly string[]
+  allowAttribute?: (entity: Entity | undefined, attrId: string) => boolean
+  createAttribute?: ValueExprAttributeCreateConfig
+  createEntity?: ValueExprEntityCreateConfig
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
 } & MetaCatalogProps): JSX.Element {
@@ -405,8 +421,14 @@ export function ValueInput({
         formulas={formulas}
         onChange={onChange}
         onClear={onClear}
+        emptyWhenUndefined={emptyWhenUndefined}
         emptyLabel={emptyLabel}
         effectOp={effectOp}
+        preferredEntityIds={preferredEntityIds}
+        preferredAttrIds={preferredAttrIds}
+        allowAttribute={allowAttribute}
+        createAttribute={createAttribute}
+        createEntity={createEntity}
       />
     </div>
   )
@@ -417,15 +439,29 @@ export function TextValueInput({
   onChange,
   entities,
   variables,
+  preferredEntityIds,
+  entityNameOnly,
+  createEntity,
 }: {
   value: TextOrRef | undefined
   onChange: (v: TextOrRef) => void
   entities: Record<string, Entity> | undefined
   variables: Record<string, Variable> | undefined
+  preferredEntityIds?: readonly string[]
+  entityNameOnly?: boolean
+  createEntity?: ValueExprEntityCreateConfig
 }): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <TextValueEditor value={value} entities={entities} variables={variables} onChange={onChange} />
+      <TextValueEditor
+        value={value}
+        entities={entities}
+        variables={variables}
+        preferredEntityIds={preferredEntityIds}
+        entityNameOnly={entityNameOnly}
+        createEntity={createEntity}
+        onChange={onChange}
+      />
     </div>
   )
 }

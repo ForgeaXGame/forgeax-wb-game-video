@@ -144,14 +144,14 @@ describe('NodeInspector · 界面事件动作入口', () => {
     })
   })
 
-  it('forwards missing hp creation from the node-mounted scheme entry', () => {
+  it('stores a direct entity hp selection from the node-mounted scheme entry', () => {
     const overlay = {
       id: 'battle-hud',
       title: '战斗 HUD',
       children: [{
         id: 'hp',
         component: 'BattlePlayerHpBar',
-        inputs: { bind: 'hero', attr: 'hp' },
+        inputs: { label: '我方', current: 0, max: 100 },
       }],
     }
     const graph: GameGraph = {
@@ -165,25 +165,43 @@ describe('NodeInspector · 界面事件动作入口', () => {
       }],
       edges: [],
     }
-    const onCreateEntityAttribute = vi.fn()
+    const onChange = vi.fn()
     render(
       <NodeInspector
         graph={graph}
         nodeId="gate"
         overlays={{ [overlay.id]: overlay }}
-        entities={{ hero: { id: 'hero', name: '主角', attrs: {} } }}
-        onCreateEntityAttribute={onCreateEntityAttribute}
-        onChange={vi.fn()}
+        entities={{ hero: { id: 'hero', name: '主角', attrs: { hp: 80, hpMax: 100 } } }}
+        onChange={onChange}
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
-    fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
-    expect(onCreateEntityAttribute).toHaveBeenCalledWith({
-      entityId: 'hero',
-      attrId: 'hp',
-      initialValue: 100,
-      meta: { label: '生命', initial: 100, min: 0, max: 100 },
+    const hpSelect = within(screen.getByText('血量').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })
+    fireEvent.click(hpSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '主角' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'hp' }))
+
+    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(next.nodes[0]?.data.overlayNodes?.[0]?.overrides).toEqual({
+      hp: {
+        inputs: {
+          current: {
+            expr: 'entity.hero.attr.hp',
+            pick: {
+              mode: 'pick',
+              terms: [{
+                source: 'entity',
+                refId: 'hero',
+                attr: 'hp',
+                op: '+',
+                constValue: undefined,
+              }],
+            },
+          },
+        },
+      },
     })
   })
 })

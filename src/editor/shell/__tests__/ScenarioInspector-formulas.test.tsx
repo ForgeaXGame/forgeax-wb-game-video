@@ -7,7 +7,7 @@ import { ScenarioInspector, type ScenarioMeta } from '../ScenarioInspector'
 afterEach(cleanup)
 
 describe('ScenarioInspector formulas', () => {
-  it('creates a formula whose initial zero is ready to be overwritten', () => {
+  it('creates a formula with an empty expression', () => {
     function Harness(): JSX.Element {
       const [value, setValue] = useState<ScenarioMeta>({})
       return <ScenarioInspector value={value} section="formulas" onChange={setValue} />
@@ -17,10 +17,11 @@ describe('ScenarioInspector formulas', () => {
     fireEvent.click(screen.getByRole('button', { name: '+ 公式' }))
 
     const input = screen.getByRole('textbox', { name: '公式表达式' }) as HTMLTextAreaElement
-    expect(input.value).toBe('0')
+    expect(input.value).toBe('')
+    expect(input).toHaveAttribute('placeholder', '输入公式')
 
     fireEvent.focus(input)
     expect(input.selectionStart).toBe(0)
-    expect(input.selectionEnd).toBe(1)
+    expect(input.selectionEnd).toBe(0)
   })
 })

@@ -83,7 +83,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       }
     })
     const onPatchChildLayout = vi.fn()
-    render(
+    const { container } = render(
       <OverlayCatalogPreview
         overlay={{
           id: 'scheme',
@@ -186,7 +186,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       }
     })
 
-    render(
+    const { container } = render(
       <OverlayCatalogPreview
         overlay={{
           id: 'scheme',
@@ -217,6 +217,17 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       LOGICAL_CANVAS,
       { left: 0.2, top: 0.4, width: 0.2, height: 0.2 },
     )).toBe('y-center')
-    await waitFor(() => expect(screen.getByText('XY 轴居中')).toBeTruthy())
+    const alignmentTag = await screen.findByText('XY 轴居中')
+    expect(getComputedStyle(alignmentTag).visibility).toBe('hidden')
+
+    fireEvent.pointerMove(screen.getByRole('application', { name: '界面方案画布' }), {
+      clientX: 100,
+      clientY: 50,
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-canvas-item="damage"]')).toHaveClass('is-hovered')
+      expect(getComputedStyle(alignmentTag).visibility).toBe('visible')
+    })
   })
 })

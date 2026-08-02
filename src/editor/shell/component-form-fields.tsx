@@ -19,7 +19,7 @@ import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, 
 import type { TextOrRef } from './TextValueEditor'
 import { ColorPicker } from './ColorPicker'
 import { entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
-import type { EntityAttributeCreateRequest } from './metaCatalog'
+import type { EntityAttributeCreateRequest, EntityCreateRequest } from './metaCatalog'
 
 /**
  * events 编辑器的 variant 由触发的输入标记本身决定，不查组件 id 也不查任何跨组件分类表：
@@ -41,6 +41,7 @@ const DEFAULT_HP_ATTRIBUTE: EntityAttributeCreateRequest = {
 }
 
 export type EntityAttributeCreateHandler = (request: EntityAttributeCreateRequest) => void
+export type EntityCreateHandler = (request: EntityCreateRequest) => void
 
 function MissingAttributeCreateControl({
   entity,
@@ -232,6 +233,112 @@ function isHpBarComponent(componentId: string): boolean {
   return componentId === 'BattlePlayerHpBar' || componentId === 'BattleEnemyHpBar'
 }
 
+function preferredEntityIds(
+  componentId: string,
+  entities: Record<string, Entity> | undefined,
+): string[] | undefined {
+  const role = componentId === 'BattleEnemyHpBar'
+    ? /enemy|boss|foe|敌|怪|首领/i
+    : componentId === 'BattlePlayerHpBar'
+      ? /player|hero|ally|玩家|主角|我方/i
+      : undefined
+  if (!role) return undefined
+  const ids = Object.values(entities ?? {})
+    .filter((entity) => role.test([entity.id, entity.kind, entity.name].filter(Boolean).join(' ')))
+    .map((entity) => entity.id)
+  return ids.length ? ids : undefined
+}
+
+type AttributeSemantic = 'current-hp' | 'max-hp' | 'current-qi' | 'max-qi'
+
+function attributeSemantic(componentId: string, inputKey: string): AttributeSemantic | undefined {
+  if (componentId !== 'BattlePlayerHpBar' && componentId !== 'BattleEnemyHpBar') return undefined
+  if (inputKey === 'current') return 'current-hp'
+  if (inputKey === 'max') return 'max-hp'
+  if (inputKey === 'qi') return 'current-qi'
+  if (inputKey === 'qiMax') return 'max-qi'
+  return undefined
+}
+
+const SEMANTIC_FALLBACK_IDS: Record<AttributeSemantic, readonly string[]> = {
+  'current-hp': ['hp', 'health'],
+  'max-hp': ['hpMax', 'maxHp', 'healthMax', 'maxHealth'],
+  'current-qi': ['qi', 'energy', 'rage'],
+  'max-qi': ['qiMax', 'maxQi', 'energyMax', 'maxEnergy', 'rageMax', 'maxRage'],
+}
+
+function normalizedSemanticText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_.\-—:：/\\()[\]（）【】]/g, '')
+}
+
+function labelMatchesSemantic(label: string, semantic: AttributeSemantic): boolean {
+  const text = normalizedSemanticText(label)
+  const maximum = /最大|上限|峰值|maximum|max|limit|cap/.test(text)
+  const hp = /血量|生命值?|health|hitpoints?|hp/.test(text)
+  const qi = /气力|能量|怒气|energy|rage|mana|qi/.test(text)
+  if (semantic === 'current-hp') return hp && !maximum
+  if (semantic === 'max-hp') return hp && maximum
+  if (semantic === 'current-qi') return qi && !maximum
+  return qi && maximum
+}
+
+function attributeMatchesSemantic(
+  entity: Entity | undefined,
+  attrId: string,
+  semantic: AttributeSemantic,
+): boolean {
+  const displayName = entity?.attrMeta?.[attrId]?.label?.trim()
+  if (displayName) return labelMatchesSemantic(displayName, semantic)
+  return SEMANTIC_FALLBACK_IDS[semantic].some((candidate) =>
+    candidate.toLowerCase() === attrId.toLowerCase())
+}
+
+function attributeCreateTemplate(
+  componentId: string,
+  inputKey: string,
+): Omit<EntityAttributeCreateRequest, 'entityId'> | undefined {
+  if (!isHpBarComponent(componentId)) return undefined
+  if (inputKey === 'current') {
+    return {
+      attrId: 'hp',
+      initialValue: 100,
+      meta: { label: '当前血量', initial: 100, min: 0, max: 100 },
+    }
+  }
+  if (inputKey === 'max') {
+    return {
+      attrId: 'hpMax',
+      initialValue: 100,
+      meta: { label: '最大血量', initial: 100, min: 0 },
+    }
+  }
+  if (inputKey === 'qi') {
+    return {
+      attrId: 'qi',
+      initialValue: 3,
+      meta: { label: '当前气力', initial: 3, min: 0, max: 5 },
+    }
+  }
+  if (inputKey === 'qiMax') {
+    return {
+      attrId: 'qiMax',
+      initialValue: 5,
+      meta: { label: '气力上限', initial: 5, min: 0 },
+    }
+  }
+  return undefined
+}
+
+function entityCreateTemplate(componentId: string): EntityCreateRequest | undefined {
+  if (componentId === 'BattleEnemyHpBar') {
+    return { entityId: 'ent-boss', name: '敌方' }
+  }
+  if (componentId === 'BattlePlayerHpBar') {
+    return { entityId: 'ent-player', name: '我方' }
+  }
+  return undefined
+}
+
 function isComplexInput(inp: ComponentInput): boolean {
   return (
     inp.component === 'events'
@@ -314,6 +421,7 @@ function renderInput(
   compact: boolean,
   labelWidth?: CSSProperties['width'],
   onCreateEntityAttribute?: EntityAttributeCreateHandler,
+  onCreateEntity?: EntityCreateHandler,
 ): JSX.Element | null {
   const val = values[inp.key]
   const label = inp.label ?? inp.key
@@ -373,7 +481,12 @@ function renderInput(
     )
   }
   if (inp.component === 'numberExpr') {
-    const optional = inp.default === undefined
+    const optional = inp.required !== true && inp.default === undefined
+    const preferredEntities = preferredEntityIds(componentId, pickers?.entities)
+    const semantic = attributeSemantic(componentId, inp.key)
+    const semanticAttrIds = semantic ? SEMANTIC_FALLBACK_IDS[semantic] : undefined
+    const createTemplate = attributeCreateTemplate(componentId, inp.key)
+    const createEntityTemplate = entityCreateTemplate(componentId)
     return (
       <div
         key={inp.key}
@@ -381,7 +494,7 @@ function renderInput(
           display: 'grid',
           gridTemplateColumns: `${labelWidth ?? 'max-content'} minmax(0, 1fr)`,
           columnGap: 8,
-          alignItems: 'start',
+          alignItems: 'center',
           width: '100%',
           minWidth: 0,
           flexBasis: '100%',
@@ -391,12 +504,17 @@ function renderInput(
           fontSize: 11,
         }}
       >
-        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 5 }}>{label}</span>
+        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11 }}>{label}</span>
         {inp.valueType === 'string' ? (
           <TextValueInput
             value={(val ?? inp.default) as TextOrRef | undefined}
             entities={pickers?.entities}
             variables={pickers?.variables}
+            preferredEntityIds={preferredEntities}
+            entityNameOnly={isHpBarComponent(componentId) && inp.key === 'label'}
+            createEntity={createEntityTemplate && onCreateEntity
+              ? { template: createEntityTemplate, onCreate: onCreateEntity }
+              : undefined}
             onChange={(next) => onPatch(inp.key, next)}
           />
         ) : (
@@ -406,9 +524,19 @@ function renderInput(
             entities={pickers?.entities}
             variables={pickers?.variables}
             formulas={pickers?.formulas}
+            preferredEntityIds={preferredEntities}
+            preferredAttrIds={semanticAttrIds}
+            allowAttribute={semantic
+              ? (entity, attrId) => attributeMatchesSemantic(entity, attrId, semantic)
+              : undefined}
+            createAttribute={createTemplate && onCreateEntityAttribute
+              ? { template: createTemplate, onCreate: onCreateEntityAttribute }
+              : undefined}
+            createEntity={createEntityTemplate && onCreateEntity
+              ? { template: createEntityTemplate, onCreate: onCreateEntity }
+              : undefined}
             onChange={(next) => onPatch(inp.key, next)}
-            onClear={optional ? () => onPatch(inp.key, undefined) : undefined}
-            emptyLabel={label.includes('覆盖') ? '使用组件实时值' : '未设置（使用组件默认）'}
+            emptyWhenUndefined={optional}
           />
         )}
       </div>
@@ -505,21 +633,20 @@ function renderInput(
     )
   }
   if (inp.options) {
-    const defaultOption = typeof inp.default === 'string'
-      ? inp.options.find((option) => option.value === inp.default)
-      : undefined
+    const selectedValue = typeof val === 'string'
+      ? val
+      : typeof inp.default === 'string' && inp.options.some((option) => option.value === inp.default)
+        ? inp.default
+        : (inp.options[0]?.value ?? '')
     return (
       <span key={inp.key}>
         {wrap(
           <select
-            value={typeof val === 'string' ? val : ''}
-            onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+            value={selectedValue}
+            onChange={(e) => onPatch(inp.key, e.target.value)}
             style={{ flex: compact ? undefined : 1, maxWidth: compact ? 110 : undefined, fontSize: 12 }}
             title={hint}
           >
-            <option value="">
-              {defaultOption ? `默认：${defaultOption.label}` : '（未选）'}
-            </option>
             {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>,
         )}
@@ -620,6 +747,7 @@ export function ComponentFormFields({
   density = 'default',
   labelWidth,
   onCreateEntityAttribute,
+  onCreateEntity,
 }: {
   componentId: string
   values: Record<string, unknown>
@@ -636,6 +764,8 @@ export function ComponentFormFields({
   labelWidth?: CSSProperties['width']
   /** 新血条绑定默认 hp 但实体未声明时，经二次确认后由场景持有者补建。 */
   onCreateEntityAttribute?: EntityAttributeCreateHandler
+  /** 新血条没有可选实体时，经二次确认后由场景持有者补建。 */
+  onCreateEntity?: EntityCreateHandler
 }): JSX.Element | null {
   const compact = density === 'compact'
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
@@ -662,18 +792,18 @@ export function ComponentFormFields({
           {grouped ? groupLabel('参数配置') : null}
           {compact ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
-              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, onCreateEntityAttribute))}
+              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, onCreateEntityAttribute, onCreateEntity))}
             </div>
           ) : (
-            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, onCreateEntityAttribute))
+            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, onCreateEntityAttribute, onCreateEntity))
           )}
-          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute))}
+          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity))}
         </div>
       ) : null}
       {events.length > 0 ? (
         <div style={grouped ? { borderTop: '1px solid #2f2f2f', paddingTop: 5 } : undefined}>
           {grouped ? groupLabel('事件配置') : null}
-          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute))}
+          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity))}
         </div>
       ) : null}
     </div>

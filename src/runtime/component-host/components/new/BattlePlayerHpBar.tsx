@@ -2,19 +2,16 @@ import type { ReactNode } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
-import { resolveBoundHpBarValues } from './boundHpBar'
 import { resolveNumericValue, resolveTextValue } from '../numericValue'
 
 export const BattlePlayerHpBarManifest: ComponentManifest = {
   id: 'BattlePlayerHpBar',
   label: '我方水墨血条',
   inputs: [
-    { key: 'bind', label: '绑定对象', valueType: 'string', component: 'entity' },
-    { key: 'attr', label: '当前值属性', valueType: 'string', component: 'attr' },
     { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-    { key: 'current', label: '当前值覆盖', valueType: 'number', component: 'numberExpr' },
-    { key: 'max', label: '最大值覆盖', valueType: 'number', component: 'numberExpr' },
-    { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+    { key: 'current', label: '血量', valueType: 'number', required: true, component: 'numberExpr' },
+    { key: 'max', label: '最大血量', valueType: 'number', required: true, component: 'numberExpr' },
+    { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr', default: 3 },
     { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
   ],
   events: [],
@@ -25,13 +22,8 @@ export function BattlePlayerHpBar({ overlay, ctx }: OverlayProps): ReactNode {
   ensureInkFilters()
   ensureBrushFont()
   const inputs = overlay.inputs
-  const bound = resolveBoundHpBarValues(inputs, ctx, 50, 90)
-  const current = typeof inputs.current === 'number'
-    ? bound.current
-    : resolveNumericValue(inputs.current, ctx) ?? bound.current
-  const max = typeof inputs.max === 'number'
-    ? bound.max
-    : resolveNumericValue(inputs.max, ctx) ?? bound.max
+  const current = resolveNumericValue(inputs.current, ctx) ?? 50
+  const max = resolveNumericValue(inputs.max, ctx) ?? 90
   const label = resolveTextValue(inputs.label, ctx) || '我方'
   const low = max > 0 && current / max <= 0.3
   const qi = resolveNumericValue(inputs.qi, ctx) ?? ctx?.hud.vars.qi ?? 3

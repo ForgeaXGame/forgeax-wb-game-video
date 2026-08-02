@@ -40,7 +40,12 @@ import {
 } from '../../graph/edit/graph-scope'
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
 import { runtimeRuleSignature } from './runtime-rule-signature'
-import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
+import {
+  ensureEntity,
+  ensureEntityAttribute,
+  type EntityAttributeCreateRequest,
+  type EntityCreateRequest,
+} from './metaCatalog'
 
 interface PlayAnchor {
   nodeId: string
@@ -102,6 +107,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setMeta((current) => {
       const entities = ensureEntityAttribute(current.entities, request)
       return entities && entities !== current.entities ? { ...current, entities } : current
+    })
+  }, [setMeta])
+  const createEntity = useCallback((request: EntityCreateRequest) => {
+    setMeta((current) => {
+      const entities = ensureEntity(current.entities, request)
+      return entities !== current.entities ? { ...current, entities } : current
     })
   }, [setMeta])
   // 节点配置「引用蓝图」下拉：由 blueprints 派生为 SubFlowPackDef 列表（不落盘 packs）；
@@ -851,6 +862,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                   editPreviewScenario((s, n) => removeMountGraph(s, n, mountId))
                 }}
                 onCreateEntityAttribute={createEntityAttribute}
+                onCreateEntity={createEntity}
                 onJump={jump}
               />
             </div>

@@ -33,31 +33,34 @@ function ctx(playerHp: number, bossHp: number): SkinCtx {
   }
 }
 
-describe('bound ink health bars', () => {
-  it('projects the player entity delta onto the authored 100-point display baseline', () => {
+describe('ink health bar values', () => {
+  it('renders fixed player values without applying entity deltas', () => {
     const { container } = render(BattlePlayerHpBar({
       overlay: {
         elementId: 'player-hp',
         component: 'BattlePlayerHpBar',
-        inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
+        inputs: { current: 100, max: 100 },
       },
       ctx: ctx(220, 700),
     }))
 
-    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('20%')
+    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('100%')
     expect(container.querySelector('[aria-label="气力 2/5"]')).not.toBeNull()
   })
 
-  it('uses the enemy binding and follows its entity delta', () => {
+  it('renders enemy entity expressions directly', () => {
     const { container } = render(BattleEnemyHpBar({
       overlay: {
         elementId: 'enemy-hp',
         component: 'BattleEnemyHpBar',
-        inputs: { bind: 'ent-boss', attr: 'hp', current: 100, max: 100 },
+        inputs: {
+          current: { expr: 'entity.ent-boss.attr.hp' },
+          max: 700,
+        },
       },
       ctx: ctx(300, 630),
     }))
 
-    expect((container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('30%')
+    expect((container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('90%')
   })
 })
