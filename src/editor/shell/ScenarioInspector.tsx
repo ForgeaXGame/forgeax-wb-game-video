@@ -1,7 +1,7 @@
 /**
  * ScenarioInspector —— 场景级配置：variables / entities / overlays 目录 / formulas / 默认 BGM。
  */
-import { useState, type CSSProperties, type JSX } from 'react'
+import { useEffect, useState, type CSSProperties, type JSX } from 'react'
 import type { AttrMeta, Entity, GameScenario, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
@@ -9,6 +9,7 @@ import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
 import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
 import { FormulaTextEditor } from './FormulaTextEditor'
 import { LooseNumberInput } from './TermChainEditor'
+import type { ScenarioIdRename } from '../persist/scenario-id'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -24,9 +25,14 @@ const sectionTitle: CSSProperties = {
   alignItems: 'center',
   marginTop: 12,
   borderTop: '1px solid #333',
-  paddingTop: 6,
+  padding: '6px 0',
+  position: 'sticky',
+  top: 0,
+  zIndex: 2,
+  background: 'var(--gc-panel, #1b1713)',
 }
 const variableGridColumns = 'minmax(0, 0.9fr) minmax(0, 1.5fr) minmax(3.5rem, 0.55fr) 2rem'
+const entityAttrGrid = 'minmax(4.5rem, 0.45fr) minmax(0, 0.9fr) minmax(7rem, 1.25fr) 2rem'
 
 function field(label: string, node: JSX.Element): JSX.Element {
   return (
@@ -35,6 +41,26 @@ function field(label: string, node: JSX.Element): JSX.Element {
       {node}
     </label>
   )
+}
+
+function EditableIdInput({ value, existing, rename, onRename, label }: {
+  value: string
+  existing: Record<string, unknown>
+  rename: Omit<ScenarioIdRename, 'newId'> | { kind: 'attribute'; entityId: string; oldId: string }
+  onRename: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
+  label: string
+}): JSX.Element {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => { setDraft(value) }, [value])
+  const next = draft.trim()
+  const error = !next ? 'ID 不能为空' : next !== value && Object.hasOwn(existing, next) ? 'ID 已存在' : ''
+  const commit = (): void => {
+    if (error) { window.alert(`${label} 无法修改：${error}`); setDraft(value); return }
+    if (next === value) return
+    const result = onRename({ ...rename, newId: next } as ScenarioIdRename)
+    if (!result.ok) { window.alert(`${label} 无法修改：ID 已存在`); setDraft(value) }
+  }
+  return <input value={draft} aria-label={label} aria-invalid={Boolean(error)} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); e.currentTarget.blur() } }} />
 }
 
 /** 自动分配与 Record key 对齐的 id（添加时用）。 */
@@ -127,12 +153,14 @@ export function ScenarioInspector({
   section,
   overlayUsage,
   onChange,
+  onRenameId = () => ({ ok: false, reason: 'not_found' }),
 }: {
   value: ScenarioMeta
   section?: ScenarioSection
   /** overlayId → 被多少节点挂载引用（资源池「已用/未用」角标）。 */
   overlayUsage?: Record<string, number>
   onChange: (next: ScenarioMeta) => void
+  onRenameId?: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
 }): JSX.Element {
   const show = (s: ScenarioSection) => !section || section === s
   const variables = value.variables ?? {}
@@ -197,7 +225,7 @@ export function ScenarioInspector({
   const setFormulas = (f: Record<string, Formula>) => onChange({ ...value, formulas: f })
 
   return (
-    <div style={{ padding: 10, overflow: 'auto', fontSize: 12 }}>
+    <div style={{ padding: 10, fontSize: 12 }}>
       {show('overlays') && (
         <>
           <div style={sectionTitle}>
@@ -308,23 +336,7 @@ export function ScenarioInspector({
                 background: 'rgba(255,255,255,0.025)',
               }}
             >
-              <code
-                title={`变量 ID：${v.id}`}
-                style={{
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  color: 'var(--gc-faint, #8c8377)',
-                  background: 'rgba(0,0,0,0.2)',
-                  border: '1px solid rgba(255,255,255,0.09)',
-                  borderRadius: 5,
-                  padding: '4px 6px',
-                  fontSize: 11,
-                }}
-              >
-                {v.id}
-              </code>
+              <EditableIdInput value={v.id} existing={variables} rename={{ kind: 'variable', oldId: key }} onRename={onRenameId} label="变量 ID" />
               <input
                 value={v.name ?? ''}
                 placeholder="变量名称"
@@ -374,7 +386,9 @@ export function ScenarioInspector({
               key={key}
               entKey={key}
               ent={ent}
+              entities={entities}
               onChange={(next) => setEntities({ ...entities, [key]: { ...next, id: key } })}
+              onRename={onRenameId}
               onDelete={() => {
                 const { [key]: _drop, ...rest } = entities
                 setEntities(rest)
@@ -406,9 +420,11 @@ export function ScenarioInspector({
               key={key}
               formulaKey={key}
               formula={f}
+              formulas={formulas}
               entities={entities}
               variables={variables}
               onChange={(next) => setFormulas({ ...formulas, [key]: { ...next, id: key } })}
+              onRename={onRenameId}
               onDelete={() => {
                 const { [key]: _drop, ...rest } = formulas
                 setFormulas(rest)
@@ -425,12 +441,16 @@ export function ScenarioInspector({
 function EntityRow({
   entKey,
   ent,
+  entities,
   onChange,
+  onRename,
   onDelete,
 }: {
   entKey: string
   ent: Entity
+  entities: Record<string, Entity>
   onChange: (next: Entity) => void
+  onRename: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
   onDelete: () => void
 }): JSX.Element {
   const attrs = ent.attrs ?? {}
@@ -500,7 +520,7 @@ function EntityRow({
 
   return (
     <div style={box}>
-      {field('id', <input value={ent.id} readOnly style={{ flex: 1, opacity: 0.7 }} />)}
+      {field('id', <EditableIdInput value={ent.id} existing={entities} rename={{ kind: 'entity', oldId: entKey }} onRename={onRename} label="实体 ID" />)}
       {field(
         '名称',
         <input
@@ -523,43 +543,20 @@ function EntityRow({
         </button>
       </div>
       {Object.entries(attrs).map(([ak, av]) => (
-        <div key={ak} style={rowStyle}>
-          {editableAttrIds.has(ak) ? (
-            <AttributeIdInput
-              id={ak}
-              onCommit={(nextId) => {
-                const error = renameAttr(ak, nextId)
-                if (!error) {
-                  setEditableAttrIds((current) => {
-                    const next = new Set(current)
-                    next.delete(ak)
-                    return next
-                  })
-                }
-                return error
-              }}
-            />
-          ) : (
-            <input
-              value={ak}
-              readOnly
-              aria-label={`属性「${ak}」的 id`}
-              style={{ width: 84, opacity: 0.7 }}
-              title="属性 id：创建并命名后固定，避免破坏公式和绑定引用"
-            />
-          )}
+        <div key={ak} style={{ ...rowStyle, display: 'grid', gridTemplateColumns: entityAttrGrid, gap: 8, flexWrap: 'nowrap' }}>
+          <EditableIdInput value={ak} existing={attrs} rename={{ kind: 'attribute', entityId: entKey, oldId: ak }} onRename={onRename} label={`${ent.id} 的属性 ID`} />
           <input
             value={attrMeta[ak]?.label ?? ''}
             placeholder="显示名"
             onChange={(e) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: e.target.value || undefined } })}
-            style={{ flex: 1 }}
+            style={{ minWidth: 0, width: '100%' }}
           />
           <LooseNumberInput
             value={av}
             aria-label={`属性「${ak}」的数值`}
             emptyValue={0}
             onChange={(value) => setAttrValue(ak, value)}
-            style={{ width: 70 }}
+            style={{ minWidth: 0, width: '100%' }}
             title="当前/初始数值"
           />
           <button style={del} onClick={() => removeAttr(ak)} title="删除该属性">×</button>
@@ -576,21 +573,25 @@ function EntityRow({
 function FormulaRow({
   formulaKey,
   formula,
+  formulas,
   entities,
   variables,
   onChange,
+  onRename,
   onDelete,
 }: {
   formulaKey: string
   formula: Formula
+  formulas: Record<string, Formula>
   entities: Record<string, Entity>
   variables: Record<string, Variable>
   onChange: (next: Formula) => void
+  onRename: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
   onDelete: () => void
 }): JSX.Element {
   return (
     <div style={box}>
-      {field('id', <input value={formula.id} readOnly style={{ flex: 1, opacity: 0.7 }} />)}
+      {field('id', <EditableIdInput value={formula.id} existing={formulas} rename={{ kind: 'formula', oldId: formulaKey }} onRename={onRename} label="公式 ID" />)}
       {field(
         '名称',
         <input
