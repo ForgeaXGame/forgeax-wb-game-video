@@ -12,7 +12,7 @@ import {
   GainFloatText,
   GainFloatTextManifest,
 } from '../GainFloatText'
-import { resolveNumericFloatDurationMs, resolveNumericFloatValue } from '../numericFloatText'
+import { resolveTextDurationMs, resolveTextParameter } from '../textParameter'
 
 afterEach(cleanup)
 
@@ -47,54 +47,59 @@ function renderViaHost(component: string, inputs: Record<string, unknown>, skinC
 }
 
 describe('numeric float text components', () => {
-  it('declare a shared constant-or-formula value input', () => {
+  it('declare fixed text and a dynamic parameter input', () => {
     expect(DamageFloatTextManifest.inputs).toEqual([
-      { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr' },
+      { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '-25' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
     ])
     expect(GainFloatTextManifest.inputs).toEqual([
-      { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: 50 },
+      { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '+50' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ffd54a' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
     ])
   })
 
-  it('Host resolves fixed and formula values into flat props', () => {
-    renderViaHost('DamageFloatText', { value: 25 })
-    renderViaHost('GainFloatText', { value: 50 })
-    renderViaHost('DamageFloatText', { value: { expr: 'entity.hero.attr.attack + var.bonus' } })
-    renderViaHost('GainFloatText', { value: { expr: 'entity.hero.attr.attack / 2' } })
+  it('Host resolves parameter; leaf concatenates fixed text', () => {
+    renderViaHost('DamageFloatText', { fixedText: '伤害 ', parameter: -25 })
+    renderViaHost('GainFloatText', { fixedText: '获得 ', parameter: '青铜钥匙' })
+    renderViaHost('GainFloatText', { fixedText: '获得 ', parameter: { ref: 'var.bonus' } })
+    renderViaHost('DamageFloatText', { parameter: { expr: '-(entity.hero.attr.attack + var.bonus)' } })
+    renderViaHost('GainFloatText', { parameter: { expr: 'entity.hero.attr.attack / 2' } })
 
-    expect(screen.getByText('-25')).toBeTruthy()
-    expect(screen.getByText('+50')).toBeTruthy()
+    expect(screen.getByText('伤害 -25')).toBeTruthy()
+    expect(screen.getByText('获得 青铜钥匙')).toBeTruthy()
+    expect(screen.getByText('获得 3')).toBeTruthy()
     expect(screen.getByText('-23')).toBeTruthy()
     expect(screen.getByText('+10')).toBeTruthy()
   })
 
-  it('always presents damage values with a minus sign', () => {
-    const { rerender } = render(<DamageFloatText value={10} />)
-    expect(screen.getByText('-10')).toBeTruthy()
-
-    rerender(<DamageFloatText value={-10} />)
-    expect(screen.getByText('-10')).toBeTruthy()
-  })
-
-  it('uses each skin default appearance and accepts overrides', () => {
-    const { rerender } = render(<DamageFloatText />)
+  it('uses each skin default appearance and accepts its optional text overrides', () => {
+    const { rerender } = render(<DamageFloatText parameter="-25" />)
     expect(screen.getByText('-25')).toHaveStyle({ color: '#ff5a5a', '--gv-text-font-size': '3.5cqh' })
 
-    rerender(<GainFloatText value={50} color="#123456" fontSize={4} />)
+    rerender(<GainFloatText parameter="+50" color="#123456" fontSize={4} />)
     expect(screen.getByText('+50')).toHaveStyle({ color: '#123456', '--gv-text-font-size': '4cqh' })
   })
 
   it('scales the entire float animation from its total duration input', () => {
-    render(<DamageFloatText value={25} durationMs={2400} />)
+    render(<DamageFloatText parameter="-25" durationMs={2400} />)
     expect(screen.getByText('-25').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
-    expect(resolveNumericFloatDurationMs(undefined)).toBe(1100)
-    expect(resolveNumericFloatDurationMs(0)).toBe(1100)
+    expect(resolveTextDurationMs(undefined)).toBe(1100)
+    expect(resolveTextDurationMs(0)).toBe(1100)
+  })
+
+  it('Host applies parameter fallback when it is absent', () => {
+    renderViaHost('DamageFloatText', {})
+    expect(screen.getByText('-25')).toBeTruthy()
+  })
+
+  it('keeps an explicitly empty parameter empty', () => {
+    expect(resolveTextParameter('', undefined, 'fallback')).toBe('')
   })
 
   it('does not advance runtime RNG when a random formula is evaluated repeatedly', () => {
@@ -112,10 +117,10 @@ describe('numeric float text components', () => {
         visited: new Set(),
       },
     }
-    const value = { expr: 'floor((entity.hero.attr.attack + var.bonus) * (0.85 + rand() * 0.3) * (1 + chance(1) * 0.5))' }
+    const value = { expr: '-floor((entity.hero.attr.attack + var.bonus) * (0.85 + rand() * 0.3) * (1 + chance(1) * 0.5))' }
     const before = rng.getState()
-    const first = resolveNumericFloatValue(value, runtimeCtx)
-    const second = resolveNumericFloatValue(value, runtimeCtx)
+    const first = resolveTextParameter(value, runtimeCtx, '')
+    const second = resolveTextParameter(value, runtimeCtx, '')
 
     expect(second).toBe(first)
     expect(rng.getState()).toEqual(before)

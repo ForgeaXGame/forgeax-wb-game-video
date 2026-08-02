@@ -835,7 +835,31 @@ function floatPreviewParams(
   el: OverlayChild,
   inputs: FloatTextParams,
 ): FloatTextParams {
-  if (inputs.expr != null && inputs.expr.trim() !== '') return inputs
+  const raw = inputs as FloatTextParams & {
+    fixedText?: unknown
+    parameter?: unknown
+    expr?: unknown
+  }
+  if (el.component === 'DamageFloatText' || el.component === 'GainFloatText') {
+    const fixedText = typeof raw.fixedText === 'string' ? raw.fixedText : ''
+    if (Object.prototype.hasOwnProperty.call(raw, 'parameter')) {
+      if (typeof raw.parameter === 'string') {
+        return { ...inputs, text: `${fixedText}${raw.parameter}`, expr: undefined }
+      }
+      if (
+        typeof raw.parameter === 'number'
+        || (
+          raw.parameter
+          && typeof raw.parameter === 'object'
+          && typeof (raw.parameter as { expr?: unknown }).expr === 'string'
+        )
+      ) {
+        return { ...inputs, text: `${fixedText}{v}`, expr: raw.parameter as never }
+      }
+      return { ...inputs, text: fixedText, expr: undefined }
+    }
+  }
+  if (raw.expr != null && (typeof raw.expr !== 'string' || raw.expr.trim() !== '')) return inputs
   const first = overlayEffects(scenario, node, el.id).find((e) => e.kind === 'attr' || e.kind === 'var')
   const v = first && (first.kind === 'attr' || first.kind === 'var') ? first.value : undefined
   if (v === undefined) return inputs
@@ -1017,7 +1041,13 @@ function componentLabelOf(el: OverlayChild, kind: MaterialKind): string {
   const id = el.component
   const params = paramsOf(el)
   if (kind === 'subtitle') return str(params.text) || '字幕'
-  if (kind === 'overlay') return (str(params.text) ?? '').trim() || '飘字'
+  if (kind === 'overlay') {
+    const fixedText = str(params.fixedText) ?? ''
+    const parameter = typeof params.parameter === 'string' || typeof params.parameter === 'number'
+      ? String(params.parameter)
+      : ''
+    return `${fixedText}${parameter}`.trim() || (str(params.text) ?? '').trim() || '飘字'
+  }
   if (kind === 'option') return componentTypeLabel(id) || '选项'
   if (kind === 'filter') return filterLabel(params.filter)
   if (kind === 'fx') return fxLabel(params.fx)
@@ -1849,7 +1879,7 @@ export function addMaterialGraph(
       trigger: { when: 'enter' },
       window: { startMs, endMs },
       layout: layoutForNewChild(undefined, at ? at.zIndex : 1),
-      inputs: { text: '-100' },
+      inputs: { fixedText: '', parameter: '-100' },
     }
     const s1 = addOverlayChild(scenario, node.id, float)
     const s1Node = findNode(s1.graph, node.id) ?? node
@@ -2082,11 +2112,10 @@ export function patchSelectedLayoutGraph(
 
 /**
  * 飘字（floatText 展示 + 联动结算 reaction）的 inputs 编辑。键：
- *   - content  → inputs.text（显示文案，含 {v} 用数值替换）
+ *   - content  → inputs.fixedText（显示文案；`{v}` 位置由 parameter 替换）
  *   - effects  → 结算 reaction 的完整效果列表（`EffectsEditor` 直接产出；空数组＝纯展示，删结算）
- *   - 其余（expr/style/x/y…）→ 直接并入 inputs（undefined 删键）；expr 是 NumOrExpr（`number | {expr,pick}`）
- * expr 缺省时 {v} 取 effects 第一条的值（预览侧对齐，见 `activePreviewOverlaysFromNode`）；
- * 写了 expr 则显示与效果解耦。
+ *   - expr → inputs.parameter；其余（style/x/y…）直接并入 inputs。
+ * parameter 缺省时预览回落 effects 第一条的值；显式配置后显示与效果解耦。
  */
 export function patchOverlayGraph(
   scenario: GameScenario,
@@ -2104,13 +2133,25 @@ export function patchOverlayGraph(
     if (key === 'content') {
       const content = String(value)
       const cur = findElement(s, node, floatId)
-      s = patchOverlayChild(s, node.id, floatId, { inputs: { ...cur?.inputs, text: content } })
+      if (!cur) continue
+      const { text: _text, ...currentInputs } = cur.inputs ?? {}
+      const hasParameterSlot = content.includes('{v}')
+      s = patchOverlayChild(s, node.id, floatId, {
+        inputs: {
+          ...currentInputs,
+          fixedText: content.replace('{v}', ''),
+          ...(hasParameterSlot ? {} : { parameter: '' }),
+        },
+      })
     } else if (key === 'effects') {
       const list = Array.isArray(value) ? (value as GraphEffect[]) : []
       s = upsertSettleEffects(s, curNode(), floatId, floatSettleWhen(float), list)
     } else {
       const cur = findElement(s, node, floatId)
-      if (cur) s = patchOverlayChild(s, node.id, floatId, { inputs: mergeParams(cur, { [key]: value }) })
+      if (cur) {
+        const inputKey = key === 'expr' ? 'parameter' : key
+        s = patchOverlayChild(s, node.id, floatId, { inputs: mergeParams(cur, { [inputKey]: value }) })
+      }
     }
   }
   return s

@@ -2713,7 +2713,7 @@
                           {
                             "when": {
                               "type": "event",
-                              "id": "parry"
+                              "id": "success"
                             },
                             "do": [
                               {
@@ -2725,7 +2725,7 @@
                           {
                             "when": {
                               "type": "event",
-                              "id": "dodge"
+                              "id": "greatSuccess"
                             },
                             "do": [
                               {
@@ -3270,14 +3270,14 @@
                   "id": "e-tele-pass",
                   "source": "tele",
                   "target": "block",
-                  "sourceHandle": "parry",
+                    "sourceHandle": "success",
                   "targetHandle": "in"
                 },
                 {
                   "id": "e-tele-good",
                   "source": "tele",
                   "target": "dodgeP",
-                  "sourceHandle": "dodge",
+                    "sourceHandle": "greatSuccess",
                   "targetHandle": "in"
                 },
                 {
@@ -6010,7 +6010,7 @@
                                 {
                                   "when": {
                                     "type": "event",
-                                    "id": "parry"
+                                  "id": "success"
                                   },
                                   "do": [
                                     {
@@ -6022,7 +6022,7 @@
                                 {
                                   "when": {
                                     "type": "event",
-                                    "id": "dodge"
+                                  "id": "greatSuccess"
                                   },
                                   "do": [
                                     {
@@ -6567,14 +6567,14 @@
                         "id": "e-tele-pass",
                         "source": "tele",
                         "target": "block",
-                        "sourceHandle": "parry",
+                        "sourceHandle": "success",
                         "targetHandle": "in"
                       },
                       {
                         "id": "e-tele-good",
                         "source": "tele",
                         "target": "dodgeP",
-                        "sourceHandle": "dodge",
+                        "sourceHandle": "greatSuccess",
                         "targetHandle": "in"
                       },
                       {

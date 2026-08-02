@@ -7,9 +7,10 @@ import { StatusNotice, StatusNoticeManifest } from '../StatusNotice'
 afterEach(cleanup)
 
 describe('StatusNotice', () => {
-  it('declares one text input and shared appearance inputs', () => {
+  it('declares fixed text, a dynamic parameter, and shared appearance inputs', () => {
     expect(StatusNoticeManifest.inputs).toEqual([
-      { key: 'text', label: '提示文字', valueType: 'string', default: '获得道具〈xxx〉' },
+      { key: 'fixedText', label: '固定文本', valueType: 'string', default: '获得道具' },
+      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '〈xxx〉' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#f0f0f0' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 2.4 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1600 },
@@ -17,7 +18,7 @@ describe('StatusNotice', () => {
     expect(StatusNoticeManifest.events).toEqual([])
   })
 
-  it('Host passes text and duration to the leaf', () => {
+  it('Host resolves numeric parameter; leaf concatenates with duration', () => {
     const skins = createCoreSkinRegistry()
     render(
       <>
@@ -25,7 +26,7 @@ describe('StatusNotice', () => {
           {
             elementId: 'notice',
             component: 'StatusNotice',
-            inputs: { text: '攻击 +12', color: '#ffd54a', durationMs: 2400 },
+            inputs: { fixedText: '攻击 ', parameter: 12, color: '#ffd54a', durationMs: 2400 },
           },
         )}
       </>,
@@ -35,7 +36,7 @@ describe('StatusNotice', () => {
   })
 
   it('leaf renders already-resolved flat props', () => {
-    render(<StatusNotice text="攻击 +12" color="#ffd54a" durationMs={2400} />)
+    render(<StatusNotice fixedText="攻击 " parameter="+12" color="#ffd54a" durationMs={2400} />)
     expect(screen.getByText('攻击 +12')).toBeTruthy()
   })
 })

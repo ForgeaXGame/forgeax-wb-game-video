@@ -6,9 +6,10 @@
  * 传 `opts`（实体/变量/道具 id）后还查**引用**：condition/effect/expr 里引用的 entity/var/item/nodeId
  * 是否存在、reactions 中 advance 是否指向真实边；并对**纯瞬时环**（全为无演出/无交互节点 + 无条件边）给告警。
  */
-import type { GameGraph, GameScenario, Overlay, Reaction } from '../schema/graph-schema'
+import type { GameGraph, GameScenario, NodeAction, Overlay, Reaction } from '../schema/graph-schema'
 import { getSubFlowPack, getSubProcess } from '../schema/graph-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
+import { overlayMountId } from '../schema/node-config-schema'
 import { eventsFromParams, overlayReactionKey } from '../schema/overlay-events'
 import { deriveOutputs, getComponent } from '../registry/component-registry'
 import { defaultNodeKindRegistry, resolveNodeType } from '../nodes'
@@ -582,6 +583,7 @@ function validateGraphScope(
           at: `node:${n.id}.overlayNodes[${mi}].reactions`,
         })),
       ]
+      const overlayMountIds = new Set((n.data.overlayNodes ?? []).map(overlayMountId))
       for (const pack of packs) {
         for (let i = 0; i < (pack.reactions ?? []).length; i++) {
           const r = pack.reactions![i]!
@@ -590,6 +592,36 @@ function validateGraphScope(
           if (r.when.type === 'complete' && r.when.if) walkRefs(r.when.if, ctx, at, issues)
           for (const a of r.do) {
             if (a.kind === 'effect') walkRefs(a.effects, ctx, at, issues)
+            if (a.kind === 'spawn') {
+              walkRefs(a.inputs, ctx, at, issues)
+              const slash = a.from.indexOf('/')
+              const overlayId = slash > 0 ? a.from.slice(0, slash) : ''
+              const childId = slash > 0 ? a.from.slice(slash + 1) : ''
+              if (!overlayId || !childId || (overlays && !overlays[overlayId]?.children.some((child) => child.id === childId))) {
+                issues.push({
+                  level: 'error',
+                  code: 'ref.spawn.missing',
+                  msg: `reaction spawn.from '${a.from}' 未命中界面模板`,
+                  at,
+                })
+              }
+            }
+            if (a.kind === 'hideOverlay' && !a.mountId.trim()) {
+              issues.push({
+                level: 'error',
+                code: 'ref.hideOverlay.mount.empty',
+                msg: 'reaction hideOverlay.mountId 不能为空',
+                at,
+              })
+            }
+            if (a.kind === 'hideOverlay' && a.mountId.trim() && !overlayMountIds.has(a.mountId)) {
+              issues.push({
+                level: 'error',
+                code: 'ref.hideOverlay.mount.missing',
+                msg: `reaction hideOverlay.mountId '${a.mountId}' 未命中本节点内已有界面`,
+                at,
+              })
+            }
             if (a.kind === 'advance' && !edgeIds.has(a.edgeId)) {
               issues.push({ level: 'error', code: 'ref.edge.missing', msg: `reaction advance 指向未知边 '${a.edgeId}'`, at })
             }

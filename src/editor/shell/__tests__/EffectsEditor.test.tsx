@@ -39,24 +39,57 @@ describe('EffectsEditor numeric operations', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '÷' }))
     expect(screen.getByRole('button', { name: '÷' }).classList.contains('is-on')).toBe(true)
-    expect(screen.getByLabelText('常量数值')).toHaveValue('2')
+    expect(screen.getByLabelText('数值')).toHaveValue('2')
     expect(latest[0]).toMatchObject({ op: 'mul', value: { expr: '1/(2)' } })
 
-    fireEvent.change(screen.getByLabelText('常量数值'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('数值'), { target: { value: '4' } })
     expect(latest[0]).toMatchObject({ op: 'mul', value: { expr: '1/(4)' } })
-    expect(screen.getByText('属性 · 主角 的 生命值 ÷ 4')).toBeTruthy()
+    expect(screen.getByText('属性 · 主角 的 生命值 除以 4')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '−' }))
     expect(screen.getByRole('button', { name: '−' }).classList.contains('is-on')).toBe(true)
-    expect(screen.getByLabelText('常量数值')).toHaveValue('4')
+    expect(screen.getByLabelText('数值')).toHaveValue('4')
     expect(latest[0]).toMatchObject({ op: 'add', value: { expr: '-(4)' } })
-    expect(screen.getByText('属性 · 主角 的 生命值 − 4')).toBeTruthy()
+    expect(screen.getByText('属性 · 主角 的 生命值 减少 4')).toBeTruthy()
     expect(screen.queryByText(/add|-\(4\)/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '+' }))
     expect(screen.getByRole('button', { name: '+' }).classList.contains('is-on')).toBe(true)
-    expect(screen.getByLabelText('常量数值')).toHaveValue('4')
+    expect(screen.getByLabelText('数值')).toHaveValue('4')
     expect(latest[0]).toMatchObject({ op: 'add', value: 4 })
+  })
+
+  it('keeps manual value mode after switching from an entity binding and then choosing subtraction', () => {
+    let latest: GraphEffect[] = []
+    function Harness(): JSX.Element {
+      const [effects, setEffects] = useState<GraphEffect[]>([{
+        kind: 'attr',
+        entityId: 'hero',
+        attr: 'hp',
+        op: 'add',
+        value: { expr: 'entity.hero.attr.hp' },
+      }])
+      latest = effects
+      return (
+        <EffectsEditor
+          value={effects}
+          entities={{ hero: { id: 'hero', name: '主角', attrs: { hp: 100 } } }}
+          onChange={setEffects}
+        />
+      )
+    }
+
+    render(<Harness />)
+    const source = screen.getByRole('combobox', { name: '数值来源' })
+    fireEvent.click(source)
+    fireEvent.click(screen.getByRole('menuitem', { name: '常量' }))
+    fireEvent.click(screen.getByRole('button', { name: '−' }))
+
+    expect(source).toHaveValue('const')
+    expect(screen.queryByRole('menuitem', { name: '当前内容（保持原值）' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: '数值' })).toHaveValue('0')
+    fireEvent.change(screen.getByRole('textbox', { name: '数值' }), { target: { value: '50' } })
+    expect(latest[0]).toMatchObject({ op: 'add', value: { expr: '-(50)' } })
   })
 })
 

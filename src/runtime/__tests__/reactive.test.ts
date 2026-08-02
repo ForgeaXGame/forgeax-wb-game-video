@@ -14,10 +14,78 @@ afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 const dmgOverlay: Overlay = {
   id: 'hud',
-  children: [{ id: 'dmgFloat', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
+  children: [{
+    id: 'dmgFloat',
+    component: 'floatT',
+    trigger: { when: 'enter' },
+    inputs: {},
+    layout: { left: 0.4, top: 0.2, width: 0.2, height: 0.1 },
+  }],
 }
 
 describe('watch reaction (数值变化 → spawn)', () => {
+  it('keeps a spawn without ttl visible and can hide an existing node interface by mount', () => {
+    const overlay: Overlay = {
+      id: 'rageUi',
+      children: [{ id: 'panel', component: 'floatT', trigger: { when: 'enter' }, inputs: { text: '怒气界面' } }],
+    }
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 2000,
+          overlayNodes: [{ id: 'boss-hud', overlay: 'rageUi' }],
+          reactions: [
+            { when: { type: 'at', ms: 300 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'rage', op: 'add', value: 20 }] }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.rage', on: 'inc' }, do: [{ kind: 'spawn', from: 'rageUi/panel' }] },
+            { when: { type: 'at', ms: 600 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'rage', op: 'add', value: -10 }] }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.rage', on: 'dec' }, do: [{ kind: 'hideOverlay', mountId: 'boss-hud' }] },
+          ],
+        }),
+      ],
+      edges: [],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph, {
+      entities: { 'ent-boss': { id: 'ent-boss', attrs: { rage: 10 } } },
+      ui: { overlays: { rageUi: overlay } },
+    }))
+
+    expect(rt.start()).toContainEqual(expect.objectContaining({
+      type: 'renderOverlay',
+      elementId: 'boss-hud/panel',
+    }))
+    const shown = rt.tick(300).find((directive): directive is RenderOverlayDirective => (
+      isRenderOverlay(directive) && directive.elementId.startsWith('spawn:')
+    ))
+    expect(shown?.component).toBe('floatT')
+    expect(rt.tick(500).some((directive) => directive.type === 'removeOverlay')).toBe(false)
+    expect(rt.tick(600)).toContainEqual(expect.objectContaining({
+      type: 'removeOverlay',
+      elementId: 'boss-hud/panel',
+    }))
+    expect(rt.tick(700).some((directive) => directive.type === 'removeOverlay')).toBe(false)
+  })
+
+  it('keeps a spawn action executable when a condition settlement is changed to a timed settlement', () => {
+    const graph: GameGraph = {
+      nodes: [node('a', {
+        durationMs: 5000,
+        reactions: [{
+          when: { type: 'at', ms: 100 },
+          do: [{ kind: 'spawn', from: 'hud/dmgFloat', inputs: { amount: 12 }, ttlMs: 800 }],
+        }],
+      })],
+      edges: [],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph, { ui: { overlays: { hud: dmgOverlay } } }))
+    rt.start()
+
+    const dirs = rt.tick(100)
+    const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
+    expect(spawn?.inputs.amount).toBe(12)
+    expect(spawn?.mountLayout).toEqual({ left: 0.4, top: 0.2, width: 0.2, height: 0.1 })
+    expect(spawn?.childLayout).toBeUndefined()
+  })
+
   it('fires a numeric equality settlement only when the value reaches the exact target', () => {
     const graph: GameGraph = {
       nodes: [

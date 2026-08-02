@@ -39,6 +39,7 @@ const row: CSSProperties = {
   width: '100%',
   minWidth: 0,
 }
+const fieldLabel: CSSProperties = { width: 52, opacity: 0.7, flexShrink: 0, fontSize: 11 }
 
 type ContentChoice =
   | { key: 'const'; kind: 'const'; label: string }
@@ -109,6 +110,7 @@ export function ValueExprEditor({
   allowAttribute,
   createAttribute,
   createEntity,
+  fieldLabels,
 }: {
   value: ValueExprInput | undefined
   storedPick?: unknown
@@ -134,6 +136,8 @@ export function ValueExprEditor({
   createEntity?: ValueExprEntityCreateConfig
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/应用公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
+  /** Effect 表单使用显式字段名区分“取什么值”和“输入多少”，避免与目标实体属性混淆。 */
+  fieldLabels?: { source: string; value: string }
 }): JSX.Element {
   const [createDrafts, setCreateDrafts] = useState<Record<string, CreateDraft>>({})
   const createAttributeTemplate = createAttribute?.template
@@ -536,32 +540,51 @@ export function ValueExprEditor({
         : typeof legacyPick === 'number'
           ? String(legacyPick)
           : legacyPick.expr
-
-  return (
-    <div
-      style={formulaMode
-        ? { ...row, flexDirection: 'column', alignItems: 'stretch' }
-        : row}
-      title={hintText}
-    >
+  const sourceControl = (
+    <>
+      {fieldLabels ? <span style={fieldLabel}>{fieldLabels.source}</span> : null}
       {effectOp && <EffectOpButtons op={effectOp.op} onChange={effectOp.onOpChange} />}
       <CascadingPicker
-        ariaLabel="数值内容"
+        ariaLabel={fieldLabels?.source ?? '数值内容'}
         value={selectedKey}
         displayValue={selectedLabel}
         placeholder="常量：10 · 状态：entity.hero.attr.hp / var.qi · 公式：伤害公式"
         options={pickerOptions}
         onSelect={selectContent}
       />
+    </>
+  )
+
+  return (
+    <div
+      style={formulaMode || fieldLabels
+        ? { ...row, flexDirection: 'column', alignItems: 'stretch' }
+        : row}
+      title={hintText}
+    >
+      {fieldLabels ? <div style={row}>{sourceControl}</div> : sourceControl}
 
       {!empty && pick.mode === 'const' && (
-        <LooseNumberInput
-          value={pick.const}
-          onChange={(n) => onChange(n)}
-          aria-label="常量数值"
-          placeholder="输入常量"
-          style={{ flex: '0 1 32%', minWidth: 96 }}
-        />
+        fieldLabels ? (
+          <div style={row}>
+            <span style={fieldLabel}>{fieldLabels.value}</span>
+            <LooseNumberInput
+              value={pick.const}
+              onChange={(n) => onChange(n)}
+              aria-label={fieldLabels.value}
+              placeholder="输入常量"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+          </div>
+        ) : (
+          <LooseNumberInput
+            value={pick.const}
+            onChange={(n) => onChange(n)}
+            aria-label="常量数值"
+            placeholder="输入常量"
+            style={{ flex: '0 1 32%', minWidth: 96 }}
+          />
+        )
       )}
 
       {!empty && pick.mode === 'pick' && !directBinding && (

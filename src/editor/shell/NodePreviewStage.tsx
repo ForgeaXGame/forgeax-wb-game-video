@@ -31,7 +31,7 @@ import { resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { CATALOG_CSS } from './catalogCss'
 import { renderOverlayChildPreview } from './overlayChildPreview'
 import { advancePreviewMediaClock, PreviewClockProvider, previewClockLayerClassName, type PreviewMediaClock } from './previewClock'
-import { projectNodePreviewState } from './nodePreviewState'
+import { NodePreviewRuntimeProjector, projectNodePreviewState, projectSelectedConditionSpawns } from './nodePreviewState'
 import { resolveMediaSrc } from './media'
 import { videoDurationCapReached } from '../../runtime/play/videoTiming'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
@@ -46,7 +46,7 @@ import {
 } from '../../runtime/schema/node-config-schema'
 import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
 import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
-import { setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
+import { patchSettlementSpawnLayout, setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
   OverlayCanvasInteraction,
@@ -306,11 +306,15 @@ function EditableNodePreviewStage({
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
+  const [selectedConditionSpawnId, setSelectedConditionSpawnId] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const mountPreviewRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const conditionSpawnPreviewRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [mountContentBoxes, setMountContentBoxes] = useState<Record<string, { left: number; top: number; width: number; height: number }>>({})
+  const [conditionSpawnContentBoxes, setConditionSpawnContentBoxes] = useState<Record<string, { left: number; top: number; width: number; height: number }>>({})
   const mountBoxSigRef = useRef('')
+  const conditionSpawnBoxSigRef = useRef('')
 
   const mediaRef = node.data.media?.ref ?? ''
   const playMode = node.data.mediaPlayMode ?? 'once'
@@ -346,6 +350,30 @@ function EditableNodePreviewStage({
     ))
     return focusedFloats.length ? [...visible, ...focusedFloats] : visible
   }, [isVideoPlaying, maxMs, node, playheadMs, scenario, selectedMountId])
+  const runtimeProjector = useMemo(
+    () => new NodePreviewRuntimeProjector(scenario, node),
+    [scenario, node],
+  )
+  const runtimeProjection = useMemo(() => {
+    const spawns = runtimeProjector.project(playheadMs)
+    return { spawns, configuredMountIds: new Set(runtimeProjector.visibleConfiguredMountIds()) }
+  }, [playheadMs, runtimeProjector])
+  const previewSpawns = runtimeProjection.spawns
+  const runtimeVisibleMountIds = runtimeProjection.configuredMountIds
+  const selectedConditionSpawns = useMemo(
+    () => projectSelectedConditionSpawns(scenario, node, focusedLifecycleIndex),
+    [focusedLifecycleIndex, node, scenario],
+  )
+  const activeConditionSpawnId = selectedConditionSpawns.some((preview) => preview.id === selectedConditionSpawnId)
+    ? selectedConditionSpawnId
+    : selectedConditionSpawns[0]?.id ?? null
+  // 选中条件结算时使用稳定作者投影，避免与播放头真实触发的动态实例重叠。
+  const visibleRuntimeSpawns = selectedConditionSpawns.length ? [] : previewSpawns
+  const authorVisibleMountIds = useMemo(() => {
+    const ids = new Set(runtimeVisibleMountIds)
+    if (!isVideoPlaying && selectedMountId) ids.add(selectedMountId)
+    return ids
+  }, [isVideoPlaying, runtimeVisibleMountIds, selectedMountId])
   const previewMountGroups = useMemo(() => {
     const groups = new Map<string, {
       mount: NonNullable<GameNode['data']['overlayNodes']>[number]
@@ -356,6 +384,7 @@ function EditableNodePreviewStage({
     )
     for (const child of previewSkinChildren) {
       const mountId = child.source.mountId
+      if (!authorVisibleMountIds.has(mountId)) continue
       const mount = mountsById.get(mountId)
       if (!mount) continue
       const group = groups.get(mountId)
@@ -370,7 +399,7 @@ function EditableNodePreviewStage({
         resolveMountChildren(overlays, value.mount).map((child) => child.layout),
       ) ?? {},
     }))
-  }, [overlays, previewSkinChildren, node])
+  }, [authorVisibleMountIds, overlays, previewSkinChildren, node])
   const videoFx = useMemo(
     () => resolveVideoFxForNode(node, overlays, playheadMs, maxMs),
     [node, overlays, playheadMs, maxMs],
@@ -431,6 +460,7 @@ function EditableNodePreviewStage({
 
   useEffect(() => {
     setSelectedOverlayId(selectedMountId)
+    if (selectedMountId) setSelectedConditionSpawnId(null)
   }, [selectedMountId])
 
   // 换节点/换视频：清播放态与选中（视频因 key 变化 remount 自动重播）。
@@ -568,6 +598,28 @@ function EditableNodePreviewStage({
       bottom: undefined,
     }))
   }
+  function patchConditionSpawnPosition(
+    preview: (typeof selectedConditionSpawns)[number],
+    position: { x: number; y: number },
+  ): void {
+    const effectiveLayout = preview.mount.mountLayout ?? {}
+    onEditScenario((s, n) => ({
+      ...s,
+      graph: patchSettlementSpawnLayout(
+        s.graph,
+        n.id,
+        preview.settlementIndex,
+        preview.actionIndex,
+        {
+          ...effectiveLayout,
+          left: position.x,
+          top: position.y,
+          right: undefined,
+          bottom: undefined,
+        },
+      ),
+    }))
+  }
   function reorderMount(mountId: string, direction: 'front' | 'back'): void {
     const zValues = previewMountGroups.map(({ mount }) =>
       typeof mount.layout?.zIndex === 'number' ? mount.layout.zIndex : 0)
@@ -575,6 +627,26 @@ function EditableNodePreviewStage({
       ? Math.max(0, ...zValues) + 1
       : Math.min(0, ...zValues) - 1
     onEditScenario((s, n) => patchOverlayMountLayoutGraph(s, n, mountId, { zIndex }))
+  }
+  function reorderConditionSpawn(
+    preview: (typeof selectedConditionSpawns)[number],
+    direction: 'front' | 'back',
+  ): void {
+    const zValues = allInteractionItems.map((item) => item.zIndex)
+    const zIndex = direction === 'front'
+      ? Math.max(0, ...zValues) + 1
+      : Math.min(0, ...zValues) - 1
+    const effectiveLayout = preview.mount.mountLayout ?? {}
+    onEditScenario((s, n) => ({
+      ...s,
+      graph: patchSettlementSpawnLayout(
+        s.graph,
+        n.id,
+        preview.settlementIndex,
+        preview.actionIndex,
+        { ...effectiveLayout, zIndex },
+      ),
+    }))
   }
 
   useLayoutEffect(() => {
@@ -619,7 +691,45 @@ function EditableNodePreviewStage({
       mountBoxSigRef.current = sig
       setMountContentBoxes(next)
     }
-  }, [previewMountGroups, playheadMs, contentRect])
+
+    const nextConditionSpawns: Record<string, { left: number; top: number; width: number; height: number }> = {}
+    for (const { id } of selectedConditionSpawns) {
+      const wrap = conditionSpawnPreviewRefs.current[id]
+      if (!wrap) continue
+      let left = Infinity
+      let top = Infinity
+      let right = -Infinity
+      let bottom = -Infinity
+      for (const element of overlayFitTargets(wrap)) {
+        const rect = element.getBoundingClientRect()
+        if (!rect.width || !rect.height) continue
+        left = Math.min(left, rect.left)
+        top = Math.min(top, rect.top)
+        right = Math.max(right, rect.right)
+        bottom = Math.max(bottom, rect.bottom)
+      }
+      if (!(right > left && bottom > top)) {
+        const fallback = wrap.getBoundingClientRect()
+        left = fallback.left
+        top = fallback.top
+        right = fallback.right
+        bottom = fallback.bottom
+      }
+      nextConditionSpawns[id] = {
+        left: (left - stageRect.left) / stageRect.width,
+        top: (top - stageRect.top) / stageRect.height,
+        width: (right - left) / stageRect.width,
+        height: (bottom - top) / stageRect.height,
+      }
+    }
+    const conditionSig = Object.entries(nextConditionSpawns)
+      .map(([id, box]) => `${id}:${box.left.toFixed(3)},${box.top.toFixed(3)},${box.width.toFixed(3)},${box.height.toFixed(3)}`)
+      .join('|')
+    if (conditionSig !== conditionSpawnBoxSigRef.current) {
+      conditionSpawnBoxSigRef.current = conditionSig
+      setConditionSpawnContentBoxes(nextConditionSpawns)
+    }
+  }, [previewMountGroups, selectedConditionSpawns, playheadMs, contentRect])
 
   const interactionItems = useMemo<CanvasInteractionItem[]>(() =>
     previewMountGroups.map(({ mountId, mount, children, layout }) => {
@@ -660,6 +770,45 @@ function EditableNodePreviewStage({
         resizable: false,
       }
     }), [mountContentBoxes, overlays, previewMountGroups])
+
+  const conditionSpawnInteractionItems = useMemo<CanvasInteractionItem[]>(() =>
+    selectedConditionSpawns.map((preview) => {
+      const layout = preview.mount.mountLayout
+      const content = conditionSpawnContentBoxes[preview.id]
+      const explicitBox: CanvasBox | null =
+        !isFullStageMountLayout(layout)
+        && typeof layout?.left === 'number'
+        && typeof layout.top === 'number'
+        && typeof layout.width === 'number'
+        && typeof layout.height === 'number'
+        && layout.translateX == null
+        && layout.translateY == null
+          ? { left: layout.left, top: layout.top, width: layout.width, height: layout.height }
+          : null
+      const box: CanvasBox = explicitBox ?? {
+        left: content?.left ?? (typeof layout?.left === 'number' ? layout.left : 0),
+        top: content?.top ?? (typeof layout?.top === 'number' ? layout.top : 0),
+        width: content?.width ?? DEFAULT_MOUNT_W,
+        height: content?.height ?? DEFAULT_MOUNT_H,
+      }
+      return {
+        id: preview.id,
+        label: preview.label,
+        position: {
+          x: typeof layout?.left === 'number' ? layout.left : 0,
+          y: typeof layout?.top === 'number' ? layout.top : 0,
+        },
+        frame: { kind: 'box', ...box },
+        zIndex: typeof layout?.zIndex === 'number' ? layout.zIndex : 0,
+        movable: true,
+        resizable: false,
+      }
+    }), [conditionSpawnContentBoxes, selectedConditionSpawns])
+
+  const allInteractionItems = useMemo(
+    () => [...interactionItems, ...conditionSpawnInteractionItems],
+    [conditionSpawnInteractionItems, interactionItems],
+  )
 
   const previewContentStyle: CSSProperties | undefined = contentRect
     ? { left: `${contentRect.left}px`, top: `${contentRect.top}px`, width: `${contentRect.width}px`, height: `${contentRect.height}px` }
@@ -715,7 +864,7 @@ function EditableNodePreviewStage({
         ) : null}
         <div ref={contentAnchorRef} className="gc-content-anchor" style={previewContentStyle}>
           <div className="gc-preview-overlays" data-node-preview-overlay-scale="none">
-            {previewSkinChildren.length > 0 ? (
+            {previewSkinChildren.length > 0 || visibleRuntimeSpawns.length > 0 || selectedConditionSpawns.length > 0 ? (
               <PreviewClockProvider value={previewClockValue}>
                 <div className={`gc-preview-skin-layer ${previewClockLayerClassName(isVideoPlaying)}`} aria-hidden>
                   {previewMountGroups.map(({ mountId, children, layout }) => (
@@ -743,21 +892,64 @@ function EditableNodePreviewStage({
                       ))}
                     </div>
                   ))}
+                  {visibleRuntimeSpawns.map(({ mount, startedAtMs }) => (
+                    <div
+                      key={mount.mountId}
+                      data-preview-spawn-id={mount.mountId}
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+                    >
+                      {previewSkinReg.renderOverlayMount(
+                        mount,
+                        undefined,
+                        previewSkinCtx,
+                        { timeMs: Math.max(0, playheadMs - startedAtMs), playing: isVideoPlaying },
+                      )}
+                    </div>
+                  ))}
+                  {selectedConditionSpawns.map((preview) => (
+                    <div
+                      key={preview.id}
+                      ref={(element) => { conditionSpawnPreviewRefs.current[preview.id] = element }}
+                      data-preview-condition-spawn-id={preview.id}
+                      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+                    >
+                      {previewSkinReg.renderOverlayMount(
+                        preview.mount,
+                        undefined,
+                        previewSkinCtx,
+                        { timeMs: 0, playing: false },
+                      )}
+                    </div>
+                  ))}
                 </div>
               </PreviewClockProvider>
             ) : null}
             <OverlayCanvasInteraction
               stageRef={contentAnchorRef}
-              items={interactionItems}
-              selectedId={selectedOverlayId}
+              items={allInteractionItems}
+              selectedId={activeConditionSpawnId ?? selectedOverlayId}
+              highlightedIds={selectedConditionSpawns.map((preview) => preview.id)}
               frameVisibility="active"
               ariaLabel="节点视频覆盖物画布"
               onSelect={(id) => {
+                if (id?.startsWith('condition-spawn:')) {
+                  setSelectedConditionSpawnId(id)
+                  setSelectedOverlayId(null)
+                  if (focusedLifecycleIndex != null) onFocusLifecycle?.(focusedLifecycleIndex)
+                  return
+                }
                 setSelectedOverlayId(id)
+                setSelectedConditionSpawnId(null)
                 focusMount(id)
+                if (id == null) onFocusLifecycle?.(null)
               }}
               onMove={(id, position) => {
                 pauseForScrub()
+                const conditionPreview = selectedConditionSpawns.find((preview) => preview.id === id)
+                if (conditionPreview) {
+                  patchConditionSpawnPosition(conditionPreview, position)
+                  return
+                }
                 patchMountPosition(id, position)
               }}
               onInteractionChange={(active) => {
@@ -765,6 +957,11 @@ function EditableNodePreviewStage({
               }}
               onReorder={(id, direction) => {
                 pauseForScrub()
+                const conditionPreview = selectedConditionSpawns.find((preview) => preview.id === id)
+                if (conditionPreview) {
+                  reorderConditionSpawn(conditionPreview, direction)
+                  return
+                }
                 reorderMount(id, direction)
               }}
             />
@@ -859,7 +1056,10 @@ function EditableNodePreviewStage({
             onPointMarkerChange={movePointMarker}
             onSelectPointMarker={(id) => {
               const lifecycleIndex = lifecycleIndexOf(id)
-              if (lifecycleIndex != null) onFocusLifecycle?.(lifecycleIndex)
+              if (lifecycleIndex != null) {
+                pauseForScrub()
+                onFocusLifecycle?.(lifecycleIndex)
+              }
             }}
             onDeleteMaterial={deleteMaterial}
             onDropTemplate={(template, atMs) => mountOverlay(template, atMs)}

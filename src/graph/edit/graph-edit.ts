@@ -5,7 +5,7 @@
  * 连/删边会同步 event reactions 里的 `advance.edgeId`（显式走向）；
  * 未写 advance 时运行时仍可「有边则默认推进」。
  */
-import type { EdgeRouting, EdgeTransition, GameEdge, GameGraph, GameNode, NodeData, OverlayNode, RoutingSettlement, SubFlowPack, SubFlowPackDef, SubProcess } from '../../runtime/schema/graph-schema'
+import type { EdgeRouting, EdgeTransition, GameEdge, GameGraph, GameNode, Layout, NodeData, OverlayNode, RoutingSettlement, SubFlowPack, SubFlowPackDef, SubProcess } from '../../runtime/schema/graph-schema'
 import { getSubProcess } from '../../runtime/schema/graph-schema'
 import type { NodeAction, Reaction } from '../../runtime/schema/node-config-schema'
 import { isLifecycleReaction, isSettlementReaction } from '../../runtime/schema/node-config-schema'
@@ -554,6 +554,33 @@ export function setSettlementReactionMs(graph: GameGraph, nodeId: string, settle
   if (target.when.type === 'at' && target.when.ms === next) return graph
   return updateNodeData(graph, nodeId, {
     reactions: reactions.map((r, i) => (i === absolute ? { ...r, when: { type: 'at' as const, ms: next } } : r)),
+  })
+}
+
+/** 条件结算界面在视频预览画布拖动后，写回对应 spawn 动作的既有 layout 字段。 */
+export function patchSettlementSpawnLayout(
+  graph: GameGraph,
+  nodeId: string,
+  settlementIndex: number,
+  actionIndex: number,
+  layout: Layout,
+): GameGraph {
+  const node = graph.nodes.find((candidate) => candidate.id === nodeId)
+  const reactions = node?.data.reactions
+  if (!node || !reactions) return graph
+  const absolute = settlementReactionAbsoluteIndex(reactions, settlementIndex)
+  const reaction = reactions[absolute]
+  const action = reaction?.do[actionIndex]
+  if (!reaction || action?.kind !== 'spawn') return graph
+  return updateNodeData(graph, nodeId, {
+    reactions: reactions.map((candidate, reactionIndex) => reactionIndex === absolute
+      ? {
+          ...candidate,
+          do: candidate.do.map((candidateAction, candidateActionIndex) => candidateActionIndex === actionIndex
+            ? { ...action, layout }
+            : candidateAction),
+        }
+      : candidate),
   })
 }
 

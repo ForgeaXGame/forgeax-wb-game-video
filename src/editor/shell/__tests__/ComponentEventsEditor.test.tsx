@@ -91,7 +91,7 @@ describe('ComponentEventsEditor', () => {
     expect(screen.getByText('从事件节点到目标节点')).toBeTruthy()
     expect(screen.queryByText('走边')).toBeNull()
     expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '＋ 效果' }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加效果' }))
     expect(onMountActionsChange).toHaveBeenCalledWith(event, [
       { kind: 'advance', edgeId: 'edge-1' },
       expect.objectContaining({ kind: 'effect' }),
@@ -121,7 +121,7 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    const content = screen.getByRole('combobox', { name: '数值内容' })
+    const content = screen.getByRole('combobox', { name: '数值来源' })
     fireEvent.click(content)
     fireEvent.click(screen.getByRole('menuitem', { name: '公式' }))
     expect(screen.getByRole('menuitem', { name: '伤害' })).toBeTruthy()
@@ -482,8 +482,8 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="choice"]')).toHaveClass('is-selected')
     expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(false)
     expect(screen.getByText('choice:ying')).toBeTruthy()
-    const effectButtons = screen.getAllByRole('button', { name: '＋ 效果' })
-    const spawnButtons = screen.getAllByRole('button', { name: '＋ 生成组件' })
+    const effectButtons = screen.getAllByRole('button', { name: '＋ 添加效果' })
+    const spawnButtons = screen.getAllByRole('combobox', { name: '添加显示界面' })
     expect(effectButtons[0]).not.toBeDisabled()
     expect(spawnButtons[0]).not.toBeDisabled()
     fireEvent.click(effectButtons[0]!)
@@ -494,7 +494,7 @@ describe('OverlaySchemeEditor selected child', () => {
     render(
       <OverlaySchemeEditor
         overlayId="float"
-        overlay={{ id: 'float', children: [{ id: 'damage', component: 'DamageFloatText', inputs: { text: '-25' } }] }}
+        overlay={{ id: 'float', children: [{ id: 'damage', component: 'DamageFloatText', inputs: { parameter: '-25' } }] }}
         entities={{}}
         variables={{}}
         usageCount={0}
@@ -515,18 +515,18 @@ describe('ComponentFormFields defaults', () => {
   it.each([
     [
       'StatusNotice',
-      { text: '获得道具', color: '#f0f0f0', fontSize: 2.4, durationMs: 1600 },
-      ['提示文字', '字色', '字号', '总时长ms'],
+      { fixedText: '获得道具', parameter: '〈xxx〉', color: '#f0f0f0', fontSize: 2.4, durationMs: 1600 },
+      ['固定文本', '参数', '字色', '字号', '总时长ms'],
     ],
     [
       'DamageFloatText',
-      { value: 10, color: '#ff5a5a', fontSize: 3.5, durationMs: 1100 },
-      ['数值', '字色', '字号', '总时长ms'],
+      { fixedText: '', parameter: '-25', color: '#ff5a5a', fontSize: 3.5, durationMs: 1100 },
+      ['固定文本', '参数', '字色', '字号', '总时长ms'],
     ],
     [
       'GainFloatText',
-      { value: 50, color: '#ffd54a', fontSize: 3.5, durationMs: 1100 },
-      ['数值', '字色', '字号', '总时长ms'],
+      { fixedText: '', parameter: '+50', color: '#ffd54a', fontSize: 3.5, durationMs: 1100 },
+      ['固定文本', '参数', '字色', '字号', '总时长ms'],
     ],
   ])('gives %s compact parameters one full-width row with readable labels', (componentId, values, labels) => {
     render(
@@ -544,7 +544,7 @@ describe('ComponentFormFields defaults', () => {
       expect(row.style.display).toBe('grid')
       expect(row.style.width).toBe('100%')
       expect(row.style.gridTemplateColumns).toBe(
-        label === '数值' ? '7em minmax(0, 1fr)' : '7em minmax(0, 320px)',
+        label === '参数' ? '7em minmax(0, 1fr)' : '7em minmax(0, 320px)',
       )
     }
 
@@ -569,7 +569,7 @@ describe('ComponentFormFields defaults', () => {
       <ComponentFormFields
         componentId="DamageFloatText"
         values={{
-          value: {
+          parameter: {
             expr: '0',
             pick: {
               mode: 'formula',
@@ -585,14 +585,14 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    const valueRow = screen.getByText('数值').parentElement!
-    const picker = within(valueRow).getByRole('combobox', { name: '数值内容' })
-    const valueEditor = picker.parentElement?.parentElement as HTMLElement
+    const valueRow = screen.getByText('参数').parentElement!
+    const picker = within(valueRow).getByRole('combobox', { name: '文本内容' })
+    const valueEditor = picker.parentElement?.parentElement?.parentElement as HTMLElement
 
     expect(valueRow.style.alignItems).toBe('start')
-    expect(screen.getByText('数值')).toHaveStyle({ paddingTop: '6px' })
+    expect(screen.getByText('参数')).toHaveStyle({ paddingTop: '6px' })
     expect(valueEditor.style.flexDirection).toBe('column')
-    expect(valueEditor.style.alignItems).toBe('stretch')
+    expect(valueEditor.style.width).toBe('100%')
     expect(within(valueRow).getByRole('group', { name: '参数：系数' })).toBeTruthy()
   })
 
@@ -613,7 +613,7 @@ describe('ComponentFormFields defaults', () => {
       <ComponentFormFields
         componentId="GainFloatText"
         values={{
-          value: {
+          parameter: {
             expr: '0',
             pick: {
               mode: 'formula',
@@ -759,7 +759,7 @@ describe('ComponentFormFields defaults', () => {
     unregisterComponent('test-number-default-input')
   })
 
-  it('edits damage float text as either a fixed number or an applied formula', () => {
+  it('edits damage float text parameter as either a constant or an applied formula', () => {
     const formula: Formula = {
       id: 'formula-float-damage',
       name: '飘字伤害',
@@ -769,16 +769,17 @@ describe('ComponentFormFields defaults', () => {
     render(
       <ComponentFormFields
         componentId="DamageFloatText"
-        values={{ value: -25 }}
+        values={{ parameter: '-25' }}
         pickers={{ formulas: { [formula.id]: formula } }}
         onChange={onChange}
       />,
     )
 
-    expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
-    chooseCascade(screen.getByRole('combobox', { name: '数值内容' }), '公式', '飘字伤害')
+    expect(within(screen.getByText('参数').parentElement!)
+      .getByRole('textbox', { name: '固定文本' })).toHaveValue('-25')
+    chooseCascade(screen.getByRole('combobox', { name: '文本内容' }), '公式', '飘字伤害')
     expect(onChange).toHaveBeenCalledWith({
-      value: {
+      parameter: {
         expr: '-12',
         pick: {
           mode: 'formula',
@@ -789,40 +790,33 @@ describe('ComponentFormFields defaults', () => {
     })
   })
 
-  it('shows an unset interface value as an empty state without offering it as an option', () => {
+  it('uses the declared parameter default without offering an unset option', () => {
     const formula: Formula = {
       id: 'formula-float-damage',
       name: '飘字伤害',
       ast: { t: 'num', id: 'n0', v: -12 },
     }
     const onChange = vi.fn()
-    function Harness(): JSX.Element {
-      const [values, setValues] = useState<Record<string, unknown>>({})
-      return (
-        <ComponentFormFields
-          componentId="DamageFloatText"
-          values={values}
-          pickers={{ formulas: { [formula.id]: formula } }}
-          onChange={(next) => {
-            setValues(next)
-            onChange(next)
-          }}
-        />
-      )
-    }
-    render(<Harness />)
+    render(
+      <ComponentFormFields
+        componentId="DamageFloatText"
+        values={{}}
+        pickers={{ formulas: { [formula.id]: formula } }}
+        onChange={onChange}
+      />,
+    )
 
-    const picker = screen.getByRole('combobox', { name: '数值内容' })
-    expect(picker).toHaveValue('empty')
-    expect(picker).toHaveTextContent('常量：10 · 状态：entity.hero.attr.hp / var.qi · 公式：伤害公式')
-    expect(screen.queryByRole('textbox', { name: '常量数值' })).toBeNull()
+    const picker = screen.getByRole('combobox', { name: '文本内容' })
+    expect(picker).toHaveValue('literal')
+    expect(within(screen.getByText('参数').parentElement!)
+      .getByRole('textbox', { name: '固定文本' })).toHaveValue('-25')
     fireEvent.click(picker)
     expect(screen.queryByRole('menuitem', { name: '未设置（使用组件默认）' })).toBeNull()
 
     fireEvent.click(screen.getByRole('menuitem', { name: '公式' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '飘字伤害' }))
     expect(onChange).toHaveBeenLastCalledWith({
-      value: {
+      parameter: {
         expr: '-12',
         pick: {
           mode: 'formula',
@@ -838,7 +832,7 @@ describe('ComponentFormFields defaults', () => {
     render(
       <ComponentFormFields
         componentId="DamageFloatText"
-        values={{ value: { expr: 'entity.hero.attr.hp' } }}
+        values={{ parameter: { ref: 'entity.hero.attr.hp' } }}
         pickers={{
           entities: {
             hero: { id: 'hero', name: '主角', attrs: { hp: 80, attack: 12 } },
@@ -851,7 +845,7 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:hero:hp')
+    expect(screen.getByRole('combobox', { name: '文本内容' })).toHaveValue('entity-attr:hero:hp')
     expect(screen.queryByText(/常量：10 · 状态：entity\.hero\.attr\.hp \/ var\.qi/)).toBeNull()
     expect(onChange).not.toHaveBeenCalled()
   })
@@ -1170,7 +1164,7 @@ describe('ComponentFormFields defaults', () => {
     expect(latestValues.current).toMatchObject({ expr: 'entity.enemy-boss.attr.vitality' })
   })
 
-  it('uses the dynamic text picker for subtitle speaker and text', () => {
+  it('uses the dynamic text picker for subtitle speaker only', () => {
     const onChange = vi.fn()
     render(
       <ComponentFormFields
@@ -1189,7 +1183,7 @@ describe('ComponentFormFields defaults', () => {
     )
 
     const pickers = screen.getAllByRole('combobox', { name: '文本内容' })
-    expect(pickers).toHaveLength(2)
+    expect(pickers).toHaveLength(1)
     chooseCascade(pickers[0]!, '实体', '空藏', '名称')
     expect(onChange).toHaveBeenCalledWith({
       speaker: { ref: 'entity.hero.name' },

@@ -169,6 +169,8 @@ describe('valueExprPick', () => {
     expect(encodeEffectOperation('div', 2)).toEqual({ op: 'mul', value: { expr: '1/(2)' } })
     expect(decodeEffectOperation('mul', { expr: '1/(2)' })).toEqual({ op: 'div', value: 2 })
     expect(decodeEffectOperation('add', -10)).toEqual({ op: 'sub', value: 10 })
+    expect(decodeEffectOperation('add', { expr: '-(0)' })).toEqual({ op: 'sub', value: 0 })
+    expect(decodeEffectOperation('mul', { expr: '1/(0)' })).toEqual({ op: 'div', value: 0 })
   })
 
   it('Effect 层减/除包装保留公式 pick，编辑公式后仍能维持当前运算', () => {

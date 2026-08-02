@@ -1,6 +1,6 @@
 /**
  * 伤害飘字（component id: `DamageFloatText`）。
- * value 由 RuntimeComponentHost 解析；此处只负责伤害符号与展示。
+ * parameter 等由 RuntimeComponentHost 解析；此处只拼接展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
@@ -10,7 +10,8 @@ export const DamageFloatTextManifest: ComponentManifest = {
   id: 'DamageFloatText',
   label: '伤害飘字',
   inputs: [
-    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr' },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '-25' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -19,7 +20,8 @@ export const DamageFloatTextManifest: ComponentManifest = {
 }
 
 export interface DamageFloatTextProps {
-  value?: number
+  fixedText?: string
+  parameter?: string
   color?: string
   fontSize?: number
   durationMs?: number
@@ -29,7 +31,8 @@ export interface DamageFloatTextProps {
 }
 
 export function DamageFloatText({
-  value = -25,
+  fixedText = '',
+  parameter = '-25',
   color,
   fontSize,
   durationMs = 1100,
@@ -39,7 +42,7 @@ export function DamageFloatText({
 }: DamageFloatTextProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = damageText(value)
+  const text = `${fixedText}${parameter}`
   const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
@@ -50,11 +53,6 @@ export function DamageFloatText({
       <span data-overlay-fit-target style={textStyle}>{text}</span>
     </div>
   )
-}
-
-function damageText(value: number): string {
-  const normalized = Object.is(value, -0) ? 0 : value
-  return String(normalized > 0 ? -normalized : normalized)
 }
 
 const DAMAGE_FLOAT_TEXT_CSS = `

@@ -1,6 +1,6 @@
 /**
  * 增益飘字（component id: `GainFloatText`）。
- * value 由 RuntimeComponentHost 解析；此处只负责增益符号与展示。
+ * parameter 等由 RuntimeComponentHost 解析；此处只拼接展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
@@ -10,7 +10,8 @@ export const GainFloatTextManifest: ComponentManifest = {
   id: 'GainFloatText',
   label: '增益飘字',
   inputs: [
-    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: 50 },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '+50' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ffd54a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -19,7 +20,8 @@ export const GainFloatTextManifest: ComponentManifest = {
 }
 
 export interface GainFloatTextProps {
-  value?: number
+  fixedText?: string
+  parameter?: string
   color?: string
   fontSize?: number
   durationMs?: number
@@ -29,7 +31,8 @@ export interface GainFloatTextProps {
 }
 
 export function GainFloatText({
-  value = 50,
+  fixedText = '',
+  parameter = '+50',
   color,
   fontSize,
   durationMs = 1100,
@@ -39,7 +42,7 @@ export function GainFloatText({
 }: GainFloatTextProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = signedText(value)
+  const text = `${fixedText}${parameter}`
   const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
@@ -50,11 +53,6 @@ export function GainFloatText({
       <span data-overlay-fit-target style={textStyle}>{text}</span>
     </div>
   )
-}
-
-function signedText(value: number): string {
-  const normalized = Object.is(value, -0) ? 0 : value
-  return normalized > 0 ? `+${normalized}` : String(normalized)
 }
 
 const GAIN_FLOAT_TEXT_CSS = `

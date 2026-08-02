@@ -34,7 +34,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
           children: [{
             id: 'damage',
             component: 'DamageFloatText',
-            inputs: { value: 100, durationMs: 5 },
+            inputs: { parameter: '-100', durationMs: 5 },
           }],
         }}
         entities={{}}

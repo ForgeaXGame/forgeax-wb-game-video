@@ -10,7 +10,8 @@ export const StatusNoticeManifest: ComponentManifest = {
   id: 'StatusNotice',
   label: '状态提示',
   inputs: [
-    { key: 'text', label: '提示文字', valueType: 'string', default: '获得道具〈xxx〉' },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '获得道具' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '〈xxx〉' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#f0f0f0' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 2.4 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1600 },
@@ -19,7 +20,8 @@ export const StatusNoticeManifest: ComponentManifest = {
 }
 
 export interface StatusNoticeProps {
-  text?: string
+  fixedText?: string
+  parameter?: string
   color?: string
   fontSize?: number
   durationMs?: number
@@ -29,7 +31,8 @@ export interface StatusNoticeProps {
 }
 
 export function StatusNotice({
-  text = '获得道具〈xxx〉',
+  fixedText = '获得道具',
+  parameter = '〈xxx〉',
   color,
   fontSize,
   durationMs = 1600,
@@ -38,6 +41,7 @@ export function StatusNotice({
   previewPlaying,
 }: StatusNoticeProps): ReactNode {
   injectCss('status-notice', STATUS_NOTICE_CSS)
+  const text = `${fixedText}${parameter}`
   const frozen = preview && !previewPlaying
   const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
 

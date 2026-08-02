@@ -7,6 +7,7 @@ import type { TimelineConditionMarker, TimelinePointMarker } from './materialTim
 function effectsBrief(actions: NodeAction[]): string {
   const effects = actions.flatMap((action) => (action.kind === 'effect' ? action.effects : []))
   const spawns = actions.filter((action) => action.kind === 'spawn').length
+  const hiddenOverlays = actions.filter((action) => action.kind === 'hideOverlay').length
   const parts = effects.slice(0, 2).map((effect) => {
     if (effect.kind === 'attr') return `${effect.entityId}.${effect.attr} ${effect.op} ${String(effect.value)}`
     if (effect.kind === 'var') return `${effect.varId} ${effect.op} ${String(effect.value)}`
@@ -14,7 +15,8 @@ function effectsBrief(actions: NodeAction[]): string {
     return `${effect.itemId} ${effect.op === 'give' ? '+' : '-'}${effect.count}`
   })
   if (effects.length > 2) parts.push(`等 ${effects.length} 项`)
-  if (spawns > 0) parts.push(`刷出 ${spawns} 个瞬态组件`)
+  if (spawns > 0) parts.push(`显示 ${spawns} 个界面`)
+  if (hiddenOverlays > 0) parts.push(`隐藏 ${hiddenOverlays} 个界面`)
   if (actions.some((action) => action.kind === 'advance')) parts.push('沿边推进')
   return parts.length ? parts.join(' · ') : '未配置动作'
 }

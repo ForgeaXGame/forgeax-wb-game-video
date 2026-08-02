@@ -509,10 +509,20 @@ function renderInput(
             value={(val ?? inp.default) as TextOrRef | undefined}
             entities={pickers?.entities}
             variables={pickers?.variables}
+            formulas={pickers?.formulas}
             preferredEntityIds={preferredEntities}
             entityNameOnly={isHpBarComponent(componentId) && inp.key === 'label'}
-            createEntity={createEntityTemplate && onCreateEntity
-              ? { template: createEntityTemplate, onCreate: onCreateEntity }
+            createAttribute={onCreateEntityAttribute
+              ? {
+                ...(createTemplate ? { template: createTemplate } : {}),
+                onCreate: onCreateEntityAttribute,
+              }
+              : undefined}
+            createEntity={onCreateEntity
+              ? {
+                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+                onCreate: onCreateEntity,
+              }
               : undefined}
             onChange={(next) => onPatch(inp.key, next)}
           />

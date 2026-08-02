@@ -1,18 +1,24 @@
 import { useState, type CSSProperties } from 'react'
-import type { Entity, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, NumOrExpr, Variable } from '../../runtime/schema/graph-schema'
+import type { Formula, FormulaHoleBinding } from '../persist/formula-authoring'
 import { CascadingPicker, type CascadingPickerOption } from './CascadingPicker'
-import type { EntityCreateRequest } from './metaCatalog'
+import { FormulaApplyEditor } from './FormulaApplyEditor'
+import { compileFormula } from './formulaApply'
+import type { ValueExprAttributeCreateConfig, ValueExprEntityCreateConfig } from './ValueExprEditor'
 import {
   attrDisplayName,
   entityDisplayName,
   findEntity,
+  findFormula,
+  formulaDisplayName,
   listAttrOptions,
   listEntityOptions,
+  listFormulaOptions,
   listVarOptions,
   variableDisplayName,
 } from './metaCatalog'
 
-export type TextOrRef = string | { ref: string }
+export type TextOrRef = string | number | { ref: string } | NumOrExpr
 
 const row: CSSProperties = {
   display: 'flex',
@@ -32,24 +38,47 @@ interface EntityCreateDraft {
   name: string
 }
 
+function formulaPick(value: TextOrRef | undefined): {
+  formulaId: string
+  holeBindings: Record<string, FormulaHoleBinding>
+} | undefined {
+  if (!value || typeof value !== 'object' || !('expr' in value)) return undefined
+  const pick = (value as { pick?: unknown }).pick
+  if (!pick || typeof pick !== 'object') return undefined
+  const candidate = pick as Record<string, unknown>
+  if (
+    candidate.mode !== 'formula'
+    || typeof candidate.formulaId !== 'string'
+    || !candidate.holeBindings
+    || typeof candidate.holeBindings !== 'object'
+  ) {
+    return undefined
+  }
+  return {
+    formulaId: candidate.formulaId,
+    holeBindings: candidate.holeBindings as Record<string, FormulaHoleBinding>,
+  }
+}
+
 export function TextValueEditor({
   value,
   entities,
   variables,
+  formulas,
   preferredEntityIds,
   entityNameOnly = false,
+  createAttribute,
   createEntity,
   onChange,
 }: {
   value: TextOrRef | undefined
   entities: Record<string, Entity> | undefined
   variables: Record<string, Variable> | undefined
+  formulas?: Record<string, Formula>
   preferredEntityIds?: readonly string[]
   entityNameOnly?: boolean
-  createEntity?: {
-    template: EntityCreateRequest
-    onCreate: (request: EntityCreateRequest) => void
-  }
+  createAttribute?: ValueExprAttributeCreateConfig
+  createEntity?: ValueExprEntityCreateConfig
   onChange: (next: TextOrRef) => void
 }): JSX.Element {
   const [createDraft, setCreateDraft] = useState<EntityCreateDraft | null>(null)
@@ -84,28 +113,39 @@ export function TextValueEditor({
     label: variableDisplayName(variables?.[variable.id], variable.id),
     ref: `var.${variable.id}`,
   }))
+  const formulaChoices = listFormulaOptions(formulas).map((formula) => ({
+    key: `formula:${encodeURIComponent(formula.id)}`,
+    label: formulaDisplayName(findFormula(formulas, formula.id), formula.id),
+    formulaId: formula.id,
+  }))
   const stateChoices = [...entityNameChoices, ...entityAttrChoices, ...variableChoices]
-  const ref = value && typeof value === 'object' ? value.ref : undefined
-  const selected = ref
-    ? stateChoices.find((choice) => choice.ref === ref)?.key ?? 'unknown-ref'
-    : 'literal'
+  const appliedFormula = formulaPick(value)
+  const ref = value && typeof value === 'object' && 'ref' in value ? value.ref : undefined
+  const selected = appliedFormula
+    ? `formula:${encodeURIComponent(appliedFormula.formulaId)}`
+    : ref
+      ? stateChoices.find((choice) => choice.ref === ref)?.key ?? 'unknown-ref'
+      : value && typeof value === 'object'
+        ? 'unknown-ref'
+        : 'literal'
   const selectedChoice = stateChoices.find((choice) => choice.key === selected)
-  const createEntityKey = createEntity
-    ? `create-entity:${encodeURIComponent(createEntity.template.entityId)}`
+  const createEntityTemplate = createEntity?.template
+  const createEntityKey = createEntityTemplate
+    ? `create-entity:${encodeURIComponent(createEntityTemplate.entityId)}`
     : ''
-  const entityDraft = createEntity
+  const entityDraft = createEntityTemplate
     ? createDraft ?? {
-      entityId: createEntity.template.entityId,
-      name: createEntity.template.name,
+      entityId: createEntityTemplate.entityId,
+      name: createEntityTemplate.name,
     }
     : undefined
   const pickerOptions: CascadingPickerOption[] = [
-    ...(orderedEntities.length === 0 && createEntity && entityDraft ? [{
+    ...(orderedEntities.length === 0 && createEntity && createEntityTemplate && entityDraft ? [{
       key: 'entity-values',
       label: '实体',
       children: [{
         key: `configure:${createEntityKey}`,
-        label: `配置「${createEntity.template.name}」实体`,
+        label: `配置「${createEntityTemplate.name}」实体`,
         children: [
           {
             key: `detail:${createEntityKey}:id`,
@@ -169,13 +209,24 @@ export function TextValueEditor({
         value: choice.key,
       })),
     }] : []),
+    ...(formulaChoices.length > 0 ? [{
+      key: 'formula-values',
+      label: '公式',
+      children: formulaChoices.map((choice) => ({
+        key: choice.key,
+        label: choice.label,
+        value: choice.key,
+      })),
+    }] : []),
     { key: 'literal', label: '常量', value: 'literal' },
   ]
   const selectedLabel = selected === 'unknown-ref'
     ? ''
     : selected === 'literal'
       ? '常量'
-      : selectedChoice?.label ?? ''
+      : selectedChoice?.label
+        ?? formulaChoices.find((choice) => choice.key === selected)?.label
+        ?? ''
 
   function selectContent(key: string): void {
     if (createEntity && entityDraft && key === createEntityKey) {
@@ -189,30 +240,51 @@ export function TextValueEditor({
       return
     }
     if (key === 'literal') {
-      onChange(typeof value === 'string' ? value : '')
+      onChange(typeof value === 'string' || typeof value === 'number' ? String(value) : '')
       return
     }
     const choice = stateChoices.find((item) => item.key === key)
-    if (choice) onChange({ ref: choice.ref })
+    if (choice) {
+      onChange({ ref: choice.ref })
+      return
+    }
+    const formulaChoice = formulaChoices.find((item) => item.key === key)
+    const formula = formulaChoice ? findFormula(formulas, formulaChoice.formulaId) : undefined
+    if (formula) onChange(compileFormula(formula, {}, entities))
   }
 
   return (
-    <div style={row}>
-      <CascadingPicker
-        ariaLabel="文本内容"
-        value={selected}
-        displayValue={selectedLabel}
-        placeholder="文本：我方 · 状态：entity.hero.name / var.qi"
-        options={pickerOptions}
-        onSelect={selectContent}
-      />
-      {selected === 'literal' ? (
-        <input
-          aria-label="固定文本"
-          value={typeof value === 'string' ? value : ''}
-          placeholder="输入固定文本"
-          onChange={(event) => onChange(event.target.value)}
-          style={{ flex: '0 1 40%', minWidth: 120, boxSizing: 'border-box' }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', minWidth: 0 }}>
+      <div style={row}>
+        <CascadingPicker
+          ariaLabel="文本内容"
+          value={selected}
+          displayValue={selectedLabel}
+          placeholder="文本：我方 · 状态：entity.hero.name / var.qi · 公式：伤害公式"
+          options={pickerOptions}
+          onSelect={selectContent}
+        />
+        {selected === 'literal' ? (
+          <input
+            aria-label="固定文本"
+            value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
+            placeholder="输入固定文本"
+            onChange={(event) => onChange(event.target.value)}
+            style={{ flex: '0 1 40%', minWidth: 120, boxSizing: 'border-box' }}
+          />
+        ) : null}
+      </div>
+      {appliedFormula ? (
+        <FormulaApplyEditor
+          formulaId={appliedFormula.formulaId}
+          holeBindings={appliedFormula.holeBindings}
+          formulas={formulas}
+          entities={entities}
+          variables={variables}
+          onChange={onChange}
+          showFormulaPicker={false}
+          createAttribute={createAttribute}
+          createEntity={createEntity}
         />
       ) : null}
     </div>

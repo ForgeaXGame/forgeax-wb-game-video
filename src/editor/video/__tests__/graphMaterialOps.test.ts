@@ -1269,7 +1269,7 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
       undefined,
     )
     const el = findElement(withExpr, findNode(withExpr.graph, n.id), floatId)!
-    expect(el.inputs?.expr).toEqual({ expr: 'entity.ent-boss.attr.hp' })
+    expect(el.inputs?.parameter).toEqual({ expr: 'entity.ent-boss.attr.hp' })
 
     const cleared = patchOverlayGraph(
       withExpr,
@@ -1279,7 +1279,7 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
       undefined,
     )
     const el2 = findElement(cleared, findNode(cleared.graph, n.id), floatId)!
-    expect(el2.inputs?.expr).toBeUndefined()
+    expect(el2.inputs?.parameter).toBeUndefined()
   })
 
   it('content 只改显示文案，不影响结算 effects', () => {
@@ -1287,7 +1287,8 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
     const next = patchOverlayGraph(scenario, n, floatId, { content: '会心一击 {v}' }, undefined)
     const curNode = findNode(next.graph, n.id)!
     const el = findElement(next, curNode, floatId)!
-    expect(el.inputs?.text).toBe('会心一击 {v}')
+    expect(el.inputs?.fixedText).toBe('会心一击 ')
+    expect(el.inputs?.parameter).toBe('-100')
     expect(overlayEffects(next, curNode, floatId)).toHaveLength(1)
   })
 })

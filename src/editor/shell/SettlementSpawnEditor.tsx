@@ -72,11 +72,11 @@ export function SettlementSpawnEditor({
       ) : (
         <div style={box}>
           <div style={rowStyle}>
-            <span style={lbl}>模板</span>
+            <span style={lbl}>界面</span>
             <select
               style={{ flex: 1, minWidth: 120 }}
               value={value.from}
-              onChange={(e) => onChange({ ...value, from: e.target.value })}
+              onChange={(e) => onChange({ from: e.target.value, ttlMs: value.ttlMs })}
             >
               <option value="">（选组件模板）</option>
               {templates.map((t) => (
