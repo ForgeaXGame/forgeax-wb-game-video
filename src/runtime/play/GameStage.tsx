@@ -231,7 +231,9 @@ export function GameStage({
     frontSlotRef.current === slotId && desiredKeyRef.current === key
 
   function startPlaying(element: HTMLVideoElement): void {
-    if (paused) return
+    // Buffer/preload reconciliation may rerender after the terminal clip has ended.
+    // An ended foreground video must stay on its final frame; play() would restart it.
+    if (paused || element.ended) return
     if (!element.paused) return
     const playing = element.play()
     void playing?.catch((error: unknown) => {
