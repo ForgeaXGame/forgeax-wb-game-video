@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { GameGraph, GameNodeData, Overlay } from '../../../runtime/schema/graph-schema'
@@ -75,6 +76,54 @@ describe('NodeInspector · 结算选中联动', () => {
     fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
     next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when).toEqual({ type: 'at', ms: 0 })
+  })
+
+  it('可配置播放到 300ms 时让实体属性减少手动设置的 50', () => {
+    const entities = {
+      bull: {
+        id: 'bull',
+        name: '牛魔王',
+        attrs: { rage: 100 },
+        attrMeta: { rage: { label: '怒气' } },
+      },
+    }
+    let latest = graphWith([])
+    function Harness(): JSX.Element {
+      const [graph, setGraph] = useState(latest)
+      latest = graph
+      return (
+        <NodeInspector
+          graph={graph}
+          nodeId="gate"
+          entities={entities}
+          settlementInsertMs={300}
+          onChange={setGraph}
+        />
+      )
+    }
+
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+
+    expect(screen.getByTitle('本节点演出 3000ms')).toHaveValue('300')
+    expect(screen.getByRole('combobox', { name: '数值来源' })).toHaveValue('const')
+    fireEvent.click(screen.getByRole('button', { name: '−' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '数值' }), { target: { value: '50' } })
+
+    expect(screen.getByText('属性 · 牛魔王 的 怒气 减少 50')).toBeTruthy()
+    expect(latest.nodes[0]?.data.reactions?.[0]).toEqual({
+      when: { type: 'at', ms: 300 },
+      do: [{
+        kind: 'effect',
+        effects: [{
+          kind: 'attr',
+          entityId: 'bull',
+          attr: 'rage',
+          op: 'add',
+          value: { expr: '-(50)' },
+        }],
+      }],
+    })
   })
 
   it('沿边推进统一选择目标节点，并在没有连线时同步建边', () => {

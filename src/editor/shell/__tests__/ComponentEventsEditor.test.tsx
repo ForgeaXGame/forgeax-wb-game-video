@@ -114,7 +114,7 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    const content = screen.getByRole('combobox', { name: '数值内容' })
+    const content = screen.getByRole('combobox', { name: '数值来源' })
     expect(content.querySelector('option[value="formula:formula-damage"]')).toBeTruthy()
   })
 })
