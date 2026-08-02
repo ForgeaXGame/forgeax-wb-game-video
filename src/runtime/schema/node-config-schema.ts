@@ -40,6 +40,9 @@ export interface ComponentInput {
   default?: unknown
   /** 有 options ⇒ 编辑器出 select。 */
   options?: { value: string; label: string }[]
+  /** 标量数值编辑器约束。 */
+  min?: number
+  step?: number
   /**
    * 用哪个**输入组件**渲染该 input：填了就优先用它，没填则按 `valueType` 出标量控件。
    * 例：`color`（取色）/ `entity`（实体引用）/ `events` / `effects` / `textStyle` / `qteCues` …

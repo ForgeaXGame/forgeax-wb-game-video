@@ -575,12 +575,15 @@ function renderInput(
     )
   }
   switch (inp.valueType) {
-    case 'number':
+    case 'number': {
+      const isFontSize = inp.key === 'fontSize'
       return (
         <span key={inp.key}>
           {wrap(
             <input
               type="number"
+              min={inp.min ?? (isFontSize ? 0.1 : undefined)}
+              step={inp.step ?? (isFontSize ? 0.1 : undefined)}
               value={typeof val === 'number' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value === '' ? undefined : Number(e.target.value))}
@@ -589,12 +592,13 @@ function renderInput(
                   onPatch(inp.key, inp.default)
                 }
               }}
-              style={{ width: compact ? 56 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              style={{ width: compact ? 92 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
               title={hint}
             />,
           )}
         </span>
       )
+    }
     case 'boolean':
       return (
         <span key={inp.key}>
@@ -617,7 +621,7 @@ function renderInput(
               value={typeof val === 'string' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
-              style={{ width: compact ? 88 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              style={{ width: compact ? 200 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
               title={hint}
             />,
           )}
