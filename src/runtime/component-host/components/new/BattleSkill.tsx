@@ -1,9 +1,9 @@
 /**
- * 战斗技能条（component id: `BattleSkill`）—— 固定展示轻攻击、重攻击、冥想、灭世。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与点击交互。
+ * 战斗技能条（component id: `BattleSkill`）。
+ * 按键由 RuntimeComponentHost 以扁平 props 传入；此处只展示与交互。
  */
 import { useEffect, useRef, useState } from 'react'
-import { usePlayerKeyGate, type OverlayProps } from '../../rendererRegistry'
+import { usePlayerKeyGate } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
@@ -24,17 +24,33 @@ export const BattleSkillManifest: ComponentManifest = {
   ],
 }
 
-export function BattleSkill({ emit, overlay, preview }: OverlayProps) {
+export interface BattleSkillProps {
+  lightKey?: string
+  heavyKey?: string
+  meditKey?: string
+  ultKey?: string
+  emit?: (key: string) => void
+  preview?: boolean
+}
+
+export function BattleSkill({
+  lightKey: lightKeyInput = 'X',
+  heavyKey: heavyKeyInput = 'A',
+  meditKey: meditKeyInput = 'S',
+  ultKey: ultKeyInput = 'B',
+  emit,
+  preview,
+}: BattleSkillProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const pickedRef = useRef(false)
   const [picked, setPicked] = useState<string | null>(null)
   const keyOk = usePlayerKeyGate()
-  const lightKey = resolveKey(overlay.inputs.lightKey, 'X')
-  const heavyKey = resolveKey(overlay.inputs.heavyKey, 'A')
-  const meditKey = resolveKey(overlay.inputs.meditKey, 'S')
-  const ultKey = resolveKey(overlay.inputs.ultKey, 'B')
+  const lightKey = resolveKey(lightKeyInput, 'X')
+  const heavyKey = resolveKey(heavyKeyInput, 'A')
+  const meditKey = resolveKey(meditKeyInput, 'S')
+  const ultKey = resolveKey(ultKeyInput, 'B')
 
   function pick(id: string): void {
     if (preview || pickedRef.current) return

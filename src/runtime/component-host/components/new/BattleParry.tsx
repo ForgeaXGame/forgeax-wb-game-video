@@ -1,9 +1,9 @@
 /**
- * 防反 QTE（component id: `BattleParry`）—— 两枚按键均命中为大成功，命中其一为成功。
- * 位置与显示时段由外部 Overlay 编排；组件内部负责按键命中与结算。
+ * 防反 QTE（component id: `BattleParry`）。
+ * 按键由 RuntimeComponentHost 以扁平 props 传入；此处只展示与结算。
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { usePlayerKeyGate, type OverlayProps } from '../../rendererRegistry'
+import { usePlayerKeyGate } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewTStyle } from './skinRuntime'
 
@@ -17,10 +17,23 @@ export const BattleParryManifest: ComponentManifest = {
   ],
 }
 
-export function BattleParry({ emit, overlay, preview, previewTimeMs }: OverlayProps) {
+export interface BattleParryProps {
+  firstKey?: string
+  secondKey?: string
+  emit?: (key: string) => void
+  preview?: boolean
+  previewTimeMs?: number
+}
+
+export function BattleParry({
+  firstKey: firstKeyInput = 'A',
+  secondKey: secondKeyInput = 'B',
+  emit,
+  preview,
+  previewTimeMs,
+}: BattleParryProps) {
   const qteRingMs = 1400
   const qteEntryStaggerMs = 100
-  /** 第二枚按键的单次收圈结束后，按命中数结算本轮 QTE。 */
   const qteWindowMs = qteRingMs + qteEntryStaggerMs
   injectCss('battle-parry-layer', PARRY_CSS)
   ensureInkFilters()
@@ -31,8 +44,8 @@ export function BattleParry({ emit, overlay, preview, previewTimeMs }: OverlayPr
   const keyOk = usePlayerKeyGate()
   runtimeRef.current.emit = emit
   runtimeRef.current.preview = preview
-  const firstKey = resolveKey(overlay.inputs.firstKey, 'A')
-  const secondKey = resolveKey(overlay.inputs.secondKey, 'B')
+  const firstKey = resolveKey(firstKeyInput, 'A')
+  const secondKey = resolveKey(secondKeyInput, 'B')
 
   function settle(result: 'greatSuccess' | 'success' | 'fail', animate = true): void {
     if (runtimeRef.current.settled) return

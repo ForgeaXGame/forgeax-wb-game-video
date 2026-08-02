@@ -1,12 +1,10 @@
 /**
- * 字幕/对白（component id: `Dialogue`）—— 显示一名角色说出的台词。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责固定的对白视觉。
+ * 字幕/对白（component id: `Dialogue`）。
+ * 文案由 RuntimeComponentHost 解析后以扁平 props 传入；此处只展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { injectCss, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveTextValue } from '../numericValue'
 
 export const DialogueManifest: ComponentManifest = {
   id: 'Dialogue',
@@ -20,11 +18,21 @@ export const DialogueManifest: ComponentManifest = {
   events: [],
 }
 
-export function Dialogue({ overlay, ctx }: OverlayProps): ReactNode {
+export interface DialogueProps {
+  speaker?: string
+  text?: string
+  color?: string
+  fontSize?: number
+}
+
+export function Dialogue({
+  speaker = '',
+  text = '……',
+  color,
+  fontSize,
+}: DialogueProps): ReactNode {
   injectCss('dialogue', DIALOGUE_CSS)
-  const speaker = resolveTextValue(overlay.inputs.speaker, ctx) ?? ''
-  const text = resolveTextValue(overlay.inputs.text, ctx) || '……'
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2 })
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2 })
 
   return (
     <div className="gv-dialogue">

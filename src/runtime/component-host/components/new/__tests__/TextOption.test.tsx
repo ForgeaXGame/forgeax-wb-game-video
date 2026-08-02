@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TextOption, TextOptionManifest } from '../TextOption'
@@ -19,10 +20,7 @@ describe('TextOption', () => {
   it('centers the text and emits selection only once', () => {
     const emit = vi.fn()
     render(
-      <TextOption
-        emit={emit}
-        overlay={{ elementId: 'boat', component: 'TextOption', inputs: { text: '划船', triggerKey: 'F', color: '#ffd54a', fontSize: 3 } }}
-      />,
+      <TextOption emit={emit} text="划船" triggerKey="F" color="#ffd54a" fontSize={3} />,
     )
 
     const button = screen.getByRole('button', { name: 'F 划船' })
@@ -35,12 +33,7 @@ describe('TextOption', () => {
 
   it('emits from its configured keyboard trigger', () => {
     const emit = vi.fn()
-    render(
-      <TextOption
-        emit={emit}
-        overlay={{ elementId: 'boat', component: 'TextOption', inputs: { triggerKey: 'f' } }}
-      />,
-    )
+    render(<TextOption emit={emit} triggerKey="f" />)
 
     fireEvent.keyDown(window, { key: 'F' })
     fireEvent.keyDown(window, { key: 'F', repeat: true })

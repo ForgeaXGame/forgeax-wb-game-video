@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BattleSkill, BattleSkillManifest } from '../BattleSkill'
@@ -17,10 +18,7 @@ describe('BattleSkill', () => {
   it('shows configured keys and emits their matching skill event', () => {
     const emit = vi.fn()
     render(
-      <BattleSkill
-        emit={emit}
-        overlay={{ elementId: 'skills', component: 'BattleSkill', inputs: { lightKey: 'Q', heavyKey: 'E', meditKey: 'R', ultKey: 'T' } }}
-      />,
+      <BattleSkill emit={emit} lightKey="Q" heavyKey="E" meditKey="R" ultKey="T" />,
     )
 
     fireEvent.keyDown(window, { key: 'e' })

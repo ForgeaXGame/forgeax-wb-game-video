@@ -1,11 +1,10 @@
 /**
- * 增益飘字（component id: `GainFloatText`）—— 固定文本与动态参数直接拼接。
+ * 增益飘字（component id: `GainFloatText`）。
+ * parameter 等由 RuntimeComponentHost 解析；此处只拼接展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveTextDurationMs, resolveTextParameter, type TextParameterInputs } from './textParameter'
 
 export const GainFloatTextManifest: ComponentManifest = {
   id: 'GainFloatText',
@@ -20,14 +19,32 @@ export const GainFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function GainFloatText({ overlay, ctx, preview, previewTimeMs }: OverlayProps): ReactNode {
+export interface GainFloatTextProps {
+  fixedText?: string
+  parameter?: string
+  color?: string
+  fontSize?: number
+  durationMs?: number
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function GainFloatText({
+  fixedText = '',
+  parameter = '+50',
+  color,
+  fontSize,
+  durationMs = 1100,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: GainFloatTextProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const fixedText = typeof overlay.inputs.fixedText === 'string' ? overlay.inputs.fixedText : ''
-  const text = `${fixedText}${resolveTextParameter((overlay.inputs as TextParameterInputs).parameter, ctx, '+50')}`
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
-  const durationMs = resolveTextDurationMs(overlay.inputs.durationMs)
-  const frozen = preview
+  const text = `${fixedText}${parameter}`
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
+  const frozen = preview && !previewPlaying
   return (
     <div
       className={`gv-gain-float-text${frozen ? ' is-preview-frozen' : ''}`}

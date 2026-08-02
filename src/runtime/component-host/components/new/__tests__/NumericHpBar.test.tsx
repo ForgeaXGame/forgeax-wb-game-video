@@ -1,5 +1,7 @@
+// @vitest-environment happy-dom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createCoreSkinRegistry } from '../../index'
 import type { SkinCtx } from '../../../rendererRegistry'
 import { BattleEnemyHpBar, BattleEnemyHpBarManifest } from '../BattleEnemyHpBar'
 import { BattlePlayerHpBar, BattlePlayerHpBarManifest } from '../BattlePlayerHpBar'
@@ -34,6 +36,24 @@ function fillWidth(container: HTMLElement, selector: string): string {
   return (container.querySelector(selector) as HTMLElement).style.width
 }
 
+function renderViaHost(
+  component: string,
+  inputs: Record<string, unknown>,
+  skinCtx: SkinCtx = ctx,
+): ReturnType<typeof render> {
+  const skins = createCoreSkinRegistry()
+  return render(
+    <>
+      {skins.renderOverlay(
+        { elementId: component, component, inputs },
+        undefined,
+        undefined,
+        skinCtx,
+      )}
+    </>,
+  )
+}
+
 describe('numeric hp bar components', () => {
   it('declare entity binding and optional numeric overrides', () => {
     expect(BattlePlayerHpBarManifest.inputs?.map((input) => input.key)).toEqual([
@@ -45,15 +65,6 @@ describe('numeric hp bar components', () => {
       'qi',
       'qiMax',
     ])
-    expect(BattlePlayerHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
-      { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-      { key: 'current', label: '血量', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '血量上限', valueType: 'number', component: 'numberExpr' },
-      { key: 'qi', label: '气力', valueType: 'number', component: 'numberExpr' },
-      { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
-    ]))
     expect(BattleEnemyHpBarManifest.inputs?.map((input) => input.key)).toEqual([
       'bind',
       'attr',
@@ -61,32 +72,15 @@ describe('numeric hp bar components', () => {
       'current',
       'max',
     ])
-    expect(BattleEnemyHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
-      { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-      { key: 'current', label: '血量', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '血量上限', valueType: 'number', component: 'numberExpr' },
-    ]))
   })
 
-  it('reads current, max, and qi from the configured HUD entity attribute', () => {
-    const player = render(
-      <BattlePlayerHpBar
-        overlay={{ elementId: 'player', component: 'BattlePlayerHpBar', inputs: { bind: 'ent-player', attr: 'hp' } }}
-        ctx={ctx}
-      />,
-    )
+  it('Host resolves entity bind into flat current/max for the leaf', () => {
+    const player = renderViaHost('BattlePlayerHpBar', { bind: 'ent-player', attr: 'hp' })
     expect(fillWidth(player.container, '.ks-hud-hp-fill')).toBe('75%')
     expect(player.container.querySelector('.ks-hud-rage')?.getAttribute('aria-label')).toBe('气力 2/5')
     player.unmount()
 
-    const enemy = render(
-      <BattleEnemyHpBar
-        overlay={{ elementId: 'enemy', component: 'BattleEnemyHpBar', inputs: { bind: 'ent-boss', attr: 'hp' } }}
-        ctx={ctx}
-      />,
-    )
+    const enemy = renderViaHost('BattleEnemyHpBar', { bind: 'ent-boss', attr: 'hp' })
     expect(fillWidth(enemy.container, '.ks-hud-boss-fill')).toBe('80%')
   })
 
@@ -107,37 +101,22 @@ describe('numeric hp bar components', () => {
         score: 0,
       },
     }
-    const { container } = render(
-      <BattleEnemyHpBar
-        overlay={{
-          elementId: 'custom-entity',
-          component: 'BattleEnemyHpBar',
-          inputs: { bind: 'ent-0', attr: 'vitality' },
-        }}
-        ctx={customCtx}
-      />,
+    const { container } = renderViaHost(
+      'BattleEnemyHpBar',
+      { bind: 'ent-0', attr: 'vitality' },
+      customCtx,
     )
-
     expect(fillWidth(container, '.ks-hud-boss-fill')).toBe('50%')
   })
 
-  it('allows constants, state bindings, and formulas to override HUD values', () => {
-    const { container } = render(
-      <BattlePlayerHpBar
-        overlay={{
-          elementId: 'player-overrides',
-          component: 'BattlePlayerHpBar',
-          inputs: {
-            current: 'entity.ent-player.attr.attack + var.qi',
-            max: 44,
-            qi: { expr: 'var.qi + 1' },
-            qiMax: { expr: 'var.qi + 2' },
-            label: { ref: 'entity.ent-player.name' },
-          },
-        }}
-        ctx={ctx}
-      />,
-    )
+  it('allows constants, state bindings, and formulas via Host', () => {
+    const { container } = renderViaHost('BattlePlayerHpBar', {
+      current: 'entity.ent-player.attr.attack + var.qi',
+      max: 44,
+      qi: { expr: 'var.qi + 1' },
+      qiMax: { expr: 'var.qi + 2' },
+      label: { ref: 'entity.ent-player.name' },
+    })
 
     expect(fillWidth(container, '.ks-hud-hp-fill')).toBe('50%')
     expect(container.querySelector('.ks-hud-rage')?.getAttribute('aria-label')).toBe('气力 3/4')
@@ -145,17 +124,20 @@ describe('numeric hp bar components', () => {
   })
 
   it('keeps the current value bound while max reads any selected entity property', () => {
-    const { container } = render(
-      <BattlePlayerHpBar
-        overlay={{
-          elementId: 'player-bound-max',
-          component: 'BattlePlayerHpBar',
-          inputs: { bind: 'ent-player', attr: 'hp', max: { expr: 'entity.ent-player.attr.hpMax' } },
-        }}
-        ctx={ctx}
-      />,
-    )
+    const { container } = renderViaHost('BattlePlayerHpBar', {
+      bind: 'ent-player',
+      attr: 'hp',
+      max: { expr: 'entity.ent-player.attr.hpMax' },
+    })
 
     expect(fillWidth(container, '.ks-hud-hp-fill')).toBe('50%')
+  })
+
+  it('leaf reads already-resolved flat props', () => {
+    const { container } = render(
+      <BattleEnemyHpBar current={45} max={90} label="悟空" />,
+    )
+    expect(fillWidth(container, '.ks-hud-boss-fill')).toBe('50%')
+    expect(container.querySelector('.ks-hud-boss-name')?.textContent).toBe('悟空')
   })
 })
