@@ -1,10 +1,12 @@
 /**
  * 战斗技能条（component id: `BattleSkill`）—— 固定展示轻攻击、重攻击、冥想、灭世。
  * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与点击交互。
+ * 重攻击 / 灭世按当前气力与可配置消耗门槛禁用。
  */
 import { useRef, useState } from 'react'
 import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
+import { resolveNumericValue } from '../numericValue'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
 export const BattleSkillManifest: ComponentManifest = {
@@ -16,18 +18,28 @@ export const BattleSkillManifest: ComponentManifest = {
     { id: 'medit', label: '冥想' },
     { id: 'ult', label: '灭世' },
   ],
-  inputs: [],
+  inputs: [
+    { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+    { key: 'heavyCost', label: '重攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 2 },
+    { key: 'ultCost', label: '灭世气力消耗', valueType: 'number', component: 'numberExpr', default: 5 },
+  ],
 }
 
-export function BattleSkill({ emit, preview }: OverlayProps) {
+export function BattleSkill({ overlay, emit, ctx, preview }: OverlayProps) {
   injectCss('battle-skill-layer', SKILL_CSS)
   ensureInkFilters()
   ensureBrushFont()
+  const inputs = overlay.inputs
+  const qi = resolveNumericValue(inputs.qi, ctx) ?? ctx?.hud.vars.qi ?? 0
+  const heavyCost = resolveNumericValue(inputs.heavyCost, ctx) ?? 2
+  const ultCost = resolveNumericValue(inputs.ultCost, ctx) ?? 5
+  const heavyLocked = qi < heavyCost
+  const ultLocked = qi < ultCost
   const pickedRef = useRef(false)
   const [picked, setPicked] = useState<string | null>(null)
 
-  function pick(id: string): void {
-    if (preview || pickedRef.current) return
+  function pick(id: string, locked = false): void {
+    if (preview || locked || pickedRef.current) return
     pickedRef.current = true
     setPicked(id)
     emit?.(id)
@@ -38,13 +50,13 @@ export function BattleSkill({ emit, preview }: OverlayProps) {
       <button type="button" className={`pvb-skill${picked === 'light' ? ' selected' : ''}`} aria-label="轻攻击" disabled={preview || !!picked} onClick={() => pick('light')}>
         <span className="pvb-sk-nm">轻攻击</span>
       </button>
-      <button type="button" className={`pvb-skill${picked === 'heavy' ? ' selected' : ''}`} aria-label="重攻击" disabled={preview || !!picked} onClick={() => pick('heavy')}>
+      <button type="button" className={`pvb-skill${picked === 'heavy' ? ' selected' : ''}`} aria-label="重攻击" disabled={preview || !!picked || heavyLocked} onClick={() => pick('heavy', heavyLocked)}>
         <span className="pvb-sk-nm">重攻击</span>
       </button>
       <button type="button" className={`pvb-skill${picked === 'medit' ? ' selected' : ''}`} aria-label="冥想" disabled={preview || !!picked} onClick={() => pick('medit')}>
         <span className="pvb-sk-nm">冥想</span>
       </button>
-      <button type="button" className={`pvb-skill${picked === 'ult' ? ' selected' : ''}`} aria-label="灭世" disabled={preview || !!picked} onClick={() => pick('ult')}>
+      <button type="button" className={`pvb-skill${picked === 'ult' ? ' selected' : ''}`} aria-label="灭世" disabled={preview || !!picked || ultLocked} onClick={() => pick('ult', ultLocked)}>
         <span className="pvb-sk-nm">灭世</span>
       </button>
     </div>
