@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
+import type { GameGraph, GameNodeData, Overlay } from '../../../runtime/schema/graph-schema'
 import type { Reaction } from '../../../runtime/schema/node-config-schema'
 import { NodeInspector } from '../NodeInspector'
 
@@ -257,7 +257,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(next.nodes[0]?.data.reactions).toHaveLength(1)
   })
 
-  it('统一呈现定时与数值变化结算，动作只开放效果和沿边推进', () => {
+  it('统一呈现定时与数值变化结算，仅条件结算开放显示界面', () => {
     const onChange = vi.fn()
     render(
       <NodeInspector
@@ -276,7 +276,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(screen.getByRole('option', { name: '数值增加' })).toBeTruthy()
     expect(screen.getByRole('option', { name: '数值减少' })).toBeTruthy()
     expect(screen.queryByText('响应规则')).toBeNull()
-    expect(screen.queryByRole('button', { name: '＋ 生成组件' })).toBeNull()
+    expect(screen.getByRole('button', { name: '＋ 显示界面' })).toBeDisabled()
     expect(screen.getAllByRole('button', { name: '＋ 效果' })).toHaveLength(2)
     expect(screen.queryByRole('button', { name: '+ 效果' })).toBeNull()
     expect(screen.getAllByRole('button', { name: '＋ 沿边推进' })).toHaveLength(2)
@@ -284,6 +284,42 @@ describe('NodeInspector · 结算选中联动', () => {
     fireEvent.change(triggerSelects[0]!, { target: { value: 'hidden' } })
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when.type).toBe('hidden')
+  })
+
+  it('条件结算可从界面模板添加默认 1200ms 的显示动作', () => {
+    const onChange = vi.fn()
+    const overlays: Record<string, Overlay> = {
+      rageHud: {
+        id: 'rageHud',
+        title: '怒气值界面',
+        children: [{
+          id: 'value',
+          component: 'DamageFloatText',
+          trigger: { when: 'enter' },
+          inputs: { value: 0 },
+          layout: { left: 0.5, top: 0.2 },
+        }],
+      },
+    }
+    render(
+      <NodeInspector
+        graph={graphWith([{ when: { type: 'watch', of: 'entity.bull.attr.rage', on: 'change' }, do: [] }])}
+        nodeId="gate"
+        overlays={overlays}
+        onChange={onChange}
+      />,
+    )
+
+    const addUi = screen.getByRole('button', { name: '＋ 显示界面' })
+    expect(addUi).not.toBeDisabled()
+    fireEvent.click(addUi)
+
+    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(next.nodes[0]?.data.reactions?.[0]?.do).toEqual([{
+      kind: 'spawn',
+      from: 'rageHud/value',
+      ttlMs: 1200,
+    }])
   })
 
   it('条件结算复用出边 ConditionEditor，并支持完整比较运算符', () => {

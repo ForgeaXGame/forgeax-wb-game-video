@@ -14,10 +14,37 @@ afterEach(() => COMPONENT_IDS.forEach(unregisterComponent))
 
 const dmgOverlay: Overlay = {
   id: 'hud',
-  children: [{ id: 'dmgFloat', component: 'floatT', trigger: { when: 'enter' }, inputs: {} }],
+  children: [{
+    id: 'dmgFloat',
+    component: 'floatT',
+    trigger: { when: 'enter' },
+    inputs: {},
+    layout: { left: 0.4, top: 0.2, width: 0.2, height: 0.1 },
+  }],
 }
 
 describe('watch reaction (数值变化 → spawn)', () => {
+  it('keeps a spawn action executable when a condition settlement is changed to a timed settlement', () => {
+    const graph: GameGraph = {
+      nodes: [node('a', {
+        durationMs: 5000,
+        reactions: [{
+          when: { type: 'at', ms: 100 },
+          do: [{ kind: 'spawn', from: 'hud/dmgFloat', inputs: { amount: 12 }, ttlMs: 800 }],
+        }],
+      })],
+      edges: [],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph, { ui: { overlays: { hud: dmgOverlay } } }))
+    rt.start()
+
+    const dirs = rt.tick(100)
+    const spawn = dirs.find((d): d is RenderOverlayDirective => isRenderOverlay(d) && d.elementId.startsWith('spawn:'))
+    expect(spawn?.inputs.amount).toBe(12)
+    expect(spawn?.mountLayout).toEqual({ left: 0.4, top: 0.2, width: 0.2, height: 0.1 })
+    expect(spawn?.childLayout).toBeUndefined()
+  })
+
   it('fires a numeric equality settlement only when the value reaches the exact target', () => {
     const graph: GameGraph = {
       nodes: [

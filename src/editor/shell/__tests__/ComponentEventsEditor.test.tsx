@@ -480,7 +480,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(false)
     expect(screen.getByText('choice:ying')).toBeTruthy()
     const effectButtons = screen.getAllByRole('button', { name: '＋ 效果' })
-    const spawnButtons = screen.getAllByRole('button', { name: '＋ 生成组件' })
+    const spawnButtons = screen.getAllByRole('button', { name: '＋ 显示界面' })
     expect(effectButtons[0]).not.toBeDisabled()
     expect(spawnButtons[0]).not.toBeDisabled()
     fireEvent.click(effectButtons[0]!)

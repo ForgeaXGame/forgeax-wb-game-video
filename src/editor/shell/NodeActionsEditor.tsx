@@ -24,6 +24,7 @@ export function NodeActionsEditor({
   pickers,
   allowAdvance = true,
   allowSpawn = true,
+  defaultSpawnTtlMs,
   renderAdvance,
   onChange,
 }: {
@@ -34,6 +35,8 @@ export function NodeActionsEditor({
   pickers?: EditorPickerCtx
   allowAdvance?: boolean
   allowSpawn?: boolean
+  /** 新增瞬态界面时的默认显示时长；省略则保持既有的节点内常驻语义。 */
+  defaultSpawnTtlMs?: number
   renderAdvance?: (action: Extract<NodeAction, { kind: 'advance' }>, index: number) => ReactNode
   onChange: (next: NodeAction[]) => void
 }): JSX.Element {
@@ -45,7 +48,7 @@ export function NodeActionsEditor({
         <div key={i} style={{ border: '1px solid #2a2a2a', borderRadius: 5, padding: '6px 8px', background: 'rgba(0,0,0,.22)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
             <b style={{ fontSize: 11 }}>
-              {action.kind === 'effect' ? '施加效果' : action.kind === 'spawn' ? '生成组件' : '沿边推进'}
+              {action.kind === 'effect' ? '施加效果' : action.kind === 'spawn' ? '显示界面' : '沿边推进'}
             </b>
             <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => onChange(actions.filter((_, index) => index !== i))}>移除</button>
           </div>
@@ -78,7 +81,18 @@ export function NodeActionsEditor({
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => onChange([...actions, { kind: 'effect', effects: [createDefaultEffect('attr', pickers?.entities, pickers?.variables)] }])}>＋ 效果</button>
         {allowSpawn ? (
-          <button type="button" onClick={() => onChange([...actions, { kind: 'spawn', from: spawnOptions[0]?.value ?? '' }])}>＋ 生成组件</button>
+          <button
+            type="button"
+            disabled={spawnOptions.length === 0}
+            title={spawnOptions.length === 0 ? '请先在「界面」中创建可用的界面模板' : '显示一个界面模板；位置沿用模板配置'}
+            onClick={() => onChange([...actions, {
+              kind: 'spawn',
+              from: spawnOptions[0]!.value,
+              ...(defaultSpawnTtlMs != null ? { ttlMs: defaultSpawnTtlMs } : {}),
+            }])}
+          >
+            ＋ 显示界面
+          </button>
         ) : null}
         {allowAdvance && !actions.some((action) => action.kind === 'advance') ? (
           <button type="button" onClick={() => onChange([...actions, { kind: 'advance', edgeId: '' }])}>＋ 沿边推进</button>

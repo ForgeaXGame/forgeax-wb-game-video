@@ -590,6 +590,20 @@ function validateGraphScope(
           if (r.when.type === 'complete' && r.when.if) walkRefs(r.when.if, ctx, at, issues)
           for (const a of r.do) {
             if (a.kind === 'effect') walkRefs(a.effects, ctx, at, issues)
+            if (a.kind === 'spawn') {
+              walkRefs(a.inputs, ctx, at, issues)
+              const slash = a.from.indexOf('/')
+              const overlayId = slash > 0 ? a.from.slice(0, slash) : ''
+              const childId = slash > 0 ? a.from.slice(slash + 1) : ''
+              if (!overlayId || !childId || (overlays && !overlays[overlayId]?.children.some((child) => child.id === childId))) {
+                issues.push({
+                  level: 'error',
+                  code: 'ref.spawn.missing',
+                  msg: `reaction spawn.from '${a.from}' 未命中界面模板`,
+                  at,
+                })
+              }
+            }
             if (a.kind === 'advance' && !edgeIds.has(a.edgeId)) {
               issues.push({ level: 'error', code: 'ref.edge.missing', msg: `reaction advance 指向未知边 '${a.edgeId}'`, at })
             }

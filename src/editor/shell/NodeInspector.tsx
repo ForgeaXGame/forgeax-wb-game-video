@@ -618,7 +618,8 @@ function LifecycleReactionsEditor({
               spawnOptions={spawnOptions}
               overlays={overlays}
               pickers={pickers}
-              allowSpawn={false}
+              allowSpawn={triggerType === 'condition'}
+              defaultSpawnTtlMs={1200}
               renderAdvance={(action, actionIndex) => {
                 const edge = action.edgeId ? advanceEdgeFor(action.edgeId) : undefined
                 return (

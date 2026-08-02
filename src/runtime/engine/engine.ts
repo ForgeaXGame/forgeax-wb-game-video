@@ -875,11 +875,12 @@ export class GraphRuntime {
     return this.drain()
   }
 
-  /** 结算动作：按序施加 effect，或沿当前结算节点的真实出边推进。 */
+  /** 结算动作：按序施加 effect、显示瞬态界面，或沿当前结算节点的真实出边推进。 */
   private runSettlementActions(node: GameNode, actions: NodeAction[]): void {
     const scope = this.activeScope()
     for (const a of actions) {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
+      else if (a.kind === 'spawn') this.doSpawn(a)
       else if (a.kind === 'advance' && !this.redirect && !this.inExit) {
         const route = this.scopedEdgeInScope(a.edgeId, scope)
         if (route?.edge.source === node.id) {
@@ -1205,7 +1206,6 @@ export class GraphRuntime {
       nodeId,
       mountId: elementId,
       mountLayout: layout,
-      childLayout: layout,
       elementId,
       component,
       inputs,
