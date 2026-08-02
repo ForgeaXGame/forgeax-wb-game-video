@@ -52,19 +52,6 @@ export interface OverlayPlacement {
   snap: OverlaySnapKind | null
 }
 
-export function isOverlayBoxCentered(
-  canvas: CanvasBox,
-  box: CanvasBox,
-  tolerance: { x: number; y: number } = { x: 0.005, y: 0.005 },
-): boolean {
-  const centeredLeft = canvas.left + (canvas.width - box.width) / 2
-  const centeredTop = canvas.top + (canvas.height - box.height) / 2
-  return (
-    Math.abs(box.left - centeredLeft) <= tolerance.x
-    && Math.abs(box.top - centeredTop) <= tolerance.y
-  )
-}
-
 function clampAxis(value: number, min: number, max: number): number {
   return max < min ? min : Math.min(max, Math.max(min, value))
 }
@@ -248,19 +235,14 @@ const PREVIEW_CSS = `
   border: 1px dashed rgba(190,196,204,.72);
   border-radius: 2px;
   background:
-    linear-gradient(to right, rgba(190,196,204,.1) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(190,196,204,.1) 1px, transparent 1px);
-  background-size: 10% 10%;
+    repeating-linear-gradient(
+      135deg,
+      rgba(190,196,204,.08) 0,
+      rgba(190,196,204,.08) 6px,
+      rgba(190,196,204,.03) 6px,
+      rgba(190,196,204,.03) 12px
+  );
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
-}
-.ocp-design-canvas::before,.ocp-design-canvas::after {
-  content:''; position:absolute; pointer-events:none; opacity:.45;
-}
-.ocp-design-canvas::before {
-  left:50%; top:0; bottom:0; border-left:1px dashed rgba(112,190,184,.55);
-}
-.ocp-design-canvas::after {
-  left:0; right:0; top:50%; border-top:1px dashed rgba(112,190,184,.55);
 }
 .ocp-snap-guides { position:absolute; inset:0; z-index:60; pointer-events:none; }
 .ocp-snap-guide {
@@ -293,11 +275,6 @@ const PREVIEW_CSS = `
   font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 3px;
   background: var(--gc-accent, #c8955a); color: #1a1510; pointer-events: none;
   font-variant-numeric: tabular-nums; font-weight: 600;
-}
-.ocp-align-tag {
-  position:absolute; left:2px; bottom:2px; white-space:nowrap;
-  font-size:9px; line-height:1; padding:2px 5px; border-radius:3px;
-  background:rgba(72,155,149,.92); color:#f2fffd; pointer-events:none; font-weight:600;
 }
 `
 
@@ -802,19 +779,9 @@ export function OverlayCatalogPreview({
                     </span>
                   ) : null}
                   {state.selected ? (
-                    <>
-                      {isOverlayBoxCentered(
-                        FULL_STAGE_CANVAS,
-                        state.box,
-                        {
-                          x: stagePx.w > 0 ? 1 / stagePx.w : 0.005,
-                          y: stagePx.h > 0 ? 1 / stagePx.h : 0.005,
-                        },
-                      ) ? <span className="ocp-align-tag">居中对齐</span> : null}
-                      <span className="ocp-dim">
-                        {Math.round(state.box.left * stagePx.w)},{Math.round(state.box.top * stagePx.h)}
-                      </span>
-                    </>
+                    <span className="ocp-dim">
+                      {Math.round(state.box.left * stagePx.w)},{Math.round(state.box.top * stagePx.h)}
+                    </span>
                   ) : null}
                 </>
               )}

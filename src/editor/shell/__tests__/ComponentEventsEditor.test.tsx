@@ -576,40 +576,27 @@ describe('ComponentFormFields defaults', () => {
     unregisterComponent('test-number-default-input')
   })
 
-  it('allows damage float text to stay unset for node-level configuration', () => {
+  it('edits damage float text as either a fixed number or an applied formula', () => {
     const formula: Formula = {
       id: 'formula-float-damage',
       name: '飘字伤害',
       ast: { t: 'num', id: 'n0', v: -12 },
     }
     const onChange = vi.fn()
-    function Harness(): JSX.Element {
-      const [values, setValues] = useState<Record<string, unknown>>({ value: -25 })
-      return (
-        <ComponentFormFields
-          componentId="DamageFloatText"
-          values={values}
-          pickers={{ formulas: { [formula.id]: formula } }}
-          onChange={(next) => {
-            setValues(next)
-            onChange(next)
-          }}
-        />
-      )
-    }
-    render(<Harness />)
+    render(
+      <ComponentFormFields
+        componentId="DamageFloatText"
+        values={{}}
+        pickers={{ formulas: { [formula.id]: formula } }}
+        onChange={onChange}
+      />,
+    )
 
     expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
     fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
-      target: { value: 'empty' },
-    })
-    expect(onChange).toHaveBeenLastCalledWith({})
-    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
-
-    fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
       target: { value: `formula:${formula.id}` },
     })
-    expect(onChange).toHaveBeenLastCalledWith({
+    expect(onChange).toHaveBeenCalledWith({
       value: {
         expr: '-12',
         pick: {

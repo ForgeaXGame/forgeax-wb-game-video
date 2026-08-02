@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_OVERLAY_DESIGN_CANVAS,
-  isOverlayBoxCentered,
   OverlayCatalogPreview,
   placeOverlayBox,
 } from '../OverlayCatalogPreview'
@@ -147,59 +146,5 @@ describe('OverlayCatalogPreview fixed canvas', () => {
     expect(placed.snap).toBe('vertical-center')
     expect(placed.left).toBeCloseTo(0.4)
     expect(placed.top).toBeCloseTo(0.425)
-  })
-
-  it('reports a selected component that is centered on both axes', async () => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this.hasAttribute('data-overlay-fit-target')) {
-        return {
-          x: 80,
-          y: 40,
-          left: 80,
-          top: 40,
-          right: 120,
-          bottom: 60,
-          width: 40,
-          height: 20,
-          toJSON: () => ({}),
-        }
-      }
-      return {
-        x: 0,
-        y: 0,
-        left: 0,
-        top: 0,
-        right: 200,
-        bottom: 100,
-        width: 200,
-        height: 100,
-        toJSON: () => ({}),
-      }
-    })
-
-    render(
-      <OverlayCatalogPreview
-        overlay={{
-          id: 'scheme',
-          children: [{
-            id: 'damage',
-            component: 'DamageFloatText',
-            layout: { left: 0, top: 0 },
-            inputs: { value: -25 },
-          }],
-        }}
-        entities={{}}
-        variables={{}}
-        selectedChildId="damage"
-        onSelectChild={vi.fn()}
-        onPatchChildLayout={vi.fn()}
-      />,
-    )
-
-    expect(isOverlayBoxCentered(
-      LOGICAL_CANVAS,
-      { left: 0.4, top: 0.4, width: 0.2, height: 0.2 },
-    )).toBe(true)
-    await waitFor(() => expect(screen.getByText('居中对齐')).toBeTruthy())
   })
 })

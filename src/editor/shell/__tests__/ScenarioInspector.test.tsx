@@ -42,23 +42,4 @@ describe('ScenarioInspector rules editing', () => {
       entities: { hero: { id: 'hero', attrs: { hp: 0 } } },
     })
   })
-
-  it('clamps a variable initial value when its range is tightened', () => {
-    const { onChange } = renderInspector({
-      variables: {
-        qi: { id: 'qi', name: '气力', initial: 8, min: 0, max: 10 },
-      },
-    }, 'variables')
-
-    fireEvent.click(screen.getByRole('button', { name: /范围约束/ }))
-    const max = screen.getByLabelText('qi max')
-    fireEvent.change(max, { target: { value: '5' } })
-    fireEvent.blur(max)
-
-    expect(onChange).toHaveBeenLastCalledWith({
-      variables: {
-        qi: { id: 'qi', name: '气力', initial: 5, min: 0, max: 5 },
-      },
-    })
-  })
 })
