@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { GameScenario, GraphLibraryDocument } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
+import { createSessionSeed } from '../../runtime/play/sessionSeed'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { PlayerRootContext, type SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/playerFocus'
@@ -125,7 +126,7 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
     const scn = st.scn()
     const rootBlueprintId = (scn as GraphLibraryDocument).manifest?.mainPackId ?? st.mainBlueprintId
     rootBlueprintIdRef.current = rootBlueprintId
-    const s = new GraphSession(scn, { rootBlueprintId })
+    const s = new GraphSession(scn, { rootBlueprintId, rngSeed: createSessionSeed() })
     sessionRef.current = s
     setSkins(s.skins)
     setSnap(s.start())
