@@ -74,7 +74,7 @@ function ValueSettings({ values, onChange, label }: {
     <div style={{ gridColumn: '1 / -1', marginTop: 2 }}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', color: open ? '#d0c7b7' : '#918a7e', fontSize: 11, background: 'none', border: 0, cursor: 'pointer' }}>
         <span style={{ width: 10, color: '#b6a78d', fontSize: 13 }}>{open ? '⌄' : '›'}</span>
-        <span>高级值设置</span>
+        <span>范围约束</span>
         {configured.length === 0 ? <span style={{ opacity: .55 }}>未配置</span> : configured.map((field) => (
           <span key={field} style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(184,161,117,.14)', color: '#c9b68e' }}>
             {field === 'min' ? '最小' : field === 'max' ? '最大' : '初始'} {values[field]}
@@ -82,6 +82,9 @@ function ValueSettings({ values, onChange, label }: {
         ))}
       </button>
       {open && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, margin: '3px 0 5px', padding: '8px 10px 10px', background: 'rgba(176,151,105,.08)', border: '1px solid rgba(184,161,117,.2)', borderLeft: '2px solid #9f875d', borderRadius: 4 }}>
+        <div style={{ gridColumn: '1 / -1', color: '#a9a091', fontSize: 10, lineHeight: 1.4 }}>
+          结算和初始化会自动限制在最小值与最大值之间。
+        </div>
         {(['min', 'max', 'initial'] as const).map((field) => (
           <label key={field} style={{ display: 'grid', gap: 5, fontSize: 10, color: '#b2aa9c' }}>
             {field === 'min' ? '最小值' : field === 'max' ? '最大值' : '初始值'}
@@ -118,6 +121,26 @@ function allocId(prefix: string, existing: Record<string, unknown>): string {
 }
 
 const ATTR_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/
+
+function clampRuleValue(value: number, meta: Pick<AttrMeta, 'min' | 'max'> | undefined): number {
+  let next = value
+  if (meta?.min !== undefined) next = Math.max(meta.min, next)
+  if (meta?.max !== undefined) next = Math.min(meta.max, next)
+  return next
+}
+
+function normalizeRange<T extends Pick<AttrMeta, 'min' | 'max' | 'initial'>>(
+  meta: T,
+  changedField: 'min' | 'max' | 'initial',
+): T {
+  const next = { ...meta }
+  if (next.min !== undefined && next.max !== undefined && next.min > next.max) {
+    if (changedField === 'min') next.max = next.min
+    else next.min = next.max
+  }
+  if (next.initial !== undefined) next.initial = clampRuleValue(next.initial, next)
+  return next as T
+}
 
 function AttributeIdInput({
   id,
@@ -392,7 +415,14 @@ export function ScenarioInspector({
                 aria-label={`${v.id} 的初值`}
                 title="初值"
                 emptyValue={0}
-                onChange={(initial) => setVariables({ ...variables, [key]: { ...v, id: key, initial } })}
+                onChange={(initial) => setVariables({
+                  ...variables,
+                  [key]: {
+                    ...v,
+                    id: key,
+                    initial: clampRuleValue(initial, v),
+                  },
+                })}
                 style={{ width: '100%', minWidth: 0 }}
               />
               <button
@@ -410,7 +440,9 @@ export function ScenarioInspector({
                 const next = { ...v }
                 if (value === undefined) delete next[field]
                 else next[field] = value
-                setVariables({ ...variables, [key]: next })
+                const normalized = normalizeRange(next, field)
+                normalized.initial = clampRuleValue(normalized.initial ?? 0, normalized)
+                setVariables({ ...variables, [key]: normalized })
               }} />
             </div>
           ))}
@@ -524,13 +556,23 @@ function EntityRow({
       && Object.hasOwn(nextAttrs, pairedBase)
       && Object.hasOwn(nextAttrs, `${pairedBase}Max`)
     ) {
-      nextMeta[pairedBase] = {
+      const pairedMaxValue = nextAttrs[`${pairedBase}Max`] ?? 0
+      const pairedCurrentValue = nextAttrs[pairedBase] ?? 0
+      const pairedMeta = normalizeRange({
         ...nextMeta[pairedBase],
+        max: pairedMaxValue,
+      }, 'max')
+      nextAttrs[`${pairedBase}Max`] = pairedMeta.max ?? pairedMaxValue
+      nextAttrs[pairedBase] = clampRuleValue(pairedCurrentValue, pairedMeta)
+      nextMeta[pairedBase] = {
+        ...pairedMeta,
         initial: nextAttrs[pairedBase],
-        max: nextAttrs[`${pairedBase}Max`],
       }
     } else if (nextMeta[attrId]?.initial !== undefined) {
-      nextMeta[attrId] = { ...nextMeta[attrId], initial: value }
+      nextAttrs[attrId] = clampRuleValue(value, nextMeta[attrId])
+      nextMeta[attrId] = { ...nextMeta[attrId], initial: nextAttrs[attrId] }
+    } else {
+      nextAttrs[attrId] = clampRuleValue(value, nextMeta[attrId])
     }
 
     onChange({
@@ -613,10 +655,18 @@ function EntityRow({
             const current = { ...attrMeta[ak] }
             if (value === undefined) delete current[field]
             else current[field] = value
+            const normalized = normalizeRange(current, field)
             const nextMeta = { ...attrMeta }
-            if (Object.keys(current).length === 0) delete nextMeta[ak]
-            else nextMeta[ak] = current
-            setAttrMeta(nextMeta)
+            const nextAttrs = { ...attrs }
+            if (Object.keys(normalized).length === 0) delete nextMeta[ak]
+            else nextMeta[ak] = normalized
+            nextAttrs[ak] = clampRuleValue(nextAttrs[ak] ?? 0, normalized)
+            onChange({
+              ...ent,
+              id: entKey,
+              attrs: nextAttrs,
+              attrMeta: Object.keys(nextMeta).length ? nextMeta : undefined,
+            })
           }} />
         </div>
       ))}

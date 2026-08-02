@@ -9,7 +9,12 @@
  */
 import type { GameScenario } from '../schema/graph-schema'
 import { createRng } from './rng'
-import type { MutableEntity, MutableState } from './apply-effects'
+import {
+  clampNumericValue,
+  syncPairedAttributeMax,
+  type MutableEntity,
+  type MutableState,
+} from './apply-effects'
 
 export function initState(scenario: GameScenario, rngSeed = 0): MutableState {
   const vars: Record<string, number> = {}
@@ -18,19 +23,28 @@ export function initState(scenario: GameScenario, rngSeed = 0): MutableState {
 
   // 声明变量一律进 vars 桶（带 min/max clamp）；flag 为纯运行时概念，由 flag effect 写 flags 桶（默认 0）。
   for (const [id, raw] of Object.entries(scenario.variables ?? {})) {
-    vars[id] = raw.initial ?? 0
-    if (raw.min !== undefined || raw.max !== undefined) varMeta[id] = { min: raw.min, max: raw.max }
+    const meta = raw.min !== undefined || raw.max !== undefined ? { min: raw.min, max: raw.max } : undefined
+    vars[id] = clampNumericValue(raw.initial ?? 0, meta)
+    if (meta) varMeta[id] = meta
   }
 
   const entities: Record<string, MutableEntity> = {}
   for (const [id, raw] of Object.entries(scenario.entities ?? {})) {
     const attrs: Record<string, number> = { ...(raw.attrs ?? {}) }
-    if (raw.attrMeta) {
-      for (const [k, m] of Object.entries(raw.attrMeta)) {
+    const attrMeta = raw.attrMeta
+      ? Object.fromEntries(Object.entries(raw.attrMeta).map(([key, meta]) => [key, { ...meta }]))
+      : undefined
+    if (attrMeta) {
+      for (const [k, m] of Object.entries(attrMeta)) {
         if (attrs[k] === undefined && m.initial !== undefined) attrs[k] = m.initial
       }
     }
-    entities[id] = { attrs, attrMeta: raw.attrMeta }
+    const entity: MutableEntity = { attrs, attrMeta }
+    for (const attr of Object.keys(attrs)) syncPairedAttributeMax(entity, attr)
+    for (const [attr, value] of Object.entries(attrs)) {
+      attrs[attr] = clampNumericValue(value, entity.attrMeta?.[attr])
+    }
+    entities[id] = entity
   }
 
   return {

@@ -1,8 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
+import { registerCoreSkins } from '../../../runtime/component-host/components'
 import type { Entity } from '../../../runtime/schema/graph-schema'
+import { ComponentFormFields } from '../component-form-fields'
 import { ScenarioInspector, type ScenarioMeta } from '../ScenarioInspector'
+
+registerCoreSkins()
 
 function EntityHarness({ initial }: { initial: Record<string, Entity> }): JSX.Element {
   const [value, setValue] = useState<ScenarioMeta>({ entities: initial })
@@ -89,5 +93,56 @@ describe('ScenarioInspector entity attributes', () => {
     expect(hpInput).toHaveValue('0')
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":0,"hpMax":100}')
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":{"initial":0,"max":100}')
+  })
+
+  it('makes a newly created attribute immediately available to component bindings', () => {
+    function Harness(): JSX.Element {
+      const [value, setValue] = useState<ScenarioMeta>({
+        entities: { hero: { id: 'hero', name: '主角', attrs: {} } },
+      })
+      return (
+        <>
+          <ScenarioInspector value={value} section="entities" onChange={setValue} />
+          <ComponentFormFields
+            componentId="BattlePlayerHpBar"
+            values={{ bind: 'hero' }}
+            pickers={{ entities: value.entities }}
+            onChange={() => undefined}
+          />
+        </>
+      )
+    }
+    render(<Harness />)
+
+    const attrSelect = screen.getByRole('combobox', { name: '属性' })
+    expect(within(attrSelect).queryByRole('option', { name: 'attr0' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))
+
+    expect(screen.getByLabelText('属性「attr0」的数值')).toHaveValue('0')
+    expect(within(attrSelect).getByRole('option', { name: 'attr0' })).toBeTruthy()
+  })
+
+  it('clamps authored current values when a paired maximum is reduced', () => {
+    render(
+      <EntityHarness
+        initial={{
+          hero: {
+            id: 'hero',
+            attrs: { hp: 80, hpMax: 100 },
+            attrMeta: { hp: { min: 0, initial: 80, max: 100 } },
+          },
+        }}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('属性「hpMax」的数值'), {
+      target: { value: '50' },
+    })
+
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":50,"hpMax":50}')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent(
+      '"hp":{"min":0,"initial":50,"max":50}',
+    )
   })
 })

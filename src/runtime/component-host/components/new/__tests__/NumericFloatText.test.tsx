@@ -33,7 +33,7 @@ const ctx: SkinCtx = {
 describe('numeric float text components', () => {
   it('declare a shared constant-or-formula value input', () => {
     expect(DamageFloatTextManifest.inputs).toEqual([
-      { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 },
+      { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -93,7 +93,7 @@ describe('numeric float text components', () => {
 
   it('uses each skin default appearance and accepts its optional text overrides', () => {
     const { rerender } = render(
-      <DamageFloatText overlay={{ elementId: 'damage', component: 'DamageFloatText', inputs: { value: -25 } }} />,
+      <DamageFloatText overlay={{ elementId: 'damage', component: 'DamageFloatText', inputs: {} }} />,
     )
     expect(screen.getByText('-25')).toHaveStyle({ color: '#ff5a5a', '--gv-text-font-size': '3.5cqh' })
 

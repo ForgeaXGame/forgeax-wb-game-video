@@ -12,7 +12,7 @@ export const DamageFloatTextManifest: ComponentManifest = {
   id: 'DamageFloatText',
   label: '伤害飘字',
   inputs: [
-    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 },
+    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
