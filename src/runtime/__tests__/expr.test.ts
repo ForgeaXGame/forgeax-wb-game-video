@@ -29,25 +29,6 @@ describe('evalExpr', () => {
     expect(evalExpr('-var.qi + 10', ctx())).toBe(7)
   })
 
-  it('parses subtraction without requiring spaces around references', () => {
-    expect(
-      evalExpr('entity.ent-player.attr.attack-entity.ent-boss.attr.defense', ctx()),
-    ).toBe(30)
-    expect(evalExpr('var.lizhi-var.qi', ctx())).toBe(2)
-    expect(serializeExpr(parseExpr('a-b'))).toBe('a - b')
-  })
-
-  it('keeps hyphenated entity and attribute ids inside a single reference', () => {
-    expect(parseExpr('entity.ent-player.attr.attack-power')).toEqual({
-      t: 'ref',
-      path: ['entity', 'ent-player', 'attr', 'attack-power'],
-    })
-    expect(parseExpr('var.combo-count')).toEqual({
-      t: 'ref',
-      path: ['var', 'combo-count'],
-    })
-  })
-
   it('comparisons & logic return 1/0', () => {
     expect(evalExpr('var.qi >= 3 && flag.lotusClue == 1', ctx())).toBe(1)
     expect(evalExpr('entity.ent-boss.attr.hp <= 0', ctx())).toBe(0)

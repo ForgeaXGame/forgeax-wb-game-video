@@ -56,23 +56,6 @@ type Tok =
 
 const OPS2 = new Set(['>=', '<=', '==', '!=', '&&', '||'])
 
-/**
- * `-` 同时允许出现在引用 id 中，也表示减法。没有目录上下文时只拆确定性较高的边界：
- * - 普通符号 `a-b`
- * - 完整引用后紧跟另一类引用 / score / 函数 / 括号
- * `entity.ent-player.attr.attack-power` 这类合法短横线 id 继续保持为一个 token。
- */
-function minusStartsOperator(src: string, tokenStart: number, index: number): boolean {
-  const left = src.slice(tokenStart, index)
-  const right = src.slice(index + 1)
-  if (!right) return false
-  if (!left.includes('.')) return true
-  if (/^(?:entity|var|flag|__hole__)\./.test(right)) return true
-  if (/^score(?![A-Za-z0-9_.-])/.test(right)) return true
-  if (right.startsWith('(')) return true
-  return /^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(right)
-}
-
 function tokenize(src: string): Tok[] {
   const toks: Tok[] = []
   let i = 0
@@ -120,10 +103,7 @@ function tokenize(src: string): Tok[] {
     }
     if (/[A-Za-z_]/.test(c)) {
       let j = i + 1
-      while (j < src.length && isIdChar(src[j]!)) {
-        if (src[j] === '-' && minusStartsOperator(src, i, j)) break
-        j++
-      }
+      while (j < src.length && isIdChar(src[j]!)) j++
       toks.push({ k: 'id', v: src.slice(i, j) })
       i = j
       continue

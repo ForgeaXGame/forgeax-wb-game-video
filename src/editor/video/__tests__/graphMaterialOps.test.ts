@@ -46,6 +46,7 @@ import {
   resizeMountWindowGraph,
 } from '../graphMaterialOps'
 import type { MaterialItem } from '../materialTimelineShared'
+import { FLOAT_TEXT_TIMELINE_WIDTH_PX } from '../materialTimelineShared'
 import { expandNodeOverlays } from '../../../runtime/schema/expand-overlay'
 
 // `hasCuePointsInput`/`hasOptionEventsInput`（editors）按组件 inputs 结构判定，任何用到
@@ -564,6 +565,44 @@ describe('graphMaterialOps · 选项/组件结算统一写 mount.reactions（修
 describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
   beforeAll(() => {
         registerCoreSkins()
+  })
+
+  it('新飘字在子件与单组件挂载时间轴上都投影为固定宽度', () => {
+    const n = node('a', { durationMs: 8000 })
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              title: '伤害飘字',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                window: { startMs: 1000, endMs: 2100 },
+                inputs: { value: -25, durationMs: 1100 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    const scenario: GameScenario = {
+      ...base,
+      graph: {
+        ...base.graph,
+        nodes: base.graph.nodes.map((current) => (
+          current.id === 'a'
+            ? { ...current, data: { ...current.data, overlayNodes: [{ overlay: 'float' }] } }
+            : current
+        )),
+      },
+    }
+    const nodeA = findNode(scenario.graph, 'a')!
+
+    expect(collectMaterialsFromNode(scenario, nodeA, 8000)[0]?.fixedWidthPx).toBe(FLOAT_TEXT_TIMELINE_WIDTH_PX)
+    expect(collectMountItemsFromNode(scenario, nodeA, 8000)[0]?.fixedWidthPx).toBe(FLOAT_TEXT_TIMELINE_WIDTH_PX)
   })
 
   it('挂载条：拖边缘拉伸 window，整体拖动保持跨度', () => {

@@ -2,10 +2,43 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MaterialTimeline } from '../MaterialTimeline'
+import { FLOAT_TEXT_TIMELINE_WIDTH_PX } from '../materialTimelineShared'
 
 afterEach(cleanup)
 
 describe('MaterialTimeline · 结算选中联动', () => {
+  it('自计时飘字使用固定宽度且不提供时间轴拉伸手柄', () => {
+    const onSelectMaterial = vi.fn()
+    const { container } = render(
+      <MaterialTimeline
+        materials={[{
+          key: 'overlay:damage',
+          id: 'damage',
+          kind: 'overlay',
+          label: '-25',
+          startMs: 500,
+          endMs: 1_600,
+          zIndex: 1,
+          fixedWidthPx: FLOAT_TEXT_TIMELINE_WIDTH_PX,
+        }]}
+        maxMs={3_000}
+        playheadMs={0}
+        selectedMaterialKey="overlay:damage"
+        onSelectMaterial={onSelectMaterial}
+        onPatchMaterial={vi.fn()}
+      />,
+    )
+
+    const clip = container.querySelector<HTMLElement>('.gc-mclip')!
+    expect(clip).toHaveClass('is-fixed-width')
+    expect(clip).toHaveStyle({ width: `${FLOAT_TEXT_TIMELINE_WIDTH_PX}px` })
+    expect(screen.queryByRole('button', { name: '调整起点' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '调整终点' })).toBeNull()
+
+    fireEvent.pointerDown(clip)
+    expect(onSelectMaterial).toHaveBeenCalledWith('overlay:damage')
+  })
+
   it('按下某个效果菱形时上抛其 id，并只点亮受控选中项', () => {
     const onSelectPointMarker = vi.fn()
     const { container } = render(

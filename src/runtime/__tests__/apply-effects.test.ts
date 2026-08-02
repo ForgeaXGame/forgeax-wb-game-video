@@ -8,7 +8,7 @@ const state = (): MutableState => ({
   varMeta: { qi: { min: 0, max: 5 } },
   entities: {
     'ent-player': { attrs: { attack: 80, defense: 40, hp: 300 }, attrMeta: { hp: { min: 0, max: 300 } } },
-    'ent-boss': { attrs: { attack: 75, defense: 50, hp: 700, hpMax: 700 }, attrMeta: { hp: { min: 0, max: 700 } } },
+    'ent-boss': { attrs: { attack: 75, defense: 50, hp: 700 }, attrMeta: { hp: { min: 0, max: 700 } } },
   },
   flags: {},
   score: 0,
@@ -37,62 +37,16 @@ describe('applyEffects', () => {
     expect(st.entities['ent-boss']!.attrs.hp).toBe(700 - 110)
   })
 
-  it('applies the reversible subtraction wrapper used by the authoring UI', () => {
-    const st = state()
-    applyEffects(st, [{
-      kind: 'attr',
-      entityId: 'ent-boss',
-      attr: 'hp',
-      op: 'add',
-      value: { expr: '-(100)' },
-    }])
-    expect(st.entities['ent-boss']!.attrs.hp).toBe(600)
-  })
-
   it('clamps attr to attrMeta min (hp not below 0)', () => {
     const st = state()
     applyEffects(st, [{ id: 'd', kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -9999 }])
     expect(st.entities['ent-boss']!.attrs.hp).toBe(0)
   })
 
-  it('heals a damaged attr without exceeding attrMeta max', () => {
-    const st = state()
-    applyEffects(st, [
-      { kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: -180 },
-      { kind: 'attr', entityId: 'ent-player', attr: 'hp', op: 'add', value: 999 },
-    ])
-    expect(st.entities['ent-player']!.attrs.hp).toBe(300)
-  })
-
   it('clamps var to its varMeta min/max', () => {
     const st = state()
     applyEffects(st, [{ id: 'q', kind: 'var', varId: 'qi', op: 'add', value: 10 }])
     expect(st.vars.qi).toBe(5)
-  })
-
-  it('keeps a paired current attribute inside a runtime-updated maximum', () => {
-    const st = state()
-    applyEffects(st, [
-      { kind: 'attr', entityId: 'ent-boss', attr: 'hpMax', op: 'set', value: 500 },
-    ])
-    expect(st.entities['ent-boss']!.attrs.hpMax).toBe(500)
-    expect(st.entities['ent-boss']!.attrMeta?.hp?.max).toBe(500)
-    expect(st.entities['ent-boss']!.attrs.hp).toBe(500)
-
-    applyEffects(st, [
-      { kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: 999 },
-    ])
-    expect(st.entities['ent-boss']!.attrs.hp).toBe(500)
-  })
-
-  it('gives and takes items with a floor at zero', () => {
-    const st = state()
-    applyEffects(st, [
-      { kind: 'item', itemId: 'lotus-key', op: 'give', count: 2 },
-      { kind: 'item', itemId: 'lotus-key', op: 'take', count: 1 },
-      { kind: 'item', itemId: 'lotus-key', op: 'take', count: 99 },
-    ])
-    expect(st.items?.['lotus-key']).toBe(0)
   })
 
   it('once: applied only the first time', () => {

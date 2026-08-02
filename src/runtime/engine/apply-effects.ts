@@ -43,30 +43,11 @@ function resolveValue(value: number | { expr: string }, state: MutableState): nu
   throw new Error(`bad effect value: ${JSON.stringify(value)}`)
 }
 
-export function clampNumericValue(v: number, meta?: { min?: number; max?: number }): number {
+function clamp(v: number, meta?: { min?: number; max?: number }): number {
   let out = v
   if (meta?.min !== undefined) out = Math.max(meta.min, out)
   if (meta?.max !== undefined) out = Math.min(meta.max, out)
   return out
-}
-
-/**
- * 规则编辑器沿用 `<属性>Max` 配对约定（hp/hpMax、stamina/staminaMax）。
- * 最大值在运行时变化时，同步更新基础属性的约束并立即收紧当前值。
- */
-export function syncPairedAttributeMax(entity: MutableEntity, changedAttr: string): void {
-  if (!changedAttr.endsWith('Max')) return
-  const baseAttr = changedAttr.slice(0, -3)
-  if (!baseAttr || !Object.hasOwn(entity.attrs, baseAttr)) return
-
-  const previousMeta = entity.attrMeta?.[baseAttr] ?? {}
-  const rawMax = entity.attrs[changedAttr]
-  if (rawMax === undefined) return
-  const max = previousMeta.min === undefined ? rawMax : Math.max(previousMeta.min, rawMax)
-  entity.attrs[changedAttr] = max
-  const nextMeta = { ...previousMeta, max }
-  entity.attrMeta = { ...entity.attrMeta, [baseAttr]: nextMeta }
-  entity.attrs[baseAttr] = clampNumericValue(entity.attrs[baseAttr] ?? 0, nextMeta)
 }
 
 /** 数值 op：add=加、mul=乘、set=设为。 */
@@ -95,7 +76,7 @@ export function applyEffects(state: MutableState, effects: readonly GraphEffect[
       case 'var': {
         const cur = state.vars[eff.varId] ?? 0
         const val = resolveValue(eff.value, state)
-        state.vars[eff.varId] = clampNumericValue(applyNumericOp(eff.op, cur, val), state.varMeta?.[eff.varId])
+        state.vars[eff.varId] = clamp(applyNumericOp(eff.op, cur, val), state.varMeta?.[eff.varId])
         break
       }
       case 'attr': {
@@ -103,8 +84,7 @@ export function applyEffects(state: MutableState, effects: readonly GraphEffect[
         if (!ent) break
         const cur = ent.attrs[eff.attr] ?? 0
         const val = resolveValue(eff.value, state)
-        ent.attrs[eff.attr] = clampNumericValue(applyNumericOp(eff.op, cur, val), ent.attrMeta?.[eff.attr])
-        syncPairedAttributeMax(ent, eff.attr)
+        ent.attrs[eff.attr] = clamp(applyNumericOp(eff.op, cur, val), ent.attrMeta?.[eff.attr])
         break
       }
       case 'flag': {
