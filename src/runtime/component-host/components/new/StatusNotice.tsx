@@ -6,12 +6,14 @@ import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
+import { resolveTextDurationMs, resolveTextParameter, type TextParameterInputs } from './textParameter'
 
 export const StatusNoticeManifest: ComponentManifest = {
   id: 'StatusNotice',
   label: '状态提示',
   inputs: [
-    { key: 'text', label: '提示文字', valueType: 'string', default: '获得道具〈xxx〉' },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '获得道具' },
+    { key: 'parameter', label: '参数', valueType: 'string', default: '〈xxx〉' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#f0f0f0' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 2.4 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1600 },
@@ -19,13 +21,12 @@ export const StatusNoticeManifest: ComponentManifest = {
   events: [],
 }
 
-export function StatusNotice({ overlay, preview, previewPlaying, previewTimeMs }: OverlayProps): ReactNode {
+export function StatusNotice({ overlay, preview, previewTimeMs }: OverlayProps): ReactNode {
   injectCss('status-notice', STATUS_NOTICE_CSS)
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '获得道具〈xxx〉'
-  const durationMs = typeof overlay.inputs.durationMs === 'number' && Number.isFinite(overlay.inputs.durationMs) && overlay.inputs.durationMs > 0
-    ? overlay.inputs.durationMs
-    : 1600
-  const frozen = preview && !previewPlaying
+  const fixedText = typeof overlay.inputs.fixedText === 'string' ? overlay.inputs.fixedText : '获得道具'
+  const text = `${fixedText}${resolveTextParameter((overlay.inputs as TextParameterInputs).parameter, undefined, '〈xxx〉')}`
+  const durationMs = resolveTextDurationMs(overlay.inputs.durationMs, 1600)
+  const frozen = preview
   const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
 
   return (

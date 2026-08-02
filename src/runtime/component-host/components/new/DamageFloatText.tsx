@@ -1,18 +1,18 @@
 /**
- * 伤害飘字（component id: `DamageFloatText`）—— value 支持固定数字或 `{expr}` 公式。
- * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
+ * 伤害飘字（component id: `DamageFloatText`）—— 固定文本与动态参数直接拼接。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveNumericFloatDurationMs, resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
+import { resolveTextDurationMs, resolveTextParameter, type TextParameterInputs } from './textParameter'
 
 export const DamageFloatTextManifest: ComponentManifest = {
   id: 'DamageFloatText',
   label: '伤害飘字',
   inputs: [
-    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: -25 },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+    { key: 'parameter', label: '参数', valueType: 'string', default: '-25' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -20,13 +20,14 @@ export const DamageFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function DamageFloatText({ overlay, ctx, preview, previewTimeMs, previewPlaying }: OverlayProps): ReactNode {
+export function DamageFloatText({ overlay, ctx, preview, previewTimeMs }: OverlayProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '-25')
+  const fixedText = typeof overlay.inputs.fixedText === 'string' ? overlay.inputs.fixedText : ''
+  const text = `${fixedText}${resolveTextParameter((overlay.inputs as TextParameterInputs).parameter, ctx, '-25')}`
   const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
-  const durationMs = resolveNumericFloatDurationMs(overlay.inputs.durationMs)
-  const frozen = preview && !previewPlaying
+  const durationMs = resolveTextDurationMs(overlay.inputs.durationMs)
+  const frozen = preview
   return (
     <div
       className={`gv-damage-float-text${frozen ? ' is-preview-frozen' : ''}`}
