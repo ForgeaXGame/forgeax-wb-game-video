@@ -707,9 +707,11 @@ export function ComponentFormFields({
       onChange(rest)
       return
     }
+    const initial = initialHpCustomValues(availableInputs, values, pickers?.entities)
     onChange({
       ...values,
-      ...initialHpCustomValues(availableInputs, values, pickers?.entities),
+      current: initial.current,
+      max: values.max ?? initial.max,
     })
   }
   /**
