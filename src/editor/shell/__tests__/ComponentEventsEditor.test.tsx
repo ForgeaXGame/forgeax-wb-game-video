@@ -717,6 +717,43 @@ describe('ComponentFormFields defaults', () => {
     expect(onChange).toHaveBeenCalledTimes(3)
   })
 
+  it('preserves a manually configured hp maximum across value mode switches', () => {
+    let latest: Record<string, unknown> = {}
+    function Harness(): JSX.Element {
+      const [values, setValues] = useState<Record<string, unknown>>({
+        bind: 'ent-boss',
+        attr: 'hp',
+        max: 2000,
+      })
+      latest = values
+      return (
+        <ComponentFormFields
+          componentId="BattleEnemyHpBar"
+          values={values}
+          pickers={{
+            entities: {
+              'ent-boss': { id: 'ent-boss', name: '敌方', attrs: { hp: 80 } },
+            },
+          }}
+          onChange={setValues}
+        />
+      )
+    }
+    render(<Harness />)
+
+    fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
+    expect(latest.max).toBe(2000)
+
+    fireEvent.click(screen.getByRole('radio', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
+
+    expect(latest.max).toBe(2000)
+    expect(within(screen.getByText('上限来源').parentElement!)
+      .getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
+    expect(within(screen.getByText('上限来源').parentElement!)
+      .getByRole('textbox', { name: '常量数值' })).toHaveValue('2000')
+  })
+
   it('lists configured properties and repairs the property when the bound object changes', () => {
     const onChange = vi.fn()
     let latest: Record<string, unknown> = {}
