@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Entity, Variable } from '../../../runtime/schema/graph-schema'
 import type { Formula } from '../../persist/formula-authoring'
@@ -52,26 +53,36 @@ describe('numberExpr dropdown labels', () => {
     expect(onChange).toHaveBeenCalledWith({ ref: 'entity.hero.attr.hp' })
   })
 
-  it('shows concise attributes, variables, and formulas without changing expression ids', () => {
+  it('separates source type from entity, variable, and formula selection', () => {
     const onChange = vi.fn()
-    render(
-      <ValueExprEditor
-        value={0}
-        entities={entities}
-        variables={variables}
-        formulas={formulas}
-        onChange={onChange}
-      />,
-    )
+    function Harness(): JSX.Element {
+      const [value, setValue] = useState(0 as Parameters<typeof ValueExprEditor>[0]['value'])
+      return (
+        <ValueExprEditor
+          value={value}
+          entities={entities}
+          variables={variables}
+          formulas={formulas}
+          onChange={(next) => {
+            setValue(next)
+            onChange(next)
+          }}
+        />
+      )
+    }
+    render(<Harness />)
 
-    const select = screen.getByRole('combobox', { name: '数值内容' })
-    const attrOption = within(select).getByRole('option', { name: '主角的生命值' }) as HTMLOptionElement
-    expect(within(select).getByRole('option', { name: '怒气' })).toBeTruthy()
-    expect(within(select).getByRole('option', { name: '伤害公式' })).toBeTruthy()
-    expect(select.textContent).not.toContain('（hero）')
-    expect(select.textContent).not.toContain('（hp）')
+    const source = screen.getByRole('combobox', { name: '数值来源类型' })
+    expect(within(source).getByRole('option', { name: '实体属性' })).toBeTruthy()
+    expect(within(source).getByRole('option', { name: '变量' })).toBeTruthy()
+    expect(within(source).getByRole('option', { name: '公式' })).toBeTruthy()
+    expect(screen.queryByRole('option', { name: '主角的生命值' })).toBeNull()
 
-    fireEvent.change(select, { target: { value: attrOption.value } })
+    fireEvent.change(source, { target: { value: 'entity' } })
+    const entitySource = screen.getByRole('combobox', { name: '实体属性' })
+    expect(within(entitySource).getByRole('option', { name: '主角的生命值' })).toBeTruthy()
+    expect(entitySource.textContent).not.toContain('（hero）')
+    expect(entitySource.textContent).not.toContain('（hp）')
     expect(onChange).toHaveBeenCalledWith({
       expr: 'entity.hero.attr.hp',
       pick: {
@@ -79,6 +90,14 @@ describe('numberExpr dropdown labels', () => {
         terms: [{ op: '+', source: 'entity', refId: 'hero', attr: 'hp' }],
       },
     })
+
+    fireEvent.change(source, { target: { value: 'var' } })
+    expect(within(screen.getByRole('combobox', { name: '变量' }))
+      .getByRole('option', { name: '怒气' })).toBeTruthy()
+
+    fireEvent.change(source, { target: { value: 'formula' } })
+    expect(within(screen.getByRole('combobox', { name: '公式' }))
+      .getByRole('option', { name: '伤害公式' })).toBeTruthy()
   })
 
   it('opens application-time source binding for text formula parameters', () => {
@@ -104,9 +123,9 @@ describe('numberExpr dropdown labels', () => {
       />,
     )
 
-    const content = screen.getByRole('combobox', { name: '数值内容' })
-    const formulaOption = within(content).getByRole('option', { name: '通用伤害' }) as HTMLOptionElement
-    fireEvent.change(content, { target: { value: formulaOption.value } })
+    fireEvent.change(screen.getByRole('combobox', { name: '数值来源类型' }), {
+      target: { value: 'formula' },
+    })
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
       expr: '0',

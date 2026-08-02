@@ -108,6 +108,7 @@ export interface OverlaySchemeEditorProps {
   entities: Record<string, Entity>
   variables: Record<string, Variable>
   formulas?: Record<string, Formula>
+  itemIds?: readonly string[]
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
@@ -139,6 +140,7 @@ export function OverlaySchemeEditor({
   entities,
   variables,
   formulas,
+  itemIds = [],
   usageCount,
   locked = false,
   duplicateOf = [],
@@ -346,7 +348,7 @@ export function OverlaySchemeEditor({
             <ComponentFormFields
               componentId={selectedChild.component}
               values={selectedChild.inputs ?? {}}
-              pickers={{ entities, variables, formulas }}
+              pickers={{ entities, variables, formulas, itemIds }}
               density="compact"
               labelWidth="4em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
@@ -370,7 +372,7 @@ export function OverlaySchemeEditor({
                     catalogReactions={overlay.reactions}
                     spawnOptions={spawnOptions}
                     overlays={overlays}
-                    pickers={{ entities, variables, formulas }}
+                    pickers={{ entities, variables, formulas, itemIds }}
                     onCatalogChange={onReactionsChange}
                   />
                 </fieldset>

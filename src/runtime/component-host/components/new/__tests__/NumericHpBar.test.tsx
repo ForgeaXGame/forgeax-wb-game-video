@@ -46,11 +46,11 @@ describe('numeric hp bar components', () => {
       'qiMax',
     ])
     expect(BattlePlayerHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
+      { key: 'bind', label: '绑定对象', valueType: 'string', component: 'entity' },
+      { key: 'attr', label: '当前值属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '当前值覆盖', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '最大值覆盖', valueType: 'number', component: 'numberExpr' },
       { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
       { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
     ]))
@@ -62,11 +62,11 @@ describe('numeric hp bar components', () => {
       'max',
     ])
     expect(BattleEnemyHpBarManifest.inputs).toEqual(expect.arrayContaining([
-      { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
-      { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
+      { key: 'bind', label: '绑定对象', valueType: 'string', component: 'entity' },
+      { key: 'attr', label: '当前值属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '当前值覆盖', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '最大值覆盖', valueType: 'number', component: 'numberExpr' },
     ]))
   })
 

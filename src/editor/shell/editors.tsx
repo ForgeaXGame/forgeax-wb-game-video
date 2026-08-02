@@ -48,6 +48,8 @@ export type MetaCatalogProps = {
   variables?: Record<string, Variable>
   /** 公式库（「规则 → 公式」维护）；数值字段（ValueInput）借它开出「应用公式」模式。 */
   formulas?: Record<string, Formula>
+  /** 从当前项目已有 item effect / hasItem condition 派生的道具 id。 */
+  itemIds?: readonly string[]
 }
 
 /** 兼容包装：entities/variables + 节点下拉展示。 */
@@ -65,12 +67,14 @@ function resolveCatalog(args: CatalogArgs): {
   entities: Record<string, Entity> | undefined
   variables: Record<string, Variable> | undefined
   formulas: Record<string, Formula> | undefined
+  itemIds: readonly string[]
   nodeLabel?: (id: string) => string
 } {
   return {
     entities: args.entities ?? args.pickers?.entities,
     variables: args.variables ?? args.pickers?.variables,
     formulas: args.formulas ?? args.pickers?.formulas,
+    itemIds: args.itemIds ?? args.pickers?.itemIds ?? [],
     nodeLabel: args.nodeLabel ?? args.pickers?.nodeLabel,
   }
 }
@@ -95,6 +99,43 @@ const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center',
 const lbl: CSSProperties = { width: 52, opacity: 0.7, flexShrink: 0, fontSize: 11 }
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
 const hint: CSSProperties = { fontSize: 11, opacity: 0.55, marginBottom: 4 }
+
+function ItemIdEditor({
+  value,
+  itemIds,
+  onChange,
+}: {
+  value: string
+  itemIds: readonly string[]
+  onChange: (itemId: string) => void
+}): JSX.Element {
+  const ids = [...new Set(itemIds.filter(Boolean))].sort()
+  const known = ids.includes(value)
+  return (
+    <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0 }}>
+      <select
+        aria-label="道具"
+        value={known ? value : '__custom__'}
+        onChange={(event) => {
+          if (event.target.value !== '__custom__') onChange(event.target.value)
+        }}
+        style={{ flex: 1, minWidth: 0 }}
+      >
+        {ids.map((id) => <option key={id} value={id}>{id}</option>)}
+        <option value="__custom__">新建或输入道具 ID…</option>
+      </select>
+      {!known ? (
+        <input
+          aria-label="道具 ID"
+          value={value}
+          placeholder="如 lotus-key"
+          onChange={(event) => onChange(event.target.value)}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      ) : null}
+    </div>
+  )
+}
 
 /** NumOrExpr 值相等判断：数字比值、表达式比串——用于判「运算符变换是否真的改了值」，没改则不入撤回栈。 */
 function numOrExprEqual(a: NumOrExpr | undefined, b: NumOrExpr | undefined): boolean {
@@ -342,6 +383,7 @@ export function ValueInput({
   entities,
   variables,
   formulas,
+  itemIds,
   effectOp,
   onClear,
   emptyLabel,
@@ -551,6 +593,7 @@ function EffectRow({
   entities,
   variables,
   formulas,
+  itemIds,
   onChange,
   onDelete,
   canUndoOp,
@@ -699,11 +742,11 @@ function EffectRow({
       )}
       {eff.kind === 'item' && (
         <>
-          {field('道具', <input value={eff.itemId} onChange={(e) => onChange({ ...eff, itemId: e.target.value })} style={{ flex: 1 }} />)}
+          {field('道具', <ItemIdEditor value={eff.itemId} itemIds={itemIds ?? []} onChange={(itemId) => onChange({ ...eff, itemId })} />)}
           {field('操作', (
             <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'give' | 'take' })}>
-              <option value="give">{OP_LABEL.give}</option>
-              <option value="take">{OP_LABEL.take}</option>
+              <option value="give">给予（增加持有数量）</option>
+              <option value="take">取走（减少且不低于 0）</option>
             </select>
           ))}
           {field('数量', <LooseNumberInput value={eff.count} emptyValue={0} onChange={(count) => onChange({ ...eff, count })} style={{ width: 90 }} />)}
@@ -719,6 +762,7 @@ export function EffectsEditor({
   entities,
   variables,
   formulas,
+  itemIds,
   pickers,
   allowAdd = true,
 }: {
@@ -727,7 +771,7 @@ export function EffectsEditor({
   pickers?: EditorPickerCtx
   allowAdd?: boolean
 } & MetaCatalogProps): JSX.Element {
-  const cat = resolveCatalog({ entities, variables, formulas, pickers })
+  const cat = resolveCatalog({ entities, variables, formulas, itemIds, pickers })
   const list = value ?? []
   // 每行的运算符撤回栈（按行 index 存于父层——EffectsEditor 不会因单行 onChange 重挂，故栈稳定）。
   // 每次运算符变换（+ − × ÷ =）前把变换前的 {op, value} 压栈；撤回弹一步（连点 N 次可撤 N 次），
@@ -743,6 +787,7 @@ export function EffectsEditor({
           entities={cat.entities}
           variables={cat.variables}
           formulas={cat.formulas}
+          itemIds={cat.itemIds}
           onChange={(next) => onChange(list.map((e, idx) => (idx === i ? next : e)))}
           onDelete={() => { opStacks.current.delete(i); onChange(list.filter((_, idx) => idx !== i)) }}
           canUndoOp={(opStacks.current.get(i)?.length ?? 0) > 0}
@@ -821,6 +866,7 @@ function ClauseRow({
   nodeIds,
   entities,
   variables,
+  itemIds,
   nodeLabel,
   onChange,
   onDelete,
@@ -935,8 +981,8 @@ function ClauseRow({
       )}
       {clause.type === 'hasItem' && (
         <>
-          {field('道具', <input value={clause.itemId} onChange={(e) => onChange({ ...clause, itemId: e.target.value })} style={{ flex: 1 }} />)}
-          {field('数量', <LooseNumberInput value={clause.count ?? 1} emptyValue={1} onChange={(count) => onChange({ ...clause, count })} style={{ width: 90 }} />)}
+          {field('道具', <ItemIdEditor value={clause.itemId} itemIds={itemIds ?? []} onChange={(itemId) => onChange({ ...clause, itemId })} />)}
+          {field('拥有数量至少', <LooseNumberInput value={clause.count ?? 1} emptyValue={1} onChange={(count) => onChange({ ...clause, count })} style={{ width: 90 }} />)}
         </>
       )}
     </div>
@@ -949,6 +995,7 @@ export function ConditionEditor({
   onChange,
   entities,
   variables,
+  itemIds,
   pickers,
 }: {
   value: GraphCondition | undefined
@@ -956,7 +1003,7 @@ export function ConditionEditor({
   onChange: (v: GraphCondition | undefined) => void
   pickers?: EditorPickerCtx
 } & MetaCatalogProps): JSX.Element {
-  const cat = resolveCatalog({ entities, variables, pickers })
+  const cat = resolveCatalog({ entities, variables, itemIds, pickers })
   const all = value?.all ?? []
   const set = (next: GraphClause[]) => onChange(next.length ? { all: next } : undefined)
   return (
@@ -969,6 +1016,7 @@ export function ConditionEditor({
           nodeIds={nodeIds}
           entities={cat.entities}
           variables={cat.variables}
+          itemIds={cat.itemIds}
           nodeLabel={cat.nodeLabel}
           onChange={(next) => set(all.map((x, idx) => (idx === i ? next : x)))}
           onDelete={() => set(all.filter((_, idx) => idx !== i))}

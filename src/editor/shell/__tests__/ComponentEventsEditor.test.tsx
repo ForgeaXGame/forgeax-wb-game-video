@@ -114,8 +114,8 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    const content = screen.getByRole('combobox', { name: '数值内容' })
-    expect(content.querySelector('option[value="formula:formula-damage"]')).toBeTruthy()
+    const source = screen.getByRole('combobox', { name: '数值来源类型' })
+    expect(within(source).getByRole('option', { name: '公式' })).toBeEnabled()
   })
 })
 
@@ -276,7 +276,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="subtitle-a"]')?.classList.contains('is-selected')).toBe(false)
   })
 
-  it('uses an 80% editor viewport backed by full-stage logical coordinates', async () => {
+  it('uses a full editor viewport backed by full-stage logical coordinates', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-overlay-fit-target')) {
         return {
@@ -327,20 +327,16 @@ describe('OverlaySchemeEditor selected child', () => {
       />,
     )
 
-    await waitFor(() => expect(screen.getByLabelText('覆盖物画布 宽%')).toHaveValue(80))
-    expect(screen.getByLabelText('覆盖物画布 高%')).toHaveValue(80)
-    expect(document.querySelector('[data-overlay-bounds-readout]')).toHaveStyle({
-      display: 'grid',
-      alignItems: 'center',
-    })
+    await waitFor(() => expect(document.querySelector('[data-overlay-design-canvas]')).toBeTruthy())
+    expect(document.querySelector('[data-overlay-bounds-readout]')).toBeNull()
     expect(screen.queryByRole('button', { name: /调整dialogue大小/ })).toBeNull()
     expect(document.querySelectorAll('[data-overflow-child]')).toHaveLength(0)
     expect((document.querySelector('[data-overlay-content-clip]') as HTMLElement).style.clipPath).toContain('inset(')
     expect(document.querySelector('[data-overlay-design-canvas]')).toHaveStyle({
-      left: '10%', top: '10%', width: '80%', height: '80%',
+      left: '0%', top: '0%', width: '100%', height: '100%',
     })
     expect(document.querySelector('[data-overlay-coordinate-stage]')).toHaveStyle({
-      left: '10%', top: '10%', width: '80%', height: '80%',
+      left: '0%', top: '0%', width: '100%', height: '100%',
     })
     expect(screen.queryByRole('button', { name: /调整覆盖物画布大小/ })).toBeNull()
   })
@@ -400,7 +396,7 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const currentField = screen.getByText('当前值来源').parentElement!
+    const currentField = screen.getByText('当前值覆盖').parentElement!
     expect(screen.getByText(/不能增删或拖动组件/)).toBeTruthy()
     expect(document.querySelector('[data-overlay-design-canvas]')).toBeNull()
     expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
@@ -411,9 +407,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
     expect(currentField.style.columnGap).toBe('8px')
     expect(currentField.style.fontSize).toBe('11px')
-    const modeRow = screen.getByRole('radiogroup', { name: '血量来源' }).parentElement!
-    expect(modeRow.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
-    expect(screen.getByRole('radio', { name: '自定义' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByRole('radiogroup', { name: '血量来源' })).toBeNull()
     const current = currentField
       .querySelector('input[aria-label="常量数值"]') as HTMLInputElement
     expect(current.disabled).toBe(false)
@@ -600,14 +594,14 @@ describe('ComponentFormFields defaults', () => {
     render(<Harness />)
 
     expect(screen.getByRole('textbox', { name: '常量数值' })).toHaveValue('-25')
-    fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: '数值来源类型' }), {
       target: { value: 'empty' },
     })
     expect(onChange).toHaveBeenLastCalledWith({})
-    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
+    expect(screen.getByRole('combobox', { name: '数值来源类型' })).toHaveValue('empty')
 
-    fireEvent.change(screen.getByRole('combobox', { name: '数值内容' }), {
-      target: { value: `formula:${formula.id}` },
+    fireEvent.change(screen.getByRole('combobox', { name: '数值来源类型' }), {
+      target: { value: 'formula' },
     })
     expect(onChange).toHaveBeenLastCalledWith({
       value: {
@@ -639,12 +633,13 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:hero:hp')
+    expect(screen.getByRole('combobox', { name: '数值来源类型' })).toHaveValue('entity')
+    expect(screen.getByRole('combobox', { name: '实体属性' })).toHaveValue('entity:hero:hp')
     expect(screen.getByText(/常量：10 · 状态：entity\.hero\.attr\.hp \/ var\.qi/)).toBeTruthy()
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('switches hp bars between bound and custom value modes', () => {
+  it('keeps binding and optional current/max overrides in one persistent form', () => {
     const onChange = vi.fn()
     let latest: Record<string, unknown> = {}
     function Harness(): JSX.Element {
@@ -672,26 +667,14 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    expect(screen.getByRole('radio', { name: '实体属性' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByText('实体')).toBeTruthy()
-    expect(screen.getByText('属性')).toBeTruthy()
-    expect(screen.getByText('上限来源')).toBeTruthy()
-    expect(screen.queryByText('当前值来源')).toBeNull()
-    const boundMax = within(screen.getByText('上限来源').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })
-    fireEvent.change(boundMax, { target: { value: 'entity:ent-player:hpMax' } })
-    expect(screen.getByRole('radio', { name: '实体属性' })).toHaveAttribute('aria-checked', 'true')
-    expect(latest.current).toBeUndefined()
-    expect(latest.max).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
-
-    const currentField = screen.getByText('当前值来源').parentElement!
-    const maxField = screen.getByText('上限来源').parentElement!
+    expect(screen.queryByRole('radiogroup', { name: '血量来源' })).toBeNull()
+    expect(screen.getByText('绑定对象')).toBeTruthy()
+    expect(screen.getByText('当前值属性')).toBeTruthy()
+    const currentField = screen.getByText('当前值覆盖').parentElement!
+    const maxField = screen.getByText('最大值覆盖').parentElement!
     const qiField = screen.getByText('当前气力').parentElement!
     const qiMaxField = screen.getByText('气力上限').parentElement!
     const labelField = screen.getByText('显示名').parentElement!
-    const current = within(currentField).getByRole('combobox', { name: '数值内容' })
     expect(currentField.style.display).toBe('grid')
     expect(currentField.style.gridTemplateColumns).toBe('max-content minmax(0, 1fr)')
     expect(currentField.style.flexBasis).toBe('100%')
@@ -700,58 +683,41 @@ describe('ComponentFormFields defaults', () => {
     expect(qiMaxField.style.flexBasis).toBe('100%')
     expect(labelField.style.flexBasis).toBe('100%')
     expect(labelField.compareDocumentPosition(currentField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.queryByText('实体')).toBeNull()
-    expect(current).toHaveValue('entity:ent-player:hp')
-    expect(within(maxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('entity:ent-player:hpMax')
-    expect(within(qiField).getByRole('combobox', { name: '数值内容' })).toHaveValue('empty')
-    expect(within(qiMaxField).getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
+    expect(within(currentField).getByRole('combobox', { name: '数值来源类型' })).toHaveValue('empty')
+    expect(within(maxField).getByRole('combobox', { name: '数值来源类型' })).toHaveValue('empty')
+    expect(within(qiField).getByRole('combobox', { name: '数值来源类型' })).toHaveValue('empty')
+    expect(within(qiMaxField).getByRole('combobox', { name: '数值来源类型' })).toHaveValue('const')
     expect(within(labelField).getByRole('combobox', { name: '文本内容' })).toHaveValue('literal')
-    expect(latest.current).toBeTruthy()
-    expect(latest.max).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('radio', { name: '实体属性' }))
+    fireEvent.change(within(maxField).getByRole('combobox', { name: '数值来源类型' }), {
+      target: { value: 'entity' },
+    })
+    expect(latest.bind).toBe('ent-player')
+    expect(latest.attr).toBe('hp')
     expect(latest.current).toBeUndefined()
     expect(latest.max).toBeTruthy()
-    expect(screen.getByText('实体')).toBeTruthy()
-    expect(screen.getByText('上限来源')).toBeTruthy()
-    expect(onChange).toHaveBeenCalledTimes(3)
-  })
 
-  it('preserves a manually configured hp maximum across value mode switches', () => {
-    let latest: Record<string, unknown> = {}
-    function Harness(): JSX.Element {
-      const [values, setValues] = useState<Record<string, unknown>>({
-        bind: 'ent-boss',
-        attr: 'hp',
-        max: 2000,
-      })
-      latest = values
-      return (
-        <ComponentFormFields
-          componentId="BattleEnemyHpBar"
-          values={values}
-          pickers={{
-            entities: {
-              'ent-boss': { id: 'ent-boss', name: '敌方', attrs: { hp: 80 } },
+    cleanup()
+    render(
+      <ComponentFormFields
+        componentId="BattlePlayerHpBar"
+        values={latest}
+        pickers={{
+          entities: {
+            'ent-player': {
+              id: 'ent-player',
+              name: '空藏',
+              attrs: { hp: 80, hpMax: 100 },
             },
-          }}
-          onChange={setValues}
-        />
-      )
-    }
-    render(<Harness />)
-
-    fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
-    expect(latest.max).toBe(2000)
-
-    fireEvent.click(screen.getByRole('radio', { name: '实体属性' }))
-    fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
-
-    expect(latest.max).toBe(2000)
-    expect(within(screen.getByText('上限来源').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
-    expect(within(screen.getByText('上限来源').parentElement!)
-      .getByRole('textbox', { name: '常量数值' })).toHaveValue('2000')
+          },
+        }}
+        onChange={onChange}
+      />,
+    )
+    expect(screen.getByText('绑定对象')).toBeTruthy()
+    expect(screen.getByText('当前值属性')).toBeTruthy()
+    expect(within(screen.getByText('最大值覆盖').parentElement!)
+      .getByRole('combobox', { name: '数值来源类型' })).toHaveValue('entity')
   })
 
   it('lists configured properties and repairs the property when the bound object changes', () => {
@@ -794,8 +760,8 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    const entity = screen.getByRole('combobox', { name: '实体' })
-    const attr = screen.getByRole('combobox', { name: '属性' })
+    const entity = screen.getByRole('combobox', { name: '绑定对象' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(entity).toHaveValue('ent-player')
     expect(attr).toHaveValue('hp')
 
@@ -839,8 +805,8 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    const entity = screen.getByRole('combobox', { name: '实体' })
-    const attr = screen.getByRole('combobox', { name: '属性' })
+    const entity = screen.getByRole('combobox', { name: '绑定对象' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(entity).toHaveValue('')
     expect(attr).toBeDisabled()
     expect(attr).toHaveValue('')
@@ -864,7 +830,7 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    const attr = screen.getByRole('combobox', { name: '属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(attr).toBeDisabled()
     expect(attr).toHaveValue('')
     expect(within(attr).getByRole('option', { name: '请先选择对象…' })).toBeTruthy()
@@ -881,13 +847,13 @@ describe('ComponentFormFields defaults', () => {
       />,
     )
 
-    const entity = screen.getByRole('combobox', { name: '实体' })
+    const entity = screen.getByRole('combobox', { name: '绑定对象' })
     expect(entity).toHaveValue('ent-0')
     expect(within(entity).getByRole('option', { name: 'ent-0（实体模板已删除）' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent(
       '实体模板「ent-0」已删除，当前关联仍保留；改选后无法再次选择。',
     )
-    expect(screen.queryByText('属性')).toBeNull()
+    expect(screen.queryByText('当前值属性')).toBeNull()
     expect(screen.queryByRole('option', { name: 'nuqi（实体无该属性）' })).toBeNull()
     expect(onChange).not.toHaveBeenCalled()
   })
@@ -918,7 +884,7 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    const attr = screen.getByRole('combobox', { name: '属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(within(attr).getByRole('option', { name: 'hp（实体无该属性）' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '添加 hp' }))
@@ -949,7 +915,7 @@ describe('ComponentFormFields defaults', () => {
     }
     render(<Harness />)
 
-    const attr = screen.getByRole('combobox', { name: '属性' })
+    const attr = screen.getByRole('combobox', { name: '当前值属性' })
     expect(within(attr).getByRole('option', { name: 'hp（实体无该属性）' })).toBeTruthy()
     expect(screen.getByTestId('entity-catalog')).not.toHaveTextContent('"hp"')
 

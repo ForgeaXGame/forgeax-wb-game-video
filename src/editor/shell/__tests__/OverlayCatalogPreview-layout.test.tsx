@@ -14,8 +14,8 @@ afterEach(cleanup)
 const LOGICAL_CANVAS = { left: 0, top: 0, width: 1, height: 1 }
 
 describe('OverlayCatalogPreview fixed canvas', () => {
-  it('uses a centered 80% viewport with its own full logical coordinate stage', () => {
-    expect(DEFAULT_OVERLAY_DESIGN_CANVAS).toEqual({ left: 0.1, top: 0.1, width: 0.8, height: 0.8 })
+  it('uses the full viewport without exposing read-only size controls', () => {
+    expect(DEFAULT_OVERLAY_DESIGN_CANVAS).toEqual({ left: 0, top: 0, width: 1, height: 1 })
     expect(OVERLAY_GRID_STEP_PERCENT).toBe(2.5)
 
     const { container } = render(
@@ -27,18 +27,19 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       />,
     )
     expect(container.querySelector('[data-overlay-design-canvas]')).toHaveStyle({
-      left: '10%',
-      top: '10%',
-      width: '80%',
-      height: '80%',
+      left: '0%',
+      top: '0%',
+      width: '100%',
+      height: '100%',
       '--ocp-grid-step': '2.5%',
     })
     expect(container.querySelector('[data-overlay-coordinate-stage]')).toHaveStyle({
-      left: '10%',
-      top: '10%',
-      width: '80%',
-      height: '80%',
+      left: '0%',
+      top: '0%',
+      width: '100%',
+      height: '100%',
     })
+    expect(container.querySelector('[data-overlay-bounds-readout]')).toBeNull()
   })
 
   it('writes movement in logical 0..1 coordinates inside the inset viewport', async () => {

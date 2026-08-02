@@ -40,6 +40,8 @@ type ContentChoice =
   | { key: string; kind: 'var'; label: string; varId: string }
   | { key: string; kind: 'formula'; label: string; formulaId: string }
 
+type SourceKind = 'empty' | 'const' | 'entity' | 'var' | 'formula' | 'legacy'
+
 function choiceKey(kind: 'entity' | 'var' | 'formula', ...parts: string[]): string {
   return `${kind}:${parts.map(encodeURIComponent).join(':')}`
 }
@@ -99,12 +101,6 @@ export function ValueExprEditor({
     label: formulaDisplayName(findFormula(formulas, formula.id), formula.id),
     formulaId: formula.id,
   }))
-  const choices: ContentChoice[] = [
-    { key: 'const', kind: 'const', label: '手动设置值' },
-    ...entityChoices,
-    ...variableChoices,
-    ...formulaChoices,
-  ]
   const empty = value === undefined && onClear != null
   const selectedKey = empty
     ? 'empty'
@@ -115,17 +111,21 @@ export function ValueExprEditor({
       : directBinding && directTerm?.source === 'entity'
         ? choiceKey('entity', directTerm.refId, directTerm.attr ?? '')
         : directBinding && directTerm?.source === 'var'
-          ? choiceKey('var', directTerm.refId)
-          : 'legacy'
-  const selectedKnown = selectedKey === 'empty' || choices.some((choice) => choice.key === selectedKey)
+        ? choiceKey('var', directTerm.refId)
+        : 'legacy'
+  const selectedSource: SourceKind = empty
+    ? 'empty'
+    : pick.mode === 'const'
+      ? 'const'
+      : pick.mode === 'formula'
+        ? 'formula'
+        : directBinding && directTerm?.source === 'entity'
+          ? 'entity'
+          : directBinding && directTerm?.source === 'var'
+            ? 'var'
+            : 'legacy'
 
-  function selectContent(key: string): void {
-    if (key === 'empty') {
-      onClear?.()
-      return
-    }
-    const choice = choices.find((item) => item.key === key)
-    if (!choice) return
+  function applyChoice(choice: ContentChoice): void {
     if (choice.kind === 'const') {
       // 保留正负号（旧实现 Math.abs 会把扣血负数抹成正数）
       const n = typeof value === 'number' ? value : pick.mode === 'const' ? pick.const : 0
@@ -151,6 +151,25 @@ export function ValueExprEditor({
     onChange(compileFormula(formula, {}, entities))
   }
 
+  function selectSource(source: SourceKind): void {
+    if (source === 'empty') {
+      onClear?.()
+      return
+    }
+    if (source === 'const') {
+      applyChoice({ key: 'const', kind: 'const', label: '手动设置值' })
+      return
+    }
+    if (source === 'entity' && entityChoices[0]) applyChoice(entityChoices[0])
+    if (source === 'var' && variableChoices[0]) applyChoice(variableChoices[0])
+    if (source === 'formula' && formulaChoices[0]) applyChoice(formulaChoices[0])
+  }
+
+  function selectChoice(key: string, choices: ContentChoice[]): void {
+    const choice = choices.find((item) => item.key === key)
+    if (choice) applyChoice(choice)
+  }
+
   // 旧版「选取公式」（当场拼 ±×÷ 条款链）留下的数据：只读展示 + 提示改走规则页，不再提供编辑入口。
   const legacyPick = pick.mode === 'pick' ? compileValuePick(pick) : undefined
   const legacyPickLabel = typeof value === 'string'
@@ -168,30 +187,51 @@ export function ValueExprEditor({
       <div style={row}>
         {effectOp && <EffectOpButtons op={effectOp.op} onChange={effectOp.onOpChange} />}
         <select
-          aria-label="数值内容"
-          value={selectedKey}
-          onChange={(event) => selectContent(event.target.value)}
-          style={{ flex: 1, minWidth: 180 }}
+          aria-label="数值来源类型"
+          value={selectedSource}
+          onChange={(event) => selectSource(event.target.value as SourceKind)}
+          style={{ minWidth: 128 }}
         >
-          {!selectedKnown ? <option value={selectedKey}>当前内容（保持原值）</option> : null}
           {onClear ? <option value="empty">{emptyLabel}</option> : null}
           <option value="const">手动设置值</option>
-          {entityChoices.length > 0 ? (
-            <optgroup label="实体属性">
-              {entityChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-            </optgroup>
-          ) : null}
-          {variableChoices.length > 0 ? (
-            <optgroup label="变量">
-              {variableChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-            </optgroup>
-          ) : null}
-          {formulaChoices.length > 0 ? (
-            <optgroup label="公式">
-              {formulaChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-            </optgroup>
-          ) : null}
+          <option value="entity" disabled={entityChoices.length === 0}>实体属性</option>
+          <option value="var" disabled={variableChoices.length === 0}>变量</option>
+          <option value="formula" disabled={formulaChoices.length === 0}>公式</option>
+          {selectedSource === 'legacy' ? <option value="legacy">当前内容（保持原值）</option> : null}
         </select>
+        {selectedSource === 'entity' ? (
+          <select
+            aria-label="实体属性"
+            value={selectedKey}
+            onChange={(event) => selectChoice(event.target.value, entityChoices)}
+            style={{ flex: 1, minWidth: 160 }}
+          >
+            {entityChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
+          </select>
+        ) : null}
+        {selectedSource === 'var' ? (
+          <select
+            aria-label="变量"
+            value={selectedKey}
+            onChange={(event) => selectChoice(event.target.value, variableChoices)}
+            style={{ flex: 1, minWidth: 140 }}
+          >
+            {variableChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
+          </select>
+        ) : null}
+        {selectedSource === 'formula' ? (
+          <select
+            aria-label="公式"
+            value={selectedKey}
+            onChange={(event) => selectChoice(event.target.value, formulaChoices)}
+            style={{ flex: 1, minWidth: 140 }}
+          >
+            {!formulaChoices.some((choice) => choice.key === selectedKey) ? (
+              <option value={selectedKey}>当前公式（已删除）</option>
+            ) : null}
+            {formulaChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
+          </select>
+        ) : null}
         <span style={examples}>
           常量：10 · 状态：entity.hero.attr.hp / var.qi · 公式：伤害公式
         </span>

@@ -1,11 +1,13 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
+import { registerCoreSkins } from '../../../runtime/component-host/components'
 import { PRESET_SCHEME_BY_ID } from '../schemeOverlays'
 import { NodeInspector } from '../NodeInspector'
 
 afterEach(cleanup)
+beforeAll(registerCoreSkins)
 
 describe('NodeInspector · 界面事件动作入口', () => {
   it('事件响应保留沿边推进入口，并把走边选择收进目标节点路由', () => {
@@ -100,5 +102,88 @@ describe('NodeInspector · 界面事件动作入口', () => {
     expect(mountCard).toBeTruthy()
     expect(mountCard).toHaveTextContent('叩击')
     expect(mountCard).not.toHaveTextContent('叩击 (base:InkKou)')
+  })
+
+  it('only stores the field changed in a shared scheme component override', () => {
+    const overlay = {
+      id: 'scheme-shared',
+      title: '共享提示',
+      children: [{
+        id: 'notice',
+        component: 'StatusNotice',
+        inputs: { text: '原始提示', color: '#ffffff', durationMs: 1600 },
+      }],
+    }
+    const graph: GameGraph = {
+      nodes: [{
+        id: 'gate',
+        type: 'perf',
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [],
+        data: { name: '门口', overlayNodes: [{ overlay: overlay.id }] },
+      }],
+      edges: [],
+    }
+    const onChange = vi.fn()
+    render(
+      <NodeInspector
+        graph={graph}
+        nodeId="gate"
+        overlays={{ [overlay.id]: overlay }}
+        onChange={onChange}
+      />,
+    )
+
+    const durationField = screen.getByText('总时长ms').parentElement!
+    fireEvent.change(within(durationField).getByRole('spinbutton'), { target: { value: '2000' } })
+
+    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
+    expect(next.nodes[0]?.data.overlayNodes?.[0]?.overrides).toEqual({
+      notice: { inputs: { durationMs: 2000 } },
+    })
+  })
+
+  it('forwards missing hp creation from the node-mounted scheme entry', () => {
+    const overlay = {
+      id: 'battle-hud',
+      title: '战斗 HUD',
+      children: [{
+        id: 'hp',
+        component: 'BattlePlayerHpBar',
+        inputs: { bind: 'hero', attr: 'hp' },
+      }],
+    }
+    const graph: GameGraph = {
+      nodes: [{
+        id: 'gate',
+        type: 'perf',
+        position: { x: 0, y: 0 },
+        inputs: [],
+        outputs: [],
+        data: { name: '门口', overlayNodes: [{ overlay: overlay.id }] },
+      }],
+      edges: [],
+    }
+    const onCreateEntityAttribute = vi.fn()
+    render(
+      <NodeInspector
+        graph={graph}
+        nodeId="gate"
+        overlays={{ [overlay.id]: overlay }}
+        entities={{ hero: { id: 'hero', name: '主角', attrs: {} } }}
+        onCreateEntityAttribute={onCreateEntityAttribute}
+        onChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
+    expect(onCreateEntityAttribute).toHaveBeenCalledWith({
+      entityId: 'hero',
+      attrId: 'hp',
+      initialValue: 100,
+      meta: { label: '生命', initial: 100, min: 0, max: 100 },
+    })
   })
 })

@@ -3,7 +3,7 @@
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Entity, GameEdge, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, GameEdge, GameGraph, GraphCondition, Overlay, OverlayChild, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { authoringOptionLabel } from '../authoring-option-label'
 import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
@@ -36,6 +36,7 @@ import { NodeActionsEditor } from './NodeActionsEditor'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { LooseNumberInput } from './TermChainEditor'
+import { collectItemIds } from './itemCatalog'
 
 /**
  * 「播放动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -50,6 +51,22 @@ import { LooseNumberInput } from './TermChainEditor'
  * 容易替引擎脑补出来的一条不存在的规则。
  */
 const BGM_MODE_TITLE = '留空 = 这里不换音乐，继续播上层正在响的那首。配了就一直播：走边离开本节点、弹回外层子流程/子蓝图都不结束，只有在该停的节点上选「结束当前音乐」，或跳转 / 重开一局才会退掉它。\n起播并记住上一首 = 这层被结束时回到它；换曲不记住 = 顶掉正在响的那首、层数不变（正响的是文档默认床轨时例外：它是地板顶不掉，会另起一层）；结束当前音乐 = 结束正在响的这层，回到上一层还没结束的那首（只剩文档床时什么都不做）。'
+
+function serializableEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+export function sparseOverlayInputOverride(
+  base: Record<string, unknown> | undefined,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(next)) {
+    if (!serializableEqual(value, base?.[key])) out[key] = value
+  }
+  return out
+}
 
 function row(label: string, node: ReactNode): JSX.Element {
   return (
@@ -998,6 +1015,7 @@ export function NodeInspector({
   entities,
   variables,
   formulas,
+  itemIds,
   focusedMountId,
   focusedLifecycleIndex,
   settlementInsertMs,
@@ -1033,6 +1051,8 @@ export function NodeInspector({
   variables?: Record<string, Variable>
   /** 公式库（「规则 → 公式」维护）；供 effects/numberExpr 数值字段开出「应用公式」模式。 */
   formulas?: Record<string, Formula>
+  /** 现有 item effect / hasItem condition 派生目录；缺省从当前图和界面目录计算。 */
+  itemIds?: readonly string[]
   /**
    * 预览台当前聚焦的挂载 id（覆盖物）。非空时右侧只展开该挂载的配置卡片，其余折叠为标题行；
    * 空 = 平铺展开全部挂载（默认）。
@@ -1161,7 +1181,13 @@ export function NodeInspector({
       }),
     )
   const fieldTree = buildFieldTree(entities, variables)
-  const pickers: EditorPickerCtx = { entities, variables, formulas, nodeLabel }
+  const pickers: EditorPickerCtx = {
+    entities,
+    variables,
+    formulas,
+    itemIds: itemIds ?? collectItemIds(graph, overlays),
+    nodeLabel,
+  }
   const flowHandleOptions = useMemo(() => {
     const extra = graph.edges
       .filter((e) => e.source === node.id)
@@ -1197,19 +1223,32 @@ export function NodeInspector({
   }, [graph.edges, node.id, nodeLabel])
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
-  /**
-   * 编辑挂载组件的 inputs（NodeInspector 为准）：写成本挂载的稀疏 override（overrides[childId].inputs）。
-   * 值来自 ComponentFormFields（按 manifest.inputs 出控件），full-bag 覆盖——共享方案未改组件仍跟随原型。
-   */
+  /** 编辑挂载组件 inputs：added 直接改自身；原型组件只保存相对方案的字段级差量。 */
   const setChildInputs = (mountIndex: number, childId: string, nextInputs: Record<string, unknown>) => {
     const mounts = [...(d.overlayNodes ?? [])]
     const mount = mounts[mountIndex]
     if (!mount) return
-    const prev = mount.overrides?.[childId]
-    mounts[mountIndex] = {
-      ...mount,
-      overrides: { ...mount.overrides, [childId]: { ...prev, inputs: nextInputs } },
+    const addedIndex = mount.added?.findIndex((child) => child.id === childId) ?? -1
+    if (addedIndex >= 0) {
+      const added = [...(mount.added ?? [])]
+      added[addedIndex] = { ...added[addedIndex]!, inputs: nextInputs }
+      mounts[mountIndex] = { ...mount, added }
+      patchData({ overlayNodes: mounts })
+      return
     }
+
+    const base = overlays?.[mount.overlay]?.children.find((child) => child.id === childId)
+    if (!base) return
+    const sparseInputs = sparseOverlayInputOverride(base.inputs, nextInputs)
+    const prev = mount.overrides?.[childId]
+    const nextPatch: Partial<OverlayChild> = { ...prev }
+    if (Object.keys(sparseInputs).length > 0) nextPatch.inputs = sparseInputs
+    else delete nextPatch.inputs
+
+    const overrides = { ...mount.overrides }
+    if (Object.keys(nextPatch).length > 0) overrides[childId] = nextPatch
+    else delete overrides[childId]
+    mounts[mountIndex] = { ...mount, overrides: Object.keys(overrides).length ? overrides : undefined }
     patchData({ overlayNodes: mounts })
   }
   const targetNodeOptions: OptItem[] = nodeIds

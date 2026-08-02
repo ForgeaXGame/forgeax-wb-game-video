@@ -114,7 +114,7 @@ describe('ScenarioInspector entity attributes', () => {
     }
     render(<Harness />)
 
-    const attrSelect = screen.getByRole('combobox', { name: '属性' })
+    const attrSelect = screen.getByRole('combobox', { name: '当前值属性' })
     expect(within(attrSelect).queryByRole('option', { name: 'attr0' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))

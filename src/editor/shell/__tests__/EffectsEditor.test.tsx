@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GraphCondition, GraphEffect } from '../../../runtime/schema/graph-schema'
 import { ConditionEditor, EffectsEditor } from '../editors'
 
@@ -87,5 +87,37 @@ describe('ConditionEditor score compatibility', () => {
     const type = screen.getByRole('combobox', { name: '条件字段类型' })
     expect(type).toHaveValue('score')
     expect(type.querySelector('option[value="score"]')).not.toBeNull()
+  })
+})
+
+describe('item authoring', () => {
+  it('uses one item catalog for give/take effects and owned-item conditions', () => {
+    const effectChange = vi.fn()
+    const conditionChange = vi.fn()
+    const { container } = render(
+      <>
+        <EffectsEditor
+          value={[{ kind: 'item', itemId: 'lotus-key', op: 'give', count: 1 }]}
+          pickers={{ itemIds: ['lotus-key', 'tea'] }}
+          onChange={effectChange}
+        />
+        <ConditionEditor
+          value={{ all: [{ type: 'hasItem', itemId: 'lotus-key', count: 1 }] }}
+          nodeIds={[]}
+          pickers={{ itemIds: ['lotus-key', 'tea'] }}
+          onChange={conditionChange}
+        />
+      </>,
+    )
+
+    const itemInputs = screen.getAllByRole('combobox', { name: '道具' })
+    expect(itemInputs).toHaveLength(2)
+    for (const input of itemInputs) {
+      expect(within(input).getByRole('option', { name: 'lotus-key' })).toBeTruthy()
+      expect(within(input).getByRole('option', { name: 'tea' })).toBeTruthy()
+    }
+    expect(container.textContent).toContain('给予（增加持有数量）')
+    expect(container.textContent).toContain('取走（减少且不低于 0）')
+    expect(container.textContent).toContain('拥有数量至少')
   })
 })

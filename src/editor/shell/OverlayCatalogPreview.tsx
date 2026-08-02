@@ -38,10 +38,10 @@ type NBox = { left: number; top: number; w: number; h: number }
 
 /** 仅供界面 tab 使用的编辑器设计框，不属于发布 schema。 */
 export const DEFAULT_OVERLAY_DESIGN_CANVAS: CanvasBox = {
-  left: 0.1,
-  top: 0.1,
-  width: 0.8,
-  height: 0.8,
+  left: 0,
+  top: 0,
+  width: 1,
+  height: 1,
 }
 const FULL_STAGE_CANVAS: CanvasBox = { left: 0, top: 0, width: 1, height: 1 }
 
@@ -159,56 +159,6 @@ export function positionForOverlaySnap(
   }
 }
 
-function percentValue(value: number): string {
-  return String(Math.round(value * 1000) / 10)
-}
-
-function OverlayBoundsReadout({ box }: { box: CanvasBox }): JSX.Element {
-  return (
-    <div
-      data-overlay-bounds-readout
-      style={{
-        marginTop: 2,
-        display: 'grid',
-        gridTemplateColumns: 'max-content repeat(2, minmax(70px, 1fr))',
-        alignItems: 'center',
-        gap: 8,
-        minWidth: 0,
-      }}
-    >
-      <div style={{ fontSize: 11, opacity: 0.7, whiteSpace: 'nowrap' }}>
-        虚拟画布尺寸
-      </div>
-      {([
-        ['width', '宽%'],
-        ['height', '高%'],
-      ] as const).map(([key, label]) => (
-        <label
-          key={key}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'max-content minmax(0, 1fr)',
-            alignItems: 'center',
-            gap: 4,
-            minWidth: 0,
-            fontSize: 10,
-            opacity: 0.85,
-          }}
-        >
-          <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
-          <input
-            type="number"
-            value={percentValue(box[key])}
-            aria-label={`覆盖物画布 ${label}`}
-            readOnly
-            style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontSize: 11 }}
-          />
-        </label>
-      ))}
-    </div>
-  )
-}
-
 function OverlaySnapGuides({
   kind,
   canvas,
@@ -270,15 +220,10 @@ const PREVIEW_CSS = `
   box-shadow: inset 0 0 40px rgba(0,0,0,.45);
 }
 .ocp-stage.is-dropping { border-color: var(--gc-accent, #c8955a); box-shadow: inset 0 0 40px rgba(200,149,90,.25); }
-.ocp-stage::after {
-  content: '界面预览';
-  position: absolute; left: 8px; top: 6px;
-  font-size: 10px; letter-spacing: .06em; opacity: .45; pointer-events: none; z-index: 999;
-}
 .ocp-design-canvas {
   position:absolute; z-index:48; box-sizing:border-box; pointer-events:none;
   border: 1px dashed rgba(190,196,204,.72);
-  border-radius: 2px;
+  border-radius: inherit;
   background:
     linear-gradient(to right, rgba(190,196,204,.1) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(190,196,204,.1) 1px, transparent 1px);
@@ -373,7 +318,7 @@ export interface OverlayCatalogPreviewProps {
   onPatchChildLayout?: (childId: string, patch: Partial<Layout>) => void
   /** 交互热区重叠冲突集变化时回调（DOM 实测得出）——供上层做参数列表标红 / banner。 */
   onWarnChange?: (ids: Set<string>) => void
-  /** 是否显示 80% 白色虚线设计框；基础界面只读预览关闭。 */
+  /** 是否显示铺满舞台的白色虚线设计框；基础界面只读预览关闭。 */
   showDesignCanvas?: boolean
   /** 只在预览中把每个组件的真实内容居中，不修改持久化 layout。 */
   centerChildren?: boolean
@@ -866,7 +811,6 @@ export function OverlayCatalogPreview({
             />}
         </div>
       </div>
-      {interactive && showDesignCanvas ? <OverlayBoundsReadout box={overlayCanvasRect} /> : null}
       {/* 预览时刻拖条：仅只读预览态显示（规则 tab 等）；界面 tab 可交互态不显，画布固定 t=400ms 渲染。 */}
       {showScrubber && (
         <label className="ocp-scrub">

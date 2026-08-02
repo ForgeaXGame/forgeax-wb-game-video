@@ -85,6 +85,16 @@ describe('applyEffects', () => {
     expect(st.entities['ent-boss']!.attrs.hp).toBe(500)
   })
 
+  it('gives and takes items with a floor at zero', () => {
+    const st = state()
+    applyEffects(st, [
+      { kind: 'item', itemId: 'lotus-key', op: 'give', count: 2 },
+      { kind: 'item', itemId: 'lotus-key', op: 'take', count: 1 },
+      { kind: 'item', itemId: 'lotus-key', op: 'take', count: 99 },
+    ])
+    expect(st.items?.['lotus-key']).toBe(0)
+  })
+
   it('once: applied only the first time', () => {
     const st = state()
     const eff: GraphEffect = { id: 'once1', kind: 'var', varId: 'qi', op: 'add', value: 1, once: true }

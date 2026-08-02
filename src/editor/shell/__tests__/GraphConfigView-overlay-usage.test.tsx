@@ -1,10 +1,12 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph, GameScenario } from '../../../runtime/schema/graph-schema'
+import { registerCoreSkins } from '../../../runtime/component-host/components'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { GraphConfigView } from '../GraphConfigView'
 
 const initialState = useGraphScenario.getState()
+beforeAll(registerCoreSkins)
 
 function graphWithOverlay(nodeId: string, overlay: string): GameGraph {
   return {
@@ -54,5 +56,72 @@ describe('GraphConfigView overlay usage', () => {
 
     expect(screen.getByText('⇢2')).toHaveAttribute('title', '被 2 个节点的 overlayNodes 引用')
     expect(screen.getByText('被 2 个节点引用')).toBeTruthy()
+  })
+
+  it('creates unique scheme titles and blocks duplicate renames', () => {
+    const graph: GameGraph = { nodes: [], edges: [] }
+    const overlays = {
+      a: { id: 'a', title: '新方案', children: [] },
+      b: { id: 'b', title: '战斗 HUD', children: [] },
+    }
+    useGraphScenario.setState({
+      game: 'game-nodia-fighting',
+      booted: true,
+      blueprints: { main: blueprint('main', graph) },
+      mainBlueprintId: 'main',
+      activeBlueprintId: 'main',
+      graph,
+      meta: { ui: { overlays } },
+    })
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined)
+    const scenario: GameScenario = { version: 'test', graph, ui: { overlays } }
+    render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
+
+    fireEvent.click(screen.getByTitle('新建界面方案'))
+    expect(Object.values(useGraphScenario.getState().meta.ui?.overlays ?? {})
+      .some((overlay) => overlay.title === '新方案 2')).toBe(true)
+
+    const title = screen.getByDisplayValue('新方案 2')
+    fireEvent.change(title, { target: { value: '战斗 HUD' } })
+    expect(alert).toHaveBeenCalledWith('界面方案名称「战斗 HUD」已存在')
+    expect((useGraphScenario.getState().meta.ui?.overlays?.['scheme-2'])?.title).toBe('新方案 2')
+  })
+
+  it('creates a missing hp attribute from the interface scheme entry', () => {
+    const graph: GameGraph = { nodes: [], edges: [] }
+    const overlays = {
+      hud: {
+        id: 'hud',
+        title: '战斗界面',
+        children: [{
+          id: 'hp',
+          component: 'BattlePlayerHpBar',
+          inputs: { bind: 'hero', attr: 'hp' },
+        }],
+      },
+    }
+    const entities = { hero: { id: 'hero', name: '主角', attrs: {} } }
+    useGraphScenario.setState({
+      game: 'game-nodia-fighting',
+      booted: true,
+      blueprints: { main: blueprint('main', graph) },
+      mainBlueprintId: 'main',
+      activeBlueprintId: 'main',
+      graph,
+      meta: { entities, ui: { overlays } },
+    })
+    const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
+    render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '创建属性 hp' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认创建' }))
+
+    expect(useGraphScenario.getState().meta.entities?.hero?.attrs?.hp).toBe(100)
+    expect(useGraphScenario.getState().meta.entities?.hero?.attrMeta?.hp).toMatchObject({
+      label: '生命',
+      initial: 100,
+      min: 0,
+      max: 100,
+    })
   })
 })

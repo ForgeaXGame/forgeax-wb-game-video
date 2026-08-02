@@ -27,6 +27,8 @@ import type { Formula } from '../persist/formula-authoring'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
 import type { ScenarioIdRename } from '../persist/scenario-id'
+import { collectItemIds } from './itemCatalog'
+import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -79,6 +81,10 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     () => countOverlayReferences(Object.values(blueprints).map((doc) => doc.graph)),
     [blueprints],
   )
+  const itemIds = useMemo(
+    () => collectItemIds(meta.ui?.overlays, Object.values(blueprints).map((doc) => doc.graph)),
+    [blueprints, meta.ui?.overlays],
+  )
 
   // ── 界面（overlays）形态：树 + 单方案编辑 ──
   const overlaysMode = tabs.length === 1 && tabs[0]?.section === 'overlays'
@@ -105,12 +111,19 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   }
   const addScheme = () => {
     const id = allocId('scheme-', allOverlays)
-    setOverlays({ [id]: { id, title: '新方案', children: [] }, ...allOverlays })
+    setOverlays({
+      [id]: { id, title: nextUniqueOverlayTitle(allOverlays), children: [] },
+      ...allOverlays,
+    })
     setSelectedOverlayId(id)
   }
   const renameScheme = (oid: string, title: string) => {
     const ov = allOverlays[oid]
     if (!ov) return
+    if (overlayTitleExists(allOverlays, title, oid)) {
+      window.alert(`界面方案名称「${title.trim()}」已存在`)
+      return
+    }
     setOverlays({ ...allOverlays, [oid]: { ...ov, title } })
   }
   const removeScheme = (oid: string) => {
@@ -258,6 +271,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   entities={meta.entities ?? {}}
                   variables={meta.variables ?? {}}
                   formulas={meta.formulas as Record<string, Formula> | undefined}
+                  itemIds={itemIds}
                   usageCount={overlayUsage[selOverlay] ?? 0}
                   locked={selLocked}
                   duplicateOf={dupMap.get(selOverlay) ?? []}

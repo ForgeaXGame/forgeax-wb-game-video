@@ -10,6 +10,7 @@ import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
 import { FormulaTextEditor } from './FormulaTextEditor'
 import { LooseNumberInput } from './TermChainEditor'
 import type { ScenarioIdRename } from '../persist/scenario-id'
+import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -276,11 +277,18 @@ export function ScenarioInspector({
   const renameScheme = (overlayId: string, title: string) => {
     const ov = allOverlays[overlayId]
     if (!ov) return
+    if (overlayTitleExists(allOverlays, title, overlayId)) {
+      window.alert(`界面方案名称「${title.trim()}」已存在`)
+      return
+    }
     setOverlays({ ...allOverlays, [overlayId]: { ...ov, title } })
   }
   const addScheme = () => {
     const id = allocId('scheme-', allOverlays)
-    setOverlays({ ...allOverlays, [id]: { id, title: '新方案', children: [] } })
+    setOverlays({
+      ...allOverlays,
+      [id]: { id, title: nextUniqueOverlayTitle(allOverlays), children: [] },
+    })
   }
   const removeScheme = (overlayId: string) => {
     const { [overlayId]: _drop, ...rest } = allOverlays
