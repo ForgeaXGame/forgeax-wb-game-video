@@ -84,7 +84,7 @@ describe('ComponentEventsEditor', () => {
     expect(screen.getByText('从事件节点到目标节点')).toBeTruthy()
     expect(screen.queryByText('走边')).toBeNull()
     expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '＋ 效果' }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加效果' }))
     expect(onMountActionsChange).toHaveBeenCalledWith(event, [
       { kind: 'advance', edgeId: 'edge-1' },
       expect.objectContaining({ kind: 'effect' }),
@@ -114,7 +114,7 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    const content = screen.getByRole('combobox', { name: '数值内容' })
+    const content = screen.getByRole('combobox', { name: '数值来源' })
     expect(content.querySelector('option[value="formula:formula-damage"]')).toBeTruthy()
   })
 })
@@ -479,8 +479,8 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(container.querySelector('[data-canvas-item="choice"]')).toHaveClass('is-selected')
     expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(false)
     expect(screen.getByText('choice:ying')).toBeTruthy()
-    const effectButtons = screen.getAllByRole('button', { name: '＋ 效果' })
-    const spawnButtons = screen.getAllByRole('button', { name: '＋ 生成组件' })
+    const effectButtons = screen.getAllByRole('button', { name: '＋ 添加效果' })
+    const spawnButtons = screen.getAllByRole('combobox', { name: '添加显示界面' })
     expect(effectButtons[0]).not.toBeDisabled()
     expect(spawnButtons[0]).not.toBeDisabled()
     fireEvent.click(effectButtons[0]!)

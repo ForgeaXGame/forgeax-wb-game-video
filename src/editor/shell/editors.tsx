@@ -24,6 +24,7 @@ import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from '
 import { ValueExprEditor } from './ValueExprEditor'
 import { TextValueEditor, type TextOrRef } from './TextValueEditor'
 import { LooseNumberInput } from './TermChainEditor'
+import { EffectOpButtons } from './OpSymbolButtons'
 import {
   decodeEffectOperation,
   encodeEffectOperation,
@@ -79,6 +80,13 @@ const CMP_OPS: CmpOp[] = ['gte', 'lte', 'gt', 'lt', 'eq', 'neq']
 const CMP_LABEL: Record<CmpOp, string> = { gte: '≥', lte: '≤', gt: '>', lt: '<', eq: '=', neq: '≠' }
 const EFFECT_KIND_LABEL: Record<string, string> = { attr: '属性', var: '变量', flag: '标记', item: '道具' }
 const OP_LABEL: Record<string, string> = { give: '给予', take: '取走' }
+const EFFECT_OP_LABEL: Record<EffectDisplayOp, string> = {
+  add: '增加',
+  sub: '减少',
+  mul: '乘以',
+  div: '除以',
+  set: '设为',
+}
 const CLAUSE_LABEL: Record<string, string> = {
   attrRatio: '属性比例', attr: '属性值', attrCompare: '属性比较', var: '变量', flag: '标记', visited: '到过节点', score: '分数', hasItem: '拥有道具',
 }
@@ -336,6 +344,7 @@ export function ValueInput({
   variables,
   formulas,
   effectOp,
+  fieldLabels,
   onClear,
   emptyLabel,
 }: {
@@ -346,6 +355,7 @@ export function ValueInput({
   emptyLabel?: string
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
+  fieldLabels?: { source: string; value: string }
 } & MetaCatalogProps): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -358,6 +368,7 @@ export function ValueInput({
         onClear={onClear}
         emptyLabel={emptyLabel}
         effectOp={effectOp}
+        fieldLabels={fieldLabels}
       />
     </div>
   )
@@ -472,7 +483,7 @@ type EffectKind = GraphEffect['kind']
 // 「标记」(flag) 从新建下拉隐藏（避免与「变量」混淆）；已有 flag 数据仍可编辑。
 const EFFECT_KINDS: EffectKind[] = ['attr', 'var', 'item']
 
-/** 新建一条效果的默认值（属性 / 变量 / …）；供 EffectsEditor 与「＋ 效果」动作共用。 */
+/** 新建一条效果的默认值（属性 / 变量 / …）；供 EffectsEditor 与「＋ 添加效果」动作共用。 */
 export function createDefaultEffect(
   kind: EffectKind,
   entities: Record<string, Entity> | undefined,
@@ -524,10 +535,14 @@ function summarizeEffect(
   const attrLabel = (entityId: string, attr: string) =>
     listAttrOptions(findEntity(entities, entityId)).find((a) => a.id === attr)?.label ?? attr
   switch (eff.kind) {
-    case 'attr':
-      return `${kind} · ${entLabel(eff.entityId)} 的 ${attrLabel(eff.entityId, eff.attr)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
-    case 'var':
-      return `${kind} · ${varLabel(eff.varId)} ${OP_LABEL[eff.op] ?? eff.op} ${formatEffectValue(eff.value)}`
+    case 'attr': {
+      const operation = decodeEffectOperation(eff.op, eff.value)
+      return `${kind} · ${entLabel(eff.entityId)} 的 ${attrLabel(eff.entityId, eff.attr)} ${EFFECT_OP_LABEL[operation.op]} ${formatEffectValue(operation.value)}`
+    }
+    case 'var': {
+      const operation = decodeEffectOperation(eff.op, eff.value)
+      return `${kind} · ${varLabel(eff.varId)} ${EFFECT_OP_LABEL[operation.op]} ${formatEffectValue(operation.value)}`
+    }
     case 'flag':
       return `${kind} · ${varLabel(eff.varId)} 设为 ${eff.value ? '是' : '否'}`
     case 'item':
@@ -632,16 +647,17 @@ function EffectRow({
               onChange={(attr) => onChange({ ...eff, attr })}
             />
           ))}
-          {field('值', (
-            <ValueInput
-              value={operation?.value ?? eff.value}
-              entities={entities}
-              variables={variables}
-              formulas={formulas}
-              onChange={handleValueChange}
-              effectOp={{ op: operation?.op ?? eff.op, onOpChange: handleOpChange }}
-            />
+          {field('操作', (
+            <EffectOpButtons op={operation?.op ?? eff.op} onChange={handleOpChange} />
           ))}
+          <ValueInput
+            value={operation?.value ?? eff.value}
+            entities={entities}
+            variables={variables}
+            formulas={formulas}
+            onChange={handleValueChange}
+            fieldLabels={{ source: '数值来源', value: '数值' }}
+          />
         </>
       )}
       {eff.kind === 'var' && (
@@ -655,16 +671,17 @@ function EffectRow({
               onChange={(varId) => onChange({ ...eff, varId })}
             />
           ))}
-          {field('值', (
-            <ValueInput
-              value={operation?.value ?? eff.value}
-              entities={entities}
-              variables={variables}
-              formulas={formulas}
-              onChange={handleValueChange}
-              effectOp={{ op: operation?.op ?? eff.op, onOpChange: handleOpChange }}
-            />
+          {field('操作', (
+            <EffectOpButtons op={operation?.op ?? eff.op} onChange={handleOpChange} />
           ))}
+          <ValueInput
+            value={operation?.value ?? eff.value}
+            entities={entities}
+            variables={variables}
+            formulas={formulas}
+            onChange={handleValueChange}
+            fieldLabels={{ source: '数值来源', value: '数值' }}
+          />
         </>
       )}
       {eff.kind === 'flag' && (

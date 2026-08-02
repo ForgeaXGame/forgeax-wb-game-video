@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addNode, attachSubProcess, connect, disconnect, duplicateNodes, insertNodeAfter, makeEmptySubFlowPack, reconnect, removeNode, setLifecycleReactionMs, setNodePosition, setRoutingSettlementMs, setSettlementAdvanceTarget, setSettlementReactionMs, updateEventRouteTiming } from '../edit/graph-edit'
+import { addNode, attachSubProcess, connect, disconnect, duplicateNodes, insertNodeAfter, makeEmptySubFlowPack, patchSettlementSpawnLayout, reconnect, removeNode, setLifecycleReactionMs, setNodePosition, setRoutingSettlementMs, setSettlementAdvanceTarget, setSettlementReactionMs, updateEventRouteTiming } from '../edit/graph-edit'
 import type { GameGraph, GameNode } from '../../runtime/schema/graph-schema'
 import { getSubProcess } from '../../runtime/schema/graph-schema'
 
@@ -128,6 +128,35 @@ describe('graph-edit', () => {
     expect(setSettlementReactionMs(graph, 'a', 0, 900)).toBe(graph)
     expect(setSettlementReactionMs(graph, 'a', 1, 900).nodes[0]?.data.reactions?.[1]?.when)
       .toEqual({ type: 'at', ms: 900 })
+  })
+
+  it('patchSettlementSpawnLayout：只更新指定条件结算的显示界面位置', () => {
+    const graph: GameGraph = {
+      nodes: [{
+        ...n('a'),
+        data: {
+          name: 'a',
+          reactions: [{
+            when: { type: 'watch', of: 'score', on: 'inc' },
+            do: [
+              { kind: 'effect', effects: [] },
+              { kind: 'spawn', from: 'hud/rage', ttlMs: 1200 },
+            ],
+          }],
+        },
+      }],
+      edges: [],
+    }
+
+    const next = patchSettlementSpawnLayout(graph, 'a', 0, 1, { left: 0.25, top: 0.4 })
+    expect(next.nodes[0]?.data.reactions?.[0]?.do[1]).toEqual({
+      kind: 'spawn',
+      from: 'hud/rage',
+      ttlMs: 1200,
+      layout: { left: 0.25, top: 0.4 },
+    })
+    expect(graph.nodes[0]?.data.reactions?.[0]?.do[1]).not.toHaveProperty('layout')
+    expect(patchSettlementSpawnLayout(graph, 'a', 0, 0, { left: 1 })).toBe(graph)
   })
 
   it('setSettlementAdvanceTarget：按目标节点复用或创建边，并保持 advance.edgeId 契约', () => {

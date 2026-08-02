@@ -151,20 +151,23 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setSettlementInsertTimeMs(null)
   }, [selected])
   // 面板里同一时刻只该有一个聚焦对象：选覆盖物就松开效果，反之亦然。
-  const focusMount = useCallback((id: string | null) => {
+  // 右侧表单只更新选中态；只有左侧预览 / 时间轴发起的联动才递增滚动定位版本。
+  const selectMount = useCallback((id: string | null) => {
     setFocusedMountId(id)
-    if (id != null) {
-      setFocusedLifecycleIndex(null)
-      setFocusAnchorRevision((revision) => revision + 1)
-    }
+    if (id != null) setFocusedLifecycleIndex(null)
   }, [])
-  const focusLifecycle = useCallback((index: number | null) => {
+  const selectLifecycle = useCallback((index: number | null) => {
     setFocusedLifecycleIndex(index)
-    if (index != null) {
-      setFocusedMountId(null)
-      setFocusAnchorRevision((revision) => revision + 1)
-    }
+    if (index != null) setFocusedMountId(null)
   }, [])
+  const focusMountFromPreview = useCallback((id: string | null) => {
+    selectMount(id)
+    if (id != null) setFocusAnchorRevision((revision) => revision + 1)
+  }, [selectMount])
+  const focusLifecycleFromPreview = useCallback((index: number | null) => {
+    selectLifecycle(index)
+    if (index != null) setFocusAnchorRevision((revision) => revision + 1)
+  }, [selectLifecycle])
   const clearPreviewFocusFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (focusedMountId == null && focusedLifecycleIndex == null) return
     const target = event.target instanceof Element ? event.target : null
@@ -172,6 +175,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     if (focusedMountId != null && mountAnchor?.getAttribute('data-focus-anchor') === `mount:${focusedMountId}`) return
     const settlementAnchor = target?.closest('[data-settlement-index]')
     if (focusedLifecycleIndex != null && settlementAnchor?.getAttribute('data-settlement-index') === String(focusedLifecycleIndex)) return
+    // 条件结算的显示界面进入预览画布后仍属于当前结算；画布自己负责切换到挂载或清空焦点。
+    if (focusedLifecycleIndex != null && target?.closest('[aria-label="节点视频覆盖物画布"]')) return
     if (target?.closest('.gc-mclip.is-selected, .gc-point-mark.is-selected, .gc-condition-band.is-selected')) return
     setFocusedMountId(null)
     setFocusedLifecycleIndex(null)
@@ -798,8 +803,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                     onEditScenario={editPreviewScenario}
                     onMutedChange={setIsNodePreviewMuted}
                     onSelectedTimeChange={(_ms, selection) => setSettlementInsertTimeMs(selection.settlementInsertMs)}
-                    onFocusMount={focusMount}
-                    onFocusLifecycle={focusLifecycle}
+                    onFocusMount={focusMountFromPreview}
+                    onFocusLifecycle={focusLifecycleFromPreview}
                   />
                 </div>
                 <div
@@ -827,8 +832,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 focusedLifecycleIndex={focusedLifecycleIndex}
                 settlementInsertMs={effectivePreviewOpen ? settlementInsertTimeMs ?? undefined : undefined}
                 focusAnchorRevision={focusAnchorRevision}
-                onFocusMount={focusMount}
-                onFocusLifecycle={focusLifecycle}
+                onFocusMount={selectMount}
+                onFocusLifecycle={selectLifecycle}
                 previewOpen={effectivePreviewOpen}
                 onTogglePreview={selectedCanConfigurePerformance ? togglePreviewSurface : undefined}
                 onChange={setCanvasGraph}

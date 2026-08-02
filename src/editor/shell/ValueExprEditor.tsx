@@ -31,6 +31,7 @@ import {
 
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }
 const row: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }
+const fieldLabel: CSSProperties = { width: 52, opacity: 0.7, flexShrink: 0, fontSize: 11 }
 const hint: CSSProperties = { fontSize: 11, opacity: 0.65, lineHeight: 1.4 }
 const examples: CSSProperties = { fontSize: 10, opacity: 0.5, lineHeight: 1.4 }
 
@@ -55,6 +56,7 @@ export function ValueExprEditor({
   emptyLabel = '使用组件实时值',
   hintText,
   effectOp,
+  fieldLabels,
 }: {
   value: ValueExprInput | undefined
   storedPick?: unknown
@@ -68,6 +70,8 @@ export function ValueExprEditor({
   hintText?: string
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/应用公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
+  /** Effect 表单使用显式字段名区分“取什么值”和“输入多少”，避免与目标实体属性混淆。 */
+  fieldLabels?: { source: string; value: string }
 }): JSX.Element {
   const pick = resolveValuePick(value, entities, variables, storedPick)
   const formulaOpts = listFormulaOptions(formulas)
@@ -166,9 +170,10 @@ export function ValueExprEditor({
   return (
     <div style={box}>
       <div style={row}>
+        {fieldLabels ? <span style={fieldLabel}>{fieldLabels.source}</span> : null}
         {effectOp && <EffectOpButtons op={effectOp.op} onChange={effectOp.onOpChange} />}
         <select
-          aria-label="数值内容"
+          aria-label={fieldLabels?.source ?? '数值内容'}
           value={selectedKey}
           onChange={(event) => selectContent(event.target.value)}
           style={{ flex: 1, minWidth: 180 }}
@@ -192,18 +197,23 @@ export function ValueExprEditor({
             </optgroup>
           ) : null}
         </select>
-        <span style={examples}>
-          常量：10 · 状态：entity.hero.attr.hp / var.qi · 公式：伤害公式
-        </span>
+        {!fieldLabels ? (
+          <span style={examples}>
+            常量：10 · 状态：entity.hero.attr.hp / var.qi · 公式：伤害公式
+          </span>
+        ) : null}
       </div>
 
       {!empty && pick.mode === 'const' && (
-        <LooseNumberInput
-          value={pick.const}
-          onChange={(n) => onChange(n)}
-          aria-label="常量数值"
-          style={{ width: '100%' }}
-        />
+        <div style={row}>
+          {fieldLabels ? <span style={fieldLabel}>{fieldLabels.value}</span> : null}
+          <LooseNumberInput
+            value={pick.const}
+            onChange={(n) => onChange(n)}
+            aria-label={fieldLabels?.value ?? '常量数值'}
+            style={{ flex: 1, minWidth: 0, width: fieldLabels ? undefined : '100%' }}
+          />
+        </div>
       )}
 
       {!empty && pick.mode === 'pick' && !directBinding && (

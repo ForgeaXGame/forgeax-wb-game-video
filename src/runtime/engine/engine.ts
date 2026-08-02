@@ -875,11 +875,13 @@ export class GraphRuntime {
     return this.drain()
   }
 
-  /** 结算动作：按序施加 effect，或沿当前结算节点的真实出边推进。 */
+  /** 结算动作：按序施加 effect、显示/隐藏界面，或沿当前结算节点的真实出边推进。 */
   private runSettlementActions(node: GameNode, actions: NodeAction[]): void {
     const scope = this.activeScope()
     for (const a of actions) {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
+      else if (a.kind === 'spawn') this.doSpawn(a)
+      else if (a.kind === 'hideOverlay') this.doHideOverlay(a, node)
       else if (a.kind === 'advance' && !this.redirect && !this.inExit) {
         const route = this.scopedEdgeInScope(a.edgeId, scope)
         if (route?.edge.source === node.id) {
@@ -911,6 +913,9 @@ export class GraphRuntime {
         if (a.effects.length) this.applyAndReact(a.effects)
       } else if (a.kind === 'spawn') {
         this.doSpawn(a)
+      } else if (a.kind === 'hideOverlay') {
+        const owner = el ? scope.graph.nodes.find((node) => node.id === el.source.nodeId) : undefined
+        this.doHideOverlay(a, owner)
       } else if (a.kind === 'advance') {
         const scoped = this.scopedEdgeInScope(a.edgeId, scope)
         if (scoped && this.eventRoutingNodeIds(el).includes(scoped.edge.source)) {
@@ -1071,17 +1076,17 @@ export class GraphRuntime {
    * 当前节点 + 各挂载 + **调用栈上的子流程容器节点**（容器级 watch 覆盖整段子流程，
    * 如「我方回合」容器上的 watch 在其技能子节点执行期间仍生效）。
    */
-  private activeReactiveConditions(): Array<{ key: string; r: Reaction; scope: GraphScope }> {
-    const out: Array<{ key: string; r: Reaction; scope: GraphScope }> = []
+  private activeReactiveConditions(): Array<{ key: string; r: Reaction; scope: GraphScope; owner: GameNode }> {
+    const out: Array<{ key: string; r: Reaction; scope: GraphScope; owner: GameNode }> = []
     const node = this.node(this.state.currentNodeId)
     if (node) {
       ;(node.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `n:${node.id}#${i}`, r, scope: this.activeScope() })
+        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `n:${node.id}#${i}`, r, scope: this.activeScope(), owner: node })
       })
       nodeOverlayMounts(node).forEach((m) => {
         const mid = overlayMountId(m)
         ;(m.reactions ?? []).forEach((r, i) => {
-          if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `m:${node.id}:${mid}#${i}`, r, scope: this.activeScope() })
+          if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `m:${node.id}:${mid}#${i}`, r, scope: this.activeScope(), owner: node })
         })
       })
     }
@@ -1089,7 +1094,9 @@ export class GraphRuntime {
     this.state.callStack.forEach((frame, d) => {
       const container = frame.returnGraph.nodes.find((n) => n.id === frame.callerNodeId)
       ;(container?.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r, scope: this.frameScope(d) })
+        if (container && (r.when.type === 'watch' || r.when.type === 'state')) {
+          out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r, scope: this.frameScope(d), owner: container })
+        }
       })
     })
     return out
@@ -1106,7 +1113,7 @@ export class GraphRuntime {
   /** 写屏障后重采样：watch 按变化方向命中；state 仅在 false → true 时命中。 */
   private checkReactiveConditions(): void {
     if (this.inExit || this.state.phase === 'ended') return
-    for (const { key, r, scope } of this.activeReactiveConditions()) {
+    for (const { key, r, scope, owner } of this.activeReactiveConditions()) {
       if (r.when.type === 'watch') {
         const next = this.safeEval(r.when.of)
         if (!this.numericReactionPrev.has(key)) {
@@ -1120,7 +1127,7 @@ export class GraphRuntime {
         // 先更新基线再跑 do，避免 do 内改状态导致自触发。
         this.numericReactionPrev.set(key, next)
         if (!fire) continue
-        this.runReactiveActions(r.do, { prev, next, delta: next - prev }, scope)
+        this.runReactiveActions(r.do, { prev, next, delta: next - prev }, scope, owner)
       } else if (r.when.type === 'state') {
         const next = evaluateCondition(r.when.condition, this.condTarget())
         if (!this.stateConditionPrev.has(key)) {
@@ -1130,19 +1137,26 @@ export class GraphRuntime {
         const prev = this.stateConditionPrev.get(key)!
         this.stateConditionPrev.set(key, next)
         if (prev || !next) continue
-        this.runReactiveActions(r.do, undefined, scope)
+        this.runReactiveActions(r.do, undefined, scope, owner)
       }
       if (this.redirect) return
     }
   }
 
   /** watch / shown / hidden / 非阻塞 emit 的 do：advance 可立即 redirect，也可锁定路线等待结算点。 */
-  private runReactiveActions(actions: NodeAction[], locals?: Record<string, number>, scope = this.activeScope()): void {
+  private runReactiveActions(
+    actions: NodeAction[],
+    locals?: Record<string, number>,
+    scope = this.activeScope(),
+    owner = this.node(this.state.currentNodeId),
+  ): void {
     for (const a of actions) {
       if (a.kind === 'effect') {
         if (a.effects.length) this.applyAndReact(a.effects)
       } else if (a.kind === 'spawn') {
         this.doSpawn(a, locals)
+      } else if (a.kind === 'hideOverlay') {
+        this.doHideOverlay(a, owner)
       } else if (a.kind === 'advance') {
         // exit 期不接受 advance（避免与正在进行的 consumeRedirect 自跳环）。
         if (!this.redirect && !this.inExit) {
@@ -1205,13 +1219,37 @@ export class GraphRuntime {
       nodeId,
       mountId: elementId,
       mountLayout: layout,
-      childLayout: layout,
       elementId,
       component,
       inputs,
     })
     if (action.ttlMs && action.ttlMs > 0) {
-      this.pendingSpawns.push({ elementId, nodeId, removeAtMs: this.state.elapsedMs + action.ttlMs })
+      this.pendingSpawns.push({
+        elementId,
+        nodeId,
+        removeAtMs: this.state.elapsedMs + action.ttlMs,
+      })
+    }
+  }
+
+  /** 隐藏作者已挂载在节点上的整组界面；只处理当前已出现的 child，重复调用保持幂等。 */
+  private doHideOverlay(action: Extract<NodeAction, { kind: 'hideOverlay' }>, owner?: GameNode | null): void {
+    if (!owner) return
+    const hidden = nodeOverlayChildren(this.scenario, owner).filter((element) => (
+      element.source.mountId === action.mountId
+      && this.shownChildren.has(element.id)
+      && !this.hiddenFired.has(element.id)
+    ))
+    if (!hidden.length) return
+
+    // 先移除整组并锁定 hidden，再触发生命周期，避免首个 child 的跳转让同挂载的其余 child 残留。
+    for (const element of hidden) {
+      this.hiddenFired.add(element.id)
+      this.emit({ type: 'removeOverlay', nodeId: owner.id, elementId: element.id })
+    }
+    for (const element of hidden) {
+      this.fireLifecycle('hidden', element, owner)
+      if (this.redirect) return
     }
   }
 
@@ -1255,11 +1293,11 @@ export class GraphRuntime {
     return out
   }
 
-  private fireLifecycle(kind: 'shown' | 'hidden', el: OverlayInstanceChild): void {
-    const node = this.node(this.state.currentNodeId)
+  private fireLifecycle(kind: 'shown' | 'hidden', el: OverlayInstanceChild, owner?: GameNode | null): void {
+    const node = owner ?? this.node(this.state.currentNodeId)
     if (!node) return
     for (const r of this.lifecycleReactions(node, kind, el)) {
-      this.runReactiveActions(r.do, undefined, this.activeScope())
+      this.runReactiveActions(r.do, undefined, this.scopeForElement(el), node)
       if (this.redirect) return
     }
   }

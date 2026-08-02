@@ -29,7 +29,8 @@ import {
 } from '../../graph/edit/graph-edit'
 import { mergeFlowHandles, flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { ConditionEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
-import { ComponentFormFields, summarizeComponentInputs, type EntityAttributeCreateHandler } from './component-form-fields'
+import type { EntityAttributeCreateHandler } from './component-form-fields'
+import { ComponentInputsDisclosure } from './ComponentInputsDisclosure'
 import { overlayDisplayLabel, PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
@@ -403,6 +404,11 @@ function lifecycleAtMs(r: Reaction, durationMs?: number): number {
   return Math.max(0, Math.round(durationMs ?? 0))
 }
 
+function isSettlementControlTarget(target: EventTarget | null): boolean {
+  return target instanceof Element
+    && Boolean(target.closest('button, input, select, textarea, label, a, summary, details, [role="button"], [contenteditable="true"]'))
+}
+
 function legacyPhaseHint(r: Reaction): string | null {
   if (r.when.type === 'at') return null
   if (r.when.type === 'complete') {
@@ -433,8 +439,10 @@ function LifecycleReactionsEditor({
   onSetAdvanceTiming,
   componentOptions,
   spawnOptions,
+  hideOverlayOptions,
   overlays,
   fieldTree,
+  onCreateEntityAttribute,
   onChange,
 }: {
   reactions: Reaction[] | undefined
@@ -459,8 +467,10 @@ function LifecycleReactionsEditor({
   ) => void
   componentOptions: OptItem[]
   spawnOptions: OptItem[]
+  hideOverlayOptions: OptItem[]
   overlays?: Record<string, Overlay>
   fieldTree: FieldNode[]
+  onCreateEntityAttribute?: EntityAttributeCreateHandler
   onChange: (next: Reaction[] | undefined) => void
 }): JSX.Element {
   const settlements = (reactions ?? []).filter(isSettlement)
@@ -488,9 +498,9 @@ function LifecycleReactionsEditor({
   }
 
   useEffect(() => {
-    if (focusedIndex == null) return
+    if (focusAnchorRevision == null || focusedIndex == null) return
     itemRefs.current[focusedIndex]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-  }, [focusedIndex, focusAnchorRevision])
+  }, [focusAnchorRevision])
 
   useEffect(() => {
     if (focusedIndex != null && focusedIndex >= settlements.length) onFocusIndex?.(null)
@@ -515,7 +525,10 @@ function LifecycleReactionsEditor({
             data-lifecycle-effect-index={i}
             data-settlement-index={i}
             data-selected={focused ? 'true' : 'false'}
-            onPointerDown={() => onFocusIndex?.(i)}
+            onClick={(event) => {
+              if (isSettlementControlTarget(event.target)) return
+              onFocusIndex?.(i)
+            }}
             style={{
               border: `1px solid ${focused ? '#5ad4c0' : '#2a2a2a'}`,
               borderRadius: 6,
@@ -535,7 +548,7 @@ function LifecycleReactionsEditor({
                 ))}
               </select>
               <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => removeAt(i)}>
-                移除
+                删除结算
               </button>
             </div>
             {triggerType === 'at' ? (
@@ -618,7 +631,11 @@ function LifecycleReactionsEditor({
               spawnOptions={spawnOptions}
               overlays={overlays}
               pickers={pickers}
-              allowSpawn={false}
+              allowSpawn={triggerType === 'condition'}
+              allowHideOverlay={triggerType === 'condition'}
+              defaultSpawnTtlMs={1200}
+              hideOverlayOptions={hideOverlayOptions}
+              onCreateEntityAttribute={onCreateEntityAttribute}
               renderAdvance={(action, actionIndex) => {
                 const edge = action.edgeId ? advanceEdgeFor(action.edgeId) : undefined
                 return (
@@ -1088,9 +1105,9 @@ export function NodeInspector({
   }
   const mountCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   useEffect(() => {
-    if (!focusedMountId) return
+    if (focusAnchorRevision == null || !focusedMountId) return
     mountCardRefs.current[focusedMountId]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-  }, [focusedMountId, focusAnchorRevision])
+  }, [focusAnchorRevision])
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
   const d = node.data
@@ -1150,6 +1167,10 @@ export function NodeInspector({
       const names = [overlayTitle, compLabel(c.component)].filter((part, index, all) => part && all.indexOf(part) === index)
       return { value, label: authoringOptionLabel(names.join(' · '), value) }
     })
+  })
+  const hideOverlayOptions: OptItem[] = (d.overlayNodes ?? []).map((mount) => {
+    const mountId = overlayMountId(mount)
+    return { value: mountId, label: authoringOptionLabel(overlayDisplayLabel(mount.overlay, overlays), mountId) }
   })
   // spawn 模板只列界面方案（排除 node:* 本地内容容器 / 历史 fork）。
   const spawnOptions: OptItem[] = Object.values(overlays ?? {})
@@ -1495,58 +1516,17 @@ export function NodeInspector({
                   <div style={{ marginBottom: 4 }}>
                     {sectionLabel('组件参数')}
                     {mountChildren.map((child) => {
-                      const compName = getComponentManifest(child.component)?.label ?? child.component
                       const inputs = (child.inputs ?? {}) as Record<string, unknown>
-                      const summary = summarizeComponentInputs(inputs)
                       return (
-                        // 一个组件 = 一张卡片：展开后「参数」「事件」两组都被这层边框+底色包住，
-                        // 读起来是同一个整体（对齐 NodeActionsEditor 行的卡片写法）。
-                        <details
+                        <ComponentInputsDisclosure
                           key={child.id}
-                          style={{
-                            marginBottom: 6,
-                            border: '1px solid #2a2a2a',
-                            borderRadius: 6,
-                            padding: '2px 8px',
-                            fontSize: 11,
-                            background: 'rgba(0,0,0,0.22)',
-                          }}
-                        >
-                          <summary
-                            style={{
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              alignItems: 'center',
-                              gap: 6,
-                              cursor: 'pointer',
-                              listStyle: 'none',
-                              padding: '2px 0',
-                            }}
-                            title={`组件 ${child.id}（${compName}）的 inputs。展开后编辑；悬停各字段可看说明。`}
-                          >
-                            <span style={{ opacity: 0.65 }}>组件</span>
-                            <b>{child.id}</b>
-                            <span style={{ opacity: 0.55 }}>· {compName}</span>
-                            {summary ? (
-                              <span style={{ fontFamily: 'ui-monospace, monospace', opacity: 0.75 }}>{summary}</span>
-                            ) : null}
-                            <span style={{ opacity: 0.4, marginLeft: 'auto' }}>▾</span>
-                          </summary>
-                          <div style={{ padding: '4px 0 6px' }}>
-                            {/* x/y 不在本面板出数字框：位置统一在左侧预览台拖拽调（拖拽直接写
-                                inputs.x/y）。仍保留在组件 manifest 里，因为 isPositionable() 靠它
-                                判定该组件能否拖拽定位。 */}
-                            <ComponentFormFields
-                              componentId={child.component}
-                              values={inputs}
-                              onChange={(next) => setChildInputs(i, child.id, next)}
-                              pickers={pickers}
-                              excludeKeys={['x', 'y']}
-                              density="compact"
-                              onCreateEntityAttribute={onCreateEntityAttribute}
-                            />
-                          </div>
-                        </details>
+                          childId={child.id}
+                          componentId={child.component}
+                          values={inputs}
+                          onChange={(next) => setChildInputs(i, child.id, next)}
+                          pickers={pickers}
+                          onCreateEntityAttribute={onCreateEntityAttribute}
+                        />
                       )
                     })}
                   </div>
@@ -1617,8 +1597,10 @@ export function NodeInspector({
           }}
           componentOptions={componentOptions}
           spawnOptions={spawnOptions}
+          hideOverlayOptions={hideOverlayOptions}
           overlays={overlays}
           fieldTree={fieldTree}
+          onCreateEntityAttribute={onCreateEntityAttribute}
           onChange={(reactions) => patchData({ reactions })}
         />
       </div>
