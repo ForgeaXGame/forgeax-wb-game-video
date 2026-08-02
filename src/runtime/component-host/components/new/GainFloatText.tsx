@@ -1,18 +1,18 @@
 /**
- * 增益飘字（component id: `GainFloatText`）—— value 支持固定数字或 `{expr}` 公式。
- * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
+ * 增益飘字（component id: `GainFloatText`）—— 固定文本与动态参数直接拼接。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveNumericFloatDurationMs, resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
+import { resolveTextDurationMs, resolveTextParameter, type TextParameterInputs } from './textParameter'
 
 export const GainFloatTextManifest: ComponentManifest = {
   id: 'GainFloatText',
   label: '增益飘字',
   inputs: [
-    { key: 'value', label: '数值', valueType: 'number', component: 'numberExpr', default: 50 },
+    { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
+    { key: 'parameter', label: '参数', valueType: 'string', default: '+50' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ffd54a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -20,13 +20,14 @@ export const GainFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function GainFloatText({ overlay, ctx, preview, previewTimeMs, previewPlaying }: OverlayProps): ReactNode {
+export function GainFloatText({ overlay, ctx, preview, previewTimeMs }: OverlayProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '+50')
+  const fixedText = typeof overlay.inputs.fixedText === 'string' ? overlay.inputs.fixedText : ''
+  const text = `${fixedText}${resolveTextParameter((overlay.inputs as TextParameterInputs).parameter, ctx, '+50')}`
   const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
-  const durationMs = resolveNumericFloatDurationMs(overlay.inputs.durationMs)
-  const frozen = preview && !previewPlaying
+  const durationMs = resolveTextDurationMs(overlay.inputs.durationMs)
+  const frozen = preview
   return (
     <div
       className={`gv-gain-float-text${frozen ? ' is-preview-frozen' : ''}`}
