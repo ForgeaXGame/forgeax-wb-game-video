@@ -250,6 +250,25 @@ describe('GameStage buffered playback', () => {
     expect(onPerformanceEnd).toHaveBeenCalledTimes(1)
   })
 
+  it('does not restart an ended foreground video when preloads are reconciled', () => {
+    const play = vi.spyOn(window.HTMLMediaElement.prototype, 'play')
+    const { container, rerender } = render(<GameStage {...props()} />)
+    const video = videoFor(container, '/a.mp4')
+    fireEvent.loadedData(video)
+    Object.defineProperty(video, 'ended', { configurable: true, value: true })
+    play.mockClear()
+
+    rerender(
+      <GameStage
+        {...props({
+          preloadVideos: [{ videoSrc: '/b.mp4', clip: clip('b') }],
+        })}
+      />,
+    )
+
+    expect(play).not.toHaveBeenCalled()
+  })
+
   it('keeps looping video independent from the node duration cap', () => {
     const onTick = vi.fn()
     const onPerformanceEnd = vi.fn()
