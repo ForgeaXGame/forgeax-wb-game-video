@@ -82,7 +82,7 @@ export function GamePlayer({ scenario, game, resolveAsset }: GamePlayerProps): J
         style={{ position: 'relative', width: '100%', height: '100%', background: '#000', color: '#fff', outline: 'none' }}
       >
         {/* 床轨：独立音频通道，与视频原声开关无关；无 UI。 */}
-        <BgmPlayer bgm={snap.bgm} resolveAsset={resolveBgm} />
+        <BgmPlayer bgm={snap.bgm} resolveAsset={resolveBgm} active={snap.phase !== 'ended'} />
         <GameStage
           videoSrc={videoSrc}
           videoKey={`clip-${snap.clipSeq}`}

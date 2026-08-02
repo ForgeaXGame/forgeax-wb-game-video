@@ -1719,6 +1719,7 @@ export function NodeInspector({
                 />
                 <input
                   type="range"
+                  className="ni-bgm-volume"
                   aria-label="BGM 音量"
                   min={0}
                   max={1}
@@ -1726,7 +1727,12 @@ export function NodeInspector({
                   value={bgm?.volume ?? 1}
                   disabled={bgm?.volume === undefined}
                   onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { volume: Number(e.target.value) }) })}
-                  style={{ flex: 1, minWidth: 0 }}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: 0,
+                    background: `linear-gradient(to right, #1683ff 0%, #1683ff ${(bgm?.volume ?? 1) * 100}%, rgba(255, 255, 255, 0.3) ${(bgm?.volume ?? 1) * 100}%, rgba(255, 255, 255, 0.3) 100%)`,
+                  }}
                 />
                 <span style={{ width: 48, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {bgm?.volume === undefined ? '未设置' : `${Math.round(bgm.volume * 100)}%`}
@@ -1735,6 +1741,17 @@ export function NodeInspector({
             ))}
             {bgm?.ref ? (
               <>
+                {row('播放模式', (
+                  <select
+                    aria-label="BGM 播放模式"
+                    value={bgm.loop === false ? 'once' : 'loop'}
+                    onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { loop: e.target.value === 'loop' ? undefined : false }) })}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="loop">循环</option>
+                    <option value="once">单次</option>
+                  </select>
+                ))}
                 {row('重进时', (
                   <span
                     style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, opacity: 0.85 }}

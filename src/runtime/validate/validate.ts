@@ -218,14 +218,13 @@ const BGM_MODES = new Set(['push', 'replace', 'stop'])
 
 /**
  * BGM 配置落在哪儿 —— 两处的 schema 不同（`NodeBgm` vs `DocumentBgm`），同一个键换个位置就是死键：
- * 只有节点有 `mode` / `restart`（作用域语义），只有文档床有 `loop`。
+ * 只有节点有 `mode` / `restart`（作用域语义）；`loop` 在文档床和节点曲目上都有效。
  */
 type BgmPosition = 'node' | 'doc'
 
 /** 节点作用域独有的键 → 落到文档床上一律不生效（见 checkBgm 的 `bgm.key.ignored`）。 */
 const NODE_ONLY_BGM_KEYS = ['mode', 'restart'] as const
-/** 文档床独有的键：`engine.applyNodeBgm` 逐字段构造 apply 入参、不展开落盘对象 → 节点恒 loop。 */
-const DOC_ONLY_BGM_KEYS = ['loop'] as const
+const DOC_ONLY_BGM_KEYS = [] as const
 
 /**
  * 校验一处 BGM 配置（`doc.bgm` 或 `node.data.bgm`，SPEC §3.3）。
@@ -265,6 +264,9 @@ function checkBgm(
   }
   if (b.volume !== undefined && (typeof b.volume !== 'number' || !Number.isFinite(b.volume) || b.volume < 0 || b.volume > 1)) {
     issues.push({ level: 'error', code: 'bgm.volume.range', msg: `bgm.volume '${String(b.volume)}' 越界（须是 [0, 1] 内的数字）`, at })
+  }
+  if (b.loop !== undefined && typeof b.loop !== 'boolean') {
+    issues.push({ level: 'error', code: 'bgm.flag.type', msg: `bgm.loop '${String(b.loop)}' 非法（只能是 true / false）`, at })
   }
   for (const key of ['fadeInMs', 'fadeOutMs'] as const) {
     const v = b[key]
