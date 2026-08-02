@@ -69,6 +69,29 @@ describe('NodePreviewStage overlay layout', () => {
     expect(container.querySelector('.mtl-root')).not.toBeNull()
   })
 
+  it('does not overlay the video id or playback mode on the preview window', () => {
+    const current = node('n1', {
+      durationMs: 3_000,
+      media: { kind: 'video', ref: 'encoded-video.mp4' },
+      mediaPlayMode: 'loop',
+    })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.nps-frame .gc-badge')).toBeNull()
+    expect(screen.queryByText('encoded-video.mp4')).toBeNull()
+    expect(screen.queryByText('循环')).toBeNull()
+  })
+
   it('shows state condition settlements in the timeline condition lane', () => {
     const current = node('n1', {
       reactions: [{

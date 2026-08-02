@@ -100,7 +100,7 @@ export function ValueExprEditor({
     formulaId: formula.id,
   }))
   const choices: ContentChoice[] = [
-    { key: 'const', kind: 'const', label: '固定值（手动输入）' },
+    { key: 'const', kind: 'const', label: '手动设置值' },
     ...entityChoices,
     ...variableChoices,
     ...formulaChoices,
@@ -175,7 +175,7 @@ export function ValueExprEditor({
         >
           {!selectedKnown ? <option value={selectedKey}>当前内容（保持原值）</option> : null}
           {onClear ? <option value="empty">{emptyLabel}</option> : null}
-          <option value="const">固定值（手动输入）</option>
+          <option value="const">手动设置值</option>
           {entityChoices.length > 0 ? (
             <optgroup label="实体属性">
               {entityChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}

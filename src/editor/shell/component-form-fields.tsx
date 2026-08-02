@@ -7,7 +7,7 @@
  * events/hotspotEvents/effects 出结构化编辑器，textStyle/qteCues 暂交「视频」轨编辑器（见 docs/inputs-ssot.md）。
  * 填了 `component` 优先用它，否则按 valueType。
  * `component: 'entity'`：场景实体下拉（复用 EffectsEditor 同源的 EntitySelect，见 editors.tsx / metaCatalog.ts）。
- * `component: 'attr'`：绑定属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
+ * `component: 'attr'`：实体属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
  * attrs（复用同一份 AttrSelect，见 editors.tsx；与 EffectRow/ClauseRow 的实体→属性级联同源），实体项一变属性下拉即联动刷新。
  */
 import { useState, type CSSProperties, type JSX } from 'react'
@@ -188,7 +188,7 @@ function patchValue(
 
 /**
  * `component: 'attr'` 依赖同一 inputs 列表里 `component: 'entity'` 那一项的当前取值——
- * 即「绑定属性」总是跟随「绑定对象」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
+ * 即「属性」总是跟随「实体」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
  * 取第一个 entity 项即可：目前一个组件最多一个实体绑定入口（如 battleHpBar 的 bind）。
  */
 function boundEntityId(inputs: ComponentInput[], values: Record<string, unknown>): string {
@@ -250,7 +250,7 @@ function hpBinding(
       ? values.attr
       : typeof attrInput?.default === 'string'
         ? attrInput.default
-        : 'hp',
+        : '',
   }
 }
 
@@ -463,11 +463,13 @@ function renderInput(
     )
   }
   if (inp.component === 'entity') {
+    const entityId = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
+    const missingTemplate = !!entityId && !findEntity(pickers?.entities, entityId)
     return (
-      <span key={inp.key}>
+      <span key={inp.key} style={missingTemplate && isHpBarComponent(componentId) ? { flexBasis: '100%', minWidth: 0 } : undefined}>
         {wrap(
           <EntitySelect
-            value={typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')}
+            value={entityId}
             entities={pickers?.entities}
             onChange={(id) => {
               if (isHpBarComponent(componentId)) {
@@ -478,6 +480,14 @@ function renderInput(
             }}
           />,
         )}
+        {missingTemplate && isHpBarComponent(componentId) ? (
+          <span
+            role="status"
+            style={{ display: 'block', margin: '2px 0 6px', color: '#e6a23c', fontSize: 11 }}
+          >
+            实体模板「{entityId}」已删除，当前关联仍保留；改选后无法再次选择。
+          </span>
+        ) : null}
       </span>
     )
   }
@@ -485,6 +495,7 @@ function renderInput(
     const attrValue = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
     const entityId = boundEntityId(inputs, values)
     const entity = findEntity(pickers?.entities, entityId)
+    if (isHpBarComponent(componentId) && entityId && !entity) return null
     const declared = entity
       ? Object.hasOwn(entity.attrs ?? {}, attrValue) || Object.hasOwn(entity.attrMeta ?? {}, attrValue)
       : false
@@ -678,7 +689,7 @@ export function ComponentFormFields({
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
   const availableInputs = excludeKeys?.length ? allInputs.filter((inp) => !excludeKeys.includes(inp.key)) : allInputs
   const hpBar = isHpBarComponent(componentId)
-  // 绑定模式也允许显式选择 max 的任意数值来源；只有 current 被单独配置时才进入「分别设置」。
+  // 实体属性模式也允许显式选择 max 的任意数值来源；只有 current 被单独配置时才进入「自定义」。
   const hpMode: HpValueMode = values.current !== undefined ? 'custom' : 'bound'
   const inputs = hpBar
     ? availableInputs.filter((input) => hpMode === 'bound'
@@ -726,8 +737,8 @@ export function ComponentFormFields({
             fontSize: 11,
           }}
         >
-          <span style={{ opacity: 0.55 }}>血量方式</span>
-          <div role="radiogroup" aria-label="血量方式" style={{ display: 'flex', gap: 4 }}>
+          <span style={{ opacity: 0.55 }}>血量来源</span>
+          <div role="radiogroup" aria-label="血量来源" style={{ display: 'flex', gap: 4 }}>
             <button
               type="button"
               role="radio"
@@ -735,7 +746,7 @@ export function ComponentFormFields({
               className={hpMode === 'bound' ? 'gc-mini-action is-on' : 'gc-mini-action'}
               onClick={() => setHpMode('bound')}
             >
-              绑定属性
+              实体属性
             </button>
             <button
               type="button"
@@ -744,7 +755,7 @@ export function ComponentFormFields({
               className={hpMode === 'custom' ? 'gc-mini-action is-on' : 'gc-mini-action'}
               onClick={() => setHpMode('custom')}
             >
-              分别设置
+              自定义
             </button>
           </div>
         </div>

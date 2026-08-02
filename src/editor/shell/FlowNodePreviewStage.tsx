@@ -201,10 +201,6 @@ export function FlowNodePreviewStage({
   return (
     <div className="nps-root nps-flow-root" data-testid="flow-node-preview">
       <div className="gc-frame nps-frame" data-type="video">
-        <span className="gc-badge">
-          {snap.clip?.name || snap.currentNodeId || '流程预览'}
-          {snap.clip?.loop ? <em>循环</em> : null}
-        </span>
         <PlaybackClockProvider value={{ paused: flow.paused, rate: flow.playbackRate }}>
           <PlayerRootContext.Provider value={rootElement}>
             <div

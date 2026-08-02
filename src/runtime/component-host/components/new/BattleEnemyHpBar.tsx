@@ -9,11 +9,11 @@ export const BattleEnemyHpBarManifest: ComponentManifest = {
   id: 'BattleEnemyHpBar',
   label: '敌方水墨血条',
   inputs: [
-    { key: 'bind', label: '绑定对象', valueType: 'string', default: 'ent-boss', component: 'entity' },
-    { key: 'attr', label: '当前值属性', valueType: 'string', default: 'hp', component: 'attr' },
+    { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
+    { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
     { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
     { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-    { key: 'max', label: '最大值来源', valueType: 'number', component: 'numberExpr' },
+    { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
   ],
   events: [],
 }
@@ -23,7 +23,7 @@ export function BattleEnemyHpBar({ overlay, ctx }: OverlayProps): ReactNode {
   ensureInkFilters()
   ensureBrushFont()
   const inputs = overlay.inputs
-  const bound = resolveBoundHpBarValues(inputs, ctx, 'ent-boss', 50, 90)
+  const bound = resolveBoundHpBarValues(inputs, ctx, 50, 90)
   const current = typeof inputs.current === 'number'
     ? bound.current
     : resolveNumericValue(inputs.current, ctx) ?? bound.current
