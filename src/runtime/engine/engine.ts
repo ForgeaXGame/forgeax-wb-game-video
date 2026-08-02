@@ -509,6 +509,7 @@ export class GraphRuntime {
       fadeInMs: bgm.fadeInMs,
       fadeOutMs: bgm.fadeOutMs,
       restart: bgm.restart,
+      loop: bgm.loop,
     }
     const top = this.bgm.top()
     if (top?.owner !== owner) return this.emitBgmCommand(this.bgm.apply(input))
@@ -516,7 +517,12 @@ export class GraphRuntime {
     // 每轮压一层的话栈无界增长，之后一次 `stop` 只能退回上一轮的同一首（听起来「没反应」）。
     // 曲子和目标音量都没变、且没要求重开 → 一条指令都不发（壳层别碰播放头）。volume-only
     // 节点可能改过本层音量；回到 owner 时即使 ref 相同，也要恢复 owner 自己配置的音量。
-    if (top.ref === input.ref && top.volume === (input.volume ?? 1) && !bgm.restart) return
+    if (
+      top.ref === input.ref
+      && top.volume === (input.volume ?? top.volume)
+      && top.loop === (input.loop ?? true)
+      && !bgm.restart
+    ) return
     // 要么作者显式 `restart`（每轮从头播），要么这层的曲子被别人 replace 走了（该换回自己那首）：
     // 就地换栈顶，`replace` 保留本层的 owner——这一层仍归**第一次**开它的那个作用域，于是下一轮
     // 走进来时守卫照样认得出「自己那层已在栈顶」。

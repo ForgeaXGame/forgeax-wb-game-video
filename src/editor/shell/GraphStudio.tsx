@@ -710,7 +710,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
             >
               {/* 床轨：独立音频通道，不受视频原声开关影响。挂在浮层里 → 关掉试玩即随卸载停播；
                   key 随 session 重建换 → 重开不把上一局的曲子拖进新局（同 GraphPlaySurface）。 */}
-              <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} paused={playPaused} playbackRate={playbackRate} />
+              <BgmPlayer key={bgmRunKey} bgm={snap.bgm} resolveAsset={resolveBgm} paused={playPaused} playbackRate={playbackRate} active={snap.phase !== 'ended'} />
 
               {/* 演出 + 叠层：clipSeq 区分同名/重入节点，playEpoch 区分 jump 和 session 重建。 */}
               <GameStage

@@ -30,6 +30,8 @@ export interface BgmPlayerProps {
   resolveAsset: (id: string | undefined) => string | undefined
   paused?: boolean
   playbackRate?: number
+  /** false 时立即收掉所有床轨；试玩最后一个节点结束时使用。 */
+  active?: boolean
 }
 
 /**
@@ -129,12 +131,19 @@ function tryPlay(deck: Deck, blockedWarned: { current: boolean }): void {
   })
 }
 
-export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1 }: BgmPlayerProps): null {
+export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1, active = true }: BgmPlayerProps): null {
   const soundingRef = useRef<Deck | null>(null)
   const retiringRef = useRef<Deck[]>([])
   /** 已施加的那条指令；同一条重复到达（父组件重渲染 / 解析器换引用 / 快照被序列化）不得二次施加。 */
   const appliedRef = useRef<BgmSnapshot | null>(null)
   const blockedWarned = useRef(false)
+
+  const stopAll = (): void => {
+    for (const deck of [soundingRef.current, ...retiringRef.current]) if (deck) dispose(deck)
+    soundingRef.current = null
+    retiringRef.current = []
+    appliedRef.current = null
+  }
 
   useEffect(() => {
     for (const deck of [soundingRef.current, ...retiringRef.current]) {
@@ -147,12 +156,11 @@ export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1 
 
   // 卸载 = 收摊。引擎在 `phase === 'ended'` **刻意不发**停播（SPEC D6：win 节点仍带着床轨），
   // 所以「停」这件事只由壳层生命周期负责：试玩面关掉 / 重开时别把声音漏到下一局。
-  useEffect(() => () => {
-    for (const deck of [soundingRef.current, ...retiringRef.current]) if (deck) dispose(deck)
-    soundingRef.current = null
-    retiringRef.current = []
-    appliedRef.current = null
-  }, [])
+  useEffect(() => () => stopAll(), [])
+
+  useEffect(() => {
+    if (!active) stopAll()
+  }, [active])
 
   // 自动播放被拒后的最小补救：下一次用户手势时重试当前轨。刻意**不**建 unlock 系统——
   // 我们从不主动 pause 正响的轨（停播会把它整条下线），故「paused 的 active 轨」只可能是被策略拦下的。
@@ -171,7 +179,7 @@ export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1 
 
   useEffect(() => {
     // `null` = 还没发过指令：连元素都别建（别拿它当停播令）。
-    if (!bgm || isSameCommand(appliedRef.current, bgm)) return
+    if (!active || !bgm || isSameCommand(appliedRef.current, bgm)) return
     appliedRef.current = bgm
 
     /** 让一条轨按离场淡出时长下线；`fadeOutMs <= 0` = 硬切（数据说的，不是意外）。 */
@@ -230,7 +238,7 @@ export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1 
     soundingRef.current = deck
     if (!paused) tryPlay(deck, blockedWarned)
     if (bgm.fadeInMs > 0) ramp(deck, bgm.volume, bgm.fadeInMs)
-  }, [bgm, resolveAsset, paused, playbackRate])
+  }, [active, bgm, resolveAsset, paused, playbackRate])
 
   return null
 }

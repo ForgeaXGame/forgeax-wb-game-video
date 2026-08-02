@@ -220,6 +220,7 @@ export function FlowNodePreviewStage({
                 resolveAsset={flow.resolveBgm}
                 paused={flow.paused}
                 playbackRate={flow.playbackRate}
+                active={snap.phase !== 'ended'}
               />
               <GameStage
                 videoSrc={flow.videoSrc}

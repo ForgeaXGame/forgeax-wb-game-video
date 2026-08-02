@@ -210,6 +210,15 @@ describe('BgmPlayer', () => {
     expect(decks()).toHaveLength(0)
   })
 
+  it('试玩进入 ended 时立即关闭 BGM', () => {
+    const same = cmd()
+    const { rerender } = render(<BgmPlayer bgm={same} resolveAsset={resolve} active />)
+    const el = active()
+    rerender(<BgmPlayer bgm={same} resolveAsset={resolve} active={false} />)
+    expect(el.paused).toBe(true)
+    expect(decks()).toHaveLength(0)
+  })
+
   it('自动播放被拒：不抛、只喊一声，首个用户手势后重试', async () => {
     const blocked = Object.assign(new Error('autoplay blocked'), { name: 'NotAllowedError' })
     const play = vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockRejectedValue(blocked)
