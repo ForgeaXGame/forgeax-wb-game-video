@@ -31,6 +31,7 @@ const num = (v: unknown, d: number): number => (typeof v === 'number' ? v : d)
 const DEFAULT_BOX_W = 0.25
 const DEFAULT_BOX_H = 0.15
 const SNAP_INSET_PX = 18
+export const OVERLAY_GRID_STEP_PERCENT = 2.5
 
 /** 归一 stage 矩形。 */
 type NBox = { left: number; top: number; w: number; h: number }
@@ -44,7 +45,8 @@ export const DEFAULT_OVERLAY_DESIGN_CANVAS: CanvasBox = {
 }
 const FULL_STAGE_CANVAS: CanvasBox = { left: 0, top: 0, width: 1, height: 1 }
 
-export type OverlaySnapKind = 'vertical-center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+export type OverlayCenterAlignment = 'center' | 'x-center' | 'y-center'
+export type OverlaySnapKind = OverlayCenterAlignment | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 export interface OverlayPlacement {
   left: number
@@ -52,17 +54,27 @@ export interface OverlayPlacement {
   snap: OverlaySnapKind | null
 }
 
+export function overlayBoxCenterAlignment(
+  canvas: CanvasBox,
+  box: CanvasBox,
+  tolerance: { x: number; y: number } = { x: 0.005, y: 0.005 },
+): OverlayCenterAlignment | null {
+  const centeredLeft = canvas.left + (canvas.width - box.width) / 2
+  const centeredTop = canvas.top + (canvas.height - box.height) / 2
+  const xCentered = Math.abs(box.left - centeredLeft) <= tolerance.x
+  const yCentered = Math.abs(box.top - centeredTop) <= tolerance.y
+  if (xCentered && yCentered) return 'center'
+  if (xCentered) return 'x-center'
+  if (yCentered) return 'y-center'
+  return null
+}
+
 export function isOverlayBoxCentered(
   canvas: CanvasBox,
   box: CanvasBox,
   tolerance: { x: number; y: number } = { x: 0.005, y: 0.005 },
 ): boolean {
-  const centeredLeft = canvas.left + (canvas.width - box.width) / 2
-  const centeredTop = canvas.top + (canvas.height - box.height) / 2
-  return (
-    Math.abs(box.left - centeredLeft) <= tolerance.x
-    && Math.abs(box.top - centeredTop) <= tolerance.y
-  )
+  return overlayBoxCenterAlignment(canvas, box, tolerance) === 'center'
 }
 
 function clampAxis(value: number, min: number, max: number): number {
@@ -88,7 +100,11 @@ export function placeOverlayBox(
   const insetTop = clampAxis(minTop + inset.y, minTop, maxTop)
   const insetRight = clampAxis(maxLeft - inset.x, minLeft, maxLeft)
   const insetBottom = clampAxis(maxTop - inset.y, minTop, maxTop)
-  const corners: Array<{ kind: Exclude<OverlaySnapKind, 'vertical-center'>; left: number; top: number }> = [
+  const corners: Array<{
+    kind: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    left: number
+    top: number
+  }> = [
     { kind: 'top-left', left: insetLeft, top: insetTop },
     { kind: 'top-right', left: insetRight, top: insetTop },
     { kind: 'bottom-left', left: insetLeft, top: insetBottom },
@@ -106,12 +122,15 @@ export function placeOverlayBox(
 
   const centeredLeft = canvas.left + (canvas.width - box.width) / 2
   const centeredTop = canvas.top + (canvas.height - box.height) / 2
-  if (Math.abs(left - centeredLeft) <= threshold.x && Math.abs(top - centeredTop) <= threshold.y) {
-    left = centeredLeft
-    top = centeredTop
-    return { left, top, snap: 'vertical-center' }
+  const snapX = Math.abs(left - centeredLeft) <= threshold.x
+  const snapY = Math.abs(top - centeredTop) <= threshold.y
+  if (snapX) left = centeredLeft
+  if (snapY) top = centeredTop
+  return {
+    left,
+    top,
+    snap: snapX && snapY ? 'center' : snapX ? 'x-center' : snapY ? 'y-center' : null,
   }
-  return { left, top, snap: null }
 }
 
 /** 已识别吸附类型后，用组件的真实尺寸求最终落点。 */
@@ -120,6 +139,7 @@ export function positionForOverlaySnap(
   box: Pick<CanvasBox, 'width' | 'height'>,
   snap: OverlaySnapKind,
   inset: { x: number; y: number } = { x: 0, y: 0 },
+  desired: { left: number; top: number } = { left: canvas.left, top: canvas.top },
 ): { left: number; top: number } {
   const left = canvas.left + inset.x
   const top = canvas.top + inset.y
@@ -129,9 +149,13 @@ export function positionForOverlaySnap(
   if (snap === 'top-right') return { left: right, top }
   if (snap === 'bottom-left') return { left, top: bottom }
   if (snap === 'bottom-right') return { left: right, top: bottom }
+  const centeredLeft = canvas.left + (canvas.width - box.width) / 2
+  const centeredTop = canvas.top + (canvas.height - box.height) / 2
+  if (snap === 'x-center') return { left: centeredLeft, top: desired.top }
+  if (snap === 'y-center') return { left: desired.left, top: centeredTop }
   return {
-    left: canvas.left + (canvas.width - box.width) / 2,
-    top: canvas.top + (canvas.height - box.height) / 2,
+    left: centeredLeft,
+    top: centeredTop,
   }
 }
 
@@ -196,14 +220,18 @@ function OverlaySnapGuides({
 }): JSX.Element {
   const right = canvas.left + canvas.width
   const bottom = canvas.top + canvas.height
+  const corner = kind === 'top-left' || kind === 'top-right'
+    || kind === 'bottom-left' || kind === 'bottom-right'
+  const showVertical = corner || kind === 'center' || kind === 'x-center'
+  const showHorizontal = corner || kind === 'center' || kind === 'y-center'
   const x = kind === 'top-right' || kind === 'bottom-right'
     ? right - inset.x
-    : kind === 'vertical-center'
+    : kind === 'center' || kind === 'x-center'
       ? canvas.left + canvas.width / 2
       : canvas.left + inset.x
   const y = kind === 'bottom-left' || kind === 'bottom-right'
     ? bottom - inset.y
-    : kind === 'vertical-center'
+    : kind === 'center' || kind === 'y-center'
       ? canvas.top + canvas.height / 2
       : canvas.top + inset.y
   return (
@@ -212,14 +240,18 @@ function OverlaySnapGuides({
       data-snap-guide={kind}
       aria-hidden
     >
-      <span
-        className="ocp-snap-guide is-vertical"
-        style={{ left: `${x * 100}%`, top: `${canvas.top * 100}%`, height: `${canvas.height * 100}%` }}
-      />
-      <span
-        className="ocp-snap-guide is-horizontal"
-        style={{ left: `${canvas.left * 100}%`, top: `${y * 100}%`, width: `${canvas.width * 100}%` }}
-      />
+      {showVertical ? (
+        <span
+          className="ocp-snap-guide is-vertical"
+          style={{ left: `${x * 100}%`, top: `${canvas.top * 100}%`, height: `${canvas.height * 100}%` }}
+        />
+      ) : null}
+      {showHorizontal ? (
+        <span
+          className="ocp-snap-guide is-horizontal"
+          style={{ left: `${canvas.left * 100}%`, top: `${y * 100}%`, width: `${canvas.width * 100}%` }}
+        />
+      ) : null}
     </div>
   )
 }
@@ -250,7 +282,7 @@ const PREVIEW_CSS = `
   background:
     linear-gradient(to right, rgba(190,196,204,.1) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(190,196,204,.1) 1px, transparent 1px);
-  background-size: 10% 10%;
+  background-size: var(--ocp-grid-step) var(--ocp-grid-step);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
 }
 .ocp-design-canvas::before,.ocp-design-canvas::after {
@@ -630,17 +662,19 @@ export function OverlayCatalogPreview({
     const cb = contentBoxes[pend.childId]
     if (!child || !cb) return // 尚未渲染/实测完 → 等下一次 contentBoxes 更新
     pendingSnapRef.current = null
+    const pointerDesired = {
+      left: pend.left - cb.w / 2,
+      top: pend.top - cb.h / 2,
+    }
     const desired = pend.snap
       ? positionForOverlaySnap(
           FULL_STAGE_CANVAS,
           { width: cb.w, height: cb.h },
           pend.snap,
           snapInset(),
+          pointerDesired,
         )
-      : {
-          left: pend.left - cb.w / 2,
-          top: pend.top - cb.h / 2,
-        }
+      : pointerDesired
     const placed = placeOverlayBox(
       FULL_STAGE_CANVAS,
       { width: cb.w, height: cb.h },
@@ -709,11 +743,12 @@ export function OverlayCatalogPreview({
             className="ocp-design-canvas"
             data-overlay-design-canvas
             style={{
+              '--ocp-grid-step': `${OVERLAY_GRID_STEP_PERCENT}%`,
               left: `${overlayCanvasRect.left * 100}%`,
               top: `${overlayCanvasRect.top * 100}%`,
               width: `${overlayCanvasRect.width * 100}%`,
               height: `${overlayCanvasRect.height * 100}%`,
-            }}
+            } as CSSProperties}
             aria-hidden
           />
         ) : null}
@@ -803,14 +838,24 @@ export function OverlayCatalogPreview({
                   ) : null}
                   {state.selected ? (
                     <>
-                      {isOverlayBoxCentered(
-                        FULL_STAGE_CANVAS,
-                        state.box,
-                        {
-                          x: stagePx.w > 0 ? 1 / stagePx.w : 0.005,
-                          y: stagePx.h > 0 ? 1 / stagePx.h : 0.005,
-                        },
-                      ) ? <span className="ocp-align-tag">居中对齐</span> : null}
+                      {(() => {
+                        const alignment = overlayBoxCenterAlignment(
+                          FULL_STAGE_CANVAS,
+                          state.box,
+                          {
+                            x: stagePx.w > 0 ? 1 / stagePx.w : 0.005,
+                            y: stagePx.h > 0 ? 1 / stagePx.h : 0.005,
+                          },
+                        )
+                        const label = alignment === 'center'
+                          ? 'XY 轴居中'
+                          : alignment === 'x-center'
+                            ? 'X 轴居中'
+                            : alignment === 'y-center'
+                              ? 'Y 轴居中'
+                              : ''
+                        return label ? <span className="ocp-align-tag">{label}</span> : null
+                      })()}
                       <span className="ocp-dim">
                         {Math.round(state.box.left * stagePx.w)},{Math.round(state.box.top * stagePx.h)}
                       </span>

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_OVERLAY_DESIGN_CANVAS,
   isOverlayBoxCentered,
+  OVERLAY_GRID_STEP_PERCENT,
+  overlayBoxCenterAlignment,
   OverlayCatalogPreview,
   placeOverlayBox,
 } from '../OverlayCatalogPreview'
@@ -14,6 +16,7 @@ const LOGICAL_CANVAS = { left: 0, top: 0, width: 1, height: 1 }
 describe('OverlayCatalogPreview fixed canvas', () => {
   it('uses a centered 80% viewport with its own full logical coordinate stage', () => {
     expect(DEFAULT_OVERLAY_DESIGN_CANVAS).toEqual({ left: 0.1, top: 0.1, width: 0.8, height: 0.8 })
+    expect(OVERLAY_GRID_STEP_PERCENT).toBe(2.5)
 
     const { container } = render(
       <OverlayCatalogPreview
@@ -28,6 +31,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       top: '10%',
       width: '80%',
       height: '80%',
+      '--ocp-grid-step': '2.5%',
     })
     expect(container.querySelector('[data-overlay-coordinate-stage]')).toHaveStyle({
       left: '10%',
@@ -137,16 +141,20 @@ describe('OverlayCatalogPreview fixed canvas', () => {
     expect(placed.top).toBeCloseTo(expectedTop)
   })
 
-  it('snaps to the canvas center on both axes', () => {
+  it.each([
+    ['x-center', { left: 0.405, top: 0.2 }, { left: 0.4, top: 0.2 }],
+    ['y-center', { left: 0.2, top: 0.43 }, { left: 0.2, top: 0.425 }],
+    ['center', { left: 0.405, top: 0.43 }, { left: 0.4, top: 0.425 }],
+  ] as const)('snaps independently to %s', (kind, desired, expected) => {
     const placed = placeOverlayBox(
       LOGICAL_CANVAS,
       { width: 0.2, height: 0.15 },
-      { left: 0.405, top: 0.43 },
+      desired,
       { x: 0.02, y: 0.02 },
     )
-    expect(placed.snap).toBe('vertical-center')
-    expect(placed.left).toBeCloseTo(0.4)
-    expect(placed.top).toBeCloseTo(0.425)
+    expect(placed.snap).toBe(kind)
+    expect(placed.left).toBeCloseTo(expected.left)
+    expect(placed.top).toBeCloseTo(expected.top)
   })
 
   it('reports a selected component that is centered on both axes', async () => {
@@ -200,6 +208,14 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       LOGICAL_CANVAS,
       { left: 0.4, top: 0.4, width: 0.2, height: 0.2 },
     )).toBe(true)
-    await waitFor(() => expect(screen.getByText('居中对齐')).toBeTruthy())
+    expect(overlayBoxCenterAlignment(
+      LOGICAL_CANVAS,
+      { left: 0.4, top: 0.2, width: 0.2, height: 0.2 },
+    )).toBe('x-center')
+    expect(overlayBoxCenterAlignment(
+      LOGICAL_CANVAS,
+      { left: 0.2, top: 0.4, width: 0.2, height: 0.2 },
+    )).toBe('y-center')
+    await waitFor(() => expect(screen.getByText('XY 轴居中')).toBeTruthy())
   })
 })
