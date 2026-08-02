@@ -86,6 +86,12 @@ describe('试玩表面挂载床轨', () => {
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
       '/__gva__/media/a-aud-story?game=game-nodia-fighting',
     ])
+    const deck = decks()[0] as HTMLAudioElement
+    expect(deck.muted).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '开启视频原声' }))
+    expect(deck.muted).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: '关闭视频原声' }))
+    expect(deck.muted).toBe(true)
   })
 
   // 画布侧的试玩浮层才是作者真正的编辑闭环（左边配 bgm、右边按重开）；它不挂 BgmPlayer 的话，
@@ -98,6 +104,10 @@ describe('试玩表面挂载床轨', () => {
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
       '/__gva__/media/a-aud-story?game=game-nodia-fighting',
     ])
+    const deck = decks()[0] as HTMLAudioElement
+    expect(deck.muted).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '开启视频原声' }))
+    expect(deck.muted).toBe(false)
 
     fireEvent.click(screen.getByTitle('隐藏'))
     expect(decks()).toHaveLength(0)

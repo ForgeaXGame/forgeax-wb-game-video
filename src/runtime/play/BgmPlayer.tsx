@@ -32,6 +32,8 @@ export interface BgmPlayerProps {
   playbackRate?: number
   /** false 时立即收掉所有床轨；试玩最后一个节点结束时使用。 */
   active?: boolean
+  /** 壳层统一声音开关；静音不停止床轨，也不重置播放头。 */
+  muted?: boolean
 }
 
 /**
@@ -131,7 +133,7 @@ function tryPlay(deck: Deck, blockedWarned: { current: boolean }): void {
   })
 }
 
-export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1, active = true }: BgmPlayerProps): null {
+export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1, active = true, muted = false }: BgmPlayerProps): null {
   const soundingRef = useRef<Deck | null>(null)
   const retiringRef = useRef<Deck[]>([])
   /** 已施加的那条指令；同一条重复到达（父组件重渲染 / 解析器换引用 / 快照被序列化）不得二次施加。 */
@@ -148,11 +150,12 @@ export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1,
   useEffect(() => {
     for (const deck of [soundingRef.current, ...retiringRef.current]) {
       if (!deck) continue
+      deck.el.muted = muted
       deck.el.playbackRate = playbackRate
       if (paused) deck.el.pause()
       else tryPlay(deck, blockedWarned)
     }
-  }, [paused, playbackRate])
+  }, [muted, paused, playbackRate])
 
   // 卸载 = 收摊。引擎在 `phase === 'ended'` **刻意不发**停播（SPEC D6：win 节点仍带着床轨），
   // 所以「停」这件事只由壳层生命周期负责：试玩面关掉 / 重开时别把声音漏到下一局。
@@ -234,11 +237,12 @@ export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1,
     for (const stale of retiringRef.current) if (stale.ref === bgm.ref) dispose(stale)
     retiringRef.current = retiringRef.current.filter((d) => d.ref !== bgm.ref)
     const deck = newDeck(bgm.ref, url, bgm.loop, bgm.fadeInMs > 0 ? 0 : bgm.volume)
+    deck.el.muted = muted
     deck.el.playbackRate = playbackRate
     soundingRef.current = deck
     if (!paused) tryPlay(deck, blockedWarned)
     if (bgm.fadeInMs > 0) ramp(deck, bgm.volume, bgm.fadeInMs)
-  }, [active, bgm, resolveAsset, paused, playbackRate])
+  }, [active, bgm, resolveAsset, muted, paused, playbackRate])
 
   return null
 }
