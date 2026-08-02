@@ -61,6 +61,8 @@ export interface MaterialTimelineProps {
   materials: MaterialItem[]
   maxMs: number
   playheadMs: number
+  /** 独立于节点逻辑播放头的媒体局部指针；循环视频回绕时只在对应视频条内回绕。 */
+  mediaPlayhead?: { materialKey: string; localMs: number }
   selectedMaterialKey: string | null
   isTimedQteNode?: boolean
   /** 视频 tab（全交互）或剧情树抽屉（可 gating）。目前仅用于文案，交互差异由下面的开关控制。 */
@@ -130,6 +132,7 @@ export function MaterialTimeline({
   materials,
   maxMs,
   playheadMs,
+  mediaPlayhead,
   selectedMaterialKey,
   isTimedQteNode = false,
   editable = true,
@@ -159,8 +162,17 @@ export function MaterialTimeline({
   const activeMode: 'material' | 'audio' = mode ?? 'material'
   const audioList = audioItems ?? []
   // 当前活动条目列表（几何 + key 通用；只有它们的字段被 drag/render 用到）。
-  const activeList: Array<{ key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number }> =
+  const activeList: Array<{ key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number; locked?: boolean }> =
     activeMode === 'audio' ? audioList : materials
+  const mediaPlayheadMaterial = mediaPlayhead
+    ? materials.find((material) => material.key === mediaPlayhead.materialKey)
+    : undefined
+  const mediaPlayheadTimelineMs = mediaPlayheadMaterial && mediaPlayhead
+    ? mediaPlayheadMaterial.startMs + Math.max(
+      0,
+      Math.min(mediaPlayheadMaterial.endMs - mediaPlayheadMaterial.startMs, mediaPlayhead.localMs),
+    )
+    : null
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const timelineViewportRef = useRef<HTMLDivElement | null>(null)
   const seekDragActiveRef = useRef(false)
@@ -255,11 +267,15 @@ export function MaterialTimeline({
 
   function onPointerDown(
     e: React.PointerEvent,
-    item: { key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number },
+    item: { key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number; locked?: boolean },
     dragMode: 'move' | 'start' | 'end' | 'marker',
   ): void {
     e.preventDefault()
     e.stopPropagation()
+    if (item.locked) {
+      if (onSeek) beginSeek(e)
+      return
+    }
     // 音频条仅显示 + 拖动，不进 material 选中/检视器流。
     if (activeMode === 'material' && selectable) onSelectMaterial(item.key)
     if (!editable && !selectable && onSeek) {
@@ -515,7 +531,24 @@ export function MaterialTimeline({
               <span>{segment.label}</span>
             </div>
           ))}
-          <div className="gc-playhead" style={{ left: `${playheadMs * pxPerMs}px` }} aria-hidden />
+          <div
+            className="gc-playhead"
+            data-playhead-ms={Math.round(playheadMs)}
+            style={{ left: `${playheadMs * pxPerMs}px` }}
+            aria-hidden
+          />
+          {mediaPlayheadTimelineMs != null && mediaPlayheadMaterial ? (
+            <div
+              className="gc-media-playhead"
+              data-media-playhead-ms={Math.round(mediaPlayhead?.localMs ?? 0)}
+              style={{
+                left: `${mediaPlayheadTimelineMs * pxPerMs}px`,
+                top: `${layerTop(mediaPlayheadMaterial.zIndex)}px`,
+                height: `${TIMELINE_LAYER_STEP - 2}px`,
+              }}
+              aria-hidden
+            />
+          ) : null}
           {settlementMarkers.map((mk) => {
             const dragKey = `${POINT_DRAG_PREFIX}${mk.id}`
             return (
@@ -661,13 +694,13 @@ export function MaterialTimeline({
                 return (
                   <Fragment key={m.key}>
                     <div
-                      className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}${m.overridden ? ' is-overridden' : ''}${fixedWidth ? ' is-fixed-width' : ''}`}
+                      className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}${m.overridden ? ' is-overridden' : ''}${fixedWidth ? ' is-fixed-width' : ''}${m.locked ? ' is-locked' : ''}`}
                       style={{ left: `${left}px`, width: `${width}px`, top: `${layerTop(m.zIndex)}px` }}
                       onPointerDown={(e) => onPointerDown(e, m, 'move')}
                       aria-label={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''}`}
                       title={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''} · ${fmtDur(m.startMs)}${fixedWidth ? ' · 动画时长由组件控制' : ` - ${fmtDur(m.endMs)}`}${m.overridden ? ' · 已脱离方案跟随' : ''}`}
                     >
-                      {editable && !fixedWidth ? (
+                      {editable && !fixedWidth && !m.locked ? (
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
                       ) : null}
                       {/* 窄条上不渲染文字：否则会盖住两侧手柄的点击区（文案仍在 title 里可悬停看）。 */}
@@ -676,7 +709,7 @@ export function MaterialTimeline({
                           {materialDisplayLabel(m)}{m.label ? ` · ${m.label}` : ''}
                         </span>
                       ) : null}
-                      {editable && selected && onDeleteMaterial && canDeleteMaterial(m.kind) ? (
+                      {editable && !m.locked && selected && onDeleteMaterial && canDeleteMaterial(m.kind) ? (
                         <button
                           type="button"
                           className="gc-mdelete"
@@ -694,7 +727,7 @@ export function MaterialTimeline({
                           ×
                         </button>
                       ) : null}
-                      {editable && !fixedWidth ? (
+                      {editable && !fixedWidth && !m.locked ? (
                         <button className="gc-mhandle is-right" onPointerDown={(e) => onPointerDown(e, m, 'end')} aria-label="调整终点" />
                       ) : null}
                     </div>
@@ -858,6 +891,26 @@ const MATERIAL_TIMELINE_CSS = `
   border-radius: 50%;
   background: var(--gc-accent);
   box-shadow: 0 0 8px rgba(240,136,64,.85);
+}
+.mtl-root .gc-media-playhead {
+  position: absolute;
+  width: 2px;
+  transform: translateX(-1px);
+  background: #78b7ff;
+  box-shadow: 0 0 9px rgba(95,163,247,.9);
+  z-index: 9;
+  pointer-events: none;
+}
+.mtl-root .gc-media-playhead::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #78b7ff;
 }
 /* 节点级时刻标记：菱形上方的竖虚线 + 可拖菱形。与橙色播放头刻意区分——播放头是"现在播到哪"，
    这些是"这一刻会发生一件事"。路由结算=蓝紫，动作结算=青绿；两种菱形错开高度，
@@ -1087,6 +1140,8 @@ const MATERIAL_TIMELINE_CSS = `
   box-shadow: 0 0 12px currentColor;
 }
 .mtl-root .gc-mclip:active { cursor: grabbing; }
+.mtl-root .gc-mclip.is-locked { cursor: ew-resize; }
+.mtl-root .gc-mclip.is-locked:active { cursor: ew-resize; }
 .mtl-root .gc-mclip.is-selected { outline: 2px solid var(--gc-accent); outline-offset: 2px; overflow: visible; }
 .mtl-root .gc-mclip.is-overridden { overflow: visible; }
 .mtl-root .gc-mclip.is-overridden::after {

@@ -7,8 +7,9 @@
  *   - 皮肤层：`previewSkinChildrenInWindow` + `renderOverlayChildPreview` + PreviewClock
  *     （暂停冻结 CSS 动画）；滤镜/特效走 `resolveVideoFxForNode` 旁路；
  *   - 叠层操作框：节点视频画布只允许移动整份 overlay，写回挂载 `layout.left/top`；
- *   - 时间轴：`MaterialTimeline` 全交互，但**投影到挂载级**（`collectMountItemsFromNode`：
- *     一份挂载 = 一条），拖动整体平移挂载内子件、删除移除整份挂载，写回
+ *   - 时间轴：第 0 轨投影只读视频条，其后按挂载级投影（`collectMountItemsFromNode`：
+ *     一份挂载 = 一条）；循环视频另有仅限视频轨高度的媒体局部指针，节点逻辑播放头保持单调。
+ *     拖动挂载条整体平移挂载内子件、删除移除整份挂载，写回
  *     `patchMaterialGraph`（mount 分支 → shiftMountWindowGraph）/`deleteMaterialGraph`；
  *   - 「添加控件」条 = **覆盖物挂载入口**：前 5 个未挂载的预设覆盖物点击直接挂载，
  *     第 6 个「更多」展开完整列表（等价 NodeInspector 的「＋挂载」）。
@@ -147,6 +148,8 @@ const NPS_CSS = `
 .nps-more-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 8px; }
 .nps-root .mtl-root { flex: none; }
 `
+
+const NODE_VIDEO_TRACK_KEY = '__node-video__'
 
 const DEFAULT_MOUNT_W = 0.25
 const DEFAULT_MOUNT_H = 0.15
@@ -303,6 +306,7 @@ function EditableNodePreviewStage({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaClockRef = useRef<PreviewMediaClock | null>(null)
   const [playheadMs, setPlayheadMs] = useState(0)
+  const [mediaPlayheadMs, setMediaPlayheadMs] = useState(0)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null)
@@ -337,8 +341,27 @@ function EditableNodePreviewStage({
   const maxMs = Math.max(1000, capMs ?? videoDurationMs ?? 0)
 
   const overlays = scenario.ui?.overlays
-  // 时间轴投影到挂载级：一份挂载 = 一条（跨度 = 挂载内全部子件的 [min,max]）。
-  const materials = useMemo(() => collectMountItemsFromNode(scenario, node, maxMs), [scenario, node, maxMs])
+  // 视频固定占第 0 轨；挂载从第 1 轨开始，保持与全流程 preview 时间轴相同的层级心智。
+  const mountMaterials = useMemo(
+    () => collectMountItemsFromNode(scenario, node, maxMs),
+    [scenario, node, maxMs],
+  )
+  const timelineMaterials = useMemo<MaterialItem[]>(() => {
+    const shiftedMounts = mediaRef
+      ? mountMaterials.map((material) => ({ ...material, zIndex: material.zIndex + 1 }))
+      : mountMaterials
+    if (!mediaRef) return shiftedMounts
+    return [{
+      key: NODE_VIDEO_TRACK_KEY,
+      id: NODE_VIDEO_TRACK_KEY,
+      kind: 'video',
+      label: node.data.name?.trim() || mediaRef,
+      startMs: 0,
+      endMs: maxMs,
+      zIndex: 0,
+      locked: true,
+    }, ...shiftedMounts]
+  }, [maxMs, mediaRef, mountMaterials, node.data.name])
   const previewSkinChildren = useMemo(() => {
     const visible = previewSkinChildrenInWindow(scenario, node, playheadMs, maxMs)
     if (isVideoPlaying || !selectedMountId) return visible
@@ -467,6 +490,7 @@ function EditableNodePreviewStage({
   useEffect(() => {
     mediaClockRef.current = null
     setPlayheadMs(0)
+    setMediaPlayheadMs(0)
     setVideoDurationMs(null)
     setLoadError(false)
     setMoreOpen(false)
@@ -485,6 +509,7 @@ function EditableNodePreviewStage({
       const el = videoRef.current
       if (el) {
         const nowMs = Math.round((el.currentTime || 0) * 1000)
+        setMediaPlayheadMs(nowMs)
         if (playMode !== 'loop' && videoDurationCapReached(nowMs, node.data.durationMs, el.duration)) {
           try { el.pause() } catch { /* ignore */ }
           setIsVideoPlaying(false)
@@ -507,6 +532,7 @@ function EditableNodePreviewStage({
     const v = videoRef.current
     if (v) { try { v.currentTime = target / 1000 } catch { /* metadata 未就绪 */ } }
     setPlayheadMs(target)
+    setMediaPlayheadMs(target)
     const timelineCanvas = timelineHostRef.current?.querySelector<HTMLElement>('.gc-mtimeline-canvas')
     const canvasPx = timelineCanvas?.getBoundingClientRect().width ?? 0
     onSelectedTimeChange?.(target, {
@@ -537,6 +563,7 @@ function EditableNodePreviewStage({
   // ── 写回（全部走 graphMaterialOps 既有映射，无新协议字段） ─────────────────
   /** 时间轴挂载条整体平移（patchMaterialGraph 的 mount 分支）。 */
   function patchMaterial(item: MaterialItem, patch: { startMs?: number; endMs?: number; zIndex?: number; markerMs?: number }): void {
+    if (item.locked || item.kind === 'video') return
     onEditScenario((s, n) => patchMaterialGraph(s, n, maxMs, item, patch))
   }
   /** 时间轴删除挂载条 = 移除整份挂载；挂载上有「添加」进来的子件时二次确认（连带删除）。 */
@@ -831,12 +858,14 @@ function EditableNodePreviewStage({
             onLoadedMetadata={(e) => {
               const dur = e.currentTarget.duration
               if (Number.isFinite(dur) && dur > 0) setVideoDurationMs(Math.round(dur * 1000))
+              setMediaPlayheadMs(Math.round(e.currentTarget.currentTime * 1000))
               recomputeRect()
             }}
             onPlay={() => setIsVideoPlaying(true)}
             onPause={() => setIsVideoPlaying(false)}
             onSeeked={(e) => {
               // 自定义时间轴 seekTo 已同步重置语义时钟；播放中的原生 loop seek 不得让结算倒带。
+              setMediaPlayheadMs(Math.round(e.currentTarget.currentTime * 1000))
               if (!e.currentTarget.paused) return
               const target = Math.max(0, Math.min(maxMs, Math.round(e.currentTarget.currentTime * 1000)))
               mediaClockRef.current = { mediaMs: target, playheadMs: target }
@@ -846,6 +875,7 @@ function EditableNodePreviewStage({
               mediaClockRef.current = { mediaMs: maxMs, playheadMs: maxMs }
               setIsVideoPlaying(false)
               setPlayheadMs(maxMs)
+              setMediaPlayheadMs(maxMs)
             }}
             onError={() => { setLoadError(true); setIsVideoPlaying(false) }}
           />
@@ -1030,9 +1060,12 @@ function EditableNodePreviewStage({
       {timelineExpanded ? (
         <div id={timelineId} ref={timelineHostRef}>
           <MaterialTimeline
-            materials={materials}
+            materials={timelineMaterials}
             maxMs={maxMs}
             playheadMs={playheadMs}
+            mediaPlayhead={playMode === 'loop' && mediaRef
+              ? { materialKey: NODE_VIDEO_TRACK_KEY, localMs: mediaPlayheadMs }
+              : undefined}
             selectedMaterialKey={selectedMountId ? `mount:${selectedMountId}` : null}
             pointMarkers={pointMarkers}
             conditionMarkers={conditionMarkers}
@@ -1045,7 +1078,7 @@ function EditableNodePreviewStage({
             onSelectMaterial={(key) => {
               const mid = key.startsWith('mount:') ? key.slice('mount:'.length) : null
               focusMount(mid)
-              const it = materials.find((m) => m.key === key)
+              const it = mountMaterials.find((m) => m.key === key)
               if (it) {
                 // 选中即定格到该覆盖物可见窗的中段并暂停；动画按该局部时刻精确定帧。
                 seekTo(it.startMs + (it.endMs - it.startMs) / 2)
