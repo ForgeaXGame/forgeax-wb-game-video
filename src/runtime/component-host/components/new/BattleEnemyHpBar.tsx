@@ -12,8 +12,8 @@ export const BattleEnemyHpBarManifest: ComponentManifest = {
     { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
     { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
     { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-    { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-    { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
+    { key: 'current', label: '血量', valueType: 'number', component: 'numberExpr' },
+    { key: 'max', label: '血量上限', valueType: 'number', component: 'numberExpr' },
   ],
   events: [],
 }
