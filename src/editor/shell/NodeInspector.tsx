@@ -2,7 +2,7 @@
  * NodeInspector —— 节点配置面板。选中画布节点后编辑其 `node.data`、overlay reactions 与出边。
  * Overlay 事件作者 SSOT = 各挂载 `overlayNodes[].reactions`；走向经 do 内 advance + 边。
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Entity, GameEdge, GameGraph, GraphCondition, Overlay, RoutingSettlement, SubFlowPackDef, Variable } from '../../runtime/schema/graph-schema'
 import type { Formula } from '../persist/formula-authoring'
 import { authoringOptionLabel } from '../authoring-option-label'
@@ -1163,24 +1163,20 @@ export function NodeInspector({
     )
   const fieldTree = buildFieldTree(entities, variables)
   const pickers: EditorPickerCtx = { entities, variables, formulas, nodeLabel }
-  const flowHandleOptions = useMemo(() => {
+  const flowHandleOptions = (() => {
     const extra = graph.edges
       .filter((e) => e.source === node.id)
       .map((e) => e.sourceHandle ?? 'default')
     return mergeFlowHandles(deriveOutputs(node, overlays), extra)
-  }, [node, overlays, graph.edges])
-  const edgeOptions = useMemo<OptItem[]>(
-    () =>
-      graph.edges
-        .filter((e) => e.source === node.id)
-        .map((e) => ({
-          value: e.id,
-          label: `${flowHandleDisplay(e.sourceHandle ?? 'default')} → ${nodeLabel(e.target)}`,
-        })),
-    [graph.edges, node.id, nodeLabel],
-  )
+  })()
+  const edgeOptions: OptItem[] = graph.edges
+    .filter((e) => e.source === node.id)
+    .map((e) => ({
+      value: e.id,
+      label: `${flowHandleDisplay(e.sourceHandle ?? 'default')} → ${nodeLabel(e.target)}`,
+    }))
   /** 每个交互出口 → 目标节点摘要（单边 `→ X`，多边 `→ A | B`）。 */
-  const routeHints = useMemo(() => {
+  const routeHints = (() => {
     const byHandle = new Map<string, string[]>()
     for (const e of graph.edges) {
       if (e.source !== node.id) continue
@@ -1195,7 +1191,7 @@ export function NodeInspector({
       out[h] = labels.length === 1 ? `→ ${labels[0]}` : `→ ${labels.join(' | ')}（边池）`
     }
     return out
-  }, [graph.edges, node.id, nodeLabel])
+  })()
 
   const patchData = (p: NodeDataPatch) => onChange(updateNodeData(graph, node.id, p))
   /**

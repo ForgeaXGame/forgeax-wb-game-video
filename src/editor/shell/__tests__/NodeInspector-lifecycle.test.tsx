@@ -35,6 +35,22 @@ afterEach(() => {
 })
 
 describe('NodeInspector · 结算选中联动', () => {
+  it('选中节点被删除后显示空态且保持 hook 顺序稳定', () => {
+    const graph = graphWith([])
+    const { rerender } = render(<NodeInspector graph={graph} nodeId="gate" onChange={vi.fn()} />)
+
+    expect(screen.getByText('节点 gate')).toBeTruthy()
+    expect(() => {
+      rerender(<NodeInspector graph={{ nodes: [], edges: [] }} nodeId="gate" onChange={vi.fn()} />)
+    }).not.toThrow()
+    expect(screen.getByText('点画布上的节点以编辑')).toBeTruthy()
+
+    expect(() => {
+      rerender(<NodeInspector graph={graph} nodeId="gate" onChange={vi.fn()} />)
+    }).not.toThrow()
+    expect(screen.getByText('节点 gate')).toBeTruthy()
+  })
+
   it('新增结算使用宿主计算的时间轴插入时刻，没有时回落到 0ms', () => {
     const onChange = vi.fn()
     const onFocusLifecycle = vi.fn()
