@@ -400,7 +400,7 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const currentField = screen.getByText('当前值来源').parentElement!
+    const currentField = screen.getByText('血量').parentElement!
     expect(screen.getByText(/不能增删或拖动组件/)).toBeTruthy()
     expect(document.querySelector('[data-overlay-design-canvas]')).toBeNull()
     expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
@@ -662,9 +662,9 @@ describe('ComponentFormFields defaults', () => {
     expect(screen.getByRole('radio', { name: '实体属性' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText('实体')).toBeTruthy()
     expect(screen.getByText('属性')).toBeTruthy()
-    expect(screen.getByText('上限来源')).toBeTruthy()
-    expect(screen.queryByText('当前值来源')).toBeNull()
-    const boundMax = within(screen.getByText('上限来源').parentElement!)
+    expect(screen.getByText('血量上限')).toBeTruthy()
+    expect(screen.queryByText('血量')).toBeNull()
+    const boundMax = within(screen.getByText('血量上限').parentElement!)
       .getByRole('combobox', { name: '数值内容' })
     fireEvent.change(boundMax, { target: { value: 'entity:ent-player:hpMax' } })
     expect(screen.getByRole('radio', { name: '实体属性' })).toHaveAttribute('aria-checked', 'true')
@@ -673,9 +673,9 @@ describe('ComponentFormFields defaults', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
 
-    const currentField = screen.getByText('当前值来源').parentElement!
-    const maxField = screen.getByText('上限来源').parentElement!
-    const qiField = screen.getByText('当前气力').parentElement!
+    const currentField = screen.getByText('血量').parentElement!
+    const maxField = screen.getByText('血量上限').parentElement!
+    const qiField = screen.getByText('气力').parentElement!
     const qiMaxField = screen.getByText('气力上限').parentElement!
     const labelField = screen.getByText('显示名').parentElement!
     const current = within(currentField).getByRole('combobox', { name: '数值内容' })
@@ -700,7 +700,7 @@ describe('ComponentFormFields defaults', () => {
     expect(latest.current).toBeUndefined()
     expect(latest.max).toBeTruthy()
     expect(screen.getByText('实体')).toBeTruthy()
-    expect(screen.getByText('上限来源')).toBeTruthy()
+    expect(screen.getByText('血量上限')).toBeTruthy()
     expect(onChange).toHaveBeenCalledTimes(3)
   })
 
@@ -735,9 +735,9 @@ describe('ComponentFormFields defaults', () => {
     fireEvent.click(screen.getByRole('radio', { name: '自定义' }))
 
     expect(latest.max).toBe(2000)
-    expect(within(screen.getByText('上限来源').parentElement!)
+    expect(within(screen.getByText('血量上限').parentElement!)
       .getByRole('combobox', { name: '数值内容' })).toHaveValue('const')
-    expect(within(screen.getByText('上限来源').parentElement!)
+    expect(within(screen.getByText('血量上限').parentElement!)
       .getByRole('textbox', { name: '常量数值' })).toHaveValue('2000')
   })
 
