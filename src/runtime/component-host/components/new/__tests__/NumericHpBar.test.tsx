@@ -49,9 +49,9 @@ describe('numeric hp bar components', () => {
       { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
       { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '我方', component: 'numberExpr' },
-      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
-      { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '血量', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '血量上限', valueType: 'number', component: 'numberExpr' },
+      { key: 'qi', label: '气力', valueType: 'number', component: 'numberExpr' },
       { key: 'qiMax', label: '气力上限', valueType: 'number', component: 'numberExpr', default: 5 },
     ]))
     expect(BattleEnemyHpBarManifest.inputs?.map((input) => input.key)).toEqual([
@@ -65,8 +65,8 @@ describe('numeric hp bar components', () => {
       { key: 'bind', label: '实体', valueType: 'string', component: 'entity' },
       { key: 'attr', label: '属性', valueType: 'string', component: 'attr' },
       { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
-      { key: 'current', label: '当前值来源', valueType: 'number', component: 'numberExpr' },
-      { key: 'max', label: '上限来源', valueType: 'number', component: 'numberExpr' },
+      { key: 'current', label: '血量', valueType: 'number', component: 'numberExpr' },
+      { key: 'max', label: '血量上限', valueType: 'number', component: 'numberExpr' },
     ]))
   })
 
