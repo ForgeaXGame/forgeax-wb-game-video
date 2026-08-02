@@ -26,6 +26,8 @@ export interface MaterialItem {
   startMs: number
   endMs: number
   zIndex: number
+  /** 只读轨道（如节点视频）：可点击定位播放头，但不可移动、裁剪、删除或选入组件检视器。 */
+  locked?: boolean
   /** 固定像素宽度的触发型条目；存在时不可从时间轴拉伸，动画时长由组件内部配置控制。 */
   fixedWidthPx?: number
   /** 落盘 OverlayChild.component（含皮肤 alias）；检视器 / 添加通用组件用。 */

@@ -92,6 +92,69 @@ describe('NodePreviewStage overlay layout', () => {
     expect(screen.queryByText('循环')).toBeNull()
   })
 
+  it('renders a locked video track whose local pointer loops without rewinding the node playhead', async () => {
+    const current = node('n1', {
+      durationMs: 1_000,
+      media: { kind: 'video', ref: 'data:video/mp4;base64,loop-preview' },
+      mediaPlayMode: 'loop',
+    })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    const videoTrack = container.querySelector<HTMLElement>('.gc-mclip.is-video')
+    expect(videoTrack).toHaveClass('is-locked')
+    expect(videoTrack).toHaveAttribute('aria-label', expect.stringContaining('视频'))
+    expect(videoTrack?.querySelector('.gc-mhandle')).toBeNull()
+
+    const video = container.querySelector('video')!
+    Object.defineProperty(video, 'paused', { configurable: true, value: false })
+    video.currentTime = 0.9
+    fireEvent.play(video)
+    await waitFor(() => {
+      expect(container.querySelector('.gc-media-playhead')).toHaveAttribute('data-media-playhead-ms', '900')
+      expect(container.querySelector('.gc-playhead')).toHaveAttribute('data-playhead-ms', '900')
+    })
+
+    video.currentTime = 0.1
+    await waitFor(() => {
+      expect(container.querySelector('.gc-media-playhead')).toHaveAttribute('data-media-playhead-ms', '100')
+      expect(container.querySelector('.gc-playhead')).toHaveAttribute('data-playhead-ms', '1000')
+    })
+    fireEvent.pause(video)
+  })
+
+  it('uses only the node playhead for a play-once video track', () => {
+    const current = node('n1', {
+      durationMs: 1_000,
+      media: { kind: 'video', ref: 'data:video/mp4;base64,once-preview' },
+      mediaPlayMode: 'once',
+    })
+    const scenario = scnOf({ nodes: [current], edges: [] })
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.gc-mclip.is-video.is-locked')).not.toBeNull()
+    expect(container.querySelector('.gc-playhead')).not.toBeNull()
+    expect(container.querySelector('.gc-media-playhead')).toBeNull()
+  })
+
   it('shows state condition settlements in the timeline condition lane', () => {
     const current = node('n1', {
       reactions: [{
@@ -158,7 +221,11 @@ describe('NodePreviewStage overlay layout', () => {
             rage: {
               id: 'rage',
               title: '怒气值界面',
-              children: [{ id: 'value', component: 'DamageFloatText', inputs: { value: 42 } }],
+              children: [{
+                id: 'value',
+                component: 'DamageFloatText',
+                inputs: { parameter: 42 },
+              }],
             },
           },
         },
@@ -229,7 +296,12 @@ describe('NodePreviewStage overlay layout', () => {
         },
         {
           when: { type: 'watch', of: 'entity.ent-0.attr.nuqi', on: 'inc' },
-          do: [{ kind: 'spawn', from: 'float/rage', ttlMs: 1200, inputs: { value: { expr: 'delta' } } }],
+          do: [{
+            kind: 'spawn',
+            from: 'float/rage',
+            ttlMs: 1200,
+            inputs: { parameter: { expr: 'delta' } },
+          }],
         },
       ],
     })
@@ -243,7 +315,11 @@ describe('NodePreviewStage overlay layout', () => {
           overlays: {
             float: {
               id: 'float',
-              children: [{ id: 'rage', component: 'DamageFloatText', inputs: { value: 0 } }],
+              children: [{
+                id: 'rage',
+                component: 'DamageFloatText',
+                inputs: { parameter: 0 },
+              }],
             },
           },
         },
