@@ -26,6 +26,7 @@ import { findDuplicateOverlays } from './overlay-dedup'
 import type { Formula } from '../persist/formula-authoring'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 import { ensureEntityAttribute, type EntityAttributeCreateRequest } from './metaCatalog'
+import type { ScenarioIdRename } from '../persist/scenario-id'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -51,6 +52,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   const isDraft = useGraphScenario((s) => s.isDraft)
   const savedTip = useGraphScenario((s) => s.savedTip)
   const setMeta = useGraphScenario((s) => s.setMeta)
+  const renameScenarioId = useGraphScenario((s) => s.renameScenarioId)
   const doCommit = useGraphScenario((s) => s.commit) // 保存 = 打版本
   const reset = useGraphScenario((s) => s.reset)
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
@@ -286,6 +288,7 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
                   section={active}
                   overlayUsage={overlayUsage}
                   onChange={setMeta}
+                  onRenameId={(rename: ScenarioIdRename) => renameScenarioId(rename)}
                 />
               </div>
             )}

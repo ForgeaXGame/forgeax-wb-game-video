@@ -28,6 +28,58 @@ describe('SessionSnapshot blueprint location', () => {
     expect(snap.callStack).toEqual([{ blueprintId: 'bp-main', callerNodeId: 'wrap', graphPath: [], title: '主蓝图' }])
   })
 
+  it('ends after a terminal subFlowPack without replaying its last clip', () => {
+    const main: GameGraph = {
+      nodes: [node('wrap', { subFlowPack: { id: 'child', version: '1' } })],
+      edges: [],
+    }
+    const child: GameGraph = { nodes: [node('child-entry', { durationMs: 100 })], edges: [] }
+    const scenario = {
+      ...scnOf(main),
+      manifest: {
+        version: 'wb-game-video.blueprint-manifest.v1' as const,
+        mainPackId: 'bp-main',
+        packs: {
+          'bp-main': { id: 'bp-main', entry: 'wrap', graph: main },
+          child: { id: 'child', version: '1', entry: 'child-entry', graph: child },
+        },
+      },
+    }
+    const session = new GraphSession(scenario, { rootBlueprintId: 'bp-main' })
+
+    let snap = session.start()
+    expect(snap.clip?.nodeId).toBe('child-entry')
+    expect(snap.clipSeq).toBe(1)
+    snap = session.performanceEnd()
+
+    expect(snap.phase).toBe('ended')
+    expect(snap.currentNodeId).toBe('wrap')
+    expect(snap.activeBlueprintId).toBe('bp-main')
+    expect(snap.callStack).toEqual([])
+    expect(snap.clipSeq).toBe(1)
+  })
+
+  it('ends after a terminal subProcess without replaying its last clip', () => {
+    const child: GameGraph = { nodes: [node('child-entry', { durationMs: 100 })], edges: [] }
+    const main: GameGraph = {
+      nodes: [node('wrap', { subProcess: { entry: 'child-entry', graph: child } })],
+      edges: [],
+    }
+    const session = new GraphSession(scnOf(main), { rootBlueprintId: 'bp-main' })
+
+    let snap = session.start()
+    expect(snap.clip?.nodeId).toBe('child-entry')
+    expect(snap.clipSeq).toBe(1)
+    snap = session.performanceEnd()
+
+    expect(snap.phase).toBe('ended')
+    expect(snap.currentNodeId).toBe('wrap')
+    expect(snap.activeBlueprintId).toBe('bp-main')
+    expect(snap.activeGraphPath).toEqual([])
+    expect(snap.callStack).toEqual([])
+    expect(snap.clipSeq).toBe(1)
+  })
+
   it('uses a new clip occurrence for same-id entries and returns through nested packs', () => {
     const main: GameGraph = {
       nodes: [node('wrap-a', { subFlowPack: { id: 'pack-a', version: '1' } }), node('after', { durationMs: 100 })],

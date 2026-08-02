@@ -88,7 +88,6 @@ const NPS_CSS = `
   padding: 10px; min-height: 0; overflow-y: auto; flex: 1;
 }
 .nps-frame { flex: none; }
-.nps-frame .gc-badge { top: 8px; left: 8px; padding: 3px 9px; font-size: 11px; border-radius: 7px; }
 .nps-stage-empty {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 4px;
@@ -644,10 +643,6 @@ function EditableNodePreviewStage({
   return (
     <div className="nps-root">
       <div className="gc-frame nps-frame" data-type="video">
-        <span className="gc-badge">
-          {mediaRef || '未绑定视频'}
-          {playMode === 'loop' ? <em>循环</em> : null}
-        </span>
         {previewSrc && !loadError ? (
           <video
             key={`${node.id}:${mediaRef}`}

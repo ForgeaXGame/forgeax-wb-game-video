@@ -34,43 +34,30 @@ function ctx(playerHp: number, bossHp: number): SkinCtx {
 }
 
 describe('bound ink health bars', () => {
-  it('uses authored current and max values in legacy manual data', () => {
+  it('projects the player entity delta onto the authored 100-point display baseline', () => {
     const { container } = render(BattlePlayerHpBar({
       overlay: {
         elementId: 'player-hp',
         component: 'BattlePlayerHpBar',
-        inputs: { current: 100, max: 100 },
+        inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
       },
       ctx: ctx(220, 700),
     }))
 
-    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('100%')
+    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('20%')
     expect(container.querySelector('[aria-label="气力 2/5"]')).not.toBeNull()
   })
 
-  it('uses authored enemy override values', () => {
+  it('uses the enemy binding and follows its entity delta', () => {
     const { container } = render(BattleEnemyHpBar({
       overlay: {
         elementId: 'enemy-hp',
         component: 'BattleEnemyHpBar',
-        inputs: { current: 30, max: 100 },
+        inputs: { bind: 'ent-boss', attr: 'hp', current: 100, max: 100 },
       },
       ctx: ctx(300, 630),
     }))
 
     expect((container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('30%')
-  })
-
-  it('follows the entity and attr max when overrides are absent', () => {
-    const { container } = render(BattlePlayerHpBar({
-      overlay: {
-        elementId: 'player-bound',
-        component: 'BattlePlayerHpBar',
-        inputs: {},
-      },
-      ctx: ctx(220, 700),
-    }))
-
-    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('73.33333333333333%')
   })
 })

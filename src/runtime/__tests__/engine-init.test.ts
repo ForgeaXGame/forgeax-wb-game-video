@@ -32,8 +32,30 @@ describe('initState', () => {
     expect(st.score).toBe(0)
   })
 
-  it('rng always seed 0', () => {
+  it('defaults rng to seed 0', () => {
     const st = initState(scn())
     expect(st.rng!.next()).toBe(createRng(0).next())
+  })
+
+  it('accepts a session rng seed', () => {
+    const st = initState(scn(), 42)
+    expect(st.rng!.next()).toBe(createRng(42).next())
+  })
+
+  it('normalizes initial variables and paired attributes into their declared ranges', () => {
+    const scenario = scn()
+    scenario.variables!.qi = { id: 'qi', initial: 9, min: 0, max: 5 }
+    scenario.entities!['ent-player'] = {
+      id: 'ent-player',
+      attrs: { hp: 180, hpMax: 120 },
+      attrMeta: { hp: { min: 0, max: 300, initial: 180 } },
+    }
+
+    const st = initState(scenario)
+
+    expect(st.vars.qi).toBe(5)
+    expect(st.entities['ent-player']!.attrs.hpMax).toBe(120)
+    expect(st.entities['ent-player']!.attrMeta?.hp?.max).toBe(120)
+    expect(st.entities['ent-player']!.attrs.hp).toBe(120)
   })
 })

@@ -398,11 +398,16 @@ export function EntitySelect({
   onChange: (id: string) => void
 }): JSX.Element {
   const opts = listEntityOptions(entities)
+  const known = new Set(opts.map((option) => option.id))
+  const unresolved: Array<{ id: string; label: string; disabled?: boolean }> = value && !known.has(value)
+    ? [{ id: value, label: `${value}（实体模板已删除）`, disabled: true }]
+    : []
+  const options: Array<{ id: string; label: string; disabled?: boolean }> = [...opts, ...unresolved]
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }}>
-      <option value="" disabled={opts.length > 0}>选择对象…</option>
-      {opts.map((o) => (
-        <option key={o.id} value={o.id}>{o.label}</option>
+      <option value="" disabled={options.length > 0}>选择对象…</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id} disabled={o.disabled}>{o.label}</option>
       ))}
     </select>
   )
@@ -422,11 +427,18 @@ export function AttrSelect({
   fallbackValues?: readonly string[]
   onChange: (attr: string) => void
 }): JSX.Element {
+  if (!entityId) {
+    return (
+      <select value="" disabled style={{ flex: 1 }}>
+        <option value="">请先选择对象…</option>
+      </select>
+    )
+  }
   const attrs = listAttrOptions(findEntity(entities, entityId))
   const known = new Set(attrs.map((attr) => attr.id))
   const fallbacks = (fallbackValues ?? [])
     .filter((id, index, all) => id && !known.has(id) && all.indexOf(id) === index)
-    .map((id) => ({ id, label: `${id}（未在对象中声明）` }))
+    .map((id) => ({ id, label: `${id}（实体无该属性）` }))
   const options = [...attrs, ...fallbacks]
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }}>
@@ -708,10 +720,12 @@ export function EffectsEditor({
   variables,
   formulas,
   pickers,
+  allowAdd = true,
 }: {
   value: GraphEffect[] | undefined
   onChange: (v: GraphEffect[]) => void
   pickers?: EditorPickerCtx
+  allowAdd?: boolean
 } & MetaCatalogProps): JSX.Element {
   const cat = resolveCatalog({ entities, variables, formulas, pickers })
   const list = value ?? []
@@ -751,7 +765,9 @@ export function EffectsEditor({
           }}
         />
       ))}
-      <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr', cat.entities, cat.variables)])}>+ 效果</button>
+      {allowAdd ? (
+        <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr', cat.entities, cat.variables)])}>+ 效果</button>
+      ) : null}
     </div>
   )
 }

@@ -1,8 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
+import { registerCoreSkins } from '../../../runtime/component-host/components'
 import type { Entity } from '../../../runtime/schema/graph-schema'
+import { ComponentFormFields } from '../component-form-fields'
 import { ScenarioInspector, type ScenarioMeta } from '../ScenarioInspector'
+
+registerCoreSkins()
 
 function EntityHarness({ initial }: { initial: Record<string, Entity> }): JSX.Element {
   const [value, setValue] = useState<ScenarioMeta>({ entities: initial })
@@ -15,23 +19,7 @@ function EntityHarness({ initial }: { initial: Record<string, Entity> }): JSX.El
 }
 
 describe('ScenarioInspector entity attributes', () => {
-  it('creates the first property with the same editable placeholder as later properties', () => {
-    render(<EntityHarness initial={{ hero: { id: 'hero', name: '主角', attrs: {} } }} />)
-
-    fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))
-
-    const idInput = screen.getByRole('textbox', { name: '属性「attr0」的 id' })
-    expect(idInput).toHaveValue('')
-    expect(idInput).toHaveAttribute('placeholder', 'attr0')
-
-    fireEvent.change(idInput, { target: { value: 'hp' } })
-    fireEvent.keyDown(idInput, { key: 'Enter' })
-
-    expect(screen.getByRole('textbox', { name: '属性「hp」的 id' })).toHaveValue('hp')
-    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":0}')
-  })
-
-  it('keeps existing property ids read-only', () => {
+  it('renders existing property IDs as editable controls', () => {
     render(
       <EntityHarness
         initial={{
@@ -45,34 +33,9 @@ describe('ScenarioInspector entity attributes', () => {
       />,
     )
 
-    const idInput = screen.getByRole('textbox', { name: '属性「attr0」的 id' })
+    const idInput = screen.getByRole('textbox', { name: 'hero 的属性 ID' })
     expect(idInput).toHaveValue('attr0')
-    expect(idInput).toHaveAttribute('readonly')
-  })
-
-  it('shows generated ids as placeholders so typing does not append to them', () => {
-    render(
-      <EntityHarness
-        initial={{
-          hero: {
-            id: 'hero',
-            name: '主角',
-            attrs: { hp: 10 },
-          },
-        }}
-      />,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))
-    const idInput = screen.getByRole('textbox', { name: '属性「attr1」的 id' }) as HTMLInputElement
-    expect(idInput).toHaveValue('')
-    expect(idInput).toHaveAttribute('placeholder', 'attr1')
-
-    fireEvent.change(idInput, { target: { value: 'maxhp' } })
-    fireEvent.keyDown(idInput, { key: 'Enter' })
-
-    expect(screen.getByRole('textbox', { name: '属性「maxhp」的 id' })).toHaveValue('maxhp')
-    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":10,"maxhp":0}')
+    expect(idInput).not.toHaveAttribute('readonly')
   })
 
   it('keeps paired attribute metadata in sync when either value changes', () => {
@@ -130,5 +93,56 @@ describe('ScenarioInspector entity attributes', () => {
     expect(hpInput).toHaveValue('0')
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":0,"hpMax":100}')
     expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":{"initial":0,"max":100}')
+  })
+
+  it('makes a newly created attribute immediately available to component bindings', () => {
+    function Harness(): JSX.Element {
+      const [value, setValue] = useState<ScenarioMeta>({
+        entities: { hero: { id: 'hero', name: '主角', attrs: {} } },
+      })
+      return (
+        <>
+          <ScenarioInspector value={value} section="entities" onChange={setValue} />
+          <ComponentFormFields
+            componentId="BattlePlayerHpBar"
+            values={{ bind: 'hero' }}
+            pickers={{ entities: value.entities }}
+            onChange={() => undefined}
+          />
+        </>
+      )
+    }
+    render(<Harness />)
+
+    const attrSelect = screen.getByRole('combobox', { name: '属性' })
+    expect(within(attrSelect).queryByRole('option', { name: 'attr0' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ 属性' }))
+
+    expect(screen.getByLabelText('属性「attr0」的数值')).toHaveValue('0')
+    expect(within(attrSelect).getByRole('option', { name: 'attr0' })).toBeTruthy()
+  })
+
+  it('clamps authored current values when a paired maximum is reduced', () => {
+    render(
+      <EntityHarness
+        initial={{
+          hero: {
+            id: 'hero',
+            attrs: { hp: 80, hpMax: 100 },
+            attrMeta: { hp: { min: 0, initial: 80, max: 100 } },
+          },
+        }}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('属性「hpMax」的数值'), {
+      target: { value: '50' },
+    })
+
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":50,"hpMax":50}')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent(
+      '"hp":{"min":0,"initial":50,"max":50}',
+    )
   })
 })

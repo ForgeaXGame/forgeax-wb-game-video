@@ -7,7 +7,7 @@
  * events/hotspotEvents/effects 出结构化编辑器，textStyle/qteCues 暂交「视频」轨编辑器（见 docs/inputs-ssot.md）。
  * 填了 `component` 优先用它，否则按 valueType。
  * `component: 'entity'`：场景实体下拉（复用 EffectsEditor 同源的 EntitySelect，见 editors.tsx / metaCatalog.ts）。
- * `component: 'attr'`：绑定属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
+ * `component: 'attr'`：实体属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
  * attrs（复用同一份 AttrSelect，见 editors.tsx；与 EffectRow/ClauseRow 的实体→属性级联同源），实体项一变属性下拉即联动刷新。
  */
 import { useState, type CSSProperties, type JSX } from 'react'
@@ -18,7 +18,7 @@ import { hasOptionEventsInput } from './editors'
 import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
 import type { TextOrRef } from './TextValueEditor'
 import { ColorPicker } from './ColorPicker'
-import { entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
+import { compileValuePick, entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
 import type { EntityAttributeCreateRequest } from './metaCatalog'
 
 /**
@@ -188,7 +188,7 @@ function patchValue(
 
 /**
  * `component: 'attr'` 依赖同一 inputs 列表里 `component: 'entity'` 那一项的当前取值——
- * 即「绑定属性」总是跟随「绑定对象」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
+ * 即「属性」总是跟随「实体」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
  * 取第一个 entity 项即可：目前一个组件最多一个实体绑定入口（如 battleHpBar 的 bind）。
  */
 function boundEntityId(inputs: ComponentInput[], values: Record<string, unknown>): string {
@@ -228,8 +228,56 @@ function patchEntityBinding(
   return next
 }
 
+type HpValueMode = 'bound' | 'custom'
+
 function isHpBarComponent(componentId: string): boolean {
   return componentId === 'BattlePlayerHpBar' || componentId === 'BattleEnemyHpBar'
+}
+
+function hpBinding(
+  inputs: ComponentInput[],
+  values: Record<string, unknown>,
+): { entityId: string; attr: string } {
+  const bindInput = inputs.find((input) => input.key === 'bind')
+  const attrInput = inputs.find((input) => input.key === 'attr')
+  return {
+    entityId: typeof values.bind === 'string'
+      ? values.bind
+      : typeof bindInput?.default === 'string'
+        ? bindInput.default
+        : '',
+    attr: typeof values.attr === 'string'
+      ? values.attr
+      : typeof attrInput?.default === 'string'
+        ? attrInput.default
+        : '',
+  }
+}
+
+function initialHpCustomValues(
+  inputs: ComponentInput[],
+  values: Record<string, unknown>,
+  entities: Record<string, Entity> | undefined,
+): { current: NumOrExpr; max: NumOrExpr } {
+  const { entityId, attr } = hpBinding(inputs, values)
+  const current = compileValuePick({
+    mode: 'pick',
+    terms: [{ op: '+', source: 'entity', refId: entityId, attr }],
+  })
+  const entity = findEntity(entities, entityId)
+  const maxAttr = `${attr}Max`
+  if (entity && (entity.attrs?.[maxAttr] !== undefined || entity.attrMeta?.[maxAttr] !== undefined)) {
+    return {
+      current,
+      max: compileValuePick({
+        mode: 'pick',
+        terms: [{ op: '+', source: 'entity', refId: entityId, attr: maxAttr }],
+      }),
+    }
+  }
+  const declaredMax = entity?.attrMeta?.[attr]?.max
+  if (typeof declaredMax === 'number') return { current, max: declaredMax }
+  return { current, max: entity?.attrs?.[attr] ?? 0 }
 }
 
 function isComplexInput(inp: ComponentInput): boolean {
@@ -415,11 +463,13 @@ function renderInput(
     )
   }
   if (inp.component === 'entity') {
+    const entityId = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
+    const missingTemplate = !!entityId && !findEntity(pickers?.entities, entityId)
     return (
-      <span key={inp.key}>
+      <span key={inp.key} style={missingTemplate && isHpBarComponent(componentId) ? { flexBasis: '100%', minWidth: 0 } : undefined}>
         {wrap(
           <EntitySelect
-            value={typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')}
+            value={entityId}
             entities={pickers?.entities}
             onChange={(id) => {
               if (isHpBarComponent(componentId)) {
@@ -430,6 +480,14 @@ function renderInput(
             }}
           />,
         )}
+        {missingTemplate && isHpBarComponent(componentId) ? (
+          <span
+            role="status"
+            style={{ display: 'block', margin: '2px 0 6px', color: '#e6a23c', fontSize: 11 }}
+          >
+            实体模板「{entityId}」已删除，当前关联仍保留；改选后无法再次选择。
+          </span>
+        ) : null}
       </span>
     )
   }
@@ -437,6 +495,7 @@ function renderInput(
     const attrValue = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
     const entityId = boundEntityId(inputs, values)
     const entity = findEntity(pickers?.entities, entityId)
+    if (isHpBarComponent(componentId) && entityId && !entity) return null
     const declared = entity
       ? Object.hasOwn(entity.attrs ?? {}, attrValue) || Object.hasOwn(entity.attrMeta ?? {}, attrValue)
       : false
@@ -628,11 +687,33 @@ export function ComponentFormFields({
 }): JSX.Element | null {
   const compact = density === 'compact'
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
-  const inputs = excludeKeys?.length ? allInputs.filter((inp) => !excludeKeys.includes(inp.key)) : allInputs
+  const availableInputs = excludeKeys?.length ? allInputs.filter((inp) => !excludeKeys.includes(inp.key)) : allInputs
+  const hpBar = isHpBarComponent(componentId)
+  // 实体属性模式也允许显式选择 max 的任意数值来源；只有 current 被单独配置时才进入「自定义」。
+  const hpMode: HpValueMode = values.current !== undefined ? 'custom' : 'bound'
+  const inputs = hpBar
+    ? availableInputs.filter((input) => hpMode === 'bound'
+      ? input.key !== 'current'
+      : input.key !== 'bind' && input.key !== 'attr')
+    : availableInputs
   if (!inputs.length) {
     return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无可配 inputs（component={componentId}）</div>
   }
   const onPatch = (key: string, value: unknown) => onChange(patchValue(values, key, value))
+  const setHpMode = (mode: HpValueMode): void => {
+    if (!hpBar || mode === hpMode) return
+    if (mode === 'bound') {
+      const { current: _current, ...rest } = values
+      onChange(rest)
+      return
+    }
+    const initial = initialHpCustomValues(availableInputs, values, pickers?.entities)
+    onChange({
+      ...values,
+      current: initial.current,
+      max: values.max ?? initial.max,
+    })
+  }
   /**
    * 分两组呈现（平铺混排时看不出层次）：
    *  - **参数**：标量 + 需专属编辑器的结构化参数（拍点 / 文字样式…）——都是「这个组件长什么样、怎么判定」
@@ -646,6 +727,41 @@ export function ComponentFormFields({
   const grouped = params.length > 0 && events.length > 0
   return (
     <div>
+      {hpBar ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `${labelWidth ?? 'max-content'} minmax(0, 1fr)`,
+            columnGap: 8,
+            alignItems: 'center',
+            width: '100%',
+            marginBottom: 6,
+            fontSize: 11,
+          }}
+        >
+          <span style={{ opacity: 0.55 }}>血量来源</span>
+          <div role="radiogroup" aria-label="血量来源" style={{ display: 'flex', gap: 4 }}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={hpMode === 'bound'}
+              className={hpMode === 'bound' ? 'gc-mini-action is-on' : 'gc-mini-action'}
+              onClick={() => setHpMode('bound')}
+            >
+              实体属性
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={hpMode === 'custom'}
+              className={hpMode === 'custom' ? 'gc-mini-action is-on' : 'gc-mini-action'}
+              onClick={() => setHpMode('custom')}
+            >
+              自定义
+            </button>
+          </div>
+        </div>
+      ) : null}
       {params.length > 0 ? (
         <div style={grouped ? { marginBottom: 6 } : undefined}>
           {grouped ? groupLabel('参数配置') : null}
