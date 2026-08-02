@@ -552,6 +552,7 @@ function summarizeEffect(
 
 function EffectRow({
   eff,
+  allowedKinds,
   entities,
   variables,
   formulas,
@@ -562,6 +563,7 @@ function EffectRow({
   onUndoOp,
 }: {
   eff: GraphEffect
+  allowedKinds: readonly EffectKind[]
   onChange: (e: GraphEffect) => void
   onDelete: () => void
   /** 本行运算符撤回：canUndoOp = 有快照可撤；onOpSnapshot = 变换前存快照；onUndoOp = 执行撤回。 */
@@ -576,6 +578,9 @@ function EffectRow({
   const operation = eff.kind === 'attr' || eff.kind === 'var'
     ? decodeEffectOperation(eff.op, eff.value)
     : undefined
+  const selectableKinds = allowedKinds.includes(eff.kind)
+    ? allowedKinds
+    : [...allowedKinds, eff.kind]
 
   const handleOpChange = (nextDisplayOp: EffectDisplayOp): void => {
     if ((eff.kind !== 'attr' && eff.kind !== 'var') || !operation) return
@@ -619,9 +624,9 @@ function EffectRow({
         <select
           value={eff.kind}
           onChange={(e) => onChange(defaultEffect(e.target.value as EffectKind, entities, variables))}
-          title="效果类型：属性 / 变量 / 道具"
+          title={`效果类型：${allowedKinds.map((kind) => EFFECT_KIND_LABEL[kind] ?? kind).join(' / ')}`}
         >
-          {(eff.kind === 'flag' ? [...EFFECT_KINDS, 'flag' as EffectKind] : EFFECT_KINDS).map((k) => (
+          {selectableKinds.map((k) => (
             <option key={k} value={k}>{EFFECT_KIND_LABEL[k] ?? k}</option>
           ))}
         </select>
@@ -727,11 +732,14 @@ export function EffectsEditor({
   formulas,
   pickers,
   allowAdd = true,
+  allowedKinds = EFFECT_KINDS,
 }: {
   value: GraphEffect[] | undefined
   onChange: (v: GraphEffect[]) => void
   pickers?: EditorPickerCtx
   allowAdd?: boolean
+  /** 限制新建/切换效果时可选择的类型；既有的其他类型仍保留显示，避免静默改写历史数据。 */
+  allowedKinds?: readonly EffectKind[]
 } & MetaCatalogProps): JSX.Element {
   const cat = resolveCatalog({ entities, variables, formulas, pickers })
   const list = value ?? []
@@ -746,6 +754,7 @@ export function EffectsEditor({
         <EffectRow
           key={i}
           eff={eff}
+          allowedKinds={allowedKinds}
           entities={cat.entities}
           variables={cat.variables}
           formulas={cat.formulas}

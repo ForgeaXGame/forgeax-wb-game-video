@@ -129,6 +129,20 @@ describe('NodeInspector · 结算选中联动', () => {
     })
   })
 
+  it('结算效果类型只提供属性和变量', () => {
+    render(
+      <NodeInspector
+        graph={graphWith([lifecycle(300, 'ent-boss')])}
+        nodeId="gate"
+        onChange={vi.fn()}
+      />,
+    )
+
+    const typeSelect = screen.getByTitle('效果类型：属性 / 变量') as HTMLSelectElement
+    expect(Array.from(typeSelect.options).map((option) => option.text)).toEqual(['属性', '变量'])
+    expect(screen.queryByRole('option', { name: '道具' })).toBeNull()
+  })
+
   it('沿边推进统一选择目标节点，并在没有连线时同步建边', () => {
     const onChange = vi.fn()
     const graph = graphWith([lifecycle(1000, 'ent-boss')])

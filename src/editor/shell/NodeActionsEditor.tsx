@@ -9,6 +9,8 @@ export interface ActionOption {
   label: string
 }
 
+const SETTLEMENT_EFFECT_KINDS = ['attr', 'var'] as const
+
 function replaceSpawnTemplate(
   action: Extract<NodeAction, { kind: 'spawn' }>,
   from: string,
@@ -104,6 +106,7 @@ export function NodeActionsEditor({
               value={action.effects}
               pickers={pickers}
               allowAdd={false}
+              allowedKinds={SETTLEMENT_EFFECT_KINDS}
               onChange={(effects) => patchAt(i, { kind: 'effect', effects: effects ?? [] })}
             />
           ) : null}
