@@ -48,7 +48,7 @@ import { initState } from '../../runtime/engine/engine-init'
 import type { OverlaySnap } from '../../runtime/engine/session'
 import type { MaterialItem, MaterialKind } from './materialTimelineShared'
 import { authoringOptionLabel } from '../authoring-option-label'
-import { clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
+import { FLOAT_TEXT_TIMELINE_WIDTH_PX, clampLayer, clampMs, normalizeLayer } from './materialTimelineShared'
 import {
   type PreviewEvalContext,
   type QteOutcomePreview,
@@ -1000,6 +1000,11 @@ function materialKindForChild(scenario: GameScenario, node: GameNode | undefined
   return 'component'
 }
 
+/** 这两种新飘字的持续时间由组件 `durationMs` 控制，时间轴只负责放置触发时刻。 */
+function isSelfTimedFloatText(componentId: string): boolean {
+  return componentId === 'DamageFloatText' || componentId === 'GainFloatText'
+}
+
 /** `kind` 由调用方传入（已由 `materialKindForChild` 算好），避免这里重复一遍 isKind 判断。 */
 function componentLabelOf(el: OverlayChild, kind: MaterialKind): string {
   const id = el.component
@@ -1062,6 +1067,7 @@ export function collectMaterialsFromNode(scenario: GameScenario, node: GameNode 
       startMs: start,
       endMs: el.window?.endMs ?? Math.min(maxMs, defaultEnd),
       zIndex: normalizeLayer(el.layout?.zIndex, kind === 'component' ? 3 : kind === 'filter' ? 4 : kind === 'fx' ? 5 : kind === 'option' ? 3 : kind === 'overlay' ? 1 : 0),
+      fixedWidthPx: isSelfTimedFloatText(componentId) ? FLOAT_TEXT_TIMELINE_WIDTH_PX : undefined,
       overridden: overriddenFlag,
     })
   }
@@ -1110,11 +1116,13 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
   return mounts.map((mount, i) => {
     const mid = overlayMountId(mount)
     const children = resolveMountChildren(scenario.ui?.overlays, mount)
+    const timedChildren: OverlayChild[] = []
     let start: number | undefined
     let end: number | undefined
     for (const el of children) {
       const sp = childVisibleSpan(el, maxMs)
       if (!sp) continue
+      timedChildren.push(el)
       start = start == null ? sp.start : Math.min(start, sp.start)
       end = end == null ? sp.end : Math.max(end, sp.end)
     }
@@ -1128,6 +1136,9 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
       endMs: end ?? maxMs,
       zIndex: i,
       componentId: children.length > 1 ? `${children.length} 组件` : undefined,
+      fixedWidthPx: timedChildren.length === 1 && isSelfTimedFloatText(timedChildren[0]!.component)
+        ? FLOAT_TEXT_TIMELINE_WIDTH_PX
+        : undefined,
     }
   })
 }

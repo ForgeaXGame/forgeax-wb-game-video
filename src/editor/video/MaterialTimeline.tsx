@@ -159,7 +159,7 @@ export function MaterialTimeline({
   const activeMode: 'material' | 'audio' = mode ?? 'material'
   const audioList = audioItems ?? []
   // 当前活动条目列表（几何 + key 通用；只有它们的字段被 drag/render 用到）。
-  const activeList: Array<{ key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number }> =
+  const activeList: Array<{ key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number }> =
     activeMode === 'audio' ? audioList : materials
   const timelineRef = useRef<HTMLDivElement | null>(null)
   const timelineViewportRef = useRef<HTMLDivElement | null>(null)
@@ -255,7 +255,7 @@ export function MaterialTimeline({
 
   function onPointerDown(
     e: React.PointerEvent,
-    item: { key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number },
+    item: { key: string; startMs: number; endMs: number; zIndex: number; markerMs?: number; fixedWidthPx?: number },
     dragMode: 'move' | 'start' | 'end' | 'marker',
   ): void {
     e.preventDefault()
@@ -269,6 +269,7 @@ export function MaterialTimeline({
     // 让视口拿到焦点，Delete/Backspace 键删除才有落点（不滚动画面）。
     timelineViewportRef.current?.focus({ preventScroll: true })
     if (!editable) return
+    if (item.fixedWidthPx != null && (dragMode === 'start' || dragMode === 'end')) return
     timelineRef.current?.setPointerCapture(e.pointerId)
     const anchorMs = dragMode === 'marker' ? (item.markerMs ?? item.startMs) : item.startMs
     setDrag({ key: item.key, mode: dragMode, pointerX: e.clientX, startMs: anchorMs, endMs: item.endMs, zIndex: item.zIndex })
@@ -638,20 +639,23 @@ export function MaterialTimeline({
               })
             : materials.map((m) => {
                 const left = m.startMs * pxPerMs
+                const fixedWidth = m.fixedWidthPx != null
                 // 下限必须容得下「左手柄 + 中间可拖区 + 右手柄」，否则两个 8px 手柄在窄条上完全重叠，
                 // 只有 DOM 靠后的右手柄能被抓到 → 起点永远调不了（CLIP_MIN_PX 见常量注释）。
-                const width = Math.max(CLIP_MIN_PX, (m.endMs - m.startMs) * pxPerMs)
+                const width = fixedWidth
+                  ? Math.max(CLIP_MIN_PX, m.fixedWidthPx ?? CLIP_MIN_PX)
+                  : Math.max(CLIP_MIN_PX, (m.endMs - m.startMs) * pxPerMs)
                 const selected = selectedMaterialKey === m.key
                 return (
                   <Fragment key={m.key}>
                     <div
-                      className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}${m.overridden ? ' is-overridden' : ''}`}
+                      className={`gc-mclip ${materialClass(m.kind)}${selected ? ' is-selected' : ''}${m.overridden ? ' is-overridden' : ''}${fixedWidth ? ' is-fixed-width' : ''}`}
                       style={{ left: `${left}px`, width: `${width}px`, top: `${layerTop(m.zIndex)}px` }}
                       onPointerDown={(e) => onPointerDown(e, m, 'move')}
                       aria-label={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''}`}
-                      title={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''} · ${fmtDur(m.startMs)} - ${fmtDur(m.endMs)}${m.overridden ? ' · 已脱离方案跟随' : ''}`}
+                      title={`${materialDisplayLabel(m)}${m.label ? ` · ${m.label}` : ''} · ${fmtDur(m.startMs)}${fixedWidth ? ' · 动画时长由组件控制' : ` - ${fmtDur(m.endMs)}`}${m.overridden ? ' · 已脱离方案跟随' : ''}`}
                     >
-                      {editable ? (
+                      {editable && !fixedWidth ? (
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
                       ) : null}
                       {/* 窄条上不渲染文字：否则会盖住两侧手柄的点击区（文案仍在 title 里可悬停看）。 */}
@@ -678,7 +682,7 @@ export function MaterialTimeline({
                           ×
                         </button>
                       ) : null}
-                      {editable ? (
+                      {editable && !fixedWidth ? (
                         <button className="gc-mhandle is-right" onPointerDown={(e) => onPointerDown(e, m, 'end')} aria-label="调整终点" />
                       ) : null}
                     </div>
