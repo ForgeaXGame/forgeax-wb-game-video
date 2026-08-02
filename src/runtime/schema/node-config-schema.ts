@@ -82,16 +82,18 @@ export interface ComponentManifest {
  * - effect：施加副作用（改 attr/var/flag/item）
  * - advance：沿指定出边 `edgeId` 推进到其 `target`（唯一「换节点」通道；目标只在边上）。
  *   交互/生命周期事件里可省略——省略时若存在匹配出边则默认推进；state 打断必须显式。
- * - spawn：由反应**主动实例化**一个 overlay 组件模板（瞬态表现，如伤害飘字）；
- *   `from` = `overlayId/childId` 引用目录模板，`inputs` 可含 `{expr}` 读 watch 局部量（prev/next/delta）。
+ * - spawn：由反应**主动实例化**一个 overlay 组件模板。`from` = `overlayId/childId` 引用目录模板，
+ *   `inputs` 可含 `{expr}` 读 watch 局部量（prev/next/delta）；省略 `ttlMs` 时常驻到节点退出。
+ * - hideOverlay：隐藏当前节点中 `mountId` 对应的整组已显示界面；重复隐藏或尚未显示时无操作。
  */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
   | { kind: 'advance'; edgeId: string }
   | { kind: 'spawn'; from: string; inputs?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
+  | { kind: 'hideOverlay'; mountId: string }
 
 /** Overlay 目录事件动作：目录是可复用表现/副作用模板，不得携带节点专属走向。 */
-export type OverlayReactionAction = Exclude<NodeAction, { kind: 'advance' }>
+export type OverlayReactionAction = Exclude<NodeAction, { kind: 'advance' } | { kind: 'hideOverlay' }>
 
 /**
  * Overlay 目录专用 reaction。稳定 key 恒为 `${childId}:${eventId}`；

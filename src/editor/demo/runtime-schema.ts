@@ -279,12 +279,14 @@ export type ReactionTrigger =
  * 闭合动作原语——同级并列，一个 do 可含多件事：
  * - effect：施加副作用（改 attr/var/flag/item）
  * - advance：沿指定出边 `edgeId` 推进到其 `target`（**唯一「换节点」通道**）
- * - spawn：主动实例化一个 overlay 组件模板（瞬态表现，如伤害飘字）
+ * - spawn：主动实例化一个 overlay 组件模板；省略 ttlMs 时常驻到节点退出
+ * - hideOverlay：按 mountId 隐藏当前节点已有的整组界面
  */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
   | { kind: 'advance'; edgeId: string }
   | { kind: 'spawn'; from: string; inputs?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
+  | { kind: 'hideOverlay'; mountId: string }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // §6. 条件 / 副作用（图原生，无品类假设）

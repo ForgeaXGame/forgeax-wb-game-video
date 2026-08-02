@@ -24,6 +24,47 @@ const dmgOverlay: Overlay = {
 }
 
 describe('watch reaction (数值变化 → spawn)', () => {
+  it('keeps a spawn without ttl visible and can hide an existing node interface by mount', () => {
+    const overlay: Overlay = {
+      id: 'rageUi',
+      children: [{ id: 'panel', component: 'floatT', trigger: { when: 'enter' }, inputs: { text: '怒气界面' } }],
+    }
+    const graph: GameGraph = {
+      nodes: [
+        node('a', {
+          durationMs: 2000,
+          overlayNodes: [{ id: 'boss-hud', overlay: 'rageUi' }],
+          reactions: [
+            { when: { type: 'at', ms: 300 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'rage', op: 'add', value: 20 }] }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.rage', on: 'inc' }, do: [{ kind: 'spawn', from: 'rageUi/panel' }] },
+            { when: { type: 'at', ms: 600 }, do: [{ kind: 'effect', effects: [{ kind: 'attr', entityId: 'ent-boss', attr: 'rage', op: 'add', value: -10 }] }] },
+            { when: { type: 'watch', of: 'entity.ent-boss.attr.rage', on: 'dec' }, do: [{ kind: 'hideOverlay', mountId: 'boss-hud' }] },
+          ],
+        }),
+      ],
+      edges: [],
+    }
+    const rt = new GraphRuntime(graph, scnOf(graph, {
+      entities: { 'ent-boss': { id: 'ent-boss', attrs: { rage: 10 } } },
+      ui: { overlays: { rageUi: overlay } },
+    }))
+
+    expect(rt.start()).toContainEqual(expect.objectContaining({
+      type: 'renderOverlay',
+      elementId: 'boss-hud/panel',
+    }))
+    const shown = rt.tick(300).find((directive): directive is RenderOverlayDirective => (
+      isRenderOverlay(directive) && directive.elementId.startsWith('spawn:')
+    ))
+    expect(shown?.component).toBe('floatT')
+    expect(rt.tick(500).some((directive) => directive.type === 'removeOverlay')).toBe(false)
+    expect(rt.tick(600)).toContainEqual(expect.objectContaining({
+      type: 'removeOverlay',
+      elementId: 'boss-hud/panel',
+    }))
+    expect(rt.tick(700).some((directive) => directive.type === 'removeOverlay')).toBe(false)
+  })
+
   it('keeps a spawn action executable when a condition settlement is changed to a timed settlement', () => {
     const graph: GameGraph = {
       nodes: [node('a', {

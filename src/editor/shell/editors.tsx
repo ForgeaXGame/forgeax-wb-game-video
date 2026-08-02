@@ -483,7 +483,7 @@ type EffectKind = GraphEffect['kind']
 // 「标记」(flag) 从新建下拉隐藏（避免与「变量」混淆）；已有 flag 数据仍可编辑。
 const EFFECT_KINDS: EffectKind[] = ['attr', 'var', 'item']
 
-/** 新建一条效果的默认值（属性 / 变量 / …）；供 EffectsEditor 与「＋ 效果」动作共用。 */
+/** 新建一条效果的默认值（属性 / 变量 / …）；供 EffectsEditor 与「＋ 添加效果」动作共用。 */
 export function createDefaultEffect(
   kind: EffectKind,
   entities: Record<string, Entity> | undefined,
