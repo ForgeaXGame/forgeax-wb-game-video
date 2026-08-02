@@ -50,7 +50,12 @@ export function NodeActionsEditor({
             <button type="button" style={{ color: '#ff6b6b', fontSize: 11 }} onClick={() => onChange(actions.filter((_, index) => index !== i))}>移除</button>
           </div>
           {action.kind === 'effect' ? (
-            <EffectsEditor value={action.effects} pickers={pickers} onChange={(effects) => patchAt(i, { kind: 'effect', effects: effects ?? [] })} />
+            <EffectsEditor
+              value={action.effects}
+              pickers={pickers}
+              allowAdd={false}
+              onChange={(effects) => patchAt(i, { kind: 'effect', effects: effects ?? [] })}
+            />
           ) : null}
           {action.kind === 'spawn' ? (
             <>

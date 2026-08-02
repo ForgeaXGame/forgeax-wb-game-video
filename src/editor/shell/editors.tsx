@@ -709,10 +709,12 @@ export function EffectsEditor({
   variables,
   formulas,
   pickers,
+  allowAdd = true,
 }: {
   value: GraphEffect[] | undefined
   onChange: (v: GraphEffect[]) => void
   pickers?: EditorPickerCtx
+  allowAdd?: boolean
 } & MetaCatalogProps): JSX.Element {
   const cat = resolveCatalog({ entities, variables, formulas, pickers })
   const list = value ?? []
@@ -752,7 +754,9 @@ export function EffectsEditor({
           }}
         />
       ))}
-      <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr', cat.entities, cat.variables)])}>+ 效果</button>
+      {allowAdd ? (
+        <button style={{ marginTop: 4 }} onClick={() => onChange([...list, defaultEffect('attr', cat.entities, cat.variables)])}>+ 效果</button>
+      ) : null}
     </div>
   )
 }

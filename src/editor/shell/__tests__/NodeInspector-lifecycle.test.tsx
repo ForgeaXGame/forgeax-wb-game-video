@@ -262,6 +262,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(screen.queryByText('响应规则')).toBeNull()
     expect(screen.queryByRole('button', { name: '＋ 生成组件' })).toBeNull()
     expect(screen.getAllByRole('button', { name: '＋ 效果' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: '+ 效果' })).toBeNull()
     expect(screen.getAllByRole('button', { name: '＋ 沿边推进' })).toHaveLength(2)
 
     fireEvent.change(triggerSelects[0]!, { target: { value: 'hidden' } })
