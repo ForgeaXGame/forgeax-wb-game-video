@@ -1,12 +1,10 @@
 /**
- * 伤害飘字（component id: `DamageFloatText`）—— value 支持固定数字或 `{expr}` 公式。
- * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
+ * 伤害飘字（component id: `DamageFloatText`）。
+ * value 由 RuntimeComponentHost 解析；此处只负责伤害符号与展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveNumericFloatDurationMs, resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 
 export const DamageFloatTextManifest: ComponentManifest = {
   id: 'DamageFloatText',
@@ -20,12 +18,29 @@ export const DamageFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function DamageFloatText({ overlay, ctx, preview, previewTimeMs, previewPlaying }: OverlayProps): ReactNode {
+export interface DamageFloatTextProps {
+  value?: number
+  color?: string
+  fontSize?: number
+  durationMs?: number
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function DamageFloatText({
+  value = -25,
+  color,
+  fontSize,
+  durationMs = 1100,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: DamageFloatTextProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '-25')
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
-  const durationMs = resolveNumericFloatDurationMs(overlay.inputs.durationMs)
+  const text = damageText(value)
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
     <div
@@ -35,6 +50,11 @@ export function DamageFloatText({ overlay, ctx, preview, previewTimeMs, previewP
       <span data-overlay-fit-target style={textStyle}>{text}</span>
     </div>
   )
+}
+
+function damageText(value: number): string {
+  const normalized = Object.is(value, -0) ? 0 : value
+  return String(normalized > 0 ? -normalized : normalized)
 }
 
 const DAMAGE_FLOAT_TEXT_CSS = `

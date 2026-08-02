@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react'
-import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
-import { resolveNumericValue, resolveTextValue } from '../numericValue'
 
 export const BattlePlayerHpBarManifest: ComponentManifest = {
   id: 'BattlePlayerHpBar',
@@ -17,18 +15,27 @@ export const BattlePlayerHpBarManifest: ComponentManifest = {
   events: [],
 }
 
-export function BattlePlayerHpBar({ overlay, ctx }: OverlayProps): ReactNode {
+export interface BattlePlayerHpBarProps {
+  current?: number
+  max?: number
+  label?: string
+  qi?: number
+  qiMax?: number
+}
+
+/** 数值由 RuntimeComponentHost 解析后以扁平 props 传入；此处只展示。 */
+export function BattlePlayerHpBar({
+  current = 50,
+  max = 90,
+  label = '我方',
+  qi = 3,
+  qiMax: qiMaxInput = 5,
+}: BattlePlayerHpBarProps): ReactNode {
   injectCss('graph-battle-player-hud', PLAYER_CSS)
   ensureInkFilters()
   ensureBrushFont()
-  const inputs = overlay.inputs
-  const current = resolveNumericValue(inputs.current, ctx) ?? 50
-  const max = resolveNumericValue(inputs.max, ctx) ?? 90
-  const label = resolveTextValue(inputs.label, ctx) || '我方'
   const low = max > 0 && current / max <= 0.3
-  const qi = resolveNumericValue(inputs.qi, ctx) ?? ctx?.hud.vars.qi ?? 3
-  const qiMaxValue = resolveNumericValue(inputs.qiMax, ctx) ?? 5
-  const qiMax = qiMaxValue > 0 ? Math.min(100, Math.floor(qiMaxValue)) : 5
+  const qiMax = qiMaxInput > 0 ? Math.min(100, Math.floor(qiMaxInput)) : 5
   const pips = Array.from({ length: qiMax }, (_, index) => index < qi)
 
   return (

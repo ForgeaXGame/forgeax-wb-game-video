@@ -1,12 +1,10 @@
 /**
- * 增益飘字（component id: `GainFloatText`）—— value 支持固定数字或 `{expr}` 公式。
- * 公式绘制时从 SkinCtx 求值；位置与显示时段由外部 Overlay 编排。
+ * 增益飘字（component id: `GainFloatText`）。
+ * value 由 RuntimeComponentHost 解析；此处只负责增益符号与展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveNumericFloatDurationMs, resolveNumericFloatText, type NumericFloatTextInputs } from './numericFloatText'
 
 export const GainFloatTextManifest: ComponentManifest = {
   id: 'GainFloatText',
@@ -20,12 +18,29 @@ export const GainFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function GainFloatText({ overlay, ctx, preview, previewTimeMs, previewPlaying }: OverlayProps): ReactNode {
+export interface GainFloatTextProps {
+  value?: number
+  color?: string
+  fontSize?: number
+  durationMs?: number
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function GainFloatText({
+  value = 50,
+  color,
+  fontSize,
+  durationMs = 1100,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: GainFloatTextProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = resolveNumericFloatText(overlay.inputs as NumericFloatTextInputs, ctx, '+50')
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
-  const durationMs = resolveNumericFloatDurationMs(overlay.inputs.durationMs)
+  const text = signedText(value)
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
     <div
@@ -35,6 +50,11 @@ export function GainFloatText({ overlay, ctx, preview, previewTimeMs, previewPla
       <span data-overlay-fit-target style={textStyle}>{text}</span>
     </div>
   )
+}
+
+function signedText(value: number): string {
+  const normalized = Object.is(value, -0) ? 0 : value
+  return normalized > 0 ? `+${normalized}` : String(normalized)
 }
 
 const GAIN_FLOAT_TEXT_CSS = `

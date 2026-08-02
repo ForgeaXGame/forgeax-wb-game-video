@@ -1,10 +1,9 @@
 /**
- * 状态提示（component id: `StatusNotice`）—— 展示一次性的属性变更、获得物品等结果反馈。
- * 业务侧负责生成完整文案；组件只负责统一的居中展示与短暂动画。
+ * 状态提示（component id: `StatusNotice`）。
+ * 文案由 RuntimeComponentHost 解析后以扁平 props 传入；此处只展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
 
 export const StatusNoticeManifest: ComponentManifest = {
@@ -19,14 +18,28 @@ export const StatusNoticeManifest: ComponentManifest = {
   events: [],
 }
 
-export function StatusNotice({ overlay, preview, previewPlaying, previewTimeMs }: OverlayProps): ReactNode {
+export interface StatusNoticeProps {
+  text?: string
+  color?: string
+  fontSize?: number
+  durationMs?: number
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function StatusNotice({
+  text = '获得道具〈xxx〉',
+  color,
+  fontSize,
+  durationMs = 1600,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: StatusNoticeProps): ReactNode {
   injectCss('status-notice', STATUS_NOTICE_CSS)
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '获得道具〈xxx〉'
-  const durationMs = typeof overlay.inputs.durationMs === 'number' && Number.isFinite(overlay.inputs.durationMs) && overlay.inputs.durationMs > 0
-    ? overlay.inputs.durationMs
-    : 1600
   const frozen = preview && !previewPlaying
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
 
   return (
     <div
