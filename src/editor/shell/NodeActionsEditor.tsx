@@ -116,6 +116,18 @@ export function NodeActionsEditor({
             <EffectsEditor
               value={action.effects}
               pickers={pickers}
+              createAttribute={onCreateEntityAttribute
+                ? { onCreate: onCreateEntityAttribute }
+                : undefined}
+              createEntity={onCreateEntity
+                ? { onCreate: onCreateEntity }
+                : undefined}
+              createVariable={onCreateVariable
+                ? { onCreate: onCreateVariable }
+                : undefined}
+              createFormula={onCreateFormula
+                ? { onCreate: onCreateFormula }
+                : undefined}
               allowAdd={false}
               allowedKinds={SETTLEMENT_EFFECT_KINDS}
               onChange={(effects) => patchAt(i, { kind: 'effect', effects: effects ?? [] })}
