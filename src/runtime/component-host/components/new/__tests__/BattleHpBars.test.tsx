@@ -39,7 +39,7 @@ describe('bound ink health bars', () => {
       overlay: {
         elementId: 'player-hp',
         component: 'BattlePlayerHpBar',
-        inputs: { current: 100, max: 100 },
+        inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
       },
       ctx: ctx(220, 700),
     }))
@@ -53,7 +53,7 @@ describe('bound ink health bars', () => {
       overlay: {
         elementId: 'enemy-hp',
         component: 'BattleEnemyHpBar',
-        inputs: { current: 100, max: 100 },
+        inputs: { bind: 'ent-boss', attr: 'hp', current: 100, max: 100 },
       },
       ctx: ctx(300, 630),
     }))
