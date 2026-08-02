@@ -20,7 +20,13 @@ import type {
 import type { Formula } from '../persist/formula-authoring'
 import { flowHandleDisplay } from '../../graph/flow-handle-labels'
 import { buildDefaults, getComponent, getComponentManifest } from '../../runtime/registry/component-registry'
-import { findEntity, listAttrOptions, listEntityOptions, listVarOptions } from './metaCatalog'
+import {
+  findEntity,
+  listAttrOptions,
+  listEntityOptions,
+  listVarOptions,
+  type EntityCreateRequest,
+} from './metaCatalog'
 import {
   ValueExprEditor,
   type ValueExprAttributeCreateConfig,
@@ -449,7 +455,10 @@ export function TextValueInput({
   variables: Record<string, Variable> | undefined
   preferredEntityIds?: readonly string[]
   entityNameOnly?: boolean
-  createEntity?: ValueExprEntityCreateConfig
+  createEntity?: {
+    template: EntityCreateRequest
+    onCreate: (request: EntityCreateRequest) => void
+  }
 }): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>

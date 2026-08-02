@@ -9,6 +9,7 @@ afterEach(cleanup)
 describe('MaterialTimeline · 结算选中联动', () => {
   it('自计时飘字使用固定宽度且不提供时间轴拉伸手柄', () => {
     const onSelectMaterial = vi.fn()
+    const onPatchMaterial = vi.fn()
     const { container } = render(
       <MaterialTimeline
         materials={[{
@@ -16,8 +17,8 @@ describe('MaterialTimeline · 结算选中联动', () => {
           id: 'damage',
           kind: 'overlay',
           label: '-25',
-          startMs: 500,
-          endMs: 1_600,
+          startMs: 0,
+          endMs: 3_000,
           zIndex: 1,
           fixedWidthPx: FLOAT_TEXT_TIMELINE_WIDTH_PX,
         }]}
@@ -25,18 +26,29 @@ describe('MaterialTimeline · 结算选中联动', () => {
         playheadMs={0}
         selectedMaterialKey="overlay:damage"
         onSelectMaterial={onSelectMaterial}
-        onPatchMaterial={vi.fn()}
+        onPatchMaterial={onPatchMaterial}
       />,
     )
 
     const clip = container.querySelector<HTMLElement>('.gc-mclip')!
+    const canvas = container.querySelector<HTMLElement>('.gc-mtimeline-canvas')!
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1_000, bottom: 240,
+      width: 1_000, height: 240, toJSON: () => ({}),
+    })
+    vi.spyOn(canvas, 'setPointerCapture').mockImplementation(() => {})
     expect(clip).toHaveClass('is-fixed-width')
     expect(clip).toHaveStyle({ width: `${FLOAT_TEXT_TIMELINE_WIDTH_PX}px` })
     expect(screen.queryByRole('button', { name: '调整起点' })).toBeNull()
     expect(screen.queryByRole('button', { name: '调整终点' })).toBeNull()
 
-    fireEvent.pointerDown(clip)
+    fireEvent.pointerDown(clip, { pointerId: 1, clientX: 100, clientY: 60 })
     expect(onSelectMaterial).toHaveBeenCalledWith('overlay:damage')
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 300, clientY: 60 })
+    expect(onPatchMaterial).toHaveBeenLastCalledWith(
+      expect.objectContaining({ key: 'overlay:damage' }),
+      expect.objectContaining({ startMs: 600 }),
+    )
   })
 
   it('按下某个效果菱形时上抛其 id，并只点亮受控选中项', () => {

@@ -22,7 +22,7 @@
  */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { GameNode, GameScenario, Layout } from '../../runtime/schema/graph-schema'
+import type { GameNode, GameScenario, Layout, OverlayInstanceChild } from '../../runtime/schema/graph-schema'
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
@@ -44,7 +44,8 @@ import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import {
   overlayMountId,
 } from '../../runtime/schema/node-config-schema'
-import { resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
+import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
 import { setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
@@ -166,6 +167,19 @@ function fmtTime(ms: number): string {
   const m = Math.floor(total / 60)
   const s = total % 60
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function isNumericFloatText(componentId: string): boolean {
+  return componentId === 'DamageFloatText' || componentId === 'GainFloatText'
+}
+
+function focusedFloatPreviewTimeMs(child: OverlayInstanceChild, playheadMs: number): number {
+  const startMs = child.window?.startMs
+    ?? (child.trigger.when === 'at' ? child.trigger.ms : 0)
+  const durationMs = resolveNumericFloatDurationMs(child.inputs.durationMs)
+  const localMs = playheadMs - startMs
+  if (localMs > 0 && localMs < durationMs) return playheadMs
+  return startMs + Math.round(durationMs * 0.4 * 1000) / 1000
 }
 
 export interface NodePreviewStageProps {
@@ -321,10 +335,17 @@ function EditableNodePreviewStage({
   const overlays = scenario.ui?.overlays
   // 时间轴投影到挂载级：一份挂载 = 一条（跨度 = 挂载内全部子件的 [min,max]）。
   const materials = useMemo(() => collectMountItemsFromNode(scenario, node, maxMs), [scenario, node, maxMs])
-  const previewSkinChildren = useMemo(
-    () => previewSkinChildrenInWindow(scenario, node, playheadMs, maxMs),
-    [scenario, node, playheadMs, maxMs],
-  )
+  const previewSkinChildren = useMemo(() => {
+    const visible = previewSkinChildrenInWindow(scenario, node, playheadMs, maxMs)
+    if (isVideoPlaying || !selectedMountId) return visible
+    const visibleIds = new Set(visible.map((child) => child.id))
+    const focusedFloats = expandNodeChildren(scenario, node).filter((child) => (
+      child.source.mountId === selectedMountId
+      && isNumericFloatText(child.component)
+      && !visibleIds.has(child.id)
+    ))
+    return focusedFloats.length ? [...visible, ...focusedFloats] : visible
+  }, [isVideoPlaying, maxMs, node, playheadMs, scenario, selectedMountId])
   const previewMountGroups = useMemo(() => {
     const groups = new Map<string, {
       mount: NonNullable<GameNode['data']['overlayNodes']>[number]
@@ -421,6 +442,10 @@ function EditableNodePreviewStage({
     setMoreOpen(false)
     setSelectedOverlayId(focusedMountId ?? null)
   }, [node.id, mediaRef])
+
+  useEffect(() => {
+    if (selectedMountId) pauseForScrub()
+  }, [selectedMountId])
 
   // 播放期间 rAF 每帧推进播放头（平滑）；到 cap 提前收演出（once 语义，loop 不截断）。
   useEffect(() => {
@@ -702,7 +727,18 @@ function EditableNodePreviewStage({
                     >
                       {children.map((child) => (
                         <span key={child.id} style={{ display: 'contents' }}>
-                          {renderOverlayChildPreview(child, previewSkinReg, previewSkinCtx, playheadMs, layout, isVideoPlaying)}
+                          {renderOverlayChildPreview(
+                            child,
+                            previewSkinReg,
+                            previewSkinCtx,
+                            !isVideoPlaying
+                              && child.source.mountId === selectedMountId
+                              && isNumericFloatText(child.component)
+                              ? focusedFloatPreviewTimeMs(child, playheadMs)
+                              : playheadMs,
+                            layout,
+                            isVideoPlaying,
+                          )}
                         </span>
                       ))}
                     </div>

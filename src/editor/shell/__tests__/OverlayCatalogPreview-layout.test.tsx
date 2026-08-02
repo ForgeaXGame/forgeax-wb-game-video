@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_OVERLAY_DESIGN_CANVAS,
+  interfaceCanvasPreviewTimeMs,
   isOverlayBoxCentered,
   OVERLAY_GRID_STEP_PERCENT,
   overlayBoxCenterAlignment,
@@ -14,6 +15,58 @@ afterEach(cleanup)
 const LOGICAL_CANVAS = { left: 0, top: 0, width: 1, height: 1 }
 
 describe('OverlayCatalogPreview fixed canvas', () => {
+  it('keeps short animated components on a visible frame in the interface canvas', () => {
+    expect(interfaceCanvasPreviewTimeMs({
+      id: 'damage',
+      component: 'DamageFloatText',
+      inputs: { durationMs: 5 },
+    }, 400)).toBe(2)
+    expect(interfaceCanvasPreviewTimeMs({
+      id: 'gain',
+      component: 'GainFloatText',
+      inputs: {},
+    }, 400)).toBe(400)
+
+    const { rerender } = render(
+      <OverlayCatalogPreview
+        overlay={{
+          id: 'scheme',
+          children: [{
+            id: 'damage',
+            component: 'DamageFloatText',
+            inputs: { value: 100, durationMs: 5 },
+          }],
+        }}
+        entities={{}}
+        variables={{}}
+        centerChildren
+        showSelectionFrames
+        showTimeScrubber={false}
+      />,
+    )
+
+    expect(screen.getByText('-100').parentElement).toHaveStyle({ '--preview-t': '2ms' })
+
+    rerender(
+      <OverlayCatalogPreview
+        overlay={{
+          id: 'scheme-gain',
+          children: [{
+            id: 'gain',
+            component: 'GainFloatText',
+            inputs: {},
+          }],
+        }}
+        entities={{}}
+        variables={{}}
+        centerChildren
+        showSelectionFrames
+        showTimeScrubber={false}
+      />,
+    )
+    expect(screen.getByText('+50').parentElement).toHaveStyle({ '--preview-t': '400ms' })
+  })
+
   it('uses the full viewport without exposing read-only size controls', () => {
     expect(DEFAULT_OVERLAY_DESIGN_CANVAS).toEqual({ left: 0, top: 0, width: 1, height: 1 })
     expect(OVERLAY_GRID_STEP_PERCENT).toBe(2.5)

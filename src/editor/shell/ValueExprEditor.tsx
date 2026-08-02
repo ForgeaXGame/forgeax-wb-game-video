@@ -47,12 +47,12 @@ type ContentChoice =
   | { key: string; kind: 'formula'; label: string; formulaId: string }
 
 export interface ValueExprAttributeCreateConfig {
-  template: Omit<EntityAttributeCreateRequest, 'entityId'>
+  template?: Omit<EntityAttributeCreateRequest, 'entityId'>
   onCreate: (request: EntityAttributeCreateRequest) => void
 }
 
 export interface ValueExprEntityCreateConfig {
-  template: EntityCreateRequest
+  template?: EntityCreateRequest
   onCreate: (request: EntityCreateRequest) => void
 }
 
@@ -136,6 +136,8 @@ export function ValueExprEditor({
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
 }): JSX.Element {
   const [createDrafts, setCreateDrafts] = useState<Record<string, CreateDraft>>({})
+  const createAttributeTemplate = createAttribute?.template
+  const createEntityTemplate = createEntity?.template
   const draftFor = (key: string, defaults: CreateDraft): CreateDraft => ({
     ...defaults,
     ...createDrafts[key],
@@ -218,27 +220,31 @@ export function ValueExprEditor({
           : 'legacy'
   const selectedKnown = selectedKey === 'empty' || choices.some((choice) => choice.key === selectedKey)
   const selectedChoice = choices.find((choice) => choice.key === selectedKey)
-  const missingEntityAction = orderedEntities.length === 0 && createEntity && createAttribute
+  const missingEntityAction = orderedEntities.length === 0
+    && createEntity
+    && createEntityTemplate
+    && createAttribute
+    && createAttributeTemplate
     ? (() => {
-      const draftKey = `create-entity:${encodeURIComponent(createEntity.template.entityId)}:${encodeURIComponent(createAttribute.template.attrId)}`
+      const draftKey = `create-entity:${encodeURIComponent(createEntityTemplate.entityId)}:${encodeURIComponent(createAttributeTemplate.attrId)}`
       const defaults: CreateDraft = {
-        entityId: createEntity.template.entityId,
-        entityName: createEntity.template.name,
-        attrId: createAttribute.template.attrId,
-        attrLabel: createAttribute.template.meta?.label ?? createAttribute.template.attrId,
-        initialValue: String(createAttribute.template.initialValue),
+        entityId: createEntityTemplate.entityId,
+        entityName: createEntityTemplate.name,
+        attrId: createAttributeTemplate.attrId,
+        attrLabel: createAttributeTemplate.meta?.label ?? createAttributeTemplate.attrId,
+        initialValue: String(createAttributeTemplate.initialValue),
       }
       const draft = draftFor(draftKey, defaults)
       const initialValue = parsedInitialValue(draft.initialValue)
       const entityId = draft.entityId.trim()
       const attrId = draft.attrId.trim()
       const attributeRequest: EntityAttributeCreateRequest = {
-        ...createAttribute.template,
+        ...createAttributeTemplate,
         entityId,
         attrId,
         initialValue: initialValue ?? 0,
         meta: {
-          ...createAttribute.template.meta,
+          ...createAttributeTemplate.meta,
           label: draft.attrLabel.trim() || undefined,
           initial: initialValue ?? 0,
         },
@@ -276,7 +282,7 @@ export function ValueExprEditor({
         label: '实体属性',
         children: [{
           key: `configure:${actionKey}`,
-          label: `配置「${draft.entityName.trim() || createEntity.template.name}」实体`,
+          label: `配置「${draft.entityName.trim() || createEntityTemplate.name}」实体`,
           children: [
             {
               key: `detail:${actionKey}:entity-id`,
@@ -343,11 +349,11 @@ export function ValueExprEditor({
     : undefined
   const pickerOptions: CascadingPickerOption[] = [
     ...(missingEntityAction ? [missingEntityAction] : []),
-    ...(orderedEntities.length > 0 && (entityChoices.length > 0 || createAttribute) ? [{
+    ...(orderedEntities.length > 0 && (entityChoices.length > 0 || createAttributeTemplate) ? [{
       key: 'entity-values',
       label: '实体属性',
       children: entityChoicesByEntity
-        .filter((entry) => entry.choices.length > 0 || createAttribute)
+        .filter((entry) => entry.choices.length > 0 || createAttributeTemplate)
         .map((entry) => ({
           key: `entity:${encodeURIComponent(entry.entity.id)}`,
           label: entry.entityName,
@@ -359,26 +365,26 @@ export function ValueExprEditor({
                 : choice.label,
               value: choice.key,
             })),
-            ...(entry.choices.length === 0 && createAttribute
+            ...(entry.choices.length === 0 && createAttribute && createAttributeTemplate
               ? (() => {
-                const draftKey = `create-attr:${encodeURIComponent(entry.entity.id)}:${encodeURIComponent(createAttribute.template.attrId)}`
+                const draftKey = `create-attr:${encodeURIComponent(entry.entity.id)}:${encodeURIComponent(createAttributeTemplate.attrId)}`
                 const defaults: CreateDraft = {
                   entityId: entry.entity.id,
                   entityName: entry.entityName,
-                  attrId: nextAvailableAttrId(entry.source, createAttribute.template.attrId),
-                  attrLabel: createAttribute.template.meta?.label ?? createAttribute.template.attrId,
-                  initialValue: String(createAttribute.template.initialValue),
+                  attrId: nextAvailableAttrId(entry.source, createAttributeTemplate.attrId),
+                  attrLabel: createAttributeTemplate.meta?.label ?? createAttributeTemplate.attrId,
+                  initialValue: String(createAttributeTemplate.initialValue),
                 }
                 const draft = draftFor(draftKey, defaults)
                 const initialValue = parsedInitialValue(draft.initialValue)
                 const attrId = draft.attrId.trim()
                 const request: EntityAttributeCreateRequest = {
-                  ...createAttribute.template,
+                  ...createAttributeTemplate,
                   entityId: entry.entity.id,
                   attrId,
                   initialValue: initialValue ?? 0,
                   meta: {
-                    ...createAttribute.template.meta,
+                    ...createAttributeTemplate.meta,
                     label: draft.attrLabel.trim() || undefined,
                     initial: initialValue ?? 0,
                   },
@@ -476,6 +482,7 @@ export function ValueExprEditor({
     : selectedKnown
       ? selectedChoice?.label ?? '常量'
       : ''
+  const formulaMode = !empty && pick.mode === 'formula'
 
   function selectContent(key: string): void {
     if (key === 'empty') {
@@ -531,7 +538,12 @@ export function ValueExprEditor({
           : legacyPick.expr
 
   return (
-    <div style={row} title={hintText}>
+    <div
+      style={formulaMode
+        ? { ...row, flexDirection: 'column', alignItems: 'stretch' }
+        : row}
+      title={hintText}
+    >
       {effectOp && <EffectOpButtons op={effectOp.op} onChange={effectOp.onOpChange} />}
       <CascadingPicker
         ariaLabel="数值内容"
@@ -571,6 +583,8 @@ export function ValueExprEditor({
           variables={variables}
           onChange={onChange}
           showFormulaPicker={false}
+          createAttribute={createAttribute}
+          createEntity={createEntity}
         />
       )}
 

@@ -9,13 +9,13 @@
  *    OverlayCanvasInteraction；本组件只负责 child 的渲染测量与字段写回。
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { Entity, Layout, Overlay, Variable } from '../../runtime/schema/graph-schema'
+import type { Entity, Layout, Overlay, OverlayChild, Variable } from '../../runtime/schema/graph-schema'
 import { bootEditorSkins } from '../init'
 import { createCoreSkinRegistry } from '../../runtime/component-host/components'
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { renderOverlayChildPreview } from './overlayChildPreview'
-import { isInteractive } from './editors'
+import { defaultsForComponent, isInteractive } from './editors'
 import { OVERLAY_PRESET_MIME } from './ComponentLibrary'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
@@ -26,6 +26,19 @@ import {
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n))
 const num = (v: unknown, d: number): number => (typeof v === 'number' ? v : d)
+
+/** 界面画布应展示动画的可见中段，不能让短时长组件定格在结束后的透明帧。 */
+export function interfaceCanvasPreviewTimeMs(child: OverlayChild, baseTimeMs: number): number {
+  const configured = child.inputs?.durationMs
+  const fallback = defaultsForComponent(child.component).durationMs
+  const durationMs = typeof configured === 'number' && Number.isFinite(configured) && configured > 0
+    ? configured
+    : typeof fallback === 'number' && Number.isFinite(fallback) && fallback > 0
+      ? fallback
+      : undefined
+  if (durationMs == null) return baseTimeMs
+  return Math.round(Math.min(baseTimeMs, durationMs * 0.4) * 1000) / 1000
+}
 
 /** 内容尚未完成 DOM 测量时的临时命中盒。 */
 const DEFAULT_BOX_W = 0.25
@@ -732,7 +745,9 @@ export function OverlayCatalogPreview({
                       child,
                       reg,
                       ctx,
-                      timeMs,
+                      interactive || centerChildren
+                        ? interfaceCanvasPreviewTimeMs(child, timeMs)
+                        : timeMs,
                     )}
                   </div>
                 )

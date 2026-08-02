@@ -74,8 +74,11 @@ describe('numeric float text components', () => {
     expect(screen.getByText('+10')).toBeTruthy()
   })
 
-  it('keeps negative damage negative instead of flipping it positive', () => {
-    render(<DamageFloatText value={-10} />)
+  it('always presents damage values with a minus sign', () => {
+    const { rerender } = render(<DamageFloatText value={10} />)
+    expect(screen.getByText('-10')).toBeTruthy()
+
+    rerender(<DamageFloatText value={-10} />)
     expect(screen.getByText('-10')).toBeTruthy()
   })
 

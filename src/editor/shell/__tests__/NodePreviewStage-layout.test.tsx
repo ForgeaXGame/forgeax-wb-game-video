@@ -548,4 +548,45 @@ describe('NodePreviewStage overlay layout', () => {
       expect(mountWrapper.style.height).toBe('fit-content')
     })
   })
+
+  it('keeps a focused short damage float visible in the paused node canvas', async () => {
+    const current = node('n1', {
+      durationMs: 3_000,
+      overlayNodes: [{ overlay: 'float' }],
+    })
+    const scenario = scnOf(
+      { nodes: [current], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                window: { startMs: 1_000 },
+                inputs: { value: 10, durationMs: 7 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    const { container } = render(
+      <NodePreviewStage
+        scenario={scenario}
+        node={current}
+        game="test"
+        muted
+        focusedMountId="float"
+        onEditScenario={vi.fn()}
+        onMutedChange={vi.fn()}
+        onFocusMount={vi.fn()}
+      />,
+    )
+
+    const text = await screen.findByText('-10')
+    expect(text.parentElement).toHaveStyle({ '--preview-t': '2.8ms' })
+    expect(container.querySelector('[data-overlay-fit-target]')).toBe(text)
+  })
 })

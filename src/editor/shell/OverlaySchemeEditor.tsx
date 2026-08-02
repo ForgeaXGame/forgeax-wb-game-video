@@ -356,7 +356,7 @@ export function OverlaySchemeEditor({
               values={selectedChild.inputs ?? {}}
               pickers={{ entities, variables, formulas, itemIds }}
               density="compact"
-              labelWidth="4em"
+              labelWidth="7em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
               onCreateEntityAttribute={onCreateEntityAttribute}
               onCreateEntity={onCreateEntity}

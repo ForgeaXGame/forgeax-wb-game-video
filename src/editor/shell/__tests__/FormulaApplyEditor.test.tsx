@@ -2,10 +2,19 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Entity } from '../../../runtime/schema/graph-schema'
 import type { Formula, FormulaHoleBinding } from '../../persist/formula-authoring'
 import { FormulaApplyEditor } from '../FormulaApplyEditor'
+import { ensureEntityAttribute } from '../metaCatalog'
 
 afterEach(cleanup)
+
+function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
+  fireEvent.click(trigger)
+  for (const label of labels) {
+    fireEvent.click(screen.getByRole('menuitem', { name: label }))
+  }
+}
 
 describe('FormulaApplyEditor variable guidance', () => {
   it('prompts the author to create a variable referenced by the selected formula', () => {
@@ -149,35 +158,34 @@ describe('FormulaApplyEditor reusable entity parameters', () => {
     render(<Harness />)
     const attacker = screen.getByRole('group', { name: '参数：攻击方属性' })
     const defender = screen.getByRole('group', { name: '参数：防御方属性' })
+    expect(within(attacker).getAllByRole('combobox')).toHaveLength(1)
+    expect(within(defender).getAllByRole('combobox')).toHaveLength(1)
 
-    fireEvent.change(within(attacker).getByRole('combobox', { name: '攻击方属性来源' }), {
-      target: { value: 'entityAttr' },
-    })
-    fireEvent.change(within(attacker).getAllByRole('combobox')[1]!, {
-      target: { value: 'player' },
-    })
+    chooseCascade(
+      within(attacker).getByRole('combobox', { name: '攻击方属性来源' }),
+      '实体属性',
+      '玩家',
+      'attack',
+    )
 
-    fireEvent.change(within(defender).getByRole('combobox', { name: '防御方属性来源' }), {
-      target: { value: 'entityAttr' },
-    })
-    fireEvent.change(within(defender).getAllByRole('combobox')[1]!, {
-      target: { value: 'boss' },
-    })
-    fireEvent.change(within(defender).getAllByRole('combobox')[2]!, {
-      target: { value: 'defense' },
-    })
+    chooseCascade(
+      within(defender).getByRole('combobox', { name: '防御方属性来源' }),
+      '实体属性',
+      'Boss',
+      'defense',
+    )
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       expr: 'entity.player.attr.attack - entity.boss.attr.defense',
     }))
     expect(screen.getByText(/^≈ 20/)).toBeTruthy()
 
-    fireEvent.change(within(defender).getAllByRole('combobox')[1]!, {
-      target: { value: 'player' },
-    })
-    fireEvent.change(within(defender).getAllByRole('combobox')[2]!, {
-      target: { value: 'defense' },
-    })
+    chooseCascade(
+      within(defender).getByRole('combobox', { name: '防御方属性来源' }),
+      '实体属性',
+      '玩家',
+      'defense',
+    )
 
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
       expr: 'entity.player.attr.attack - entity.player.attr.defense',
@@ -202,5 +210,190 @@ describe('FormulaApplyEditor reusable entity parameters', () => {
     expect(screen.getByRole('alert').textContent)
       .toContain('攻击方属性（实体「deleted-enemy」已不存在）')
     expect(screen.queryByText(/^≈ /)).toBeNull()
+  })
+
+  it('offers confirmed creation for a missing formula attribute and selects it immediately', () => {
+    const maxFormula: Formula = {
+      id: 'formula-max-hp',
+      name: '恢复公式',
+      ast: {
+        t: 'hole',
+        id: 'max-hp',
+        holeId: 'maxHp',
+        kind: 'entityAttr',
+        label: '生命上限',
+        suggestAttr: 'hpMax',
+      },
+    }
+    let latestBindings: Record<string, FormulaHoleBinding> = {
+      maxHp: { kind: 'entityAttr', entityId: 'ent-0', attr: 'hpMax' },
+    }
+    function Harness(): JSX.Element {
+      const [entities, setEntities] = useState<Record<string, Entity>>({
+        'ent-0': {
+          id: 'ent-0',
+          name: '我方',
+          attrs: { hp: 80 },
+          attrMeta: { hp: { label: '当前血量', initial: 80 } },
+        },
+      })
+      const [bindings, setBindings] = useState(latestBindings)
+      latestBindings = bindings
+      return (
+        <>
+          <FormulaApplyEditor
+            formulaId={maxFormula.id}
+            holeBindings={bindings}
+            formulas={{ [maxFormula.id]: maxFormula }}
+            entities={entities}
+            variables={{}}
+            createAttribute={{
+              template: {
+                attrId: 'qiMax',
+                initialValue: 5,
+                meta: { label: '气力上限', initial: 5, min: 0 },
+              },
+              onCreate: (request) => {
+                setEntities((current) => ensureEntityAttribute(current, request) ?? current)
+              },
+            }}
+            onChange={(next) => {
+              const formulaValue = next as {
+                pick?: { mode?: string; holeBindings?: Record<string, FormulaHoleBinding> }
+              }
+              if (formulaValue.pick?.mode === 'formula' && formulaValue.pick.holeBindings) {
+                setBindings(formulaValue.pick.holeBindings)
+              }
+            }}
+          />
+          <output data-testid="entities-state">{JSON.stringify(entities)}</output>
+        </>
+      )
+    }
+    render(<Harness />)
+
+    expect(screen.queryByText(/参数绑定未完成/)).toBeNull()
+    chooseCascade(
+      screen.getByRole('combobox', { name: '生命上限来源' }),
+      '实体属性',
+      '我方',
+      '配置「生命上限」属性',
+    )
+    expect(screen.getByRole('textbox', { name: '我方的新属性 ID' })).toHaveValue('hpMax')
+    expect(screen.getByRole('textbox', { name: '我方的新属性显示名' })).toHaveValue('生命上限')
+    expect(screen.getByRole('textbox', { name: '我方的新属性初始值' })).toHaveValue('100')
+
+    fireEvent.change(screen.getByRole('textbox', { name: '我方的新属性 ID' }), {
+      target: { value: 'vitalityMax' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '我方的新属性显示名' }), {
+      target: { value: '最大生命' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '我方的新属性初始值' }), {
+      target: { value: '150' },
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: '确认创建并选择' }))
+
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"vitalityMax":150')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent(
+      '"vitalityMax":{"label":"最大生命","initial":150,"min":0}',
+    )
+    expect(latestBindings.maxHp).toEqual({
+      kind: 'entityAttr',
+      entityId: 'ent-0',
+      attr: 'vitalityMax',
+    })
+    expect(screen.queryByText(/参数绑定未完成/)).toBeNull()
+  })
+
+  it('creates an entity and formula attribute from an empty rule catalog', () => {
+    const hpFormula: Formula = {
+      id: 'formula-current-hp',
+      name: '当前生命',
+      ast: {
+        t: 'hole',
+        id: 'current-hp',
+        holeId: 'currentHp',
+        kind: 'entityAttr',
+        label: '当前血量',
+        suggestAttr: 'hp',
+      },
+    }
+    let latestBindings: Record<string, FormulaHoleBinding> = {}
+    function Harness(): JSX.Element {
+      const [entities, setEntities] = useState<Record<string, Entity>>({})
+      const [bindings, setBindings] = useState<Record<string, FormulaHoleBinding>>({})
+      latestBindings = bindings
+      return (
+        <>
+          <FormulaApplyEditor
+            formulaId={hpFormula.id}
+            holeBindings={bindings}
+            formulas={{ [hpFormula.id]: hpFormula }}
+            entities={entities}
+            variables={{}}
+            createEntity={{
+              onCreate: (request) => {
+                setEntities((current) => ({
+                  ...current,
+                  [request.entityId]: {
+                    id: request.entityId,
+                    name: request.name,
+                    attrs: {},
+                    attrMeta: {},
+                  },
+                }))
+              },
+            }}
+            createAttribute={{
+              onCreate: (request) => {
+                setEntities((current) => ensureEntityAttribute(current, request) ?? current)
+              },
+            }}
+            onChange={(next) => {
+              const formulaValue = next as {
+                pick?: { mode?: string; holeBindings?: Record<string, FormulaHoleBinding> }
+              }
+              if (formulaValue.pick?.mode === 'formula' && formulaValue.pick.holeBindings) {
+                setBindings(formulaValue.pick.holeBindings)
+              }
+            }}
+          />
+          <output data-testid="empty-entities-state">{JSON.stringify(entities)}</output>
+        </>
+      )
+    }
+    render(<Harness />)
+
+    chooseCascade(
+      screen.getByRole('combobox', { name: '当前血量来源' }),
+      '实体属性',
+      '配置「实体」实体',
+    )
+    expect(screen.getByRole('textbox', { name: '新实体 ID' })).toHaveValue('entity')
+    expect(screen.getByRole('textbox', { name: '新实体显示名' })).toHaveValue('实体')
+    expect(screen.getByRole('textbox', { name: '新属性 ID' })).toHaveValue('hp')
+    expect(screen.getByRole('textbox', { name: '新属性显示名' })).toHaveValue('当前血量')
+    expect(screen.getByRole('textbox', { name: '新属性初始值' })).toHaveValue('100')
+
+    fireEvent.change(screen.getByRole('textbox', { name: '新实体 ID' }), {
+      target: { value: 'boss' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '新实体显示名' }), {
+      target: { value: '敌方' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '新属性 ID' }), {
+      target: { value: 'vitality' },
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: '确认创建并选择' }))
+
+    expect(screen.getByTestId('empty-entities-state')).toHaveTextContent(
+      '"boss":{"id":"boss","name":"敌方","attrs":{"vitality":100}',
+    )
+    expect(latestBindings.currentHp).toEqual({
+      kind: 'entityAttr',
+      entityId: 'boss',
+      attr: 'vitality',
+    })
   })
 })

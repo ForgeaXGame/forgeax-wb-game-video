@@ -605,6 +605,53 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
     expect(collectMountItemsFromNode(scenario, nodeA, 8000)[0]?.fixedWidthPx).toBe(FLOAT_TEXT_TIMELINE_WIDTH_PX)
   })
 
+  it('无结束时间的新飘字按组件时长投影并可整体移动', () => {
+    const n = node('a', { durationMs: 8000 })
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              title: '伤害飘字',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                window: { startMs: 1000 },
+                inputs: { value: -25, durationMs: 1100 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    const scenario: GameScenario = {
+      ...base,
+      graph: {
+        ...base.graph,
+        nodes: base.graph.nodes.map((current) => (
+          current.id === 'a'
+            ? { ...current, data: { ...current.data, overlayNodes: [{ overlay: 'float' }] } }
+            : current
+        )),
+      },
+    }
+    const nodeA = findNode(scenario.graph, 'a')!
+    const item = collectMountItemsFromNode(scenario, nodeA, 8000)[0]!
+    expect([item.startMs, item.endMs]).toEqual([1000, 2100])
+
+    const moved = patchMaterialGraph(
+      scenario,
+      nodeA,
+      8000,
+      item,
+      { startMs: 2500, endMs: 3600, zIndex: 0 },
+    )
+    const movedItem = collectMountItemsFromNode(moved, findNode(moved.graph, 'a')!, 8000)[0]!
+    expect([movedItem.startMs, movedItem.endMs]).toEqual([2500, 3600])
+  })
+
   it('挂载条：拖边缘拉伸 window，整体拖动保持跨度', () => {
     const n = node('a', { durationMs: 8000 })
     const base = scnOf(

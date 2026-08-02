@@ -34,6 +34,7 @@ import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/component-host/components/Choice'
 import type { FloatTextParams } from '../../runtime/component-host/components/FloatText'
 import type { QteCue } from '../../runtime/component-host/components/Qte'
+import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
 import { componentHandles, getComponent } from '../../runtime/registry/component-registry'
 import {
   componentTypeLabel,
@@ -1098,12 +1099,18 @@ export function resetMaterialOverrideGraph(scenario: GameScenario, node: GameNod
  * 按 `appearAt - min(appearAt)` 归一，见 InkKouLayer），绝对值不决定它出现在视频何处。
  *
  * `window` 缺失时才回落 `timedStart`（trigger）→ maxMs——仅兜底未落 window 的瞬态 spawn。
+ * 自计时飘字例外：它的结束由 `inputs.durationMs` 决定；新挂载通常只有起点，若仍回落 maxMs，
+ * 固定宽度时间轴条会被误判为占满整段视频，导致无法水平移动。
  * 滤镜/特效无位置语义，返回 null（不参与挂载条跨度）。
  */
 function childVisibleSpan(el: OverlayChild, maxMs: number): { start: number; end: number } | null {
   if (el.component === 'filter' || el.component === 'fx') return null
   const start = el.window?.startMs ?? timedStart(el)
-  const end = el.window?.endMs ?? maxMs
+  const end = el.window?.endMs ?? (
+    isSelfTimedFloatText(el.component)
+      ? Math.min(maxMs, start + resolveNumericFloatDurationMs(paramsOf(el).durationMs))
+      : maxMs
+  )
   return { start, end }
 }
 

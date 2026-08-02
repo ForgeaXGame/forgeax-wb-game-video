@@ -413,7 +413,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(document.querySelector('[data-canvas-item="hp"]')).toHaveClass('is-selected')
     expect(screen.queryByText('虚拟画布尺寸')).toBeNull()
     expect(screen.queryByRole('button', { name: /调整BattlePlayerHpBar大小/ })).toBeNull()
-    expect(currentField.style.gridTemplateColumns).toBe('4em minmax(0, 1fr)')
+    expect(currentField.style.gridTemplateColumns).toBe('7em minmax(0, 1fr)')
     expect(currentField.style.columnGap).toBe('8px')
     expect(currentField.style.fontSize).toBe('11px')
     expect(screen.queryByRole('radiogroup', { name: '血量来源' })).toBeNull()
@@ -512,6 +512,141 @@ describe('OverlaySchemeEditor selected child', () => {
 })
 
 describe('ComponentFormFields defaults', () => {
+  it.each([
+    [
+      'StatusNotice',
+      { text: '获得道具', color: '#f0f0f0', fontSize: 2.4, durationMs: 1600 },
+      ['提示文字', '字色', '字号', '总时长ms'],
+    ],
+    [
+      'DamageFloatText',
+      { value: 10, color: '#ff5a5a', fontSize: 3.5, durationMs: 1100 },
+      ['数值', '字色', '字号', '总时长ms'],
+    ],
+    [
+      'GainFloatText',
+      { value: 50, color: '#ffd54a', fontSize: 3.5, durationMs: 1100 },
+      ['数值', '字色', '字号', '总时长ms'],
+    ],
+  ])('gives %s compact parameters one full-width row with readable labels', (componentId, values, labels) => {
+    render(
+      <ComponentFormFields
+        componentId={componentId}
+        values={values}
+        density="compact"
+        labelWidth="7em"
+        onChange={() => undefined}
+      />,
+    )
+
+    for (const label of labels) {
+      const row = screen.getByText(label).parentElement!
+      expect(row.style.display).toBe('grid')
+      expect(row.style.width).toBe('100%')
+      expect(row.style.gridTemplateColumns).toBe(
+        label === '数值' ? '7em minmax(0, 1fr)' : '7em minmax(0, 320px)',
+      )
+    }
+
+    for (const input of screen.queryAllByRole('spinbutton')) {
+      expect(input).toHaveStyle({ width: '100%' })
+    }
+  })
+
+  it('stacks formula selection above its parameter bindings in compact component fields', () => {
+    const formula: Formula = {
+      id: 'formula-layout',
+      name: '伤害公式',
+      ast: {
+        t: 'hole',
+        id: 'coefficient',
+        holeId: 'coefficient',
+        kind: 'number',
+        label: '系数',
+      },
+    }
+    render(
+      <ComponentFormFields
+        componentId="DamageFloatText"
+        values={{
+          value: {
+            expr: '0',
+            pick: {
+              mode: 'formula',
+              formulaId: formula.id,
+              holeBindings: {},
+            },
+          },
+        }}
+        pickers={{ formulas: { [formula.id]: formula } }}
+        density="compact"
+        labelWidth="7em"
+        onChange={() => undefined}
+      />,
+    )
+
+    const valueRow = screen.getByText('数值').parentElement!
+    const picker = within(valueRow).getByRole('combobox', { name: '数值内容' })
+    const valueEditor = picker.parentElement?.parentElement as HTMLElement
+
+    expect(valueRow.style.alignItems).toBe('start')
+    expect(screen.getByText('数值')).toHaveStyle({ paddingTop: '6px' })
+    expect(valueEditor.style.flexDirection).toBe('column')
+    expect(valueEditor.style.alignItems).toBe('stretch')
+    expect(within(valueRow).getByRole('group', { name: '参数：系数' })).toBeTruthy()
+  })
+
+  it('forwards formula attribute creation from GainFloatText into the binding editor', () => {
+    const formula: Formula = {
+      id: 'formula-hp-max',
+      name: '生命上限公式',
+      ast: {
+        t: 'hole',
+        id: 'max-hp',
+        holeId: 'maxHp',
+        kind: 'entityAttr',
+        label: '生命上限',
+        suggestAttr: 'hpMax',
+      },
+    }
+    render(
+      <ComponentFormFields
+        componentId="GainFloatText"
+        values={{
+          value: {
+            expr: '0',
+            pick: {
+              mode: 'formula',
+              formulaId: formula.id,
+              holeBindings: {
+                maxHp: { kind: 'entityAttr', entityId: 'ent-0', attr: 'hpMax' },
+              },
+            },
+          },
+        }}
+        pickers={{
+          formulas: { [formula.id]: formula },
+          entities: {
+            'ent-0': { id: 'ent-0', name: '我方', attrs: { hp: 80 } },
+          },
+        }}
+        density="compact"
+        onCreateEntityAttribute={vi.fn()}
+        onChange={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByText(/参数绑定未完成/)).toBeNull()
+    chooseCascade(
+      screen.getByRole('combobox', { name: '生命上限来源' }),
+      '实体属性',
+      '我方',
+      '配置「生命上限」属性',
+    )
+    expect(screen.getByRole('textbox', { name: '我方的新属性 ID' })).toHaveValue('hpMax')
+    expect(screen.getByRole('menuitem', { name: '确认创建并选择' })).toBeEnabled()
+  })
+
   it('never offers an unset/default option for interface enum settings', () => {
     registerComponent('test-enum-input', {
       inputs: [

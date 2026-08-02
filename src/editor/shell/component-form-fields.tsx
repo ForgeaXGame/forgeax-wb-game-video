@@ -33,6 +33,8 @@ function eventsVariantFor(componentId: string, marker: string): 'plain' | 'choic
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 72, opacity: 0.7, flexShrink: 0, fontSize: 11 }
+const DEFAULT_COMPACT_LABEL_WIDTH = '7em'
+const COMPACT_CONTROL_WIDTH = 320
 const DEFAULT_HP_ATTRIBUTE: EntityAttributeCreateRequest = {
   entityId: '',
   attrId: 'hp',
@@ -150,22 +152,19 @@ function compactField(
   return (
     <label
       style={{
-        display: 'inline-flex',
+        display: 'grid',
+        gridTemplateColumns: `${labelWidth ?? DEFAULT_COMPACT_LABEL_WIDTH} minmax(0, ${COMPACT_CONTROL_WIDTH}px)`,
         alignItems: 'center',
-        gap: labelWidth ? 8 : 3,
+        columnGap: 10,
+        width: '100%',
+        minWidth: 0,
         fontSize: 11,
-        marginBottom: 2,
+        marginBottom: 4,
       }}
       title={title}
     >
       <span style={{
-        width: labelWidth,
-        flexBasis: labelWidth,
         opacity: 0.55,
-        flexShrink: 0,
-        maxWidth: labelWidth ?? 64,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       }}>
         {label}
@@ -494,7 +493,7 @@ function renderInput(
           display: 'grid',
           gridTemplateColumns: `${labelWidth ?? 'max-content'} minmax(0, 1fr)`,
           columnGap: 8,
-          alignItems: 'center',
+          alignItems: 'start',
           width: '100%',
           minWidth: 0,
           flexBasis: '100%',
@@ -504,7 +503,7 @@ function renderInput(
           fontSize: 11,
         }}
       >
-        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11 }}>{label}</span>
+        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 6 }}>{label}</span>
         {inp.valueType === 'string' ? (
           <TextValueInput
             value={(val ?? inp.default) as TextOrRef | undefined}
@@ -529,11 +528,17 @@ function renderInput(
             allowAttribute={semantic
               ? (entity, attrId) => attributeMatchesSemantic(entity, attrId, semantic)
               : undefined}
-            createAttribute={createTemplate && onCreateEntityAttribute
-              ? { template: createTemplate, onCreate: onCreateEntityAttribute }
+            createAttribute={onCreateEntityAttribute
+              ? {
+                ...(createTemplate ? { template: createTemplate } : {}),
+                onCreate: onCreateEntityAttribute,
+              }
               : undefined}
-            createEntity={createEntityTemplate && onCreateEntity
-              ? { template: createEntityTemplate, onCreate: onCreateEntity }
+            createEntity={onCreateEntity
+              ? {
+                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+                onCreate: onCreateEntity,
+              }
               : undefined}
             onChange={(next) => onPatch(inp.key, next)}
             emptyWhenUndefined={optional}
@@ -644,7 +649,13 @@ function renderInput(
           <select
             value={selectedValue}
             onChange={(e) => onPatch(inp.key, e.target.value)}
-            style={{ flex: compact ? undefined : 1, maxWidth: compact ? 110 : undefined, fontSize: 12 }}
+            style={{
+              width: compact ? '100%' : undefined,
+              minWidth: 0,
+              flex: compact ? undefined : 1,
+              maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+              fontSize: 12,
+            }}
             title={hint}
           >
             {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -668,7 +679,13 @@ function renderInput(
                   onPatch(inp.key, inp.default)
                 }
               }}
-              style={{ width: compact ? 56 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              style={{
+                width: compact ? '100%' : undefined,
+                minWidth: 0,
+                flex: compact ? undefined : 1,
+                maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+                fontSize: 12,
+              }}
               title={hint}
             />,
           )}
@@ -696,7 +713,13 @@ function renderInput(
               value={typeof val === 'string' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
-              style={{ width: compact ? 88 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              style={{
+                width: compact ? '100%' : undefined,
+                minWidth: 0,
+                flex: compact ? undefined : 1,
+                maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+                fontSize: 12,
+              }}
               title={hint}
             />,
           )}
@@ -758,9 +781,9 @@ export function ComponentFormFields({
    * speaker 走「显示说话人前缀」开关、events 走结算区自带的分支编辑）。
    */
   excludeKeys?: string[]
-  /** compact：节点检视器等窄栏——标量并排、复合项折叠。 */
+  /** compact：节点检视器等窄栏——标量保持单项单行，复合项折叠。 */
   density?: 'default' | 'compact'
-  /** compact 模式的标签列宽；界面 Tab 传 `4em`，其它调用保持自适应。 */
+  /** compact 模式的标签列宽；界面 Tab 使用足以容纳「总时长ms」的稳定宽度。 */
   labelWidth?: CSSProperties['width']
   /** 新血条绑定默认 hp 但实体未声明时，经二次确认后由场景持有者补建。 */
   onCreateEntityAttribute?: EntityAttributeCreateHandler
@@ -791,7 +814,7 @@ export function ComponentFormFields({
         <div style={grouped ? { marginBottom: 6 } : undefined}>
           {grouped ? groupLabel('参数配置') : null}
           {compact ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gap: 2, alignItems: 'center', width: '100%', minWidth: 0 }}>
               {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, onCreateEntityAttribute, onCreateEntity))}
             </div>
           ) : (
