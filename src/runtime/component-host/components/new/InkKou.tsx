@@ -1,9 +1,9 @@
 /**
- * 叩击（component id: `InkKou`）—— 组件只发出「叩」事件。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与交互。
+ * 叩击（component id: `InkKou`）。
+ * 按键由 RuntimeComponentHost 以扁平 props 传入；此处只展示与交互。
  */
 import { useEffect, useRef, useState } from 'react'
-import { usePlayerKeyGate, type OverlayProps } from '../../rendererRegistry'
+import { usePlayerKeyGate } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewTStyle } from './skinRuntime'
 
@@ -14,16 +14,28 @@ export const InkKouManifest: ComponentManifest = {
   inputs: [{ key: 'triggerKey', label: '触发按键', valueType: 'string', default: 'A' }],
 }
 
-export function InkKou({ emit, overlay, preview, previewTimeMs }: OverlayProps) {
+export interface InkKouProps {
+  triggerKey?: string
+  emit?: (key: string) => void
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function InkKou({
+  triggerKey: triggerKeyInput = 'A',
+  emit,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: InkKouProps) {
   injectCss('ink-kou-layer', KOU_CSS)
   ensureInkFilters()
   ensureBrushFont()
   const knockedRef = useRef(false)
   const [exiting, setExiting] = useState(false)
   const keyOk = usePlayerKeyGate()
-  const triggerKey = typeof overlay.inputs.triggerKey === 'string' && overlay.inputs.triggerKey.trim()
-    ? overlay.inputs.triggerKey.trim()
-    : 'A'
+  const triggerKey = triggerKeyInput.trim() || 'A'
 
   function knock(): void {
     if (preview || knockedRef.current) return
@@ -43,10 +55,11 @@ export function InkKou({ emit, overlay, preview, previewTimeMs }: OverlayProps) 
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [keyOk, preview, triggerKey])
 
+  const frozen = preview && !previewPlaying
   return (
     <div
-      className={`pvn-opts pvn-opts--kou show${preview ? ' is-frozen' : ''}${exiting ? ' is-exiting' : ''}`}
-      style={preview ? previewTStyle(previewTimeMs ?? 0) : undefined}
+      className={`pvn-opts pvn-opts--kou show${frozen ? ' is-frozen' : ''}${exiting ? ' is-exiting' : ''}`}
+      style={frozen ? previewTStyle(previewTimeMs ?? 0) : undefined}
       aria-label="叩击"
     >
       <button type="button" className="pvn-opt pvn-opt--kou" aria-label="叩" data-overlay-fit-target disabled={preview} onClick={knock}>
@@ -64,8 +77,6 @@ export function InkKou({ emit, overlay, preview, previewTimeMs }: OverlayProps) 
   )
 }
 
-// 「叩」字号用 cqh/cqmin（相对舞台，见 VideoOverlayStage.tsx 的 containerType:'size'）取代 vw，
-// vw 相对浏览器视口，预览小窗和全屏试玩里同一份配置会呈现出完全不同的物理大小。
 const KOU_CSS = `
 .pvn-opts--kou{position:relative;inline-size:100%;block-size:100%;min-inline-size:72px;min-block-size:112px;z-index:6;display:flex;align-items:center;justify-content:center;pointer-events:none;}
 .pvn-opts--kou.show{pointer-events:auto;}

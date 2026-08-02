@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createRng } from '../../../../engine/rng'
 import type { SkinCtx } from '../../../rendererRegistry'
+import { createCoreSkinRegistry } from '../../index'
 import {
   DamageFloatText,
   DamageFloatTextManifest,
@@ -30,6 +32,20 @@ const ctx: SkinCtx = {
   },
 }
 
+function renderViaHost(component: string, inputs: Record<string, unknown>, skinCtx: SkinCtx = ctx) {
+  const skins = createCoreSkinRegistry()
+  return render(
+    <>
+      {skins.renderOverlay(
+        { elementId: component, component, inputs },
+        undefined,
+        undefined,
+        skinCtx,
+      )}
+    </>,
+  )
+}
+
 describe('numeric float text components', () => {
   it('declare fixed text and a dynamic parameter input', () => {
     expect(DamageFloatTextManifest.inputs).toEqual([
@@ -48,35 +64,11 @@ describe('numeric float text components', () => {
     ])
   })
 
-  it('concatenates fixed text with numeric, textual, and formula parameters', () => {
-    render(
-      <>
-        <DamageFloatText
-          overlay={{ elementId: 'fixed-damage', component: 'DamageFloatText', inputs: { fixedText: '伤害 ', parameter: -25 } }}
-          ctx={ctx}
-        />
-        <GainFloatText
-          overlay={{ elementId: 'fixed-gain', component: 'GainFloatText', inputs: { fixedText: '获得 ', parameter: '青铜钥匙' } }}
-          ctx={ctx}
-        />
-        <DamageFloatText
-          overlay={{
-            elementId: 'formula-damage',
-            component: 'DamageFloatText',
-            inputs: { parameter: { expr: '-(entity.hero.attr.attack + var.bonus)' } },
-          }}
-          ctx={ctx}
-        />
-        <GainFloatText
-          overlay={{
-            elementId: 'formula-gain',
-            component: 'GainFloatText',
-            inputs: { parameter: { expr: 'entity.hero.attr.attack / 2' } },
-          }}
-          ctx={ctx}
-        />
-      </>,
-    )
+  it('Host resolves parameter; leaf concatenates fixed text', () => {
+    renderViaHost('DamageFloatText', { fixedText: '伤害 ', parameter: -25 })
+    renderViaHost('GainFloatText', { fixedText: '获得 ', parameter: '青铜钥匙' })
+    renderViaHost('DamageFloatText', { parameter: { expr: '-(entity.hero.attr.attack + var.bonus)' } })
+    renderViaHost('GainFloatText', { parameter: { expr: 'entity.hero.attr.attack / 2' } })
 
     expect(screen.getByText('伤害 -25')).toBeTruthy()
     expect(screen.getByText('获得 青铜钥匙')).toBeTruthy()
@@ -85,38 +77,22 @@ describe('numeric float text components', () => {
   })
 
   it('uses each skin default appearance and accepts its optional text overrides', () => {
-    const { rerender } = render(
-      <DamageFloatText overlay={{ elementId: 'damage', component: 'DamageFloatText', inputs: { parameter: -25 } }} />,
-    )
+    const { rerender } = render(<DamageFloatText parameter="-25" />)
     expect(screen.getByText('-25')).toHaveStyle({ color: '#ff5a5a', '--gv-text-font-size': '3.5cqh' })
 
-    rerender(
-      <GainFloatText
-        overlay={{ elementId: 'gain', component: 'GainFloatText', inputs: { parameter: 50, color: '#123456', fontSize: 4 } }}
-      />,
-    )
+    rerender(<GainFloatText parameter="+50" color="#123456" fontSize={4} />)
     expect(screen.getByText('+50')).toHaveStyle({ color: '#123456', '--gv-text-font-size': '4cqh' })
   })
 
   it('scales the entire float animation from its total duration input', () => {
-    render(
-      <DamageFloatText
-        overlay={{ elementId: 'slow-damage', component: 'DamageFloatText', inputs: { parameter: -25, durationMs: 2400 } }}
-      />,
-    )
+    render(<DamageFloatText parameter="-25" durationMs={2400} />)
     expect(screen.getByText('-25').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
     expect(resolveTextDurationMs(undefined)).toBe(1100)
     expect(resolveTextDurationMs(0)).toBe(1100)
   })
 
-  it('uses the parameter fallback when it is absent', () => {
-    render(
-      <DamageFloatText
-        overlay={{ elementId: 'fallback', component: 'DamageFloatText', inputs: {} }}
-        ctx={ctx}
-      />,
-    )
-
+  it('Host applies parameter fallback when it is absent', () => {
+    renderViaHost('DamageFloatText', {})
     expect(screen.getByText('-25')).toBeTruthy()
   })
 

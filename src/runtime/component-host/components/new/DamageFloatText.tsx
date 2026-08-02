@@ -1,11 +1,10 @@
 /**
- * 伤害飘字（component id: `DamageFloatText`）—— 固定文本与动态参数直接拼接。
+ * 伤害飘字（component id: `DamageFloatText`）。
+ * parameter 等由 RuntimeComponentHost 解析；此处只拼接展示。
  */
 import type { ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import type { OverlayProps } from '../../rendererRegistry'
 import { animationTimingStyle, injectCss, ensureBrushFont, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
-import { resolveTextDurationMs, resolveTextParameter, type TextParameterInputs } from './textParameter'
 
 export const DamageFloatTextManifest: ComponentManifest = {
   id: 'DamageFloatText',
@@ -20,14 +19,32 @@ export const DamageFloatTextManifest: ComponentManifest = {
   events: [],
 }
 
-export function DamageFloatText({ overlay, ctx, preview, previewTimeMs }: OverlayProps): ReactNode {
+export interface DamageFloatTextProps {
+  fixedText?: string
+  parameter?: string
+  color?: string
+  fontSize?: number
+  durationMs?: number
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function DamageFloatText({
+  fixedText = '',
+  parameter = '-25',
+  color,
+  fontSize,
+  durationMs = 1100,
+  preview,
+  previewTimeMs,
+  previewPlaying,
+}: DamageFloatTextProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const fixedText = typeof overlay.inputs.fixedText === 'string' ? overlay.inputs.fixedText : ''
-  const text = `${fixedText}${resolveTextParameter((overlay.inputs as TextParameterInputs).parameter, ctx, '-25')}`
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
-  const durationMs = resolveTextDurationMs(overlay.inputs.durationMs)
-  const frozen = preview
+  const text = `${fixedText}${parameter}`
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
+  const frozen = preview && !previewPlaying
   return (
     <div
       className={`gv-damage-float-text${frozen ? ' is-preview-frozen' : ''}`}

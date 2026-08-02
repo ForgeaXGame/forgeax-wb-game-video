@@ -1,10 +1,10 @@
 /**
- * 文字交互（component id: `TextOption`）—— 显示居中文字，并发出唯一的「交互」事件。
- * 键盘/点击等输入如何路由到该事件由外层编排；本组件仅处理直接点击与原生按钮键盘激活。
+ * 文字交互（component id: `TextOption`）。
+ * 文案/按键由 RuntimeComponentHost 以扁平 props 传入；此处只展示与交互。
  */
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
-import { usePlayerKeyGate, type OverlayProps } from '../../rendererRegistry'
+import { usePlayerKeyGate } from '../../rendererRegistry'
 import { injectCss, resolveTextAppearance, type TextAppearanceInputs } from './skinRuntime'
 
 export const TextOptionManifest: ComponentManifest = {
@@ -19,15 +19,28 @@ export const TextOptionManifest: ComponentManifest = {
   events: [{ id: 'activate', label: '交互' }],
 }
 
-export function TextOption({ overlay, emit, preview }: OverlayProps): ReactNode {
+export interface TextOptionProps {
+  text?: string
+  color?: string
+  fontSize?: number
+  triggerKey?: string
+  emit?: (key: string) => void
+  preview?: boolean
+}
+
+export function TextOption({
+  text = '交互',
+  color,
+  fontSize,
+  triggerKey: triggerKeyInput = 'F',
+  emit,
+  preview,
+}: TextOptionProps): ReactNode {
   injectCss('text-option', TEXT_OPTION_CSS)
   const activatedRef = useRef(false)
   const keyOk = usePlayerKeyGate()
-  const text = typeof overlay.inputs.text === 'string' && overlay.inputs.text ? overlay.inputs.text : '交互'
-  const triggerKey = typeof overlay.inputs.triggerKey === 'string' && overlay.inputs.triggerKey.trim()
-    ? overlay.inputs.triggerKey.trim()
-    : 'F'
-  const textStyle = resolveTextAppearance(overlay.inputs as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
+  const triggerKey = triggerKeyInput.trim() || 'F'
+  const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#f0f0f0', fontSize: 2.4 })
 
   function activate(): void {
     if (preview || activatedRef.current) return

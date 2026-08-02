@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BattleParry, BattleParryManifest } from '../BattleParry'
@@ -5,7 +6,7 @@ import { BattleParry, BattleParryManifest } from '../BattleParry'
 afterEach(cleanup)
 
 function renderParry(emit = vi.fn()) {
-  const view = render(<BattleParry emit={emit} overlay={{ elementId: 'parry', component: 'BattleParry', inputs: {} }} />)
+  const view = render(<BattleParry emit={emit} />)
   return { ...view, emit }
 }
 
@@ -32,11 +33,7 @@ describe('BattleParry', () => {
   })
 
   it('uses configured keyboard keys while preserving the button labels', () => {
-    render(
-      <BattleParry
-        overlay={{ elementId: 'parry', component: 'BattleParry', inputs: { firstKey: 'Q', secondKey: 'E' } }}
-      />,
-    )
+    render(<BattleParry firstKey="Q" secondKey="E" />)
 
     fireEvent.keyDown(window, { key: 'q' })
 
@@ -64,13 +61,7 @@ describe('BattleParry', () => {
   })
 
   it('freezes each key at its own point in the editor preview timeline', () => {
-    const { container } = render(
-      <BattleParry
-        preview
-        previewTimeMs={1500}
-        overlay={{ elementId: 'parry', component: 'BattleParry', inputs: {} }}
-      />,
-    )
+    const { container } = render(<BattleParry preview previewTimeMs={1500} />)
     expect(container.firstElementChild).toHaveClass('is-frozen')
     expect(container.firstElementChild).toHaveStyle({ '--preview-t': '1500ms' })
   })

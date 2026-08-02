@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react'
-import type { OverlayProps } from '../../rendererRegistry'
 import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
-import { resolveBoundHpBarValues } from './boundHpBar'
-import { resolveNumericValue, resolveTextValue } from '../numericValue'
 
 export const BattleEnemyHpBarManifest: ComponentManifest = {
   id: 'BattleEnemyHpBar',
@@ -18,20 +15,21 @@ export const BattleEnemyHpBarManifest: ComponentManifest = {
   events: [],
 }
 
-export function BattleEnemyHpBar({ overlay, ctx }: OverlayProps): ReactNode {
+export interface BattleEnemyHpBarProps {
+  current?: number
+  max?: number
+  label?: string
+}
+
+/** 数值由 RuntimeComponentHost 解析后以扁平 props 传入；此处只展示。 */
+export function BattleEnemyHpBar({
+  current = 50,
+  max = 90,
+  label = '敌方',
+}: BattleEnemyHpBarProps): ReactNode {
   injectCss('graph-battle-enemy-hud', ENEMY_CSS)
   ensureInkFilters()
   ensureBrushFont()
-  const inputs = overlay.inputs
-  const bound = resolveBoundHpBarValues(inputs, ctx, 50, 90)
-  const current = typeof inputs.current === 'number'
-    ? bound.current
-    : resolveNumericValue(inputs.current, ctx) ?? bound.current
-  const max = typeof inputs.max === 'number'
-    ? bound.max
-    : resolveNumericValue(inputs.max, ctx) ?? bound.max
-
-  const label = resolveTextValue(inputs.label, ctx) || '敌方'
 
   return (
     <div className="ks-hud-boss ks-hud-foe-unit" data-overlay-fit-target>

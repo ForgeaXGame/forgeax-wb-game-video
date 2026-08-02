@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createCoreSkinRegistry } from '../../index'
 import type { SkinCtx } from '../../../rendererRegistry'
 import { BattleEnemyHpBar } from '../BattleEnemyHpBar'
 import { BattlePlayerHpBar } from '../BattlePlayerHpBar'
@@ -33,31 +34,53 @@ function ctx(playerHp: number, bossHp: number): SkinCtx {
   }
 }
 
-describe('bound ink health bars', () => {
-  it('projects the player entity delta onto the authored 100-point display baseline', () => {
-    const { container } = render(BattlePlayerHpBar({
-      overlay: {
-        elementId: 'player-hp',
-        component: 'BattlePlayerHpBar',
-        inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
-      },
-      ctx: ctx(220, 700),
-    }))
+describe('ink health bars via RuntimeComponentHost', () => {
+  it('Host projects nodia-style bind + literal current onto flat leaf props', () => {
+    const skins = createCoreSkinRegistry()
+    const { container } = render(
+      <>
+        {skins.renderOverlay(
+          {
+            elementId: 'player-hp',
+            component: 'BattlePlayerHpBar',
+            inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
+          },
+          undefined,
+          undefined,
+          ctx(220, 700),
+        )}
+      </>,
+    )
 
     expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('20%')
     expect(container.querySelector('[aria-label="气力 2/5"]')).not.toBeNull()
   })
 
-  it('uses the enemy binding and follows its entity delta', () => {
-    const { container } = render(BattleEnemyHpBar({
-      overlay: {
-        elementId: 'enemy-hp',
-        component: 'BattleEnemyHpBar',
-        inputs: { bind: 'ent-boss', attr: 'hp', current: 100, max: 100 },
-      },
-      ctx: ctx(300, 630),
-    }))
+  it('updates enemy fill when Host passes a smaller current', () => {
+    const skins = createCoreSkinRegistry()
+    const overlay = {
+      elementId: 'enemy-hp',
+      component: 'BattleEnemyHpBar',
+      inputs: { bind: 'ent-boss', attr: 'hp', current: 700, max: 700 },
+    }
+    const view = render(<>{skins.renderOverlay(overlay, undefined, undefined, ctx(300, 700))}</>)
+    expect((view.container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('100%')
 
-    expect((container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('30%')
+    view.rerender(<>{skins.renderOverlay(overlay, undefined, undefined, ctx(300, 350))}</>)
+    expect((view.container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('50%')
+  })
+
+  it('leaf shrinks when flat current prop decreases', () => {
+    const view = render(<BattleEnemyHpBar current={700} max={700} label="小怪" />)
+    expect((view.container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('100%')
+
+    view.rerender(<BattleEnemyHpBar current={350} max={700} label="小怪" />)
+    expect((view.container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('50%')
+  })
+
+  it('player leaf renders from flat props without ctx', () => {
+    const { container } = render(<BattlePlayerHpBar current={20} max={100} qi={2} qiMax={5} />)
+    expect((container.querySelector('.ks-hud-hp-fill') as HTMLElement).style.width).toBe('20%')
+    expect(container.querySelector('[aria-label="气力 2/5"]')).not.toBeNull()
   })
 })

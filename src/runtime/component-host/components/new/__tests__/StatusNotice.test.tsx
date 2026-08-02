@@ -1,5 +1,7 @@
+// @vitest-environment happy-dom
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createCoreSkinRegistry } from '../../index'
 import { StatusNotice, StatusNoticeManifest } from '../StatusNotice'
 
 afterEach(cleanup)
@@ -16,13 +18,25 @@ describe('StatusNotice', () => {
     expect(StatusNoticeManifest.events).toEqual([])
   })
 
-  it('concatenates result text using the configured duration', () => {
+  it('Host resolves numeric parameter; leaf concatenates with duration', () => {
+    const skins = createCoreSkinRegistry()
     render(
-      <StatusNotice
-        overlay={{ elementId: 'notice', component: 'StatusNotice', inputs: { fixedText: '攻击 ', parameter: 12, color: '#ffd54a', durationMs: 2400 } }}
-      />,
+      <>
+        {skins.renderOverlay(
+          {
+            elementId: 'notice',
+            component: 'StatusNotice',
+            inputs: { fixedText: '攻击 ', parameter: 12, color: '#ffd54a', durationMs: 2400 },
+          },
+        )}
+      </>,
     )
     expect(screen.getByText('攻击 +12')).toHaveStyle({ color: '#ffd54a' })
     expect(screen.getByText('攻击 +12').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
+  })
+
+  it('leaf renders already-resolved flat props', () => {
+    render(<StatusNotice fixedText="攻击 " parameter="+12" color="#ffd54a" durationMs={2400} />)
+    expect(screen.getByText('攻击 +12')).toBeTruthy()
   })
 })

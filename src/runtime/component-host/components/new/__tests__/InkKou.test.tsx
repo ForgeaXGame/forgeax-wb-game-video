@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InkKou, InkKouManifest } from '../InkKou'
@@ -7,9 +8,7 @@ afterEach(cleanup)
 describe('InkKou', () => {
   it('starts its exit animation immediately after emitting the knock event', () => {
     const emit = vi.fn()
-    const { container } = render(
-      <InkKou emit={emit} overlay={{ elementId: 'kou', component: 'InkKou', inputs: {} }} />,
-    )
+    const { container } = render(<InkKou emit={emit} />)
 
     fireEvent.click(screen.getByRole('button', { name: '叩' }))
 
@@ -19,9 +18,7 @@ describe('InkKou', () => {
 
   it('shows and listens for its configured keyboard key', () => {
     const emit = vi.fn()
-    render(
-      <InkKou emit={emit} overlay={{ elementId: 'kou', component: 'InkKou', inputs: { triggerKey: 'q' } }} />,
-    )
+    render(<InkKou emit={emit} triggerKey="q" />)
 
     fireEvent.keyDown(window, { key: 'Q' })
 
