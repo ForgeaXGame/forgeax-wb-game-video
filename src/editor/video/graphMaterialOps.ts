@@ -34,6 +34,7 @@ import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/component-host/components/Choice'
 import type { FloatTextParams } from '../../runtime/component-host/components/FloatText'
 import type { QteCue } from '../../runtime/component-host/components/Qte'
+import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
 import { componentHandles, getComponent } from '../../runtime/registry/component-registry'
 import {
   componentTypeLabel,
@@ -42,6 +43,7 @@ import {
   hasOptionEventsInput,
   isPositionable,
 } from '../shell/editors'
+import { decodeEffectOperation, encodeEffectOperation } from '../shell/valueExprPick'
 import { INTERACTION_SKINS } from '../../runtime/component-host/components'
 import { FILTER_PRESETS, FX_PRESETS } from '../../runtime/fx/video-fx'
 import { initState } from '../../runtime/engine/engine-init'
@@ -750,19 +752,18 @@ export function parseDamageFromContent(content: string): number {
 function settleEffectId(floatId: string): string {
   return `${floatId}-settle`
 }
-function hpEffect(
+export function createDamageHpEffect(
   entities: Record<string, Entity> | undefined,
   target: 'boss' | 'player',
   amount: NumOrExpr,
   floatId: string,
 ): GraphEffect {
+  const encoded = encodeEffectOperation('sub', amount)
   return {
     kind: 'attr',
     entityId: firstEntityId(entities, target),
     attr: 'hp',
-    op: 'add',
-    // 常量沿用旧语义（数值取绝对值后自动按扣血取负）；选取式公式的正负号完全由用户在条款里选（−=扣血/+=回血）。
-    value: typeof amount === 'number' ? -Math.abs(amount) : amount,
+    ...encoded,
     id: settleEffectId(floatId),
   }
 }
@@ -780,18 +781,24 @@ export function settleElementFor(scenario: GameScenario, node: GameNode | undefi
     r.do.some((a) => a.kind === 'effect' && a.effects.some((e) => e.id === eid)),
   )
 }
-function settleHpEffect(settle: Reaction | undefined): { value?: NumOrExpr; entityId?: string } | undefined {
+function settleHpEffect(
+  settle: Reaction | undefined,
+): Extract<GraphEffect, { kind: 'attr' }> | undefined {
   for (const a of settle?.do ?? []) {
     if (a.kind !== 'effect') continue
     const hp = a.effects.find((e) => e.kind === 'attr' && e.attr === 'hp')
-    if (hp) return hp as { value?: NumOrExpr; entityId?: string }
+    if (hp?.kind === 'attr') return hp
   }
   return undefined
 }
 /** 结算 reaction 的绝对伤害（公式态时取不到常量，返回 0）。 */
 export function settleDamage(settle: Reaction | undefined): number {
   const hp = settleHpEffect(settle)
-  return hp && typeof hp.value === 'number' ? Math.abs(hp.value) : 0
+  if (!hp) return 0
+  const operation = decodeEffectOperation(hp.op, hp.value)
+  return operation.op === 'sub' && typeof operation.value === 'number'
+    ? Math.abs(operation.value)
+    : 0
 }
 /** 结算 reaction 里 hp effect 的原始值（常量或 `{expr,pick}`），供检视器公式编辑器回填。 */
 export function settleValue(settle: Reaction | undefined): NumOrExpr | undefined {
@@ -828,7 +835,31 @@ function floatPreviewParams(
   el: OverlayChild,
   inputs: FloatTextParams,
 ): FloatTextParams {
-  if (inputs.expr != null && inputs.expr.trim() !== '') return inputs
+  const raw = inputs as FloatTextParams & {
+    fixedText?: unknown
+    parameter?: unknown
+    expr?: unknown
+  }
+  if (el.component === 'DamageFloatText' || el.component === 'GainFloatText') {
+    const fixedText = typeof raw.fixedText === 'string' ? raw.fixedText : ''
+    if (Object.prototype.hasOwnProperty.call(raw, 'parameter')) {
+      if (typeof raw.parameter === 'string') {
+        return { ...inputs, text: `${fixedText}${raw.parameter}`, expr: undefined }
+      }
+      if (
+        typeof raw.parameter === 'number'
+        || (
+          raw.parameter
+          && typeof raw.parameter === 'object'
+          && typeof (raw.parameter as { expr?: unknown }).expr === 'string'
+        )
+      ) {
+        return { ...inputs, text: `${fixedText}{v}`, expr: raw.parameter as never }
+      }
+      return { ...inputs, text: fixedText, expr: undefined }
+    }
+  }
+  if (raw.expr != null && (typeof raw.expr !== 'string' || raw.expr.trim() !== '')) return inputs
   const first = overlayEffects(scenario, node, el.id).find((e) => e.kind === 'attr' || e.kind === 'var')
   const v = first && (first.kind === 'attr' || first.kind === 'var') ? first.value : undefined
   if (v === undefined) return inputs
@@ -1010,7 +1041,13 @@ function componentLabelOf(el: OverlayChild, kind: MaterialKind): string {
   const id = el.component
   const params = paramsOf(el)
   if (kind === 'subtitle') return str(params.text) || '字幕'
-  if (kind === 'overlay') return (str(params.text) ?? '').trim() || '飘字'
+  if (kind === 'overlay') {
+    const fixedText = str(params.fixedText) ?? ''
+    const parameter = typeof params.parameter === 'string' || typeof params.parameter === 'number'
+      ? String(params.parameter)
+      : ''
+    return `${fixedText}${parameter}`.trim() || (str(params.text) ?? '').trim() || '飘字'
+  }
   if (kind === 'option') return componentTypeLabel(id) || '选项'
   if (kind === 'filter') return filterLabel(params.filter)
   if (kind === 'fx') return fxLabel(params.fx)
@@ -1092,12 +1129,18 @@ export function resetMaterialOverrideGraph(scenario: GameScenario, node: GameNod
  * 按 `appearAt - min(appearAt)` 归一，见 InkKouLayer），绝对值不决定它出现在视频何处。
  *
  * `window` 缺失时才回落 `timedStart`（trigger）→ maxMs——仅兜底未落 window 的瞬态 spawn。
+ * 自计时飘字例外：它的结束由 `inputs.durationMs` 决定；新挂载通常只有起点，若仍回落 maxMs，
+ * 固定宽度时间轴条会被误判为占满整段视频，导致无法水平移动。
  * 滤镜/特效无位置语义，返回 null（不参与挂载条跨度）。
  */
 function childVisibleSpan(el: OverlayChild, maxMs: number): { start: number; end: number } | null {
   if (el.component === 'filter' || el.component === 'fx') return null
   const start = el.window?.startMs ?? timedStart(el)
-  const end = el.window?.endMs ?? maxMs
+  const end = el.window?.endMs ?? (
+    isSelfTimedFloatText(el.component)
+      ? Math.min(maxMs, start + resolveNumericFloatDurationMs(paramsOf(el).durationMs))
+      : maxMs
+  )
   return { start, end }
 }
 
@@ -1836,12 +1879,12 @@ export function addMaterialGraph(
       trigger: { when: 'enter' },
       window: { startMs, endMs },
       layout: layoutForNewChild(undefined, at ? at.zIndex : 1),
-      inputs: { text: '-100' },
+      inputs: { fixedText: '', parameter: '-100' },
     }
     const s1 = addOverlayChild(scenario, node.id, float)
     const s1Node = findNode(s1.graph, node.id) ?? node
     // 结算副作用挂节点 reaction（默认对 boss 扣 100，与飘字同相位出现）。
-    const s2 = upsertSettleEffects(s1, s1Node, id, floatSettleWhen(float), [hpEffect(entities, 'boss', 100, id)])
+    const s2 = upsertSettleEffects(s1, s1Node, id, floatSettleWhen(float), [createDamageHpEffect(entities, 'boss', 100, id)])
     return { scenario: s2, selectKey: `overlay:${id}` }
   }
   if (template === 'filter' || template === 'fx') {
@@ -2069,11 +2112,10 @@ export function patchSelectedLayoutGraph(
 
 /**
  * 飘字（floatText 展示 + 联动结算 reaction）的 inputs 编辑。键：
- *   - content  → inputs.text（显示文案，含 {v} 用数值替换）
+ *   - content  → inputs.fixedText（显示文案；`{v}` 位置由 parameter 替换）
  *   - effects  → 结算 reaction 的完整效果列表（`EffectsEditor` 直接产出；空数组＝纯展示，删结算）
- *   - 其余（expr/style/x/y…）→ 直接并入 inputs（undefined 删键）；expr 是 NumOrExpr（`number | {expr,pick}`）
- * expr 缺省时 {v} 取 effects 第一条的值（预览侧对齐，见 `activePreviewOverlaysFromNode`）；
- * 写了 expr 则显示与效果解耦。
+ *   - expr → inputs.parameter；其余（style/x/y…）直接并入 inputs。
+ * parameter 缺省时预览回落 effects 第一条的值；显式配置后显示与效果解耦。
  */
 export function patchOverlayGraph(
   scenario: GameScenario,
@@ -2091,13 +2133,25 @@ export function patchOverlayGraph(
     if (key === 'content') {
       const content = String(value)
       const cur = findElement(s, node, floatId)
-      s = patchOverlayChild(s, node.id, floatId, { inputs: { ...cur?.inputs, text: content } })
+      if (!cur) continue
+      const { text: _text, ...currentInputs } = cur.inputs ?? {}
+      const hasParameterSlot = content.includes('{v}')
+      s = patchOverlayChild(s, node.id, floatId, {
+        inputs: {
+          ...currentInputs,
+          fixedText: content.replace('{v}', ''),
+          ...(hasParameterSlot ? {} : { parameter: '' }),
+        },
+      })
     } else if (key === 'effects') {
       const list = Array.isArray(value) ? (value as GraphEffect[]) : []
       s = upsertSettleEffects(s, curNode(), floatId, floatSettleWhen(float), list)
     } else {
       const cur = findElement(s, node, floatId)
-      if (cur) s = patchOverlayChild(s, node.id, floatId, { inputs: mergeParams(cur, { [key]: value }) })
+      if (cur) {
+        const inputKey = key === 'expr' ? 'parameter' : key
+        s = patchOverlayChild(s, node.id, floatId, { inputs: mergeParams(cur, { [inputKey]: value }) })
+      }
     }
   }
   return s

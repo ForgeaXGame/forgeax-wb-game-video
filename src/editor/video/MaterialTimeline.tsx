@@ -322,7 +322,8 @@ export function MaterialTimeline({
     }
     const rect = e.currentTarget.getBoundingClientRect()
     if (rect.width <= 0) return
-    if (!activeList.some((m) => m.key === drag.key)) return
+    const activeItem = activeList.find((m) => m.key === drag.key)
+    if (!activeItem) return
     const deltaMs = ((e.clientX - drag.pointerX) / rect.width) * maxMs
     const nextLayer = drag.mode === 'move' ? layerFromPointerY(e.clientY, rect, trackCount - 1) : drag.zIndex
     // 吸附：默认 0.01s（10ms）；Alt=0.1s 粗粒度。
@@ -334,8 +335,19 @@ export function MaterialTimeline({
     }
     const span = drag.endMs - drag.startMs
     if (drag.mode === 'move') {
-      const start = clampMs(snapMs(drag.startMs + deltaMs, grid), 0, Math.max(0, maxMs - span))
-      dispatchPatch(drag.key, { startMs: start, endMs: start + span, zIndex: nextLayer })
+      // 固定宽度条表达触发时刻，不表达占用跨度。即使旧数据的 endMs 落在视频末尾，
+      // 也必须允许拖动起点；实际动画结束由组件时长决定并在写回层夹到视频范围内。
+      const fixedWidth = activeItem.fixedWidthPx != null
+      const start = clampMs(
+        snapMs(drag.startMs + deltaMs, grid),
+        0,
+        fixedWidth ? maxMs : Math.max(0, maxMs - span),
+      )
+      dispatchPatch(drag.key, {
+        startMs: start,
+        endMs: fixedWidth ? Math.min(maxMs, start + span) : start + span,
+        zIndex: nextLayer,
+      })
     } else if (drag.mode === 'start') {
       dispatchPatch(drag.key, { startMs: snapMs(drag.startMs + deltaMs, grid), endMs: drag.endMs })
     } else {

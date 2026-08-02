@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { GraphEffect } from '../../../runtime/schema/graph-schema'
-import { EffectsEditor } from '../editors'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { GraphCondition, GraphEffect } from '../../../runtime/schema/graph-schema'
+import { ConditionEditor, EffectsEditor } from '../editors'
 
 afterEach(cleanup)
 
@@ -23,7 +23,12 @@ describe('EffectsEditor numeric operations', () => {
         <EffectsEditor
           value={effects}
           entities={{
-            hero: { id: 'hero', name: '主角', attrs: { hp: 100 } },
+            hero: {
+              id: 'hero',
+              name: '主角',
+              attrs: { hp: 100 },
+              attrMeta: { hp: { label: '生命值' } },
+            },
           }}
           onChange={setEffects}
         />
@@ -39,11 +44,14 @@ describe('EffectsEditor numeric operations', () => {
 
     fireEvent.change(screen.getByLabelText('数值'), { target: { value: '4' } })
     expect(latest[0]).toMatchObject({ op: 'mul', value: { expr: '1/(4)' } })
+    expect(screen.getByText('属性 · 主角 的 生命值 除以 4')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '−' }))
     expect(screen.getByRole('button', { name: '−' }).classList.contains('is-on')).toBe(true)
     expect(screen.getByLabelText('数值')).toHaveValue('4')
     expect(latest[0]).toMatchObject({ op: 'add', value: { expr: '-(4)' } })
+    expect(screen.getByText('属性 · 主角 的 生命值 减少 4')).toBeTruthy()
+    expect(screen.queryByText(/add|-\(4\)/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '+' }))
     expect(screen.getByRole('button', { name: '+' }).classList.contains('is-on')).toBe(true)
@@ -73,14 +81,76 @@ describe('EffectsEditor numeric operations', () => {
 
     render(<Harness />)
     const source = screen.getByRole('combobox', { name: '数值来源' })
-    const manual = within(source).getByRole('option', { name: '手动设置值' }) as HTMLOptionElement
-    fireEvent.change(source, { target: { value: manual.value } })
+    fireEvent.click(source)
+    fireEvent.click(screen.getByRole('menuitem', { name: '常量' }))
     fireEvent.click(screen.getByRole('button', { name: '−' }))
 
     expect(source).toHaveValue('const')
-    expect(screen.queryByRole('option', { name: '当前内容（保持原值）' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '当前内容（保持原值）' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '数值' })).toHaveValue('0')
     fireEvent.change(screen.getByRole('textbox', { name: '数值' }), { target: { value: '50' } })
     expect(latest[0]).toMatchObject({ op: 'add', value: { expr: '-(50)' } })
+  })
+})
+
+describe('ConditionEditor score compatibility', () => {
+  it('does not offer score for new conditions', () => {
+    function Harness(): JSX.Element {
+      const [condition, setCondition] = useState<GraphCondition | undefined>()
+      return <ConditionEditor value={condition} nodeIds={[]} onChange={setCondition} />
+    }
+
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: '+ 条件（AND）' }))
+
+    const type = screen.getByRole('combobox', { name: '条件字段类型' })
+    expect(type.querySelector('option[value="score"]')).toBeNull()
+    expect(type.textContent).not.toContain('分数')
+  })
+
+  it('keeps an existing score condition editable for backward compatibility', () => {
+    render(
+      <ConditionEditor
+        value={{ all: [{ type: 'score', op: 'gte', value: 10 }] }}
+        nodeIds={[]}
+        onChange={() => undefined}
+      />,
+    )
+
+    const type = screen.getByRole('combobox', { name: '条件字段类型' })
+    expect(type).toHaveValue('score')
+    expect(type.querySelector('option[value="score"]')).not.toBeNull()
+  })
+})
+
+describe('item authoring', () => {
+  it('uses one item catalog for give/take effects and owned-item conditions', () => {
+    const effectChange = vi.fn()
+    const conditionChange = vi.fn()
+    const { container } = render(
+      <>
+        <EffectsEditor
+          value={[{ kind: 'item', itemId: 'lotus-key', op: 'give', count: 1 }]}
+          pickers={{ itemIds: ['lotus-key', 'tea'] }}
+          onChange={effectChange}
+        />
+        <ConditionEditor
+          value={{ all: [{ type: 'hasItem', itemId: 'lotus-key', count: 1 }] }}
+          nodeIds={[]}
+          pickers={{ itemIds: ['lotus-key', 'tea'] }}
+          onChange={conditionChange}
+        />
+      </>,
+    )
+
+    const itemInputs = screen.getAllByRole('combobox', { name: '道具' })
+    expect(itemInputs).toHaveLength(2)
+    for (const input of itemInputs) {
+      expect(within(input).getByRole('option', { name: 'lotus-key' })).toBeTruthy()
+      expect(within(input).getByRole('option', { name: 'tea' })).toBeTruthy()
+    }
+    expect(container.textContent).toContain('给予（增加持有数量）')
+    expect(container.textContent).toContain('取走（减少且不低于 0）')
+    expect(container.textContent).toContain('拥有数量至少')
   })
 })

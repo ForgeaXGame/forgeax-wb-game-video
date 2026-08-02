@@ -187,6 +187,16 @@ describe('valueExprPick', () => {
       },
     })
     expect(decodeEffectOperation(encoded.op, encoded.value)).toEqual({ op: 'div', value: formulaValue })
+
+    const damage = encodeEffectOperation('sub', formulaValue as unknown as NumOrExpr)
+    expect(damage).toEqual({
+      op: 'add',
+      value: {
+        expr: '-(var.qi)',
+        pick: formulaValue.pick,
+      },
+    })
+    expect(decodeEffectOperation(damage.op, damage.value)).toEqual({ op: 'sub', value: formulaValue })
   })
 
   it('emptyPickTerm seeds from catalog', () => {

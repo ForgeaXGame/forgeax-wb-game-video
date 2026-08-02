@@ -5,6 +5,7 @@ import {
   ComponentFormFields,
   summarizeComponentInputs,
   type EntityAttributeCreateHandler,
+  type EntityCreateHandler,
 } from './component-form-fields'
 
 export function ComponentInputsDisclosure({
@@ -14,6 +15,7 @@ export function ComponentInputsDisclosure({
   pickers,
   onChange,
   onCreateEntityAttribute,
+  onCreateEntity,
 }: {
   childId: string
   componentId: string
@@ -21,6 +23,7 @@ export function ComponentInputsDisclosure({
   pickers?: EditorPickerCtx
   onChange: (next: Record<string, unknown>) => void
   onCreateEntityAttribute?: EntityAttributeCreateHandler
+  onCreateEntity?: EntityCreateHandler
 }): JSX.Element {
   const componentName = getComponentManifest(componentId)?.label ?? componentId
   const summary = summarizeComponentInputs(values)
@@ -65,6 +68,7 @@ export function ComponentInputsDisclosure({
           excludeKeys={['x', 'y']}
           density="compact"
           onCreateEntityAttribute={onCreateEntityAttribute}
+          onCreateEntity={onCreateEntity}
         />
       </div>
     </details>

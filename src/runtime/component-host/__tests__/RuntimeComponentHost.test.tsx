@@ -10,8 +10,6 @@ afterEach(cleanup)
 const manifest: ComponentManifest = {
   id: 'BattleEnemyHpBar',
   inputs: [
-    { key: 'bind', valueType: 'string', component: 'entity' },
-    { key: 'attr', valueType: 'string', component: 'attr' },
     { key: 'current', valueType: 'number', component: 'numberExpr' },
     { key: 'max', valueType: 'number', component: 'numberExpr' },
   ],
@@ -24,7 +22,6 @@ function Leaf(props: Record<string, unknown>): JSX.Element {
       data-testid="leaf"
       data-current={String(props.current)}
       data-max={String(props.max)}
-      data-bind={String(props.bind)}
     />
   )
 }
@@ -49,7 +46,7 @@ function hud(hp: number): SkinCtx {
 }
 
 describe('RuntimeComponentHost', () => {
-  it('passes flat concrete props to the leaf (no bind/attr)', () => {
+  it('passes flat concrete props to the leaf', () => {
     const registration: OverlayRendererRegistration = {
       component: Leaf,
       manifest,
@@ -61,8 +58,6 @@ describe('RuntimeComponentHost', () => {
           elementId: 'boss-hp',
           component: 'BattleEnemyHpBar',
           inputs: {
-            bind: 'ent-boss',
-            attr: 'hp',
             current: { expr: 'entity.ent-boss.attr.hp' },
             max: 700,
           },
@@ -72,10 +67,9 @@ describe('RuntimeComponentHost', () => {
     )
     expect(view.getByTestId('leaf')).toHaveAttribute('data-current', '350')
     expect(view.getByTestId('leaf')).toHaveAttribute('data-max', '700')
-    expect(view.getByTestId('leaf')).toHaveAttribute('data-bind', 'undefined')
   })
 
-  it('recomputes flat current when hud changes (literal + bind)', () => {
+  it('recomputes formula values when hud changes', () => {
     const registration: OverlayRendererRegistration = {
       component: Leaf,
       manifest,
@@ -83,7 +77,7 @@ describe('RuntimeComponentHost', () => {
     const overlay = {
       elementId: 'boss-hp',
       component: 'BattleEnemyHpBar',
-      inputs: { bind: 'ent-boss', attr: 'hp', current: 700, max: 700 },
+      inputs: { current: { expr: 'entity.ent-boss.attr.hp' }, max: 700 },
     }
     const view = render(
       <RuntimeComponentHost registration={registration} overlay={overlay} ctx={hud(700)} />,

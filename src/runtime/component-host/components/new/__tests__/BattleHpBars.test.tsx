@@ -17,14 +17,12 @@ function ctx(playerHp: number, bossHp: number): SkinCtx {
           maxHp: 300,
           attrs: { hp: playerHp },
           attrMax: { hp: 300 },
-          initialAttrs: { hp: 300 },
         },
         'ent-boss': {
           hp: bossHp,
           maxHp: 700,
           attrs: { hp: bossHp },
           attrMax: { hp: 700 },
-          initialAttrs: { hp: 700 },
         },
       },
       vars: { qi: 2 },
@@ -35,7 +33,7 @@ function ctx(playerHp: number, bossHp: number): SkinCtx {
 }
 
 describe('ink health bars via RuntimeComponentHost', () => {
-  it('Host projects nodia-style bind + literal current onto flat leaf props', () => {
+  it('Host resolves formulas into flat player props', () => {
     const skins = createCoreSkinRegistry()
     const { container } = render(
       <>
@@ -43,11 +41,15 @@ describe('ink health bars via RuntimeComponentHost', () => {
           {
             elementId: 'player-hp',
             component: 'BattlePlayerHpBar',
-            inputs: { bind: 'ent-player', attr: 'hp', current: 100, max: 100 },
+            inputs: {
+              current: { expr: 'entity.ent-player.attr.hp' },
+              max: 300,
+              qi: { expr: 'var.qi' },
+            },
           },
           undefined,
           undefined,
-          ctx(220, 700),
+          ctx(60, 700),
         )}
       </>,
     )
@@ -56,12 +58,12 @@ describe('ink health bars via RuntimeComponentHost', () => {
     expect(container.querySelector('[aria-label="气力 2/5"]')).not.toBeNull()
   })
 
-  it('updates enemy fill when Host passes a smaller current', () => {
+  it('updates enemy fill when the formula context changes', () => {
     const skins = createCoreSkinRegistry()
     const overlay = {
       elementId: 'enemy-hp',
       component: 'BattleEnemyHpBar',
-      inputs: { bind: 'ent-boss', attr: 'hp', current: 700, max: 700 },
+      inputs: { current: { expr: 'entity.ent-boss.attr.hp' }, max: 700 },
     }
     const view = render(<>{skins.renderOverlay(overlay, undefined, undefined, ctx(300, 700))}</>)
     expect((view.container.querySelector('.ks-hud-boss-fill') as HTMLElement).style.width).toBe('100%')

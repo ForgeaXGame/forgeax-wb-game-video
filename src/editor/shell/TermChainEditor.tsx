@@ -33,6 +33,7 @@ export function LooseNumberInput({
   className,
   style,
   title,
+  placeholder,
   'aria-label': ariaLabel,
 }: {
   value: number
@@ -42,6 +43,7 @@ export function LooseNumberInput({
   className?: string
   style?: CSSProperties
   title?: string
+  placeholder?: string
   'aria-label'?: string
 }): JSX.Element {
   const [draft, setDraft] = useState<string | null>(null)
@@ -55,6 +57,7 @@ export function LooseNumberInput({
       value={shown}
       style={style}
       title={title}
+      placeholder={placeholder}
       onFocus={() => setDraft(String(value))}
       onBlur={() => {
         const raw = (draft ?? '').trim()

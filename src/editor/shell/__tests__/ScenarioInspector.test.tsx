@@ -42,4 +42,17 @@ describe('ScenarioInspector rules editing', () => {
       entities: { hero: { id: 'hero', attrs: { hp: 0 } } },
     })
   })
+
+  it('does not expose range constraint controls', () => {
+    renderInspector({
+      variables: {
+        qi: { id: 'qi', name: '气力', initial: 8, min: 0, max: 10 },
+      },
+    }, 'variables')
+
+    expect(screen.queryByText('范围约束')).toBeNull()
+    expect(screen.queryByText('未配置')).toBeNull()
+    expect(screen.queryByLabelText('qi min')).toBeNull()
+    expect(screen.queryByLabelText('qi max')).toBeNull()
+  })
 })

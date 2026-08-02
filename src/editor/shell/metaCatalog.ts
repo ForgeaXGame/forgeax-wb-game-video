@@ -13,6 +13,33 @@ export interface EntityAttributeCreateRequest {
   meta?: AttrMeta
 }
 
+export interface EntityCreateRequest {
+  entityId: string
+  name: string
+  kind?: string
+}
+
+export function ensureEntity(
+  entities: Record<string, Entity> | undefined,
+  request: EntityCreateRequest,
+): Record<string, Entity> {
+  const current = entities ?? {}
+  const existing = Object.entries(current).find(([key, entity]) =>
+    key === request.entityId || entity.id === request.entityId)
+  if (existing) return current
+
+  return {
+    ...current,
+    [request.entityId]: {
+      id: request.entityId,
+      name: request.name,
+      ...(request.kind ? { kind: request.kind } : {}),
+      attrs: {},
+      attrMeta: {},
+    },
+  }
+}
+
 export function ensureEntityAttribute(
   entities: Record<string, Entity> | undefined,
   request: EntityAttributeCreateRequest,
