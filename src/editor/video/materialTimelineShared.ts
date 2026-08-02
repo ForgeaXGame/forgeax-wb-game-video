@@ -14,6 +14,9 @@
  */
 export type MaterialKind = 'video' | 'subtitle' | 'overlay' | 'qte' | 'option' | 'filter' | 'fx' | 'component' | 'mount'
 
+/** 自计时飘字在时间轴上的固定展示宽度；只表达触发时刻，不表达组件内部动画时长。 */
+export const FLOAT_TEXT_TIMELINE_WIDTH_PX = 120
+
 /** 时间轴上的一段材料（由 scene 派生，见 CatalogTabs.collectMaterials）。 */
 export interface MaterialItem {
   key: string
@@ -23,6 +26,8 @@ export interface MaterialItem {
   startMs: number
   endMs: number
   zIndex: number
+  /** 固定像素宽度的触发型条目；存在时不可从时间轴拉伸，动画时长由组件内部配置控制。 */
+  fixedWidthPx?: number
   /** 落盘 OverlayChild.component（含皮肤 alias）；检视器 / 添加通用组件用。 */
   componentId?: string
   /** 段内的一个「判定点」标记（当前仅 QTE 用：= cue.targetAt 计分锚点）；缺省无标记。 */
