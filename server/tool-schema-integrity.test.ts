@@ -9,7 +9,7 @@ const schemaRoot = resolve(import.meta.dirname, '..', 'schemas')
 const expectedSha256: Record<string, string> = {
   'generate-keyframe.args.json': '63ba55790b8cf865c4363e8e595471de7e8ec0f40803c492ecd9621ae7337081',
   'generate-keyframe.returns.json': '99ae71e4c4ec06b0b6c938f27ddf0feaf3e9773586cf07597598cc9b825e9aac',
-  'generate-node-video.args.json': 'cfca9cbe3a13d79beb1db7ab74062c91dd1ae92410d6dde868ce5c5c68fe151e',
+  'generate-node-video.args.json': '79a54eb3798474ebd3c2a694fee3dc2cf892e2d5de2682f4f20eb81c8307cc85',
   'generate-node-video.returns.json': 'a806a64ed821c94125411fa02854698f01c93b9a2616ec392b734ce1259defd6',
   'generate-shot-script.args.json': '122db800d4ef10b2394dd0c1bcd17406f5eac0e4617cbc2c27ccc6377ab4c177',
   'generate-shot-script.returns.json': 'f85b6287a5a082f211606a0a888ea1faa528323246f821c11cfeda59fb89361b',

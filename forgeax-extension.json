@@ -111,8 +111,8 @@
         "returns": "./schemas/generate-node-video.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "第3步(超长版)·为一节点生成成片，durationSeconds > 15s 时自动按 15s 拆段，第2段起前置 V-PROMPT-15 延长块 + 首帧续接。必传 character/scene 参考图。返回 assets[]（按段序，单段时长度为1）。",
-          "en": "Step 3 (long-form): generate a node's video; when durationSeconds > 15s it auto-splits into 15s segments, each 2nd+ segment prepends the V-PROMPT-15 extend header + first-frame seam. REQUIRES character/scene refs. Returns assets[] in segment order (length 1 when short)."
+          "zh": "第3步(超长版)·为一节点生成成片，durationSeconds > 15s 时自动拆段；每段完成后由服务端提取真实尾帧并作为下一段 first_frame，第2段起同时前置 V-PROMPT-15。抽帧失败会明确终止，不做 prompt-only 假续接。必传 character/scene 参考图，服务端 PATH 需有 ffmpeg。返回 assets[]（按段序，单段时长度为1）。",
+          "en": "Step 3 (long-form): auto-split videos longer than 15s. After each segment, the server extracts its real tail frame and binds it as the next segment's first_frame; segment 2+ also prepends V-PROMPT-15. Tail extraction fails loudly instead of producing a prompt-only continuation. REQUIRES character/scene refs and ffmpeg on the server PATH. Returns assets[] in order."
         }
       },
       {

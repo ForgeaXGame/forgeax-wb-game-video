@@ -55,6 +55,11 @@ import-character-refs + import-scene-refs
   → 把返回的 asset.id 绑定到节点 media.ref
 ```
 
+`generate-node-video` 超过 15 秒时逐段串行：上一段成片落盘后，服务端用 `ffmpeg`
+提取真实尾帧并登记为 `shot_image`，再把该图作为下一段 `first_frame`。Prompt 中的
+`@图片N` 与实际尾帧输入使用同一槽位；抽帧失败会终止生成，不会退化成只有续接文案。
+运行该工具的服务端 `PATH` 必须包含可执行的 `ffmpeg`。
+
 素材写入 `.forgeax/games/<slug>/assets/`。蓝图写入 `.forgeax/games/<slug>/blueprint.json`，首次保存补 `.forgeax/games/<slug>/project.json`。
 
 本扩展不替代纯叙事影片、BGM、低模 3D 或 ECS 游戏工具；它专注于视频承载的玩法交互。

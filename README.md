@@ -27,6 +27,10 @@ bun run lint
 bun run build
 ```
 
+生成超过 15 秒的多段连续视频还要求服务端 `PATH` 中存在 `ffmpeg`。管线会从每段
+已落盘成片提取真实尾帧，作为下一段的 `first_frame`；缺少 `ffmpeg` 或抽帧失败时会
+明确终止，不会仅添加续接 Prompt 后继续生成。
+
 `@forgeax/extension-platform` 的 peer 与开发依赖都精确固定为 `0.0.2`。后端显式适配两种宿主上下文：
 
 - Arrival：`gameId` + `cwd`（当前游戏根）+ `extensionDir`。

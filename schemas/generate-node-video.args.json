@@ -15,7 +15,7 @@
     "styleKeywords": { "type": "array", "items": { "type": "string" } },
     "characterRefIds": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "REQUIRED: >=1 character_ref registry id." },
     "sceneRefIds": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "REQUIRED: >=1 scene_ref registry id." },
-    "continuityFirstFrameId": { "type": "string", "description": "Keyframe registry id used as first_frame seam for extend segments (no mp4 tail extraction in headless)." },
+    "continuityFirstFrameId": { "type": "string", "description": "Optional first segment seam. After each generated segment, the server extracts that segment's real tail frame and uses it as the next segment's first_frame." },
     "label": { "type": "string" },
     "generateAudio": { "type": "boolean" },
     "transitionHint": { "type": "string", "description": "Seam description for extend segments; a default is used when omitted." },

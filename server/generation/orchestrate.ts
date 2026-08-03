@@ -7,8 +7,8 @@
  *
  * 硬约束（对齐 FMV）：
  *   · **必传参考图闸**（FMV 4.5）：generateVideo 缺 character_ref 或 scene_ref 直接抛可读错。
- *   · **尾帧续接**（FMV 坑6/§6.6）：下一镜可传上一镜关键帧作 first_frame 维持连续性
- *     （headless 无 ffmpeg 逐帧抽取，故以"关键帧续接"实现，seam 见 continuityFirstFrameId）。
+ *   · **尾帧续接**（FMV 坑6/§6.6）：多段生成时用 ffmpeg 从上一段成片提取真实尾帧，
+ *     登记为 shot_image 并作为下一段 first_frame；抽帧失败则终止，禁止 prompt-only 假续接。
  *   · **并发信号量**（FMV concurrency）：createSemaphore 控住网关并发。
  *
  * registry 生命周期：每次生成 upsert placeholder→generating→ready/failed，供 P5 轮询三态。
@@ -56,6 +56,7 @@ import {
   type ExtensionCapabilities,
   type VideoGenerationReference,
 } from './video-generation-gateway'
+import { extractVideoTailFrame, type TailFrameExtractor } from './tail-frame'
 
 /** 编排上下文：素材层根目录（assetsDir 解析结果）+ 网关 env。 */
 export interface OrchestrateCtx extends GatewayCtx {
@@ -70,6 +71,8 @@ export interface OrchestrateCtx extends GatewayCtx {
    * 缺省时保留 standalone/dev 的 legacy gateway-client 路径。
    */
   capabilities?: ExtensionCapabilities
+  /** 测试/宿主可注入；生产默认使用服务端 ffmpeg 提取真实尾帧。 */
+  tailFrameExtractor?: TailFrameExtractor
 }
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -238,7 +241,7 @@ export interface VideoGenInput {
   characterRefIds: string[]
   /** 必传：≥1 场景参考图 registry id（scene_ref）。 */
   sceneRefIds: string[]
-  /** 可选：作 first_frame 的关键帧 registry id（尾帧续接 seam）。 */
+  /** 可选：作 first_frame 的关键帧 registry id；多段生成后会被上一段真实尾帧替换。 */
   continuityFirstFrameId?: string
   label?: string
   generateAudio?: boolean
@@ -381,6 +384,7 @@ export async function generateVideo(
         nodeName: input.nodeName,
         characterRefIds: input.characterRefIds,
         sceneRefIds: input.sceneRefIds,
+        continuityFirstFrameId: input.continuityFirstFrameId,
         extend: input.extend,
         transitionHint: input.transitionHint,
       },
@@ -402,7 +406,12 @@ export async function generateVideo(
           sourceModule: 'wb-game-video',
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds },
+          meta: {
+            characterRefIds: input.characterRefIds,
+            sceneRefIds: input.sceneRefIds,
+            continuityFirstFrameId: input.continuityFirstFrameId,
+            extend: input.extend === true,
+          },
         })
         const { bytes, mime, sourceUrl, taskId } = await genVideoAndWait(
           octx,
@@ -422,7 +431,14 @@ export async function generateVideo(
           bytes: bytes.byteLength,
           durationMs: Math.round(input.durationSeconds * 1000),
           prompt,
-          meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds, taskId, sourceUrl },
+          meta: {
+            characterRefIds: input.characterRefIds,
+            sceneRefIds: input.sceneRefIds,
+            continuityFirstFrameId: input.continuityFirstFrameId,
+            extend: input.extend === true,
+            taskId,
+            sourceUrl,
+          },
         })
         if (!ready) throw new Error('video asset 落盘后丢失')
         return ready
@@ -450,10 +466,57 @@ export function splitDurationIntoSegments(totalSeconds: number): number[] {
   return Array.from({ length: n }, (_, i) => base + (i < remainder ? 1 : 0))
 }
 
+/** 从已落盘的上一段成片提取真实尾帧，并把它登记为下一段可解析的 shot_image。 */
+async function registerVideoTailFrame(
+  octx: OrchestrateCtx,
+  video: MediaAsset,
+  segmentNumber: number,
+): Promise<MediaAsset> {
+  const id = makeAssetId('shot_image')
+  const label = `续接尾帧 · ${video.label ?? video.id}`
+  upsertAsset(octx.dir, {
+    id,
+    kind: 'image',
+    productionType: 'shot_image',
+    status: 'generating',
+    label,
+    sceneNodeId: video.sceneNodeId,
+    sourceModule: 'wb-game-video',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    meta: {
+      keyframeRole: 'continuity_tail_frame',
+      sourceVideoAssetId: video.id,
+      sourceSegmentNumber: segmentNumber,
+    },
+  })
+  try {
+    const videoPath = resolveAssetFilePath(octx.dir, video)
+    if (!videoPath) throw new Error(`上一段成片 ${video.id} 没有可读取的本地文件`)
+    const result = await (octx.tailFrameExtractor ?? extractVideoTailFrame)(videoPath)
+    if (result.bytes.byteLength === 0) throw new Error('尾帧提取结果为空')
+    const file = writeMediaFile(octx.dir, id, extForMime(result.mime), result.bytes)
+    const ready = updateAsset(octx.dir, id, {
+      status: 'ready',
+      file,
+      mime: result.mime,
+      bytes: result.bytes.byteLength,
+    })
+    if (!ready) throw new Error('尾帧素材落盘后丢失')
+    return ready
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    updateAsset(octx.dir, id, { status: 'failed', error: message })
+    throw new Error(`第 ${segmentNumber} 段生成成功，但真实尾帧闭环失败：${message}`, {
+      cause: error,
+    })
+  }
+}
+
 /**
  * 生成一个节点的成片：时长 ≤ 15s 走单段（= generateVideo）；> 15s 自动按 15s 拆段，
- * 逐段顺序生成，第 2 段起前置 VIDEO_EXTEND_HEADER_BLOCK（extend=true）+ 首帧关键帧 seam
- * （continuityFirstFrameId，网关无 mp4 输入槽故以关键帧首帧续接，见本文件头注）。
+ * 逐段顺序生成；每段完成后提取真实尾帧并作为下一段 first_frame，第 2 段起同时
+ * 前置 V-PROMPT-15。Prompt 中引用的槽位与实际上传的尾帧严格一致。
  * 返回按顺序的分段资产数组（长度 = 段数）；上层把它们拼进 node.data.media（或做多 clip 时间线）。
  */
 export async function generateNodeVideo(
@@ -468,20 +531,28 @@ export async function generateNodeVideo(
   }
   const baseLabel = input.label ?? `视频 · ${input.nodeName}`
   const out: MediaAsset[] = []
+  let continuityFirstFrameId = input.continuityFirstFrameId
   for (let i = 0; i < segments.length; i++) {
-    const isExtend = i > 0
+    const isExtend = input.extend === true || i > 0
+    const defaultTransitionHint = i > 0
+      ? `接上一段（第 ${i} 段）尾部，人物、机位、光影、表演节奏无缝延续`
+      : undefined
     const seg: VideoGenInput = {
       ...input,
       durationSeconds: segments[i]!,
       label: `${baseLabel} · 段${i + 1}/${segments.length}`,
       extend: isExtend,
       transitionHint: isExtend
-        ? input.transitionHint ?? `接上一段（第 ${i} 段）尾部，人物、机位、光影、表演节奏无缝延续`
+        ? input.transitionHint ?? defaultTransitionHint
         : undefined,
-      // 续接 seam：extend 段用调用方给的关键帧作 first_frame（无 mp4 抽帧能力）；首段沿用原 seam。
-      continuityFirstFrameId: input.continuityFirstFrameId,
+      continuityFirstFrameId,
     }
-    out.push(await generateVideo(octx, seg, pollOpts))
+    const video = await generateVideo(octx, seg, pollOpts)
+    out.push(video)
+    if (i < segments.length - 1) {
+      const tailFrame = await registerVideoTailFrame(octx, video, i + 1)
+      continuityFirstFrameId = tailFrame.id
+    }
   }
   return out
 }

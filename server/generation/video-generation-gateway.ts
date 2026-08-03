@@ -32,6 +32,7 @@ export interface VideoGenerationRequest {
     readonly nodeName: string
     readonly characterRefIds: readonly string[]
     readonly sceneRefIds: readonly string[]
+    readonly continuityFirstFrameId?: string
     readonly extend?: boolean
     readonly transitionHint?: string
   }
