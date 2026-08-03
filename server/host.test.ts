@@ -119,6 +119,7 @@ function createContext() {
       models,
       videoGeneration: unavailableVideoGeneration,
       services: unavailableServices,
+      capabilities: { async invoke() { throw new Error('Capabilities are unavailable in this test context') } },
     } satisfies WorkbenchExtensionContext,
     media,
     models,

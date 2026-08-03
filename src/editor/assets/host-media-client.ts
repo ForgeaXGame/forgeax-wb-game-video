@@ -1,36 +1,20 @@
-/**
- * Browser boundary for the Host media API introduced by workbench-host 2878f36.
- *
- * The registry-pinned 0.2.0 package does not yet export the browser media
- * client. Keep this structural adapter isolated until that release is
- * available; it intentionally speaks only the documented Host HTTP contract
- * and never falls back to extension-owned media routes.
- */
-export type HostMediaType = 'audio' | 'image' | 'video'
+/** Binds the published Host browser media client to the nonce-bound handshake. */
+import {
+  createWorkbenchBrowserClient,
+  type WorkbenchBrowserMediaClient,
+} from '@forgeax/workbench-host/browser'
+import type {
+  MediaAsset as HostMediaAsset,
+  MediaType as HostMediaType,
+  MediaUpload as HostMediaUpload,
+} from '@forgeax/workbench-host/contracts'
 
-export interface HostMediaAsset {
-  id: string
-  filename?: string
-  type: HostMediaType
-  url: string
-  contentType: string
-  sizeBytes?: number
-  metadata?: Record<string, unknown>
-}
-
-export interface HostMediaUpload {
-  id: string
-  filename: string
-  contentType: string
-  sizeBytes: number
-  offset: number
-  state: 'uploading' | 'completed'
-  metadata?: Record<string, unknown>
-}
+export type { HostMediaAsset, HostMediaType, HostMediaUpload }
 
 export interface HostMediaClient {
   list(type?: HostMediaType, signal?: AbortSignal): Promise<HostMediaAsset[]>
   contentUrl(assetId: string): Promise<string>
+  /** Retained only for the existing XHR transfer UI; the Host owns the session. */
   uploadUrl(uploadId: string): Promise<string>
   update(assetId: string, input: { filename?: string, metadata?: Record<string, unknown> }, signal?: AbortSignal): Promise<HostMediaAsset>
   delete(assetId: string, signal?: AbortSignal): Promise<boolean>
@@ -52,86 +36,58 @@ export interface CreateHostMediaClientOptions {
 
 const syntheticOrigin = 'https://workbench.invalid'
 
-function endpointForMedia(packageEndpoint: string): string {
+function browserBase(packageEndpoint: string): string {
   const relative = !/^[a-z][a-z\d+.-]*:/iu.test(packageEndpoint)
   const url = new URL(packageEndpoint, syntheticOrigin)
-  if (!url.pathname.endsWith('/package')) {
-    throw new TypeError('Handshake game package endpoint does not end in /package')
+  if (!/\/games\/[^/]+\/package$/.test(url.pathname)) {
+    throw new TypeError('Handshake game package endpoint has an invalid Host API shape')
   }
-  url.pathname = `${url.pathname.slice(0, -'/package'.length)}/media`
+  url.pathname = url.pathname.replace(/\/games\/[^/]+\/package$/, '')
   url.search = ''
   url.hash = ''
-  return relative ? `${url.pathname}${url.search}` : url.toString()
+  return relative ? url.pathname : url.toString()
 }
 
-function assetEndpoint(base: string, assetId: string): string {
-  return `${base}/${encodeURIComponent(assetId)}`
-}
-
-async function json<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error(`Workbench media request failed with ${response.status}`)
-  return response.json() as Promise<T>
-}
-
-/**
- * Creates a media client from the nonce-bound handshake. `0.2.0` has no
- * `media` browser export, so this is the only compatibility seam to remove
- * when the Host release containing 2878f36 is published and pinned.
- */
+/** Delegates media operations to `createWorkbenchBrowserClient().media`. */
 export function createHostMediaClient(options: CreateHostMediaClientOptions): HostMediaClient {
-  const fetcher = options.fetch ?? globalThis.fetch
-  if (typeof fetcher !== 'function') throw new TypeError('A fetch implementation is required')
-  const endpoint = async (): Promise<string> => {
+  const fetch = options.fetch
+  const resolved = async (): Promise<{ media: WorkbenchBrowserMediaClient, mediaBase: string }> => {
     const context = await options.ready()
     if (!context.gameId) throw new TypeError('Handshake gameId is required')
-    return endpointForMedia(context.endpoints.gamePackage)
+    const baseUrl = browserBase(context.endpoints.gamePackage)
+    return {
+      media: createWorkbenchBrowserClient({ baseUrl, gameId: context.gameId, ...(fetch ? { fetch } : {}) }).media,
+      mediaBase: `${baseUrl}/games/${encodeURIComponent(context.gameId)}/media`,
+    }
   }
 
   return Object.freeze({
-    async list(type?: HostMediaType, signal?: AbortSignal) {
-      const base = await endpoint()
-      const query = type ? `?${new URLSearchParams({ type }).toString()}` : ''
-      return json<HostMediaAsset[]>(await fetcher(`${base}${query}`, { signal }))
+    async list(type: HostMediaType | undefined, signal?: AbortSignal) {
+      return (await resolved()).media.list(type ? { type } : {}, signal)
     },
     async contentUrl(assetId: string) {
-      return assetEndpoint(await endpoint(), assetId)
+      return `${(await resolved()).mediaBase}/${encodeURIComponent(assetId)}`
     },
     async uploadUrl(uploadId: string) {
-      return `${await endpoint()}/uploads/${encodeURIComponent(uploadId)}`
+      return `${(await resolved()).mediaBase}/uploads/${encodeURIComponent(uploadId)}`
     },
     async update(assetId: string, input: { filename?: string, metadata?: Record<string, unknown> }, signal?: AbortSignal) {
-      return json<HostMediaAsset>(await fetcher(assetEndpoint(await endpoint(), assetId), {
-        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input), signal,
-      }))
+      return (await resolved()).media.update(assetId, input, signal)
     },
     async delete(assetId: string, signal?: AbortSignal) {
-      const response = await fetcher(assetEndpoint(await endpoint(), assetId), { method: 'DELETE', signal })
-      if (response.status === 404) return false
-      if (!response.ok) throw new Error(`Workbench media request failed with ${response.status}`)
-      return true
+      return (await resolved()).media.delete(assetId, signal)
     },
     async createUpload(input: { filename: string, contentType: string, sizeBytes: number, metadata?: Record<string, unknown>, idempotencyKey?: string }, signal?: AbortSignal) {
-      return json<HostMediaUpload>(await fetcher(`${await endpoint()}/uploads`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input), signal,
-      }))
+      return (await resolved()).media.createUpload(input, signal)
     },
     async getUpload(uploadId: string, signal?: AbortSignal) {
-      const response = await fetcher(`${await endpoint()}/uploads/${encodeURIComponent(uploadId)}`, { signal })
-      if (response.status === 404) return null
-      return json<HostMediaUpload>(response)
+      return (await resolved()).media.getUpload(uploadId, signal)
     },
     async writeUploadChunk(uploadId: string, offset: number, bytes: Uint8Array, signal?: AbortSignal) {
-      return json<HostMediaUpload>(await fetcher(`${await endpoint()}/uploads/${encodeURIComponent(uploadId)}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/octet-stream', 'upload-offset': String(offset) },
-        body: bytes as unknown as BodyInit,
-        signal,
-      }))
+      return (await resolved()).media.writeUploadChunk(uploadId, offset, bytes, signal)
     },
     async completeUpload(uploadId: string, signal?: AbortSignal) {
-      return json<HostMediaAsset>(await fetcher(`${await endpoint()}/uploads/${encodeURIComponent(uploadId)}/complete`, {
-        method: 'POST', signal,
-      }))
+      return (await resolved()).media.completeUpload(uploadId, signal)
     },
   })
 }

@@ -60,11 +60,11 @@
   },
   "peerDependencies": {
     "@forgeax/extension-platform": "0.0.2",
-    "@forgeax/workbench-host": "0.2.0"
+    "@forgeax/workbench-host": "0.2.2"
   },
   "devDependencies": {
     "@forgeax/extension-platform": "0.0.2",
-    "@forgeax/workbench-host": "0.2.0",
+    "@forgeax/workbench-host": "0.2.2",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.10.0",

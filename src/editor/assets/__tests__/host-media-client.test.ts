@@ -60,14 +60,14 @@ describe('createHostMediaClient', () => {
     })
 
     await client.list('image')
-    await client.update('asset/1', { filename: 'hero.png' })
-    await client.delete('asset/1')
-    expect(await client.contentUrl('asset/1')).toBe('/__workbench__/v1/games/game-1/media/asset%2F1')
+    await client.update('asset-1', { filename: 'hero.png' })
+    await client.delete('asset-1')
+    expect(await client.contentUrl('asset-1')).toBe('/__workbench__/v1/games/game-1/media/asset-1')
 
     expect(fetch.mock.calls.map(([url, init]) => [String(url), init?.method])).toEqual([
       ['/__workbench__/v1/games/game-1/media?type=image', undefined],
-      ['/__workbench__/v1/games/game-1/media/asset%2F1', 'PATCH'],
-      ['/__workbench__/v1/games/game-1/media/asset%2F1', 'DELETE'],
+      ['/__workbench__/v1/games/game-1/media/asset-1', 'PATCH'],
+      ['/__workbench__/v1/games/game-1/media/asset-1', 'DELETE'],
     ])
   })
 })

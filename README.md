@@ -38,22 +38,20 @@ handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提
 `bun test` 是无 DOM 的 server/release-contract gate；浏览器、React 与 Vite 覆盖使用
 完整的 `bun run test`（Vitest）。
 
-`@forgeax/workbench-host@0.2.0` 通过 registry 安装。开发和 CI 使用
+`@forgeax/workbench-host@0.2.2` 通过 registry 安装。开发和 CI 使用
 `bun install --frozen-lockfile`，以 `bun.lock` 固定已发布的 Host 契约；不需要也不应配置本地
 tarball、路径 override 或 vendored provenance。
 
 ### Media contract release dependency
 
-浏览器素材库已只使用 Host 的 `/games/:gameId/media` 可恢复上传和元数据 API；扩展不再提供
-`assets/wb-game-video-media.json` 或 `media/resources` 生命周期。当前 registry 的 `0.2.0`
-尚未发布该 API。待 `@forgeax/workbench-host@0.2.1`（含 `MutableMediaCapability`、
-`ResumableMediaCapability` 和 browser media client）发布后，必须在一次可复现的更新中同时
-更新 peer/dev dependency 与 `bun.lock`；在此之前不得伪造该版本或修改 lockfile 指向本地代码。
+浏览器素材库使用 Host 的 `/games/:gameId/media` 可恢复上传和元数据 API；扩展不再提供
+`assets/wb-game-video-media.json` 或 `media/resources` 生命周期。该契约由
+`@forgeax/workbench-host@0.2.2` 发布并以 registry tarball + integrity pin 固定。
 
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
-`@forgeax/workbench-host@0.2.0`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
+`@forgeax/workbench-host@0.2.2`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
 提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
 创建唯一的 `WorkbenchExtensionContext`：
 
@@ -112,7 +110,7 @@ location 或默认 slug 推导这些值。包读写和扩展请求分别使用 `
 
 发布必须按以下顺序：
 
-1. 先发布已经过评审的 `@forgeax/workbench-host@0.2.0`；
+1. 先发布已经过评审的 `@forgeax/workbench-host@0.2.2`；
 2. 从 registry 验证其类型与能力契约，并更新 `bun.lock`；
 3. 完成 frozen install、测试、构建和 pack 检查后，最后发布
    `@forgeax/wb-game-video@0.2.1`。

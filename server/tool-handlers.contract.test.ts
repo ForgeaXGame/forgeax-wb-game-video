@@ -62,6 +62,7 @@ function createContext(gameId = 'contract-game') {
     },
     videoGeneration: unavailableVideoGeneration,
     services: unavailableServices,
+    capabilities: { async invoke() { throw new Error('Capabilities are unavailable in this test context') } },
   }
   return { context, entries }
 }
