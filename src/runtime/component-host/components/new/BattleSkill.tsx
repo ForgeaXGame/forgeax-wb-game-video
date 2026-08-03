@@ -17,11 +17,14 @@ export const BattleSkillManifest: ComponentManifest = {
     { id: 'ult', label: '灭世' },
   ],
   inputs: [
-    { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
-    { key: 'lightCost', label: '轻攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 0 },
-    { key: 'heavyCost', label: '重攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 2 },
-    { key: 'meditCost', label: '冥想气力消耗', valueType: 'number', component: 'numberExpr', default: 0 },
-    { key: 'ultCost', label: '灭世气力消耗', valueType: 'number', component: 'numberExpr', default: 5 },
+    { key: 'lightResource', label: '轻攻击当前资源', valueType: 'number', component: 'numberExpr' },
+    { key: 'lightCost', label: '轻攻击资源消耗', valueType: 'number', component: 'numberExpr', default: 0 },
+    { key: 'heavyResource', label: '重攻击当前资源', valueType: 'number', component: 'numberExpr' },
+    { key: 'heavyCost', label: '重攻击资源消耗', valueType: 'number', component: 'numberExpr', default: 2 },
+    { key: 'meditResource', label: '冥想当前资源', valueType: 'number', component: 'numberExpr' },
+    { key: 'meditCost', label: '冥想资源消耗', valueType: 'number', component: 'numberExpr', default: 0 },
+    { key: 'ultResource', label: '灭世当前资源', valueType: 'number', component: 'numberExpr' },
+    { key: 'ultCost', label: '灭世资源消耗', valueType: 'number', component: 'numberExpr', default: 5 },
     { key: 'lightKey', label: '轻攻击按键', valueType: 'string', default: 'X' },
     { key: 'heavyKey', label: '重攻击按键', valueType: 'string', default: 'A' },
     { key: 'meditKey', label: '冥想按键', valueType: 'string', default: 'S' },
@@ -30,10 +33,13 @@ export const BattleSkillManifest: ComponentManifest = {
 }
 
 export interface BattleSkillProps {
-  qi?: number
+  lightResource?: number
   lightCost?: number
+  heavyResource?: number
   heavyCost?: number
+  meditResource?: number
   meditCost?: number
+  ultResource?: number
   ultCost?: number
   lightKey?: string
   heavyKey?: string
@@ -44,10 +50,13 @@ export interface BattleSkillProps {
 }
 
 export function BattleSkill({
-  qi = 0,
+  lightResource = 0,
   lightCost = 0,
+  heavyResource = 0,
   heavyCost = 2,
+  meditResource = 0,
   meditCost = 0,
+  ultResource = 0,
   ultCost = 5,
   lightKey: lightKeyInput = 'X',
   heavyKey: heavyKeyInput = 'A',
@@ -66,10 +75,10 @@ export function BattleSkill({
   const heavyKey = resolveKey(heavyKeyInput, 'A')
   const meditKey = resolveKey(meditKeyInput, 'S')
   const ultKey = resolveKey(ultKeyInput, 'B')
-  const lightLocked = qi < lightCost
-  const heavyLocked = qi < heavyCost
-  const meditLocked = qi < meditCost
-  const ultLocked = qi < ultCost
+  const lightLocked = lightResource < lightCost
+  const heavyLocked = heavyResource < heavyCost
+  const meditLocked = meditResource < meditCost
+  const ultLocked = ultResource < ultCost
 
   function pick(id: string, locked = false): void {
     if (preview || locked || pickedRef.current) return
