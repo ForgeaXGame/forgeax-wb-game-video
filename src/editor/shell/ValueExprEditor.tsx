@@ -346,7 +346,7 @@ export function ValueExprEditor({
       })
       return {
         key: `configure:${actionKey}`,
-        defaultOpen: true,
+        presentation: 'create' as const,
         label: `配置「${draft.entityName.trim() || createEntityTemplate.name}」实体`,
         children: [
           {
@@ -467,7 +467,7 @@ export function ValueExprEditor({
             })
             return [{
               key: `configure:${actionKey}`,
-              defaultOpen: true,
+              presentation: 'create' as const,
               label: `配置「${draft.attrLabel.trim() || request.attrId}」属性`,
               children: [
                 {
@@ -565,7 +565,7 @@ export function ValueExprEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
             children: [
               {
@@ -660,7 +660,7 @@ export function ValueExprEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || formulaId || defaultId}」公式`,
             children: [
               {

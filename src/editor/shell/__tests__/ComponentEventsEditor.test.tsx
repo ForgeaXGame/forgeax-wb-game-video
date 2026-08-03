@@ -192,6 +192,7 @@ describe('NodeInspector overlay events', () => {
     chooseCascade(
       screen.getByRole('combobox', { name: '文本内容' }),
       '变量',
+      '配置「var0」变量',
     )
     expect(screen.getByRole('menuitem', { name: '确认创建并选择' })).toBeDisabled()
     fireEvent.change(screen.getByRole('textbox', { name: '新变量初始值' }), {
@@ -1058,6 +1059,8 @@ describe('ComponentFormFields defaults', () => {
     expect(maxSelect).toHaveTextContent('小怪的最大血量')
 
     fireEvent.click(currentSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '小怪' }))
     expect(screen.getByRole('menuitem', { name: '当前血量' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: 'attack' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: 'defense' })).toBeNull()
@@ -1076,6 +1079,8 @@ describe('ComponentFormFields defaults', () => {
     })
 
     fireEvent.click(maxSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '小怪' }))
     expect(screen.getByRole('menuitem', { name: '最大血量' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: '当前血量' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '防御上限' })).toBeNull()

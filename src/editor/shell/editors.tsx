@@ -551,7 +551,7 @@ export function EntitySelect({
     }
     pickerOptions.push({
       key: `configure:${actionKey}`,
-      defaultOpen: true,
+      presentation: 'create',
       label: `配置「${draft.name.trim() || entityId || defaultId}」实体`,
       children: [
         {
@@ -709,7 +709,7 @@ export function AttrSelect({
     }
     pickerOptions.push({
       key: `configure:${actionKey}`,
-      defaultOpen: true,
+      presentation: 'create',
       label: `配置「${draft.label.trim() || attrId || defaultAttrId}」属性`,
       children: [
         {

@@ -273,7 +273,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.label.trim() || attrId || defaultAttrId}」属性`,
             children: [
               {
@@ -326,7 +326,7 @@ export function TextValueEditor({
     createEntity && createEntityTemplate && entityDraft
       ? {
         key: `configure:${createEntityKey}`,
-        defaultOpen: true,
+        presentation: 'create' as const,
         label: `配置「${createEntityTemplate.name}」实体`,
         children: [
           {
@@ -404,7 +404,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
             children: [
               {
@@ -494,7 +494,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || formulaId || defaultId}」公式`,
             children: [
               {

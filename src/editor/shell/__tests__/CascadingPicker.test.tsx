@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CascadingPicker, type CascadingPickerOption } from '../CascadingPicker'
 
@@ -32,6 +32,38 @@ const options: CascadingPickerOption[] = [
   },
 ]
 
+const createOptions: CascadingPickerOption[] = [
+  {
+    key: 'entity',
+    label: '实体',
+    children: [
+      { key: 'hero', label: '主角', value: 'hero' },
+      {
+        key: 'create-entity',
+        label: '配置「实体」实体',
+        presentation: 'create',
+        children: [
+          {
+            key: 'entity-id',
+            label: '实体 ID',
+            editor: {
+              value: 'entity',
+              ariaLabel: '新实体 ID',
+              onChange: vi.fn(),
+            },
+          },
+          {
+            key: 'confirm',
+            label: '确认创建并选择',
+            value: 'confirm',
+            presentation: 'confirm',
+          },
+        ],
+      },
+    ],
+  },
+]
+
 function renderPicker(): void {
   render(
     <CascadingPicker
@@ -45,42 +77,77 @@ function renderPicker(): void {
 }
 
 describe('CascadingPicker interaction stability', () => {
-  it('keeps the popup width and position stable while switching branches', () => {
+  it('sizes the popup from visible columns and scrolls each column independently', () => {
     renderPicker()
     fireEvent.click(screen.getByRole('combobox', { name: '绑定属性' }))
 
     const panel = screen.getByRole('menu', { name: '绑定属性选项' })
-    const initialStyle = {
-      width: panel.style.width,
-      left: panel.style.left,
-      top: panel.style.top,
+    expect(panel.style.width).toBe('')
+    expect(panel.style.height).toBe('')
+    expect(window.getComputedStyle(panel).overflowX).toBe('auto')
+    expect(window.getComputedStyle(panel).overflowY).toBe('hidden')
+    expect(panel.querySelector('.gc-cascade-content')).toBeTruthy()
+    const initialColumns = within(panel).getAllByRole('group')
+    expect(initialColumns).toHaveLength(3)
+    for (const column of initialColumns) {
+      expect(window.getComputedStyle(column).overflowY).toBe('auto')
     }
 
     fireEvent.click(screen.getByRole('menuitem', { name: '变量' }))
-    expect(panel.style.width).toBe(initialStyle.width)
-    expect(panel.style.left).toBe(initialStyle.left)
-    expect(panel.style.top).toBe(initialStyle.top)
+    expect(within(panel).getAllByRole('group')).toHaveLength(2)
+    expect(panel.style.width).toBe('')
+    expect(panel.style.height).toBe('')
   })
 
-  it('delays hover branch changes and cancels an accidental diagonal crossing', () => {
-    vi.useFakeTimers()
+  it('keeps hover passive and only changes branches on click', () => {
     renderPicker()
     fireEvent.click(screen.getByRole('combobox', { name: '绑定属性' }))
 
     fireEvent.pointerEnter(screen.getByRole('menuitem', { name: '敌方' }))
     expect(screen.getAllByRole('menuitem', { name: '当前生命' })).toHaveLength(1)
-
-    act(() => vi.advanceTimersByTime(119))
-    expect(screen.getAllByRole('menuitem', { name: '当前生命' })).toHaveLength(1)
-
-    fireEvent.pointerEnter(screen.getByRole('menuitem', { name: '当前生命' }))
-    act(() => vi.advanceTimersByTime(1))
-    expect(screen.getAllByRole('menuitem', { name: '当前生命' })).toHaveLength(1)
     expect(screen.getByRole('menuitem', { name: '敌方' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('menuitem', { name: '主角' })).toHaveAttribute('aria-expanded', 'true')
 
-    fireEvent.pointerEnter(screen.getByRole('menuitem', { name: '敌方' }))
-    act(() => vi.advanceTimersByTime(120))
+    fireEvent.click(screen.getByRole('menuitem', { name: '敌方' }))
     expect(screen.getAllByRole('menuitem', { name: '当前生命' })).toHaveLength(1)
     expect(screen.getByRole('menuitem', { name: '敌方' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('menuitem', { name: '主角' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('shows creation as an explicit plus action before opening the narrower editor column', () => {
+    vi.useFakeTimers()
+    render(
+      <CascadingPicker
+        ariaLabel="实体"
+        value="hero"
+        displayValue="主角"
+        options={createOptions}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('combobox', { name: '实体' }))
+
+    const create = screen.getByRole('menuitem', { name: '配置「实体」实体' })
+    expect(create).toHaveClass('is-create')
+    expect(create).toHaveAttribute('title', '配置「实体」实体')
+    expect(create).toHaveTextContent('+')
+    expect(create).not.toHaveTextContent('配置「实体」实体')
+    expect(window.getComputedStyle(create).minHeight).toBe('26px')
+    expect(window.getComputedStyle(create).marginLeft).toBe('8px')
+
+    fireEvent.pointerEnter(create)
+    expect(screen.queryByRole('textbox', { name: '新实体 ID' })).toBeNull()
+
+    fireEvent.click(create)
+
+    const editor = screen.getByRole('textbox', { name: '新实体 ID' })
+    expect(editor.closest('.gc-cascade-column')).toHaveClass('has-editor')
+    expect(window.getComputedStyle(editor.closest('.gc-cascade-column')!).width).toBe('240px')
+
+    const confirm = screen.getByRole('menuitem', { name: '确认创建并选择' })
+    expect(confirm).toHaveClass('is-confirm')
+    expect(confirm.children).toHaveLength(1)
+    expect(window.getComputedStyle(confirm).justifyContent).toBe('center')
   })
 })
