@@ -1,158 +1,33 @@
 /**
- * Browser-safe Kino video resource API client.
- * Standalone DTOs — must not import server/private packages.
+ * Compatibility-shaped UI model backed exclusively by the Host media client.
+ *
+ * The file name and DTO aliases remain while screens migrate, but no Kino
+ * endpoint, extension route, or wb-game-video-owned media lifecycle remains.
  */
 import { getWorkbenchHost } from '../../lib/workbench-host'
+import {
+  createHostMediaClient,
+  type HostMediaAsset,
+  type HostMediaClient,
+  type HostMediaType,
+} from './host-media-client'
 
-export interface KinoEnvelope<T> {
-  code: number
-  message: string
-  data: T
-  error_code?: string
-}
-
-export type KinoMediaType = 'image' | 'video' | 'audio' | 'font'
-
-export type KinoResourceType =
-  | 'KEYFRAME'
-  | 'SHOT_VIDEO'
-  | 'CHARACTER_IMAGE'
-  | 'CHARACTER_TURNAROUND'
-  | 'LOCATION_IMAGE'
-  | 'PROJECT_COVER_IMAGE'
-  | 'UPLOAD'
-  | 'OTHER'
-  | 'GENERATION'
-
-export interface KinoResourceSourceMeta {
-  task_id?: string
-  prompt?: string
-  model?: string
-  seed?: number
-  width?: number
-  height?: number
-  duration_ms?: number
-  mime_type?: string
-  extra?: Record<string, unknown>
-}
-
-export interface KinoResourceDTO {
-  resource_id: string
-  game_id: string
-  media_type: KinoMediaType
-  name?: string
-  type?: KinoResourceType
-  url: string
-  remark?: string
-  source?: string
-  source_meta?: KinoResourceSourceMeta
-  created_at: number
-  updated_at: number
-}
-
-export interface KinoResourcePage {
-  items: KinoResourceDTO[]
-  total: number
-  page: number
-  page_size: number
-}
-
-export interface DirectUploadInstruction {
-  method: 'PUT'
-  url: string
-  headers: Record<string, string>
-  expires_at: string
-  chunk_size: number
-  chunk_count: number
-}
-
-export interface DirectUploadResponse {
-  upload: DirectUploadInstruction
-  object_url: string
-  upload_token: string
-}
-
-export interface PrepareUploadInput {
-  game_id: string
-  file_name?: string
-  mime_type:
-    | 'video/mp4'
-    | 'image/png'
-    | 'image/jpeg'
-    | 'image/webp'
-    | 'image/gif'
-    | 'audio/mpeg'
-    | 'audio/wav'
-    | 'audio/ogg'
-    | 'audio/mp4'
-    | 'audio/aac'
-    | 'font/woff2'
-    | 'font/woff'
-    | 'font/ttf'
-    | 'font/otf'
-  bytes: number
-  extension?: string
-  client_resource_id?: string
-  replace_existing?: boolean
-}
-
-export interface CreateKinoResourceInput {
-  game_id: string
-  media_type: KinoMediaType
-  url: string
-  name?: string
-  type?: KinoResourceType
-  remark?: string
-  source?: string
-  source_meta?: KinoResourceSourceMeta
-}
-
-export interface UpdateKinoResourceInput {
-  resource_id: string
-  game_id: string
-  media_type: KinoMediaType
-  url: string
-  name?: string
-  type?: KinoResourceType
-  remark?: string
-  source?: string
-  source_meta?: KinoResourceSourceMeta
-}
-
-export interface BatchCreateKinoResourcesInput {
-  game_id: string
-  resources: Array<Omit<CreateKinoResourceInput, 'game_id'>>
-}
-
-export interface BatchCreateKinoResourcesResult {
-  created_count: number
-  skipped_count: number
-  items: KinoResourceDTO[]
-}
-
-export interface ListKinoResourcesQuery {
-  game_id: string
-  media_type?: KinoMediaType
-  page?: number
-  page_size?: number
-  type?: KinoResourceType
-}
-
-export class KinoClientError extends Error {
-  readonly status: number
-  readonly errorCode?: string
-
-  constructor(message: string, status: number, errorCode?: string) {
-    super(message)
-    this.name = 'KinoClientError'
-    this.status = status
-    this.errorCode = errorCode
-  }
-}
-
-export interface KinoRequestOptions {
-  signal?: AbortSignal
-}
+export type KinoMediaType = HostMediaType | 'font'
+export type KinoResourceType = 'KEYFRAME' | 'SHOT_VIDEO' | 'CHARACTER_IMAGE' | 'CHARACTER_TURNAROUND' | 'LOCATION_IMAGE' | 'PROJECT_COVER_IMAGE' | 'UPLOAD' | 'OTHER' | 'GENERATION'
+export interface KinoResourceSourceMeta { task_id?: string; prompt?: string; model?: string; seed?: number; width?: number; height?: number; duration_ms?: number; mime_type?: string; extra?: Record<string, unknown> }
+export interface KinoResourceDTO { resource_id: string; game_id: string; media_type: KinoMediaType; name?: string; type?: KinoResourceType; url: string; remark?: string; source?: string; source_meta?: KinoResourceSourceMeta; created_at: number; updated_at: number }
+export interface KinoResourcePage { items: KinoResourceDTO[]; total: number; page: number; page_size: number }
+export interface DirectUploadInstruction { method: 'PUT'; url: string; headers: Record<string, string>; expires_at: string; chunk_size: number; chunk_count: number }
+export interface DirectUploadResponse { upload: DirectUploadInstruction; object_url: string; upload_token: string }
+export interface PrepareUploadInput { game_id: string; file_name?: string; mime_type: string; bytes: number; extension?: string; client_resource_id?: string; replace_existing?: boolean }
+export interface CreateKinoResourceInput { game_id: string; media_type: KinoMediaType; url: string; name?: string; type?: KinoResourceType; remark?: string; source?: string; source_meta?: KinoResourceSourceMeta }
+export interface UpdateKinoResourceInput extends CreateKinoResourceInput { resource_id: string }
+export interface BatchCreateKinoResourcesInput { game_id: string; resources: Array<Omit<CreateKinoResourceInput, 'game_id'>> }
+export interface BatchCreateKinoResourcesResult { created_count: number; skipped_count: number; items: KinoResourceDTO[] }
+export interface ListKinoResourcesQuery { game_id: string; media_type?: KinoMediaType; page?: number; page_size?: number; type?: KinoResourceType }
+export interface KinoRequestOptions { signal?: AbortSignal }
+export class KinoClientError extends Error { constructor(message: string, readonly status: number, readonly errorCode?: string) { super(message); this.name = 'KinoClientError' } }
+export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
 
 export interface KinoVideoClient {
   prepareUpload(input: PrepareUploadInput, options?: KinoRequestOptions): Promise<DirectUploadResponse>
@@ -164,242 +39,61 @@ export interface KinoVideoClient {
   delete(resourceId: string, gameId: string, options?: KinoRequestOptions): Promise<void>
   playbackUrl(resourceId: string, gameId: string): string
 }
+export interface CreateKinoVideoClientOptions { media?: HostMediaClient }
 
-export interface CreateKinoVideoClientOptions {
-  fetch?: typeof fetch
-  baseUrl?: string
-  host?: WorkbenchHostMediaClient
+type UploadReceipt = { readonly gameId: string; readonly replacementId?: string }
+const hostMediaType = (type: KinoMediaType): HostMediaType => {
+  if (type === 'font') throw new KinoClientError('Host media does not support font assets', 400, 'media_type_invalid')
+  return type
 }
-
-const MAX_ERROR_MESSAGE_LENGTH = 512
-
-export interface WorkbenchHostMediaClient {
-  extension: {
-    fetch(path: string, init?: RequestInit): Promise<Response>
-    url(path: string): string
-  }
+function metadata(asset: HostMediaAsset): Record<string, unknown> { return asset.metadata ?? {} }
+function dto(asset: HostMediaAsset, gameId: string): KinoResourceDTO {
+  const value = metadata(asset)
+  return { resource_id: asset.id, game_id: gameId, media_type: asset.type, name: asset.filename, url: asset.url, type: typeof value.type === 'string' ? value.type as KinoResourceType : undefined, remark: typeof value.remark === 'string' ? value.remark : undefined, source: typeof value.source === 'string' ? value.source : undefined, source_meta: value.source_meta && typeof value.source_meta === 'object' ? value.source_meta as KinoResourceSourceMeta : undefined, created_at: typeof value.created_at === 'number' ? value.created_at : 0, updated_at: typeof value.updated_at === 'number' ? value.updated_at : 0 }
 }
+function uploadId(value: string): string { const matched = /^workbench-host-upload:([^/]+)$/.exec(value); if (!matched) throw new KinoClientError('Upload was not prepared by the Host media client', 400, 'upload_invalid'); return matched[1]! }
 
-/** Kino `/resources` 服务端分页协议的单页上限。 */
-export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
-
-function normalizeBaseUrl(raw: string | undefined): string {
-  return (raw ?? '').trim().replace(/\/+$/, '')
-}
-
-function truncateMessage(message: string): string {
-  if (message.length <= MAX_ERROR_MESSAGE_LENGTH) {
-    return message
-  }
-  return message.slice(0, MAX_ERROR_MESSAGE_LENGTH)
-}
-
-function appendQuery(
-  path: string,
-  params: Record<string, string | number | undefined>,
-): string {
-  const parts: string[] = []
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined) {
-      continue
-    }
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-  }
-  const query = parts.join('&')
-  return query.length > 0 ? `${path}?${query}` : path
-}
-
-async function readJsonPayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) {
-    throw new KinoClientError('Upstream returned an empty response', 502, 'upstream_unavailable')
-  }
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    throw new KinoClientError('Upstream returned malformed JSON', 502, 'upstream_unavailable')
-  }
-}
-
-function resolveBusinessStatus(envelope: Partial<KinoEnvelope<unknown>>): number {
-  if (typeof envelope.code === 'number' && envelope.code >= 400 && envelope.code < 600) {
-    return envelope.code
-  }
-  return 502
-}
-
-function parseEnvelope<T>(response: Response, payload: unknown): T {
-  if (response.status === 401) {
-    const envelope = payload as Partial<KinoEnvelope<T>>
-    throw new KinoClientError(
-      truncateMessage(
-        typeof envelope.message === 'string' && envelope.message.length > 0
-          ? envelope.message
-          : 'Unauthorized',
-      ),
-      401,
-      typeof envelope.error_code === 'string' ? envelope.error_code : 'unauthorized',
-    )
-  }
-
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new KinoClientError('Upstream returned malformed JSON', 502, 'upstream_unavailable')
-  }
-
-  const envelope = payload as KinoEnvelope<T>
-  if (typeof envelope.code !== 'number') {
-    throw new KinoClientError('Upstream returned malformed JSON', 502, 'upstream_unavailable')
-  }
-
-  if (!response.ok || envelope.code !== 0) {
-    throw new KinoClientError(
-      truncateMessage(
-        typeof envelope.message === 'string' && envelope.message.length > 0
-          ? envelope.message
-          : response.ok
-            ? 'Upstream business error'
-            : `Upstream HTTP ${response.status}`,
-      ),
-      response.ok ? resolveBusinessStatus(envelope) : response.status >= 400 && response.status < 600
-        ? response.status
-        : resolveBusinessStatus(envelope),
-      typeof envelope.error_code === 'string' ? envelope.error_code : 'upstream_unavailable',
-    )
-  }
-
-  return envelope.data
-}
-
-type RequestImpl = (path: string, init?: RequestInit) => Promise<Response>
-
-async function requestJson<T>(
-  request: RequestImpl,
-  path: string,
-  options?: Pick<RequestInit, 'method' | 'body' | 'signal'>,
-): Promise<T> {
-  let response: Response
-  try {
-    response = await request(path, {
-      ...options,
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-  } catch {
-    throw new KinoClientError('Network request failed', 502, 'network_error')
-  }
-
-  const payload = await readJsonPayload(response)
-  return parseEnvelope<T>(response, payload)
-}
-
-function resourcePath(resourceId: string, suffix = ''): string {
-  return `media/resources/${encodeURIComponent(resourceId)}${suffix}`
-}
-
-function withoutGameId<T extends object>(value: T): Omit<T, 'game_id'> {
-  const { game_id: _gameId, ...rest } = value as T & { game_id?: unknown }
-  return rest as Omit<T, 'game_id'>
-}
-
-function addGameId<T>(value: T, gameId: string): T & { game_id: string } {
-  return { ...value, game_id: gameId }
-}
-
-export function createKinoVideoClient(
-  options: CreateKinoVideoClientOptions = {},
-): KinoVideoClient {
-  const baseUrl = normalizeBaseUrl(options.baseUrl)
-  const host = options.host ?? (!options.fetch ? getWorkbenchHost() : undefined)
-  const request: RequestImpl = options.fetch
-    ? (path, init) => options.fetch!(`${baseUrl}${path}`, init)
-    : (path, init) => host!.extension.fetch(path, init)
-  const url = (path: string): string => options.fetch
-    ? `${baseUrl}${path}`
-    : host!.extension.url(path)
-
+/** Creates a transitional DTO client over the published Host HTTP media contract. */
+export function createKinoVideoClient(options: CreateKinoVideoClientOptions = {}): KinoVideoClient {
+  const media = options.media ?? createHostMediaClient({ ready: async () => getWorkbenchHost().ready() })
+  const uploads = new Map<string, UploadReceipt>()
   return {
-    async prepareUpload(input, options) {
-      return requestJson<DirectUploadResponse>(request, 'media/image-assets/upload', {
-        method: 'POST',
-        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
-        signal: options?.signal,
-      })
+    async prepareUpload(input, request) {
+      const filename = input.file_name?.trim()
+      if (!filename) throw new KinoClientError('Upload filename is required', 400, 'media_input_invalid')
+      const upload = await media.createUpload({ filename, contentType: input.mime_type, sizeBytes: input.bytes, metadata: { created_at: Date.now() } }, request?.signal)
+      uploads.set(upload.id, { gameId: input.game_id, replacementId: input.replace_existing ? input.client_resource_id : undefined })
+      const chunkSize = 512 * 1024
+      return { upload: { method: 'PUT', url: await media.uploadUrl(upload.id), headers: { 'content-type': 'application/octet-stream' }, expires_at: '', chunk_size: chunkSize, chunk_count: Math.ceil(input.bytes / chunkSize) }, object_url: `workbench-host-upload:${upload.id}`, upload_token: upload.id }
     },
-
-    async list(query, options) {
-      const data = await requestJson<KinoResourcePage>(
-        request,
-        appendQuery('media/resources', {
-          media_type: query.media_type ?? 'video',
-          page: query.page,
-          page_size: query.page_size,
-          type: query.type,
-        }),
-        { signal: options?.signal },
-      )
-      return {
-        ...data,
-        items: data.items.map((item) => addGameId(item, query.game_id)),
-      }
+    async list(query, request) {
+      const assets = await media.list(query.media_type ? hostMediaType(query.media_type) : undefined, request?.signal)
+      const mapped = assets.map((asset) => dto(asset, query.game_id)).filter((item) => !query.type || item.type === query.type)
+      const pageSize = Math.min(query.page_size ?? MAX_KINO_RESOURCE_PAGE_SIZE, MAX_KINO_RESOURCE_PAGE_SIZE)
+      const page = query.page ?? 1
+      return { items: mapped.slice((page - 1) * pageSize, page * pageSize), total: mapped.length, page, page_size: pageSize }
     },
-
-    async get(resourceId, gameId, options) {
-      const data = await requestJson<KinoResourceDTO>(request, resourcePath(resourceId), { signal: options?.signal })
-      return addGameId(data, gameId)
+    async get(resourceId, gameId, request) {
+      const item = (await media.list(undefined, request?.signal)).find((asset) => asset.id === resourceId)
+      if (!item) throw new KinoClientError('Media asset was not found', 404, 'media_not_found')
+      return dto(item, gameId)
     },
-
-    async create(input, options) {
-      const data = await requestJson<KinoResourceDTO>(request, 'media/resources', {
-        method: 'POST',
-        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
-        signal: options?.signal,
-      })
-      return addGameId(data, input.game_id)
+    async create(input, request) {
+      const id = uploadId(input.url); const receipt = uploads.get(id)
+      if (!receipt) throw new KinoClientError('Upload session was not found', 404, 'upload_not_found')
+      const asset = await media.completeUpload(id, request?.signal)
+      const renamed = await media.update(asset.id, { filename: input.name ?? asset.filename, metadata: { ...(asset.metadata ?? {}), type: input.type, remark: input.remark, source: input.source, source_meta: input.source_meta, updated_at: Date.now() } }, request?.signal)
+      if (receipt.replacementId) await media.delete(receipt.replacementId, request?.signal)
+      uploads.delete(id)
+      return dto(renamed, input.game_id)
     },
-
-    async batch(input, options) {
-      const data = await requestJson<BatchCreateKinoResourcesResult>(request, 'media/resources/batch', {
-        method: 'POST',
-        body: JSON.stringify({ resources: input.resources }),
-        signal: options?.signal,
-      })
-      return {
-        ...data,
-        items: data.items.map((item) => addGameId(item, input.game_id)),
-      }
+    async batch(input, request) {
+      const seen = new Set<string>(); const items: KinoResourceDTO[] = []
+      for (const item of input.resources) { if (seen.has(item.url)) continue; seen.add(item.url); items.push(await this.create({ ...item, game_id: input.game_id }, request)) }
+      return { created_count: items.length, skipped_count: input.resources.length - items.length, items }
     },
-
-    async update(resourceId, input, options) {
-      const data = await requestJson<KinoResourceDTO>(request, resourcePath(resourceId), {
-        method: 'PUT',
-        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
-        signal: options?.signal,
-      })
-      return addGameId(data, input.game_id)
-    },
-
-    async delete(resourceId, gameId, options) {
-      void gameId
-      let response: Response
-      try {
-        response = await request(resourcePath(resourceId), {
-          method: 'DELETE',
-          credentials: 'include',
-          signal: options?.signal,
-        })
-      } catch {
-        throw new KinoClientError('Network request failed', 502, 'network_error')
-      }
-      if (response.status === 204) return
-      const payload = await readJsonPayload(response)
-      parseEnvelope<null>(response, payload)
-    },
-
-    playbackUrl(resourceId, gameId) {
-      void gameId
-      return url(resourcePath(resourceId, '/content'))
-    },
+    async update(resourceId, input, request) { return dto(await media.update(resourceId, { filename: input.name, metadata: { type: input.type, remark: input.remark, source: input.source, source_meta: input.source_meta, updated_at: Date.now() } }, request?.signal), input.game_id) },
+    async delete(resourceId, _gameId, request) { if (!await media.delete(resourceId, request?.signal)) throw new KinoClientError('Media asset was not found', 404, 'media_not_found') },
+    playbackUrl(resourceId) { const context = getWorkbenchHost().context; if (!context) return ''; const endpoint = context.endpoints.gamePackage.replace(/\/package(?:[?#].*)?$/, '/media'); return `${endpoint}/${encodeURIComponent(resourceId)}` },
   }
 }

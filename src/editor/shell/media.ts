@@ -30,9 +30,7 @@ function kinoClient(): KinoVideoClient {
 /** Stable Kino playback URL for a video resource id. */
 export function kinoVideoContentUrl(resourceId: string, game?: string): string {
   void game
-  return getWorkbenchHost().extension.url(
-    `/media/resources/${encodeURIComponent(resourceId)}/content`,
-  )
+  return kinoClient().playbackUrl(resourceId, game ?? '')
 }
 
 /**

@@ -407,9 +407,6 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
         const start = chunkIndex * chunkSize
         const end = Math.min(file.size, start + chunkSize)
         const chunk = file.slice(start, end)
-        const chunkUrl = new URL(url)
-        chunkUrl.searchParams.set('chunk_index', String(chunkIndex))
-        chunkUrl.searchParams.set('chunk_count', String(chunkCount))
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           let settled = false
@@ -449,8 +446,11 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
           xhr.onerror = () => fail(new VideoUploadError('Upload network error', 'upload_network_error'))
           xhr.onabort = () => fail(new VideoUploadError('Upload aborted', 'upload_aborted'))
           try {
-            xhr.open(instruction.method, chunkUrl.toString(), true)
+            xhr.open(instruction.method, url, true)
             for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value)
+            // Host resumable media writes are byte-offset based; the server owns
+            // recovery/idempotency instead of this extension persisting chunks.
+            xhr.setRequestHeader('upload-offset', String(start))
             xhr.send(chunk)
           } catch (error) {
             fail(new VideoUploadError(error instanceof Error ? error.message : 'Upload failed', 'upload_failed'))

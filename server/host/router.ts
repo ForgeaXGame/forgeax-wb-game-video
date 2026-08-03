@@ -5,11 +5,6 @@ import type {
   WorkbenchExtensionRouterResponse,
 } from '@forgeax/workbench-host/node'
 import { createHostAssetRegistry, getHostStyleAxes } from '../asset-registry'
-import {
-  browserMediaType,
-  createBrowserMediaService,
-  UploadConflictError,
-} from './browser-media'
 import { bundledMediaResponse, type BundledMediaResolver } from './media-routes'
 import {
   createWbGameVideoService,
@@ -237,7 +232,6 @@ export function createWbGameVideoRouter(
   options: { bundledMediaResolver?: BundledMediaResolver } = {},
 ): WorkbenchExtensionRouter {
   const service = createWbGameVideoService(context)
-  const browserMedia = createBrowserMediaService(context)
 
   return {
     async handle(request) {
@@ -247,103 +241,6 @@ export function createWbGameVideoRouter(
         const method = request.method.toUpperCase()
         const path = parts.join('/')
 
-        if (method === 'POST' && path === 'media/image-assets/upload') {
-          exactQuery(request.query, [])
-          return mediaResponse(await browserMedia.prepareUpload(jsonBody(request)))
-        }
-        if (
-          method === 'PUT'
-          && parts.length === 3
-          && parts[0] === 'media'
-          && parts[1] === 'uploads'
-        ) {
-          const query = exactQuery(request.query, ['chunk_index', 'chunk_count'])
-          const chunkIndex = parsePositiveInteger(query.chunk_index, 'chunk_index', true)
-          const chunkCount = parsePositiveInteger(query.chunk_count, 'chunk_count')
-          const result = await browserMedia.putChunk(
-            parts[2]!,
-            chunkIndex,
-            chunkCount,
-            header(request, 'content-type'),
-            request.body,
-          )
-          if (result === 'missing') return notFound()
-          return { status: 204, headers: { 'content-length': '0' }, body: new Uint8Array() }
-        }
-        if (method === 'GET' && path === 'media/resources') {
-          const query = exactQuery(request.query, ['media_type', 'page', 'page_size', 'type'])
-          const type = query.media_type === undefined ? undefined : browserMediaType(query.media_type)
-          const items = await browserMedia.list(type, query.type)
-          const page = query.page === undefined ? 1 : Number(query.page)
-          const pageSize = query.page_size === undefined
-            ? Math.min(100, Math.max(1, items.length))
-            : Number(query.page_size)
-          if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
-            throw new WbServiceInputError('page must be positive and page_size must be between 1 and 100')
-          }
-          const offset = (page - 1) * pageSize
-          return mediaResponse({ items: items.slice(offset, offset + pageSize), total: items.length, page, page_size: pageSize })
-        }
-        if (method === 'POST' && path === 'media/resources') {
-          exactQuery(request.query, [])
-          const requestContentType = header(request, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase()
-          if (requestContentType === 'application/json') {
-            return mediaResponse(await browserMedia.create(jsonBody(request)))
-          }
-          const name = header(request, 'x-workbench-media-name')
-          const type = browserMediaType(header(request, 'x-workbench-media-type'))
-          const contentType = header(request, 'content-type')
-          if (!name || !contentType || request.body.byteLength === 0) {
-            throw new WbServiceInputError('Media upload requires name, type, content type, and body')
-          }
-          return mediaResponse(await browserMedia.directUpload(
-            name,
-            type,
-            contentType,
-            request.body,
-            header(request, 'x-workbench-idempotency-key'),
-          ))
-        }
-        if (method === 'POST' && path === 'media/resources/batch') {
-          exactQuery(request.query, [])
-          return mediaResponse(await browserMedia.batch(jsonBody(request)))
-        }
-        if (parts.length === 3 && parts[0] === 'media' && parts[1] === 'resources') {
-          const id = parts[2]!
-          if (method === 'GET') {
-            exactQuery(request.query, [])
-            const value = await browserMedia.get(id)
-            return value ? mediaResponse(value) : notFound()
-          }
-          if (method === 'PUT') {
-            exactQuery(request.query, [])
-            const value = await browserMedia.update(id, jsonBody(request))
-            return value ? mediaResponse(value) : notFound()
-          }
-          if (method === 'DELETE') {
-            exactQuery(request.query, [])
-            if (!await browserMedia.remove(id)) return notFound()
-            return { status: 204, headers: { 'content-length': '0' }, body: new Uint8Array() }
-          }
-        }
-        if (
-          parts.length === 4
-          && parts[0] === 'media'
-          && parts[1] === 'resources'
-          && parts[3] === 'content'
-          && (method === 'GET' || method === 'HEAD')
-        ) {
-          exactQuery(request.query, [])
-          const body = await browserMedia.content(parts[2]!)
-          return body
-            ? rangedBinaryResponse(
-                body.contentType,
-                body.bytes,
-                header(request, 'range'),
-                method === 'HEAD',
-              )
-            : notFound()
-        }
         if (
           parts.length === 3
           && parts[0] === 'media'
@@ -441,17 +338,6 @@ export function createWbGameVideoRouter(
         }
         return notFound()
       } catch (error) {
-        if (error instanceof UploadConflictError) {
-          return jsonResponse(409, {
-            ok: false,
-            error: {
-              code: 'upload_conflict',
-              target: 'wb-game-video',
-              message: error.message,
-              retryable: false,
-            },
-          })
-        }
         if (error instanceof WbServiceInputError) {
           return jsonResponse(400, {
             ok: false,
