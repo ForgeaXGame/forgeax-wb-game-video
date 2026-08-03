@@ -188,7 +188,8 @@ function patchValue(
   key: string,
   value: unknown,
 ): Record<string, unknown> {
-  if (value === undefined || value === '') {
+  // 空字符串是文字组件作者明确配置的内容；只有 undefined 才表示移除覆盖并回退默认值。
+  if (value === undefined) {
     const { [key]: _drop, ...rest } = values
     return rest
   }
@@ -752,7 +753,7 @@ function renderInput(
             <input
               value={typeof val === 'string' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
-              onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
+              onChange={(e) => onPatch(inp.key, e.target.value)}
               style={{
                 width: compact ? '100%' : undefined,
                 minWidth: 0,
