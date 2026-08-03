@@ -64,6 +64,56 @@ function EditableIdInput({ value, existing, rename, onRename, label }: {
   return <input value={draft} aria-label={label} aria-invalid={Boolean(error)} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); e.currentTarget.blur() } }} />
 }
 
+function ValueSettings({ values, onChange, label }: {
+  values: Pick<AttrMeta, 'min' | 'max' | 'initial'>
+  onChange: (field: 'min' | 'max' | 'initial', value: number | undefined) => void
+  label: string
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const configured = (['min', 'max', 'initial'] as const).filter((field) => values[field] !== undefined)
+  return (
+    <div style={{ gridColumn: '1 / -1', marginTop: 2 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', color: open ? '#d0c7b7' : '#918a7e', fontSize: 11, background: 'none', border: 0, cursor: 'pointer' }}
+      >
+        <span style={{ width: 10, color: '#b6a78d', fontSize: 13 }}>{open ? '⌄' : '›'}</span>
+        <span>高级设置</span>
+        {configured.length === 0 ? <span style={{ opacity: 0.55 }}>未配置</span> : configured.map((field) => (
+          <span key={field} style={{ padding: '1px 5px', borderRadius: 3, background: 'rgba(184,161,117,.14)', color: '#c9b68e' }}>
+            {field === 'min' ? '最小' : field === 'max' ? '最大' : '初始'} {values[field]}
+          </span>
+        ))}
+      </button>
+      {open ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, margin: '3px 0 5px', padding: '8px 10px 10px', background: 'rgba(176,151,105,.08)', border: '1px solid rgba(184,161,117,.2)', borderLeft: '2px solid #9f875d', borderRadius: 4 }}>
+          {(['min', 'max', 'initial'] as const).map((field) => (
+            <label key={field} style={{ display: 'grid', gap: 5, fontSize: 10, color: '#b2aa9c' }}>
+              {field === 'min' ? '最小值' : field === 'max' ? '最大值' : '初始值'}
+              <div style={{ display: 'flex', gap: 3 }}>
+                <OptionalNumberInput value={values[field]} label={`${label} ${field}`} onCommit={(value) => onChange(field, value)} />
+                {values[field] !== undefined ? <button type="button" onClick={() => onChange(field, undefined)} title={`清空${field}`} aria-label={`清空${field}`} style={{ padding: '0 5px', color: '#aab6c7', border: 0, background: 'none' }}>×</button> : null}
+              </div>
+            </label>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function OptionalNumberInput({ value, onCommit, label }: { value?: number; onCommit: (value: number | undefined) => void; label: string }): JSX.Element {
+  const [draft, setDraft] = useState(value == null ? '' : String(value))
+  useEffect(() => setDraft(value == null ? '' : String(value)), [value])
+  return <input type="text" inputMode="decimal" value={draft} aria-label={label} placeholder="未设置" style={{ width: '100%', minWidth: 0, padding: '4px 6px', background: 'rgba(0,0,0,.18)', border: '1px solid rgba(255,255,255,.13)', borderRadius: 4 }} onChange={(e) => setDraft(e.target.value)} onBlur={() => {
+    const raw = draft.trim()
+    const parsed = Number(raw)
+    onCommit(raw && Number.isFinite(parsed) ? parsed : undefined)
+  }} />
+}
+
 /** 自动分配与 Record key 对齐的 id（添加时用）。 */
 function allocId(prefix: string, existing: Record<string, unknown>): string {
   let i = Object.keys(existing).length
@@ -398,6 +448,14 @@ export function ScenarioInspector({
               >
                 ×
               </button>
+              <ValueSettings values={v} label={v.id} onChange={(field, value) => {
+                const next = { ...v }
+                if (value === undefined) delete next[field]
+                else next[field] = value
+                const normalized = normalizeRange(next, field)
+                normalized.initial = clampRuleValue(normalized.initial ?? 0, normalized)
+                setVariables({ ...variables, [key]: normalized })
+              }} />
             </div>
           ))}
         </>
@@ -613,6 +671,23 @@ function EntityRow({
             title="当前/初始数值"
           />
           <button style={del} onClick={() => removeAttr(ak)} title="删除该属性">×</button>
+          <ValueSettings values={attrMeta[ak] ?? {}} label={`${ent.id} 的 ${ak}`} onChange={(field, value) => {
+            const current = { ...attrMeta[ak] }
+            if (value === undefined) delete current[field]
+            else current[field] = value
+            const normalized = normalizeRange(current, field)
+            const nextMeta = { ...attrMeta }
+            const nextAttrs = { ...attrs }
+            if (Object.keys(normalized).length === 0) delete nextMeta[ak]
+            else nextMeta[ak] = normalized
+            nextAttrs[ak] = clampRuleValue(nextAttrs[ak] ?? 0, normalized)
+            onChange({
+              ...ent,
+              id: entKey,
+              attrs: nextAttrs,
+              attrMeta: Object.keys(nextMeta).length ? nextMeta : undefined,
+            })
+          }} />
         </div>
       ))}
       {Object.keys(attrs).length === 0 ? <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>暂无属性</div> : null}
