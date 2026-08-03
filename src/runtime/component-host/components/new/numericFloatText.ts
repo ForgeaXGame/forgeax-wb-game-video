@@ -1,8 +1,8 @@
 import type { NumOrExpr } from '../../../schema/graph-schema'
 import type { SkinCtx } from '../../rendererRegistry'
-import { resolveNumericValue } from '../numericValue'
+import { resolveNumericValue } from '../../inputValue'
 
-export { resolveNumericValue as resolveNumericFloatValue } from '../numericValue'
+export { resolveNumericValue as resolveNumericFloatValue } from '../../inputValue'
 
 export interface NumericFloatTextInputs {
   value?: NumOrExpr | string

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRng } from '../../../engine/rng'
+import { resolveNumericValue, resolveTextValue } from '../../inputValue'
 import type { SkinCtx } from '../../rendererRegistry'
-import { resolveNumericValue, resolveTextValue } from '../numericValue'
 
 const ctx: SkinCtx = {
   hud: {
@@ -20,7 +20,7 @@ const ctx: SkinCtx = {
   },
 }
 
-describe('resolveNumericValue', () => {
+describe('input value resolution', () => {
   it('accepts constants, string expressions, and expression objects', () => {
     expect(resolveNumericValue(12, ctx)).toBe(12)
     expect(resolveNumericValue('entity.hero.attr.attack + var.qi', ctx)).toBe(23)
