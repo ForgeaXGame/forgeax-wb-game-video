@@ -795,7 +795,7 @@ describe('ComponentFormFields defaults', () => {
     unregisterComponent('test-enum-input')
   })
 
-  it('shows declared defaults as placeholders without writing them into values', () => {
+  it('shows declared defaults as placeholders and preserves explicitly empty text', () => {
     registerComponent('test-default-input', {
       inputs: [
         { key: 'text', label: '文本', valueType: 'string', default: '默认文本' },
@@ -822,7 +822,7 @@ describe('ComponentFormFields defaults', () => {
     expect(screen.getByPlaceholderText('3')).toBeTruthy()
 
     fireEvent.change(input, { target: { value: '' } })
-    expect(onChange).toHaveBeenNthCalledWith(1, {})
+    expect(onChange).toHaveBeenNthCalledWith(1, { text: '' })
 
     fireEvent.blur(input)
     expect(onChange).toHaveBeenCalledTimes(1)

@@ -4,8 +4,12 @@
  */
 import type { ComponentManifest } from '../schema/node-config-schema'
 import { resolveBoundHpBarValues } from './components/new/boundHpBar'
-import { resolveTextDurationMs, resolveTextParameter } from './components/new/textParameter'
-import { resolveNumericValue, resolveTextValue } from './components/numericValue'
+import {
+  resolveNumericValue,
+  resolveTextDurationMs,
+  resolveTextParameter,
+  resolveTextValue,
+} from './inputValue'
 import type { SkinCtx } from './rendererRegistry'
 
 function isDynamicNumericInput(raw: unknown): boolean {

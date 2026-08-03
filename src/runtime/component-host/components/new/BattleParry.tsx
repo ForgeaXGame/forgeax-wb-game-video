@@ -136,8 +136,10 @@ const PARRY_CSS = `
 .pvb-parry.is-frozen .pvb-key,.pvb-parry.is-frozen .pvb-key::after{animation-play-state:paused}
 .pvb-parry.is-frozen .pvb-key{animation-delay:calc(var(--qte-entry-delay,0ms) - var(--preview-t,0ms))}
 .pvb-parry.is-frozen .pvb-key::after{animation-delay:calc(var(--qte-entry-delay,0ms) - var(--preview-t,0ms))}
-.pvb-parry-keys{display:flex;gap:3cqmin;pointer-events:auto}
+.pvb-parry-keys{position:relative;inline-size:20cqmin;block-size:20cqmin;pointer-events:auto}
 .pvb-key{position:relative;inline-size:8cqmin;block-size:8cqmin;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4cqh;cursor:pointer;background:none;border:none;padding:0;color:#efe7d6;transition:transform .14s,opacity .14s;animation:pvbParryKeyLifetime var(--qte-ring-duration,1400ms) linear var(--qte-entry-delay,0ms) both}
+.pvb-key:nth-child(1){position:absolute;inset-block-start:1cqmin;inset-inline-start:1cqmin}
+.pvb-key:nth-child(2){position:absolute;inset-block-end:1cqmin;inset-inline-end:1cqmin}
 .pvb-key::before{content:'';position:absolute;inset:0;z-index:-1;border-radius:52% 48% 50% 50%/50% 52% 48% 50%;background:linear-gradient(180deg,#2b2620,#0c0a08);border:1.5px solid rgba(239,231,214,.5);box-shadow:0 2px 6px rgba(0,0,0,.5) inset,0 2px 7px rgba(0,0,0,.6);filter:url(#inkRough)}
 .pvb-key::after{content:'';position:absolute;inset:-32%;border:2px solid rgba(95,224,138,.9);border-radius:50%;box-shadow:0 0 12px rgba(95,224,138,.55);pointer-events:none;animation:pvbParryApproach var(--qte-ring-duration,1400ms) linear var(--qte-entry-delay,0ms) both}
 .pvb-key:hover:not(:disabled){transform:translateY(-2px) scale(1.03)}

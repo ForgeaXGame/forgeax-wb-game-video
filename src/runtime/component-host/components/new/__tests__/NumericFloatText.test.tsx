@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createRng } from '../../../../engine/rng'
+import { resolveComponentInputs } from '../../../resolveComponentInputs'
 import type { SkinCtx } from '../../../rendererRegistry'
 import { createCoreSkinRegistry } from '../../index'
 import {
@@ -12,7 +13,6 @@ import {
   GainFloatText,
   GainFloatTextManifest,
 } from '../GainFloatText'
-import { resolveTextDurationMs, resolveTextParameter } from '../textParameter'
 
 afterEach(cleanup)
 
@@ -89,8 +89,8 @@ describe('numeric float text components', () => {
   it('scales the entire float animation from its total duration input', () => {
     render(<DamageFloatText parameter="-25" durationMs={2400} />)
     expect(screen.getByText('-25').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
-    expect(resolveTextDurationMs(undefined)).toBe(1100)
-    expect(resolveTextDurationMs(0)).toBe(1100)
+    expect(resolveComponentInputs(DamageFloatTextManifest, {}, ctx).durationMs).toBe(1100)
+    expect(resolveComponentInputs(DamageFloatTextManifest, { durationMs: 0 }, ctx).durationMs).toBe(1100)
   })
 
   it('Host applies parameter fallback when it is absent', () => {
@@ -99,7 +99,7 @@ describe('numeric float text components', () => {
   })
 
   it('keeps an explicitly empty parameter empty', () => {
-    expect(resolveTextParameter('', undefined, 'fallback')).toBe('')
+    expect(resolveComponentInputs(DamageFloatTextManifest, { parameter: '' }, ctx).parameter).toBe('')
   })
 
   it('does not advance runtime RNG when a random formula is evaluated repeatedly', () => {
@@ -119,8 +119,8 @@ describe('numeric float text components', () => {
     }
     const value = { expr: '-floor((entity.hero.attr.attack + var.bonus) * (0.85 + rand() * 0.3) * (1 + chance(1) * 0.5))' }
     const before = rng.getState()
-    const first = resolveTextParameter(value, runtimeCtx, '')
-    const second = resolveTextParameter(value, runtimeCtx, '')
+    const first = resolveComponentInputs(DamageFloatTextManifest, { parameter: value }, runtimeCtx).parameter
+    const second = resolveComponentInputs(DamageFloatTextManifest, { parameter: value }, runtimeCtx).parameter
 
     expect(second).toBe(first)
     expect(rng.getState()).toEqual(before)
