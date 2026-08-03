@@ -7,7 +7,6 @@ import { resolveBoundHpBarValues } from './components/new/boundHpBar'
 import {
   resolveNumericValue,
   resolveTextDurationMs,
-  resolveTextParameter,
   resolveTextValue,
 } from './inputValue'
 import type { SkinCtx } from './rendererRegistry'
@@ -35,7 +34,6 @@ export function resolveComponentInputs(
 
   for (const input of inputDefs) {
     if (input.component !== 'numberExpr') continue
-    if (input.key === 'parameter') continue
 
     const raw = rawInputs[input.key] !== undefined ? rawInputs[input.key] : input.default
 
@@ -57,22 +55,6 @@ export function resolveComponentInputs(
     if (resolved[input.key] === undefined && input.default !== undefined) {
       resolved[input.key] = input.default
     }
-  }
-
-  const parameterDef = inputDefs.find((input) => input.key === 'parameter')
-  if (parameterDef) {
-    const fallback = typeof parameterDef.default === 'string' ? parameterDef.default : ''
-    const raw = Object.prototype.hasOwnProperty.call(rawInputs, 'parameter')
-      ? rawInputs.parameter
-      : parameterDef.default
-    const reference = parameterDef.component === 'numberExpr'
-      && parameterDef.valueType === 'string'
-      && raw
-      && typeof raw === 'object'
-      && typeof (raw as { ref?: unknown }).ref === 'string'
-      ? resolveTextValue(raw, ctx)
-      : undefined
-    resolved.parameter = resolveTextParameter(reference ?? raw, ctx, fallback)
   }
 
   const durationDef = inputDefs.find((input) => input.key === 'durationMs')

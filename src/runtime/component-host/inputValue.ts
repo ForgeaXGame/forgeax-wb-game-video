@@ -20,6 +20,7 @@ export function resolveNumericValue(value: unknown, ctx: SkinCtx | undefined): n
 
 export function resolveTextValue(value: unknown, ctx: SkinCtx | undefined): string | undefined {
   if (typeof value === 'string') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined
   if (!value || typeof value !== 'object') return undefined
   const numeric = resolveNumericValue(value, ctx)
   if (numeric !== undefined) return String(numeric)
@@ -34,13 +35,6 @@ export function resolveTextValue(value: unknown, ctx: SkinCtx | undefined): stri
   if (path[0] === 'var') return String(ctx?.hud.vars[path.slice(1).join('.')] ?? 0)
   if (path[0] === 'score') return String(ctx?.hud.score ?? 0)
   return ref
-}
-
-export function resolveTextParameter(value: unknown, ctx: SkinCtx | undefined, fallback: string): string {
-  if (typeof value === 'number') return Number.isFinite(value) ? formatSigned(value) : fallback
-  if (typeof value === 'string') return value
-  const result = resolveNumericValue(value, ctx)
-  return result === undefined ? fallback : formatSigned(result)
 }
 
 export function resolveTextDurationMs(value: unknown, fallback = 1100): number {
@@ -71,7 +65,3 @@ function evalCtxFromSkin(ctx: SkinCtx | undefined): EvalCtx {
   }
 }
 
-function formatSigned(value: number): string {
-  const normalized = Object.is(value, -0) ? 0 : value
-  return normalized > 0 ? `+${normalized}` : String(normalized)
-}
