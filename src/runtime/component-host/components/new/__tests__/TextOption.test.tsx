@@ -71,6 +71,6 @@ describe('TextOption', () => {
       </>,
     )
 
-    expect(screen.getByRole('button', { name: 'F 5' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'F -5' })).toBeTruthy()
   })
 })

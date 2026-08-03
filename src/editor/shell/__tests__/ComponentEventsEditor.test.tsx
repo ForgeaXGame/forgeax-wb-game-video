@@ -893,7 +893,7 @@ describe('ComponentFormFields defaults', () => {
     })
   })
 
-  it('uses the declared parameter default without offering an unset option', () => {
+  it('uses a blank parameter without offering an unset option', () => {
     const formula: Formula = {
       id: 'formula-float-damage',
       name: '飘字伤害',
@@ -912,7 +912,7 @@ describe('ComponentFormFields defaults', () => {
     const picker = screen.getByRole('combobox', { name: '文本内容' })
     expect(picker).toHaveValue('literal')
     expect(within(screen.getByText('参数').parentElement!)
-      .getByRole('textbox', { name: '固定文本' })).toHaveValue('-25')
+      .getByRole('textbox', { name: '固定文本' })).toHaveValue('')
     fireEvent.click(picker)
     expect(screen.queryByRole('menuitem', { name: '未设置（使用组件默认）' })).toBeNull()
 
