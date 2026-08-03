@@ -288,7 +288,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     return { blocked: false, errs: errs.length, done }
   }
   return {
-    game: 'game-nodia-fighting',
+    game: '',
     demo: null,
     blueprints: {},
     mainBlueprintId: '',

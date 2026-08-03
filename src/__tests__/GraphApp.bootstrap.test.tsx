@@ -3,8 +3,13 @@ import type { ReactNode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { GraphApp } from '../GraphApp'
 
+const { ensureBoot } = vi.hoisted(() => ({ ensureBoot: vi.fn() }))
+
 vi.mock('../editor/bootstrap/GameBootstrap', () => ({
-  GameBootstrap: ({ children }: { children: ReactNode }) => <div data-testid="bootstrap">{children}</div>,
+  GameBootstrap: ({ children, onBoot }: { children: ReactNode; onBoot?: (gameId: string) => void }) => {
+    onBoot?.('猫')
+    return <div data-testid="bootstrap">{children}</div>
+  },
 }))
 vi.mock('../editor/shell/BlueprintLibraryView', () => ({ BlueprintLibraryView: () => <div>blueprint</div> }))
 vi.mock('../editor/shell/GraphVideoView', () => ({ GraphVideoView: () => <div>video</div> }))
@@ -12,7 +17,7 @@ vi.mock('../editor/shell/GraphAssetView', () => ({ GraphAssetView: () => <div>as
 vi.mock('../editor/shell/GraphConfigView', () => ({ GraphConfigView: () => <div>config</div> }))
 vi.mock('../editor/shell/GraphPlaySurface', () => ({ GraphPlaySurface: () => <div>play</div> }))
 vi.mock('../editor/persist/graphScenarioStore', () => ({
-  useGraphScenario: (selector: (state: { graph: { nodes: never[] }; ensureBoot: () => void }) => unknown) => selector({ graph: { nodes: [] }, ensureBoot: vi.fn() }),
+  useGraphScenario: (selector: (state: { graph: { nodes: never[] }; ensureBoot: typeof ensureBoot }) => unknown) => selector({ graph: { nodes: [] }, ensureBoot }),
 }))
 vi.mock('../editor/persist/graphViewStore', () => ({
   useGraphView: (selector: (state: { view: string; setView: () => void }) => unknown) => selector({ view: 'graph', setView: vi.fn() }),
@@ -35,4 +40,11 @@ test('wraps the center pane with bootstrap before rendering the main surface', (
   render(<GraphApp />)
   expect(screen.getByTestId('bootstrap')).toBeTruthy()
   expect(screen.getByText('blueprint')).toBeTruthy()
+})
+
+test('passes the handshake game id to the single boot owner', () => {
+  window.history.replaceState({}, '', '/?pane=center')
+  ensureBoot.mockClear()
+  render(<GraphApp />)
+  expect(ensureBoot).toHaveBeenCalledWith('猫', expect.anything())
 })

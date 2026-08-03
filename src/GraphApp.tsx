@@ -19,7 +19,6 @@ import { GraphPlaySurface } from './editor/shell/GraphPlaySurface'
 import { useGraphScenario } from './editor/persist/graphScenarioStore'
 import { useGraphView, installGraphViewSync, type GraphView } from './editor/persist/graphViewStore'
 import { NODIA_DEMO } from './editor/demo/demo'
-import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
 import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
 
