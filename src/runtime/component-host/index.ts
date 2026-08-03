@@ -17,6 +17,7 @@ import * as React from 'react'
 import { registerComponent, type ComponentDef } from '../registry/component-registry'
 import { registerOverlayRenderer } from './rendererRegistry'
 import { registerCoreSkins, INTERACTION_SKINS, HP_BAR_COMPONENTS, type SkinPositioning } from './components'
+import { getWorkbenchHost } from '../../lib/workbench-host'
 
 /** 交互皮肤登记项（编辑器下拉/定位查询用）。commons 内建 + 游戏仓贡献合并。 */
 export interface InteractionSkinEntry {
@@ -106,9 +107,9 @@ function pickRegister(mod: GameComponentModule): ((host: ComponentHostApi) => vo
 
 /**
  * 加载并注册某游戏仓的专属组件。**免构建优先**：
- *   1. dev —— 直接吃游戏仓 `components/index.tsx` **源码**，经扩展 vite 现场编译
+ *   1. Workbench —— 通过握手上下文的 `gameComponents.moduleUrl()` 读取游戏仓构建产物；
+ *   2. dev —— 在没有构建产物时，直接吃游戏仓 `components/index.tsx` **源码**，经扩展 vite 现场编译
  *      （`/@game-components/<slug>/index.js`，见 vite.config `gameComponentsDevPlugin`）；
- *   2. 构建产物（可选）—— `GET /api/game-host/games/:slug/components/index.js`（`dist/components`）；
  * 都拿不到 / 无 `register` → 静默 false，运行时继续用内建集（fail-soft）。
  * `base` 用于非同源场景显式指定源（dev 一般同源，留空即可）。
  */
@@ -118,9 +119,15 @@ export async function loadGameComponents(slug: string | undefined, base = ''): P
   const s = encodeURIComponent(slug)
   const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
   const candidates = [
+    (() => {
+      try {
+        return getWorkbenchHost().gameComponents.moduleUrl('index.js')
+      } catch {
+        return null
+      }
+    })(),
     ...(isDev ? [`${base}/@game-components/${s}/index.js`] : []),
-    `${base}/api/game-host/games/${s}/components/index.js`,
-  ]
+  ].filter((url): url is string => Boolean(url))
   for (const url of candidates) {
     try {
       const mod = (await import(/* @vite-ignore */ url)) as GameComponentModule
