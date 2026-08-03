@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import type { MediaAsset } from '../../src/editor/assets/registry-types'
 
 /** The stable extension-platform capability consumed by this workbench. */
 export const VIDEO_GENERATION_CAPABILITY = Object.freeze({
@@ -13,6 +12,7 @@ export const VIDEO_GENERATION_CAPABILITY = Object.freeze({
  * package to a platform implementation or an unpublished package version.
  */
 export interface ExtensionCapabilities {
+  has?(capabilityId: string, version: number): boolean
   invoke(
     capabilityId: string,
     version: number,
@@ -25,7 +25,7 @@ export interface VideoGenerationRequest {
   readonly prompt: string
   readonly durationSeconds: number
   readonly generateAudio: boolean
-  /** Host-owned references; the host resolves these IDs into provider inputs. */
+  /** Host-neutral references; the Provider uploads these bytes to its own storage. */
   readonly references: readonly VideoGenerationReference[]
   readonly metadata: {
     readonly sceneNodeId: string
@@ -41,23 +41,30 @@ export interface VideoGenerationRequest {
 export interface VideoGenerationReference {
   readonly role: 'reference_image' | 'first_frame' | 'last_frame' | 'reference_video' | 'reference_audio'
   readonly assetId: string
+  readonly mime: string
+  readonly bytes: Uint8Array
 }
 
-/**
- * The shared capability has the same minimum result consumed by Asset Canvas:
- * a ready video with a stable id. Hosts can supply richer MediaAsset metadata;
- * this workbench fills its own registry timestamps when the host omits them.
- */
-export type HostVideoMediaAsset =
-  Pick<MediaAsset, 'id' | 'kind' | 'status'> &
-  Partial<Omit<MediaAsset, 'id' | 'kind' | 'status'>>
-
 export interface VideoGenerationResult {
-  readonly asset: HostVideoMediaAsset
+  readonly video: GeneratedVideo
+}
+
+export interface GeneratedVideo {
+  readonly bytes: Uint8Array
+  readonly mime: string
+  readonly sourceUrl: string
+  readonly generationId: string
+  readonly providerTaskId?: string
+  readonly model?: string
+  readonly provider?: {
+    readonly kind: 'kino'
+    readonly ref: string
+    readonly upstreamResourceId: string
+  }
 }
 
 export interface VideoGenerationGateway {
-  generate(input: VideoGenerationRequest): Promise<MediaAsset>
+  generate(input: VideoGenerationRequest): Promise<GeneratedVideo>
 }
 
 /**
@@ -69,7 +76,10 @@ export function createVideoGenerationGateway(
   capabilities: ExtensionCapabilities | undefined,
   gameId = '',
 ): VideoGenerationGateway | undefined {
-  if (!capabilities) return undefined
+  if (
+    !capabilities ||
+    capabilities.has?.(VIDEO_GENERATION_CAPABILITY.id, VIDEO_GENERATION_CAPABILITY.version) === false
+  ) return undefined
 
   return {
     async generate(input) {
@@ -80,7 +90,7 @@ export function createVideoGenerationGateway(
           input,
           { requestId: createVideoGenerationRequestId(gameId, input) },
         )
-        return bindHostMediaAsset((result as VideoGenerationResult | undefined)?.asset, input)
+        return bindGeneratedVideo((result as VideoGenerationResult | undefined)?.video)
       } catch (error) {
         throw mapCapabilityError(error)
       }
@@ -89,17 +99,26 @@ export function createVideoGenerationGateway(
 }
 
 /**
- * Generates a deterministic, credential-free idempotency key. It includes the
- * game and scene scope plus every capability input field, so retries of the
- * same logical request resume the durable Host receipt instead of submitting
- * a second provider job.
+ * Generates a deterministic, credential-free correlation id. Kino does not
+ * expose an idempotency contract, so the Provider must not automatically retry
+ * an ambiguous generation POST; this id only joins logs across the host seam.
  */
 export function createVideoGenerationRequestId(
   gameId: string,
   input: VideoGenerationRequest,
 ): string {
+  const references = input.references.map((reference) => ({
+    role: reference.role,
+    assetId: reference.assetId,
+    mime: reference.mime,
+    contentSha256: createHash('sha256').update(reference.bytes).digest('hex'),
+  }))
   const fingerprint = createHash('sha256')
-    .update(stableSerialize({ gameId, sceneNodeId: input.metadata.sceneNodeId, input }))
+    .update(stableSerialize({
+      gameId,
+      sceneNodeId: input.metadata.sceneNodeId,
+      input: { ...input, references },
+    }))
     .digest('hex')
   return `wb-game-video-v1-${fingerprint}`
 }
@@ -111,39 +130,36 @@ export function createVideoGenerationRequestId(
 export function generateWithVideoGenerationGateway(
   gateway: VideoGenerationGateway | undefined,
   input: VideoGenerationRequest,
-  legacyGenerate: () => Promise<MediaAsset>,
-): Promise<MediaAsset> {
+  legacyGenerate: () => Promise<GeneratedVideo>,
+): Promise<GeneratedVideo> {
   return gateway ? gateway.generate(input) : legacyGenerate()
 }
 
-/** Converts a host-owned video asset to the public wb-game-video registry view. */
-export function bindHostMediaAsset(asset: VideoGenerationResult['asset'] | undefined, input: VideoGenerationRequest): MediaAsset {
-  if (!asset || typeof asset.id !== 'string' || asset.id.trim().length === 0) {
+/** Validates the provider-neutral payload before this workbench persists it locally. */
+export function bindGeneratedVideo(video: VideoGenerationResult['video'] | undefined): GeneratedVideo {
+  if (
+    !video ||
+    !(video.bytes instanceof Uint8Array) ||
+    video.bytes.byteLength === 0 ||
+    typeof video.mime !== 'string' ||
+    !video.mime.startsWith('video/') ||
+    typeof video.sourceUrl !== 'string' ||
+    video.sourceUrl.length === 0 ||
+    typeof video.generationId !== 'string' ||
+    video.generationId.length === 0 ||
+    (video.provider !== undefined &&
+      (video.provider.kind !== 'kino' ||
+        typeof video.provider.ref !== 'string' ||
+        video.provider.ref.length === 0 ||
+        typeof video.provider.upstreamResourceId !== 'string' ||
+        video.provider.upstreamResourceId.length === 0))
+  ) {
     throw new VideoGenerationCapabilityError(
       'CAPABILITY_INVALID_RESULT',
-      '宿主视频生成能力返回了无效的 MediaAsset',
+      '宿主视频生成能力返回了无效的视频结果',
     )
   }
-  if (asset.kind !== 'video' || asset.status !== 'ready') {
-    throw new VideoGenerationCapabilityError(
-      'CAPABILITY_INVALID_RESULT',
-      '宿主视频生成能力未返回可绑定的视频 MediaAsset',
-    )
-  }
-
-  const createdAt = asset.createdAt ?? Date.now()
-
-  return {
-    ...asset,
-    kind: 'video',
-    productionType: 'video_clip',
-    status: 'ready',
-    sceneNodeId: input.metadata.sceneNodeId,
-    durationMs: asset.durationMs ?? Math.round(input.durationSeconds * 1000),
-    prompt: asset.prompt ?? input.prompt,
-    createdAt,
-    updatedAt: asset.updatedAt ?? createdAt,
-  }
+  return video
 }
 
 export class VideoGenerationCapabilityError extends Error {

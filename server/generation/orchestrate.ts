@@ -13,9 +13,11 @@
  *
  * registry 生命周期：每次生成 upsert placeholder→generating→ready/failed，供 P5 轮询三态。
  */
+import { readFileSync } from 'node:fs'
 import {
   getAsset,
   getStyleAxes,
+  mimeForPath,
   resolveAssetFilePath,
   updateAsset,
   upsertAsset,
@@ -41,8 +43,6 @@ import {
 } from '../engine'
 import type { MediaProductionType } from '../../src/editor/assets/registry-types'
 import {
-  fileToBase64,
-  fileToDataUrl,
   genImage,
   genText,
   genVideoAndWait,
@@ -277,10 +277,13 @@ function kinoContentUrl(octx: OrchestrateCtx, assetId: string): string {
 export async function resolveAssetImagePayload(
   octx: OrchestrateCtx,
   asset: MediaAsset,
-): Promise<{ base64: string; dataUrl: string }> {
+): Promise<{ bytes: Uint8Array; mime: string; base64: string; dataUrl: string }> {
   const path = resolveAssetFilePath(octx.dir, asset)
   if (path) {
-    return { base64: fileToBase64(path), dataUrl: fileToDataUrl(path) }
+    const bytes = readFileSync(path)
+    const mime = asset.mime || mimeForPath(path)
+    const base64 = bytes.toString('base64')
+    return { bytes, mime, base64, dataUrl: `data:${mime};base64,${base64}` }
   }
   if (!asset.provider) {
     throw new Error(`参考图 ${asset.id} 没有可读取的文件或 provider`)
@@ -295,23 +298,30 @@ export async function resolveAssetImagePayload(
   }
   const mime = response.headers.get('content-type')?.split(';', 1)[0] || asset.mime || 'image/png'
   const base64 = bytes.toString('base64')
-  return { base64, dataUrl: `data:${mime};base64,${base64}` }
+  return { bytes, mime, base64, dataUrl: `data:${mime};base64,${base64}` }
 }
 
 /**
- * Host capability 的引用只携带 registry asset id；宿主负责解析受控媒体内容。
- * 这样 ForgeaX/Arrival 的 capability bridge 不会依赖本地文件或 data URL。
+ * 在 Workbench 的资产边界解析引用；Provider 只接收明确的二进制与 MIME，
+ * 不依赖 Workbench 的本地路径、data URL 或私有资源路由。
  */
-function buildVideoGenerationReferences(input: VideoGenInput): VideoGenerationReference[] {
+async function buildVideoGenerationReferences(
+  octx: OrchestrateCtx,
+  input: VideoGenInput,
+): Promise<VideoGenerationReference[]> {
   const references: VideoGenerationReference[] = []
-  if (input.continuityFirstFrameId) {
-    references.push({ role: 'first_frame', assetId: input.continuityFirstFrameId })
+  const push = async (assetId: string, role: VideoGenerationReference['role']): Promise<void> => {
+    const asset = getAsset(octx.dir, assetId)
+    if (!asset) throw new Error(`参考图不存在：${assetId}`)
+    const payload = await resolveAssetImagePayload(octx, asset)
+    references.push({ role, assetId, mime: payload.mime, bytes: payload.bytes })
   }
+  if (input.continuityFirstFrameId) await push(input.continuityFirstFrameId, 'first_frame')
   for (const assetId of input.characterRefIds.filter(Boolean)) {
-    references.push({ role: 'reference_image', assetId })
+    await push(assetId, 'reference_image')
   }
   for (const assetId of input.sceneRefIds.filter(Boolean)) {
-    references.push({ role: 'reference_image', assetId })
+    await push(assetId, 'reference_image')
   }
   return references
 }
@@ -355,13 +365,27 @@ export async function generateVideo(
   pollOpts?: PollOpts,
 ): Promise<MediaAsset> {
   assertRefsPresent(input)
-  let legacyAssetId: string | undefined
+  const id = makeAssetId('video_clip')
+  upsertAsset(octx.dir, {
+    id,
+    kind: 'video',
+    productionType: 'video_clip',
+    status: 'generating',
+    label: input.label ?? `视频 · ${input.nodeName}`,
+    sceneNodeId: input.sceneNodeId,
+    sourceModule: 'wb-game-video',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    meta: {
+      characterRefIds: input.characterRefIds,
+      sceneRefIds: input.sceneRefIds,
+      continuityFirstFrameId: input.continuityFirstFrameId,
+      extend: input.extend === true,
+    },
+  })
   try {
     // P3：三轴——video 侧折 artMedia/filmLook 到 artStyle/styleKeywords（caller 显式优先）。
     const axes = resolveAxes(octx, input.styleAxes)
-    // Prompt bindings and capability references are ID-only. Media bytes are resolved
-    // below, inside the legacy fallback, so Host capability providers never receive
-    // or depend on local data URLs.
     const bindings = await resolveVideoRoleBindings(octx, input)
     const prompt = buildSeedanceVideoPrompt({
       seedancePrompt: input.seedancePrompt,
@@ -374,11 +398,12 @@ export async function generateVideo(
       extend: input.extend,
       transitionHint: input.transitionHint,
     })
+    const gateway = createVideoGenerationGateway(octx.capabilities, octx.gameId)
     const capabilityInput = {
       prompt,
       durationSeconds: input.durationSeconds,
       generateAudio: input.generateAudio ?? false,
-      references: buildVideoGenerationReferences(input),
+      references: gateway ? await buildVideoGenerationReferences(octx, input) : [],
       metadata: {
         sceneNodeId: input.sceneNodeId,
         nodeName: input.nodeName,
@@ -389,30 +414,11 @@ export async function generateVideo(
         transitionHint: input.transitionHint,
       },
     }
-    return await generateWithVideoGenerationGateway(
-      createVideoGenerationGateway(octx.capabilities, octx.gameId),
+    const generated = await generateWithVideoGenerationGateway(
+      gateway,
       capabilityInput,
       async () => {
         const { roles } = await resolveVideoRoleImages(octx, input)
-        const id = makeAssetId('video_clip')
-        legacyAssetId = id
-        upsertAsset(octx.dir, {
-          id,
-          kind: 'video',
-          productionType: 'video_clip',
-          status: 'generating',
-          label: input.label ?? `视频 · ${input.nodeName}`,
-          sceneNodeId: input.sceneNodeId,
-          sourceModule: 'wb-game-video',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          meta: {
-            characterRefIds: input.characterRefIds,
-            sceneRefIds: input.sceneRefIds,
-            continuityFirstFrameId: input.continuityFirstFrameId,
-            extend: input.extend === true,
-          },
-        })
         const { bytes, mime, sourceUrl, taskId } = await genVideoAndWait(
           octx,
           {
@@ -423,31 +429,43 @@ export async function generateVideo(
           },
           pollOpts,
         )
-        const file = writeMediaFile(octx.dir, id, extForMime(mime), bytes)
-        const ready = updateAsset(octx.dir, id, {
-          status: 'ready',
-          file,
+        return {
+          bytes,
           mime,
-          bytes: bytes.byteLength,
-          durationMs: Math.round(input.durationSeconds * 1000),
-          prompt,
-          meta: {
-            characterRefIds: input.characterRefIds,
-            sceneRefIds: input.sceneRefIds,
-            continuityFirstFrameId: input.continuityFirstFrameId,
-            extend: input.extend === true,
-            taskId,
-            sourceUrl,
-          },
-        })
-        if (!ready) throw new Error('video asset 落盘后丢失')
-        return ready
+          sourceUrl,
+          generationId: taskId,
+          providerTaskId: taskId,
+        }
       },
     )
+    const file = writeMediaFile(octx.dir, id, extForMime(generated.mime), generated.bytes)
+    const ready = updateAsset(octx.dir, id, {
+      status: 'ready',
+      file,
+      url: generated.sourceUrl,
+      mime: generated.mime,
+      name: input.label ?? `视频 · ${input.nodeName}`,
+      mimeType: generated.mime,
+      bytes: generated.bytes.byteLength,
+      durationMs: Math.round(input.durationSeconds * 1000),
+      prompt,
+      provider: generated.provider,
+      meta: {
+        characterRefIds: input.characterRefIds,
+        sceneRefIds: input.sceneRefIds,
+        continuityFirstFrameId: input.continuityFirstFrameId,
+        extend: input.extend === true,
+        taskId: generated.providerTaskId ?? generated.generationId,
+        generationId: generated.generationId,
+        providerTaskId: generated.providerTaskId,
+        model: generated.model,
+        sourceUrl: generated.sourceUrl,
+      },
+    })
+    if (!ready) throw new Error('video asset 落盘后丢失')
+    return ready
   } catch (e) {
-    if (legacyAssetId) {
-      updateAsset(octx.dir, legacyAssetId, { status: 'failed', error: (e as Error).message })
-    }
+    updateAsset(octx.dir, id, { status: 'failed', error: (e as Error).message })
     throw e
   }
 }
