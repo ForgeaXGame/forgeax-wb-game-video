@@ -153,11 +153,14 @@ function optionalStyleAxes(value: unknown): StyleAxes | undefined {
   if (value === undefined) return undefined
   const input = record(value, 'styleAxes')
   assertOnlyKeys(input, ['artMedia', 'director', 'filmLook'])
-  return {
-    artMedia: stringValue(input.artMedia, 'styleAxes.artMedia'),
-    director: stringValue(input.director, 'styleAxes.director'),
-    filmLook: stringValue(input.filmLook, 'styleAxes.filmLook'),
-  }
+  const axes: StyleAxes = {}
+  const artMedia = stringValue(input.artMedia, 'styleAxes.artMedia')
+  const director = stringValue(input.director, 'styleAxes.director')
+  const filmLook = stringValue(input.filmLook, 'styleAxes.filmLook')
+  if (artMedia !== undefined) axes.artMedia = artMedia
+  if (director !== undefined) axes.director = director
+  if (filmLook !== undefined) axes.filmLook = filmLook
+  return Object.keys(axes).length > 0 ? axes : undefined
 }
 
 function perspective(value: unknown): string | undefined {
