@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { GameScenario } from '../../../runtime/schema/graph-schema'
 import { GraphPlayer } from '../GraphPlayer'
+import { useGraphScenario } from '../../persist/graphScenarioStore'
 
 const hostClient = vi.hoisted(() => ({
   extension: {
@@ -41,6 +42,7 @@ const SCENARIO: GameScenario = {
 
 describe('GraphPlayer missing video handling', () => {
   it('retries once before showing the stable id and clears it on loadedmetadata', () => {
+    useGraphScenario.setState({ game: 'test-game' })
     const { container } = render(<GraphPlayer scenario={SCENARIO} />)
     const video = container.querySelector('video')
     expect(video).toBeTruthy()
