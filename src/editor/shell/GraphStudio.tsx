@@ -236,6 +236,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [panelW, setPanelW] = useState(0)
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
   const [playOpen, setPlayOpen] = useState(false)
+  useEffect(() => {
+    if (selected == null) setPlayOpen(false)
+  }, [selected])
   const togglePreviewSurface = useCallback(() => {
     if (playOpen) {
       setPlayOpen(false)
