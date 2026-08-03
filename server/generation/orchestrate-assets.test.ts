@@ -18,7 +18,6 @@ function createRegistry(): HostAssetRegistry {
     get: vi.fn(async () => null),
     upsert: vi.fn(async (asset) => asset),
     update: vi.fn(async () => null),
-    readMedia: vi.fn(async () => null),
     getStyleAxes: vi.fn(async () => undefined),
     setStyleAxes: vi.fn(async (axes) => axes),
     importGameFile: vi.fn(async () => generated),

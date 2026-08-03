@@ -5,6 +5,10 @@ import { GraphPlayer } from '../GraphPlayer'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 
 const hostClient = vi.hoisted(() => ({
+  context: {
+    gameId: 'test-game',
+    endpoints: { gamePackage: 'https://host.test/__workbench__/v1/games/test-game/package' },
+  },
   extension: {
     fetch: vi.fn(),
     url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\//, '')}`),

@@ -21,6 +21,10 @@ vi.mock('../../assets/kinoVideoCacheStore', () => ({ useKinoVideoResources }))
 vi.mock('../../assets/projectAssetCacheStore', () => ({ useProjectAssets }))
 vi.mock('../../../lib/workbench-host', () => ({
   getWorkbenchHost: () => ({
+    context: {
+      gameId: 'game-nodia-fighting',
+      endpoints: { gamePackage: 'https://host.test/__workbench__/v1/games/game-nodia-fighting/package' },
+    },
     extension: {
       fetch: vi.fn(),
       url: (path: string) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`,
@@ -98,7 +102,7 @@ describe('试玩表面挂载床轨', () => {
   it('GraphPlaySurface：整表面即试玩，进场就起文档床', () => {
     render(<GraphPlaySurface scenario={SCENARIO} />)
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
-      'https://host.test/extension/runtime/media/assets/a-aud-story',
+      'https://host.test/__workbench__/v1/games/game-nodia-fighting/media/a-aud-story',
     ])
     const deck = decks()[0] as HTMLAudioElement
     expect(deck.muted).toBe(true)
@@ -116,7 +120,7 @@ describe('试玩表面挂载床轨', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '▶ 从此试玩' }))
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
-      'https://host.test/extension/runtime/media/assets/a-aud-story',
+      'https://host.test/__workbench__/v1/games/game-nodia-fighting/media/a-aud-story',
     ])
     const deck = decks()[0] as HTMLAudioElement
     expect(deck.muted).toBe(true)

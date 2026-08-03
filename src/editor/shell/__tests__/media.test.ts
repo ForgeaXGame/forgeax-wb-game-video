@@ -3,6 +3,10 @@ import { ZHANDOU_VIDEOS } from '../../assets/catalog'
 import { requestGenerateVideo, resolveMediaSrc } from '../media'
 
 const client = {
+  context: {
+    gameId: 'demo-game',
+    endpoints: { gamePackage: 'https://host.test/__workbench__/v1/games/demo-game/package' },
+  },
   extension: {
     fetch: vi.fn(),
     url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\//, '')}`),
@@ -28,20 +32,20 @@ describe('resolveMediaSrc', () => {
 
   it('routes generated a-vid resources through the registry playback endpoint', () => {
     expect(resolveMediaSrc('a-vid-generated', 'demo game')).toBe(
-      'https://host.test/extension/runtime/media/assets/a-vid-generated',
+      'https://host.test/__workbench__/v1/games/demo-game/media/a-vid-generated',
     )
   })
 
   it('routes registry audio ids through the same media endpoint as video (BGM 决策 A)', () => {
-    // Kino 只认视频；床轨 id 必须落回 assets/manifest 的 /__gva__/media/<id>，别按 kind 分叉。
+    // 媒体二进制归 Host；资产类型只保留在 wb-game-video 的 manifest 记录中。
     expect(resolveMediaSrc('a-aud-bgm-battle', 'demo game')).toBe(
-      'https://host.test/extension/runtime/media/assets/a-aud-bgm-battle',
+      'https://host.test/__workbench__/v1/games/demo-game/media/a-aud-bgm-battle',
     )
   })
 
   it('routes stable Kino ids through the Kino content endpoint', () => {
     expect(resolveMediaSrc('res/123', 'demo game')).toBe(
-      'https://host.test/extension/runtime/media/resources/res%2F123/content',
+      'https://host.test/__workbench__/v1/games/demo-game/media/res%2F123',
     )
   })
 

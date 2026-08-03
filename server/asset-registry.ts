@@ -9,7 +9,6 @@
  *
  * 被两处共享（SSOT）：
  *   - `server/tool-handlers.ts` 的 wb-game-video:* 工具 + `server/generation/*` 编排（写）
- *   - 宿主扩展媒体路由（读 + 流式回文件）
  *
  * Workbench intake 对人设图/场景图的源目录保持只读，并把字节副本交给 host media
  * capability 持久化；不会把宿主媒体 URL 当作权威身份。
@@ -780,7 +779,6 @@ export interface HostAssetRegistry {
   get(id: string): Promise<MediaAsset | null>
   upsert(asset: MediaAsset): Promise<MediaAsset>
   update(id: string, patch: Partial<MediaAsset>): Promise<MediaAsset | null>
-  readMedia(id: string): Promise<MediaBody | null>
   getStyleAxes(): Promise<StyleAxes | undefined>
   setStyleAxes(axes: StyleAxes): Promise<StyleAxes>
   importGameFile(input: {
@@ -1156,18 +1154,6 @@ export function createHostAssetRegistry(
     get,
     upsert,
     update,
-    async readMedia(id) {
-      const asset = await getRaw(id)
-      if (!asset) return null
-      if (asset.provider?.ref) {
-        const trustedId = trustedHostMediaId(asset, await trustedMedia())
-        return trustedId ? context.media.read(context.gameId, trustedId) : null
-      }
-      if (!asset.file) return null
-      const relativePath = assertBoundedRelativePath(`assets/${asset.file}`)
-      const bytes = await context.files.read(relativePath)
-      return bytes ? { contentType: asset.mime ?? 'application/octet-stream', bytes } : null
-    },
     async getStyleAxes() {
       return (await readHostManifest(context.files)).styleAxes
     },
