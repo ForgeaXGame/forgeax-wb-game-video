@@ -139,11 +139,11 @@ export interface GameHandle {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** 图上节点 data 联合（基类 ∪ 子流程特化）。 */
-export type GameNodeData = NodeData | SubFlowNodeData | SubFlowPackNodeData
+export type GameNodeData = NodeData | SubProcessNodeData | SubFlowPackNodeData
 
 /**
  * 图节点 `data` **基类**（普通演出节点）。子流程/子蓝图容器用特化类型
- * `SubFlowNodeData` / `SubFlowPackNodeData`。覆盖物一律经 `overlayNodes` 引用并展开；
+ * `SubProcessNodeData` / `SubFlowPackNodeData`。覆盖物一律经 `overlayNodes` 引用并展开；
  * 视频上只能挂 Overlay，不能直挂裸组件。
  */
 export interface NodeData {
@@ -163,9 +163,13 @@ export interface NodeData {
   /** 节点级生命周期/响应规则。见 §5。 */
   reactions?: Reaction[]
 }
-/** 同图子流程容器：首次进入压栈并跳到 `subFlow`；子流程叶子无自动出边时弹回。 */
-export interface SubFlowNodeData extends NodeData {
-  subFlow: string
+/** 节点私有的内嵌子流程；entry 只允许指向直属 graph.nodes。 */
+export interface SubProcess {
+  entry: string
+  graph: GameGraph
+}
+export interface SubProcessNodeData extends NodeData {
+  subProcess: SubProcess
 }
 /** 跨图子蓝图容器：进入后加载 pack，从 entry 跑；包内叶子无出边时弹回主图。 */
 export interface SubFlowPackNodeData extends NodeData {
@@ -256,7 +260,7 @@ export interface Reaction {
  * 触发面（闭合）：
  * - enter/at(ms)/exit/complete：节点生命周期
  * - event：组件事件（挂 mount.reactions）
- * - state：局级规则相位（历史字段，已不再消费）
+ * - state：GraphCondition 从不成立变为成立；与出边复用同一套条件配置
  * - watch：观察表达式变化（change/inc/dec）
  * - shown/hidden：某 overlay 组件实例出现/消失
  */
@@ -275,12 +279,14 @@ export type ReactionTrigger =
  * 闭合动作原语——同级并列，一个 do 可含多件事：
  * - effect：施加副作用（改 attr/var/flag/item）
  * - advance：沿指定出边 `edgeId` 推进到其 `target`（**唯一「换节点」通道**）
- * - spawn：主动实例化一个 overlay 组件模板（瞬态表现，如伤害飘字）
+ * - spawn：主动实例化一个 overlay 组件模板；省略 ttlMs 时常驻到节点退出
+ * - hideOverlay：按 mountId 隐藏当前节点已有的整组界面
  */
 export type NodeAction =
   | { kind: 'effect'; effects: GraphEffect[] }
   | { kind: 'advance'; edgeId: string }
   | { kind: 'spawn'; from: string; inputs?: Record<string, unknown>; layout?: Layout; ttlMs?: number }
+  | { kind: 'hideOverlay'; mountId: string }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // §6. 条件 / 副作用（图原生，无品类假设）

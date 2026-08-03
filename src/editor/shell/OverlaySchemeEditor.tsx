@@ -1,22 +1,28 @@
 /**
  * OverlaySchemeEditor —— 单个「界面方案」（overlay）的展示 + 编辑。
  * 右栏两列：左 = 标题 + 画布（拖拽定位、选中）+ 组件清单（仅显示 + 选中联动，不含参数配置）；
- * 右 = 组件库（拖 chip 落地）。组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
+ * 右 = 组件库（拖 chip 落地）。基础界面保留只读居中预览，但不显示设计框且不允许拖动。
+ * 组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
 import { useEffect, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import {
-  DEFAULT_OVERLAY_DESIGN_CANVAS,
   OverlayCatalogPreview,
 } from './OverlayCatalogPreview'
-import type { CanvasBox } from './OverlayCanvasInteraction'
 import { ComponentLibrary } from './ComponentLibrary'
 import { componentTypeLabel } from './editors'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
 import type { Formula } from '../persist/formula-authoring'
-import { ComponentFormFields } from './component-form-fields'
+import { authoringOptionLabel } from '../authoring-option-label'
+import {
+  ComponentFormFields,
+  type EntityAttributeCreateHandler,
+  type EntityCreateHandler,
+  type FormulaCreateHandler,
+  type VariableCreateHandler,
+} from './component-form-fields'
 import { ComponentEventsEditor } from './ComponentEventsEditor'
 
 const del: CSSProperties = { color: '#ff6b6b', marginLeft: 'auto' }
@@ -108,10 +114,11 @@ export interface OverlaySchemeEditorProps {
   entities: Record<string, Entity>
   variables: Record<string, Variable>
   formulas?: Record<string, Formula>
+  itemIds?: readonly string[]
   usageCount: number
   /**
    * 结构锁定态（基础覆盖物单组件方案）：
-   * 可编辑 inputs/layout；不可删除方案、增删组件或修改目录事件动作。
+   * 可编辑 inputs 和目录事件动作；组件只读居中预览，不可删除方案、增删组件或拖动。
    */
   locked?: boolean
   /** 与本方案内容重复的其它方案 id（component+位置+参数等价，见 overlay-dedup.ts）；空 = 无重复。 */
@@ -128,9 +135,11 @@ export interface OverlaySchemeEditorProps {
     childId: string,
     patch: { inputs?: Record<string, unknown>; component?: string; layout?: Partial<Layout> },
   ) => void
-  /** 编辑器本地设计画布整体移动时，批量平移方案 children；不写 Overlay 级字段。 */
-  onMoveCanvas?: (moveDelta: { x: number; y: number }) => void
   onReactionsChange: (reactions: OverlayReaction[] | undefined) => void
+  onCreateEntityAttribute?: EntityAttributeCreateHandler
+  onCreateEntity?: EntityCreateHandler
+  onCreateVariable?: VariableCreateHandler
+  onCreateFormula?: FormulaCreateHandler
 }
 
 export function OverlaySchemeEditor({
@@ -140,6 +149,7 @@ export function OverlaySchemeEditor({
   entities,
   variables,
   formulas,
+  itemIds = [],
   usageCount,
   locked = false,
   duplicateOf = [],
@@ -148,12 +158,13 @@ export function OverlaySchemeEditor({
   onAddChild,
   onRemoveChild,
   onPatchChild,
-  onMoveCanvas,
   onReactionsChange,
+  onCreateEntityAttribute,
+  onCreateEntity,
+  onCreateVariable,
+  onCreateFormula,
 }: OverlaySchemeEditorProps): JSX.Element {
   const [selectedChildId, setSelectedChildId] = useState('')
-  const [designCanvases, setDesignCanvases] = useState<Record<string, CanvasBox>>({})
-  const designCanvas = designCanvases[overlayId] ?? DEFAULT_OVERLAY_DESIGN_CANVAS
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
   const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
@@ -166,10 +177,13 @@ export function OverlaySchemeEditor({
     : []
   const overlays = overlayCatalog ?? { [overlay.id]: overlay }
   const spawnOptions = Object.values(overlays).flatMap((definition) =>
-    definition.children.map((child) => ({
-      value: `${definition.id}/${child.id}`,
-      label: `${definition.title?.trim() || definition.id} · ${componentTypeLabel(child.component)} · ${child.id}`,
-    })))
+    definition.children.map((child) => {
+      const value = `${definition.id}/${child.id}`
+      const name = [definition.title?.trim(), componentTypeLabel(child.component)]
+        .filter((part, index, all) => part && all.indexOf(part) === index)
+        .join(' · ')
+      return { value, label: authoringOptionLabel(name, value) }
+    }))
 
   // 进入方案时默认选中视觉最上层组件（zIndex 高者优先，同层级后渲染者优先）；
   // 双字幕等完全重叠时，默认选择因此与眼前实际可见的那一层一致。
@@ -201,6 +215,19 @@ export function OverlaySchemeEditor({
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedChildId, onRemoveChild, locked])
 
+  const confirmRemove = (): void => {
+    const label = overlay.title?.trim() || overlayId
+    const usageWarning = usageCount > 0
+      ? `当前仍被 ${usageCount} 个节点引用，删除后这些挂载将无法解析界面。`
+      : ''
+    if (
+      typeof window !== 'undefined'
+      && typeof window.confirm === 'function'
+      && !window.confirm(`确定删除自定义界面方案「${label}」？${usageWarning}`)
+    ) return
+    onRemove()
+  }
+
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, overflow: 'auto', fontSize: 12, flex: 1, minWidth: 0 }}>
       {/* ── 左列：标题 + 画布 + 组件清单 ── */}
@@ -214,11 +241,11 @@ export function OverlaySchemeEditor({
           />
           <UsageBadge count={usageCount} />
           <DuplicateBadge others={duplicateOf} />
-          {!locked && <button style={del} onClick={onRemove}>删除</button>}
+          {!locked && <button style={del} onClick={confirmRemove}>删除</button>}
         </div>
         <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
           {overlayId}
-          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础组件方案（单组件，不可增删）</span>}
+          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础界面（单组件，位置固定）</span>}
         </div>
         {duplicateOf.length > 0 && (
           <div
@@ -252,13 +279,14 @@ export function OverlaySchemeEditor({
                   return id
                 }
           }
-          onPatchChildLayout={(childId, patch) => onPatchChild(childId, { layout: patch })}
-          designCanvas={designCanvas}
-          onDesignCanvasChange={(box, moveDelta) => {
-            setDesignCanvases((current) => ({ ...current, [overlayId]: box }))
-            if (moveDelta) onMoveCanvas?.(moveDelta)
-          }}
-          onWarnChange={setWarnIds}
+          onPatchChildLayout={locked
+            ? undefined
+            : (childId, patch) => onPatchChild(childId, { layout: patch })}
+          onWarnChange={locked ? undefined : setWarnIds}
+          showDesignCanvas={!locked}
+          centerChildren={locked}
+          showTimeScrubber={false}
+          showSelectionFrames={locked}
         />
 
         {/* 组件清单：仅显示画布里有哪些组件 + 与画布双向选中，不含参数配置。 */}
@@ -326,27 +354,31 @@ export function OverlaySchemeEditor({
             </div>
             {locked ? (
               <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                基础组件方案结构锁定；参数修改会影响所有未覆盖该参数的挂载。
+                基础界面不能增删或拖动组件；可以修改参数和事件动作。
               </div>
             ) : null}
             <ComponentFormFields
               componentId={selectedChild.component}
               values={selectedChild.inputs ?? {}}
-              pickers={{ entities, variables, formulas }}
+              pickers={{ entities, variables, formulas, itemIds }}
               density="compact"
+              labelWidth="7em"
               onChange={(inputs) => onPatchChild(selectedChild.id, { inputs })}
+              onCreateEntityAttribute={onCreateEntityAttribute}
+              onCreateEntity={onCreateEntity}
+              onCreateVariable={onCreateVariable}
+              onCreateFormula={onCreateFormula}
             />
             {selectedEvents.length > 0 ? (
               <>
                 <div style={{ fontSize: 11, fontWeight: 600, margin: '10px 0 6px' }}>事件</div>
                 {locked ? (
                   <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 6 }}>
-                    基础组件方案的目录事件动作只读；节点挂载仍可追加动作。
+                    这里配置的事件动作会被所有使用该基础界面的挂载继承。
                   </div>
                 ) : null}
                 <fieldset
                   data-testid="overlay-event-editor"
-                  disabled={locked}
                   style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                 >
                   <ComponentEventsEditor
@@ -355,8 +387,12 @@ export function OverlaySchemeEditor({
                     catalogReactions={overlay.reactions}
                     spawnOptions={spawnOptions}
                     overlays={overlays}
-                    pickers={{ entities, variables, formulas }}
-                    onCatalogChange={locked ? undefined : onReactionsChange}
+                    pickers={{ entities, variables, formulas, itemIds }}
+                    onCreateEntityAttribute={onCreateEntityAttribute}
+                    onCreateEntity={onCreateEntity}
+                    onCreateVariable={onCreateVariable}
+                    onCreateFormula={onCreateFormula}
+                    onCatalogChange={onReactionsChange}
                   />
                 </fieldset>
               </>
@@ -368,7 +404,7 @@ export function OverlaySchemeEditor({
       {/* ── 右列：组件库（锁定态不显，改提示） ── */}
       {locked ? (
         <div style={{ minWidth: 150, width: 168, fontSize: 11, opacity: 0.5, lineHeight: 1.5 }}>
-          基础组件方案锁定为单组件，不可增删；可调整参数和组件位置。
+          基础界面固定为单组件，预览中居中显示且不可拖动。
         </div>
       ) : (
         <ComponentLibrary />

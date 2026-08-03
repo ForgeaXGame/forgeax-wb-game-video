@@ -1,30 +1,43 @@
 import { describe, expect, it } from 'vitest'
 import { GraphSession } from '../engine/session'
 import { makeNodiaDemo } from '../../editor/demo/demo'
+import { getSubProcess, type GameGraph } from '../schema/graph-schema'
+import { node, scnOf } from './test-fixtures'
 
 function overlayChild(snap: ReturnType<GraphSession['start']>, component: string) {
   return snap.overlayMounts.flatMap((m) => m.children).find((c) => c.component === component)
 }
 
-function eventIds(child: { inputs: Record<string, unknown> } | undefined): string[] {
-  const events = child?.inputs.events
-  if (!Array.isArray(events)) return []
-  return events.map((e) => (e as { id: string }).id)
-}
-
 describe('GraphSession (playable view model)', () => {
+  it('uses the injected session seed for weighted routing', () => {
+    const graph: GameGraph = {
+      nodes: [node('start', { durationMs: 100 }), node('first'), node('second')],
+      edges: [
+        { id: 'first-edge', source: 'start', target: 'first', sourceHandle: 'default', targetHandle: 'in', data: { weight: 1 } },
+        { id: 'second-edge', source: 'start', target: 'second', sourceHandle: 'default', targetHandle: 'in', data: { weight: 2 } },
+      ],
+    }
+    const scenario = scnOf(graph)
+
+    const first = new GraphSession(scenario, { rngSeed: 0 })
+    first.start()
+    expect(first.performanceEnd().currentNodeId).toBe('first')
+
+    const second = new GraphSession(scenario, { rngSeed: 1 })
+    second.start()
+    expect(second.performanceEnd().currentNodeId).toBe('second')
+  })
+
   it('drives nodia to a rendered interaction, then wins', () => {
     const session = new GraphSession(makeNodiaDemo({ bossHp: 30 }))
 
     session.start() // 起点 = 叙事 n_open
-    let snap = session.jump('enter') // seek 到战斗入口
-    expect(snap.clip?.nodeId).toBe('enter')
+    let snap = session.jump('a_my') // seek 到我方回合容器，立即下钻到 wait
+    expect(snap.clip?.nodeId).toBe('wait')
     expect(snap.hud.entities['ent-boss']!.hp).toBe(30)
 
-    snap = session.performanceEnd() // enter → a_my(subflow) → wait（技能交互）
-    const skill = overlayChild(snap, 'battleSkillBar')
+    const skill = overlayChild(snap, 'BattleSkill')
     expect(skill?.elementId).toBe('wait/skill')
-    expect(eventIds(skill)).toEqual(['light', 'heavy', 'medit', 'ult'])
 
     snap = session.emitEvent('wait/skill', 'light') // → 变招判定 → 轻攻击演出
     snap = session.tick(1000) // 命中 → 结算致死 → rules redirect → win
@@ -39,8 +52,7 @@ describe('GraphSession (playable view model)', () => {
   it('exposes execution state for blueprint visualization (visited/traversed)', () => {
     const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
     session.start()
-    session.jump('enter')
-    session.performanceEnd() // → a_my → wait（技能）
+    session.jump('a_my') // → wait（技能）
     session.emitEvent('wait/skill', 'light') // → 轻攻击演出
     session.tick(1000) // 命中时机(at:1000ms) → 结算(boss 掉 80, 仍存活)
     const snap = session.performanceEnd() // returns → a_my → b_ai → tele（防反 QTE）
@@ -58,11 +70,34 @@ describe('GraphSession (playable view model)', () => {
   })
 
   it('jump seeks to any node (debug)', () => {
-    const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
+    const scenario = makeNodiaDemo({ bossHp: 700 })
+    const session = new GraphSession(scenario)
     session.start()
-    const snap = session.jump('wait')
+    const playerTurn = getSubProcess(scenario.graph.nodes.find((node) => node.id === 'a_my')!.data)!
+    const snap = session.jump('wait', { graph: playerTurn.graph, graphPath: ['a_my'] })
     // 跳到战斗待机 → 技能 overlay 可见
     expect(snap.currentNodeId).toBe('wait')
-    expect(overlayChild(snap, 'battleSkillBar')?.elementId).toBe('wait/skill')
+    expect(overlayChild(snap, 'BattleSkill')?.elementId).toBe('wait/skill')
+  })
+
+  it('restores an in-memory checkpoint including globals and nested execution cursors', () => {
+    const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
+    session.start()
+    const entry = session.jump('a_my')
+    expect(entry.currentNodeId).toBe('wait')
+    const checkpoint = session.createCheckpoint()
+
+    session.emitEvent('wait/skill', 'light')
+    const advanced = session.tick(1000)
+    const damagedHp = advanced.hud.entities['ent-boss']!.hp
+    expect(damagedHp).toBeLessThan(700)
+
+    const restored = session.restoreCheckpoint(checkpoint)
+    expect(restored.currentNodeId).toBe('wait')
+    expect(restored.hud.entities['ent-boss']!.hp).toBe(700)
+    expect(overlayChild(restored, 'BattleSkill')?.elementId).toBe('wait/skill')
+
+    session.emitEvent('wait/skill', 'light')
+    expect(session.tick(1000).hud.entities['ent-boss']!.hp).toBe(damagedHp)
   })
 })

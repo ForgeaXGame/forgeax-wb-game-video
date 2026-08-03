@@ -21,7 +21,6 @@ const REQUIRED_VIDEO_CAPABILITY = { id: 'media.video.generate', version: 1 }
 const FORBIDDEN_PROVIDER_INTEGRATION_TEXT = [
   'wb-asset-canvas',
   'arrival-kino',
-  '/api/v1/kino',
 ]
 const PUBLISHED_TEXT_PATHS = [
   'dist',

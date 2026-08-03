@@ -28,17 +28,21 @@ const ITEM: CanvasInteractionItem = {
 function Harness({
   items = [ITEM],
   selectedId = null,
+  highlightedIds = [],
   onSelect = vi.fn(),
   onMove = vi.fn(),
   onResize,
   onReorder,
+  onInteractionChange,
 }: {
   items?: CanvasInteractionItem[]
   selectedId?: string | null
+  highlightedIds?: readonly string[]
   onSelect?: (id: string | null) => void
   onMove?: (id: string, position: { x: number; y: number }) => void
   onResize?: (id: string, box: CanvasBox) => void
   onReorder?: (id: string, direction: 'front' | 'back') => void
+  onInteractionChange?: (active: boolean) => void
 }): JSX.Element {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const bindStage = (element: HTMLDivElement | null): void => {
@@ -62,10 +66,12 @@ function Harness({
         stageRef={stageRef}
         items={items}
         selectedId={selectedId}
+        highlightedIds={highlightedIds}
         onSelect={onSelect}
         onMove={onMove}
         onResize={onResize}
         onReorder={onReorder}
+        onInteractionChange={onInteractionChange}
         ariaLabel="测试画布"
       />
     </div>
@@ -194,6 +200,37 @@ describe('overlayFitTargets', () => {
 })
 
 describe('OverlayCanvasInteraction events', () => {
+  it('highlights multiple items while keeping resize controls on the active item', () => {
+    const secondItem: CanvasInteractionItem = {
+      ...ITEM,
+      id: 'second',
+      label: 'second',
+      position: { x: 0.5, y: 0.5 },
+      frame: { kind: 'box', left: 0.5, top: 0.5, width: 0.25, height: 0.25 },
+      zIndex: 2,
+    }
+
+    const { container } = render(
+      <Harness
+        items={[ITEM, secondItem]}
+        selectedId="item"
+        highlightedIds={['item', 'second']}
+        onResize={vi.fn()}
+      />,
+    )
+
+    const activeFrame = container.querySelector('[data-canvas-item="item"]')
+    const secondFrame = container.querySelector('[data-canvas-item="second"]')
+
+    expect(activeFrame).toHaveClass('is-selected', 'is-highlighted')
+    expect(secondFrame).toHaveClass('is-highlighted')
+    expect(secondFrame).not.toHaveClass('is-selected')
+    expect(activeFrame).toHaveAttribute('data-highlighted', 'true')
+    expect(secondFrame).toHaveAttribute('data-highlighted', 'true')
+    expect(screen.getAllByRole('button', { name: /调整item大小/ })).toHaveLength(8)
+    expect(screen.queryByRole('button', { name: /调整second大小/ })).toBeNull()
+  })
+
   it('drags from the existing position instead of snapping the anchor to pointer down', () => {
     const onSelect = vi.fn()
     const onMove = vi.fn()
@@ -206,6 +243,18 @@ describe('OverlayCanvasInteraction events', () => {
 
     expect(onSelect).toHaveBeenCalledWith('item')
     expect(onMove).toHaveBeenLastCalledWith('item', { x: 0.4, y: 0.4 })
+  })
+
+  it('reports the active interval of a layout drag', () => {
+    const onInteractionChange = vi.fn()
+    render(<Harness onInteractionChange={onInteractionChange} />)
+    const layer = screen.getByRole('application', { name: '测试画布' })
+
+    fireEvent.pointerDown(layer, { button: 0, pointerId: 2, clientX: 50, clientY: 25 })
+    fireEvent.pointerMove(layer, { pointerId: 2, clientX: 90, clientY: 45 })
+    fireEvent.pointerUp(layer, { pointerId: 2, clientX: 90, clientY: 45 })
+
+    expect(onInteractionChange.mock.calls).toEqual([[true], [false]])
   })
 
   it('nudges the selected item by one screen pixel', () => {

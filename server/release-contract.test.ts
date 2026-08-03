@@ -33,6 +33,14 @@ const forbiddenLegacyHostRoutes = [
   '.forgeax/active-game.json',
 ]
 
+// These routes belong to the current main-branch runtime/builders. They are
+// intentionally not part of the migration surface being gated here.
+const mainOwnedRuntimeFiles = new Set([
+  'scripts/build-game-components.mjs',
+  'src/runtime/component-host/index.ts',
+  'src/runtime/play/GamePlayer.tsx',
+])
+
 function productionSourceFiles(directory = root, relativeDirectory = ''): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const relativePath = relativeDirectory
@@ -51,6 +59,7 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       || /(?:^|\/)__tests__\//.test(relativePath)
       || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
       || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
+      || mainOwnedRuntimeFiles.has(relativePath)
     ) {
       return []
     }

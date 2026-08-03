@@ -127,6 +127,29 @@ describe('valueExprPick', () => {
     if (pick.mode === 'pick') expect(pick.terms[0]?.attr).toBe('attack')
   })
 
+  it('infers simple entity and variable references without writing a sidecar', () => {
+    expect(resolveValuePick({ expr: 'entity.ent-player.attr.attack' }, entities, variables)).toEqual({
+      mode: 'pick',
+      terms: [{ op: '+', source: 'entity', refId: 'ent-player', attr: 'attack' }],
+    })
+    expect(resolveValuePick('var.qi', entities, variables)).toEqual({
+      mode: 'pick',
+      terms: [{ op: '+', source: 'var', refId: 'qi' }],
+    })
+  })
+
+  it('keeps complex expressions without a sidecar in the read-only compatibility state', () => {
+    expect(resolveValuePick(
+      { expr: 'entity.ent-player.attr.attack * 2' },
+      entities,
+      variables,
+    )).toEqual({ mode: 'pick', terms: [] })
+    expect(resolveValuePick('max(var.qi, 1)', entities, variables)).toEqual({
+      mode: 'pick',
+      terms: [],
+    })
+  })
+
   it('round-trips compile → resolve via embedded pick', () => {
     const source = {
       mode: 'pick' as const,
@@ -146,6 +169,8 @@ describe('valueExprPick', () => {
     expect(encodeEffectOperation('div', 2)).toEqual({ op: 'mul', value: { expr: '1/(2)' } })
     expect(decodeEffectOperation('mul', { expr: '1/(2)' })).toEqual({ op: 'div', value: 2 })
     expect(decodeEffectOperation('add', -10)).toEqual({ op: 'sub', value: 10 })
+    expect(decodeEffectOperation('add', { expr: '-(0)' })).toEqual({ op: 'sub', value: 0 })
+    expect(decodeEffectOperation('mul', { expr: '1/(0)' })).toEqual({ op: 'div', value: 0 })
   })
 
   it('Effect 层减/除包装保留公式 pick，编辑公式后仍能维持当前运算', () => {
@@ -162,6 +187,16 @@ describe('valueExprPick', () => {
       },
     })
     expect(decodeEffectOperation(encoded.op, encoded.value)).toEqual({ op: 'div', value: formulaValue })
+
+    const damage = encodeEffectOperation('sub', formulaValue as unknown as NumOrExpr)
+    expect(damage).toEqual({
+      op: 'add',
+      value: {
+        expr: '-(var.qi)',
+        pick: formulaValue.pick,
+      },
+    })
+    expect(decodeEffectOperation(damage.op, damage.value)).toEqual({ op: 'sub', value: formulaValue })
   })
 
   it('emptyPickTerm seeds from catalog', () => {

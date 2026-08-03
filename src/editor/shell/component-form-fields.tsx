@@ -7,16 +7,25 @@
  * events/hotspotEvents/effects 出结构化编辑器，textStyle/qteCues 暂交「视频」轨编辑器（见 docs/inputs-ssot.md）。
  * 填了 `component` 优先用它，否则按 valueType。
  * `component: 'entity'`：场景实体下拉（复用 EffectsEditor 同源的 EntitySelect，见 editors.tsx / metaCatalog.ts）。
- * `component: 'attr'`：绑定属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
+ * `component: 'attr'`：实体属性下拉——实时扫**同一 inputs 里 `component: 'entity'` 那一项**当前选中的实体的
  * attrs（复用同一份 AttrSelect，见 editors.tsx；与 EffectRow/ClauseRow 的实体→属性级联同源），实体项一变属性下拉即联动刷新。
  */
-import type { CSSProperties, JSX } from 'react'
+import { useState, type CSSProperties, type JSX } from 'react'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
-import type { NumOrExpr } from '../../runtime/schema/graph-schema'
+import type { Entity, NumOrExpr } from '../../runtime/schema/graph-schema'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
+import newComponents from '../../runtime/component-host/components/new'
 import { hasOptionEventsInput } from './editors'
-import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
+import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
+import type { TextOrRef } from './TextValueEditor'
 import { ColorPicker } from './ColorPicker'
+import { entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
+import type {
+  EntityAttributeCreateRequest,
+  EntityCreateRequest,
+  FormulaCreateRequest,
+  VariableCreateRequest,
+} from './metaCatalog'
 
 /**
  * events 编辑器的 variant 由触发的输入标记本身决定，不查组件 id 也不查任何跨组件分类表：
@@ -30,6 +39,94 @@ function eventsVariantFor(componentId: string, marker: string): 'plain' | 'choic
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 72, opacity: 0.7, flexShrink: 0, fontSize: 11 }
+const DEFAULT_COMPACT_LABEL_WIDTH = '7em'
+const COMPACT_CONTROL_WIDTH = 320
+const NEW_COMPONENT_IDS = new Set(newComponents.map(({ manifest }) => manifest.id))
+const DEFAULT_HP_ATTRIBUTE: EntityAttributeCreateRequest = {
+  entityId: '',
+  attrId: 'hp',
+  initialValue: 100,
+  meta: { label: '生命', initial: 100, min: 0, max: 100 },
+}
+
+export type EntityAttributeCreateHandler = (request: EntityAttributeCreateRequest) => void
+export type EntityCreateHandler = (request: EntityCreateRequest) => void
+export type VariableCreateHandler = (request: VariableCreateRequest) => void
+export type FormulaCreateHandler = (request: FormulaCreateRequest) => void
+
+function MissingAttributeCreateControl({
+  entity,
+  entityId,
+  attrId,
+  onCreate,
+}: {
+  entity: Entity
+  entityId: string
+  attrId: string
+  onCreate: EntityAttributeCreateHandler
+}): JSX.Element {
+  const [confirming, setConfirming] = useState(false)
+  const displayName = entityDisplayName(entity, entityId)
+  const entityLabel = displayName === entityId ? entityId : `${displayName}（${entityId}）`
+  const request: EntityAttributeCreateRequest = {
+    ...DEFAULT_HP_ATTRIBUTE,
+    entityId,
+    attrId,
+  }
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        className="gc-mini-action"
+        aria-label={`创建属性 ${attrId}`}
+        title={`在实体「${entityLabel}」中创建属性「${attrId}」`}
+        onClick={() => setConfirming(true)}
+        style={{ fontSize: 11, whiteSpace: 'nowrap' }}
+      >
+        ＋ 创建属性
+      </button>
+    )
+  }
+
+  return (
+    <div
+      role="alertdialog"
+      aria-label={`确认创建属性 ${attrId}`}
+      style={{
+        flexBasis: '100%',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 8px',
+        border: '1px solid rgba(224,163,95,0.45)',
+        borderRadius: 6,
+        background: 'rgba(200,149,90,0.1)',
+        color: '#e7d7c2',
+        fontSize: 11,
+        lineHeight: 1.4,
+      }}
+    >
+      <span>
+        将在实体「{entityLabel}」下创建属性「生命（{attrId}）」；初始值 100，范围 0–100。
+      </span>
+      <button
+        type="button"
+        className="gc-mini-action is-on"
+        onClick={() => {
+          onCreate(request)
+          setConfirming(false)
+        }}
+      >
+        确认创建
+      </button>
+      <button type="button" className="gc-mini-action" onClick={() => setConfirming(false)}>
+        取消
+      </button>
+    </div>
+  )
+}
 
 function fieldHint(inp: ComponentInput): string {
   const name = inp.label ?? inp.key
@@ -55,13 +152,30 @@ function field(label: string, node: JSX.Element, title?: string): JSX.Element {
   )
 }
 
-function compactField(label: string, node: JSX.Element, title: string): JSX.Element {
+function compactField(
+  label: string,
+  node: JSX.Element,
+  title: string,
+  labelWidth?: CSSProperties['width'],
+): JSX.Element {
   return (
     <label
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, marginBottom: 2 }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `${labelWidth ?? DEFAULT_COMPACT_LABEL_WIDTH} minmax(0, ${COMPACT_CONTROL_WIDTH}px)`,
+        alignItems: 'center',
+        columnGap: 10,
+        width: '100%',
+        minWidth: 0,
+        fontSize: 11,
+        marginBottom: 4,
+      }}
       title={title}
     >
-      <span style={{ opacity: 0.55, flexShrink: 0, maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{
+        opacity: 0.55,
+        whiteSpace: 'nowrap',
+      }}>
         {label}
       </span>
       {node}
@@ -74,7 +188,8 @@ function patchValue(
   key: string,
   value: unknown,
 ): Record<string, unknown> {
-  if (value === undefined || value === '') {
+  // 空字符串是文字组件作者明确配置的内容；只有 undefined 才表示移除覆盖并回退默认值。
+  if (value === undefined) {
     const { [key]: _drop, ...rest } = values
     return rest
   }
@@ -83,13 +198,154 @@ function patchValue(
 
 /**
  * `component: 'attr'` 依赖同一 inputs 列表里 `component: 'entity'` 那一项的当前取值——
- * 即「绑定属性」总是跟随「绑定对象」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
+ * 即「属性」总是跟随「实体」联动（对齐 EffectRow/ClauseRow 里 entityId→attr 的下拉级联）。
  * 取第一个 entity 项即可：目前一个组件最多一个实体绑定入口（如 battleHpBar 的 bind）。
  */
 function boundEntityId(inputs: ComponentInput[], values: Record<string, unknown>): string {
   const entityInput = inputs.find((i) => i.component === 'entity')
   const v = entityInput ? values[entityInput.key] : undefined
-  return typeof v === 'string' ? v : ''
+  if (typeof v === 'string') return v
+  return typeof entityInput?.default === 'string' ? entityInput.default : ''
+}
+
+/**
+ * 切换实体时同步修正依赖它的属性字段。
+ *
+ * 旧属性若在新实体上仍存在则保留；否则优先使用 manifest 默认属性，再回落到新实体首个属性。
+ * 默认属性继续保持稀疏存储，只有非默认选择才写入 inputs。
+ */
+function patchEntityBinding(
+  inputs: ComponentInput[],
+  values: Record<string, unknown>,
+  entityKey: string,
+  entityId: string,
+  entities: Record<string, Entity> | undefined,
+): Record<string, unknown> {
+  let next = patchValue(values, entityKey, entityId || undefined)
+  const attrs = listAttrOptions(findEntity(entities, entityId))
+  const attrIds = new Set(attrs.map((attr) => attr.id))
+
+  for (const attrInput of inputs.filter((input) => input.component === 'attr')) {
+    const storedValue = values[attrInput.key]
+    const stored = typeof storedValue === 'string' ? storedValue : ''
+    const fallback = typeof attrInput.default === 'string' ? attrInput.default : ''
+    const current = stored || fallback
+    if (current && attrIds.has(current)) continue
+
+    const selected = fallback && attrIds.has(fallback) ? fallback : (attrs[0]?.id ?? '')
+    next = patchValue(next, attrInput.key, selected === fallback ? undefined : selected)
+  }
+  return next
+}
+
+function isHpBarComponent(componentId: string): boolean {
+  return componentId === 'BattlePlayerHpBar' || componentId === 'BattleEnemyHpBar'
+}
+
+function preferredEntityIds(
+  componentId: string,
+  entities: Record<string, Entity> | undefined,
+): string[] | undefined {
+  const role = componentId === 'BattleEnemyHpBar'
+    ? /enemy|boss|foe|敌|怪|首领/i
+    : componentId === 'BattlePlayerHpBar'
+      ? /player|hero|ally|玩家|主角|我方/i
+      : undefined
+  if (!role) return undefined
+  const ids = Object.values(entities ?? {})
+    .filter((entity) => role.test([entity.id, entity.kind, entity.name].filter(Boolean).join(' ')))
+    .map((entity) => entity.id)
+  return ids.length ? ids : undefined
+}
+
+type AttributeSemantic = 'current-hp' | 'max-hp' | 'current-qi' | 'max-qi'
+
+function attributeSemantic(componentId: string, inputKey: string): AttributeSemantic | undefined {
+  if (componentId !== 'BattlePlayerHpBar' && componentId !== 'BattleEnemyHpBar') return undefined
+  if (inputKey === 'current') return 'current-hp'
+  if (inputKey === 'max') return 'max-hp'
+  if (inputKey === 'qi') return 'current-qi'
+  if (inputKey === 'qiMax') return 'max-qi'
+  return undefined
+}
+
+const SEMANTIC_FALLBACK_IDS: Record<AttributeSemantic, readonly string[]> = {
+  'current-hp': ['hp', 'health'],
+  'max-hp': ['hpMax', 'maxHp', 'healthMax', 'maxHealth'],
+  'current-qi': ['qi', 'energy', 'rage'],
+  'max-qi': ['qiMax', 'maxQi', 'energyMax', 'maxEnergy', 'rageMax', 'maxRage'],
+}
+
+function normalizedSemanticText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_.\-—:：/\\()[\]（）【】]/g, '')
+}
+
+function labelMatchesSemantic(label: string, semantic: AttributeSemantic): boolean {
+  const text = normalizedSemanticText(label)
+  const maximum = /最大|上限|峰值|maximum|max|limit|cap/.test(text)
+  const hp = /血量|生命值?|health|hitpoints?|hp/.test(text)
+  const qi = /气力|能量|怒气|energy|rage|mana|qi/.test(text)
+  if (semantic === 'current-hp') return hp && !maximum
+  if (semantic === 'max-hp') return hp && maximum
+  if (semantic === 'current-qi') return qi && !maximum
+  return qi && maximum
+}
+
+function attributeMatchesSemantic(
+  entity: Entity | undefined,
+  attrId: string,
+  semantic: AttributeSemantic,
+): boolean {
+  const displayName = entity?.attrMeta?.[attrId]?.label?.trim()
+  if (displayName) return labelMatchesSemantic(displayName, semantic)
+  return SEMANTIC_FALLBACK_IDS[semantic].some((candidate) =>
+    candidate.toLowerCase() === attrId.toLowerCase())
+}
+
+function attributeCreateTemplate(
+  componentId: string,
+  inputKey: string,
+): Omit<EntityAttributeCreateRequest, 'entityId'> | undefined {
+  if (!isHpBarComponent(componentId)) return undefined
+  if (inputKey === 'current') {
+    return {
+      attrId: 'hp',
+      initialValue: 100,
+      meta: { label: '当前血量', initial: 100, min: 0, max: 100 },
+    }
+  }
+  if (inputKey === 'max') {
+    return {
+      attrId: 'hpMax',
+      initialValue: 100,
+      meta: { label: '最大血量', initial: 100, min: 0 },
+    }
+  }
+  if (inputKey === 'qi') {
+    return {
+      attrId: 'qi',
+      initialValue: 3,
+      meta: { label: '当前气力', initial: 3, min: 0, max: 5 },
+    }
+  }
+  if (inputKey === 'qiMax') {
+    return {
+      attrId: 'qiMax',
+      initialValue: 5,
+      meta: { label: '气力上限', initial: 5, min: 0 },
+    }
+  }
+  return undefined
+}
+
+function entityCreateTemplate(componentId: string): EntityCreateRequest | undefined {
+  if (componentId === 'BattleEnemyHpBar') {
+    return { entityId: 'ent-boss', name: '敌方' }
+  }
+  if (componentId === 'BattlePlayerHpBar') {
+    return { entityId: 'ent-player', name: '我方' }
+  }
+  return undefined
 }
 
 function isComplexInput(inp: ComponentInput): boolean {
@@ -169,14 +425,20 @@ function renderInput(
   inputs: ComponentInput[],
   values: Record<string, unknown>,
   onPatch: (key: string, value: unknown) => void,
+  onValuesChange: (next: Record<string, unknown>) => void,
   pickers: EditorPickerCtx | undefined,
   compact: boolean,
+  labelWidth?: CSSProperties['width'],
+  onCreateEntityAttribute?: EntityAttributeCreateHandler,
+  onCreateEntity?: EntityCreateHandler,
+  onCreateVariable?: VariableCreateHandler,
+  onCreateFormula?: FormulaCreateHandler,
 ): JSX.Element | null {
   const val = values[inp.key]
   const label = inp.label ?? inp.key
   const hint = fieldHint(inp)
   const wrap = (node: JSX.Element): JSX.Element =>
-    compact ? compactField(label, node, hint) : field(label, node, hint)
+    compact ? compactField(label, node, hint, labelWidth) : field(label, node, hint)
 
   // 有 component 优先用它渲染（复合编辑器）；events / effects 直接出结构化子编辑器，textStyle / qteCues 暂交「视频」轨。
   if (inp.component === 'events' || inp.component === 'hotspotEvents') {
@@ -230,45 +492,174 @@ function renderInput(
     )
   }
   if (inp.component === 'numberExpr') {
+    const optional = inp.required !== true && inp.default === undefined
+    const isNewComponent = NEW_COMPONENT_IDS.has(componentId)
+    const stackControls = compact && isNewComponent
+    const preferredEntities = preferredEntityIds(componentId, pickers?.entities)
+    const semantic = attributeSemantic(componentId, inp.key)
+    const semanticAttrIds = semantic ? SEMANTIC_FALLBACK_IDS[semantic] : undefined
+    const createTemplate = attributeCreateTemplate(componentId, inp.key)
+    const createEntityTemplate = entityCreateTemplate(componentId)
     return (
-      <div key={inp.key} style={{ marginBottom: 6 }}>
-        <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{label}</div>
-        <ValueInput
-          value={val as NumOrExpr | undefined}
-          defaultValue={typeof inp.default === 'number' ? inp.default : undefined}
-          entities={pickers?.entities}
-          variables={pickers?.variables}
-          formulas={pickers?.formulas}
-          onChange={(next) => onPatch(inp.key, next)}
-        />
+      <div
+        key={inp.key}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `${labelWidth ?? 'max-content'} minmax(0, 1fr)`,
+          columnGap: 8,
+          alignItems: 'start',
+          width: '100%',
+          minWidth: 0,
+          flexBasis: '100%',
+          flexGrow: 0,
+          flexShrink: 0,
+          marginBottom: 6,
+          fontSize: 11,
+        }}
+      >
+        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 6 }}>{label}</span>
+        {inp.valueType === 'string' ? (
+          <TextValueInput
+            value={(val ?? inp.default) as TextOrRef | undefined}
+            entities={pickers?.entities}
+            variables={pickers?.variables}
+            formulas={pickers?.formulas}
+            preferredEntityIds={preferredEntities}
+            entityNameOnly={
+              (isHpBarComponent(componentId) && inp.key === 'label')
+              || (componentId === 'Dialogue' && inp.key === 'speaker')
+            }
+            createAttribute={onCreateEntityAttribute
+              ? {
+                ...(createTemplate ? { template: createTemplate } : {}),
+                onCreate: onCreateEntityAttribute,
+              }
+              : undefined}
+            createEntity={onCreateEntity
+              ? {
+                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+                onCreate: onCreateEntity,
+              }
+              : undefined}
+            createVariable={isNewComponent && onCreateVariable
+              ? { onCreate: onCreateVariable }
+              : undefined}
+            createFormula={isNewComponent && onCreateFormula
+              ? { onCreate: onCreateFormula }
+              : undefined}
+            stackControls={stackControls}
+            onChange={(next) => onPatch(inp.key, next)}
+          />
+        ) : (
+          <ValueInput
+            value={val as NumOrExpr | string | undefined}
+            defaultValue={typeof inp.default === 'number' ? inp.default : undefined}
+            entities={pickers?.entities}
+            variables={pickers?.variables}
+            formulas={pickers?.formulas}
+            preferredEntityIds={preferredEntities}
+            preferredAttrIds={semanticAttrIds}
+            allowAttribute={semantic
+              ? (entity, attrId) => attributeMatchesSemantic(entity, attrId, semantic)
+              : undefined}
+            createAttribute={onCreateEntityAttribute
+              ? {
+                ...(createTemplate ? { template: createTemplate } : {}),
+                onCreate: onCreateEntityAttribute,
+              }
+              : undefined}
+            createEntity={onCreateEntity
+              ? {
+                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+                onCreate: onCreateEntity,
+              }
+              : undefined}
+            createVariable={isNewComponent && onCreateVariable
+              ? { onCreate: onCreateVariable }
+              : undefined}
+            createFormula={isNewComponent && onCreateFormula
+              ? { onCreate: onCreateFormula }
+              : undefined}
+            stackControls={stackControls}
+            onChange={(next) => onPatch(inp.key, next)}
+            emptyWhenUndefined={optional}
+          />
+        )}
       </div>
     )
   }
   if (inp.component === 'entity') {
+    const entityId = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
+    const missingTemplate = !!entityId && !findEntity(pickers?.entities, entityId)
     return (
-      <span key={inp.key}>
+      <span key={inp.key} style={missingTemplate && isHpBarComponent(componentId) ? { flexBasis: '100%', minWidth: 0 } : undefined}>
         {wrap(
           <EntitySelect
-            value={typeof val === 'string' ? val : ''}
+            value={entityId}
             entities={pickers?.entities}
-            onChange={(id) => onPatch(inp.key, id || undefined)}
+            onChange={(id) => {
+              if (isHpBarComponent(componentId)) {
+                onValuesChange(patchEntityBinding(inputs, values, inp.key, id, pickers?.entities))
+                return
+              }
+              onPatch(inp.key, id || undefined)
+            }}
           />,
         )}
+        {missingTemplate && isHpBarComponent(componentId) ? (
+          <span
+            role="status"
+            style={{ display: 'block', margin: '2px 0 6px', color: '#e6a23c', fontSize: 11 }}
+          >
+            实体模板「{entityId}」已删除，当前关联仍保留；改选后无法再次选择。
+          </span>
+        ) : null}
       </span>
     )
   }
   if (inp.component === 'attr') {
+    const attrValue = typeof val === 'string' ? val : (typeof inp.default === 'string' ? inp.default : '')
+    const entityId = boundEntityId(inputs, values)
+    const entity = findEntity(pickers?.entities, entityId)
+    if (isHpBarComponent(componentId) && entityId && !entity) return null
+    const declared = entity
+      ? Object.hasOwn(entity.attrs ?? {}, attrValue) || Object.hasOwn(entity.attrMeta ?? {}, attrValue)
+      : false
+    const canCreate = isHpBarComponent(componentId)
+      && attrValue === 'hp'
+      && !!entity
+      && !declared
+      && !!onCreateEntityAttribute
     return (
-      <span key={inp.key}>
+      <div
+        key={inp.key}
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 4,
+          minWidth: 0,
+          flexBasis: canCreate ? '100%' : undefined,
+        }}
+      >
         {wrap(
           <AttrSelect
-            entityId={boundEntityId(inputs, values)}
-            value={typeof val === 'string' ? val : ''}
+            entityId={entityId}
+            value={attrValue}
             entities={pickers?.entities}
+            fallbackValues={isHpBarComponent(componentId) ? [attrValue] : undefined}
             onChange={(attr) => onPatch(inp.key, attr || undefined)}
           />,
         )}
-      </span>
+        {canCreate ? (
+          <MissingAttributeCreateControl
+            entity={entity}
+            entityId={entityId}
+            attrId={attrValue}
+            onCreate={onCreateEntityAttribute}
+          />
+        ) : null}
+      </div>
     )
   }
   if (inp.component) {
@@ -288,21 +679,26 @@ function renderInput(
     )
   }
   if (inp.options) {
-    const defaultOption = typeof inp.default === 'string'
-      ? inp.options.find((option) => option.value === inp.default)
-      : undefined
+    const selectedValue = typeof val === 'string'
+      ? val
+      : typeof inp.default === 'string' && inp.options.some((option) => option.value === inp.default)
+        ? inp.default
+        : (inp.options[0]?.value ?? '')
     return (
       <span key={inp.key}>
         {wrap(
           <select
-            value={typeof val === 'string' ? val : ''}
-            onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
-            style={{ flex: compact ? undefined : 1, maxWidth: compact ? 110 : undefined, fontSize: 12 }}
+            value={selectedValue}
+            onChange={(e) => onPatch(inp.key, e.target.value)}
+            style={{
+              width: compact ? '100%' : undefined,
+              minWidth: 0,
+              flex: compact ? undefined : 1,
+              maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+              fontSize: 12,
+            }}
             title={hint}
           >
-            <option value="">
-              {defaultOption ? `默认：${defaultOption.label}` : '（未选）'}
-            </option>
             {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>,
         )}
@@ -319,7 +715,18 @@ function renderInput(
               value={typeof val === 'number' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
               onChange={(e) => onPatch(inp.key, e.target.value === '' ? undefined : Number(e.target.value))}
-              style={{ width: compact ? 56 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              onBlur={(e) => {
+                if (e.currentTarget.value === '' && typeof inp.default === 'number') {
+                  onPatch(inp.key, inp.default)
+                }
+              }}
+              style={{
+                width: compact ? '100%' : undefined,
+                minWidth: 0,
+                flex: compact ? undefined : 1,
+                maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+                fontSize: 12,
+              }}
               title={hint}
             />,
           )}
@@ -346,8 +753,14 @@ function renderInput(
             <input
               value={typeof val === 'string' ? val : ''}
               placeholder={defaultPlaceholder(inp)}
-              onChange={(e) => onPatch(inp.key, e.target.value || undefined)}
-              style={{ width: compact ? 88 : undefined, flex: compact ? undefined : 1, fontSize: 12 }}
+              onChange={(e) => onPatch(inp.key, e.target.value)}
+              style={{
+                width: compact ? '100%' : undefined,
+                minWidth: 0,
+                flex: compact ? undefined : 1,
+                maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+                fontSize: 12,
+              }}
               title={hint}
             />,
           )}
@@ -396,6 +809,11 @@ export function ComponentFormFields({
   pickers,
   excludeKeys,
   density = 'default',
+  labelWidth,
+  onCreateEntityAttribute,
+  onCreateEntity,
+  onCreateVariable,
+  onCreateFormula,
 }: {
   componentId: string
   values: Record<string, unknown>
@@ -406,8 +824,18 @@ export function ComponentFormFields({
    * speaker 走「显示说话人前缀」开关、events 走结算区自带的分支编辑）。
    */
   excludeKeys?: string[]
-  /** compact：节点检视器等窄栏——标量并排、复合项折叠。 */
+  /** compact：节点检视器等窄栏——标量保持单项单行，复合项折叠。 */
   density?: 'default' | 'compact'
+  /** compact 模式的标签列宽；界面 Tab 使用足以容纳「总时长ms」的稳定宽度。 */
+  labelWidth?: CSSProperties['width']
+  /** 新血条绑定默认 hp 但实体未声明时，经二次确认后由场景持有者补建。 */
+  onCreateEntityAttribute?: EntityAttributeCreateHandler
+  /** 新血条没有可选实体时，经二次确认后由场景持有者补建。 */
+  onCreateEntity?: EntityCreateHandler
+  /** 新组件动态值缺少变量时，经级联确认后补建到场景变量目录。 */
+  onCreateVariable?: VariableCreateHandler
+  /** 新组件动态值缺少公式时，经级联确认后补建到场景公式目录。 */
+  onCreateFormula?: FormulaCreateHandler
 }): JSX.Element | null {
   const compact = density === 'compact'
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
@@ -433,19 +861,19 @@ export function ComponentFormFields({
         <div style={grouped ? { marginBottom: 6 } : undefined}>
           {grouped ? groupLabel('参数配置') : null}
           {compact ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
-              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, pickers, true))}
+            <div style={{ display: 'grid', gap: 2, alignItems: 'center', width: '100%', minWidth: 0 }}>
+              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
             </div>
           ) : (
-            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, pickers, false))
+            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))
           )}
-          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, pickers, compact))}
+          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
         </div>
       ) : null}
       {events.length > 0 ? (
         <div style={grouped ? { borderTop: '1px solid #2f2f2f', paddingTop: 5 } : undefined}>
           {grouped ? groupLabel('事件配置') : null}
-          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, pickers, compact))}
+          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
         </div>
       ) : null}
     </div>

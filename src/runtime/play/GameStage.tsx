@@ -37,6 +37,15 @@ export interface GameStageProps {
   videoKey?: string
   /** 当前节点的后继候选；提前加载并保留 DOM，实际切换时不再设置 src。 */
   preloadVideos?: PreloadVideo[]
+  /** 播放壳控制；不传时保持历史行为（播放中、1 倍速）。 */
+  paused?: boolean
+  playbackRate?: number
+  /** 是否播放当前前台视频自带的音轨；预加载和退场视频始终静音。 */
+  videoAudioEnabled?: boolean
+  /** 当前视频 metadata 就绪后通知有效演出时长；仅供编辑器流程时间轴校准。 */
+  onDurationChange?: (durationMs: number) => void
+  /** 当前真正呈现的视频元素；编辑器用它逐帧读取 currentTime，不改变运行时 tick 频率。 */
+  onActiveVideoChange?: (video: HTMLVideoElement | null) => void
 }
 
 export interface PreloadVideo {
@@ -79,7 +88,8 @@ function playbackKey(videoSrc: string | undefined, clip: ClipSnap | undefined, v
 
 export function GameStage({
   videoSrc, clip, overlayMounts, skins, skinCtx, onEmit, onTick, onPerformanceEnd, placeholder, videoKey,
-  preloadVideos = EMPTY_PRELOADS,
+  preloadVideos = EMPTY_PRELOADS, paused = false, playbackRate = 1, videoAudioEnabled = false,
+  onDurationChange, onActiveVideoChange,
 }: GameStageProps): JSX.Element {
   const desired = useMemo<BufferedPlayback | null>(
     () => {
@@ -123,6 +133,7 @@ export function GameStage({
   const refreshRevisionRef = useRef(0)
   const refreshingPlaybackKeysRef = useRef<Set<string>>(new Set())
   const retryResumeTimeRef = useRef<Map<string, number>>(new Map())
+  const effectiveDurationByKeyRef = useRef<Map<string, number>>(new Map())
   const activeVideoRef = useRef<HTMLVideoElement | null>(null)
   const frontSlotRef = useRef<string | null>(buffer.frontId)
   const desiredKeyRef = useRef<string | null>(desiredKey)
@@ -134,14 +145,30 @@ export function GameStage({
   const [missingVideoId, setMissingVideoId] = useState<string | null>(null)
 
   useEffect(() => {
+    for (const element of Object.values(slotElements.current)) {
+      if (!element) continue
+      element.playbackRate = playbackRate
+      if (paused) element.pause()
+      else if (element === activeVideoRef.current) startPlaying(element)
+    }
+  }, [paused, playbackRate])
+
+  useEffect(() => {
     setMissingVideoId(null)
   }, [clip?.nodeId, clip?.mediaId, videoSrc])
+
+  useEffect(() => {
+    if (!desiredKey) return
+    const cached = effectiveDurationByKeyRef.current.get(desiredKey)
+    if (cached) onDurationChange?.(cached)
+  }, [desiredKey, onDurationChange])
 
   useEffect(() => {
     pendingPresentationRef.current = null
     if (!desired) {
       for (const element of Object.values(slotElements.current)) element?.pause()
       activeVideoRef.current = null
+      onActiveVideoChange?.(null)
       loadedSlotsRef.current.clear()
       setBuffer((current) => current.slots.length > 0 ? { frontId: null, slots: [] } : current)
       return
@@ -189,6 +216,8 @@ export function GameStage({
     if (!element) return
     if (target.id === buffer.frontId) {
       activeVideoRef.current = element
+      onActiveVideoChange?.(element)
+      reportEffectiveDuration(target.playback, element)
       recomputeRect()
       startPlaying(element)
       return
@@ -202,6 +231,9 @@ export function GameStage({
     frontSlotRef.current === slotId && desiredKeyRef.current === key
 
   function startPlaying(element: HTMLVideoElement): void {
+    // Buffer/preload reconciliation may rerender after the terminal clip has ended.
+    // An ended foreground video must stay on its final frame; play() would restart it.
+    if (paused || element.ended) return
     if (!element.paused) return
     const playing = element.play()
     void playing?.catch((error: unknown) => {
@@ -211,8 +243,18 @@ export function GameStage({
     })
   }
 
+  function reportEffectiveDuration(playback: BufferedPlayback, element: HTMLVideoElement): void {
+    const videoDurationMs = Math.round(element.duration * 1000)
+    if (!Number.isFinite(videoDurationMs) || videoDurationMs <= 0) return
+    const capMs = playback.durationMs
+    const effectiveDurationMs = capMs && capMs > 0 && capMs <= videoDurationMs ? capMs : videoDurationMs
+    effectiveDurationByKeyRef.current.set(playback.key, effectiveDurationMs)
+    onDurationChange?.(effectiveDurationMs)
+  }
+
   function presentWhenFrameReady(slot: VideoSlot, element: HTMLVideoElement): void {
     if (desiredKeyRef.current !== slot.playback.key) return
+    reportEffectiveDuration(slot.playback, element)
     const presentationKey = `${slot.id}\u0000${slot.playback.key}`
     if (pendingPresentationRef.current === presentationKey) return
     pendingPresentationRef.current = presentationKey
@@ -227,6 +269,7 @@ export function GameStage({
       const previousFront = frontSlotRef.current
       if (previousFront && previousFront !== slot.id) slotElements.current[previousFront]?.pause()
       activeVideoRef.current = element
+      onActiveVideoChange?.(element)
       frontSlotRef.current = slot.id
       pendingPresentationRef.current = null
       setMissingVideoId(null)
@@ -252,6 +295,8 @@ export function GameStage({
     if (desiredKeyRef.current === slot.playback.key) {
       if (frontSlotRef.current === slot.id) {
         activeVideoRef.current = element
+        onActiveVideoChange?.(element)
+        reportEffectiveDuration(slot.playback, element)
         recomputeRect()
       } else {
         presentWhenFrameReady(slot, element)
@@ -304,12 +349,21 @@ export function GameStage({
                 data-playback-key={playback.key}
                 src={playback.src}
                 autoPlay={isFront}
-                muted
+                muted={!videoAudioEnabled || !isFront}
                 playsInline
                 preload="auto"
                 loop={playback.loop}
                 onLoadedMetadata={(event) => {
+                  const videoDurationMs = Math.round(event.currentTarget.duration * 1000)
+                  if (Number.isFinite(videoDurationMs) && videoDurationMs > 0) {
+                    const capMs = playback.durationMs
+                    effectiveDurationByKeyRef.current.set(
+                      playback.key,
+                      capMs && capMs > 0 && capMs <= videoDurationMs ? capMs : videoDurationMs,
+                    )
+                  }
                   if (desiredKeyRef.current !== playback.key) return
+                  reportEffectiveDuration(playback, event.currentTarget)
                   const resumeAt = retryResumeTimeRef.current.get(slot.id)
                   if (resumeAt !== undefined) {
                     retryResumeTimeRef.current.delete(slot.id)
@@ -318,6 +372,7 @@ export function GameStage({
                   setMissingVideoId(null)
                   if (isCurrentPlayback(slot.id, playback.key)) {
                     activeVideoRef.current = event.currentTarget
+                    onActiveVideoChange?.(event.currentTarget)
                     recomputeRect()
                   }
                 }}
@@ -331,7 +386,7 @@ export function GameStage({
                   if (!isCurrentPlayback(slot.id, playback.key)) return
                   const element = event.currentTarget
                   const nowMs = Math.floor(element.currentTime * 1000)
-                  if (videoDurationCapReached(nowMs, playback.durationMs, element.duration)) {
+                  if (!playback.loop && videoDurationCapReached(nowMs, playback.durationMs, element.duration)) {
                     element.pause()
                     onPerformanceEnd()
                     return
@@ -363,7 +418,8 @@ export function GameStage({
       )}
 
       <VideoOverlayStage contentRect={contentRect}>
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <style>{'.gv-playback-layer.is-paused,.gv-playback-layer.is-paused *,.gv-playback-layer.is-paused *::before,.gv-playback-layer.is-paused *::after{animation-play-state:paused!important}'}</style>
+        <div className={`gv-playback-layer${paused ? ' is-paused' : ''}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {overlayMounts.map((m) => (
             <span key={m.mountId} style={{ display: 'contents' }}>
               {skins?.renderOverlayMount(m, onEmit, skinCtx)}

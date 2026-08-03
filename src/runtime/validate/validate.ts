@@ -6,8 +6,10 @@
  * 传 `opts`（实体/变量/道具 id）后还查**引用**：condition/effect/expr 里引用的 entity/var/item/nodeId
  * 是否存在、reactions 中 advance 是否指向真实边；并对**纯瞬时环**（全为无演出/无交互节点 + 无条件边）给告警。
  */
-import type { GameGraph, GameScenario, Overlay, Reaction } from '../schema/graph-schema'
+import type { GameGraph, GameScenario, NodeAction, Overlay, Reaction } from '../schema/graph-schema'
+import { getSubFlowPack, getSubProcess } from '../schema/graph-schema'
 import { expandNodeOverlays } from '../schema/expand-overlay'
+import { overlayMountId } from '../schema/node-config-schema'
 import { eventsFromParams, overlayReactionKey } from '../schema/overlay-events'
 import { deriveOutputs, getComponent } from '../registry/component-registry'
 import { defaultNodeKindRegistry, resolveNodeType } from '../nodes'
@@ -217,14 +219,13 @@ const BGM_MODES = new Set(['push', 'replace', 'stop'])
 
 /**
  * BGM 配置落在哪儿 —— 两处的 schema 不同（`NodeBgm` vs `DocumentBgm`），同一个键换个位置就是死键：
- * 只有节点有 `mode` / `restart`（作用域语义），只有文档床有 `loop`。
+ * 只有节点有 `mode` / `restart`（作用域语义）；`loop` 在文档床和节点曲目上都有效。
  */
 type BgmPosition = 'node' | 'doc'
 
 /** 节点作用域独有的键 → 落到文档床上一律不生效（见 checkBgm 的 `bgm.key.ignored`）。 */
 const NODE_ONLY_BGM_KEYS = ['mode', 'restart'] as const
-/** 文档床独有的键：`engine.applyNodeBgm` 逐字段构造 apply 入参、不展开落盘对象 → 节点恒 loop。 */
-const DOC_ONLY_BGM_KEYS = ['loop'] as const
+const DOC_ONLY_BGM_KEYS = [] as const
 
 /**
  * 校验一处 BGM 配置（`doc.bgm` 或 `node.data.bgm`，SPEC §3.3）。
@@ -233,7 +234,7 @@ const DOC_ONLY_BGM_KEYS = ['loop'] as const
  * 作者只会听到「没响」，正是这里要 fail-loud 的场景。
  * `volume` 直接写 `HTMLAudioElement`、fade 直接进定时器，两者都不在下游 clamp。
  *
- * v2 的新语义（`mode: 'stop'` 免 ref）**只在节点级成立**，所以本函数收 `position`：文档床没有
+ * 节点级的 `mode: 'stop'` 与 volume-only 配置免 ref，所以本函数收 `position`：文档床没有
  * `mode`，`engine.applyDocBgm` 只看 `doc.ref`，于是 `scenario.bgm = { mode: 'stop' }` 落地是
  * 「静音起局」而不是作者以为的「结束音乐」——豁免跟着带到文档级，这条就静默通过了。
  */
@@ -251,18 +252,22 @@ function checkBgm(
   // 压根不读 ref，连「能不能解析」都是伪问题。面板切到 stop 时会把 ref 收掉（见 patchNodeBgm）。
   const isStop = position === 'node' && b.mode === 'stop'
   const ref = b.ref
-  if (!isStop && (typeof ref !== 'string' || ref.trim().length === 0)) {
+  const isVolumeOnly = position === 'node' && ref === undefined && b.volume !== undefined
+  if (!isStop && !isVolumeOnly && (typeof ref !== 'string' || ref.trim().length === 0)) {
     issues.push({
       level: 'error',
       code: 'bgm.ref.empty',
       msg: position === 'node'
-        ? "bgm.ref 必须是非空字符串（只有 mode: 'stop' 那一条可以不带；否则 runtime 静默丢弃该 bgm 配置）"
+        ? "bgm.ref 必须是非空字符串（只有 mode: 'stop' 或仅配置 volume 时可以不带；否则 runtime 静默丢弃该 bgm 配置）"
         : 'bgm.ref 必须是非空字符串（否则 runtime 静默丢弃该 bgm 配置）',
       at,
     })
   }
   if (b.volume !== undefined && (typeof b.volume !== 'number' || !Number.isFinite(b.volume) || b.volume < 0 || b.volume > 1)) {
     issues.push({ level: 'error', code: 'bgm.volume.range', msg: `bgm.volume '${String(b.volume)}' 越界（须是 [0, 1] 内的数字）`, at })
+  }
+  if (b.loop !== undefined && typeof b.loop !== 'boolean') {
+    issues.push({ level: 'error', code: 'bgm.flag.type', msg: `bgm.loop '${String(b.loop)}' 非法（只能是 true / false）`, at })
   }
   for (const key of ['fadeInMs', 'fadeOutMs'] as const) {
     const v = b[key]
@@ -418,10 +423,33 @@ function checkBgmStackingCycle(graph: GameGraph, issues: Issue[]): void {
   }
 }
 
-export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
+interface GraphValidationState {
+  nodeIds: Set<string>
+  edgeIds: Set<string>
+}
+
+function validateGraphScope(
+  graph: GameGraph,
+  opts: ValidateOpts | undefined,
+  entry: string | undefined,
+  state: GraphValidationState,
+): Issue[] {
   const issues: Issue[] = []
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
   const overlays = opts?.overlays
+
+  for (const node of graph.nodes) {
+    if (state.nodeIds.has(node.id)) {
+      issues.push({ level: 'error', code: 'node.id.duplicate', msg: `节点 id '${node.id}' 在嵌套图中重复`, at: node.id })
+    }
+    state.nodeIds.add(node.id)
+  }
+  for (const edge of graph.edges) {
+    if (state.edgeIds.has(edge.id)) {
+      issues.push({ level: 'error', code: 'edge.id.duplicate', msg: `边 id '${edge.id}' 在嵌套图中重复`, at: edge.id })
+    }
+    state.edgeIds.add(edge.id)
+  }
 
   // 1) 边：悬空 source/target + sourceHandle 是否在派生 outputs 内
   for (const e of graph.edges) {
@@ -498,9 +526,9 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
   }
   for (const overlay of Object.values(overlays ?? {})) checkOverlayReactions(overlay, overlays ?? {}, issues)
 
-  // 4) 不可达节点（从 nodes[0] BFS）
+  // 4) 不可达节点（蓝图根缺省从 nodes[0]；内嵌子流程从显式 entry）
   if (graph.nodes.length > 0) {
-    const start = graph.nodes[0]!.id
+    const start = entry ?? graph.nodes[0]!.id
     const adj = new Map<string, string[]>()
     for (const e of graph.edges) {
       const list = adj.get(e.source) ?? []
@@ -536,7 +564,10 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
       items: new Set(opts.items ?? []),
       nodeIds: new Set(graph.nodes.map((n) => n.id)),
     }
-    for (const n of graph.nodes) walkRefs(n.data, ctx, n.id, issues)
+    for (const n of graph.nodes) {
+      const { subProcess: _subProcess, ...ownData } = n.data as unknown as Record<string, unknown>
+      walkRefs(ownData, ctx, n.id, issues)
+    }
     for (const e of graph.edges) walkRefs(e.data, ctx, e.id, issues)
     if (overlays) {
       for (const [oid, ov] of Object.entries(overlays)) {
@@ -552,6 +583,7 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
           at: `node:${n.id}.overlayNodes[${mi}].reactions`,
         })),
       ]
+      const overlayMountIds = new Set((n.data.overlayNodes ?? []).map(overlayMountId))
       for (const pack of packs) {
         for (let i = 0; i < (pack.reactions ?? []).length; i++) {
           const r = pack.reactions![i]!
@@ -560,6 +592,36 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
           if (r.when.type === 'complete' && r.when.if) walkRefs(r.when.if, ctx, at, issues)
           for (const a of r.do) {
             if (a.kind === 'effect') walkRefs(a.effects, ctx, at, issues)
+            if (a.kind === 'spawn') {
+              walkRefs(a.inputs, ctx, at, issues)
+              const slash = a.from.indexOf('/')
+              const overlayId = slash > 0 ? a.from.slice(0, slash) : ''
+              const childId = slash > 0 ? a.from.slice(slash + 1) : ''
+              if (!overlayId || !childId || (overlays && !overlays[overlayId]?.children.some((child) => child.id === childId))) {
+                issues.push({
+                  level: 'error',
+                  code: 'ref.spawn.missing',
+                  msg: `reaction spawn.from '${a.from}' 未命中界面模板`,
+                  at,
+                })
+              }
+            }
+            if (a.kind === 'hideOverlay' && !a.mountId.trim()) {
+              issues.push({
+                level: 'error',
+                code: 'ref.hideOverlay.mount.empty',
+                msg: 'reaction hideOverlay.mountId 不能为空',
+                at,
+              })
+            }
+            if (a.kind === 'hideOverlay' && a.mountId.trim() && !overlayMountIds.has(a.mountId)) {
+              issues.push({
+                level: 'error',
+                code: 'ref.hideOverlay.mount.missing',
+                msg: `reaction hideOverlay.mountId '${a.mountId}' 未命中本节点内已有界面`,
+                at,
+              })
+            }
             if (a.kind === 'advance' && !edgeIds.has(a.edgeId)) {
               issues.push({ level: 'error', code: 'ref.edge.missing', msg: `reaction advance 指向未知边 '${a.edgeId}'`, at })
             }
@@ -569,14 +631,52 @@ export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
     }
   }
 
-  // 7) 节点作用域 BGM 配置（SPEC §3.3）；容器节点（subFlow / subFlowPack）走同一条路。
+  // 7) 节点作用域 BGM 配置（容器与普通节点走同一条路）。
   const audio = opts?.audioAssets ? new Set(opts.audioAssets) : undefined
   for (const n of graph.nodes) {
     checkBgm((n.data as { bgm?: unknown }).bgm, `node:${n.id}.bgm`, audio, issues, 'node')
   }
   checkBgmStackingCycle(graph, issues)
 
+  // 8) 私有内嵌子流程：字段互斥、入口直属、逐层递归校验。
+  for (const node of graph.nodes) {
+    const raw = node.data as unknown as Record<string, unknown>
+    if ('subFlow' in raw || 'subFlowRef' in raw) {
+      issues.push({ level: 'error', code: 'subProcess.legacy', msg: '旧 subFlow/subFlowRef 已不受支持，请使用 subProcess', at: node.id })
+    }
+    const process = getSubProcess(node.data)
+    if ('subProcess' in raw && !process) {
+      issues.push({
+        level: 'error',
+        code: 'subProcess.invalid',
+        msg: 'subProcess 必须包含字符串 entry 和合法的 graph',
+        at: node.id,
+      })
+    }
+    if (process && getSubFlowPack(node.data)) {
+      issues.push({ level: 'error', code: 'subProcess.conflict', msg: 'subProcess 与 subFlowPack 不能同时存在', at: node.id })
+    }
+    if (!process) continue
+    if (!process.graph.nodes.some((child) => child.id === process.entry)) {
+      issues.push({
+        level: 'error',
+        code: 'subProcess.entry.missing',
+        msg: `subProcess entry '${process.entry}' 不在直属子图中`,
+        at: node.id,
+      })
+    }
+    const nested = validateGraphScope(process.graph, opts, process.entry, state)
+    issues.push(...nested.map((issue) => ({
+      ...issue,
+      at: `${node.id}/subProcess${issue.at ? `/${issue.at}` : ''}`,
+    })))
+  }
+
   return issues
+}
+
+export function validateGraph(graph: GameGraph, opts?: ValidateOpts): Issue[] {
+  return validateGraphScope(graph, opts, undefined, { nodeIds: new Set(), edgeIds: new Set() })
 }
 
 /** 是否存在「attr 可归零」的致死出口：边条件上的 attrRatio ≤ 0。 */

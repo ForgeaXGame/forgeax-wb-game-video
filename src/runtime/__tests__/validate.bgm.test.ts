@@ -63,6 +63,15 @@ describe('bgm 校验（SPEC §3.3）· 节点级', () => {
     }
   })
 
+  it('volume-only 不带 ref 合法，表示调整当前曲目音量', () => {
+    expect(validateGraph(graphWithBgm({ volume: 0.4 }), { audioAssets: ['a-aud-battle'] })).toEqual([])
+  })
+
+  it('非法 volume-only 只报音量范围错误，不强迫补曲目', () => {
+    const issues = validateGraph(graphWithBgm({ volume: 2 }), { audioAssets: ['a-aud-battle'] })
+    expect(errors(issues).map((i) => i.code)).toEqual(['bgm.volume.range'])
+  })
+
   it('fadeInMs / fadeOutMs 为负 → error', () => {
     const issues = validateGraph(
       graphWithBgm({ ref: 'a-aud-battle', fadeInMs: -1, fadeOutMs: -5 }),
@@ -114,13 +123,11 @@ describe('bgm 校验（SPEC §3.3）· 节点级', () => {
     expect(validateGraph(graphWithBgm({ ref: 'a-aud-battle', restart: true }), { audioAssets: ['a-aud-battle'] })).toEqual([])
   })
 
-  // `loop` 只在文档床上有意义：engine 的 applyNodeBgm 逐字段构造 BgmApplyInput、**不**展开落盘对象，
-  // 所以节点层恒 loop: true。落了这个键的作者以为能「只播一遍」，听到的是循环。
-  it('节点上写文档床独有的 loop → warn（runtime 不转发这个字段）', () => {
-    const issues = validateGraph(graphWithBgm({ ref: 'a-aud-battle', loop: false }), { audioAssets: ['a-aud-battle'] })
-    expect(errors(issues)).toEqual([])
-    expect(bgmIssues(issues)[0]).toMatchObject({ level: 'warn', code: 'bgm.key.ignored', at: 'node:combat.bgm' })
-    expect(bgmIssues(issues)[0]!.msg).toContain('loop')
+  it('节点曲目接受 loop 布尔值，非法类型 fail-loud', () => {
+    expect(validateGraph(graphWithBgm({ ref: 'a-aud-battle', loop: false }), { audioAssets: ['a-aud-battle'] })).toEqual([])
+    const issues = validateGraph(graphWithBgm({ ref: 'a-aud-battle', loop: 'once' }), { audioAssets: ['a-aud-battle'] })
+    expect(errors(issues).map((i) => i.code)).toEqual(['bgm.flag.type'])
+    expect(errors(issues)[0]!.msg).toContain('loop')
   })
 
   it('有资产表但 ref 缺失 → warn（与 media/道具引用同级，不 error）', () => {

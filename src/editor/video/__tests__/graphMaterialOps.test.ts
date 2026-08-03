@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { GameNode, GameScenario } from '../../../runtime/schema/graph-schema'
+import type { GameNode, GameScenario, NumOrExpr } from '../../../runtime/schema/graph-schema'
 import type { OverlayChild } from '../../../runtime/schema/node-config-schema'
 import type { QteCue } from '../../../runtime/component-host/components/Qte'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
@@ -12,6 +12,7 @@ import {
   choiceElement,
   collectMaterialsFromNode,
   collectMountItemsFromNode,
+  createDamageHpEffect,
   deleteMaterialGraph,
   findElement,
   findNode,
@@ -45,6 +46,7 @@ import {
   resizeMountWindowGraph,
 } from '../graphMaterialOps'
 import type { MaterialItem } from '../materialTimelineShared'
+import { FLOAT_TEXT_TIMELINE_WIDTH_PX } from '../materialTimelineShared'
 import { expandNodeOverlays } from '../../../runtime/schema/expand-overlay'
 
 // `hasCuePointsInput`/`hasOptionEventsInput`（editors）按组件 inputs 结构判定，任何用到
@@ -55,7 +57,7 @@ beforeAll(() => {
 
 function qteEl(scenario: GameScenario, nodeId: string): OverlayChild | undefined {
   return scenario.ui?.overlays?.[nodeOverlayId(nodeId)]?.children?.find(
-    (c) => c.component === 'qte' || c.component === 'battleParry' || c.component === 'inkKou',
+    (c) => c.component === 'qte' || c.component === 'BattleParry' || c.component === 'InkKou',
   )
 }
 function qteItem(cueId: string): MaterialItem {
@@ -135,7 +137,7 @@ describe('graphMaterialOps · QTE 结算候选（新规格组件事件驱动）'
   })
 
   it.skip('旧 battleParry：出口由样式锁定为皮肤 defaults', () => {
-    const { scenario, node: n, cueId } = seedQteSkin('battleParry')
+    const { scenario, node: n, cueId } = seedQteSkin('BattleParry')
     const next = patchSelectedGraph(scenario, n, qteItem(cueId), {
       events: [{ id: 'ok', label: '自定义' }, { id: 'ng', label: '普通' }],
       defaultEvent: 'fail',
@@ -163,7 +165,7 @@ describe('graphMaterialOps · QTE 结算候选（新规格组件事件驱动）'
   it.skip('旧 inkKou：出口由样式锁定为 pass/fail', () => {
     const { scenario, node: n, cueId } = seedQte()
     const next = patchSelectedGraph(scenario, n, qteItem(cueId), {
-      component: 'inkKou',
+      component: 'InkKou',
       events: [{ id: 'a', label: '自定义' }, { id: 'b', label: '普通' }, { id: 'c', label: '多余' }],
       defaultEvent: 'fail',
     })
@@ -179,7 +181,7 @@ describe('graphMaterialOps · QTE 结算候选（新规格组件事件驱动）'
   })
 
   it.skip('旧 battleParry 样式出口可配跳转与数值', () => {
-    const { scenario: s0, node: n0 } = seedQteSkin('battleParry')
+    const { scenario: s0, node: n0 } = seedQteSkin('BattleParry')
     const s1 = setQteOutcomeTargetGraph(s0, n0, 'pass', 'b')
     const n1 = findNode(s1.graph, 'a')!
     const s2 = setQteOutcomeEffectsGraph(s1, n1, 'good', [{ kind: 'attr', entityId: 'ent-boss', attr: 'hp', op: 'add', value: -10 }])
@@ -196,7 +198,7 @@ describe('graphMaterialOps · QTE 结算候选（新规格组件事件驱动）'
   it.skip('旧 QTE 结算 spawn 契约', () => {
     expect(clampSettlementSpawnTtlMs(99999, 8000)).toBe(8000)
     expect(clampSettlementSpawnTtlMs(0, 8000)).toBe(8000)
-    const { scenario: s0, node: n0 } = seedQteSkin('battleParry')
+    const { scenario: s0, node: n0 } = seedQteSkin('BattleParry')
     const withScheme = {
       ...s0,
       ui: {
@@ -239,7 +241,7 @@ describe('graphMaterialOps · QTE 新建（默认样式固定为叩击 inkKou，
     expect(res.selectKey).not.toBeNull()
     const el = qteEl(res.scenario, 'a')
     expect(el).toBeDefined()
-    expect(el!.component).toBe('inkKou')
+    expect(el!.component).toBe('InkKou')
     expect(el!.layout).toMatchObject({ left: 0, top: 0, width: 1, height: 1 })
     expect((el!.inputs as { defaultEvent?: string }).defaultEvent).toBe('kou')
   })
@@ -254,7 +256,7 @@ describe('graphMaterialOps · QTE 新建（默认样式固定为叩击 inkKou，
     const el = qteEl(res.scenario, 'a')!
     const item = mats.find((m) => m.key.startsWith(`qte:${el.id}:`))
     expect(item?.kind).toBe('qte')
-    expect(item?.componentId).toBe('inkKou')
+    expect(item?.componentId).toBe('InkKou')
   })
 })
 
@@ -276,7 +278,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · battleParry 时间轴', () => 
               children: [
                 {
                   id: 'qte-parry',
-                  component: 'battleParry',
+                  component: 'BattleParry',
                   trigger: { when: 'enter' },
                   inputs: {
                     windowMs,
@@ -307,7 +309,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · battleParry 时间轴', () => 
     const { scenario, node: n } = seedBattleParryQte(1000, 2600)
     const res = addQteCueGraph(scenario, n, 8000, 5000)
     const el = qteEl(res.scenario, 'a')!
-    expect(el.component).toBe('battleParry')
+    expect(el.component).toBe('BattleParry')
     expect((el.inputs as { windowMs?: number }).windowMs).toBe(2600)
     expect((el.inputs as { cues?: QteCue[] }).cues).toHaveLength(2)
   })
@@ -362,7 +364,7 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
     })
     const scenario = scnOf(
       { nodes: [n], edges: [] },
-      { ui: { overlays: { hud: { id: 'hud', children: [{ id: 'x', component: 'dialogue', inputs: {} }] } } } },
+      { ui: { overlays: { hud: { id: 'hud', children: [{ id: 'x', component: 'Dialogue', inputs: {} }] } } } },
     )
     const next = patchOverlayMountLayoutGraph(scenario, scenario.graph.nodes[0]!, 'hud', {
       left: 0.3,
@@ -392,7 +394,7 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
               children: [
                 {
                   id: 'choice-ym',
-                  component: 'inkYingMo',
+                  component: 'InkYingMo',
                   trigger: { when: 'enter' },
                   window: { startMs: 1000, endMs: 3500 },
                   inputs: { events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }] },
@@ -415,14 +417,14 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
     const n1 = findNode(withMount.graph, 'a')!
     const el = choiceElement(withMount, n1)
     expect(el).toBeDefined()
-    expect(el!.component).toBe('inkYingMo')
+    expect(el!.component).toBe('InkYingMo')
     expect((el!.inputs as { events?: { id: string }[] }).events?.map((o) => o.id)).toEqual(['ying', 'mo'])
     expect(el!.window).toEqual({ startMs: 1000, endMs: 3500 })
 
     expect(choiceSkinPreviewInteractions(withMount, n1, 500, 8000)).toHaveLength(0)
     const snaps = choiceSkinPreviewInteractions(withMount, n1, 2000, 8000)
     expect(snaps).toHaveLength(1)
-    expect(snaps[0]!.component).toBe('inkYingMo')
+    expect(snaps[0]!.component).toBe('InkYingMo')
     expect(choiceSkinPreviewInteractions(withMount, n1, 5000, 8000)).toHaveLength(0)
   })
 
@@ -440,7 +442,7 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
     const res = addMaterialGraph(scenario, scenario.graph.nodes[0]!, 8000, 'option', undefined, 0)
     const el = choiceElement(res.scenario, findNode(res.scenario.graph, 'a')!)
     expect(el).toBeDefined()
-    expect(el!.component).toBe('inkYingMo')
+    expect(el!.component).toBe('InkYingMo')
     expect(el!.layout).toMatchObject({ left: 0, top: 0, width: 1, height: 1 })
     expect((el!.inputs as { defaultEvent?: string }).defaultEvent).toBe('ying')
     expect((el!.inputs as { events?: Array<{ id: string }> }).events?.map(({ id }) => id)).toEqual(['ying', 'mo'])
@@ -484,7 +486,7 @@ describe('graphMaterialOps · choice 皮肤时间轴预览', () => {
         overlays: {
           'scheme-dynamic': {
             id: 'scheme-dynamic',
-            children: [{ id: 'float', component: 'gainFloatText', trigger: { when: 'enter' }, inputs: { text: '+30' } }],
+            children: [{ id: 'float', component: 'GainFloatText', trigger: { when: 'enter' }, inputs: { text: '+30' } }],
           },
         },
       },
@@ -565,6 +567,91 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
         registerCoreSkins()
   })
 
+  it('新飘字在子件与单组件挂载时间轴上都投影为固定宽度', () => {
+    const n = node('a', { durationMs: 8000 })
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              title: '伤害飘字',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                window: { startMs: 1000, endMs: 2100 },
+                inputs: { value: -25, durationMs: 1100 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    const scenario: GameScenario = {
+      ...base,
+      graph: {
+        ...base.graph,
+        nodes: base.graph.nodes.map((current) => (
+          current.id === 'a'
+            ? { ...current, data: { ...current.data, overlayNodes: [{ overlay: 'float' }] } }
+            : current
+        )),
+      },
+    }
+    const nodeA = findNode(scenario.graph, 'a')!
+
+    expect(collectMaterialsFromNode(scenario, nodeA, 8000)[0]?.fixedWidthPx).toBe(FLOAT_TEXT_TIMELINE_WIDTH_PX)
+    expect(collectMountItemsFromNode(scenario, nodeA, 8000)[0]?.fixedWidthPx).toBe(FLOAT_TEXT_TIMELINE_WIDTH_PX)
+  })
+
+  it('无结束时间的新飘字按组件时长投影并可整体移动', () => {
+    const n = node('a', { durationMs: 8000 })
+    const base = scnOf(
+      { nodes: [n], edges: [] },
+      {
+        ui: {
+          overlays: {
+            float: {
+              id: 'float',
+              title: '伤害飘字',
+              children: [{
+                id: 'damage',
+                component: 'DamageFloatText',
+                window: { startMs: 1000 },
+                inputs: { value: -25, durationMs: 1100 },
+              }],
+            },
+          },
+        },
+      },
+    )
+    const scenario: GameScenario = {
+      ...base,
+      graph: {
+        ...base.graph,
+        nodes: base.graph.nodes.map((current) => (
+          current.id === 'a'
+            ? { ...current, data: { ...current.data, overlayNodes: [{ overlay: 'float' }] } }
+            : current
+        )),
+      },
+    }
+    const nodeA = findNode(scenario.graph, 'a')!
+    const item = collectMountItemsFromNode(scenario, nodeA, 8000)[0]!
+    expect([item.startMs, item.endMs]).toEqual([1000, 2100])
+
+    const moved = patchMaterialGraph(
+      scenario,
+      nodeA,
+      8000,
+      item,
+      { startMs: 2500, endMs: 3600, zIndex: 0 },
+    )
+    const movedItem = collectMountItemsFromNode(moved, findNode(moved.graph, 'a')!, 8000)[0]!
+    expect([movedItem.startMs, movedItem.endMs]).toEqual([2500, 3600])
+  })
+
   it('挂载条：拖边缘拉伸 window，整体拖动保持跨度', () => {
     const n = node('a', { durationMs: 8000 })
     const base = scnOf(
@@ -576,7 +663,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
               id: 'ov-short',
               children: [{
                 id: 'kou',
-                component: 'inkKou',
+                component: 'InkKou',
                 trigger: { when: 'enter' },
                 window: { startMs: 1000, endMs: 1001 },
                 inputs: { glyph: '叩', cues: [{ id: 'c0', appearAt: 0, targetAt: 200, endAt: 400 }] },
@@ -654,28 +741,28 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
               children: [
                 {
                   id: 'hp-player',
-                  component: 'battlePlayerHpBar',
+                  component: 'BattlePlayerHpBar',
                   trigger: { when: 'enter' },
                   window: { startMs: 0, endMs: 8000 },
                   inputs: { current: 72, max: 100, label: '我方', qi: 3, qiMax: 5 },
                 },
                 {
                   id: 'hp-boss',
-                  component: 'battleEnemyHpBar',
+                  component: 'BattleEnemyHpBar',
                   trigger: { when: 'enter' },
                   window: { startMs: 0, endMs: 8000 },
                   inputs: { current: 58, max: 100, label: '敌方' },
                 },
                 {
                   id: 'gain',
-                  component: 'gainFloatText',
+                  component: 'GainFloatText',
                   trigger: { when: 'at', ms: 100 },
                   window: { startMs: 100, endMs: 800 },
                   inputs: { text: '+30' },
                 },
                 {
                   id: 'line',
-                  component: 'dialogue',
+                  component: 'Dialogue',
                   trigger: { when: 'enter' },
                   window: { startMs: 0, endMs: 2000 },
                   inputs: { text: '字幕' },
@@ -711,7 +798,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
     expect(extras.find((c) => c.id === 'ov-a/hp-player')).toEqual({
       id: 'ov-a/hp-player',
       label: '我方',
-      componentId: 'battlePlayerHpBar',
+      componentId: 'BattlePlayerHpBar',
     })
     expect(extras.find((c) => c.id === 'ov-a/hp-boss')?.label).toBe('敌方')
     expect(extras.find((c) => c.id === 'ov-a/gain')?.label).toBe('增益飘字 · gain')
@@ -722,7 +809,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
     const newId = added.selectKey?.replace(/^component:/, '')
     expect(newId).toBeTruthy()
     const cloned = findElement(added.scenario, findNode(added.scenario.graph, 'a')!, newId!)
-    expect(cloned?.component).toBe('battleEnemyHpBar')
+    expect(cloned?.component).toBe('BattleEnemyHpBar')
     expect(cloned?.inputs).toMatchObject({ current: 58, max: 100, label: '敌方' })
   })
 
@@ -739,7 +826,7 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
               children: [
                 {
                   id: 'hp-player',
-                  component: 'battlePlayerHpBar',
+                  component: 'BattlePlayerHpBar',
                   trigger: { when: 'enter' },
                   inputs: { current: 72, max: 100, label: '我方', qi: 3, qiMax: 5 },
                 },
@@ -771,7 +858,8 @@ describe('graphMaterialOps · 挂载组件全量上时间轴', () => {
     const mats = collectMaterialsFromNode(withMount, nodeA, 8000)
     expect(mats.some((m) => m.id === 'hp-player' && m.kind === 'component')).toBe(true)
     const skinKids = previewSkinChildrenInWindow(withMount, nodeA, 100, 8000)
-    expect(skinKids.some((c) => c.id === 'hp-player' && c.component === 'battlePlayerHpBar')).toBe(true)
+    expect(skinKids.some((c) => c.id === 'scheme-static/hp-player' && c.component === 'BattlePlayerHpBar')).toBe(true)
+    expect(skinKids.find((c) => c.id === 'scheme-static/hp-player')?.source.mountId).toBe('scheme-static')
     const extras = listSchemeMountTabs(withMount, nodeA).flatMap((t) => t.components)
     expect(extras.some((c) => c.id === 'scheme-static/hp-player' && c.label === '我方')).toBe(true)
   })
@@ -899,7 +987,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · choice 样式锁定', () => {
   })
 
   it('inkYingMo 顶层组件：克隆自方案后结算条数固定為應/默两条，样式锁定为真', () => {
-    const { scenario, node: n } = seedSkinnedOptionFromScheme('inkYingMo', [
+    const { scenario, node: n } = seedSkinnedOptionFromScheme('InkYingMo', [
       { id: 'ying', label: '應' },
       { id: 'mo', label: '默' },
     ])
@@ -907,13 +995,13 @@ describe.skip('已退役旧同 ID 皮肤契约 · choice 样式锁定', () => {
     expect(branches.map((b) => b.key)).toEqual(['ying', 'mo'])
     expect(branches.map((b) => b.label)).toEqual(['應', '默'])
     const el = choiceElement(scenario, n)!
-    expect(el.component).toBe('inkYingMo')
+    expect(el.component).toBe('InkYingMo')
     expect(componentEventsLocked(el.component)).toBe(true)
   })
 
   it('battleSkillBar 顶层组件：样式锁定后 addOptionBranchGraph/removeOptionBranchGraph 为 no-op', () => {
     const events = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }]
-    const { scenario, node: n } = seedSkinnedOptionFromScheme('battleSkillBar', events)
+    const { scenario, node: n } = seedSkinnedOptionFromScheme('BattleSkill', events)
     expect(listOptionBranches(scenario, n)).toHaveLength(3)
     const afterAdd = addOptionBranchGraph(scenario, n)
     expect(listOptionBranches(afterAdd, findNode(afterAdd.graph, 'a')!)).toHaveLength(3)
@@ -931,7 +1019,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · choice 样式锁定', () => {
             'scheme-choice': {
               id: 'scheme-choice',
               // 有意不写 inputs：复刻老数据/手改 JSON 里皮肤原型缺字段的真实情况。
-              children: [{ id: 'choice-proto', component: 'inkYingMo', trigger: { when: 'enter' } }],
+              children: [{ id: 'choice-proto', component: 'InkYingMo', trigger: { when: 'enter' } }],
             },
           },
         },
@@ -950,7 +1038,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · choice 样式锁定', () => {
     const res = addMaterialGraph(withMount, nodeRef, 8000, 'scheme-choice/choice-proto', undefined, 0)
     const afterNode = findNode(res.scenario.graph, 'a')!
     const el = choiceElement(res.scenario, afterNode)!
-    expect(el.component).toBe('inkYingMo')
+    expect(el.component).toBe('InkYingMo')
     const branches = listOptionBranches(res.scenario, afterNode)
     expect(branches.map((b) => b.label)).toEqual(['應', '默'])
   })
@@ -979,7 +1067,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · 删除级联', () => {
               children: [
                 {
                   id: 'choice-proto',
-                  component: 'inkYingMo',
+                  component: 'InkYingMo',
                   trigger: { when: 'enter' },
                   inputs: {
                     events: [
@@ -1045,7 +1133,7 @@ describe.skip('已退役旧同 ID 皮肤契约 · 删除级联', () => {
               children: [
                 {
                   id: 'choice-proto',
-                  component: 'inkYingMo',
+                  component: 'InkYingMo',
                   trigger: { when: 'enter' },
                   inputs: {
                     events: [
@@ -1109,7 +1197,43 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
     const { scenario, node: n, floatId } = seedFloat()
     const fx = overlayEffects(scenario, n, floatId)
     expect(fx).toHaveLength(1)
-    expect(fx[0]).toMatchObject({ kind: 'attr', attr: 'hp', op: 'add', value: -100, id: `${floatId}-settle` })
+    expect(fx[0]).toMatchObject({
+      kind: 'attr',
+      attr: 'hp',
+      op: 'add',
+      value: { expr: '-(100)' },
+      id: `${floatId}-settle`,
+    })
+    const preview = activePreviewOverlaysFromNode(scenario, n, 0, 8000)
+      .find((overlay) => overlay.id === `overlay:${floatId}`)
+    expect(preview?.label).toBe('-100')
+  })
+
+  it('常量和公式伤害统一编码为减法语义，并保留公式参数 sidecar', () => {
+    const formulaPick = {
+      mode: 'formula',
+      formulaId: 'damage',
+      holeBindings: {
+        attacker: { kind: 'entityAttr', entityId: 'ent-player', attr: 'attack' },
+        defender: { kind: 'entityAttr', entityId: 'ent-boss', attr: 'defense' },
+      },
+    }
+    const formulaValue = {
+      expr: 'entity.ent-player.attr.attack - entity.ent-boss.attr.defense',
+      pick: formulaPick,
+    } as unknown as NumOrExpr
+
+    expect(createDamageHpEffect(undefined, 'boss', formulaValue, 'float-1')).toMatchObject({
+      kind: 'attr',
+      entityId: 'ent-boss',
+      attr: 'hp',
+      op: 'add',
+      value: {
+        expr: '-(entity.ent-player.attr.attack - entity.ent-boss.attr.defense)',
+        pick: formulaPick,
+      },
+      id: 'float-1-settle',
+    })
   })
 
   it('effects 往返：EffectsEditor 产出的完整列表写入后可读回，首条打上定位 id', () => {
@@ -1145,7 +1269,7 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
       undefined,
     )
     const el = findElement(withExpr, findNode(withExpr.graph, n.id), floatId)!
-    expect(el.inputs?.expr).toEqual({ expr: 'entity.ent-boss.attr.hp' })
+    expect(el.inputs?.parameter).toEqual({ expr: 'entity.ent-boss.attr.hp' })
 
     const cleared = patchOverlayGraph(
       withExpr,
@@ -1155,7 +1279,7 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
       undefined,
     )
     const el2 = findElement(cleared, findNode(cleared.graph, n.id), floatId)!
-    expect(el2.inputs?.expr).toBeUndefined()
+    expect(el2.inputs?.parameter).toBeUndefined()
   })
 
   it('content 只改显示文案，不影响结算 effects', () => {
@@ -1163,7 +1287,8 @@ describe('graphMaterialOps · 飘字 effects/expr（结算写回 node.data.react
     const next = patchOverlayGraph(scenario, n, floatId, { content: '会心一击 {v}' }, undefined)
     const curNode = findNode(next.graph, n.id)!
     const el = findElement(next, curNode, floatId)!
-    expect(el.inputs?.text).toBe('会心一击 {v}')
+    expect(el.inputs?.fixedText).toBe('会心一击 ')
+    expect(el.inputs?.parameter).toBe('-100')
     expect(overlayEffects(next, curNode, floatId)).toHaveLength(1)
   })
 })
@@ -1196,10 +1321,15 @@ describe('graphMaterialOps · 同模板多挂载', () => {
     ])
     expect(expandNodeOverlays(twice.ui?.overlays, mountedNode).flatMap((mount) => mount.children.map((child) => child.id)))
       .toEqual(['n_door/damage', 'n_door__2/damage'])
+    expect(previewSkinChildrenInWindow(twice, mountedNode, 0, 3000).map((child) => [child.id, child.source.mountId]))
+      .toEqual([
+        ['n_door/damage', 'n_door'],
+        ['n_door__2/damage', 'n_door__2'],
+      ])
     expect(collectMountItemsFromNode(twice, mountedNode, 3000).map((item) => [item.key, item.label]))
       .toEqual([
         ['mount:n_door', '叩门界面'],
-        ['mount:n_door__2', '叩门界面 · n_door__2'],
+        ['mount:n_door__2', '叩门界面'],
       ])
 
     const removedSecond = removeMountGraph(twice, mountedNode, 'n_door__2')

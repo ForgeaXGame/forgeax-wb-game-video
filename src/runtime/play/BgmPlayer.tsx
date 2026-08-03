@@ -3,7 +3,7 @@
  *
  * 分工（SPEC §4.1）：引擎只抛资产 id + 播放意图，URL 与音频元素归壳层；解析器由调用方
  * 注入（同 `GamePlayer` 给视频注入 `resolveAsset` 的路子），故本文件不 import editor/宿主。
- * 与 `<video muted>` 无关：床轨是**独立通道**，不搭视频音轨（视频恒静音，见 GameStage）。
+ * 与视频原声开关无关：床轨是**独立通道**，不搭视频音轨。
  *
  * 无 UI（返回 `null`）：音频元素由本件自己 `createElement` 并挂到 `document.body`——
  * 挂上去而非游离，是为了 devtools 能看见「有几条轨在响」，测试也能直接查 DOM；
@@ -28,6 +28,12 @@ export interface BgmPlayerProps {
   bgm: BgmSnapshot | null
   /** 资产 id → 可播 url（宿主注入）。引擎只给 id，URL 只住 manifest。 */
   resolveAsset: (id: string | undefined) => string | undefined
+  paused?: boolean
+  playbackRate?: number
+  /** false 时立即收掉所有床轨；试玩最后一个节点结束时使用。 */
+  active?: boolean
+  /** 壳层统一声音开关；静音不停止床轨，也不重置播放头。 */
+  muted?: boolean
 }
 
 /**
@@ -127,28 +133,44 @@ function tryPlay(deck: Deck, blockedWarned: { current: boolean }): void {
   })
 }
 
-export function BgmPlayer({ bgm, resolveAsset }: BgmPlayerProps): null {
+export function BgmPlayer({ bgm, resolveAsset, paused = false, playbackRate = 1, active = true, muted = false }: BgmPlayerProps): null {
   const soundingRef = useRef<Deck | null>(null)
   const retiringRef = useRef<Deck[]>([])
   /** 已施加的那条指令；同一条重复到达（父组件重渲染 / 解析器换引用 / 快照被序列化）不得二次施加。 */
   const appliedRef = useRef<BgmSnapshot | null>(null)
   const blockedWarned = useRef(false)
 
-  // 卸载 = 收摊。引擎在 `phase === 'ended'` **刻意不发**停播（SPEC D6：win 节点仍带着床轨），
-  // 所以「停」这件事只由壳层生命周期负责：试玩面关掉 / 重开时别把声音漏到下一局。
-  useEffect(() => () => {
+  const stopAll = (): void => {
     for (const deck of [soundingRef.current, ...retiringRef.current]) if (deck) dispose(deck)
     soundingRef.current = null
     retiringRef.current = []
     appliedRef.current = null
-  }, [])
+  }
+
+  useEffect(() => {
+    for (const deck of [soundingRef.current, ...retiringRef.current]) {
+      if (!deck) continue
+      deck.el.muted = muted
+      deck.el.playbackRate = playbackRate
+      if (paused) deck.el.pause()
+      else tryPlay(deck, blockedWarned)
+    }
+  }, [muted, paused, playbackRate])
+
+  // 卸载 = 收摊。引擎在 `phase === 'ended'` **刻意不发**停播（SPEC D6：win 节点仍带着床轨），
+  // 所以「停」这件事只由壳层生命周期负责：试玩面关掉 / 重开时别把声音漏到下一局。
+  useEffect(() => () => stopAll(), [])
+
+  useEffect(() => {
+    if (!active) stopAll()
+  }, [active])
 
   // 自动播放被拒后的最小补救：下一次用户手势时重试当前轨。刻意**不**建 unlock 系统——
   // 我们从不主动 pause 正响的轨（停播会把它整条下线），故「paused 的 active 轨」只可能是被策略拦下的。
   useEffect(() => {
     const retry = (): void => {
       const deck = soundingRef.current
-      if (deck && deck.el.paused) tryPlay(deck, blockedWarned)
+      if (!paused && deck && deck.el.paused) tryPlay(deck, blockedWarned)
     }
     window.addEventListener('pointerdown', retry)
     window.addEventListener('keydown', retry)
@@ -156,11 +178,11 @@ export function BgmPlayer({ bgm, resolveAsset }: BgmPlayerProps): null {
       window.removeEventListener('pointerdown', retry)
       window.removeEventListener('keydown', retry)
     }
-  }, [])
+  }, [paused])
 
   useEffect(() => {
     // `null` = 还没发过指令：连元素都别建（别拿它当停播令）。
-    if (!bgm || isSameCommand(appliedRef.current, bgm)) return
+    if (!active || !bgm || isSameCommand(appliedRef.current, bgm)) return
     appliedRef.current = bgm
 
     /** 让一条轨按离场淡出时长下线；`fadeOutMs <= 0` = 硬切（数据说的，不是意外）。 */
@@ -215,10 +237,12 @@ export function BgmPlayer({ bgm, resolveAsset }: BgmPlayerProps): null {
     for (const stale of retiringRef.current) if (stale.ref === bgm.ref) dispose(stale)
     retiringRef.current = retiringRef.current.filter((d) => d.ref !== bgm.ref)
     const deck = newDeck(bgm.ref, url, bgm.loop, bgm.fadeInMs > 0 ? 0 : bgm.volume)
+    deck.el.muted = muted
+    deck.el.playbackRate = playbackRate
     soundingRef.current = deck
-    tryPlay(deck, blockedWarned)
+    if (!paused) tryPlay(deck, blockedWarned)
     if (bgm.fadeInMs > 0) ramp(deck, bgm.volume, bgm.fadeInMs)
-  }, [bgm, resolveAsset])
+  }, [active, bgm, resolveAsset, muted, paused, playbackRate])
 
   return null
 }

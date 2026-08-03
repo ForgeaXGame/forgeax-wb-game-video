@@ -1,5 +1,5 @@
 /**
- * 节点面板「音乐（作用域 BGM）」的读写。
+ * 节点面板「BGM」的读写。
  * 关键不变量：清空音乐 = `data.bgm` 整个键消失（留 `{ ref: '' }` 会被 validate 判 error、
  * 被 runtime 静默丢弃，作者只会听到「没响」）。
  * 控件与「视频」同款：`<select>` +「（空）」+ 库外 id 禁用展示。
@@ -11,13 +11,15 @@ import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-sche
 import { NodeInspector } from '../NodeInspector'
 import type { AudioOption } from '../bgm-authoring'
 
-/** 「音乐动作」下拉（面板里 select 很多，按它自己的 tooltip 定位）。 */
+/** 「播放动作」下拉（面板里 select 很多，按它自己的 tooltip 定位）。 */
 const modeSelect = () => screen.getByTitle(/起播并记住/) as HTMLSelectElement
-/** 「音乐」资产下拉（与视频字段同款）。 */
+/** 「BGM曲目」资产下拉（与视频字段同款）。 */
 const audioSelect = () => screen.getByTitle(/与资产库音频一致/) as HTMLSelectElement
 /** 勾选框按可及名字取（行容器是 `<label>`，名字含行内文字）。 */
 const checkbox = (name: RegExp) => screen.getByRole('checkbox', { name })
 const queryCheckbox = (name: RegExp) => screen.queryByRole('checkbox', { name })
+const volumeSlider = () => screen.getByRole('slider', { name: /音量/ }) as HTMLInputElement
+const volumeToggle = () => screen.getByRole('checkbox', { name: '设置 BGM 音量' }) as HTMLInputElement
 
 const LIB: AudioOption[] = [
   { id: 'a-aud-battle', label: '战斗床 (a-aud-battle)' },
@@ -68,9 +70,18 @@ function lastData(onChange: ReturnType<typeof vi.fn>): Record<string, unknown> {
 afterEach(cleanup)
 
 describe('NodeInspector · 作用域 BGM', () => {
-  // 「音乐动作」在空态也得在：`{ mode: 'stop' }` 是一条**没有 ref** 的配置，若把下拉藏到「填了
+  it('显示统一后的 BGM 配置术语', () => {
+    renderPanel(graphWith({ name: 'A' }))
+    expect(screen.getByText('BGM')).toBeTruthy()
+    expect(screen.getByText('播放动作')).toBeTruthy()
+    expect(screen.getByText('BGM曲目')).toBeTruthy()
+    expect(screen.queryByText('音乐（作用域 BGM）')).toBeNull()
+    expect(screen.queryByText('音乐动作')).toBeNull()
+  })
+
+  // 「播放动作」在空态也得在：`{ mode: 'stop' }` 是一条**没有 ref** 的配置，若把下拉藏到「填了
   // ref 之后」，作者永远选不到「结束当前音乐」——v2 最常用的那条写法（win/lose）就写不出来。
-  it('没配 bgm 时仍出「音乐动作」下拉，但不出重进选项', () => {
+  it('没配 bgm 时仍出「播放动作」下拉，但不出重进选项', () => {
     renderPanel(graphWith({ name: 'A' }))
     expect(audioSelect().value).toBe('')
     expect(modeSelect().value).toBe('push')
@@ -85,6 +96,57 @@ describe('NodeInspector · 作用域 BGM', () => {
     cleanup()
     renderPanel(graphWith({ name: 'A', bgm: { ref: 'a-aud-battle' } }))
     expect(checkbox(/从头重播/)).toBeTruthy()
+  })
+
+  it('有曲目时显示循环/单次播放模式，没曲目时隐藏', () => {
+    renderPanel(graphWith({ name: 'A' }))
+    expect(screen.queryByRole('combobox', { name: 'BGM 播放模式' })).toBeNull()
+    cleanup()
+    const data = renderControlled(graphWith({ name: 'A', bgm: { ref: 'a-aud-battle' } }))
+    const playMode = screen.getByRole('combobox', { name: 'BGM 播放模式' }) as HTMLSelectElement
+    expect(playMode.value).toBe('loop')
+    fireEvent.change(playMode, { target: { value: 'once' } })
+    expect(data().bgm).toEqual({ ref: 'a-aud-battle', loop: false })
+  })
+
+  it('音量默认未设置；开启后按 0..1 写回', () => {
+    const data = renderControlled(graphWith({ name: 'A', bgm: { ref: 'a-aud-battle' } }))
+    expect(volumeSlider().value).toBe('1')
+    expect(volumeSlider().disabled).toBe(true)
+    expect(screen.getByText('未设置')).toBeTruthy()
+
+    fireEvent.click(volumeToggle())
+    expect(data().bgm).toEqual({ ref: 'a-aud-battle', volume: 1 })
+    expect(volumeSlider().disabled).toBe(false)
+    fireEvent.change(volumeSlider(), { target: { value: '0.35' } })
+    expect(data().bgm).toEqual({ ref: 'a-aud-battle', volume: 0.35 })
+    fireEvent.change(volumeSlider(), { target: { value: '0' } })
+    expect(data().bgm).toEqual({ ref: 'a-aud-battle', volume: 0 })
+    expect(volumeSlider().classList.contains('ni-bgm-volume')).toBe(true)
+    expect(volumeSlider().style.padding).toBe('0px')
+    expect(volumeSlider().style.background).toContain('0%')
+    fireEvent.change(volumeSlider(), { target: { value: '1' } })
+    expect(data().bgm).toEqual({ ref: 'a-aud-battle', volume: 1 })
+    expect(volumeSlider().style.background).toContain('100%')
+  })
+
+  it('未选曲目也可单独设置音量；关闭后回到未设置状态', () => {
+    const data = renderControlled(graphWith({ name: 'A' }))
+    expect(volumeSlider().disabled).toBe(true)
+    fireEvent.click(volumeToggle())
+    expect(data().bgm).toEqual({ volume: 1 })
+
+    cleanup()
+    const data2 = renderControlled(graphWith({ name: 'A', bgm: { volume: 0.35 } }))
+    expect(volumeSlider().disabled).toBe(false)
+    expect(screen.getByText('35%')).toBeTruthy()
+    fireEvent.click(volumeToggle())
+    expect('bgm' in data2()).toBe(false)
+  })
+
+  it('结束当前音乐时不显示音量配置', () => {
+    renderPanel(graphWith({ name: 'A', bgm: { mode: 'stop' } }))
+    expect(screen.queryByRole('slider', { name: /音量/ })).toBeNull()
   })
 
   it('空态选「结束当前音乐」→ 落 { mode: "stop" }（不需要 ref）', () => {
@@ -165,7 +227,7 @@ describe('NodeInspector · 作用域 BGM', () => {
   })
 
   // 2026-07-27 起面板上不再铺开解释性文案（产品决策：只留表单），三条动作的语义全压在
-  // 「音乐动作」下拉的 tooltip 里。下面几条钉的是**说法本身**没随着搬家而失真——尤其
+  // 「播放动作」下拉的 tooltip 里。下面几条钉的是**说法本身**没随着搬家而失真——尤其
   // v2 的核心反转（D5）：离开节点不再是结束信号。旧说法（「走边离开立刻恢复上一首」）是最
   // 误导的一种错——作者照它写，配了 BGM 的曲子会一路跟到结局，而他以为自己不用管。
   it('动作说明讲「一直播」，不承诺「离开就恢复」', () => {
@@ -238,7 +300,7 @@ describe('NodeInspector · 作用域 BGM', () => {
       .toEqual([
         ['__unavailable__', '（当前音乐不在素材库）'],
         ['', '（空）'],
-        ['a-aud-1', '战斗床 (a-aud-1)'],
+        ['a-aud-1', '战斗床'],
       ])
     expect(selector!.value).toBe('__unavailable__')
     expect(selector!.textContent).not.toContain('bgm-battle')

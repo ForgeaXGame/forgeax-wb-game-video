@@ -1,19 +1,26 @@
 /**
- * 應/默抉择（component id: `inkYingMo`）—— 组件只发出「應」或「默」事件。
- * 位置与显示时段由外部 Overlay 编排；组件内部只负责显示与点击交互。
+ * 應/默抉择（component id: `InkYingMo`）。
+ * 无 wiring 输入；Host 仅透传 emit / preview。
  */
 import { useRef } from 'react'
-import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont, previewTStyle } from './skinRuntime'
 
-export const inkYingMoComponent: ComponentDef = {
+export const InkYingMoManifest: ComponentManifest = {
+  id: 'InkYingMo',
   label: '應/默 抉择',
   events: [{ id: 'ying', label: '應' }, { id: 'mo', label: '默' }],
   inputs: [],
 }
 
-export function InkYingMoLayer({ emit, preview, previewTimeMs }: OverlayProps) {
+export interface InkYingMoProps {
+  emit?: (key: string) => void
+  preview?: boolean
+  previewTimeMs?: number
+  previewPlaying?: boolean
+}
+
+export function InkYingMo({ emit, preview, previewTimeMs, previewPlaying }: InkYingMoProps) {
   injectCss('ink-yingmo-layer', YINGMO_CSS)
   ensureInkFilters()
   ensureBrushFont()
@@ -25,10 +32,11 @@ export function InkYingMoLayer({ emit, preview, previewTimeMs }: OverlayProps) {
     emit?.(id)
   }
 
+  const frozen = preview && !previewPlaying
   return (
     <div
-      className={`pvn-opts pvn-opts--yingmo show${preview ? ' is-frozen' : ''}`}
-      style={preview ? previewTStyle(previewTimeMs ?? 0) : undefined}
+      className={`pvn-opts pvn-opts--yingmo show${frozen ? ' is-frozen' : ''}`}
+      style={frozen ? previewTStyle(previewTimeMs ?? 0) : undefined}
       aria-label="应默抉择"
     >
       <div className="pvn-yingmo-pair" data-overlay-fit-target>
@@ -52,8 +60,6 @@ function ChoiceButton({ label, event, preview, onPick }: { label: string; event:
   )
 }
 
-// 尺寸用 cqh/cqw/cqmin（相对舞台，见 VideoOverlayStage.tsx 的 containerType:'size'）取代 vw/rem，
-// 避免预览小窗和全屏试玩里同一份配置呈现出不同的物理大小。
 const YINGMO_CSS = `
 .pvn-opts--yingmo{position:relative;inline-size:100%;block-size:100%;min-inline-size:180px;min-block-size:96px;z-index:6;display:flex;align-items:center;justify-content:center;pointer-events:none;}
 .pvn-opts--yingmo.show{pointer-events:auto;}

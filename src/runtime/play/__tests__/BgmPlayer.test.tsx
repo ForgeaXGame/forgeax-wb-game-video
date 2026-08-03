@@ -35,6 +35,19 @@ afterEach(() => {
 })
 
 describe('BgmPlayer', () => {
+  it('切换静音时保持同一条床轨和播放头', () => {
+    const same = cmd()
+    const { rerender } = render(<BgmPlayer bgm={same} resolveAsset={resolve} muted />)
+    const deck = document.querySelector<HTMLAudioElement>('audio[data-gv-bgm="active"]')!
+    deck.currentTime = 12
+    expect(deck.muted).toBe(true)
+
+    rerender(<BgmPlayer bgm={same} resolveAsset={resolve} muted={false} />)
+    expect(document.querySelector('audio[data-gv-bgm="active"]')).toBe(deck)
+    expect(deck.muted).toBe(false)
+    expect(deck.currentTime).toBe(12)
+  })
+
   it('bgm=null 不建任何音频元素（「本局还没发过指令」≠ 停播令）', () => {
     render(<BgmPlayer bgm={null} resolveAsset={resolve} />)
     expect(decks()).toHaveLength(0)
@@ -47,6 +60,18 @@ describe('BgmPlayer', () => {
     expect(el.loop).toBe(true)
     expect(el.volume).toBe(0.8)
     expect(el.paused).toBe(false)
+  })
+
+  it('暂停和倍速同步到当前床轨', () => {
+    const same = cmd()
+    const { rerender } = render(<BgmPlayer bgm={same} resolveAsset={resolve} paused playbackRate={2} />)
+    const el = active()
+    expect(el.paused).toBe(true)
+    expect(el.playbackRate).toBe(2)
+
+    rerender(<BgmPlayer bgm={same} resolveAsset={resolve} paused={false} playbackRate={0.5} />)
+    expect(el.paused).toBe(false)
+    expect(el.playbackRate).toBe(0.5)
   })
 
   it('ref 变了就换轨：active 轨的 src 指向新曲', () => {
@@ -194,6 +219,15 @@ describe('BgmPlayer', () => {
     const { unmount } = render(<BgmPlayer bgm={cmd()} resolveAsset={resolve} />)
     const el = active()
     unmount()
+    expect(el.paused).toBe(true)
+    expect(decks()).toHaveLength(0)
+  })
+
+  it('试玩进入 ended 时立即关闭 BGM', () => {
+    const same = cmd()
+    const { rerender } = render(<BgmPlayer bgm={same} resolveAsset={resolve} active />)
+    const el = active()
+    rerender(<BgmPlayer bgm={same} resolveAsset={resolve} active={false} />)
     expect(el.paused).toBe(true)
     expect(decks()).toHaveLength(0)
   })

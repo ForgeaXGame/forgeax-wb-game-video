@@ -1417,8 +1417,7 @@
         "outputs": [],
         "data": {
           "name": "我方回合",
-          "durationMs": 0,
-          "subFlow": "wait"
+          "durationMs": 0
         }
       },
       {
@@ -1432,8 +1431,7 @@
         "outputs": [],
         "data": {
           "name": "敌方回合",
-          "durationMs": 0,
-          "subFlow": "tele"
+          "durationMs": 0
         }
       },
       {
@@ -4801,8 +4799,7 @@
               "outputs": [],
               "data": {
                 "name": "我方回合",
-                "durationMs": 0,
-                "subFlow": "wait"
+                "durationMs": 0
               }
             },
             {
@@ -4816,8 +4813,7 @@
               "outputs": [],
               "data": {
                 "name": "敌方回合",
-                "durationMs": 0,
-                "subFlow": "tele"
+                "durationMs": 0
               }
             },
             {

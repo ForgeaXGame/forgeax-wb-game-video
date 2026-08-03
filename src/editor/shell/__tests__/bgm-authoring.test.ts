@@ -4,7 +4,7 @@ import {
   patchNodeBgm,
 } from '../bgm-authoring'
 import { patchNodeData } from '../../../graph/edit/graph-edit'
-import type { KinoResourceDTO } from '../../assets/kino-api'
+import type { ManagedAsset } from '../../assets/assetLibraryClient'
 import type { GameGraph } from '../../../runtime/schema/graph-schema'
 
 describe('patchNodeBgm', () => {
@@ -58,11 +58,26 @@ describe('patchNodeBgm', () => {
     expect(patchNodeBgm({ ref: 'a', restart: true }, { ref: 'b' })).toEqual({ ref: 'b', restart: true })
   })
 
+  it('播放模式默认循环不落盘，单次播放写 loop:false', () => {
+    expect(patchNodeBgm({ ref: 'a' }, { loop: false })).toEqual({ ref: 'a', loop: false })
+    expect(patchNodeBgm({ ref: 'a', loop: false }, { loop: undefined })).toEqual({ ref: 'a' })
+    expect(patchNodeBgm(undefined, { loop: false })).toBeUndefined()
+  })
+
   it('只勾 restart 而没有曲子 → 仍是删键（没有曲子可重播）', () => {
     expect(patchNodeBgm(undefined, { restart: true })).toBeUndefined()
   })
 
-  it('保留手写 blueprint.json 里的 volume / fade（面板不出这些控件，也不该抹掉）', () => {
+  it('没有曲子时可单独写入或清除 volume', () => {
+    expect(patchNodeBgm(undefined, { volume: 0.35 })).toEqual({ volume: 0.35 })
+    expect(patchNodeBgm({ volume: 0.35 }, { volume: undefined })).toBeUndefined()
+  })
+
+  it('清空曲目时保留显式 volume，继续调整继承曲目', () => {
+    expect(patchNodeBgm({ ref: 'a', volume: 0.4 }, { ref: '' })).toEqual({ volume: 0.4 })
+  })
+
+  it('保留面板写入的 volume 与手写 blueprint.json 里的 fade', () => {
     const kept = patchNodeBgm({ ref: 'a', volume: 0.4, fadeInMs: 800, fadeOutMs: 600 }, { mode: 'replace' })
     expect(kept).toEqual({ ref: 'a', mode: 'replace', volume: 0.4, fadeInMs: 800, fadeOutMs: 600 })
   })
@@ -89,7 +104,7 @@ describe('节点面板的写回路径（patchNodeData + patchNodeBgm）', () => 
     edges: [],
   })
 
-  it('清空音乐 → data 上不再有 bgm 键（不是留一个 { ref: "" }）', () => {
+  it('没有显式音量时清空音乐 → data 上不再有 bgm 键', () => {
     const g = patchNodeData(graphWith({ ref: 'bgm-battle', restart: true }), 'n1', {
       bgm: patchNodeBgm({ ref: 'bgm-battle', restart: true }, { ref: '' }),
     })
@@ -103,13 +118,10 @@ describe('节点面板的写回路径（patchNodeData + patchNodeBgm）', () => 
 })
 
 describe('audio picker fallbacks', () => {
-  const resource = (id: string, name?: string): KinoResourceDTO => ({
-    resource_id: id,
-    media_type: 'audio',
-    name,
-    url: `/api/v1/kino/resources/${id}/content`,
-    created_at: 0,
-    updated_at: 0,
+  const resource = (id: string, name?: string): ManagedAsset => ({
+    id,
+    kind: 'audio',
+    name: name ?? id,
   })
 
   it('名字优先，缺名字用 id；重复 id 去重', () => {

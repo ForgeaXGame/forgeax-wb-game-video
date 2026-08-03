@@ -1,27 +1,33 @@
 import type { ReactNode } from 'react'
-import type { OverlayProps } from '../../rendererRegistry'
-import type { ComponentDef } from '../../../registry/component-registry'
+import type { ComponentManifest } from '@/runtime/schema/node-config-schema'
 import { injectCss, ensureInkFilters, ensureBrushFont } from './skinRuntime'
 
-export const battleEnemyHpBarComponent: ComponentDef = {
+export const BattleEnemyHpBarManifest: ComponentManifest = {
+  id: 'BattleEnemyHpBar',
   label: '敌方水墨血条',
   inputs: [
-    { key: 'current', label: '当前血量', valueType: 'number', default: 50 },
-    { key: 'max', label: '血量上限', valueType: 'number', default: 90 },
-    { key: 'label', label: '显示名', valueType: 'string', default: '敌方' },
+    { key: 'label', label: '显示名', valueType: 'string', default: '敌方', component: 'numberExpr' },
+    { key: 'current', label: '血量', valueType: 'number', required: true, component: 'numberExpr' },
+    { key: 'max', label: '最大血量', valueType: 'number', required: true, component: 'numberExpr' },
   ],
   events: [],
 }
 
-export function BattleEnemyHpBar({ overlay }: OverlayProps): ReactNode {
+export interface BattleEnemyHpBarProps {
+  current?: number
+  max?: number
+  label?: string
+}
+
+/** 数值由 RuntimeComponentHost 解析后以扁平 props 传入；此处只展示。 */
+export function BattleEnemyHpBar({
+  current = 50,
+  max = 90,
+  label = '敌方',
+}: BattleEnemyHpBarProps): ReactNode {
   injectCss('graph-battle-enemy-hud', ENEMY_CSS)
   ensureInkFilters()
   ensureBrushFont()
-  const inputs = overlay.inputs
-  const current = typeof inputs.current === 'number' ? inputs.current : 50
-  const max = typeof inputs.max === 'number' ? inputs.max : 90
-
-  const label = typeof inputs.label === 'string' && inputs.label ? inputs.label : '敌方'
 
   return (
     <div className="ks-hud-boss ks-hud-foe-unit" data-overlay-fit-target>

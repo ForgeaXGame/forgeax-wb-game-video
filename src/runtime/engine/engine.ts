@@ -33,7 +33,14 @@ import { resolveEventReactions, resolveOverlayReaction, completeReactions } from
 import type { Layout, NodeAction, OverlayInstanceChild, Reaction } from '../schema/node-config-schema'
 import { overlayMountId } from '../schema/node-config-schema'
 import { applyEffects, type MutableState } from './apply-effects'
-import { BgmStack, DOC_BGM_OWNER, type BgmApplyInput, type BgmOwner, type BgmPlaybackCommand } from './bgm-stack'
+import {
+  BgmStack,
+  DOC_BGM_OWNER,
+  type BgmApplyInput,
+  type BgmOwner,
+  type BgmPlaybackCommand,
+  type BgmStackFrame,
+} from './bgm-stack'
 import { initState } from './engine-init'
 import { defaultComponentRegistry, type ComponentRegistry } from '../registry/component-registry'
 import type { RuntimeDirective, RenderOverlayDirective } from './directives'
@@ -46,14 +53,16 @@ import {
   type NodeKindRegistry,
   type NodeRuntimeCtx,
 } from '../nodes'
+import { createRng } from './rng'
 
 export type GraphPhase = 'idle' | 'playing' | 'ended'
 
-/** call/return 栈帧：弹回时恢复 caller 所在图（同图 subflow 时 returnGraph === 当前图）。 */
+/** call/return 栈帧：弹回时恢复 caller 所在图。 */
 export interface CallFrame {
   callerNodeId: string
   returnGraph: GameGraph
   returnBlueprintId: string
+  returnGraphPath: string[]
 }
 
 export interface RuntimeState extends MutableState {
@@ -64,6 +73,49 @@ export interface RuntimeState extends MutableState {
   traversedEdgeIds: Set<string>
   callStack: CallFrame[]
   log: string[]
+}
+
+interface GraphScope {
+  graph: GameGraph
+  blueprintId: string
+  graphPath: string[]
+  /** callStack.length means the active graph; otherwise the owner frame index. */
+  frameIndex: number
+}
+
+interface ScopedEdge extends GraphScope {
+  edge: GameEdge
+}
+
+interface GraphRuntimeCheckpointData {
+  activeGraph: GameGraph
+  activeBlueprintId: string
+  activeGraphPath: string[]
+  state: RuntimeState
+  bgmFrames: readonly BgmStackFrame[]
+  fired: Set<string>
+  firedAtReactions: Set<number>
+  windowShown: Set<string>
+  windowRemoved: Set<string>
+  chain: number
+  redirect: { route: ScopedEdge; resetGlobals?: boolean } | null
+  inExit: boolean
+  returningTo: Set<string>
+  numericReactionPrev: Map<string, number>
+  stateConditionPrev: Map<string, boolean>
+  shownChildren: Set<string>
+  hiddenFired: Set<string>
+  pendingSpawns: Array<{ elementId: string; nodeId: string; removeAtMs: number }>
+  spawnSeq: number
+  pendingRoute: { settleNodeId: string; route: ScopedEdge } | null
+  routingSettled: boolean
+  queue: RuntimeDirective[]
+}
+
+/** 仅内存的运行时恢复点；不属于游戏配置或持久化协议。 */
+export interface GraphRuntimeCheckpoint {
+  readonly kind: 'wb-game-video.runtime-checkpoint.v1'
+  readonly payload: unknown
 }
 
 const CHAIN_GUARD = 200
@@ -80,6 +132,7 @@ export class GraphRuntime {
   /** 当前正在执行的图（根 graph，或执行中解析到的子蓝图 graph）。 */
   private activeGraph: GameGraph
   private activeBlueprintId: string
+  private activeGraphPath: string[] = []
   private readonly rootBlueprintId: string
   /** 依赖查找表：id / id@version → 子蓝图（来自 manifest.packs，或测试注入的 packs）。 */
   private readonly packsByKey = new Map<string, { id: string; version?: string; entry: string; graph: GameGraph }>()
@@ -96,12 +149,13 @@ export class GraphRuntime {
   private chain = 0 // 同步穿链计数（anti-runaway）
 
   // watch / lifecycle 的 advance 硬打断：命中即设 redirect，在安全边界消费为一次跳转。
-  private redirect: { goto: string; resetGlobals?: boolean } | null = null
+  private redirect: { route: ScopedEdge; resetGlobals?: boolean } | null = null
   private inExit = false // 跑 exit 元素期间抑制规则消费，避免退出时自跳环
-  private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subFlow 下钻、直接续 out
+  private returningTo = new Set<string>() // 正在弹回的容器节点：下一次 enter 跳过 subProcess 下钻、直接续 out
 
-  // 响应式：watch 上次采样值（key = 反应作用域#下标）；每个写屏障重采样比对。
-  private watchPrev = new Map<string, number>()
+  // 响应式：变化值与状态条件基线（key = 反应作用域#下标）；每个写屏障重采样比对。
+  private numericReactionPrev = new Map<string, number>()
+  private stateConditionPrev = new Map<string, boolean>()
   // 组件生命周期：本次节点访问内已 shown / 已 hidden 的运行态 child id。
   private shownChildren = new Set<string>()
   private hiddenFired = new Set<string>()
@@ -109,7 +163,7 @@ export class GraphRuntime {
   private pendingSpawns: Array<{ elementId: string; nodeId: string; removeAtMs: number }> = []
   private spawnSeq = 0
   /** 当前节点已选中、等待统一结算点提交的事件边。 */
-  private pendingRoute: { settleNodeId: string; edgeId: string } | null = null
+  private pendingRoute: { settleNodeId: string; route: ScopedEdge } | null = null
   /** 固定时间结算只执行一次；到点后才发生的延迟选择按立即跳转处理。 */
   private routingSettled = false
 
@@ -130,6 +184,7 @@ export class GraphRuntime {
     components: ComponentRegistry = defaultComponentRegistry,
     packs: readonly SubFlowPackDef[] = [],
     rootBlueprintId?: string,
+    private readonly rngSeed = 0,
   ) {
     this.rootGraph = graph
     this.activeGraph = graph
@@ -141,11 +196,74 @@ export class GraphRuntime {
     this.components = components
     this.loadDependencyTable(scenario, packs)
     this.indexGraph(graph)
-    this.state = { ...initState(scenario), ...control() }
+    this.state = { ...initState(scenario, rngSeed), ...control() }
   }
 
   getActiveBlueprintId(): string {
     return this.activeBlueprintId
+  }
+
+  getActiveGraphPath(): string[] {
+    return [...this.activeGraphPath]
+  }
+
+  /** 捕获完整可变执行态，供编辑器在已走过的时间轴片段间无损回放。 */
+  createCheckpoint(): GraphRuntimeCheckpoint {
+    const data: GraphRuntimeCheckpointData = {
+      activeGraph: this.activeGraph,
+      activeBlueprintId: this.activeBlueprintId,
+      activeGraphPath: [...this.activeGraphPath],
+      state: cloneRuntimeState(this.state),
+      bgmFrames: this.bgm.frames().map((frame) => ({ ...frame })),
+      fired: new Set(this.fired),
+      firedAtReactions: new Set(this.firedAtReactions),
+      windowShown: new Set(this.windowShown),
+      windowRemoved: new Set(this.windowRemoved),
+      chain: this.chain,
+      redirect: cloneRedirect(this.redirect),
+      inExit: this.inExit,
+      returningTo: new Set(this.returningTo),
+      numericReactionPrev: new Map(this.numericReactionPrev),
+      stateConditionPrev: new Map(this.stateConditionPrev),
+      shownChildren: new Set(this.shownChildren),
+      hiddenFired: new Set(this.hiddenFired),
+      pendingSpawns: this.pendingSpawns.map((spawn) => ({ ...spawn })),
+      spawnSeq: this.spawnSeq,
+      pendingRoute: clonePendingRoute(this.pendingRoute),
+      routingSettled: this.routingSettled,
+      queue: [...this.queue],
+    }
+    return { kind: 'wb-game-video.runtime-checkpoint.v1', payload: data }
+  }
+
+  /** 恢复 `createCheckpoint` 捕获的状态；不执行节点、边或副作用。 */
+  restoreCheckpoint(checkpoint: GraphRuntimeCheckpoint): void {
+    if (checkpoint.kind !== 'wb-game-video.runtime-checkpoint.v1') {
+      throw new Error('unsupported graph runtime checkpoint')
+    }
+    const data = checkpoint.payload as GraphRuntimeCheckpointData
+    this.switchGraph(data.activeGraph)
+    this.activeBlueprintId = data.activeBlueprintId
+    this.activeGraphPath = [...data.activeGraphPath]
+    Object.assign(this.state, cloneRuntimeState(data.state))
+    this.bgm.restore(data.bgmFrames)
+    this.fired = new Set(data.fired)
+    this.firedAtReactions = new Set(data.firedAtReactions)
+    this.windowShown = new Set(data.windowShown)
+    this.windowRemoved = new Set(data.windowRemoved)
+    this.chain = data.chain
+    this.redirect = cloneRedirect(data.redirect)
+    this.inExit = data.inExit
+    this.returningTo = new Set(data.returningTo)
+    this.numericReactionPrev = new Map(data.numericReactionPrev)
+    this.stateConditionPrev = new Map(data.stateConditionPrev)
+    this.shownChildren = new Set(data.shownChildren)
+    this.hiddenFired = new Set(data.hiddenFired)
+    this.pendingSpawns = data.pendingSpawns.map((spawn) => ({ ...spawn }))
+    this.spawnSeq = data.spawnSeq
+    this.pendingRoute = clonePendingRoute(data.pendingRoute)
+    this.routingSettled = data.routingSettled
+    this.queue = [...data.queue]
   }
 
   /**
@@ -226,6 +344,7 @@ export class GraphRuntime {
       callerNodeId,
       returnGraph: this.activeGraph,
       returnBlueprintId: this.activeBlueprintId,
+      returnGraphPath: [...this.activeGraphPath],
     })
   }
 
@@ -244,6 +363,18 @@ export class GraphRuntime {
       return c ? nodeOverlayChildren(this.scenario, c) : []
     })
     return [...inherited, ...nodeOverlayChildren(this.scenario, node)]
+  }
+
+  /** 运行态元素来自当前节点或某个调用栈容器；按 childrenOf 的继承顺序恢复其精确图作用域。 */
+  private scopeForElement(el: OverlayInstanceChild): GraphScope {
+    const ownsMount = (node: GameNode | undefined) => node?.id === el.source.nodeId
+      && nodeOverlayMounts(node).some((mount) => overlayMountId(mount) === el.source.mountId)
+    for (let i = 0; i < this.state.callStack.length; i++) {
+      const frame = this.state.callStack[i]!
+      const container = frame.returnGraph.nodes.find((node) => node.id === frame.callerNodeId)
+      if (ownsMount(container)) return this.frameScope(i)
+    }
+    return this.activeScope()
   }
 
   /** 找 el 所属挂载的 reactions（本节点或调用栈容器上）。 */
@@ -296,12 +427,16 @@ export class GraphRuntime {
     if (this.consumeRedirect()) return this.drain()
     if (advanced) return this.drain()
 
-    for (const srcId of this.eventRoutingNodeIds(el)) {
-      const edge = this.selectHandleEdge(srcId, outcome)
-      if (edge) {
-        this.requestEventRoute(edge)
-        break
-      }
+    const candidates: Array<{ scope: GraphScope; nodeId: string }> = []
+    if (this.state.currentNodeId) candidates.push({ scope: this.activeScope(), nodeId: this.state.currentNodeId })
+    for (let i = this.state.callStack.length - 1; i >= 0; i--) {
+      candidates.push({ scope: this.frameScope(i), nodeId: this.state.callStack[i]!.callerNodeId })
+    }
+    for (const candidate of candidates) {
+      const scoped = this.selectHandleEdgeInScope(candidate.scope, candidate.nodeId, outcome)
+      if (!scoped) continue
+      this.requestEventRoute(scoped)
+      break
     }
     return this.drain()
   }
@@ -352,6 +487,7 @@ export class GraphRuntime {
    *
    * - `mode: 'stop'` → `stack.stop()`：结束当前这层，回到上一层还没结束的（写它的节点通常压根
    *   没开过层，故与 owner 无关）。
+   * - 只有 `volume` → `stack.setVolume()`：不换曲、不新建层；当前没有 BGM 时无操作。
    * - 其余 → `stack.apply()` 开一层，从此一直响，直到别处 `mode: 'stop'` 或 `jump`/清局结束它。
    *   容器与普通节点同一条规则：`callStack` 深度与这一层的寿命无关。
    */
@@ -359,24 +495,35 @@ export class GraphRuntime {
     const bgm = getNodeBgm(node.data)
     if (!bgm) return
     if (bgm.mode === 'stop') return this.emitBgmCommand(this.bgm.stop())
+    if (!bgm.ref) {
+      if (bgm.volume !== undefined) this.emitBgmCommand(this.bgm.setVolume(bgm.volume))
+      return
+    }
     // owner 由引擎算、不从落盘数据展开：混进 `bgm.owner` 也盖不掉算出来的那个。
     const owner = this.bgmOwner(node.id)
     const input: BgmApplyInput = {
       owner,
-      // 非 stop 分支必有非空 ref —— `getNodeBgm` 的守卫已保证（`bgm-schema.test.ts` 钉住）。
+      // stop / volume-only 已在上面分流，余下分支必有非空 ref。
       ref: bgm.ref as string,
       mode: bgm.mode,
       volume: bgm.volume,
       fadeInMs: bgm.fadeInMs,
       fadeOutMs: bgm.fadeOutMs,
       restart: bgm.restart,
+      loop: bgm.loop,
     }
     const top = this.bgm.top()
     if (top?.owner !== owner) return this.emitBgmCommand(this.bgm.apply(input))
     // 自己那层已在栈顶 = 回合循环又走进来了（§6.1 的战斗床就配在循环入口）。**绝不加深栈**：
     // 每轮压一层的话栈无界增长，之后一次 `stop` 只能退回上一轮的同一首（听起来「没反应」）。
-    // 曲子没变且没要求重开 → 一条指令都不发（壳层别碰播放头）。
-    if (top.ref === input.ref && !bgm.restart) return
+    // 曲子和目标音量都没变、且没要求重开 → 一条指令都不发（壳层别碰播放头）。volume-only
+    // 节点可能改过本层音量；回到 owner 时即使 ref 相同，也要恢复 owner 自己配置的音量。
+    if (
+      top.ref === input.ref
+      && top.volume === (input.volume ?? top.volume)
+      && top.loop === (input.loop ?? true)
+      && !bgm.restart
+    ) return
     // 要么作者显式 `restart`（每轮从头播），要么这层的曲子被别人 replace 走了（该换回自己那首）：
     // 就地换栈顶，`replace` 保留本层的 owner——这一层仍归**第一次**开它的那个作用域，于是下一轮
     // 走进来时守卫照样认得出「自己那层已在栈顶」。
@@ -429,9 +576,13 @@ export class GraphRuntime {
   // ── 控制入口 ────────────────────────────────────────────────────────────────
   start(): RuntimeDirective[] {
     this.activeBlueprintId = this.rootBlueprintId
+    this.activeGraphPath = []
     this.switchGraph(this.rootGraph)
-    const entry = this.rootGraph.nodes[0]
-    if (!entry) {
+    // 跟 BlueprintDoc.entry，不是 nodes[] 创建顺序——作者把节点接到入口前时 entry 会前移，
+    // 但数组首位仍可能是旧节点。
+    const preferred = this.packsByKey.get(this.rootBlueprintId)?.entry
+    const entryId = resolveGraphEntry(this.rootGraph, preferred)
+    if (!entryId) {
       this.setPhase('ended')
       return this.drain()
     }
@@ -439,14 +590,14 @@ export class GraphRuntime {
     this.returningTo = new Set()
     // 文档床先压：入口节点/容器自己的层要叠在它上面。
     this.unwindBgmToDocBed(true)
-    this.enterNode(entry.id)
+    this.enterNode(entryId)
     return this.drain()
   }
 
   /** seek 到任意节点从头跑（调试/可视化点击）。默认保留全局态，resetGlobals 干净复现。 */
   jumpToNode(
     id: string,
-    opts: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string } = {},
+    opts: { resetGlobals?: boolean; graph?: GameGraph; blueprintId?: string; graphPath?: string[] } = {},
   ): RuntimeDirective[] {
     if (opts.resetGlobals) this.resetGlobalsState()
     if (opts.blueprintId) {
@@ -455,12 +606,15 @@ export class GraphRuntime {
       if (!g) throw new Error(`jump blueprint '${opts.blueprintId}' not loaded`)
       this.switchGraph(g)
       this.activeBlueprintId = opts.blueprintId
+      this.activeGraphPath = [...(opts.graphPath ?? [])]
     } else if (opts.graph) {
       this.switchGraph(opts.graph)
       this.activeBlueprintId = opts.graph === this.rootGraph ? this.rootBlueprintId : this.activeBlueprintId
+      this.activeGraphPath = [...(opts.graphPath ?? [])]
     } else {
       this.switchGraph(this.rootGraph)
       this.activeBlueprintId = this.rootBlueprintId
+      this.activeGraphPath = []
     }
     this.state.callStack = []
     this.chain = 0
@@ -472,7 +626,7 @@ export class GraphRuntime {
   }
 
   private resetGlobalsState(): void {
-    const base = initState(this.scenario)
+    const base = initState(this.scenario, this.rngSeed)
     this.state.vars = base.vars
     this.state.varMeta = base.varMeta
     this.state.entities = base.entities
@@ -526,7 +680,12 @@ export class GraphRuntime {
         this.applyNodeBgm(node)
         if (intent.graph) {
           const packId = getSubFlowPack(node.data)?.id
-          if (packId) this.activeBlueprintId = packId
+          if (packId) {
+            this.activeBlueprintId = packId
+            this.activeGraphPath = []
+          } else {
+            this.activeGraphPath = [...this.activeGraphPath, node.id]
+          }
           this.switchGraph(intent.graph)
         }
         this.enterNode(intent.entry)
@@ -563,17 +722,17 @@ export class GraphRuntime {
     }
   }
 
-  /** perf 进入：重置本节点态 + seedWatch + 发 playClip（换片清上一节点叠层）+ 相位置 playing。 */
+  /** perf 进入：重置本节点态 + 条件基线 + 发 playClip（换片清上一节点叠层）+ 相位置 playing。 */
   private beginPerform(node: GameNode): void {
     this.fired = new Set()
     this.firedAtReactions = new Set()
     this.windowShown = new Set()
     this.windowRemoved = new Set()
-    // 组件生命周期 / spawn 游标随节点重置；watch 基线按当前态重建（本节点内的变化才 fire）。
+    // 组件生命周期 / spawn 游标随节点重置；条件基线按当前态重建（本节点内的变化才 fire）。
     this.shownChildren = new Set()
     this.hiddenFired = new Set()
     this.pendingSpawns = []
-    this.seedWatch()
+    this.seedReactiveConditions()
     // 先发 playClip（换片会清空上一节点的叠层/交互）；随后 enter 元素产生的 overlay/interaction 才不会被反清。
     this.emit({
       type: 'playClip',
@@ -632,20 +791,27 @@ export class GraphRuntime {
    * 不 drain——供 tick 与 onPerformanceEnd 共用（片尾也必须先冲刷 at，再决定是否 advance）。
    */
   private flushTimeline(elapsedMs: number): void {
-    this.state.elapsedMs = elapsedMs
     const node = this.node(this.state.currentNodeId)
+    const previousMs = this.state.elapsedMs
+    const loopWrapped = node?.data.mediaPlayMode === 'loop' && elapsedMs + 50 < previousMs
+    // 媒体 loop 会把 currentTime 拉回 0；节点逻辑时钟只能前进。回绕时补齐作者声明的节点末端，
+    // 确保片尾结算/界面消失执行一次，随后视频可以继续独立循环。
+    const timelineMs = loopWrapped
+      ? Math.max(previousMs, node?.data.durationMs ?? previousMs)
+      : Math.max(previousMs, elapsedMs)
+    this.state.elapsedMs = timelineMs
     if (!node || this.state.phase !== 'playing') return
 
     for (const el of this.childrenOf(node)) {
-      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= elapsedMs && !this.fired.has(el.id)) {
+      if (el.trigger.when === 'at' && !el.window && el.trigger.ms <= timelineMs && !this.fired.has(el.id)) {
         this.runElement(el)
         if (this.redirect) break
       }
     }
-    if (!this.redirect) this.applyAtReactionEffects(node, elapsedMs)
+    if (!this.redirect) this.applyAtReactionEffects(node, timelineMs)
 
-    this.tickWindows(node, elapsedMs)
-    this.reapSpawns(elapsedMs)
+    this.tickWindows(node, timelineMs)
+    this.reapSpawns(timelineMs)
     if (this.consumeRedirect()) return
 
     const settlement = node.data.routingSettlement
@@ -653,7 +819,7 @@ export class GraphRuntime {
       !this.routingSettled &&
       settlement?.type === 'at' &&
       Number.isFinite(settlement.ms) &&
-      elapsedMs >= settlement.ms
+      timelineMs >= settlement.ms
     ) {
       this.routingSettled = true
       this.advanceAuto()
@@ -709,10 +875,21 @@ export class GraphRuntime {
     return this.drain()
   }
 
-  /** 施加 reaction.do 中的 effect（生命周期相位：enter/at/exit/complete，只改状态、不换节点）。 */
-  private runEffectActions(actions: NodeAction[]): void {
+  /** 结算动作：按序施加 effect、显示/隐藏界面，或沿当前结算节点的真实出边推进。 */
+  private runSettlementActions(node: GameNode, actions: NodeAction[]): void {
+    const scope = this.activeScope()
     for (const a of actions) {
       if (a.kind === 'effect' && a.effects.length) this.applyAndReact(a.effects)
+      else if (a.kind === 'spawn') this.doSpawn(a)
+      else if (a.kind === 'hideOverlay') this.doHideOverlay(a, node)
+      else if (a.kind === 'advance' && !this.redirect && !this.inExit) {
+        const route = this.scopedEdgeInScope(a.edgeId, scope)
+        if (route?.edge.source === node.id) {
+          this.requestReactionRoute(route)
+          return
+        }
+      }
+      if (this.redirect) return
     }
   }
 
@@ -730,15 +907,19 @@ export class GraphRuntime {
 
   /** 交互事件 do：effect/spawn/advance；advance = 沿当前图的边软推进。返回是否已换节点。 */
   private runEventActions(actions: NodeAction[], el?: OverlayInstanceChild): boolean {
+    const scope = el ? this.scopeForElement(el) : this.activeScope()
     for (const a of actions) {
       if (a.kind === 'effect') {
         if (a.effects.length) this.applyAndReact(a.effects)
       } else if (a.kind === 'spawn') {
         this.doSpawn(a)
+      } else if (a.kind === 'hideOverlay') {
+        const owner = el ? scope.graph.nodes.find((node) => node.id === el.source.nodeId) : undefined
+        this.doHideOverlay(a, owner)
       } else if (a.kind === 'advance') {
-        const edge = this.edgeById(a.edgeId)
-        if (edge && this.eventRoutingNodeIds(el).includes(edge.source)) {
-          return this.requestEventRoute(edge)
+        const scoped = this.scopedEdgeInScope(a.edgeId, scope)
+        if (scoped && this.eventRoutingNodeIds(el).includes(scoped.edge.source)) {
+          return this.requestEventRoute(scoped)
         }
       }
       if (this.redirect) return false
@@ -749,7 +930,7 @@ export class GraphRuntime {
   /** 施加节点某生命周期相位（enter/exit）reactions 的副作用。 */
   private applyPhaseReactionEffects(node: GameNode, phase: 'enter' | 'exit'): void {
     for (const r of node.data.reactions ?? []) {
-      if (r.when.type === phase) this.runEffectActions(r.do)
+      if (r.when.type === phase) this.runSettlementActions(node, r.do)
       if (this.redirect) return
     }
   }
@@ -761,7 +942,7 @@ export class GraphRuntime {
       const r = reactions[i]!
       if (r.when.type !== 'at' || this.firedAtReactions.has(i) || r.when.ms > elapsedMs) continue
       this.firedAtReactions.add(i)
-      this.runEffectActions(r.do)
+      this.runSettlementActions(node, r.do)
       if (this.redirect) return
     }
   }
@@ -777,7 +958,7 @@ export class GraphRuntime {
     const chosen =
       completes.find((r) => r.when.type === 'complete' && r.when.if && evaluateCondition(r.when.if, target)) ??
       completes.find((r) => r.when.type === 'complete' && !r.when.if)
-    if (chosen) this.runEffectActions(chosen.do)
+    if (chosen) this.runSettlementActions(node, chosen.do)
   }
 
   private mountLayoutFor(el: OverlayInstanceChild): Layout | undefined {
@@ -834,34 +1015,43 @@ export class GraphRuntime {
   /** 若有待消费的 redirect（watch/lifecycle advance），跑当前节点 exit 后即时跳转。返回是否跳转。 */
   private consumeRedirect(): boolean {
     if (!this.redirect) return false
-    const { goto, resetGlobals } = this.redirect
+    const { route, resetGlobals } = this.redirect
     this.redirect = null
     const cur = this.node(this.state.currentNodeId)
-    // 硬打断会清掉整个调用栈（见下），但那是局内路径 → BGM 栈原样，等某处 `mode: 'stop'`。
-    // `resetGlobals` 这一路**目前没有任何调用方**：`this.redirect` 只在一处赋值，且只写
-    // `{ goto: edge.target }`（见下面的 `fireLifecycle` advance 分支）。留着这两个分支纯粹是
+    // 与普通 traverse 保持同一份可视化事实：显式结算/条件推进同样是一条真实走过的边。
+    this.emit({
+      type: 'routeInfo',
+      via: route.edge.sourceHandle ?? 'default',
+      target: route.edge.target,
+      reason: describeCondition(route.edge.data?.condition, this.condTarget()),
+    })
+    this.state.traversedEdgeIds.add(route.edge.id)
+    // 硬打断会清掉边所属作用域之下的调用帧，但那是局内路径 → BGM 栈原样，等某处 `mode: 'stop'`。
+    // `resetGlobals` 这一路**目前没有任何调用方**：`this.redirect` 只在一处赋值，且只写 route。
+    // 留着这两个分支纯粹是
     // 为了与紧邻的 `if (resetGlobals) this.resetGlobalsState()` 成对——真有人开始写这个字段时，
     // 「状态回 initState」与「床轨按 scenario.bgm 重 derive」必须同时发生，少一个就是半清局。
     if (resetGlobals) this.unwindBgmToDocBed(true)
     if (cur) this.runExit(cur)
     this.setPhase('playing')
     if (resetGlobals) this.resetGlobalsState()
-    // 图级规则是硬打断（判胜/判负等）：清调用栈并回到主图，再进目标节点。
-    this.state.callStack = []
+    // 硬打断切到边所属图，并只清掉该作用域之下的调用帧。
+    this.state.callStack = this.state.callStack.slice(0, route.frameIndex)
     this.returningTo.clear()
-    this.switchGraph(this.rootGraph)
-    this.activeBlueprintId = this.rootBlueprintId
-    this.enterNode(goto)
+    this.switchGraph(route.graph)
+    this.activeBlueprintId = route.blueprintId
+    this.activeGraphPath = [...route.graphPath]
+    this.enterNode(route.edge.target)
     return true
   }
 
   private applyAndReact(effects: GraphEffect[]): void {
     applyEffects(this.state, effects)
     this.emit({ type: 'stateChanged' })
-    this.checkWatch()
+    this.checkReactiveConditions()
   }
 
-  // ── 响应式 watch（pull-diff 于写屏障）────────────────────────────────────────
+  // ── 响应式条件结算（pull-diff 于写屏障）──────────────────────────────────────
   private evalCtx(locals?: Record<string, number>): EvalCtx {
     return {
       vars: this.state.vars,
@@ -882,76 +1072,99 @@ export class GraphRuntime {
   }
 
   /**
-   * 当前作用域内的 watch 反应，带稳定 key：
+   * 当前作用域内的 watch / state 条件反应，带稳定 key：
    * 当前节点 + 各挂载 + **调用栈上的子流程容器节点**（容器级 watch 覆盖整段子流程，
    * 如「我方回合」容器上的 watch 在其技能子节点执行期间仍生效）。
    */
-  private activeWatchReactions(): Array<{ key: string; r: Reaction }> {
-    const out: Array<{ key: string; r: Reaction }> = []
+  private activeReactiveConditions(): Array<{ key: string; r: Reaction; scope: GraphScope; owner: GameNode }> {
+    const out: Array<{ key: string; r: Reaction; scope: GraphScope; owner: GameNode }> = []
     const node = this.node(this.state.currentNodeId)
     if (node) {
       ;(node.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch') out.push({ key: `n:${node.id}#${i}`, r })
+        if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `n:${node.id}#${i}`, r, scope: this.activeScope(), owner: node })
       })
       nodeOverlayMounts(node).forEach((m) => {
         const mid = overlayMountId(m)
         ;(m.reactions ?? []).forEach((r, i) => {
-          if (r.when.type === 'watch') out.push({ key: `m:${node.id}:${mid}#${i}`, r })
+          if (r.when.type === 'watch' || r.when.type === 'state') out.push({ key: `m:${node.id}:${mid}#${i}`, r, scope: this.activeScope(), owner: node })
         })
       })
     }
-    // 调用栈上的容器（我方回合/敌方回合/子蓝图）：其 watch 在整段子流程内生效。
+    // 调用栈上的容器（我方回合/敌方回合/子蓝图）：其数值反应在整段子流程内生效。
     this.state.callStack.forEach((frame, d) => {
       const container = frame.returnGraph.nodes.find((n) => n.id === frame.callerNodeId)
       ;(container?.data.reactions ?? []).forEach((r, i) => {
-        if (r.when.type === 'watch') out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r })
+        if (container && (r.when.type === 'watch' || r.when.type === 'state')) {
+          out.push({ key: `c${d}:${frame.callerNodeId}#${i}`, r, scope: this.frameScope(d), owner: container })
+        }
       })
     })
     return out
   }
 
-  /** 进入节点时对活跃 watch 建立基线（不触发），使本节点内的后续变化才 fire。 */
-  private seedWatch(): void {
-    for (const { key, r } of this.activeWatchReactions()) {
-      if (r.when.type !== 'watch') continue
-      this.watchPrev.set(key, this.safeEval(r.when.of))
+  /** 进入节点时建立基线（不触发），使本节点内后续的变化或条件成立才 fire。 */
+  private seedReactiveConditions(): void {
+    for (const { key, r } of this.activeReactiveConditions()) {
+      if (r.when.type === 'watch') this.numericReactionPrev.set(key, this.safeEval(r.when.of))
+      else if (r.when.type === 'state') this.stateConditionPrev.set(key, evaluateCondition(r.when.condition, this.condTarget()))
     }
   }
 
-  /** 写屏障后重采样：对每个 watch 反应比对 prev/next，按 on 命中即跑 do（注入 prev/next/delta）。 */
-  private checkWatch(): void {
+  /** 写屏障后重采样：watch 按变化方向命中；state 仅在 false → true 时命中。 */
+  private checkReactiveConditions(): void {
     if (this.inExit || this.state.phase === 'ended') return
-    for (const { key, r } of this.activeWatchReactions()) {
-      if (r.when.type !== 'watch') continue
-      const next = this.safeEval(r.when.of)
-      if (!this.watchPrev.has(key)) {
-        this.watchPrev.set(key, next)
-        continue
+    for (const { key, r, scope, owner } of this.activeReactiveConditions()) {
+      if (r.when.type === 'watch') {
+        const next = this.safeEval(r.when.of)
+        if (!this.numericReactionPrev.has(key)) {
+          this.numericReactionPrev.set(key, next)
+          continue
+        }
+        const prev = this.numericReactionPrev.get(key)!
+        if (next === prev) continue
+        const on = r.when.on ?? 'change'
+        const fire = on === 'inc' ? next > prev : on === 'dec' ? next < prev : true
+        // 先更新基线再跑 do，避免 do 内改状态导致自触发。
+        this.numericReactionPrev.set(key, next)
+        if (!fire) continue
+        this.runReactiveActions(r.do, { prev, next, delta: next - prev }, scope, owner)
+      } else if (r.when.type === 'state') {
+        const next = evaluateCondition(r.when.condition, this.condTarget())
+        if (!this.stateConditionPrev.has(key)) {
+          this.stateConditionPrev.set(key, next)
+          continue
+        }
+        const prev = this.stateConditionPrev.get(key)!
+        this.stateConditionPrev.set(key, next)
+        if (prev || !next) continue
+        this.runReactiveActions(r.do, undefined, scope, owner)
       }
-      const prev = this.watchPrev.get(key)!
-      if (next === prev) continue
-      const on = r.when.on ?? 'change'
-      const fire = on === 'inc' ? next > prev : on === 'dec' ? next < prev : true
-      // 先更新基线再跑 do，避免 do 内改状态导致自触发。
-      this.watchPrev.set(key, next)
-      if (!fire) continue
-      this.runReactiveActions(r.do, { prev, next, delta: next - prev })
       if (this.redirect) return
     }
   }
 
-  /** watch / shown / hidden / 非阻塞 emit 的 do：effect / spawn / advance；advance → 硬打断（redirect 到边 target）。 */
-  private runReactiveActions(actions: NodeAction[], locals?: Record<string, number>): void {
+  /** watch / shown / hidden / 非阻塞 emit 的 do：advance 可立即 redirect，也可锁定路线等待结算点。 */
+  private runReactiveActions(
+    actions: NodeAction[],
+    locals?: Record<string, number>,
+    scope = this.activeScope(),
+    owner = this.node(this.state.currentNodeId),
+  ): void {
     for (const a of actions) {
       if (a.kind === 'effect') {
         if (a.effects.length) this.applyAndReact(a.effects)
       } else if (a.kind === 'spawn') {
         this.doSpawn(a, locals)
+      } else if (a.kind === 'hideOverlay') {
+        this.doHideOverlay(a, owner)
       } else if (a.kind === 'advance') {
         // exit 期不接受 advance（避免与正在进行的 consumeRedirect 自跳环）。
         if (!this.redirect && !this.inExit) {
-          const edge = this.edgeById(a.edgeId)
-          if (edge) this.redirect = { goto: edge.target }
+          const route = this.scopedEdgeInScope(a.edgeId, scope)
+          if (route) {
+            this.requestReactionRoute(route)
+            return
+          }
         }
       }
       if (this.redirect) return
@@ -1006,13 +1219,37 @@ export class GraphRuntime {
       nodeId,
       mountId: elementId,
       mountLayout: layout,
-      childLayout: layout,
       elementId,
       component,
       inputs,
     })
     if (action.ttlMs && action.ttlMs > 0) {
-      this.pendingSpawns.push({ elementId, nodeId, removeAtMs: this.state.elapsedMs + action.ttlMs })
+      this.pendingSpawns.push({
+        elementId,
+        nodeId,
+        removeAtMs: this.state.elapsedMs + action.ttlMs,
+      })
+    }
+  }
+
+  /** 隐藏作者已挂载在节点上的整组界面；只处理当前已出现的 child，重复调用保持幂等。 */
+  private doHideOverlay(action: Extract<NodeAction, { kind: 'hideOverlay' }>, owner?: GameNode | null): void {
+    if (!owner) return
+    const hidden = nodeOverlayChildren(this.scenario, owner).filter((element) => (
+      element.source.mountId === action.mountId
+      && this.shownChildren.has(element.id)
+      && !this.hiddenFired.has(element.id)
+    ))
+    if (!hidden.length) return
+
+    // 先移除整组并锁定 hidden，再触发生命周期，避免首个 child 的跳转让同挂载的其余 child 残留。
+    for (const element of hidden) {
+      this.hiddenFired.add(element.id)
+      this.emit({ type: 'removeOverlay', nodeId: owner.id, elementId: element.id })
+    }
+    for (const element of hidden) {
+      this.fireLifecycle('hidden', element, owner)
+      if (this.redirect) return
     }
   }
 
@@ -1056,19 +1293,38 @@ export class GraphRuntime {
     return out
   }
 
-  private fireLifecycle(kind: 'shown' | 'hidden', el: OverlayInstanceChild): void {
-    const node = this.node(this.state.currentNodeId)
+  private fireLifecycle(kind: 'shown' | 'hidden', el: OverlayInstanceChild, owner?: GameNode | null): void {
+    const node = owner ?? this.node(this.state.currentNodeId)
     if (!node) return
     for (const r of this.lifecycleReactions(node, kind, el)) {
-      this.runReactiveActions(r.do)
+      this.runReactiveActions(r.do, undefined, this.scopeForElement(el), node)
       if (this.redirect) return
     }
   }
 
   // ── 出口选择 / 边遍历 ───────────────────────────────────────────────────────
-  /** 按 id 找当前图（或主图）里的边——供 reactions.do 的 advance(edgeId) 使用。 */
-  private edgeById(id: string): GameEdge | undefined {
-    return this.activeGraph.edges.find((e) => e.id === id) ?? this.rootGraph.edges.find((e) => e.id === id)
+  private activeScope(): GraphScope {
+    return {
+      graph: this.activeGraph,
+      blueprintId: this.activeBlueprintId,
+      graphPath: [...this.activeGraphPath],
+      frameIndex: this.state.callStack.length,
+    }
+  }
+
+  private frameScope(index: number): GraphScope {
+    const frame = this.state.callStack[index]!
+    return {
+      graph: frame.returnGraph,
+      blueprintId: frame.returnBlueprintId,
+      graphPath: [...frame.returnGraphPath],
+      frameIndex: index,
+    }
+  }
+
+  private scopedEdgeInScope(id: string, scope: GraphScope): ScopedEdge | undefined {
+    const edge = scope.graph.edges.find((candidate) => candidate.id === id)
+    return edge ? { ...scope, edge } : undefined
   }
 
   /** 从候选边里选一条：有条件者按序求值，命中优先；否则无条件兜底；多条候选皆带 weight 则加权随机。 */
@@ -1097,9 +1353,11 @@ export class GraphRuntime {
     )
   }
 
-  /** 交互出口：sourceHandle === 事件 id。 */
-  private selectHandleEdge(nodeId: string, handle: string): GameEdge | undefined {
-    return this.pickEdge((this.outgoing.get(nodeId) ?? []).filter((e) => (e.sourceHandle ?? 'default') === handle))
+  private selectHandleEdgeInScope(scope: GraphScope, nodeId: string, handle: string): ScopedEdge | undefined {
+    const edge = this.pickEdge(scope.graph.edges.filter(
+      (candidate) => candidate.source === nodeId && (candidate.sourceHandle ?? 'default') === handle,
+    ))
+    return edge ? { ...scope, edge } : undefined
   }
 
   private pickWeighted(edges: GameEdge[]): GameEdge {
@@ -1124,25 +1382,23 @@ export class GraphRuntime {
     const pending = this.pendingRoute?.settleNodeId === nodeId ? this.pendingRoute : null
     this.pendingRoute = null
     if (pending) {
-      const pendingEdge = this.edgeById(pending.edgeId)
-      if (pendingEdge) {
-        this.traverseEventEdge(pendingEdge)
-        return
-      }
+      this.traverseEventEdge(pending.route)
+      return
     }
     const edge = this.selectAutoEdge(nodeId)
     if (!edge) {
       // 声明式等待：仅有 event 出边、无 default → 停在本节点等组件 emit（不结束本局）。
       if (this.hasEventHandleOutEdges(nodeId)) return
-      // 无自动出边 + 调用栈非空 → 弹回 caller（subFlow / subFlowPack）；回环用显式边。
+      // 无自动出边 + 调用栈非空 → 弹回 caller（subProcess / subFlowPack）；回环用显式边。
       const node = this.nodes.get(nodeId)
       if (this.state.callStack.length > 0) {
         const frame = this.state.callStack.pop() as CallFrame
         if (node) this.runExit(node)
         // 弹帧对 BGM **什么都不做**（§4.2 末行）：层不绑 `callStack`，照 D5 一直播。
-        this.returningTo.add(frame.callerNodeId) // 弹回容器时跳过 subFlow 再下钻
+        this.returningTo.add(frame.callerNodeId) // 弹回容器时跳过 subProcess 再下钻
         this.switchGraph(frame.returnGraph)
         this.activeBlueprintId = frame.returnBlueprintId
+        this.activeGraphPath = [...frame.returnGraphPath]
         this.enterNode(frame.callerNodeId)
         return
       }
@@ -1166,23 +1422,48 @@ export class GraphRuntime {
     this.enterNode(edge.target)
   }
 
-  /** 事件边：立即跳转，或锁定首个选择等待节点统一结算。 */
-  private requestEventRoute(edge: GameEdge): boolean {
-    if (edge.data?.transition !== 'onSettlement' || this.routingSettled) {
-      this.traverseEventEdge(edge)
-      return true
-    }
+  /** 锁定首个延迟选择；返回 true 表示应等待节点的统一结算点。 */
+  private deferRouteUntilSettlement(scoped: ScopedEdge): boolean {
+    const edge = scoped.edge
+    if (edge.data?.transition !== 'onSettlement' || this.routingSettled) return false
     if (!this.pendingRoute && this.state.currentNodeId) {
-      this.pendingRoute = { settleNodeId: this.state.currentNodeId, edgeId: edge.id }
+      this.pendingRoute = { settleNodeId: this.state.currentNodeId, route: scoped }
     }
-    return false
+    return true
+  }
+
+  /** 结算/响应动作：立即边保持既有 redirect 顺序；延迟边等待统一结算点。 */
+  private requestReactionRoute(scoped: ScopedEdge): void {
+    if (!this.deferRouteUntilSettlement(scoped)) this.redirect = { route: scoped }
+  }
+
+  /** 事件边：立即跳转，或锁定首个选择等待节点统一结算。 */
+  private requestEventRoute(scoped: ScopedEdge): boolean {
+    if (this.deferRouteUntilSettlement(scoped)) return false
+    this.traverseEventEdge(scoped)
+    return true
   }
 
   /** 保留容器挂载事件从容器边离开时清调用栈的既有语义。 */
-  private traverseEventEdge(edge: GameEdge): void {
-    if (edge.source !== this.state.currentNodeId) {
-      this.state.callStack = []
+  private traverseEventEdge(scoped: ScopedEdge): void {
+    const { edge } = scoped
+    if (scoped.graph !== this.activeGraph) {
+      const cur = this.node(this.state.currentNodeId)
+      if (cur) this.runExit(cur)
+      this.state.callStack = this.state.callStack.slice(0, scoped.frameIndex)
       this.returningTo.clear()
+      this.switchGraph(scoped.graph)
+      this.activeBlueprintId = scoped.blueprintId
+      this.activeGraphPath = [...scoped.graphPath]
+      this.emit({
+        type: 'routeInfo',
+        via: edge.sourceHandle ?? 'default',
+        target: edge.target,
+        reason: describeCondition(edge.data?.condition, this.condTarget()),
+      })
+      this.state.traversedEdgeIds.add(edge.id)
+      this.enterNode(edge.target)
+      return
     }
     this.traverse(edge)
   }
@@ -1193,6 +1474,55 @@ export class GraphRuntime {
     this.setPhase('ended')
     this.pendingRoute = null
   }
+}
+
+function cloneRuntimeState(state: RuntimeState): RuntimeState {
+  return {
+    vars: { ...state.vars },
+    varMeta: state.varMeta
+      ? Object.fromEntries(Object.entries(state.varMeta).map(([key, meta]) => [key, { ...meta }]))
+      : undefined,
+    entities: Object.fromEntries(Object.entries(state.entities).map(([id, entity]) => [id, {
+      attrs: { ...entity.attrs },
+      attrMeta: entity.attrMeta
+        ? Object.fromEntries(Object.entries(entity.attrMeta).map(([key, meta]) => [key, { ...meta }]))
+        : undefined,
+    }])),
+    flags: { ...state.flags },
+    score: state.score,
+    items: state.items ? { ...state.items } : undefined,
+    rng: state.rng ? createRng(state.rng.getState().seed, state.rng.getState().step) : undefined,
+    appliedOnce: state.appliedOnce ? new Set(state.appliedOnce) : undefined,
+    currentNodeId: state.currentNodeId,
+    phase: state.phase,
+    elapsedMs: state.elapsedMs,
+    visited: new Set(state.visited),
+    traversedEdgeIds: new Set(state.traversedEdgeIds),
+    callStack: state.callStack.map((frame) => ({
+      ...frame,
+      returnGraphPath: [...frame.returnGraphPath],
+    })),
+    log: [...state.log],
+  }
+}
+
+function cloneScopedEdge(route: ScopedEdge): ScopedEdge {
+  return {
+    ...route,
+    graphPath: [...route.graphPath],
+  }
+}
+
+function cloneRedirect(
+  redirect: { route: ScopedEdge; resetGlobals?: boolean } | null,
+): { route: ScopedEdge; resetGlobals?: boolean } | null {
+  return redirect ? { ...redirect, route: cloneScopedEdge(redirect.route) } : null
+}
+
+function clonePendingRoute(
+  pending: { settleNodeId: string; route: ScopedEdge } | null,
+): { settleNodeId: string; route: ScopedEdge } | null {
+  return pending ? { ...pending, route: cloneScopedEdge(pending.route) } : null
 }
 
 function control(): Omit<RuntimeState, keyof MutableState> {

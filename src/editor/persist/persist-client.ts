@@ -33,8 +33,7 @@ export interface CurrentVersion {
 /** 游戏仓 git 版本条目（tag = vN）。 */
 export interface GameVersion {
   tag: string
-  commitHash: string
-  createdAt: string
+  createdAt: number
   message: string
 }
 
@@ -80,22 +79,18 @@ function currentVersionValue(value: unknown): CurrentVersion | null {
 
 function gameVersionValue(value: unknown): GameVersion | null {
   if (!value || typeof value !== 'object') return null
-  const candidate = value as {
-    tag?: unknown
-    commitHash?: unknown
-    createdAt?: unknown
-    message?: unknown
-  }
+  const candidate = value as { tag?: unknown; createdAt?: unknown; message?: unknown }
+  const createdAt = typeof candidate.createdAt === 'number'
+    ? candidate.createdAt
+    : typeof candidate.createdAt === 'string' ? Date.parse(candidate.createdAt) / 1000 : NaN
   if (
     typeof candidate.tag !== 'string'
-    || typeof candidate.commitHash !== 'string'
-    || typeof candidate.createdAt !== 'string'
+    || !Number.isFinite(createdAt)
     || typeof candidate.message !== 'string'
   ) return null
   return {
     tag: candidate.tag,
-    commitHash: candidate.commitHash,
-    createdAt: candidate.createdAt,
+    createdAt,
     message: candidate.message,
   }
 }
