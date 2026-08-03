@@ -81,7 +81,7 @@ test('waits for the handshake and package document before rendering the player',
   render(<PlayerBootstrap />)
 
   expect(screen.queryByTestId('player-document')).toBeNull()
-  expect(await screen.findByTestId('player-document')).toHaveTextContent('loaded-from-package')
+  expect((await screen.findByTestId('player-document')).textContent).toContain('loaded-from-package')
   expect(client.ready).toHaveBeenCalledTimes(1)
   expect(client.gamePackage.status).toHaveBeenCalledTimes(1)
   expect(loadStore).toHaveBeenCalledWith('handshake-game')
@@ -100,7 +100,7 @@ test('keeps the player unmounted after a package load failure and retries withou
 
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-  await waitFor(() => expect(screen.getByTestId('player-document')).toHaveTextContent('loaded-from-package'))
+  await waitFor(() => expect(screen.getByTestId('player-document').textContent).toContain('loaded-from-package'))
   expect(loadStore).toHaveBeenCalledTimes(2)
   expect(saveProject).not.toHaveBeenCalled()
 })
