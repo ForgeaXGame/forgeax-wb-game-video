@@ -29,6 +29,8 @@ const forbiddenLegacyHostRoutes = [
   '/__gva__',
   '/__ce-api__',
   '/api/game-host',
+  '/api/v1/kino',
+  '__video-upload-proxy',
   'FORGEAX_SERVER_PORT',
   '.forgeax/active-game.json',
 ]
@@ -39,6 +41,9 @@ const mainOwnedRuntimeFiles = new Set([
   'scripts/build-game-components.mjs',
   'src/runtime/component-host/index.ts',
   'src/runtime/play/GamePlayer.tsx',
+])
+const releaseGuardFiles = new Set([
+  'scripts/check-release.mjs',
 ])
 
 function productionSourceFiles(directory = root, relativeDirectory = ''): string[] {
@@ -60,6 +65,7 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
       || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
       || mainOwnedRuntimeFiles.has(relativePath)
+      || releaseGuardFiles.has(relativePath)
     ) {
       return []
     }
@@ -107,6 +113,17 @@ describe('release identity', () => {
     expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.2.0')
     expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.2.0')
     expect(pkg.overrides?.['@forgeax/workbench-host']).toBeUndefined()
+  })
+
+  it('resolves workbench host from the npmjs registry with an integrity pin', () => {
+    const lock = readFileSync(resolve(root, 'bun.lock'), 'utf8')
+
+    expect(lock).toContain('@forgeax/workbench-host@0.2.0')
+    expect(lock).toMatch(
+      /https:\/\/registry\.npmjs\.org\/@forgeax\/workbench-host\/-\/workbench-host-0\.2\.0\.tgz/,
+    )
+    expect(lock).toMatch(/integrity|sha512-/)
+    expect(lock).not.toMatch(/@forgeax\/workbench-host[^\n]*(?:git\+ssh|github\.com)/)
   })
 
   it('declares the Host video-generation capability for both generation tools', () => {
