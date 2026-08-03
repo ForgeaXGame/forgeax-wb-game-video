@@ -12,6 +12,8 @@ import {
   type VideoLibraryEntry,
 } from '../assets/VideoAssetLibrary'
 import { useVideoAssets } from '../assets/useVideoAssets'
+import { createBundledVideoEntries } from '../assets/bundled-video-entries'
+import { ZHANDOU_VIDEOS } from '../assets/catalog'
 import {
   listRegistryAssets,
   resolveMediaSrc,
@@ -41,6 +43,8 @@ export function GraphVideoView(): JSX.Element {
   const t = useT()
   const generatedGroup = t('videoAssets.group.generated')
   const uploadGroup = t('videoAssets.group.upload')
+  const battleGroup = t('videoAssets.group.battle')
+  const narrativeGroup = t('videoAssets.group.narrative')
   const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const videoController = useVideoAssets(game)
   const [regAssets, setRegAssets] = useState<MediaAsset[]>([])
@@ -81,6 +85,13 @@ export function GraphVideoView(): JSX.Element {
       }))
   }, [regAssets, game, generatedGroup])
 
+  const bundledEntries = useMemo<VideoLibraryEntry[]>(() => (
+    createBundledVideoEntries(
+      ZHANDOU_VIDEOS,
+      { battle: battleGroup, narrative: narrativeGroup },
+    )
+  ), [battleGroup, narrativeGroup])
+
   const entries = useMemo<VideoEntry[]>(() => {
     const seen = new Set<string>()
     const out: VideoEntry[] = []
@@ -101,9 +112,10 @@ export function GraphVideoView(): JSX.Element {
         updatedAt: item.updatedAt,
       })
     }
+    for (const entry of bundledEntries) push(entry)
     for (const entry of supplementalEntries) push(entry)
     return out
-  }, [supplementalEntries, videoController.items, uploadGroup])
+  }, [bundledEntries, supplementalEntries, videoController.items, uploadGroup])
 
   const selectedEntry = entries.find((e) => e.id === selectedId)
   const timelineEntry = selectedEntry
@@ -126,6 +138,7 @@ export function GraphVideoView(): JSX.Element {
       <VideoAssetLibrary
         gameId={game}
         scenario={scenario}
+        bundledEntries={bundledEntries}
         supplementalEntries={supplementalEntries}
         selectedId={selectedId}
         onSelect={setSelectedId}
