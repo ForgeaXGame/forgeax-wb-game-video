@@ -3,7 +3,6 @@
  * Output is concrete values suitable to spread as leaf props.
  */
 import type { ComponentManifest } from '../schema/node-config-schema'
-import { resolveBoundHpBarValues } from './components/new/boundHpBar'
 import {
   resolveNumericValue,
   resolveTextDurationMs,
@@ -11,18 +10,10 @@ import {
 } from './inputValue'
 import type { SkinCtx } from './rendererRegistry'
 
-function isDynamicNumericInput(raw: unknown): boolean {
-  if (typeof raw === 'string' && raw.trim()) return true
-  if (raw && typeof raw === 'object' && typeof (raw as { expr?: unknown }).expr === 'string') return true
-  return false
-}
-
 /**
  * Resolve authoring inputs against SkinCtx into concrete leaf props.
  * - numberExpr → number / string
- * - parameter（公式/数字）→ 展示用 string
- * - bind+attr + literal current/max → Host applies entity delta
- * - bind/attr dropped from the returned bag (editor sugar only)
+ * - defaults → concrete leaf props
  */
 export function resolveComponentInputs(
   manifest: ComponentManifest | undefined,
@@ -62,37 +53,6 @@ export function resolveComponentInputs(
     const fallback = typeof durationDef.default === 'number' ? durationDef.default : 1100
     resolved.durationMs = resolveTextDurationMs(resolved.durationMs, fallback)
   }
-
-  const bind = typeof rawInputs.bind === 'string' && rawInputs.bind ? rawInputs.bind : ''
-  const attr = typeof rawInputs.attr === 'string' && rawInputs.attr ? rawInputs.attr : ''
-  const hasHpBinding = !!bind && !!attr && inputDefs.some((input) => input.key === 'current')
-  if (hasHpBinding && !isDynamicNumericInput(rawInputs.current)) {
-    const bound = resolveBoundHpBarValues(
-      {
-        ...resolved,
-        bind,
-        attr,
-        current: typeof rawInputs.current === 'number' ? rawInputs.current : undefined,
-        max: typeof rawInputs.max === 'number' ? rawInputs.max : resolved.max,
-      },
-      ctx,
-      50,
-      90,
-    )
-    resolved.current = bound.current
-    resolved.max = bound.max
-  }
-
-  if (
-    inputDefs.some((input) => input.key === 'qi')
-    && resolved.qi === undefined
-    && typeof ctx?.hud.vars.qi === 'number'
-  ) {
-    resolved.qi = ctx.hud.vars.qi
-  }
-
-  delete resolved.bind
-  delete resolved.attr
 
   return resolved
 }
