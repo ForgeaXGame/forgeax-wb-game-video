@@ -50,6 +50,11 @@ import {
   type PollOpts,
   type VideoRoleImage,
 } from './gateway-client'
+import {
+  createVideoGenerationGateway,
+  generateWithVideoGenerationGateway,
+  type ExtensionCapabilities,
+} from './video-generation-gateway'
 
 /** 编排上下文：素材层根目录（assetsDir 解析结果）+ 网关 env。 */
 export interface OrchestrateCtx extends GatewayCtx {
@@ -59,6 +64,11 @@ export interface OrchestrateCtx extends GatewayCtx {
   gameId: string
   /** 测试可注入；默认使用全局 fetch。 */
   fetchImpl?: typeof fetch
+  /**
+   * 由 Workbench 宿主注入的 extension-platform capability bridge。
+   * 缺省时保留 standalone/dev 的 legacy gateway-client 路径。
+   */
+  capabilities?: ExtensionCapabilities
 }
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -309,19 +319,7 @@ export async function generateVideo(
   pollOpts?: PollOpts,
 ): Promise<MediaAsset> {
   assertRefsPresent(input)
-  const id = makeAssetId('video_clip')
-  upsertAsset(octx.dir, {
-    id,
-    kind: 'video',
-    productionType: 'video_clip',
-    status: 'generating',
-    label: input.label ?? `视频 · ${input.nodeName}`,
-    sceneNodeId: input.sceneNodeId,
-    sourceModule: 'wb-game-video',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds },
-  })
+  let legacyAssetId: string | undefined
   try {
     // P3：三轴——video 侧折 artMedia/filmLook 到 artStyle/styleKeywords（caller 显式优先）。
     const axes = resolveAxes(octx, input.styleAxes)
@@ -337,30 +335,66 @@ export async function generateVideo(
       extend: input.extend,
       transitionHint: input.transitionHint,
     })
-    const { bytes, mime, sourceUrl, taskId } = await genVideoAndWait(
-      octx,
-      {
-        prompt,
-        seconds: input.durationSeconds,
-        imageWithRoles: roles,
-        generateAudio: input.generateAudio ?? false,
-      },
-      pollOpts,
-    )
-    const file = writeMediaFile(octx.dir, id, extForMime(mime), bytes)
-    const ready = updateAsset(octx.dir, id, {
-      status: 'ready',
-      file,
-      mime,
-      bytes: bytes.byteLength,
-      durationMs: Math.round(input.durationSeconds * 1000),
+    const capabilityInput = {
       prompt,
-      meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds, taskId, sourceUrl },
-    })
-    if (!ready) throw new Error('video asset 落盘后丢失')
-    return ready
+      durationSeconds: input.durationSeconds,
+      generateAudio: input.generateAudio ?? false,
+      imageWithRoles: roles,
+      metadata: {
+        sceneNodeId: input.sceneNodeId,
+        nodeName: input.nodeName,
+        characterRefIds: input.characterRefIds,
+        sceneRefIds: input.sceneRefIds,
+        extend: input.extend,
+        transitionHint: input.transitionHint,
+      },
+    }
+    return await generateWithVideoGenerationGateway(
+      createVideoGenerationGateway(octx.capabilities),
+      capabilityInput,
+      async () => {
+        const id = makeAssetId('video_clip')
+        legacyAssetId = id
+        upsertAsset(octx.dir, {
+          id,
+          kind: 'video',
+          productionType: 'video_clip',
+          status: 'generating',
+          label: input.label ?? `视频 · ${input.nodeName}`,
+          sceneNodeId: input.sceneNodeId,
+          sourceModule: 'wb-game-video',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds },
+        })
+        const { bytes, mime, sourceUrl, taskId } = await genVideoAndWait(
+          octx,
+          {
+            prompt,
+            seconds: input.durationSeconds,
+            imageWithRoles: roles,
+            generateAudio: input.generateAudio ?? false,
+          },
+          pollOpts,
+        )
+        const file = writeMediaFile(octx.dir, id, extForMime(mime), bytes)
+        const ready = updateAsset(octx.dir, id, {
+          status: 'ready',
+          file,
+          mime,
+          bytes: bytes.byteLength,
+          durationMs: Math.round(input.durationSeconds * 1000),
+          prompt,
+          meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds, taskId, sourceUrl },
+        })
+        if (!ready) throw new Error('video asset 落盘后丢失')
+        return ready
+      },
+    )
   } catch (e) {
-    updateAsset(octx.dir, id, { status: 'failed', error: (e as Error).message })
+    if (legacyAssetId) {
+      updateAsset(octx.dir, legacyAssetId, { status: 'failed', error: (e as Error).message })
+    }
     throw e
   }
 }
