@@ -9,7 +9,9 @@ describe('BattleSkill', () => {
   it('declares resource gates and configurable keys', () => {
     expect(BattleSkillManifest.inputs).toEqual([
       { key: 'qi', label: '当前气力', valueType: 'number', component: 'numberExpr' },
+      { key: 'lightCost', label: '轻攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 0 },
       { key: 'heavyCost', label: '重攻击气力消耗', valueType: 'number', component: 'numberExpr', default: 2 },
+      { key: 'meditCost', label: '冥想气力消耗', valueType: 'number', component: 'numberExpr', default: 0 },
       { key: 'ultCost', label: '灭世气力消耗', valueType: 'number', component: 'numberExpr', default: 5 },
       { key: 'lightKey', label: '轻攻击按键', valueType: 'string', default: 'X' },
       { key: 'heavyKey', label: '重攻击按键', valueType: 'string', default: 'A' },
@@ -31,16 +33,22 @@ describe('BattleSkill', () => {
     expect(emit).toHaveBeenCalledWith('heavy')
   })
 
-  it('locks costly skills until qi meets their configured costs', () => {
+  it('locks every skill until qi meets its configured cost', () => {
     const emit = vi.fn()
-    render(<BattleSkill emit={emit} qi={1} heavyCost={2} ultCost={5} />)
+    render(<BattleSkill emit={emit} qi={1} lightCost={2} heavyCost={3} meditCost={4} ultCost={5} />)
 
+    const light = screen.getByRole('button', { name: '轻攻击 X' })
     const heavy = screen.getByRole('button', { name: '重攻击 A' })
+    const medit = screen.getByRole('button', { name: '冥想 S' })
     const ult = screen.getByRole('button', { name: '灭世 B' })
+    expect(light).toBeDisabled()
     expect(heavy).toBeDisabled()
+    expect(medit).toBeDisabled()
     expect(ult).toBeDisabled()
 
+    fireEvent.keyDown(window, { key: 'x' })
     fireEvent.keyDown(window, { key: 'a' })
+    fireEvent.keyDown(window, { key: 's' })
     fireEvent.keyDown(window, { key: 'b' })
     expect(emit).not.toHaveBeenCalled()
   })
