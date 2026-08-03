@@ -37,6 +37,13 @@ function statusOf(value: unknown): PackageStatus | null {
 }
 
 function packageError(cause: unknown, target: string): PackageError {
+  if (isWorkbenchBoundaryError(cause)) {
+    return {
+      code: 'host_required',
+      target: 'workbench host',
+      retryable: false,
+    }
+  }
   if (cause instanceof WorkbenchClientError) {
     return {
       code: cause.code,
@@ -50,6 +57,11 @@ function packageError(cause: unknown, target: string): PackageError {
     hint: cause instanceof Error ? cause.message : String(cause),
     retryable: true,
   }
+}
+
+function isWorkbenchBoundaryError(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false
+  return /hostOrigin is required|document\.referrer is unavailable|Workbench handshake/i.test(cause.message)
 }
 
 export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Element | null {
@@ -130,6 +142,12 @@ export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Ele
   }
   if (state.kind === 'error') {
     const { error } = state
+    if (error.code === 'host_required') {
+      return <section className="ga-bootstrap" role="alert">
+        <h1>{t('bootstrap.host.title')}</h1>
+        <p>{t('bootstrap.host.description')}</p>
+      </section>
+    }
     return <section className="ga-bootstrap" role="alert"><h1>{t('bootstrap.failed.title')}</h1><p>{t('bootstrap.failed.target')} {error.target ?? t('bootstrap.failed.workspace')}</p><p>{error.hint ?? t('bootstrap.failed.noDetails')}</p>{error.retryable !== false && <button type="button" onClick={() => void (state.retry === 'status' ? readStatus() : initialize())}>{t('bootstrap.retry')}</button>}</section>
   }
   return <section className="ga-bootstrap" aria-labelledby="ga-bootstrap-title">
