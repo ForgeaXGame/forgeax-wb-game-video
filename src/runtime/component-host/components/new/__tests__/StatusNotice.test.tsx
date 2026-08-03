@@ -31,8 +31,8 @@ describe('StatusNotice', () => {
         )}
       </>,
     )
-    expect(screen.getByText('攻击 +12')).toHaveStyle({ color: '#ffd54a' })
-    expect(screen.getByText('攻击 +12').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
+    expect(screen.getByText('攻击 12')).toHaveStyle({ color: '#ffd54a' })
+    expect(screen.getByText('攻击 12').parentElement).toHaveStyle({ '--gv-animation-duration': '2400ms' })
   })
 
   it('leaf renders already-resolved flat props', () => {
