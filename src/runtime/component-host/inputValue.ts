@@ -22,8 +22,10 @@ export function resolveTextValue(value: unknown, ctx: SkinCtx | undefined): stri
   if (typeof value === 'string') return value
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined
   if (!value || typeof value !== 'object') return undefined
-  const numeric = resolveNumericValue(value, ctx)
-  if (numeric !== undefined) return String(numeric)
+  if (typeof (value as { expr?: unknown }).expr === 'string') {
+    const numeric = resolveNumericValue(value, ctx)
+    if (numeric !== undefined) return `-${Math.abs(Object.is(numeric, -0) ? 0 : numeric)}`
+  }
   const ref = (value as { ref?: unknown }).ref
   if (typeof ref !== 'string' || !ref.trim()) return undefined
   const path = ref.split('.')

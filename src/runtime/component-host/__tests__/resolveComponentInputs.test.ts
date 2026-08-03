@@ -79,7 +79,7 @@ describe('resolveComponentInputs', () => {
       ctx,
     )
 
-    expect(resolved.text).toBe('50')
+    expect(resolved.text).toBe('-50')
   })
 
   it('fills ordinary defaults without changing explicit values', () => {

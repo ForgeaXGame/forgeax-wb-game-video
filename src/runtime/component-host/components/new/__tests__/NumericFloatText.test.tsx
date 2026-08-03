@@ -75,7 +75,7 @@ describe('numeric float text components', () => {
     expect(screen.getByText('获得 青铜钥匙')).toBeTruthy()
     expect(screen.getByText('获得 +3')).toBeTruthy()
     expect(screen.getByText('-23')).toBeTruthy()
-    expect(screen.getByText('+10')).toBeTruthy()
+    expect(screen.getByText('-10')).toBeTruthy()
   })
 
   it('uses each skin default appearance and accepts its optional text overrides', () => {
