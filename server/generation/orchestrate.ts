@@ -61,6 +61,11 @@ function generationError(error: unknown): string {
   return (error instanceof Error ? error.message : 'Generation failed')
     .replace(/file:\/\/\S+/gi, '[redacted]').replace(/https?:\/\/\S+/gi, '[redacted]').slice(0, 400)
 }
+function optionalShotText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed || undefined
+}
 function parseShotScript(raw: string, durationSeconds: number): SeedancePromptEntry[] {
   const cleaned = raw.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim()
   try {
@@ -68,9 +73,16 @@ function parseShotScript(raw: string, durationSeconds: number): SeedancePromptEn
     const values = Array.isArray(parsed) ? parsed : parsed.shots ?? []
     const shots = values.flatMap((value, index) => {
       const shot = value as Partial<SeedancePromptEntry>
-      return typeof shot.seedancePrompt === 'string' && shot.seedancePrompt.trim()
-        ? [{ shotNumber: typeof shot.shotNumber === 'number' ? shot.shotNumber : index + 1, durationSeconds: typeof shot.durationSeconds === 'number' ? shot.durationSeconds : durationSeconds, seedancePrompt: shot.seedancePrompt.trim() }]
-        : []
+      if (typeof shot.seedancePrompt !== 'string' || !shot.seedancePrompt.trim()) return []
+      const dialogueLine = optionalShotText(shot.dialogueLine)
+      const voiceover = optionalShotText(shot.voiceover)
+      return [{
+        shotNumber: typeof shot.shotNumber === 'number' ? shot.shotNumber : index + 1,
+        durationSeconds: typeof shot.durationSeconds === 'number' ? shot.durationSeconds : durationSeconds,
+        seedancePrompt: shot.seedancePrompt.trim(),
+        ...(dialogueLine ? { dialogueLine } : {}),
+        ...(voiceover ? { voiceover } : {}),
+      }]
     })
     if (shots.length) return shots
   } catch { /* plain text is a valid fallback */ }

@@ -28,6 +28,56 @@ function createRegistry(): HostAssetRegistry {
 }
 
 describe('host-backed generation references', () => {
+  test('preserves dialogueLine and voiceover fields from generated shot scripts', async () => {
+    const generateText = vi.fn(async () => ({
+      text: JSON.stringify({
+        shots: [{
+          shotNumber: 2,
+          durationSeconds: 3,
+          seedancePrompt: '  slow push-in  ',
+          dialogueLine: '  你来了。 ',
+          voiceover: ' 旁白进入。 ',
+        }],
+      }),
+    }))
+    const context = { models: { generateText } } as unknown as WorkbenchExtensionContext
+    const orchestrator = createHostGenerationOrchestrator(context, createRegistry())
+
+    await expect(orchestrator.generateShotScript({
+      nodeName: '开场',
+      storyText: '主角走进房间',
+      durationSeconds: 4,
+    })).resolves.toEqual([{
+      shotNumber: 2,
+      durationSeconds: 3,
+      seedancePrompt: 'slow push-in',
+      dialogueLine: '你来了。',
+      voiceover: '旁白进入。',
+    }])
+  })
+
+  test('omits blank optional shot text while accepting direct shot arrays', async () => {
+    const generateText = vi.fn(async () => ({
+      text: JSON.stringify([{
+        seedancePrompt: 'wide shot',
+        dialogueLine: '   ',
+        voiceover: null,
+      }]),
+    }))
+    const context = { models: { generateText } } as unknown as WorkbenchExtensionContext
+    const orchestrator = createHostGenerationOrchestrator(context, createRegistry())
+
+    await expect(orchestrator.generateShotScript({
+      nodeName: '空镜',
+      storyText: '风吹过树林',
+      durationSeconds: 5,
+    })).resolves.toEqual([{
+      shotNumber: 1,
+      durationSeconds: 5,
+      seedancePrompt: 'wide shot',
+    }])
+  })
+
   test('passes uploaded references through the host media contract', async () => {
     const registry = createRegistry()
     const generateVideo = vi.fn(async () => ({
