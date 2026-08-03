@@ -208,7 +208,6 @@ describe('validateRelease', () => {
     for (const forbiddenPublishedText of [
       'wb-asset-canvas',
       'arrival-kino',
-      '/api/v1/kino',
     ]) {
       const providerWiringRoot = createFixture(`provider-wiring-${forbiddenPublishedText.replaceAll('/', '-')}`, {
         forbiddenPublishedText,

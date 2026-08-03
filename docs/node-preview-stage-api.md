@@ -1,6 +1,6 @@
 # NodePreviewStage 接入 API
 
-> 状态：当前实现说明 · 2026-08-01
+> 状态：当前实现说明 · 2026-08-01  
 > 源码入口：[`src/editor/shell/NodePreviewStage.tsx`](../src/editor/shell/NodePreviewStage.tsx)
 
 `NodePreviewStage` 是蓝图节点视频预览与编辑的统一表面：编辑模式面向一个节点，提供视频、

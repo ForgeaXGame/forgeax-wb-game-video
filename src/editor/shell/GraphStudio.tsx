@@ -671,6 +671,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           entryNodeId={showingForeignPlayGraph ? undefined : canvasEntryId}
           overlays={overlays}
           videoOptions={videoOptions}
+          entities={entities}
+          variables={variables}
           // 试玩游标与编辑选中共用橙色描边；未开浮层时勿把 session 当前节点画成「选中」——
           // 新建子蓝图后 session.start() 停在「入口」，否则入口会像永远选不掉。
           activeNodeId={playOpen ? snap.currentNodeId : null}

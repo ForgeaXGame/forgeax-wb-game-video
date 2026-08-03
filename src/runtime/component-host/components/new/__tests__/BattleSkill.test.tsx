@@ -8,13 +8,13 @@ afterEach(cleanup)
 describe('BattleSkill', () => {
   it('declares resource gates and configurable keys', () => {
     expect(BattleSkillManifest.inputs).toEqual([
-      { key: 'lightResource', label: '轻攻击资源', valueType: 'number', component: 'numberExpr' },
+      { key: 'lightResource', label: '轻攻击当前资源', valueType: 'number', component: 'numberExpr' },
       { key: 'lightCost', label: '轻攻击资源消耗', valueType: 'number', component: 'numberExpr', default: 0 },
-      { key: 'heavyResource', label: '重攻击资源', valueType: 'number', component: 'numberExpr' },
+      { key: 'heavyResource', label: '重攻击当前资源', valueType: 'number', component: 'numberExpr' },
       { key: 'heavyCost', label: '重攻击资源消耗', valueType: 'number', component: 'numberExpr', default: 2 },
-      { key: 'meditResource', label: '冥想资源', valueType: 'number', component: 'numberExpr' },
+      { key: 'meditResource', label: '冥想当前资源', valueType: 'number', component: 'numberExpr' },
       { key: 'meditCost', label: '冥想资源消耗', valueType: 'number', component: 'numberExpr', default: 0 },
-      { key: 'ultResource', label: '灭世资源', valueType: 'number', component: 'numberExpr' },
+      { key: 'ultResource', label: '灭世当前资源', valueType: 'number', component: 'numberExpr' },
       { key: 'ultCost', label: '灭世资源消耗', valueType: 'number', component: 'numberExpr', default: 5 },
       { key: 'lightKey', label: '轻攻击按键', valueType: 'string', default: 'X' },
       { key: 'heavyKey', label: '重攻击按键', valueType: 'string', default: 'A' },

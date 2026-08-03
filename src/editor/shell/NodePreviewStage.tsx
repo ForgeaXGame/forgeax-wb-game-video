@@ -46,7 +46,6 @@ import {
   overlayMountId,
 } from '../../runtime/schema/node-config-schema'
 import { expandNodeChildren, resolveMountChildren } from '../../runtime/schema/expand-overlay'
-import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
 import { patchSettlementSpawnLayout, setSettlementReactionMs, setRoutingSettlementMs } from '../../graph/edit/graph-edit'
 import { overlayFitTargets } from './overlay-fit-targets'
 import {
@@ -176,10 +175,14 @@ function isNumericFloatText(componentId: string): boolean {
   return componentId === 'DamageFloatText' || componentId === 'GainFloatText'
 }
 
+function resolveFloatTextDurationMs(value: unknown, fallback = 1100): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 function focusedFloatPreviewTimeMs(child: OverlayInstanceChild, playheadMs: number): number {
   const startMs = child.window?.startMs
     ?? (child.trigger.when === 'at' ? child.trigger.ms : 0)
-  const durationMs = resolveNumericFloatDurationMs(child.inputs.durationMs)
+  const durationMs = resolveFloatTextDurationMs(child.inputs.durationMs)
   const localMs = playheadMs - startMs
   if (localMs > 0 && localMs < durationMs) return playheadMs
   return startMs + Math.round(durationMs * 0.4 * 1000) / 1000

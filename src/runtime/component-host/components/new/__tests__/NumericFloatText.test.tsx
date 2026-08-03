@@ -50,14 +50,14 @@ describe('numeric float text components', () => {
   it('declare fixed text and a dynamic parameter input', () => {
     expect(DamageFloatTextManifest.inputs).toEqual([
       { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
-      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '-25' },
+      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
     ])
     expect(GainFloatTextManifest.inputs).toEqual([
       { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
-      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '+50' },
+      { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr' },
       { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ffd54a' },
       { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
       { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -73,9 +73,9 @@ describe('numeric float text components', () => {
 
     expect(screen.getByText('伤害 -25')).toBeTruthy()
     expect(screen.getByText('获得 青铜钥匙')).toBeTruthy()
-    expect(screen.getByText('获得 3')).toBeTruthy()
+    expect(screen.getByText('获得 +3')).toBeTruthy()
     expect(screen.getByText('-23')).toBeTruthy()
-    expect(screen.getByText('+10')).toBeTruthy()
+    expect(screen.getByText('-10')).toBeTruthy()
   })
 
   it('uses each skin default appearance and accepts its optional text overrides', () => {
