@@ -2,6 +2,7 @@
  * Browser-safe Kino video resource API client.
  * Standalone DTOs — must not import server/private packages.
  */
+import { getWorkbenchHost } from '../../lib/workbench-host'
 
 export interface KinoEnvelope<T> {
   code: number
@@ -61,6 +62,8 @@ export interface DirectUploadInstruction {
   url: string
   headers: Record<string, string>
   expires_at: string
+  chunk_size: number
+  chunk_count: number
 }
 
 export interface DirectUploadResponse {
@@ -165,20 +168,23 @@ export interface KinoVideoClient {
 export interface CreateKinoVideoClientOptions {
   fetch?: typeof fetch
   baseUrl?: string
+  host?: WorkbenchHostMediaClient
 }
 
-const DEFAULT_BASE_URL = '/api/v1/kino'
 const MAX_ERROR_MESSAGE_LENGTH = 512
+
+export interface WorkbenchHostMediaClient {
+  extension: {
+    fetch(path: string, init?: RequestInit): Promise<Response>
+    url(path: string): string
+  }
+}
 
 /** Kino `/resources` 服务端分页协议的单页上限。 */
 export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
 
 function normalizeBaseUrl(raw: string | undefined): string {
-  const trimmed = (raw ?? DEFAULT_BASE_URL).trim()
-  if (trimmed.length === 0) {
-    return DEFAULT_BASE_URL
-  }
-  return trimmed.replace(/\/+$/, '')
+  return (raw ?? '').trim().replace(/\/+$/, '')
 }
 
 function truncateMessage(message: string): string {
@@ -264,15 +270,16 @@ function parseEnvelope<T>(response: Response, payload: unknown): T {
   return envelope.data
 }
 
+type RequestImpl = (path: string, init?: RequestInit) => Promise<Response>
+
 async function requestJson<T>(
-  fetchImpl: typeof fetch,
-  baseUrl: string,
+  request: RequestImpl,
   path: string,
   options?: Pick<RequestInit, 'method' | 'body' | 'signal'>,
 ): Promise<T> {
   let response: Response
   try {
-    response = await fetchImpl(`${baseUrl}${path}`, {
+    response = await request(path, {
       ...options,
       credentials: 'include',
       headers: {
@@ -287,34 +294,44 @@ async function requestJson<T>(
   return parseEnvelope<T>(response, payload)
 }
 
-function resourcePath(resourceId: string, gameId: string, suffix = ''): string {
-  return appendQuery(
-    `/resources/${encodeURIComponent(resourceId)}${suffix}`,
-    { game_id: gameId },
-  )
+function resourcePath(resourceId: string, suffix = ''): string {
+  return `media/resources/${encodeURIComponent(resourceId)}${suffix}`
+}
+
+function withoutGameId<T extends object>(value: T): Omit<T, 'game_id'> {
+  const { game_id: _gameId, ...rest } = value as T & { game_id?: unknown }
+  return rest as Omit<T, 'game_id'>
+}
+
+function addGameId<T>(value: T, gameId: string): T & { game_id: string } {
+  return { ...value, game_id: gameId }
 }
 
 export function createKinoVideoClient(
   options: CreateKinoVideoClientOptions = {},
 ): KinoVideoClient {
-  const fetchImpl = options.fetch ?? fetch.bind(globalThis)
   const baseUrl = normalizeBaseUrl(options.baseUrl)
+  const host = options.host ?? (!options.fetch ? getWorkbenchHost() : undefined)
+  const request: RequestImpl = options.fetch
+    ? (path, init) => options.fetch!(`${baseUrl}${path}`, init)
+    : (path, init) => host!.extension.fetch(path, init)
+  const url = (path: string): string => options.fetch
+    ? `${baseUrl}${path}`
+    : host!.extension.url(path)
 
   return {
     async prepareUpload(input, options) {
-      return requestJson<DirectUploadResponse>(fetchImpl, baseUrl, '/image-assets/upload', {
+      return requestJson<DirectUploadResponse>(request, 'media/image-assets/upload', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
         signal: options?.signal,
       })
     },
 
     async list(query, options) {
-      return requestJson<KinoResourcePage>(
-        fetchImpl,
-        baseUrl,
-        appendQuery('/resources', {
-          game_id: query.game_id,
+      const data = await requestJson<KinoResourcePage>(
+        request,
+        appendQuery('media/resources', {
           media_type: query.media_type ?? 'video',
           page: query.page,
           page_size: query.page_size,
@@ -322,55 +339,67 @@ export function createKinoVideoClient(
         }),
         { signal: options?.signal },
       )
+      return {
+        ...data,
+        items: data.items.map((item) => addGameId(item, query.game_id)),
+      }
     },
 
     async get(resourceId, gameId, options) {
-      return requestJson<KinoResourceDTO>(
-        fetchImpl,
-        baseUrl,
-        resourcePath(resourceId, gameId),
-        { signal: options?.signal },
-      )
+      const data = await requestJson<KinoResourceDTO>(request, resourcePath(resourceId), { signal: options?.signal })
+      return addGameId(data, gameId)
     },
 
     async create(input, options) {
-      return requestJson<KinoResourceDTO>(fetchImpl, baseUrl, '/resources', {
+      const data = await requestJson<KinoResourceDTO>(request, 'media/resources', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
         signal: options?.signal,
       })
+      return addGameId(data, input.game_id)
     },
 
     async batch(input, options) {
-      return requestJson<BatchCreateKinoResourcesResult>(fetchImpl, baseUrl, '/resources/batch', {
+      const data = await requestJson<BatchCreateKinoResourcesResult>(request, 'media/resources/batch', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify({ resources: input.resources }),
         signal: options?.signal,
       })
+      return {
+        ...data,
+        items: data.items.map((item) => addGameId(item, input.game_id)),
+      }
     },
 
     async update(resourceId, input, options) {
-      return requestJson<KinoResourceDTO>(
-        fetchImpl,
-        baseUrl,
-        resourcePath(resourceId, input.game_id),
-        {
-          method: 'PUT',
-          body: JSON.stringify(input),
-          signal: options?.signal,
-        },
-      )
+      const data = await requestJson<KinoResourceDTO>(request, resourcePath(resourceId), {
+        method: 'PUT',
+        body: JSON.stringify(withoutGameId(input as unknown as Record<string, unknown>)),
+        signal: options?.signal,
+      })
+      return addGameId(data, input.game_id)
     },
 
     async delete(resourceId, gameId, options) {
-      await requestJson<null>(fetchImpl, baseUrl, resourcePath(resourceId, gameId), {
-        method: 'DELETE',
-        signal: options?.signal,
-      })
+      void gameId
+      let response: Response
+      try {
+        response = await request(resourcePath(resourceId), {
+          method: 'DELETE',
+          credentials: 'include',
+          signal: options?.signal,
+        })
+      } catch {
+        throw new KinoClientError('Network request failed', 502, 'network_error')
+      }
+      if (response.status === 204) return
+      const payload = await readJsonPayload(response)
+      parseEnvelope<null>(response, payload)
     },
 
     playbackUrl(resourceId, gameId) {
-      return `${baseUrl}${resourcePath(resourceId, gameId, '/content')}`
+      void gameId
+      return url(resourcePath(resourceId, '/content'))
     },
   }
 }

@@ -13,6 +13,13 @@ import {
 } from '../video-upload'
 import { createKinoVideoClient, type DirectUploadResponse, type KinoResourceDTO } from '../kino-api'
 
+const { hostUrl } = vi.hoisted(() => ({
+  hostUrl: vi.fn((path: string) => `https://host.test/${path}`),
+}))
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({ extension: { fetch: vi.fn(), url: hostUrl } }),
+}))
+
 const FIXTURE = new Uint8Array([0, 1, 2, 3, 4, 5])
 
 function makeMp4File(name = 'clip.mp4', mime = 'video/mp4'): File {
@@ -23,11 +30,13 @@ function preparedResponse(): DirectUploadResponse {
   return {
     upload: {
       method: 'PUT',
-      url: 'http://127.0.0.1:18900/api/v1/kino/uploads/token?game_id=demo',
+      url: 'https://host.test/media/uploads/token',
       headers: { 'content-type': 'video/mp4', 'x-cos-forbid-overwrite': 'true' },
       expires_at: '2099-01-01T00:00:00.000Z',
+      chunk_size: FIXTURE.byteLength,
+      chunk_count: 1,
     },
-    object_url: 'http://127.0.0.1:18900/api/v1/kino/uploads/token',
+    object_url: 'workbench-upload:token',
     upload_token: 'token-1',
   }
 }
@@ -456,10 +465,10 @@ describe('default XHR transport header safety', () => {
     xhr.onload?.()
     await promise
 
-    expect(xhr.open).toHaveBeenCalledWith('PUT', instruction.url, true)
+    expect(xhr.open).toHaveBeenCalledWith('PUT', `${instruction.url}?chunk_index=0&chunk_count=1`, true)
     expect(xhr.setRequestHeader).toHaveBeenCalledWith('content-type', 'video/mp4')
     expect(xhr.setRequestHeader).toHaveBeenCalledWith('x-cos-forbid-overwrite', 'true')
-    expect(xhr.send).toHaveBeenCalledWith(file)
+    expect(xhr.send).toHaveBeenCalledWith(file.slice(0, file.size))
 
     const polluted = {
       ...instruction,
@@ -495,6 +504,65 @@ describe('default XHR transport header safety', () => {
         headers: { 'x-safe': 'ok\r\ninjected' },
       }),
     ).rejects.toMatchObject({ code: 'unsafe_upload_headers' })
+  })
+
+  it('uploads Host chunks in order and reports aggregate progress', async () => {
+    const transport = createDefaultXhrUploadTransport()
+    const file = makeMp4File()
+    const instruction = { ...preparedResponse().upload, chunk_size: 2, chunk_count: 3 }
+    const progress: number[] = []
+    const promise = transport.put(file, instruction, (value) => progress.push(value))
+
+    expect(xhrInstances).toHaveLength(1)
+    expect(xhrInstances[0]!.open).toHaveBeenCalledWith(
+      'PUT',
+      'https://host.test/media/uploads/token?chunk_index=0&chunk_count=3',
+      true,
+    )
+    expect(xhrInstances[0]!.send).toHaveBeenCalledWith(file.slice(0, 2))
+    xhrInstances[0]!.onload?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(xhrInstances).toHaveLength(2)
+    expect(xhrInstances[1]!.open).toHaveBeenCalledWith(
+      'PUT',
+      'https://host.test/media/uploads/token?chunk_index=1&chunk_count=3',
+      true,
+    )
+    expect(xhrInstances[1]!.send).toHaveBeenCalledWith(file.slice(2, 4))
+    xhrInstances[1]!.onload?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(xhrInstances).toHaveLength(3)
+    expect(xhrInstances[2]!.open).toHaveBeenCalledWith(
+      'PUT',
+      'https://host.test/media/uploads/token?chunk_index=2&chunk_count=3',
+      true,
+    )
+    expect(xhrInstances[2]!.send).toHaveBeenCalledWith(file.slice(4, 6))
+    xhrInstances[2]!.onload?.()
+    await promise
+    expect(progress.at(-1)).toBe(100)
+    expect(progress.every((value, index) => index === 0 || value >= progress[index - 1]!)).toBe(true)
+  })
+
+  it('resolves the Host-provided relative upload URL through extension.url', async () => {
+    const transport = createDefaultXhrUploadTransport()
+    const instruction = {
+      ...preparedResponse().upload,
+      url: 'media/uploads/relative-token',
+      chunk_size: FIXTURE.byteLength,
+      chunk_count: 1,
+    }
+    const promise = transport.put(makeMp4File(), instruction)
+    xhrInstances[0]!.onload?.()
+    await promise
+    expect(hostUrl).toHaveBeenCalledWith('media/uploads/relative-token')
+    expect(xhrInstances[0]!.open).toHaveBeenCalledWith(
+      'PUT',
+      'https://host.test/media/uploads/relative-token?chunk_index=0&chunk_count=1',
+      true,
+    )
   })
 
   it('rejects non-PUT methods and non-http(s) upload URLs', async () => {
@@ -584,7 +652,7 @@ describe('default XHR transport header safety', () => {
     xhr.upload.onprogress?.({ lengthComputable: true, loaded: 3, total: FIXTURE.byteLength } as ProgressEvent)
     xhr.onload?.()
     await promise
-    expect(progress).toEqual([expect.any(Number), expect.any(Number)])
+    expect(progress.length).toBeGreaterThanOrEqual(2)
     expect(progress[0]!).toBeLessThanOrEqual(progress[1]!)
     expect(progress[1]!).toBeLessThanOrEqual(100)
   })
