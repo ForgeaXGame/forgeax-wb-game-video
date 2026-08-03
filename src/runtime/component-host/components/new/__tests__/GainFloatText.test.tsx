@@ -10,6 +10,12 @@ describe('GainFloatText', () => {
     expect(screen.getByText('+50')).toBeInTheDocument()
   })
 
+  it('does not duplicate a fixed minus sign for positive parameters', () => {
+    render(<GainFloatText fixedText="-" parameter="50" />)
+
+    expect(screen.getByText('-50')).toBeInTheDocument()
+  })
+
   it('preserves signed, non-positive, and non-numeric parameters', () => {
     const { rerender } = render(<GainFloatText parameter="+50" />)
     expect(screen.getByText('+50')).toBeInTheDocument()
