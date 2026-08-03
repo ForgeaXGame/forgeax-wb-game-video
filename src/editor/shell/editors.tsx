@@ -158,11 +158,15 @@ function numOrExprEqual(a: NumOrExpr | undefined, b: NumOrExpr | undefined): boo
   return false
 }
 
-function field(label: string, node: JSX.Element): JSX.Element {
+function field(
+  label: string,
+  node: JSX.Element,
+  labelWidth?: CSSProperties['width'],
+): JSX.Element {
   // 用 div 而非 label：子树常含 button，包在 label 里会点到文字也触发按钮（如「乘」误删）。
   return (
     <div style={rowStyle}>
-      <span style={lbl}>{label}</span>
+      <span style={labelWidth === undefined ? lbl : { ...lbl, width: labelWidth }}>{label}</span>
       {node}
     </div>
   )
@@ -399,6 +403,7 @@ export function ValueInput({
   itemIds,
   effectOp,
   fieldLabels,
+  fieldLabelWidth,
   onClear,
   emptyWhenUndefined,
   emptyLabel,
@@ -428,6 +433,7 @@ export function ValueInput({
   /** 挂了这个 = 这个值要配一个 Effect「运算」符号按钮，嵌进编辑器顶部（跟常量/选取公式同一行）。 */
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
   fieldLabels?: { source: string; value: string }
+  fieldLabelWidth?: CSSProperties['width']
 } & MetaCatalogProps): JSX.Element {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -449,6 +455,7 @@ export function ValueInput({
         createVariable={createVariable}
         createFormula={createFormula}
         fieldLabels={fieldLabels}
+        fieldLabelWidth={fieldLabelWidth}
         stackControls={stackControls}
       />
     </div>
@@ -879,6 +886,7 @@ function EffectRow({
   canUndoOp,
   onOpSnapshot,
   onUndoOp,
+  labelWidth,
 }: {
   eff: GraphEffect
   allowedKinds: readonly EffectKind[]
@@ -892,6 +900,7 @@ function EffectRow({
   canUndoOp?: boolean
   onOpSnapshot?: (snap: { op: NumericEffectOp; value: NumOrExpr }) => void
   onUndoOp?: () => void
+  labelWidth?: CSSProperties['width']
 } & MetaCatalogProps): JSX.Element {
   const entityOpts = listEntityOptions(entities)
   const numVars = listVarOptions(variables, { numbersOnly: true })
@@ -952,7 +961,7 @@ function EffectRow({
             <option key={k} value={k}>{EFFECT_KIND_LABEL[k] ?? k}</option>
           ))}
         </select>
-      ))}
+      ), labelWidth)}
       {eff.kind === 'attr' && (
         <>
           {entityOpts.length === 0 && <p style={hint}>请先到「配置」添加实体</p>}
@@ -966,7 +975,7 @@ function EffectRow({
                 onChange({ ...eff, entityId, attr })
               }}
             />
-          ))}
+          ), labelWidth)}
           {field('属性', (
             <AttrSelect
               entityId={eff.entityId}
@@ -975,10 +984,10 @@ function EffectRow({
               createAttribute={createAttribute}
               onChange={(attr) => onChange({ ...eff, attr })}
             />
-          ))}
+          ), labelWidth)}
           {field('操作', (
             <EffectOpButtons op={operation?.op ?? eff.op} onChange={handleOpChange} />
-          ))}
+          ), labelWidth)}
           <ValueInput
             value={operation?.value ?? eff.value}
             entities={entities}
@@ -990,6 +999,7 @@ function EffectRow({
             createFormula={createFormula}
             onChange={handleValueChange}
             fieldLabels={{ source: '数值来源', value: '数值' }}
+            fieldLabelWidth={labelWidth}
           />
         </>
       )}
@@ -1003,10 +1013,10 @@ function EffectRow({
               numbersOnly
               onChange={(varId) => onChange({ ...eff, varId })}
             />
-          ))}
+          ), labelWidth)}
           {field('操作', (
             <EffectOpButtons op={operation?.op ?? eff.op} onChange={handleOpChange} />
-          ))}
+          ), labelWidth)}
           <ValueInput
             value={operation?.value ?? eff.value}
             entities={entities}
@@ -1018,6 +1028,7 @@ function EffectRow({
             createFormula={createFormula}
             onChange={handleValueChange}
             fieldLabels={{ source: '数值来源', value: '数值' }}
+            fieldLabelWidth={labelWidth}
           />
         </>
       )}
@@ -1031,25 +1042,25 @@ function EffectRow({
               flagsOnly
               onChange={(varId) => onChange({ ...eff, varId })}
             />
-          ))}
+          ), labelWidth)}
           {field('值', (
             <select value={String(eff.value)} onChange={(e) => onChange({ ...eff, value: e.target.value === 'true' })}>
               <option value="true">是</option>
               <option value="false">否</option>
             </select>
-          ))}
+          ), labelWidth)}
         </>
       )}
       {eff.kind === 'item' && (
         <>
-          {field('道具', <ItemIdEditor value={eff.itemId} itemIds={itemIds ?? []} onChange={(itemId) => onChange({ ...eff, itemId })} />)}
+          {field('道具', <ItemIdEditor value={eff.itemId} itemIds={itemIds ?? []} onChange={(itemId) => onChange({ ...eff, itemId })} />, labelWidth)}
           {field('操作', (
             <select value={eff.op} onChange={(e) => onChange({ ...eff, op: e.target.value as 'give' | 'take' })}>
               <option value="give">给予（增加持有数量）</option>
               <option value="take">取走（减少且不低于 0）</option>
             </select>
-          ))}
-          {field('数量', <LooseNumberInput value={eff.count} emptyValue={0} onChange={(count) => onChange({ ...eff, count })} style={{ width: 90 }} />)}
+          ), labelWidth)}
+          {field('数量', <LooseNumberInput value={eff.count} emptyValue={0} onChange={(count) => onChange({ ...eff, count })} style={{ width: 90 }} />, labelWidth)}
         </>
       )}
     </div>
@@ -1068,6 +1079,7 @@ export function EffectsEditor({
   createEntity,
   createVariable,
   createFormula,
+  labelWidth,
   allowAdd = true,
   allowedKinds = EFFECT_KINDS,
 }: {
@@ -1078,6 +1090,7 @@ export function EffectsEditor({
   createEntity?: ValueExprEntityCreateConfig
   createVariable?: ValueExprVariableCreateConfig
   createFormula?: ValueExprFormulaCreateConfig
+  labelWidth?: CSSProperties['width']
   allowAdd?: boolean
   /** 限制新建/切换效果时可选择的类型；既有的其他类型仍保留显示，避免静默改写历史数据。 */
   allowedKinds?: readonly EffectKind[]
@@ -1104,6 +1117,7 @@ export function EffectsEditor({
           createEntity={createEntity}
           createVariable={createVariable}
           createFormula={createFormula}
+          labelWidth={labelWidth}
           onChange={(next) => onChange(list.map((e, idx) => (idx === i ? next : e)))}
           onDelete={() => { opStacks.current.delete(i); onChange(list.filter((_, idx) => idx !== i)) }}
           canUndoOp={(opStacks.current.get(i)?.length ?? 0) > 0}

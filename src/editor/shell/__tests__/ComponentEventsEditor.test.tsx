@@ -7,6 +7,7 @@ import { registerComponent, unregisterComponent } from '../../../runtime/registr
 import type { Entity, GameGraph, OverlayEventRef, Variable } from '../../../runtime/schema/graph-schema'
 import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
+import { ComponentInputsDisclosure } from '../ComponentInputsDisclosure'
 import { ComponentFormFields } from '../component-form-fields'
 import {
   ensureEntity,
@@ -38,6 +39,24 @@ function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
     fireEvent.click(screen.getByRole('menuitem', { name: label }))
   }
 }
+
+describe('ComponentInputsDisclosure summary', () => {
+  it.each(['BattlePlayerHpBar', 'BattleEnemyHpBar'])(
+    'omits the dynamic label from the %s title summary',
+    (componentId) => {
+      render(
+        <ComponentInputsDisclosure
+          childId={`${componentId}-0`}
+          componentId={componentId}
+          values={{ label: { ref: 'entity.hero.name' } }}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.queryByText('label=[object Object]')).toBeNull()
+    },
+  )
+})
 
 describe('ComponentEventsEditor', () => {
   it('catalog mode writes stable keys and never offers advance', () => {

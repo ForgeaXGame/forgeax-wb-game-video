@@ -145,6 +145,7 @@ export function ValueExprEditor({
   createVariable,
   createFormula,
   fieldLabels,
+  fieldLabelWidth,
   stackControls = false,
 }: {
   value: ValueExprInput | undefined
@@ -177,6 +178,7 @@ export function ValueExprEditor({
   effectOp?: { op: EffectDisplayOp; onOpChange: (next: EffectDisplayOp) => void }
   /** Effect 表单使用显式字段名区分“取什么值”和“输入多少”，避免与目标实体属性混淆。 */
   fieldLabels?: { source: string; value: string }
+  fieldLabelWidth?: CSSProperties['width']
   /** 窄栏紧凑表单中让内容选择器与值输入上下排列。 */
   stackControls?: boolean
 }): JSX.Element {
@@ -783,9 +785,12 @@ export function ValueExprEditor({
         : typeof legacyPick === 'number'
           ? String(legacyPick)
           : legacyPick.expr
+  const resolvedFieldLabel = fieldLabelWidth === undefined
+    ? fieldLabel
+    : { ...fieldLabel, width: fieldLabelWidth }
   const sourceControl = (
     <>
-      {fieldLabels ? <span style={fieldLabel}>{fieldLabels.source}</span> : null}
+      {fieldLabels ? <span style={resolvedFieldLabel}>{fieldLabels.source}</span> : null}
       {effectOp && <EffectOpButtons op={effectOp.op} onChange={effectOp.onOpChange} />}
       <CascadingPicker
         ariaLabel={fieldLabels?.source ?? '数值内容'}
@@ -811,7 +816,7 @@ export function ValueExprEditor({
       {!empty && pick.mode === 'const' && (
         fieldLabels ? (
           <div style={row}>
-            <span style={fieldLabel}>{fieldLabels.value}</span>
+            <span style={resolvedFieldLabel}>{fieldLabels.value}</span>
             <LooseNumberInput
               value={pick.const}
               onChange={(n) => onChange(n)}

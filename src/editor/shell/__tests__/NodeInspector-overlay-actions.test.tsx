@@ -10,6 +10,56 @@ afterEach(cleanup)
 beforeAll(registerCoreSkins)
 
 describe('NodeInspector · 界面事件动作入口', () => {
+  it('aligns component and event-effect labels inside the blueprint node interface section', () => {
+    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    overlay.children.unshift({
+      id: 'damage',
+      component: 'DamageFloatText',
+      inputs: { fixedText: '-', parameter: 70 },
+    })
+    const data: GameNodeData = {
+      name: '慈悲狱门口',
+      overlayNodes: [{
+        overlay: overlay.id,
+        reactions: [{
+          when: { type: 'event', id: 'pass' },
+          do: [{
+            kind: 'effect',
+            effects: [{ kind: 'attr', entityId: 'hero', attr: 'hp', op: 'add', value: 70 }],
+          }],
+        }],
+      }],
+    }
+    const graph: GameGraph = {
+      nodes: [{ id: 'gate', type: 'perf', position: { x: 0, y: 0 }, inputs: [], outputs: [], data }],
+      edges: [],
+    }
+
+    const { container } = render(
+      <NodeInspector
+        graph={graph}
+        nodeId="gate"
+        overlays={{ [overlay.id]: overlay }}
+        onChange={vi.fn()}
+      />,
+    )
+
+    const mountSection = container.querySelector<HTMLElement>('[data-focus-anchor="mount:n_door"]')!
+    const componentLabel = within(mountSection).getByText('触发按键', { selector: 'span' })
+    const fixedTextLabel = within(mountSection).getByText('固定文本', { selector: 'span' })
+    const parameterLabel = within(mountSection).getByText('参数', { selector: 'span' })
+    const gridColumns = fixedTextLabel.closest('label')?.style.gridTemplateColumns ?? ''
+    const labelWidth = gridColumns.split(' ')[0]!
+    expect(Number.parseFloat(labelWidth)).toBeLessThan(77)
+    expect(componentLabel.closest('label')?.style.gridTemplateColumns).toBe(gridColumns)
+    expect(parameterLabel.parentElement?.style.gridTemplateColumns).toBe(gridColumns)
+    expect(gridColumns).toContain('minmax(0, 320px)')
+
+    for (const label of ['类型', '实体', '属性', '操作', '数值来源', '数值']) {
+      expect(within(mountSection).getByText(label, { selector: 'span' })).toHaveStyle({ width: labelWidth })
+    }
+  })
+
   it('事件响应保留沿边推进入口，并把走边选择收进目标节点路由', () => {
     const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
     const data: GameNodeData = {

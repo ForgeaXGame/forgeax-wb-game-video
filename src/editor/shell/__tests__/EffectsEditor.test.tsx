@@ -8,6 +8,34 @@ import { ConditionEditor, EffectsEditor } from '../editors'
 afterEach(cleanup)
 
 describe('EffectsEditor numeric operations', () => {
+  it('uses one caller-provided label width for effect targets and value fields', () => {
+    render(
+      <EffectsEditor
+        value={[{
+          kind: 'attr',
+          entityId: 'hero',
+          attr: 'hp',
+          op: 'add',
+          value: 70,
+        }]}
+        entities={{
+          hero: {
+            id: 'hero',
+            name: '主角',
+            attrs: { hp: 100 },
+            attrMeta: { hp: { label: '生命值' } },
+          },
+        }}
+        labelWidth="77px"
+        onChange={vi.fn()}
+      />,
+    )
+
+    for (const label of ['类型', '实体', '属性', '操作', '数值来源', '数值']) {
+      expect(screen.getByText(label, { selector: 'span' })).toHaveStyle({ width: '77px' })
+    }
+  })
+
   it('lets subtraction and division own their operation state while keeping the operand editable', () => {
     let latest: GraphEffect[] = []
     function Harness(): JSX.Element {
