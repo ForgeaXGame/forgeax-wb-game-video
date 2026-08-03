@@ -17,7 +17,17 @@ vi.mock('../editor/shell/GraphAssetView', () => ({ GraphAssetView: () => <div>as
 vi.mock('../editor/shell/GraphConfigView', () => ({ GraphConfigView: () => <div>config</div> }))
 vi.mock('../editor/shell/GraphPlaySurface', () => ({ GraphPlaySurface: () => <div>play</div> }))
 vi.mock('../editor/persist/graphScenarioStore', () => ({
-  useGraphScenario: (selector: (state: { graph: { nodes: never[] }; ensureBoot: typeof ensureBoot }) => unknown) => selector({ graph: { nodes: [] }, ensureBoot }),
+  useGraphScenario: (selector: (state: {
+    graph: { nodes: never[] }
+    ensureBoot: typeof ensureBoot
+    scn: () => { graph: { nodes: never[] } }
+    loadEpoch: number
+  }) => unknown) => selector({
+    graph: { nodes: [] },
+    ensureBoot,
+    scn: () => ({ graph: { nodes: [] } }),
+    loadEpoch: 0,
+  }),
 }))
 vi.mock('../editor/persist/graphViewStore', () => ({
   useGraphView: (selector: (state: { view: string; setView: () => void }) => unknown) => selector({ view: 'graph', setView: vi.fn() }),
