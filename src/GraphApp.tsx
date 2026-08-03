@@ -115,12 +115,12 @@ export function GraphApp(): JSX.Element {
     return <div className="ga-root is-pane-left"><GraphSidebar /></div>
   }
   if (pane === 'center') {
-    return <div className="ga-root is-pane-center"><GameBootstrap onBoot={(gameId) => ensureBoot(gameId, NODIA_DEMO)}><GraphMain /></GameBootstrap></div>
+    return <div className="ga-root is-pane-center"><GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap></div>
   }
   return (
     <div className="ga-root">
       <GraphSidebar />
-      <GameBootstrap onBoot={(gameId) => ensureBoot(gameId, NODIA_DEMO)}><GraphMain /></GameBootstrap>
+      <GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap>
     </div>
   )
 }

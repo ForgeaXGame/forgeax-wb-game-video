@@ -23,7 +23,6 @@ vi.mock('../editor/persist/graphViewStore', () => ({
   useGraphView: (selector: (state: { view: string; setView: () => void }) => unknown) => selector({ view: 'graph', setView: vi.fn() }),
   installGraphViewSync: () => vi.fn(),
 }))
-vi.mock('../editor/persist/gameScope', () => ({ getGameSlug: () => 'demo' }))
 vi.mock('../styles/injectStyle', () => ({ injectStyleOnce: vi.fn() }))
 
 afterEach(() => window.history.replaceState({}, '', '/'))
@@ -46,5 +45,5 @@ test('passes the handshake game id to the single boot owner', () => {
   window.history.replaceState({}, '', '/?pane=center')
   ensureBoot.mockClear()
   render(<GraphApp />)
-  expect(ensureBoot).toHaveBeenCalledWith('猫', expect.anything())
+  expect(ensureBoot).toHaveBeenCalledWith('猫')
 })

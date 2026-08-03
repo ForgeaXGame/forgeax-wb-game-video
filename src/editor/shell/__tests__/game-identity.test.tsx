@@ -17,7 +17,6 @@ vi.mock('../../assets/AssetLibraryPanel', () => ({
   AssetLibraryPanel: () => <div data-testid="asset-library" />,
 }))
 vi.mock('../../../styles/injectStyle', () => ({ injectStyleOnce: vi.fn() }))
-vi.mock('../../persist/gameScope', () => ({ getGameSlug: () => 'url-game' }))
 
 import { GraphAssetView } from '../GraphAssetView'
 

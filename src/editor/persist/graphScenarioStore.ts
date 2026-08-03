@@ -22,7 +22,7 @@ import type { Formula } from './formula-authoring'
 import { toEditorScenarioDocument, toRuntimeScenario } from './formula-authoring'
 import { renameScenarioId, type ScenarioIdRename } from './scenario-id'
 import {
-  documentFromBlueprints, documentFromScenario, emptyBlueprintDoc, emptyLibraryDocument,
+  documentFromBlueprints, documentFromScenario, emptyBlueprintDoc,
   metaFromDocument, normalizeDocument, playDocument,
 } from './blueprint-project'
 import { isBlueprintTitleTaken } from './blueprint-title'
@@ -30,6 +30,7 @@ import { resolveGraphEntry } from '../../runtime/schema/graph-schema'
 import { blueprintsReferencing, findReferenceCycle } from '../../graph/edit/blueprint-refs'
 import { resolveEntryAfterGraphChange } from '../../graph/edit/graph-scope'
 import { loadGameComponents } from '../../runtime/component-host'
+import { NODIA_DEMO } from '../demo/demo'
 
 export type BlueprintTitleActionOk = { ok: true; id?: string }
 export type BlueprintTitleActionErr = { ok: false; reason: 'duplicate_title' | 'not_found' }
@@ -149,8 +150,8 @@ interface GraphScenarioStore {
    * 落盘不要用这个。
    */
   playScn: (rootBlueprintId?: string) => GameScenario
-  /** 首次进入某 game 时载入（草稿>磁盘最新>空库）；已 boot 同 game 则跳过。demo 仅供「重置」。 */
-  ensureBoot: (game: string, demo: GameScenario) => void
+  /** 首次进入某 game 时载入（草稿>磁盘最新）；已 boot 同 game 则跳过。demo 仅供「重置」。 */
+  ensureBoot: (game: string, demo?: GameScenario) => Promise<void>
   setGraph: (g: GameGraph | ((g: GameGraph) => GameGraph)) => void
   setMeta: (m: ScenarioMetaFields | ((m: ScenarioMetaFields) => ScenarioMetaFields)) => void
   renameScenarioId: (rename: ScenarioIdRename) => ScenarioIdRenameActionResult
@@ -192,6 +193,11 @@ interface GraphScenarioStore {
 
 let draftTimer: ReturnType<typeof setTimeout> | null = null
 const clearDraftTimer = () => { if (draftTimer) { clearTimeout(draftTimer); draftTimer = null } }
+
+/** A single in-flight package load is shared by all boot callers (including StrictMode replays). */
+let bootPromise: Promise<void> | null = null
+let bootGame: string | null = null
+let bootAttemptId = 0
 
 /**
  * 上次「干净」落盘/载入内容的指纹。`isDraft` 只表示「当前编辑内容 ≠ 这份干净基线」，
@@ -328,7 +334,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       return toRuntimeScenario(playDocument(st.authoringProject(), rootId))
     },
 
-    ensureBoot: (game, demo) => {
+    ensureBoot: (game, demo = NODIA_DEMO) => {
       const st = get()
       if (st.booted && st.game === game) {
         // 已 boot：补 demo 引用；旧草稿曾把 entities 抹成 undefined 的，从 demo 填回 meta。
@@ -344,60 +350,62 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         }
         if (dirty) set({ demo: st.demo ?? demo, meta })
         else if (!st.demo) set({ demo })
-        return
+        return Promise.resolve()
       }
+      if (bootPromise && bootGame === game) return bootPromise
       cleanFingerprint = null
-      set({ game, demo, booted: true })
-      void loadStore(game).then((s) => {
-        const applyDoc = (doc: GraphLibraryDocument) => {
-          const norm = normalizeLoadedDocument(doc, demo)
-          const mainId = norm.manifest.mainPackId
-          set((cur) => ({
-            blueprints: norm.manifest.packs,
-            mainBlueprintId: mainId,
-            activeBlueprintId: mainId,
-            meta: metaFromDocument(norm),
-            graph: norm.manifest.packs[mainId]?.graph ?? EMPTY_GRAPH,
-            versions: s.versions,
-            currentVersionId: s.versions[0]?.id ?? null,
-            loadEpoch: cur.loadEpoch + 1,
-          }))
+      set({ game, demo, booted: false })
+      const attemptId = ++bootAttemptId
+      const attempt = (async () => {
+        try {
+          const s = await loadStore(game)
+          const applyDoc = (doc: GraphLibraryDocument) => {
+            const norm = normalizeLoadedDocument(doc, demo)
+            const mainId = norm.manifest.mainPackId
+            set((cur) => ({
+              blueprints: norm.manifest.packs,
+              mainBlueprintId: mainId,
+              activeBlueprintId: mainId,
+              meta: metaFromDocument(norm),
+              graph: norm.manifest.packs[mainId]?.graph ?? EMPTY_GRAPH,
+              versions: s.versions,
+              currentVersionId: s.versions[0]?.id ?? null,
+              loadEpoch: cur.loadEpoch + 1,
+            }))
+          }
+          // 进入优先级：未保存草稿 > 磁盘最新文档。干净基线始终取磁盘最新；
+          // 草稿是否脏 = 内容是否异于该基线。缺失/无效包直接失败，绝不覆盖为空库。
+          if (isLibraryDocument(s.project)) {
+            cleanFingerprint = projectFingerprint(normalizeLoadedDocument(s.project, demo))
+          }
+          if (isLibraryDocument(s.draft)) {
+            applyDoc(s.draft)
+            scheduleDraft()
+          } else if (isLibraryDocument(s.project)) {
+            applyDoc(s.project)
+            cleanFingerprint = projectFingerprint(get().authoringProject())
+            set({ isDraft: false })
+          } else {
+            throw new TypeError('Host package blueprint is missing or invalid')
+          }
+          set({ booted: true })
+          void currentVersion(game).then((cv) => set({ currentTag: cv.tag }))
+          void listVersions(game).then((vs) => set({ gameVersions: vs }))
+          // 尽力加载该游戏仓专属组件（dist/components）；未构建/离线则静默用平台内建集。
+          void loadGameComponents(game)
+        } catch (cause) {
+          if (get().game === game) set({ booted: false })
+          throw cause
+        } finally {
+          if (bootAttemptId === attemptId) {
+            bootPromise = null
+            bootGame = null
+          }
         }
-        // 进入优先级：未保存草稿 > 磁盘最新文档 > 空库（不灌 demo）。
-        // 干净基线始终取磁盘最新（若有）；草稿是否脏 = 内容是否异于该基线。
-        if (isLibraryDocument(s.project)) {
-          cleanFingerprint = projectFingerprint(normalizeLoadedDocument(s.project, demo))
-        }
-        if (isLibraryDocument(s.draft)) {
-          applyDoc(s.draft)
-          scheduleDraft()
-        } else if (isLibraryDocument(s.project)) {
-          applyDoc(s.project)
-          cleanFingerprint = projectFingerprint(get().authoringProject())
-          set({ isDraft: false })
-        } else {
-          const seed = emptyLibraryDocument(withBuiltinSchemesMeta({}))
-          const mainId = seed.manifest.mainPackId
-          set((cur) => ({
-            blueprints: seed.manifest.packs,
-            mainBlueprintId: mainId,
-            activeBlueprintId: mainId,
-            meta: metaFromDocument(seed),
-            graph: seed.manifest.packs[mainId]?.graph ?? EMPTY_GRAPH,
-            isDraft: false,
-            versions: [],
-            currentVersionId: null,
-            loadEpoch: cur.loadEpoch + 1,
-          }))
-          void saveProject(seed, game).then((res) => {
-            if (res.ok) cleanFingerprint = projectFingerprint(get().authoringProject())
-          })
-        }
-      })
-      void currentVersion(game).then((cv) => set({ currentTag: cv.tag }))
-      void listVersions(game).then((vs) => set({ gameVersions: vs }))
-      // 尽力加载该游戏仓专属组件（dist/components）；未构建/离线则静默用平台内建集。
-      void loadGameComponents(game)
+      })()
+      bootPromise = attempt
+      bootGame = game
+      return attempt
     },
 
     setGraph: (g) => {
