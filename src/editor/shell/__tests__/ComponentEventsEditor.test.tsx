@@ -323,6 +323,27 @@ describe('NodeInspector overlay events', () => {
 })
 
 describe('OverlaySchemeEditor selected child', () => {
+  it('does not show the internal scheme id below the name input', () => {
+    render(
+      <OverlaySchemeEditor
+        overlayId="scheme-9"
+        overlay={{ id: 'scheme-9', title: '第1个新方案', children: [] }}
+        entities={{}}
+        variables={{}}
+        usageCount={0}
+        onRename={vi.fn()}
+        onRemove={vi.fn()}
+        onAddChild={vi.fn()}
+        onRemoveChild={vi.fn()}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByDisplayValue('第1个新方案')).toBeTruthy()
+    expect(screen.queryByText('scheme-9')).toBeNull()
+  })
+
   it('requires confirmation before deleting a custom interface scheme', () => {
     const onRemove = vi.fn()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)

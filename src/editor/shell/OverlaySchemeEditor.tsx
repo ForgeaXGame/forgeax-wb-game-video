@@ -243,10 +243,6 @@ export function OverlaySchemeEditor({
           <DuplicateBadge others={duplicateOf} />
           {!locked && <button style={del} onClick={confirmRemove}>删除</button>}
         </div>
-        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8 }}>
-          {overlayId}
-          {locked && <span style={{ marginLeft: 8, color: '#c8955a' }}>· 基础界面（单组件，位置固定）</span>}
-        </div>
         {duplicateOf.length > 0 && (
           <div
             style={{
