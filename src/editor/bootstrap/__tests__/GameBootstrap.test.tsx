@@ -88,7 +88,7 @@ test('renders inconsistent packages as an explicit non-retryable error', async (
   client.gamePackage.status.mockResolvedValueOnce({ state: 'inconsistent', missing: ['blueprint.json'] })
   render(<GameBootstrap onBoot={vi.fn()}><div>workspace</div></GameBootstrap>)
   expect(await screen.findByText('Video game files are inconsistent')).toBeTruthy()
-  expect(screen.getByRole('alert')).toHaveTextContent('blueprint.json')
+  expect(screen.getByRole('alert').textContent).toContain('blueprint.json')
   expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
 })
 
@@ -99,8 +99,20 @@ test('surfaces an initialized package load failure and does not mount the worksp
   render(<GameBootstrap onBoot={boot}><div>workspace</div></GameBootstrap>)
 
   expect(await screen.findByText('Initialization failed')).toBeTruthy()
-  expect(screen.getByRole('alert')).toHaveTextContent('temporary package read failure')
+  expect(screen.getByRole('alert').textContent).toContain('temporary package read failure')
   expect(screen.queryByText('workspace')).toBeNull()
+})
+
+test('explains that direct top-level loading requires a Workbench host', async () => {
+  client.ready.mockRejectedValueOnce(
+    new TypeError('A hostOrigin is required when document.referrer is unavailable'),
+  )
+
+  render(<GameBootstrap onBoot={vi.fn()}><div>workspace</div></GameBootstrap>)
+
+  expect(await screen.findByText('Open Video Game Studio from a Workbench host.')).toBeTruthy()
+  expect(screen.getByRole('alert').textContent).toContain('This standalone URL does not provide the Workbench handshake.')
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
 })
 
 test('does not repeat status or use a stale onBoot callback after a parent rerender', async () => {
