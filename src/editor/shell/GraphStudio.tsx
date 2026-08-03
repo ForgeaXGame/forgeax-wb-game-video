@@ -82,8 +82,6 @@ const FORM_W_MIN = 280
 const SPLITTER_W = 5
 const PREVIEW_OPEN_KEY = 'wb-game-video.nodePanel.previewOpen'
 
-const kinoAssetLibraryClient = createKinoAssetLibraryClient()
-
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
   ensureToolbarStyle()
@@ -254,6 +252,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [bgmRunKey, setBgmRunKey] = useState(0)
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
+  const kinoAssetLibraryClient = useMemo(() => createKinoAssetLibraryClient(), [])
   const kinoResources = useKinoVideoResources(game)
   // 节点面板「音乐」下拉候选（与「视频」同款）：Kino media_type=audio，展示形状在壳层拼。
   const audio = useProjectAssets(game, 'audio', kinoAssetLibraryClient)

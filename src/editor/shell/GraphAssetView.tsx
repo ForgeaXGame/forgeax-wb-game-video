@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { AssetLibraryPanel } from '../assets/AssetLibraryPanel'
 import {
@@ -83,11 +84,10 @@ const CSS = `
 export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX.Element {
   injectStyleOnce('graph-asset-view', CSS)
   const game = useGraphScenario((s) => s.game)
+  const defaultClient = useMemo(() => createKinoAssetLibraryClient(), [])
   const controller = useAssetLibrary(
     game,
-    client ?? kinoAssetLibraryClient,
+    client ?? defaultClient,
   )
   return <AssetLibraryPanel controller={controller} />
 }
-
-const kinoAssetLibraryClient = createKinoAssetLibraryClient()

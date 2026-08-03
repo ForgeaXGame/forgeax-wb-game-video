@@ -237,19 +237,27 @@ const HISTORY_OPTIONS: ZundoOptions<GraphScenarioStore, TrackedState> = {
 export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get) => {
   // 按内容相对干净基线判定草稿：有实质差异才标脏 + 防抖写 localStorage；内容回到基线则清提示与草稿。
   const scheduleDraft = () => {
+    const game = get().game
     const fp = projectFingerprint(get().authoringProject())
     const dirty = cleanFingerprint === null || fp !== cleanFingerprint
     set({ isDraft: dirty })
     clearDraftTimer()
+    // 只有 Host handshake 绑定了游戏身份后才允许写入按游戏隔离的草稿。
+    if (!game) return
     if (!dirty) {
-      clearDraft(get().game)
+      clearDraft(game)
       return
     }
-    draftTimer = setTimeout(() => saveDraft(get().authoringProject(), get().game), 800)
+    draftTimer = setTimeout(() => saveDraft(get().authoringProject(), game), 800)
   }
   // 保存核心（save 与 commit 共用）：环检测 → 校验 → PUT blueprint。返回 PUT 的 promise，
   // 让 commit() 能 await 到落盘完成再打版本（避免 blueprint 未落盘就 git commit 的竞态）。
   const runSave = (): { blocked: boolean; errs: number; done: Promise<boolean> } => {
+    const game = get().game
+    if (!game) {
+      set({ savedTip: '保存被拦截 · 尚未完成 Host handshake' })
+      return { blocked: true, errs: -1, done: Promise.resolve(false) }
+    }
     const project = get().authoringProject()
     const cycle = findReferenceCycle(project)
     if (cycle) {
@@ -264,7 +272,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     }).filter((i) => i.level === 'error')
     const savedFp = projectFingerprint(project)
     set({ isDraft: false, savedTip: errs.length ? `保存中 · ⚠ ${errs.length} 处校验错误` : '保存中…' })
-    const done = saveProject(project, get().game).then((res) => {
+    const done = saveProject(project, game).then((res) => {
       if (!res.ok) {
         scheduleDraft()
         set({ savedTip: '保存失败 · 草稿仍在本地，请检查 game-host 端点后重试' })
@@ -279,7 +287,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       })
       if (nowDirty) {
         clearDraftTimer()
-        draftTimer = setTimeout(() => saveDraft(get().authoringProject(), get().game), 800)
+        draftTimer = setTimeout(() => saveDraft(get().authoringProject(), game), 800)
       }
       return true
     })
