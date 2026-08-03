@@ -58,6 +58,8 @@ export function resolveComponentInputs(
   const parameterDef = inputDefs.find((input) => input.key === 'parameter')
   if (parameterDef) {
     const fallback = typeof parameterDef.default === 'string' ? parameterDef.default : ''
+    // DamageFloatText shows positive results as magnitudes; explicit string signs remain author-controlled.
+    const numberFormat = manifest?.id === 'DamageFloatText' ? 'plain' : 'signed'
     const raw = Object.prototype.hasOwnProperty.call(rawInputs, 'parameter')
       ? rawInputs.parameter
       : parameterDef.default
@@ -68,7 +70,7 @@ export function resolveComponentInputs(
       && typeof (raw as { ref?: unknown }).ref === 'string'
       ? resolveTextValue(raw, ctx)
       : undefined
-    resolved.parameter = resolveTextParameter(reference ?? raw, ctx, fallback)
+    resolved.parameter = resolveTextParameter(reference ?? raw, ctx, fallback, numberFormat)
   }
 
   const durationDef = inputDefs.find((input) => input.key === 'durationMs')

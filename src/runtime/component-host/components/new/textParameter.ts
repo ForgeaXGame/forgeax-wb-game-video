@@ -8,9 +8,11 @@ export interface TextParameterInputs {
   durationMs?: number
 }
 
-function signed(value: number): string {
+export type TextParameterNumberFormat = 'signed' | 'plain'
+
+function formatNumber(value: number, format: TextParameterNumberFormat): string {
   const normalized = Object.is(value, -0) ? 0 : value
-  return normalized > 0 ? `+${normalized}` : String(normalized)
+  return format === 'signed' && normalized > 0 ? `+${normalized}` : String(normalized)
 }
 
 function evalCtxFromSkin(ctx: SkinCtx | undefined): EvalCtx {
@@ -35,14 +37,19 @@ function evalCtxFromSkin(ctx: SkinCtx | undefined): EvalCtx {
   }
 }
 
-export function resolveTextParameter(value: unknown, ctx: SkinCtx | undefined, fallback: string): string {
-  if (typeof value === 'number') return Number.isFinite(value) ? signed(value) : fallback
+export function resolveTextParameter(
+  value: unknown,
+  ctx: SkinCtx | undefined,
+  fallback: string,
+  numberFormat: TextParameterNumberFormat = 'signed',
+): string {
+  if (typeof value === 'number') return Number.isFinite(value) ? formatNumber(value, numberFormat) : fallback
   if (typeof value === 'string') return value
   const expr = value && typeof value === 'object' ? (value as { expr?: unknown }).expr : undefined
   if (typeof expr !== 'string' || !expr.trim()) return fallback
   try {
     const result = evalExpr(expr, evalCtxFromSkin(ctx))
-    return Number.isFinite(result) ? signed(result) : fallback
+    return Number.isFinite(result) ? formatNumber(result, numberFormat) : fallback
   } catch {
     return fallback
   }

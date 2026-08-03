@@ -268,7 +268,7 @@ describe('NodePreviewStage overlay layout', () => {
         'is-selected',
       )
     })
-    expect(screen.getAllByText('+42')).toHaveLength(2)
+    expect(screen.getAllByText('42')).toHaveLength(2)
 
     const canvas = screen.getByRole('application', { name: '节点视频覆盖物画布' })
     fireEvent.pointerDown(canvas, { button: 0, pointerId: 9, clientX: 30, clientY: 30 })
@@ -339,7 +339,7 @@ describe('NodePreviewStage overlay layout', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[data-preview-spawn-id="spawn:1"]')).not.toBeNull()
-      expect(screen.getByText('+80')).toBeTruthy()
+      expect(screen.getByText('80')).toBeTruthy()
     })
   })
 
