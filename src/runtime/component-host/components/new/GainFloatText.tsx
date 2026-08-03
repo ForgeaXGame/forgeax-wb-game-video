@@ -42,7 +42,7 @@ export function GainFloatText({
 }: GainFloatTextProps): ReactNode {
   injectCss('gain-float-text', GAIN_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = `${fixedText}${formatGainParameter(parameter)}`
+  const text = `${fixedText}${formatGainParameter(fixedText, parameter)}`
   const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ffd54a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
@@ -55,10 +55,11 @@ export function GainFloatText({
   )
 }
 
-function formatGainParameter(parameter: string): string {
+function formatGainParameter(fixedText: string, parameter: string): string {
   const normalized = parameter.trim()
   const numeric = Number(normalized)
-  return normalized && Number.isFinite(numeric) && numeric > 0 && !normalized.startsWith('+')
+  const fixedMinus = fixedText.trim() === '-'
+  return normalized && Number.isFinite(numeric) && numeric > 0 && !normalized.startsWith('+') && !fixedMinus
     ? `+${parameter}`
     : parameter
 }
