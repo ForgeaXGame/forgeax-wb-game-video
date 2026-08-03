@@ -150,4 +150,31 @@ describe('ScenarioInspector entity attributes', () => {
       '"hp":{"min":0,"initial":50,"max":50}',
     )
   })
+
+  it('edits an entity property range through the disclosure', () => {
+    render(
+      <EntityHarness
+        initial={{
+          hero: {
+            id: 'hero',
+            attrs: { hp: 80 },
+            attrMeta: { hp: { initial: 80 } },
+          },
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /高级设置/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'hero 的 hp min' }), {
+      target: { value: '10' },
+    })
+    fireEvent.blur(screen.getByRole('textbox', { name: 'hero 的 hp min' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'hero 的 hp max' }), {
+      target: { value: '60' },
+    })
+    fireEvent.blur(screen.getByRole('textbox', { name: 'hero 的 hp max' }))
+
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"attrs":{"hp":60}')
+    expect(screen.getByTestId('entities-state')).toHaveTextContent('"hp":{"initial":60,"min":10,"max":60}')
+  })
 })

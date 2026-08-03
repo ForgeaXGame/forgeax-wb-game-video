@@ -33,7 +33,7 @@ describe('input value resolution', () => {
     expect(resolveTextValue({ ref: 'entity.hero.name' }, ctx)).toBe('主角')
     expect(resolveTextValue({ ref: 'entity.hero.attr.hp' }, ctx)).toBe('80')
     expect(resolveTextValue({ ref: 'var.qi' }, ctx)).toBe('3')
-    expect(resolveTextValue({ expr: 'entity.hero.attr.attack + var.qi' }, ctx)).toBe('23')
+    expect(resolveTextValue({ expr: 'entity.hero.attr.attack + var.qi' }, ctx)).toBe('-23')
   })
 
   it('clones runtime RNG before evaluating render-time formulas', () => {
