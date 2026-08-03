@@ -61,6 +61,40 @@ describe('VideoGenerationGateway', () => {
     expect(createVideoGenerationGateway(undefined)).toBeUndefined()
   })
 
+  it('accepts the minimal ready video MediaAsset returned by the asset-canvas capability consumer', async () => {
+    const gateway = createVideoGenerationGateway({
+      async invoke() {
+        return {
+          asset: {
+            id: 'canvas-host-video-1',
+            kind: 'video',
+            status: 'ready',
+            url: '/media/canvas-host-video-1.mp4',
+          },
+        }
+      },
+    })!
+
+    const asset = await gateway.generate({
+      ...request,
+      imageWithRoles: [
+        { role: 'first_frame', url: 'https://assets.example/first.png' },
+        { role: 'last_frame', url: 'https://assets.example/last.png' },
+        { role: 'reference_image', url: 'https://assets.example/reference.png' },
+      ],
+    })
+
+    expect(asset).toMatchObject({
+      id: 'canvas-host-video-1',
+      kind: 'video',
+      productionType: 'video_clip',
+      status: 'ready',
+      url: '/media/canvas-host-video-1.mp4',
+      createdAt: expect.any(Number),
+      updatedAt: expect.any(Number),
+    })
+  })
+
   it('runs the legacy generator only when the host did not inject a capability bridge', async () => {
     const legacy = vi.fn(async () => ({
       id: 'legacy-video', kind: 'video' as const, productionType: 'video_clip' as const,

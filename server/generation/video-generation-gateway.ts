@@ -31,10 +31,17 @@ export interface VideoGenerationRequest {
   }
 }
 
-/** The provider result is a host-owned MediaAsset, already imported by the host. */
+/**
+ * The shared capability has the same minimum result consumed by Asset Canvas:
+ * a ready video with a stable id. Hosts can supply richer MediaAsset metadata;
+ * this workbench fills its own registry timestamps when the host omits them.
+ */
+export type HostVideoMediaAsset =
+  Pick<MediaAsset, 'id' | 'kind' | 'status'> &
+  Partial<Omit<MediaAsset, 'id' | 'kind' | 'status'>>
+
 export interface VideoGenerationResult {
-  readonly asset: Omit<MediaAsset, 'productionType' | 'sceneNodeId' | 'durationMs' | 'prompt'> &
-    Partial<Pick<MediaAsset, 'productionType' | 'sceneNodeId' | 'durationMs' | 'prompt'>>
+  readonly asset: HostVideoMediaAsset
 }
 
 export interface VideoGenerationGateway {
@@ -94,6 +101,8 @@ export function bindHostMediaAsset(asset: VideoGenerationResult['asset'] | undef
     )
   }
 
+  const createdAt = asset.createdAt ?? Date.now()
+
   return {
     ...asset,
     kind: 'video',
@@ -102,6 +111,8 @@ export function bindHostMediaAsset(asset: VideoGenerationResult['asset'] | undef
     sceneNodeId: input.metadata.sceneNodeId,
     durationMs: asset.durationMs ?? Math.round(input.durationSeconds * 1000),
     prompt: asset.prompt ?? input.prompt,
+    createdAt,
+    updatedAt: asset.updatedAt ?? createdAt,
   }
 }
 
