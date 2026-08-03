@@ -15,6 +15,8 @@ import type { ComponentInput } from '../../runtime/schema/node-config-schema'
 import type { Entity, NumOrExpr } from '../../runtime/schema/graph-schema'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
 import newComponents from '../../runtime/component-host/components/new'
+import { resolveComponentInputs } from '../../runtime/component-host/resolveComponentInputs'
+import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { hasOptionEventsInput } from './editors'
 import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
 import type { TextOrRef } from './TextValueEditor'
@@ -768,8 +770,47 @@ function renderInput(
   }
 }
 
+function summarySkinCtx(pickers: EditorPickerCtx | undefined): SkinCtx {
+  const entities: SkinCtx['hud']['entities'] = {}
+  for (const [id, entity] of Object.entries(pickers?.entities ?? {})) {
+    const attrs = { ...(entity.attrs ?? {}) }
+    for (const [attr, meta] of Object.entries(entity.attrMeta ?? {})) {
+      if (attrs[attr] === undefined && meta.initial !== undefined) attrs[attr] = meta.initial
+    }
+    const attrMax = Object.fromEntries(
+      Object.entries(attrs).map(([attr, value]) => [attr, entity.attrMeta?.[attr]?.max ?? value]),
+    )
+    entities[id] = {
+      name: entity.name,
+      hp: attrs.hp ?? 0,
+      maxHp: entity.attrMeta?.hp?.max ?? attrs.hp ?? 0,
+      attrs,
+      attrMax,
+    }
+  }
+  const vars = Object.fromEntries(
+    Object.entries(pickers?.variables ?? {}).map(([id, variable]) => [id, variable.initial ?? 0]),
+  )
+  return { hud: { entities, vars, flags: {}, score: 0 } }
+}
+
 /** 摘要若干常见 inputs，供折叠标题一行展示。 */
-export function summarizeComponentInputs(values: Record<string, unknown>): string {
+export function summarizeComponentInputs(
+  componentId: string,
+  values: Record<string, unknown>,
+  pickers?: EditorPickerCtx,
+): string {
+  if (componentId === 'DamageFloatText') {
+    const resolved = resolveComponentInputs(
+      getComponentManifest(componentId),
+      values,
+      summarySkinCtx(pickers),
+    )
+    const fixedText = typeof resolved.fixedText === 'string' ? resolved.fixedText : ''
+    const parameter = typeof resolved.parameter === 'string' ? resolved.parameter : ''
+    return `内容=${fixedText}${parameter}`
+  }
+
   const bits: string[] = []
   const push = (key: string, fmt?: (v: unknown) => string) => {
     const v = values[key]

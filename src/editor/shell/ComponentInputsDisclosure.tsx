@@ -32,7 +32,7 @@ export function ComponentInputsDisclosure({
   onCreateFormula?: FormulaCreateHandler
 }): JSX.Element {
   const componentName = getComponentManifest(componentId)?.label ?? componentId
-  const summary = summarizeComponentInputs(values)
+  const summary = summarizeComponentInputs(componentId, values, pickers)
   return (
     <details
       data-component-inputs-disclosure={`${childId}:${componentId}`}

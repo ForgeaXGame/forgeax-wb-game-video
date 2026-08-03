@@ -8,6 +8,7 @@ import type { Entity, GameGraph, OverlayEventRef, Variable } from '../../../runt
 import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
 import { ComponentFormFields } from '../component-form-fields'
+import { ComponentInputsDisclosure } from '../ComponentInputsDisclosure'
 import {
   ensureEntity,
   ensureEntityAttribute,
@@ -38,6 +39,46 @@ function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
     fireEvent.click(screen.getByRole('menuitem', { name: label }))
   }
 }
+
+describe('ComponentInputsDisclosure summary', () => {
+  it('shows the resolved DamageFloatText content for formulas and variable references', () => {
+    const pickers = {
+      entities: {
+        hero: { id: 'hero', attrs: { attack: 10 } },
+      },
+      variables: {
+        defense: { id: 'defense', initial: 1 },
+      },
+    }
+    const { rerender } = render(
+      <ComponentInputsDisclosure
+        childId="DamageFloatText-0"
+        componentId="DamageFloatText"
+        values={{
+          value: -25,
+          fixedText: '-',
+          parameter: { expr: 'entity.hero.attr.attack - var.defense' },
+        }}
+        pickers={pickers}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('内容=-9')).toBeTruthy()
+    expect(screen.queryByText('数值=-25')).toBeNull()
+
+    rerender(
+      <ComponentInputsDisclosure
+        childId="DamageFloatText-0"
+        componentId="DamageFloatText"
+        values={{ fixedText: '伤害 ', parameter: { ref: 'var.defense' } }}
+        pickers={pickers}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('内容=伤害 1')).toBeTruthy()
+  })
+})
 
 describe('ComponentEventsEditor', () => {
   it('catalog mode writes stable keys and never offers advance', () => {
