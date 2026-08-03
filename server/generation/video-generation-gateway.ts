@@ -1,5 +1,5 @@
+import { createHash } from 'node:crypto'
 import type { MediaAsset } from '../../src/editor/assets/registry-types'
-import type { VideoRoleImage } from './gateway-client'
 
 /** The stable extension-platform capability consumed by this workbench. */
 export const VIDEO_GENERATION_CAPABILITY = Object.freeze({
@@ -13,14 +13,20 @@ export const VIDEO_GENERATION_CAPABILITY = Object.freeze({
  * package to a platform implementation or an unpublished package version.
  */
 export interface ExtensionCapabilities {
-  invoke(capabilityId: string, version: number, input: unknown): Promise<unknown>
+  invoke(
+    capabilityId: string,
+    version: number,
+    input: unknown,
+    options?: { readonly requestId: string },
+  ): Promise<unknown>
 }
 
 export interface VideoGenerationRequest {
   readonly prompt: string
   readonly durationSeconds: number
   readonly generateAudio: boolean
-  readonly imageWithRoles: readonly VideoRoleImage[]
+  /** Host-owned references; the host resolves these IDs into provider inputs. */
+  readonly references: readonly VideoGenerationReference[]
   readonly metadata: {
     readonly sceneNodeId: string
     readonly nodeName: string
@@ -29,6 +35,11 @@ export interface VideoGenerationRequest {
     readonly extend?: boolean
     readonly transitionHint?: string
   }
+}
+
+export interface VideoGenerationReference {
+  readonly role: 'reference_image' | 'first_frame' | 'last_frame' | 'reference_video' | 'reference_audio'
+  readonly assetId: string
 }
 
 /**
@@ -55,6 +66,7 @@ export interface VideoGenerationGateway {
  */
 export function createVideoGenerationGateway(
   capabilities: ExtensionCapabilities | undefined,
+  gameId = '',
 ): VideoGenerationGateway | undefined {
   if (!capabilities) return undefined
 
@@ -65,6 +77,7 @@ export function createVideoGenerationGateway(
           VIDEO_GENERATION_CAPABILITY.id,
           VIDEO_GENERATION_CAPABILITY.version,
           input,
+          { requestId: createVideoGenerationRequestId(gameId, input) },
         )
         return bindHostMediaAsset((result as VideoGenerationResult | undefined)?.asset, input)
       } catch (error) {
@@ -72,6 +85,22 @@ export function createVideoGenerationGateway(
       }
     },
   }
+}
+
+/**
+ * Generates a deterministic, credential-free idempotency key. It includes the
+ * game and scene scope plus every capability input field, so retries of the
+ * same logical request resume the durable Host receipt instead of submitting
+ * a second provider job.
+ */
+export function createVideoGenerationRequestId(
+  gameId: string,
+  input: VideoGenerationRequest,
+): string {
+  const fingerprint = createHash('sha256')
+    .update(stableSerialize({ gameId, sceneNodeId: input.metadata.sceneNodeId, input }))
+    .digest('hex')
+  return `wb-game-video-v1-${fingerprint}`
 }
 
 /**
@@ -143,4 +172,13 @@ function mapCapabilityError(error: unknown): Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
+  return `{${Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key])}`)
+    .join(',')}}`
 }

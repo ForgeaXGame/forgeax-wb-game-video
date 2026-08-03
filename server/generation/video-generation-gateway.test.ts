@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   VIDEO_GENERATION_CAPABILITY,
   createVideoGenerationGateway,
+  createVideoGenerationRequestId,
   generateWithVideoGenerationGateway,
   type VideoGenerationRequest,
 } from './video-generation-gateway'
@@ -10,7 +11,10 @@ const request: VideoGenerationRequest = {
   prompt: 'A heroine enters a rainy cyberpunk alley.',
   durationSeconds: 5,
   generateAudio: false,
-  imageWithRoles: [{ role: 'reference_image', url: 'data:image/png;base64,AA==' }],
+  references: [
+    { role: 'reference_image', assetId: 'char-1' },
+    { role: 'reference_image', assetId: 'scene-1' },
+  ],
   metadata: {
     sceneNodeId: 'scene-1',
     nodeName: 'Opening',
@@ -39,11 +43,16 @@ describe('VideoGenerationGateway', () => {
         },
       }
     })
-    const gateway = createVideoGenerationGateway({ invoke })!
+    const gateway = createVideoGenerationGateway({ invoke }, 'game-a')!
 
     const asset = await gateway.generate(request)
 
-    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(invoke).toHaveBeenCalledWith(
+      'media.video.generate',
+      1,
+      request,
+      { requestId: expect.stringMatching(/^wb-game-video-v1-[0-9a-f]{64}$/) },
+    )
     expect(asset).toMatchObject({
       id: 'media-host-video-1',
       kind: 'video',
@@ -73,14 +82,13 @@ describe('VideoGenerationGateway', () => {
           },
         }
       },
-    })!
+    }, 'game-a')!
 
     const asset = await gateway.generate({
       ...request,
-      imageWithRoles: [
-        { role: 'first_frame', url: 'https://assets.example/first.png' },
-        { role: 'last_frame', url: 'https://assets.example/last.png' },
-        { role: 'reference_image', url: 'https://assets.example/reference.png' },
+      references: [
+        { role: 'first_frame', assetId: 'first-frame' },
+        { role: 'reference_image', assetId: 'reference' },
       ],
     })
 
@@ -93,6 +101,21 @@ describe('VideoGenerationGateway', () => {
       createdAt: expect.any(Number),
       updatedAt: expect.any(Number),
     })
+  })
+
+  it('derives a stable idempotency requestId from game, scene node, and the full capability input', async () => {
+    const first = createVideoGenerationRequestId('game-a', request)
+    const second = createVideoGenerationRequestId('game-a', structuredClone(request))
+    const otherGame = createVideoGenerationRequestId('game-b', request)
+    const otherNode = createVideoGenerationRequestId('game-a', {
+      ...request,
+      metadata: { ...request.metadata, sceneNodeId: 'scene-2' },
+    })
+
+    expect(first).toBe(second)
+    expect(first).not.toBe(otherGame)
+    expect(first).not.toBe(otherNode)
+    expect(first).toMatch(/^wb-game-video-v1-[0-9a-f]{64}$/)
   })
 
   it('runs the legacy generator only when the host did not inject a capability bridge', async () => {

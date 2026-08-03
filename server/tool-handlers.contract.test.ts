@@ -66,7 +66,12 @@ describe('host tool context contract', () => {
       { ...arrivalCtx(cwd), capabilities: { invoke } },
     )
 
-    expect(invoke).toHaveBeenCalledWith('media.video.generate', 1, expect.any(Object))
+    expect(invoke).toHaveBeenCalledWith(
+      'media.video.generate',
+      1,
+      expect.any(Object),
+      { requestId: expect.stringMatching(/^wb-game-video-v1-[0-9a-f]{64}$/) },
+    )
     expect(result).toMatchObject({
       asset: { id: 'host-video-1', productionType: 'video_clip', sceneNodeId: 'node-1' },
     })

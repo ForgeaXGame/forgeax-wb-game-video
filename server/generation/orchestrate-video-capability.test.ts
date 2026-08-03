@@ -12,6 +12,7 @@ function createContext(invoke: NonNullable<OrchestrateCtx['capabilities']>['invo
   mkdirSync(join(dir, 'media'), { recursive: true })
   writeFileSync(join(dir, 'media', 'character.png'), 'character')
   writeFileSync(join(dir, 'media', 'scene.png'), 'scene')
+  writeFileSync(join(dir, 'media', 'continuity.png'), 'continuity')
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify({
     version: 2,
     assets: [
@@ -22,6 +23,10 @@ function createContext(invoke: NonNullable<OrchestrateCtx['capabilities']>['invo
       {
         id: 'scene', kind: 'image', productionType: 'scene_ref', status: 'ready',
         file: 'media/scene.png', mime: 'image/png', createdAt: 1, updatedAt: 1,
+      },
+      {
+        id: 'continuity', kind: 'image', productionType: 'shot_image', status: 'ready',
+        file: 'media/continuity.png', mime: 'image/png', createdAt: 1, updatedAt: 1,
       },
     ],
   }))
@@ -34,14 +39,29 @@ afterEach(() => {
 
 describe('generateVideo capability seam', () => {
   it('uses the host extension-platform capability instead of the legacy gateway and returns its MediaAsset binding', async () => {
-    const invoke = vi.fn(async () => ({
-      asset: {
-        id: 'host-video-1', kind: 'video', status: 'ready', mime: 'video/mp4',
-        createdAt: 2, updatedAt: 2, provider: { kind: 'kino', ref: 'generation-1' },
-      },
-    }))
+    const invoke = vi.fn(async (_id: string, _version: number, value: unknown) => {
+      expect(value).toMatchObject({
+        references: [
+          { role: 'first_frame', assetId: 'continuity' },
+          { role: 'reference_image', assetId: 'character' },
+          { role: 'reference_image', assetId: 'scene' },
+        ],
+      })
+      expect(value).not.toHaveProperty('imageWithRoles')
+      return {
+        asset: {
+          id: 'host-video-1', kind: 'video', status: 'ready', mime: 'video/mp4',
+          createdAt: 2, updatedAt: 2, provider: { kind: 'kino', ref: 'generation-1' },
+        },
+      }
+    })
 
     const context = createContext(invoke)
+    // Capability hosts resolve asset IDs themselves; this path must not read local
+    // bytes or call the legacy resource endpoint before invoking the host bridge.
+    rmSync(join(context.dir, 'media', 'character.png'))
+    rmSync(join(context.dir, 'media', 'scene.png'))
+    rmSync(join(context.dir, 'media', 'continuity.png'))
     const asset = await generateVideo(context, {
       sceneNodeId: 'node-1',
       nodeName: 'Opening',
@@ -49,12 +69,14 @@ describe('generateVideo capability seam', () => {
       durationSeconds: 5,
       characterRefIds: ['character'],
       sceneRefIds: ['scene'],
+      continuityFirstFrameId: 'continuity',
     })
 
     expect(invoke).toHaveBeenCalledWith(
       'media.video.generate',
       1,
       expect.objectContaining({ durationSeconds: 5, generateAudio: false }),
+      { requestId: expect.stringMatching(/^wb-game-video-v1-[0-9a-f]{64}$/) },
     )
     expect(asset).toMatchObject({
       id: 'host-video-1', kind: 'video', productionType: 'video_clip', status: 'ready',
@@ -62,6 +84,6 @@ describe('generateVideo capability seam', () => {
       provider: { kind: 'kino', ref: 'generation-1' },
     })
     expect(JSON.parse(readFileSync(join(context.dir, 'manifest.json'), 'utf8')).assets)
-      .toHaveLength(2)
+      .toHaveLength(3)
   })
 })
