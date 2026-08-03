@@ -34,7 +34,6 @@ import type { NodeAction } from '../../runtime/schema/node-config-schema'
 import type { ChoiceOption } from '../../runtime/component-host/components/Choice'
 import type { FloatTextParams } from '../../runtime/component-host/components/FloatText'
 import type { QteCue } from '../../runtime/component-host/components/Qte'
-import { resolveNumericFloatDurationMs } from '../../runtime/component-host/components/new/numericFloatText'
 import { componentHandles, getComponent } from '../../runtime/registry/component-registry'
 import {
   componentTypeLabel,
@@ -1138,10 +1137,14 @@ function childVisibleSpan(el: OverlayChild, maxMs: number): { start: number; end
   const start = el.window?.startMs ?? timedStart(el)
   const end = el.window?.endMs ?? (
     isSelfTimedFloatText(el.component)
-      ? Math.min(maxMs, start + resolveNumericFloatDurationMs(paramsOf(el).durationMs))
+      ? Math.min(maxMs, start + resolveFloatTextDurationMs(paramsOf(el).durationMs))
       : maxMs
   )
   return { start, end }
+}
+
+function resolveFloatTextDurationMs(value: unknown, fallback = 1100): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 /**

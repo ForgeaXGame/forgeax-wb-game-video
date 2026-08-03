@@ -65,6 +65,23 @@ describe('resolveComponentInputs', () => {
     expect(resolved.durationMs).toBe(1100)
   })
 
+  it('resolves numeric text inputs without adding a sign', () => {
+    const textManifest: ComponentManifest = {
+      id: 'StatusNotice',
+      inputs: [
+        { key: 'text', valueType: 'string', component: 'numberExpr', default: '' },
+      ],
+      events: [],
+    }
+    const resolved = resolveComponentInputs(
+      textManifest,
+      { text: { expr: 'entity.ent-boss.attr.hp - 600' } },
+      ctx,
+    )
+
+    expect(resolved.text).toBe('50')
+  })
+
   it('fills ordinary defaults without changing explicit values', () => {
     const resolved = resolveComponentInputs(manifest, { current: 35, max: 70 }, ctx)
     expect(resolved).toMatchObject({ label: '敌方', current: 35, max: 70 })

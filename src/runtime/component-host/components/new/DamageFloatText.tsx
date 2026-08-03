@@ -11,7 +11,7 @@ export const DamageFloatTextManifest: ComponentManifest = {
   label: '伤害飘字',
   inputs: [
     { key: 'fixedText', label: '固定文本', valueType: 'string', default: '' },
-    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr', default: '-25' },
+    { key: 'parameter', label: '参数', valueType: 'string', component: 'numberExpr' },
     { key: 'color', label: '字色', valueType: 'string', component: 'color', default: '#ff5a5a' },
     { key: 'fontSize', label: '字号', valueType: 'number', default: 3.5 },
     { key: 'durationMs', label: '总时长ms', valueType: 'number', default: 1100 },
@@ -42,7 +42,7 @@ export function DamageFloatText({
 }: DamageFloatTextProps): ReactNode {
   injectCss('damage-float-text', DAMAGE_FLOAT_TEXT_CSS)
   ensureBrushFont()
-  const text = `${fixedText}${parameter}`
+  const text = `${fixedText}${formatDamageParameter(parameter)}`
   const textStyle = resolveTextAppearance({ color, fontSize } as TextAppearanceInputs, { color: '#ff5a5a', fontSize: 3.5 })
   const frozen = preview && !previewPlaying
   return (
@@ -53,6 +53,14 @@ export function DamageFloatText({
       <span data-overlay-fit-target style={textStyle}>{text}</span>
     </div>
   )
+}
+
+function formatDamageParameter(parameter: string): string {
+  const normalized = parameter.trim()
+  const numeric = Number(normalized)
+  return normalized && Number.isFinite(numeric) && numeric > 0 && !normalized.startsWith('+')
+    ? `+${parameter}`
+    : parameter
 }
 
 const DAMAGE_FLOAT_TEXT_CSS = `
