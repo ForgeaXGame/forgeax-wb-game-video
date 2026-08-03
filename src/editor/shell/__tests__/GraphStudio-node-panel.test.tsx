@@ -232,6 +232,19 @@ describe('GraphStudio 节点配置分栏', () => {
     expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
   })
 
+  it('关闭节点配置面板时同步关闭从此试玩浮层', async () => {
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '▶ 从此试玩' }))
+    await waitFor(() => expect(screen.getByTitle('隐藏')).toBeTruthy())
+
+    fireEvent.click(screen.getByTitle('关闭'))
+    await waitFor(() => {
+      expect(screen.queryByText('节点配置 · Intro')).toBeNull()
+      expect(screen.queryByTitle('隐藏')).toBeNull()
+    })
+  })
+
   it('按时间轴像素比例在当前指针前添加不重叠的结算', async () => {
     window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
     useGraphScenario.setState({
