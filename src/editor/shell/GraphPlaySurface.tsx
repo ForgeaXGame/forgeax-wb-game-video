@@ -89,6 +89,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
   const blueprints = useGraphScenario((s) => s.blueprints)
   const mainBlueprintId = useGraphScenario((s) => s.mainBlueprintId)
   const overlays = useGraphScenario((s) => s.meta.ui?.overlays)
+  const entities = useGraphScenario((s) => s.meta.entities)
+  const variables = useGraphScenario((s) => s.meta.variables)
   const ready = graph.nodes.length > 0
   useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
 
@@ -412,6 +414,8 @@ export function GraphPlaySurface({ scenario }: { scenario: GameScenario }): JSX.
             graph={displayGraph}
             onChange={() => {}}
             overlays={overlays}
+            entities={entities}
+            variables={variables}
             activeNodeId={visibleActiveNodeId}
             traversedEdgeIds={displayBlueprintId === snap?.activeBlueprintId ? traversed : undefined}
             drillFitKey={`${displayBlueprintId}:${drillPath.join('/') || 'root'}`}
