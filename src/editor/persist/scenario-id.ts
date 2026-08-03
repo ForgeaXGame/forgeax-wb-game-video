@@ -13,8 +13,9 @@ export type ScenarioIdRenameResult =
   | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
 
 function renameRecord<T>(record: Record<string, T>, oldId: string, newId: string, value: T): Record<string, T> {
-  const { [oldId]: _old, ...rest } = record
-  return { ...rest, [newId]: value }
+  return Object.fromEntries(
+    Object.entries(record).map(([id, current]) => [id === oldId ? newId : id, id === oldId ? value : current]),
+  )
 }
 
 function rewriteExpr(expr: string, rename: ScenarioIdRename): string {
