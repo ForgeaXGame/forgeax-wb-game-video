@@ -67,6 +67,23 @@ const blueprints = {
 } as unknown as Record<string, BlueprintDoc>
 
 describe('scenario ID migration', () => {
+  it('keeps a renamed attribute at its original display position', () => {
+    const orderedMeta: ScenarioMetaFields = {
+      entities: {
+        hero: {
+          id: 'hero',
+          attrs: { attack: 10, defense: 5, speed: 3 },
+          attrMeta: { attack: {}, defense: {}, speed: {} },
+        },
+      },
+    }
+    const result = renameScenarioId(orderedMeta, {}, { kind: 'attribute', entityId: 'hero', oldId: 'defense', newId: 'guard' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.meta.entities?.hero?.attrs ?? {})).toEqual(['attack', 'guard', 'speed'])
+    expect(Object.keys(result.meta.entities?.hero?.attrMeta ?? {})).toEqual(['attack', 'guard', 'speed'])
+  })
+
   it('renames entity and synchronizes graph, expression, component and formula references', () => {
     const result = renameScenarioId(meta, blueprints, { kind: 'entity', oldId: 'hero', newId: 'player' })
     expect(result.ok).toBe(true)
