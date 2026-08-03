@@ -56,9 +56,14 @@ class LocalDevWorkspace implements WorkspaceAdapter {
       resolvedCandidate = realpathSync(candidate)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new TypeError('Game workspace was not found')
+        // A fresh Workbench game has no files yet. Materialize only the
+        // bounded development directory so package status can report the
+        // contract's `uninitialized` state instead of a workspace 404.
+        await mkdir(candidate, { recursive: true })
+        resolvedCandidate = realpathSync(candidate)
+      } else {
+        throw error
       }
-      throw error
     }
     if (!within(this.gamesRoot, resolvedCandidate)) {
       throw new TypeError('Game root is outside development workspace')

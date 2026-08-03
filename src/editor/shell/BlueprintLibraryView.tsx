@@ -16,7 +16,6 @@ import { blueprintsReferencing } from '../../graph/edit/blueprint-refs'
 import { CatalogShell } from './CatalogShell'
 import { GraphStudio } from './GraphStudio'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { NODIA_DEMO } from '../demo/demo'
 
 const DUPLICATE_TITLE_MSG = '已存在同名蓝图'
 
@@ -60,6 +59,12 @@ export function BlueprintLibraryView(): JSX.Element {
   const del = useGraphScenario((s) => s.deleteBlueprint)
   const setMain = useGraphScenario((s) => s.setMainBlueprint)
   const authoringProject = useGraphScenario((s) => s.authoringProject)
+  const scenarioFromStore = useGraphScenario((s) => s.scn)
+  const loadEpoch = useGraphScenario((s) => s.loadEpoch)
+  const scenario = useMemo(
+    () => scenarioFromStore(),
+    [loadEpoch, scenarioFromStore],
+  )
 
   const items = useMemo(() => blueprintListItems(blueprints, mainId), [blueprints, mainId])
 
@@ -395,7 +400,7 @@ export function BlueprintLibraryView(): JSX.Element {
         }
         renderPreview={() => (
           <div style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
-            <GraphStudio scenario={NODIA_DEMO} />
+            <GraphStudio scenario={scenario} />
           </div>
         )}
       />

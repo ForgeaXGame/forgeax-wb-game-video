@@ -10,7 +10,7 @@
  *   - 无 pane     → 独立运行（bun run dev / 直接打开 dist），侧栏 + 主区都渲染。
  *   两个 iframe 靠 graphViewStore + BroadcastChannel 同步「当前 tab」。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BlueprintLibraryView } from './editor/shell/BlueprintLibraryView'
 import { GraphVideoView } from './editor/shell/GraphVideoView'
 import { GraphAssetView } from './editor/shell/GraphAssetView'
@@ -18,7 +18,6 @@ import { GraphConfigView } from './editor/shell/GraphConfigView'
 import { GraphPlaySurface } from './editor/shell/GraphPlaySurface'
 import { useGraphScenario } from './editor/persist/graphScenarioStore'
 import { useGraphView, installGraphViewSync, type GraphView } from './editor/persist/graphViewStore'
-import { NODIA_DEMO } from './editor/demo/demo'
 import { injectStyleOnce } from './styles/injectStyle'
 import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
 
@@ -77,12 +76,20 @@ function GraphSidebar(): JSX.Element {
 /** 主区——当前 tab 对应的内容。center pane 的全部内容。 */
 function GraphMain(): JSX.Element {
   const view = useGraphView((s) => s.view)
+  const scenarioFromStore = useGraphScenario((s) => s.scn)
+  const loadEpoch = useGraphScenario((s) => s.loadEpoch)
+  // The host package is the only runtime source. The bundled demo remains
+  // available for explicit reset/template flows, never as a live project.
+  const scenario = useMemo(
+    () => scenarioFromStore(),
+    [loadEpoch, scenarioFromStore],
+  )
   return (
     <main className="ga-main">
       {view === 'graph' && <BlueprintLibraryView />}
       {view === 'video' && <GraphVideoView />}
       {view === 'assets' && <GraphAssetView />}
-      {view === 'ui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'overlays', label: '自定义界面' }]} scenario={NODIA_DEMO} />}
+      {view === 'ui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'overlays', label: '自定义界面' }]} scenario={scenario} />}
       {view === 'rule' && (
         <GraphConfigView
           title="规则"
@@ -92,10 +99,10 @@ function GraphMain(): JSX.Element {
             { section: 'variables', label: '变量' },
             { section: 'formulas', label: '公式' },
           ]}
-          scenario={NODIA_DEMO}
+          scenario={scenario}
         />
       )}
-      {view === 'play' && <GraphPlaySurface scenario={NODIA_DEMO} />}
+      {view === 'play' && <GraphPlaySurface scenario={scenario} />}
     </main>
   )
 }

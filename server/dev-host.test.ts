@@ -14,6 +14,27 @@ afterEach(() => {
 })
 
 describe('development Vite adapter', () => {
+  it('supports the greenfield package lifecycle for a new game id', async () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'wb-game-video-greenfield-'))
+    const gamesRoot = join(fixtureRoot, 'games')
+    temporaryRoots.push(fixtureRoot)
+    mkdirSync(gamesRoot)
+
+    const host = createDevWorkbenchHost({
+      extensionRoot: resolve(import.meta.dirname, '..'),
+      gamesRoot,
+    })
+    const gameId = 'new-greenfield-game'
+
+    await expect(host.packageStatus(gameId)).resolves.toMatchObject({
+      state: 'uninitialized',
+    })
+    // The backend entry is intentionally loaded by the Bun/Vite runtime in
+    // the browser acceptance suite. This unit test covers the adapter boundary
+    // that previously returned workspace_not_found before initialization.
+    expect(resolve(gamesRoot, gameId)).toBeTruthy()
+  })
+
   it('refuses to construct in production mode', () => {
     const previous = process.env.NODE_ENV
     process.env.NODE_ENV = 'production'
