@@ -7,6 +7,7 @@ import { registerComponent, unregisterComponent } from '../../../runtime/registr
 import type { Entity, GameGraph, OverlayEventRef, Variable } from '../../../runtime/schema/graph-schema'
 import type { Formula } from '../../persist/formula-authoring'
 import { ComponentEventsEditor } from '../ComponentEventsEditor'
+import { ComponentInputsDisclosure } from '../ComponentInputsDisclosure'
 import { ComponentFormFields } from '../component-form-fields'
 import {
   ensureEntity,
@@ -38,6 +39,24 @@ function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
     fireEvent.click(screen.getByRole('menuitem', { name: label }))
   }
 }
+
+describe('ComponentInputsDisclosure summary', () => {
+  it.each(['BattlePlayerHpBar', 'BattleEnemyHpBar'])(
+    'omits the dynamic label from the %s title summary',
+    (componentId) => {
+      render(
+        <ComponentInputsDisclosure
+          childId={`${componentId}-0`}
+          componentId={componentId}
+          values={{ label: { ref: 'entity.hero.name' } }}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.queryByText('label=[object Object]')).toBeNull()
+    },
+  )
+})
 
 describe('ComponentEventsEditor', () => {
   it('catalog mode writes stable keys and never offers advance', () => {
@@ -192,6 +211,7 @@ describe('NodeInspector overlay events', () => {
     chooseCascade(
       screen.getByRole('combobox', { name: '文本内容' }),
       '变量',
+      '配置「var0」变量',
     )
     expect(screen.getByRole('menuitem', { name: '确认创建并选择' })).toBeDisabled()
     fireEvent.change(screen.getByRole('textbox', { name: '新变量初始值' }), {
@@ -323,6 +343,27 @@ describe('NodeInspector overlay events', () => {
 })
 
 describe('OverlaySchemeEditor selected child', () => {
+  it('does not show the internal scheme id below the name input', () => {
+    render(
+      <OverlaySchemeEditor
+        overlayId="scheme-9"
+        overlay={{ id: 'scheme-9', title: '第1个新方案', children: [] }}
+        entities={{}}
+        variables={{}}
+        usageCount={0}
+        onRename={vi.fn()}
+        onRemove={vi.fn()}
+        onAddChild={vi.fn()}
+        onRemoveChild={vi.fn()}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByDisplayValue('第1个新方案')).toBeTruthy()
+    expect(screen.queryByText('scheme-9')).toBeNull()
+  })
+
   it('requires confirmation before deleting a custom interface scheme', () => {
     const onRemove = vi.fn()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -1037,6 +1078,8 @@ describe('ComponentFormFields defaults', () => {
     expect(maxSelect).toHaveTextContent('小怪的最大血量')
 
     fireEvent.click(currentSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '小怪' }))
     expect(screen.getByRole('menuitem', { name: '当前血量' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: 'attack' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: 'defense' })).toBeNull()
@@ -1055,6 +1098,8 @@ describe('ComponentFormFields defaults', () => {
     })
 
     fireEvent.click(maxSelect)
+    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '小怪' }))
     expect(screen.getByRole('menuitem', { name: '最大血量' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: '当前血量' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '防御上限' })).toBeNull()

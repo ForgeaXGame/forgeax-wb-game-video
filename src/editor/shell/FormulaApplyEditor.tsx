@@ -407,7 +407,7 @@ export function FormulaApplyEditor({
                     })
                     children.push({
                       key: `configure:${actionKey}`,
-                      defaultOpen: true,
+                      presentation: 'create',
                       label: `配置「${draft.attrLabel.trim() || label}」属性`,
                       children: [
                         {
@@ -531,7 +531,7 @@ export function FormulaApplyEditor({
                 })
                 entityBranches.push({
                   key: `configure:${actionKey}`,
-                  defaultOpen: true,
+                  presentation: 'create',
                   label: `配置「${draft.entityName.trim() || defaultEntityName}」实体`,
                   children: [
                     {
@@ -643,7 +643,7 @@ export function FormulaApplyEditor({
                 }
                 variableOptions.push({
                   key: `configure:${actionKey}`,
-                  defaultOpen: true,
+                  presentation: 'create',
                   label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
                   children: [
                     {

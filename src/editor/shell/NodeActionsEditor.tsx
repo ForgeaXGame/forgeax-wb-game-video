@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react'
+import type { CSSProperties, JSX, ReactNode } from 'react'
 import type { NodeAction, Overlay } from '../../runtime/schema/graph-schema'
 import { EffectsEditor, createDefaultEffect, type EditorPickerCtx } from './editors'
 import type {
@@ -32,10 +32,14 @@ function resolveSpawnTemplate(from: string, overlays?: Record<string, Overlay>) 
   return overlays?.[overlayId]?.children.find((child) => child.id === childId)
 }
 
-function field(label: string, control: ReactNode): JSX.Element {
+function field(
+  label: string,
+  control: ReactNode,
+  labelWidth?: CSSProperties['width'],
+): JSX.Element {
   return (
     <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, fontSize: 12, minWidth: 0 }}>
-      <span style={{ width: 76, opacity: 0.7, flexShrink: 0 }}>{label}</span>
+      <span style={{ width: labelWidth ?? 76, opacity: 0.7, flexShrink: 0 }}>{label}</span>
       <span style={{ flex: 1, minWidth: 0, display: 'flex' }}>{control}</span>
     </label>
   )
@@ -62,6 +66,7 @@ export function NodeActionsEditor({
   onCreateEntity,
   onCreateVariable,
   onCreateFormula,
+  labelWidth,
   renderAdvance,
   onChange,
 }: {
@@ -81,6 +86,7 @@ export function NodeActionsEditor({
   onCreateEntity?: EntityCreateHandler
   onCreateVariable?: VariableCreateHandler
   onCreateFormula?: FormulaCreateHandler
+  labelWidth?: CSSProperties['width']
   renderAdvance?: (action: Extract<NodeAction, { kind: 'advance' }>, index: number) => ReactNode
   onChange: (next: NodeAction[]) => void
 }): JSX.Element {
@@ -130,6 +136,7 @@ export function NodeActionsEditor({
                 : undefined}
               allowAdd={false}
               allowedKinds={SETTLEMENT_EFFECT_KINDS}
+              labelWidth={labelWidth}
               onChange={(effects) => patchAt(i, { kind: 'effect', effects: effects ?? [] })}
             />
           ) : null}
@@ -144,7 +151,7 @@ export function NodeActionsEditor({
                   <option value="">（选组件模板）</option>
                   {spawnOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-              ))}
+              ), labelWidth)}
               {field('消失方式', (
                 <select
                   aria-label="消失方式"
@@ -165,7 +172,7 @@ export function NodeActionsEditor({
                   <option value="persistent">常驻</option>
                   <option value="duration">按时长隐藏</option>
                 </select>
-              ))}
+              ), labelWidth)}
               {action.ttlMs != null ? field('显示时长', (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
                   <input
@@ -178,7 +185,7 @@ export function NodeActionsEditor({
                   />
                   <span style={{ fontSize: 11, opacity: 0.65 }}>ms</span>
                 </span>
-              )) : null}
+              ), labelWidth) : null}
               {spawnTemplate && spawnValues ? (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.75, margin: '8px 0 4px' }}>组件属性</div>
@@ -187,6 +194,7 @@ export function NodeActionsEditor({
                     componentId={spawnTemplate.component}
                     values={spawnValues}
                     pickers={pickers}
+                    labelWidth={labelWidth}
                     onChange={(inputs) => patchAt(i, { ...action, inputs: Object.keys(inputs).length ? inputs : undefined })}
                     onCreateEntityAttribute={onCreateEntityAttribute}
                     onCreateEntity={onCreateEntity}
@@ -209,7 +217,7 @@ export function NodeActionsEditor({
               ) : null}
               {hideOverlayOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-          )) : null}
+          ), labelWidth) : null}
           {action.kind === 'advance' && renderAdvance ? renderAdvance(action, i) : null}
           {action.kind === 'advance' && !renderAdvance ? <div style={{ fontSize: 11, color: '#ce9178' }}>请选择目标节点</div> : null}
         </div>

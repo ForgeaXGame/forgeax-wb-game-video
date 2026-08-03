@@ -43,6 +43,28 @@ import { ComponentEventsEditor } from './ComponentEventsEditor'
 import { resolveMountLayoutForChildren } from '../../runtime/schema/layout'
 import { LooseNumberInput } from './TermChainEditor'
 
+const OVERLAY_CONFIG_CONTROL_WIDTH = '320px'
+const OVERLAY_CONFIG_BASE_LABELS = ['类型', '实体', '属性', '操作', '数值来源', '数值']
+
+function estimatedLabelUnits(label: string): number {
+  return Array.from(label).reduce((units, char) => {
+    if (/\s/.test(char)) return units + 0.35
+    return units + (/[\x00-\x7F]/.test(char) ? 0.62 : 1)
+  }, 0)
+}
+
+function overlayConfigLabelWidth(children: OverlayChild[]): string {
+  const labels = [
+    ...OVERLAY_CONFIG_BASE_LABELS,
+    ...children.flatMap((child) =>
+      (getComponentManifest(child.component)?.inputs ?? [])
+        .filter((input) => input.key !== 'x' && input.key !== 'y')
+        .map((input) => input.label?.trim() || input.key)),
+  ]
+  const maxUnits = Math.max(4, ...labels.map(estimatedLabelUnits))
+  return `${Math.ceil(maxUnits * 11 + 8)}px`
+}
+
 /**
  * 「播放动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
  * 语义全压在这一条 tooltip 里。逐句对着 `bgm-stack.ts` 核过：
@@ -725,6 +747,7 @@ function OverlayReactionsEditor({
   spawnOptions,
   overlays,
   pickers,
+  labelWidth,
   entities,
   variables,
   nodeOptions,
@@ -748,6 +771,7 @@ function OverlayReactionsEditor({
   spawnOptions: OptItem[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
+  labelWidth: string
   entities?: Record<string, Entity>
   variables?: Record<string, Variable>
   /** 目标节点下拉（不含当前节点）。 */
@@ -785,6 +809,7 @@ function OverlayReactionsEditor({
         spawnOptions={spawnOptions}
         overlays={overlays}
         pickers={catalog}
+        labelWidth={labelWidth}
         allowSpawn={false}
         onCreateEntityAttribute={onCreateEntityAttribute}
         onCreateEntity={onCreateEntity}
@@ -1516,6 +1541,7 @@ export function NodeInspector({
             const multi = (d.overlayNodes?.length ?? 0) > 1
             // 事件列表跟挂载展开（含 overrides / added），与运行时一致。
             const mountChildren = resolveMountChildren(overlays, mount)
+            const labelWidth = overlayConfigLabelWidth(mountChildren)
             const events = aggregateOverlayEvents(
               { id: mount.overlay, title: overlays?.[mount.overlay]?.title, children: mountChildren },
               getComponentManifest,
@@ -1589,6 +1615,8 @@ export function NodeInspector({
                           values={inputs}
                           onChange={(next) => setChildInputs(i, child.id, next)}
                           pickers={pickers}
+                          labelWidth={labelWidth}
+                          controlWidth={OVERLAY_CONFIG_CONTROL_WIDTH}
                           onCreateEntityAttribute={onCreateEntityAttribute}
                           onCreateEntity={onCreateEntity}
                           onCreateVariable={onCreateVariable}
@@ -1607,6 +1635,7 @@ export function NodeInspector({
                   spawnOptions={spawnOptions}
                   overlays={overlays}
                   pickers={pickers}
+                  labelWidth={labelWidth}
                   entities={entities}
                   variables={variables}
                   nodeOptions={targetNodeOptions}

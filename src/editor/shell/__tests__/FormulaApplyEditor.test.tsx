@@ -507,6 +507,8 @@ describe('FormulaApplyEditor reusable entity parameters', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
 
     expect(screen.getByRole('menuitem', { name: '主角' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '新实体 ID' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: '配置「敌方」实体' }))
     expect(screen.getByRole('textbox', { name: '新实体 ID' })).toHaveValue('enemy')
     let menuLabels = screen.getAllByRole('menuitem')
       .map((item) => item.getAttribute('aria-label'))
@@ -514,6 +516,8 @@ describe('FormulaApplyEditor reusable entity parameters', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: '主角' }))
     expect(screen.getByRole('menuitem', { name: '生命值' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '主角的新属性 ID' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: '配置「当前血量」属性' }))
     expect(screen.getByRole('textbox', { name: '主角的新属性 ID' })).toHaveValue('hp2')
     menuLabels = screen.getAllByRole('menuitem')
       .map((item) => item.getAttribute('aria-label'))

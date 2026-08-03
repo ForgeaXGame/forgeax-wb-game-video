@@ -187,6 +187,7 @@ describe('GraphConfigView overlay usage', () => {
       within(screen.getByText('血量').parentElement!)
         .getByRole('combobox', { name: '数值内容' }),
       '变量',
+      '配置「var0」变量',
     )
     fireEvent.change(screen.getByRole('textbox', { name: '新变量显示名' }), {
       target: { value: '战斗计数' },
