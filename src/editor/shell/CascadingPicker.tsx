@@ -31,6 +31,11 @@ export interface CascadingPickerOption {
   }
 }
 
+const CASCADE_COLUMN_WIDTH = 210
+const CASCADE_EDITOR_COLUMN_WIDTH = 280
+const CASCADE_MAX_VISIBLE_COLUMNS = 3
+const CASCADE_HOVER_OPEN_DELAY_MS = 120
+
 const CASCADING_PICKER_CSS = `
 .gc-cascade-root { position: relative; display: flex; flex: 1; min-width: 0; }
 .gc-cascade-trigger {
@@ -63,7 +68,7 @@ const CASCADING_PICKER_CSS = `
 }
 .gc-cascade-column {
   box-sizing: border-box; width: 210px; min-width: 210px; height: 100%;
-  overflow-y: auto; padding: 5px;
+  overflow-y: auto; scrollbar-gutter: stable; padding: 5px;
   border-right: 1px solid var(--color-border-default, #404040);
 }
 .gc-cascade-column.has-editor { width: 280px; min-width: 280px; }
@@ -141,6 +146,27 @@ function menuColumns(
   return columns
 }
 
+function menuDepth(options: readonly CascadingPickerOption[]): number {
+  let depth = 1
+  for (const option of options) {
+    if (option.children?.length) depth = Math.max(depth, 1 + menuDepth(option.children))
+  }
+  return depth
+}
+
+function menuHasEditor(options: readonly CascadingPickerOption[]): boolean {
+  return options.some((option) => option.editor || (option.children?.length && menuHasEditor(option.children)))
+}
+
+function stablePanelWidth(options: readonly CascadingPickerOption[]): number {
+  // Three columns cover the common source -> entity -> attribute path; deeper editors scroll horizontally.
+  const visibleDepth = Math.min(CASCADE_MAX_VISIBLE_COLUMNS, menuDepth(options))
+  const editorExtra = visibleDepth < CASCADE_MAX_VISIBLE_COLUMNS && menuHasEditor(options)
+    ? CASCADE_EDITOR_COLUMN_WIDTH - CASCADE_COLUMN_WIDTH
+    : 0
+  return visibleDepth * CASCADE_COLUMN_WIDTH + editorExtra
+}
+
 function withDefaultOpenPath(
   options: readonly CascadingPickerOption[],
   path: readonly string[],
@@ -183,11 +209,43 @@ export function CascadingPicker({
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingHoverDepthRef = useRef<number | null>(null)
   const [panelStyle, setPanelStyle] = useState<CSSProperties | null>(null)
 
   const columns = menuColumns(options, activePath)
+  const panelContentWidth = stablePanelWidth(options)
+
+  function cancelPendingHover(): void {
+    if (hoverTimerRef.current != null) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = null
+    pendingHoverDepthRef.current = null
+  }
+
+  function activateBranch(option: CascadingPickerOption, depth: number): void {
+    setActivePath((current) => withDefaultOpenPath(
+      options,
+      [...current.slice(0, depth), option.key],
+    ))
+  }
+
+  function scheduleBranch(option: CascadingPickerOption, depth: number): void {
+    cancelPendingHover()
+    pendingHoverDepthRef.current = depth
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null
+      pendingHoverDepthRef.current = null
+      activateBranch(option, depth)
+    }, CASCADE_HOVER_OPEN_DELAY_MS)
+  }
+
+  function closePicker(): void {
+    cancelPendingHover()
+    setOpen(false)
+  }
 
   function openPicker(): void {
+    cancelPendingHover()
     setActivePath(withDefaultOpenPath(
       options,
       (findOptionPath(options, value) ?? []).slice(0, -1),
@@ -197,16 +255,14 @@ export function CascadingPicker({
 
   function choose(option: CascadingPickerOption, depth: number): void {
     if (option.disabled) return
+    cancelPendingHover()
     if (option.children?.length) {
-      setActivePath((current) => withDefaultOpenPath(
-        options,
-        [...current.slice(0, depth), option.key],
-      ))
+      activateBranch(option, depth)
       return
     }
     if (option.value == null) return
     onSelect(option.value)
-    setOpen(false)
+    closePicker()
   }
 
   useLayoutEffect(() => {
@@ -219,8 +275,7 @@ export function CascadingPicker({
       if (!trigger || typeof window === 'undefined') return
       const rect = trigger.getBoundingClientRect()
       const panelWidth = Math.min(
-        Math.max(210, columns.reduce((width, column) =>
-          width + (column.some((option) => option.editor) ? 280 : 210), 0)),
+        panelContentWidth,
         window.innerWidth - 16,
       )
       const panelHeight = Math.min(320, window.innerHeight - 16)
@@ -231,29 +286,30 @@ export function CascadingPicker({
         ? Math.max(8, rect.top - panelHeight - gap)
         : Math.min(window.innerHeight - 8, rect.bottom + gap)
       const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - panelWidth - 8))
-      setPanelStyle({ position: 'fixed', top, left })
+      setPanelStyle({ position: 'fixed', top, left, width: panelWidth })
     }
     place()
-    requestAnimationFrame(place)
+    const frame = requestAnimationFrame(place)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     return () => {
+      cancelAnimationFrame(frame)
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
     }
-  }, [open, columns.length])
+  }, [open, panelContentWidth])
 
   useEffect(() => {
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
       if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return
-      setOpen(false)
+      closePicker()
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
-      setOpen(false)
+      closePicker()
       triggerRef.current?.focus()
     }
     document.addEventListener('pointerdown', onPointerDown)
@@ -264,6 +320,8 @@ export function CascadingPicker({
     }
   }, [open])
 
+  useEffect(() => () => cancelPendingHover(), [])
+
   const panel = open && panelStyle ? (
     <div
       ref={panelRef}
@@ -271,12 +329,17 @@ export function CascadingPicker({
       role="menu"
       aria-label={`${ariaLabel}选项`}
       style={panelStyle}
+      onPointerLeave={cancelPendingHover}
     >
       {columns.map((column, depth) => (
         <div
           className={`gc-cascade-column${column.some((option) => option.editor) ? ' has-editor' : ''}`}
           role="group"
           key={`${depth}:${activePath[depth - 1] ?? 'root'}`}
+          onPointerEnter={() => {
+            const pendingDepth = pendingHoverDepthRef.current
+            if (pendingDepth != null && depth > pendingDepth) cancelPendingHover()
+          }}
         >
           {column.map((option) => {
             const active = activePath[depth] === option.key
@@ -329,12 +392,8 @@ export function CascadingPicker({
                 disabled={option.disabled}
                 onClick={() => choose(option, depth)}
                 onPointerEnter={() => {
-                  if (option.children?.length) {
-                    setActivePath((current) => withDefaultOpenPath(
-                      options,
-                      [...current.slice(0, depth), option.key],
-                    ))
-                  }
+                  cancelPendingHover()
+                  if (option.children?.length && !active) scheduleBranch(option, depth)
                 }}
                 key={option.key}
               >
@@ -360,7 +419,7 @@ export function CascadingPicker({
         aria-expanded={open}
         className="gc-cascade-trigger"
         value={value}
-        onClick={() => open ? setOpen(false) : openPicker()}
+        onClick={() => open ? closePicker() : openPicker()}
         onChange={(event) => onSelect((event.target as HTMLButtonElement).value)}
       >
         <span className={`gc-cascade-trigger-label${displayValue ? '' : ' is-placeholder'}`}>
