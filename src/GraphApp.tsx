@@ -151,6 +151,8 @@ const CSS = `
 .ga-root.is-pane-left, .ga-root.is-pane-center { position: absolute; inset: 0; }
 .ks-app-host .ga-root { position: absolute; inset: 0; }
 .ga-root.is-pane-left .rs-sidebar { width: 100%; }
+/* 新版树形侧栏在 split-pane（?pane=left）下撑满整个 iframe；min-width 让它不小于内容宽度。 */
+.ga-root.is-pane-left .ns-sidebar { width: 100%; min-width: 0; }
 
 /* 左侧栏 —— 复刻旧 ReelSidebar 视觉 */
 .ga-root .rs-sidebar {
