@@ -7,6 +7,7 @@ import type {
   KinoVideoClient,
 } from './kino-api'
 import { KinoClientError } from './kino-api'
+import { forgeaxHttp } from '../../lib/forgeax-http'
 import { getWorkbenchHost } from '../../lib/workbench-host'
 
 export const MAX_VIDEO_UPLOAD_BYTES = 104_857_600
@@ -446,7 +447,7 @@ export function createDefaultXhrUploadTransport(): UploadTransport {
           xhr.onerror = () => fail(new VideoUploadError('Upload network error', 'upload_network_error'))
           xhr.onabort = () => fail(new VideoUploadError('Upload aborted', 'upload_aborted'))
           try {
-            xhr.open(instruction.method, url, true)
+            xhr.open(instruction.method, forgeaxHttp.rewriteUrl(url), true)
             for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value)
             // Host resumable media writes are byte-offset based; the server owns
             // recovery/idempotency instead of this extension persisting chunks.
