@@ -1,6 +1,6 @@
-# AGENTS.md — @forgeax/wb-game-video
+# AGENTS.md — @forgeax-extension/wb-game-video
 
-这是独立的 `@forgeax/wb-game-video` 仓库。修改前先读本文件和 [`README.md`](./README.md)。
+这是独立的 `@forgeax-extension/wb-game-video` 仓库。修改前先读本文件和 [`README.md`](./README.md)。
 
 ## 不可破坏的边界
 
