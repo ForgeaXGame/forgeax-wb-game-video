@@ -34,7 +34,16 @@ const NAV: Array<{ id: GraphView; label: string; hint: string }> = [
   { id: 'play', label: '试玩', hint: '新引擎预览 · 跑当前编辑的场景' },
 ]
 
-function readPane(): 'left' | 'center' | null {
+type GraphAppPane = 'left' | 'center' | null
+
+export type GraphAppProps = {
+  /** Host-supplied pane for in-process mounts; URL query wins only when omitted. */
+  pane?: GraphAppPane
+  /** Host-supplied game id (slug) for in-process mounts. */
+  gameId?: string
+}
+
+function readPane(): GraphAppPane {
   try {
     const p = new URLSearchParams(location.search).get('pane')
     return p === 'left' || p === 'center' ? p : null
@@ -123,9 +132,9 @@ function GraphMain(): JSX.Element {
   )
 }
 
-export function GraphApp(): JSX.Element {
+export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JSX.Element {
   injectStyleOnce('graph-app-shell', CSS)
-  const [pane] = useState(readPane)
+  const [pane] = useState(() => explicitPane === undefined ? readPane() : explicitPane)
   const [sidebarVariant] = useState(readSidebarVariant)
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
 
@@ -141,12 +150,12 @@ export function GraphApp(): JSX.Element {
     return <div className="ga-root is-pane-left">{sidebarEl}</div>
   }
   if (pane === 'center') {
-    return <div className="ga-root is-pane-center"><GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap></div>
+    return <div className="ga-root is-pane-center"><GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}><GraphMain /></GameBootstrap></div>
   }
   return (
     <div className="ga-root">
       {sidebarEl}
-      <GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap>
+      <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}><GraphMain /></GameBootstrap>
     </div>
   )
 }

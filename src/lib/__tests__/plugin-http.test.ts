@@ -2,24 +2,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { forgeaxHttp, resetHostInitForTests } from '../forgeax-http'
 import { pluginFetch, pluginUrl } from '../plugin-http'
 
+vi.mock('../workbench-host', () => ({
+  getWorkbenchHost: () => ({
+    extension: {
+      url: (path: string) => `/__wb__${path}`,
+      fetch: (path: string, init?: RequestInit) => globalThis.fetch(`/__wb__${path}`, init),
+    },
+  }),
+}))
+
 describe('pluginUrl', () => {
-  const pluginBase = '/__fx-plugin/wb-game-video/'
-
-  it('keeps host API requests rooted at the origin', () => {
-    expect(pluginUrl('/api/game-host/games/demo/package/status', pluginBase))
-      .toBe('/api/game-host/games/demo/package/status')
-    expect(pluginUrl('/api/v1/kino/assets', pluginBase)).toBe('/api/v1/kino/assets')
+  it('leaves absolute and opaque URLs alone', () => {
+    expect(pluginUrl('https://cdn.example/a')).toBe('https://cdn.example/a')
+    expect(pluginUrl('blob:http://localhost/1')).toBe('blob:http://localhost/1')
+    expect(pluginUrl('data:text/plain,hi')).toBe('data:text/plain,hi')
   })
 
-  it('prefixes plugin-local routes with the plugin mount', () => {
-    expect(pluginUrl('/__gva__/assets?game=demo', pluginBase))
-      .toBe('/__fx-plugin/wb-game-video/__gva__/assets?game=demo')
-  })
-
-  it('does not double-prefix existing or standalone paths', () => {
-    expect(pluginUrl('/__fx-plugin/wb-game-video/__gva__/assets', pluginBase))
-      .toBe('/__fx-plugin/wb-game-video/__gva__/assets')
-    expect(pluginUrl('/__gva__/assets', './')).toBe('/__gva__/assets')
+  it('resolves extension paths through the workbench host', () => {
+    expect(pluginUrl('/__gva__/assets')).toBe('/__wb__/__gva__/assets')
   })
 })
 
@@ -29,30 +29,16 @@ describe('pluginFetch + forgeaxHttp', () => {
     vi.unstubAllGlobals()
   })
 
-  it.each(['/vibe/', '/__fx-plugin/wb-game-video/'])(
-    'rewrites the logical path before applying plugin base %s',
-    async (pluginBase) => {
-      const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
-      vi.stubGlobal('fetch', fetchMock)
-      forgeaxHttp.defaults.rewrite = [
-        { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
-      ]
-
-      await pluginFetch('/__gva__/assets', undefined, pluginBase)
-
-      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${pluginBase.replace(/\/$/, '')}/proxy/gva/assets`)
-    },
-  )
-
-  it('rewrites exactly once even when the result still matches the rule', async () => {
+  it('rewrites the logical path before workbench host fetch', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
     vi.stubGlobal('fetch', fetchMock)
-    forgeaxHttp.defaults.rewrite = [{ from: /^\/(.*)$/, to: '/proxy/$1' }]
+    forgeaxHttp.defaults.rewrite = [
+      { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
+    ]
 
-    await pluginFetch('/__gva__/assets', undefined, './')
+    await pluginFetch('/__gva__/assets')
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/proxy/__gva__/assets')
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/__wb__/proxy/gva/assets')
   })
 
   it('passes opaque URLs through untouched', async () => {
@@ -62,7 +48,7 @@ describe('pluginFetch + forgeaxHttp', () => {
       { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
     ]
 
-    await pluginFetch('blob:http://localhost:5173/6c2f', undefined, '/vibe/')
+    await pluginFetch('blob:http://localhost:5173/6c2f')
 
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('blob:http://localhost:5173/6c2f')
   })

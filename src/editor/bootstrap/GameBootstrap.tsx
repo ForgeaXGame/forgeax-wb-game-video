@@ -8,6 +8,7 @@ type PackageStatus = { state: PackageState; missing?: string[] }
 type PackageError = { code?: string; target?: string; hint?: string; retryable?: boolean }
 
 export interface GameBootstrapProps {
+  gameId?: string
   onBoot: (gameId: string) => void | Promise<void>
   children: ReactNode
 }
@@ -64,7 +65,7 @@ function isWorkbenchBoundaryError(cause: unknown): boolean {
   return /hostOrigin is required|document\.referrer is unavailable|Workbench handshake/i.test(cause.message)
 }
 
-export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Element | null {
+export function GameBootstrap({ gameId, onBoot, children }: GameBootstrapProps): JSX.Element | null {
   const t = useT()
   const [state, setState] = useState<BootstrapState>({ kind: 'loading' })
   const onBootRef = useRef(onBoot)
@@ -104,7 +105,7 @@ export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Ele
       if (!isCurrentRun()) return
       if (status?.state === 'initialized') {
         errorTarget = 'package'
-        await bootExisting(context.gameId, isCurrentRun)
+        await bootExisting(gameId ?? context.gameId, isCurrentRun)
       }
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else if (status?.state === 'uninitialized') setState({ kind: 'guide' })
@@ -113,7 +114,7 @@ export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Ele
       if (!isCurrentRun()) return
       setState({ kind: 'error', retry: 'status', error: packageError(cause, errorTarget) })
     }
-  }, [bootExisting])
+  }, [bootExisting, gameId])
 
   useEffect(() => { void readStatus() }, [readStatus])
 
@@ -125,7 +126,7 @@ export function GameBootstrap({ onBoot, children }: GameBootstrapProps): JSX.Ele
       const context = await host.ready()
       const status = statusOf(await host.gamePackage.initialize())
       if (!mountedRef.current) return
-      if (status?.state === 'initialized') await bootExisting(context.gameId)
+      if (status?.state === 'initialized') await bootExisting(gameId ?? context.gameId)
       else if (status?.state === 'inconsistent') setState({ kind: 'inconsistent', missing: status.missing ?? [] })
       else setState({ kind: 'error', retry: 'initialize', error: { target: 'package', hint: 'Invalid package status', retryable: true } })
     } catch (cause) {

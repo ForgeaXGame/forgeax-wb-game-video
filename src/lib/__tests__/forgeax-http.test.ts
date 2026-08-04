@@ -30,6 +30,28 @@ describe('forgeaxHttp.rewriteUrl', () => {
       .toBe('https://cdn.example/proxy/gva/assets?g=1')
   })
 
+  it.each([
+    'data:video/mp4;base64,AAAA',
+    'blob:http://localhost:5173/6c2f-4a1b',
+    'assets/poster.png',
+    './assets/poster.png',
+    '../assets/poster.png',
+    '//cdn.example/__gva__/assets',
+    'mailto:studio@example.com',
+  ])('returns %s unchanged when no path can be matched', (input) => {
+    expect(forgeaxHttp.rewriteUrl(input)).toBe(input)
+  })
+
+  it('keeps opaque and relative URLs intact while still rewriting real paths', () => {
+    forgeaxHttp.defaults.rewrite = [
+      { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
+    ]
+    expect(forgeaxHttp.rewriteUrl('data:video/mp4;base64,AAAA')).toBe('data:video/mp4;base64,AAAA')
+    expect(forgeaxHttp.rewriteUrl('blob:http://localhost:5173/6c2f')).toBe('blob:http://localhost:5173/6c2f')
+    expect(forgeaxHttp.rewriteUrl('assets/poster.png')).toBe('assets/poster.png')
+    expect(forgeaxHttp.rewriteUrl('/__gva__/x')).toBe('/proxy/gva/x')
+  })
+
   it('stops at the first matching rule', () => {
     forgeaxHttp.defaults.rewrite = [
       { from: /^\/api\/a$/, to: '/first' },

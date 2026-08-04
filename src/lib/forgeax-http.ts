@@ -24,29 +24,36 @@ export function assertRewriteRules(rules: RewriteRule[]): void {
   }
 }
 
-function splitUrl(url: string): { origin: string; path: string; search: string; hash: string; absolute: boolean } {
-  if (/^[a-zA-Z][a-zA-Z\d+-.]*:/.test(url) || url.startsWith('//')) {
-    const u = new URL(url)
-    return {
-      origin: u.origin,
-      path: u.pathname,
-      search: u.search,
-      hash: u.hash,
-      absolute: true,
-    }
+/**
+ * Rules match a *path*, so only URLs that own one can be rewritten: http(s)
+ * absolutes and root-relative paths. Opaque schemes (`blob:`, `data:`) and
+ * document-relative paths carry no stable path to match, and round-tripping
+ * them through `new URL` would corrupt them.
+ */
+function splitUrl(
+  url: string,
+): { origin: string; path: string; search: string; hash: string; absolute: boolean } | null {
+  const absolute = /^https?:\/\//i.test(url)
+  if (!absolute && !url.startsWith('/')) return null
+  if (url.startsWith('//')) return null
+  let u: URL
+  try {
+    u = new URL(url, 'http://forgeax.local')
+  } catch {
+    return null
   }
-  const u = new URL(url, 'http://forgeax.local')
   return {
-    origin: '',
+    origin: absolute ? u.origin : '',
     path: u.pathname,
     search: u.search,
     hash: u.hash,
-    absolute: false,
+    absolute,
   }
 }
 
 export function rewriteUrlWithRules(url: string, rules: RewriteRule[]): string {
   const parts = splitUrl(url)
+  if (!parts) return url
   let path = parts.path
   for (const rule of rules) {
     if (!rule.from.test(path)) continue

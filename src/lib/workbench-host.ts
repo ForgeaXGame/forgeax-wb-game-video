@@ -1,10 +1,29 @@
 import { createExtensionClient } from '@forgeax/workbench-host/extension'
 
-let client: ReturnType<typeof createExtensionClient> | undefined
+export type WorkbenchHostClient = ReturnType<typeof createExtensionClient>
 
-/** The iframe's single handshake-bound workbench client. */
-export function getWorkbenchHost(): ReturnType<typeof createExtensionClient> {
+let client: WorkbenchHostClient | undefined
+let injected: WorkbenchHostClient | undefined
+
+/**
+ * The workbench client every consumer shares.
+ *
+ * In an iframe there is no client until one is built here, and building it
+ * starts the parent handshake. An in-process host has no parent to shake hands
+ * with, so it injects an already-connected client instead.
+ */
+export function getWorkbenchHost(): WorkbenchHostClient {
+  if (injected) return injected
   return client ??= createExtensionClient()
+}
+
+/** Installs the host-supplied client used by in-process (non-iframe) mounts. */
+export function setWorkbenchHost(next: WorkbenchHostClient): void {
+  injected = next
+}
+
+export function clearWorkbenchHost(): void {
+  injected = undefined
 }
 
 export class ExtensionResponseError extends Error {
