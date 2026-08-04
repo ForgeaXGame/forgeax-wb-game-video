@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react'
+import type { CSSProperties, JSX, ReactNode } from 'react'
 import type {
   NodeAction,
   Overlay,
@@ -48,6 +48,7 @@ export function ComponentEventsEditor({
   spawnOptions,
   overlays,
   pickers,
+  labelWidth,
   allowSpawn = true,
   onCreateEntityAttribute,
   onCreateEntity,
@@ -65,6 +66,7 @@ export function ComponentEventsEditor({
   spawnOptions: ActionOption[]
   overlays?: Record<string, Overlay>
   pickers?: EditorPickerCtx
+  labelWidth?: CSSProperties['width']
   allowSpawn?: boolean
   onCreateEntityAttribute?: EntityAttributeCreateHandler
   onCreateEntity?: EntityCreateHandler
@@ -108,6 +110,7 @@ export function ComponentEventsEditor({
               spawnOptions={spawnOptions}
               overlays={overlays}
               pickers={pickers}
+              labelWidth={labelWidth}
               allowAdvance={mode === 'mount'}
               allowSpawn={allowSpawn}
               onCreateEntityAttribute={onCreateEntityAttribute}

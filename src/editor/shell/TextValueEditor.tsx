@@ -12,6 +12,7 @@ import type {
 } from './ValueExprEditor'
 import {
   attrDisplayName,
+  attrValueText,
   catalogIdOccupied,
   entityDisplayName,
   findEntity,
@@ -169,6 +170,7 @@ export function TextValueEditor({
       key: `entity-attr:${encodeURIComponent(entity.id)}:${encodeURIComponent(attr.id)}`,
       label: `${entityName}的${attrDisplayName(source, attr.id)}`,
       shortLabel: attrDisplayName(source, attr.id),
+      valueText: attrValueText(source, attr.id),
       ref: `entity.${entity.id}.attr.${attr.id}`,
     }))
     return { entity, entityName, choices }
@@ -234,11 +236,13 @@ export function TextValueEditor({
         {
           key: entityNameChoice.key,
           label: '名称',
+          secondaryText: entityNameChoice.label,
           value: entityNameChoice.key,
         },
         ...attrs.map((choice) => ({
           key: choice.key,
           label: choice.shortLabel,
+          secondaryText: choice.valueText,
           value: choice.key,
         })),
         ...(!entityNameOnly && createAttribute && attributeTemplate ? (() => {
@@ -273,7 +277,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.label.trim() || attrId || defaultAttrId}」属性`,
             children: [
               {
@@ -326,7 +330,7 @@ export function TextValueEditor({
     createEntity && createEntityTemplate && entityDraft
       ? {
         key: `configure:${createEntityKey}`,
-        defaultOpen: true,
+        presentation: 'create' as const,
         label: `配置「${createEntityTemplate.name}」实体`,
         children: [
           {
@@ -404,7 +408,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
             children: [
               {
@@ -494,7 +498,7 @@ export function TextValueEditor({
           }
           return [{
             key: `configure:${actionKey}`,
-            defaultOpen: true,
+            presentation: 'create' as const,
             label: `配置「${draft.name.trim() || formulaId || defaultId}」公式`,
             children: [
               {

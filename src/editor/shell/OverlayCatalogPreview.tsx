@@ -9,7 +9,7 @@
  *    OverlayCanvasInteraction；本组件只负责 child 的渲染测量与字段写回。
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { Entity, Layout, Overlay, OverlayChild, Variable } from '../../runtime/schema/graph-schema'
+import { isNumericScalar, type Entity, type Layout, type Overlay, type OverlayChild, type Variable } from '../../runtime/schema/graph-schema'
 import { bootEditorSkins } from '../init'
 import { createCoreSkinRegistry } from '../../runtime/component-host/components'
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
@@ -307,15 +307,20 @@ function mockHudCtx(entities: Record<string, Entity> | undefined, variables: Rec
     return { name, hp: attrs.hp ?? 0, maxHp: attrMeta?.hp?.max ?? attrs.hp ?? 0, attrs: { ...attrs }, attrMax }
   }
   for (const [id, e] of Object.entries(entities ?? {})) {
-    const hp = e.attrs?.hp ?? e.attrMeta?.hp?.initial ?? 100
-    const attrs = { ...(e.attrs ?? {}), hp }
+    const attrs = Object.fromEntries(
+      Object.entries(e.attrs ?? {}).filter(([, value]) => isNumericScalar(value)),
+    ) as Record<string, number>
+    const hp = isNumericScalar(e.attrs?.hp) ? e.attrs.hp : e.attrMeta?.hp?.initial ?? 100
+    attrs.hp = hp
     ents[id] = pack(attrs, e.attrMeta, e.name?.trim() || id)
   }
   // 保底给两个常见战斗实体样例血量，好让血条皮肤在无实体数据时也有内容。
   if (!ents['ent-player']) ents['ent-player'] = pack({ hp: 72 }, { hp: { max: 100 } }, 'ent-player')
   if (!ents['ent-boss']) ents['ent-boss'] = pack({ hp: 58 }, { hp: { max: 100 } }, 'ent-boss')
   const vars: Record<string, number> = { qi: 3 }
-  for (const [id, v] of Object.entries(variables ?? {})) vars[id] = v.initial ?? 0
+  for (const [id, v] of Object.entries(variables ?? {})) {
+    if (isNumericScalar(v.initial)) vars[id] = v.initial
+  }
   return { hud: { entities: ents, vars, flags: {}, score: 1200 } }
 }
 

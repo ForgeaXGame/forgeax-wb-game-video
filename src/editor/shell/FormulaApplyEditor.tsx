@@ -4,7 +4,7 @@
  */
 import type { CSSProperties, JSX } from 'react'
 import { useMemo, useState } from 'react'
-import type { Entity, NumOrExpr, Variable } from '../../runtime/schema/graph-schema'
+import { isNumericScalar, type Entity, type NumOrExpr, type Variable } from '../../runtime/schema/graph-schema'
 import type { Formula, FormulaHoleBinding } from '../persist/formula-authoring'
 import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import { createRng } from '../../runtime/engine/rng'
@@ -19,6 +19,7 @@ import {
 } from './formulaApply'
 import {
   attrDisplayName,
+  attrValueText,
   entityDisplayName,
   findEntity,
   findFormula,
@@ -205,9 +206,15 @@ function parseVariableKey(value: string): string | undefined {
 /** 样例求值上下文：实体 attrs 原样、变量取 initial；每次试算另建 seed 0 RNG。 */
 function sampleCtx(entities?: Record<string, Entity>, variables?: Record<string, Variable>): EvalCtx {
   const ents: EvalCtx['entities'] = {}
-  for (const [id, e] of Object.entries(entities ?? {})) ents[id] = { attrs: e.attrs ?? {} }
+  for (const [id, e] of Object.entries(entities ?? {})) {
+    ents[id] = { attrs: Object.fromEntries(
+      Object.entries(e.attrs ?? {}).filter(([, value]) => isNumericScalar(value)),
+    ) as Record<string, number> }
+  }
   const vars: Record<string, number> = {}
-  for (const [id, v] of Object.entries(variables ?? {})) vars[id] = v.initial ?? 0
+  for (const [id, v] of Object.entries(variables ?? {})) {
+    if (isNumericScalar(v.initial)) vars[id] = v.initial
+  }
   return { entities: ents, vars, flags: {}, score: 0 }
 }
 
@@ -356,6 +363,7 @@ export function FormulaApplyEditor({
                   const children: CascadingPickerOption[] = attrOptions.map((attrOption) => ({
                     key: entityAttrKey(entityOption.id, attrOption.id),
                     label: attrDisplayName(entity, attrOption.id),
+                    secondaryText: attrValueText(entity, attrOption.id),
                     value: entityAttrKey(entityOption.id, attrOption.id),
                   }))
                   if (createAttribute) {
@@ -407,7 +415,7 @@ export function FormulaApplyEditor({
                     })
                     children.push({
                       key: `configure:${actionKey}`,
-                      defaultOpen: true,
+                      presentation: 'create',
                       label: `配置「${draft.attrLabel.trim() || label}」属性`,
                       children: [
                         {
@@ -531,7 +539,7 @@ export function FormulaApplyEditor({
                 })
                 entityBranches.push({
                   key: `configure:${actionKey}`,
-                  defaultOpen: true,
+                  presentation: 'create',
                   label: `配置「${draft.entityName.trim() || defaultEntityName}」实体`,
                   children: [
                     {
@@ -643,7 +651,7 @@ export function FormulaApplyEditor({
                 }
                 variableOptions.push({
                   key: `configure:${actionKey}`,
-                  defaultOpen: true,
+                  presentation: 'create',
                   label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
                   children: [
                     {

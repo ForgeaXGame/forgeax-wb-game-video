@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import type { CSSProperties, JSX } from 'react'
 import { getComponentManifest } from '../../runtime/registry/component-registry'
 import type { EditorPickerCtx } from './editors'
 import {
@@ -15,6 +15,8 @@ export function ComponentInputsDisclosure({
   componentId,
   values,
   pickers,
+  labelWidth,
+  controlWidth,
   onChange,
   onCreateEntityAttribute,
   onCreateEntity,
@@ -25,6 +27,8 @@ export function ComponentInputsDisclosure({
   componentId: string
   values: Record<string, unknown>
   pickers?: EditorPickerCtx
+  labelWidth?: CSSProperties['width']
+  controlWidth?: CSSProperties['width']
   onChange: (next: Record<string, unknown>) => void
   onCreateEntityAttribute?: EntityAttributeCreateHandler
   onCreateEntity?: EntityCreateHandler
@@ -32,7 +36,7 @@ export function ComponentInputsDisclosure({
   onCreateFormula?: FormulaCreateHandler
 }): JSX.Element {
   const componentName = getComponentManifest(componentId)?.label ?? componentId
-  const summary = summarizeComponentInputs(values)
+  const summary = summarizeComponentInputs(componentId, values)
   return (
     <details
       data-component-inputs-disclosure={`${childId}:${componentId}`}
@@ -73,6 +77,8 @@ export function ComponentInputsDisclosure({
           pickers={pickers}
           excludeKeys={['x', 'y']}
           density="compact"
+          labelWidth={labelWidth}
+          compactControlWidth={controlWidth}
           onCreateEntityAttribute={onCreateEntityAttribute}
           onCreateEntity={onCreateEntity}
           onCreateVariable={onCreateVariable}

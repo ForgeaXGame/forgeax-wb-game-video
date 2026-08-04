@@ -157,12 +157,13 @@ function compactField(
   node: JSX.Element,
   title: string,
   labelWidth?: CSSProperties['width'],
+  controlWidth?: CSSProperties['width'],
 ): JSX.Element {
   return (
     <label
       style={{
         display: 'grid',
-        gridTemplateColumns: `${labelWidth ?? DEFAULT_COMPACT_LABEL_WIDTH} minmax(0, ${COMPACT_CONTROL_WIDTH}px)`,
+        gridTemplateColumns: `${labelWidth ?? DEFAULT_COMPACT_LABEL_WIDTH} minmax(0, ${controlWidth ?? `${COMPACT_CONTROL_WIDTH}px`})`,
         alignItems: 'center',
         columnGap: 10,
         width: '100%',
@@ -429,6 +430,7 @@ function renderInput(
   pickers: EditorPickerCtx | undefined,
   compact: boolean,
   labelWidth?: CSSProperties['width'],
+  controlWidth?: CSSProperties['width'],
   onCreateEntityAttribute?: EntityAttributeCreateHandler,
   onCreateEntity?: EntityCreateHandler,
   onCreateVariable?: VariableCreateHandler,
@@ -438,7 +440,7 @@ function renderInput(
   const label = inp.label ?? inp.key
   const hint = fieldHint(inp)
   const wrap = (node: JSX.Element): JSX.Element =>
-    compact ? compactField(label, node, hint, labelWidth) : field(label, node, hint)
+    compact ? compactField(label, node, hint, labelWidth, controlWidth) : field(label, node, hint)
 
   // 有 component 优先用它渲染（复合编辑器）；events / effects 直接出结构化子编辑器，textStyle / qteCues 暂交「视频」轨。
   if (inp.component === 'events' || inp.component === 'hotspotEvents') {
@@ -505,7 +507,9 @@ function renderInput(
         key={inp.key}
         style={{
           display: 'grid',
-          gridTemplateColumns: `${labelWidth ?? 'max-content'} minmax(0, 1fr)`,
+          gridTemplateColumns: `${labelWidth ?? 'max-content'} ${controlWidth === undefined
+            ? 'minmax(0, 1fr)'
+            : `minmax(0, ${controlWidth})`}`,
           columnGap: 8,
           alignItems: 'start',
           width: '100%',
@@ -517,7 +521,7 @@ function renderInput(
           fontSize: 11,
         }}
       >
-        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 6 }}>{label}</span>
+        <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 6, whiteSpace: 'nowrap' }}>{label}</span>
         {inp.valueType === 'string' ? (
           <TextValueInput
             value={(val ?? inp.default) as TextOrRef | undefined}
@@ -770,7 +774,10 @@ function renderInput(
 }
 
 /** 摘要若干常见 inputs，供折叠标题一行展示。 */
-export function summarizeComponentInputs(values: Record<string, unknown>): string {
+export function summarizeComponentInputs(
+  componentId: string,
+  values: Record<string, unknown>,
+): string {
   const bits: string[] = []
   const push = (key: string, fmt?: (v: unknown) => string) => {
     const v = values[key]
@@ -781,7 +788,7 @@ export function summarizeComponentInputs(values: Record<string, unknown>): strin
   push('y', (v) => `y=${v}`)
   push('timeoutMs', (v) => `${v}ms`)
   push('glyph')
-  push('label')
+  if (!isHpBarComponent(componentId)) push('label')
   push('bind')
   push('attr')
   push('speaker')
@@ -810,6 +817,7 @@ export function ComponentFormFields({
   excludeKeys,
   density = 'default',
   labelWidth,
+  compactControlWidth,
   onCreateEntityAttribute,
   onCreateEntity,
   onCreateVariable,
@@ -828,6 +836,8 @@ export function ComponentFormFields({
   density?: 'default' | 'compact'
   /** compact 模式的标签列宽；界面 Tab 使用足以容纳「总时长ms」的稳定宽度。 */
   labelWidth?: CSSProperties['width']
+  /** compact 模式的控件列宽；省略时动态表达式继续占满剩余空间。 */
+  compactControlWidth?: CSSProperties['width']
   /** 新血条绑定默认 hp 但实体未声明时，经二次确认后由场景持有者补建。 */
   onCreateEntityAttribute?: EntityAttributeCreateHandler
   /** 新血条没有可选实体时，经二次确认后由场景持有者补建。 */
@@ -862,18 +872,18 @@ export function ComponentFormFields({
           {grouped ? groupLabel('参数配置') : null}
           {compact ? (
             <div style={{ display: 'grid', gap: 2, alignItems: 'center', width: '100%', minWidth: 0 }}>
-              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
             </div>
           ) : (
-            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))
+            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))
           )}
-          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
         </div>
       ) : null}
       {events.length > 0 ? (
         <div style={grouped ? { borderTop: '1px solid #2f2f2f', paddingTop: 5 } : undefined}>
           {grouped ? groupLabel('事件配置') : null}
-          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
         </div>
       ) : null}
     </div>
