@@ -145,6 +145,16 @@ test.each(['猫', 'a'])('boots the exact handshake game id %s and ignores query 
   )
 })
 
+test('boots the explicit in-process game id instead of the iframe handshake id', async () => {
+  client.ready.mockResolvedValueOnce({ gameId: 'iframe-game' })
+  client.gamePackage.status.mockResolvedValueOnce({ state: 'initialized' })
+  const boot = vi.fn()
+
+  render(<GameBootstrap gameId="arrival-game" onBoot={boot}><div>workspace</div></GameBootstrap>)
+
+  await waitFor(() => expect(boot).toHaveBeenCalledWith('arrival-game'))
+})
+
 test('boots after StrictMode replays the mount effect', async () => {
   client.ready.mockResolvedValue({ gameId: '猫' })
   client.gamePackage.status.mockResolvedValue({ state: 'initialized' })

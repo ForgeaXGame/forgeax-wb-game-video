@@ -20,7 +20,8 @@
   ],
   "exports": {
     ".": "./dist/index.js",
-    "./host": "./dist/server/host.js"
+    "./host": "./dist/server/host.js",
+    "./styles.css": "./dist/index.css"
   },
   "keywords": [
     "forgeax-plugin",

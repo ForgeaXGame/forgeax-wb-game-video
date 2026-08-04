@@ -34,7 +34,7 @@ const NAV: Array<{ id: GraphView; label: string; hint: string }> = [
   { id: 'play', label: '试玩', hint: '新引擎预览 · 跑当前编辑的场景' },
 ]
 
-type GraphAppPane = 'left' | 'center' | null
+export type GraphAppPane = 'left' | 'center' | null
 
 export type GraphAppProps = {
   /** Host-supplied pane for in-process mounts; URL query wins only when omitted. */
