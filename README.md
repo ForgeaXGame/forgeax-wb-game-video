@@ -1,4 +1,4 @@
-# @forgeax/wb-game-video
+# @forgeax-extension/wb-game-video
 
 玩法优先的视频游戏蓝图编辑器与运行时。它把视频演出、血条、QTE、限时选择和热点交互组合成可序列化的 `GraphLibraryDocument`，由纯 TypeScript 状态机确定性执行。
 

@@ -8,7 +8,7 @@
 并展示只读的动态拼接时间轴。
 
 > [!IMPORTANT]
-> 这是编辑器内部组件 API，不是 `@forgeax/wb-game-video` 包根导出的公开 API。扩展内部可从
+> 这是编辑器内部组件 API，不是 `@forgeax-extension/wb-game-video` 包根导出的公开 API。扩展内部可从
 > `src/editor/shell/NodePreviewStage.tsx` 接入；若未来要供其他包消费，应先建立稳定 facade，
 > 不要让外部包深度依赖 `src/editor`。
 

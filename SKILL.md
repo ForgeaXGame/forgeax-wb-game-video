@@ -6,7 +6,7 @@ trigger: /wb-game-video
 
 # 视频游戏工坊 · AI Skill
 
-`@forgeax/wb-game-video` 编辑和运行 `GraphLibraryDocument`。根 `graph` 是运行入口，`manifest.mainPackId` 指向主蓝图，`manifest.packs` 保存主/子蓝图。修改后应通过 `src/runtime/validate/validate.ts` 校验。
+`@forgeax-extension/wb-game-video` 编辑和运行 `GraphLibraryDocument`。根 `graph` 是运行入口，`manifest.mainPackId` 指向主蓝图，`manifest.packs` 保存主/子蓝图。修改后应通过 `src/runtime/validate/validate.ts` 校验。
 
 ## 工具
 
