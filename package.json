@@ -17,7 +17,8 @@
     "schemas",
     "README.md",
     "SKILL.md",
-    "!**/*.mp4"
+    "!**/*.mp4",
+    "!**/*.map"
   ],
   "exports": {
     ".": "./dist/index.js",
