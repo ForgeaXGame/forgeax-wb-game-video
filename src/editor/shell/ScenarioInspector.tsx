@@ -241,6 +241,8 @@ export function ScenarioInspector({
   // 「通用样式」= 自由方案；排除每节点自动内容 overlay（node:*，那是时间轴的内容容器）。
   // 内置方案（静态/动态组件方案）固定置顶，其余按目录原有顺序跟后，见 sortSchemeIds。
   const schemeIds = sortSchemeIds(Object.keys(allOverlays).filter((id) => !id.startsWith('node:')))
+  // 标题输入本地缓存：onChange 自由输入，onBlur 时提交到 renameScheme 做重名校验。
+  const [schemeLocalTitles, setSchemeLocalTitles] = useState<Record<string, string>>({})
   const setOverlays = (overlays: Record<string, Overlay>) => onChange({ ...value, ui: { ...value.ui, overlays } })
   const patchOverlayChildInMeta = (
     overlayId: string,
@@ -323,9 +325,25 @@ export function ScenarioInspector({
                 <div key={id} style={box}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                     <input
-                      value={ov.title ?? ''}
+                      value={schemeLocalTitles[id] ?? ov.title ?? ''}
                       placeholder={id}
-                      onChange={(e) => renameScheme(id, e.target.value)}
+                      onChange={(e) => setSchemeLocalTitles((prev) => ({ ...prev, [id]: e.target.value }))}
+                      onBlur={(e) => {
+                        const local = schemeLocalTitles[id]
+                        // 先清理本地缓存，保证聚焦后 value 回退到 ov.title
+                        setSchemeLocalTitles((prev) => {
+                          const next = { ...prev }
+                          delete next[id]
+                          return next
+                        })
+                        if (local !== undefined && local !== (ov.title ?? '')) {
+                          renameScheme(id, local)
+                          // 延迟聚焦：避免同步 blur→focus 触发重复 blur 事件
+                          setTimeout(() => {
+                            ;(e.target as HTMLInputElement).focus()
+                          }, 0)
+                        }
+                      }}
                       style={{ flex: 1, fontWeight: 600 }}
                     />
                     <UsageBadge count={overlayUsage?.[id] ?? 0} />
