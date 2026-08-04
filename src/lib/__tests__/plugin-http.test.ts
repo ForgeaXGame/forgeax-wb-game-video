@@ -43,4 +43,27 @@ describe('pluginFetch + forgeaxHttp', () => {
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${pluginBase.replace(/\/$/, '')}/proxy/gva/assets`)
     },
   )
+
+  it('rewrites exactly once even when the result still matches the rule', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    forgeaxHttp.defaults.rewrite = [{ from: /^\/(.*)$/, to: '/proxy/$1' }]
+
+    await pluginFetch('/__gva__/assets', undefined, './')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/proxy/__gva__/assets')
+  })
+
+  it('passes opaque URLs through untouched', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+    forgeaxHttp.defaults.rewrite = [
+      { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
+    ]
+
+    await pluginFetch('blob:http://localhost:5173/6c2f', undefined, '/vibe/')
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('blob:http://localhost:5173/6c2f')
+  })
 })

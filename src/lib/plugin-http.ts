@@ -17,10 +17,15 @@ export function pluginUrl(path: string, rawBase = RAW_BASE): string {
   return `${prefix}${path}`
 }
 
+/**
+ * Rewrite once on the logical path, then mount it under the plugin base. The
+ * underlying fetch must stay raw: a second rewrite pass could match the
+ * already-mounted URL again.
+ */
 export function pluginFetch(
   input: string,
   init?: RequestInit,
   rawBase = RAW_BASE,
 ): Promise<Response> {
-  return forgeaxHttp.fetch(pluginUrl(forgeaxHttp.rewriteUrl(input), rawBase), init)
+  return globalThis.fetch(pluginUrl(forgeaxHttp.rewriteUrl(input), rawBase), init)
 }
