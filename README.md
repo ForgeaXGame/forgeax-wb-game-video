@@ -27,9 +27,10 @@ bun run lint
 bun run build
 ```
 
-生成超过 15 秒的多段连续视频还要求服务端 `PATH` 中存在 `ffmpeg`。管线会从每段
-已落盘成片提取真实尾帧，作为下一段的 `first_frame`；缺少 `ffmpeg` 或抽帧失败时会
-明确终止，不会仅添加续接 Prompt 后继续生成。
+生成超过 15 秒的多段连续视频时，管线优先使用 Provider 的原生视频续接能力（Kino
+直接引用上一段视频）；Provider 不支持时才使用服务端 `PATH` 中的 `ffmpeg` 提取真实
+尾帧。两者都不可用时，`strict` 模式会在首笔付费任务前终止；调用方可显式选择
+`continuityMode="independent"`，接受各段独立生成。
 
 `@forgeax/extension-platform` 的 peer 与开发依赖都精确固定为 `0.0.2`。后端显式适配两种宿主上下文：
 

@@ -16,6 +16,7 @@ export interface TailFrameResult {
 }
 
 export type TailFrameExtractor = (videoPath: string) => Promise<TailFrameResult>
+export type TailFrameAvailabilityCheck = () => Promise<void>
 
 const MAX_STDERR_CHARS = 4_000
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -96,5 +97,24 @@ export async function extractVideoTailFrame(
     return { bytes: new Uint8Array(readFileSync(outputPath)), mime: 'image/jpeg' }
   } finally {
     rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+/** Fail before the first paid segment when local tail-frame continuity is unavailable. */
+export async function assertVideoTailFrameExtractionAvailable(
+  options: { ffmpegPath?: string; timeoutMs?: number } = {},
+): Promise<void> {
+  try {
+    await runFfmpeg(
+      options.ffmpegPath ?? 'ffmpeg',
+      ['-hide_banner', '-version'],
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    )
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `当前 provider 不支持原生视频续接，且本地尾帧提取不可用：${detail}`,
+      { cause: error },
+    )
   }
 }

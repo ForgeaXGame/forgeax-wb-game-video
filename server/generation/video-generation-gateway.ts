@@ -6,6 +6,12 @@ export const VIDEO_GENERATION_CAPABILITY = Object.freeze({
   version: 1,
 } as const)
 
+/** Provider-native continuation using the previous segment as a video reference. */
+export const VIDEO_EXTEND_CAPABILITY = Object.freeze({
+  id: 'media.video.extend',
+  version: 1,
+} as const)
+
 /**
  * The host bridge deliberately exposes the small surface a workbench needs.
  * Hosts may adapt it to CapabilityProviderRegistry without coupling this
@@ -33,6 +39,7 @@ export interface VideoGenerationRequest {
     readonly characterRefIds: readonly string[]
     readonly sceneRefIds: readonly string[]
     readonly continuityFirstFrameId?: string
+    readonly continuityVideoId?: string
     readonly extend?: boolean
     readonly transitionHint?: string
   }
@@ -65,6 +72,7 @@ export interface GeneratedVideo {
 
 export interface VideoGenerationGateway {
   generate(input: VideoGenerationRequest): Promise<GeneratedVideo>
+  extend?: (input: VideoGenerationRequest) => Promise<GeneratedVideo>
 }
 
 /**
@@ -81,20 +89,28 @@ export function createVideoGenerationGateway(
     capabilities.has?.(VIDEO_GENERATION_CAPABILITY.id, VIDEO_GENERATION_CAPABILITY.version) === false
   ) return undefined
 
+  const invoke = async (
+    capability: typeof VIDEO_GENERATION_CAPABILITY | typeof VIDEO_EXTEND_CAPABILITY,
+    input: VideoGenerationRequest,
+  ): Promise<GeneratedVideo> => {
+    try {
+      const result = await capabilities.invoke(
+        capability.id,
+        capability.version,
+        input,
+        { requestId: createVideoGenerationRequestId(gameId, input, capability.id) },
+      )
+      return bindGeneratedVideo((result as VideoGenerationResult | undefined)?.video)
+    } catch (error) {
+      throw mapCapabilityError(error)
+    }
+  }
+
   return {
-    async generate(input) {
-      try {
-        const result = await capabilities.invoke(
-          VIDEO_GENERATION_CAPABILITY.id,
-          VIDEO_GENERATION_CAPABILITY.version,
-          input,
-          { requestId: createVideoGenerationRequestId(gameId, input) },
-        )
-        return bindGeneratedVideo((result as VideoGenerationResult | undefined)?.video)
-      } catch (error) {
-        throw mapCapabilityError(error)
-      }
-    },
+    generate: (input) => invoke(VIDEO_GENERATION_CAPABILITY, input),
+    ...(capabilities.has?.(VIDEO_EXTEND_CAPABILITY.id, VIDEO_EXTEND_CAPABILITY.version) === true
+      ? { extend: (input: VideoGenerationRequest) => invoke(VIDEO_EXTEND_CAPABILITY, input) }
+      : {}),
   }
 }
 
@@ -106,6 +122,8 @@ export function createVideoGenerationGateway(
 export function createVideoGenerationRequestId(
   gameId: string,
   input: VideoGenerationRequest,
+  capabilityId: typeof VIDEO_GENERATION_CAPABILITY.id | typeof VIDEO_EXTEND_CAPABILITY.id
+    = VIDEO_GENERATION_CAPABILITY.id,
 ): string {
   const references = input.references.map((reference) => ({
     role: reference.role,
@@ -115,6 +133,7 @@ export function createVideoGenerationRequestId(
   }))
   const fingerprint = createHash('sha256')
     .update(stableSerialize({
+      capabilityId,
       gameId,
       sceneNodeId: input.metadata.sceneNodeId,
       input: { ...input, references },

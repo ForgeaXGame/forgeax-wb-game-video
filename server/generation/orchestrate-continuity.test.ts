@@ -15,6 +15,7 @@ vi.mock('./gateway-client', async (importOriginal) => ({
 import { listAssets, upsertAsset, writeMediaFile } from '../asset-registry'
 import { buildSeedanceVideoPrompt } from '../engine'
 import { generateNodeVideo, type OrchestrateCtx } from './orchestrate'
+import type { VideoGenerationRequest } from './video-generation-gateway'
 
 const roots: string[] = []
 
@@ -58,6 +59,75 @@ afterEach(() => {
 })
 
 describe('multi-segment video tail-frame continuity', () => {
+  test('uses provider-native video extension and never invokes ffmpeg when advertised', async () => {
+    const dir = makeAssetsDir()
+    addImageRef(dir, 'character-1', 'character_ref')
+    addImageRef(dir, 'scene-1', 'scene_ref')
+    let generated = 0
+    const invoke = vi.fn(async (_id: string, _version: number, raw: unknown) => {
+      generated += 1
+      return {
+        video: {
+          bytes: Uint8Array.from(Buffer.from(`kino-segment-${generated}`)),
+          mime: 'video/mp4',
+          sourceUrl: `https://cdn.example.test/segment-${generated}.mp4`,
+          generationId: `generation-${generated}`,
+          provider: {
+            kind: 'kino',
+            ref: `https://cdn.example.test/segment-${generated}.mp4`,
+            upstreamResourceId: `resource-${generated}`,
+          },
+        },
+      }
+    })
+    const tailFrameExtractor = vi.fn(async () => {
+      throw new Error('ffmpeg must not be used')
+    })
+    const ctx: OrchestrateCtx = {
+      dir,
+      gameId: 'demo',
+      capabilities: {
+        has(id, version) {
+          return version === 1 && (id === 'media.video.generate' || id === 'media.video.extend')
+        },
+        invoke,
+      },
+      tailFrameExtractor,
+    }
+
+    const videos = await generateNodeVideo(ctx, {
+      sceneNodeId: 'node-1',
+      nodeName: '追逐',
+      storyText: '角色冲过走廊。',
+      durationSeconds: 31,
+      characterRefIds: ['character-1'],
+      sceneRefIds: ['scene-1'],
+    })
+
+    expect(videos).toHaveLength(3)
+    expect(tailFrameExtractor).not.toHaveBeenCalled()
+    expect(invoke.mock.calls.map(([id]) => id)).toEqual([
+      'media.video.generate',
+      'media.video.extend',
+      'media.video.extend',
+    ])
+    const secondRequest = invoke.mock.calls[1]?.[2] as VideoGenerationRequest
+    const thirdRequest = invoke.mock.calls[2]?.[2] as VideoGenerationRequest
+    expect(secondRequest.references[0]).toMatchObject({
+      role: 'reference_video',
+      assetId: videos[0]!.id,
+      mime: 'video/mp4',
+    })
+    expect(Buffer.from(secondRequest.references[0]!.bytes).toString()).toBe('kino-segment-1')
+    expect(thirdRequest.references[0]).toMatchObject({
+      role: 'reference_video',
+      assetId: videos[1]!.id,
+    })
+    expect(secondRequest.prompt).toContain('@视频1')
+    expect(secondRequest.prompt).not.toContain('真实尾帧')
+    expect(listAssets(dir, { productionType: 'shot_image' })).toHaveLength(0)
+  })
+
   test('extracts every completed segment tail and binds it as the next first_frame', async () => {
     const dir = makeAssetsDir()
     addImageRef(dir, 'character-1', 'character_ref')
@@ -132,6 +202,63 @@ describe('multi-segment video tail-frame continuity', () => {
     const failedTail = listAssets(dir, { productionType: 'shot_image' })
       .find((asset) => asset.meta?.keyframeRole === 'continuity_tail_frame')
     expect(failedTail).toMatchObject({ status: 'failed', error: 'decoder unavailable' })
+  })
+
+  test('fails preflight before the first paid segment when no native extension or ffmpeg is available', async () => {
+    const dir = makeAssetsDir()
+    addImageRef(dir, 'character-1', 'character_ref')
+    addImageRef(dir, 'scene-1', 'scene_ref')
+    const tailFrameAvailabilityCheck = vi.fn(async () => {
+      throw new Error('decoder unavailable')
+    })
+
+    await expect(generateNodeVideo({
+      dir,
+      gameId: 'demo',
+      tailFrameAvailabilityCheck,
+    }, {
+      sceneNodeId: 'node-1',
+      nodeName: '追逐',
+      durationSeconds: 20,
+      characterRefIds: ['character-1'],
+      sceneRefIds: ['scene-1'],
+    })).rejects.toThrow('首笔付费任务前')
+
+    expect(tailFrameAvailabilityCheck).toHaveBeenCalledTimes(1)
+    expect(gatewayMocks.genVideoAndWait).not.toHaveBeenCalled()
+  })
+
+  test('allows explicitly independent segments without native extension or ffmpeg', async () => {
+    const dir = makeAssetsDir()
+    addImageRef(dir, 'character-1', 'character_ref')
+    addImageRef(dir, 'scene-1', 'scene_ref')
+    const tailFrameAvailabilityCheck = vi.fn(async () => {
+      throw new Error('must not preflight')
+    })
+
+    const videos = await generateNodeVideo({
+      dir,
+      gameId: 'demo',
+      tailFrameAvailabilityCheck,
+    }, {
+      sceneNodeId: 'node-1',
+      nodeName: '追逐',
+      durationSeconds: 20,
+      characterRefIds: ['character-1'],
+      sceneRefIds: ['scene-1'],
+      continuityMode: 'independent',
+    })
+
+    expect(videos).toHaveLength(2)
+    expect(tailFrameAvailabilityCheck).not.toHaveBeenCalled()
+    expect(gatewayMocks.genVideoAndWait).toHaveBeenCalledTimes(2)
+    for (const [, request] of gatewayMocks.genVideoAndWait.mock.calls) {
+      expect(request.imageWithRoles).toEqual([
+        expect.objectContaining({ role: 'reference_image' }),
+        expect.objectContaining({ role: 'reference_image' }),
+      ])
+      expect(request.prompt).not.toContain('向后延长')
+    }
   })
 
   test('rejects an extend prompt that has no real continuity input', () => {

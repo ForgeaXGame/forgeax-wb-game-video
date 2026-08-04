@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  VIDEO_EXTEND_CAPABILITY,
   VIDEO_GENERATION_CAPABILITY,
   createVideoGenerationGateway,
   createVideoGenerationRequestId,
@@ -56,6 +57,26 @@ describe('VideoGenerationGateway', () => {
   it('does not create a gateway when the host did not inject capabilities, so callers keep the legacy path', () => {
     expect(createVideoGenerationGateway(undefined)).toBeUndefined()
     expect(createVideoGenerationGateway({ has: () => false, async invoke() {} })).toBeUndefined()
+  })
+
+  it('exposes provider-native extension only when the host advertises media.video.extend@1', async () => {
+    const invoke = vi.fn(async () => ({ video: generatedVideo }))
+    const gateway = createVideoGenerationGateway({
+      has(id, version) {
+        return version === 1 && (id === VIDEO_GENERATION_CAPABILITY.id || id === VIDEO_EXTEND_CAPABILITY.id)
+      },
+      invoke,
+    }, 'game-a')!
+
+    expect(gateway.extend).toBeTypeOf('function')
+    await expect(gateway.extend!(request)).resolves.toEqual(generatedVideo)
+    expect(invoke).toHaveBeenCalledWith(
+      'media.video.extend',
+      1,
+      request,
+      { requestId: expect.stringMatching(/^wb-game-video-v1-[0-9a-f]{64}$/) },
+    )
+    expect(VIDEO_EXTEND_CAPABILITY).toEqual({ id: 'media.video.extend', version: 1 })
   })
 
   it('rejects an invalid provider result before the workbench persists it', async () => {

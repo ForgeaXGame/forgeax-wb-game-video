@@ -7,8 +7,8 @@
  *
  * 硬约束（对齐 FMV）：
  *   · **必传参考图闸**（FMV 4.5）：generateVideo 缺 character_ref 或 scene_ref 直接抛可读错。
- *   · **尾帧续接**（FMV 坑6/§6.6）：多段生成时用 ffmpeg 从上一段成片提取真实尾帧，
- *     登记为 shot_image 并作为下一段 first_frame；抽帧失败则终止，禁止 prompt-only 假续接。
+ *   · **多段续接**（FMV 坑6/§6.6）：Provider 支持时直接延长上一段视频；否则用
+ *     ffmpeg 提取真实尾帧。两者都不可用时在首笔付费任务前失败，禁止 prompt-only 假续接。
  *   · **并发信号量**（FMV concurrency）：createSemaphore 控住网关并发。
  *
  * registry 生命周期：每次生成 upsert placeholder→generating→ready/failed，供 P5 轮询三态。
@@ -54,9 +54,15 @@ import {
   createVideoGenerationGateway,
   generateWithVideoGenerationGateway,
   type ExtensionCapabilities,
+  type GeneratedVideo,
   type VideoGenerationReference,
 } from './video-generation-gateway'
-import { extractVideoTailFrame, type TailFrameExtractor } from './tail-frame'
+import {
+  assertVideoTailFrameExtractionAvailable,
+  extractVideoTailFrame,
+  type TailFrameAvailabilityCheck,
+  type TailFrameExtractor,
+} from './tail-frame'
 
 /** 编排上下文：素材层根目录（assetsDir 解析结果）+ 网关 env。 */
 export interface OrchestrateCtx extends GatewayCtx {
@@ -71,8 +77,10 @@ export interface OrchestrateCtx extends GatewayCtx {
    * 缺省时保留 standalone/dev 的 legacy gateway-client 路径。
    */
   capabilities?: ExtensionCapabilities
-  /** 测试/宿主可注入；生产默认使用服务端 ffmpeg 提取真实尾帧。 */
+  /** 测试/宿主可注入；没有 provider-native 续接时使用。 */
   tailFrameExtractor?: TailFrameExtractor
+  /** 测试/宿主可注入；生产默认在首笔付费任务前检查 ffmpeg。 */
+  tailFrameAvailabilityCheck?: TailFrameAvailabilityCheck
 }
 
 const EXT_BY_MIME: Record<string, string> = {
@@ -243,6 +251,10 @@ export interface VideoGenInput {
   sceneRefIds: string[]
   /** 可选：作 first_frame 的关键帧 registry id；多段生成后会被上一段真实尾帧替换。 */
   continuityFirstFrameId?: string
+  /** 内部续接锚点：Provider-native extend 使用的上一段 video_clip。 */
+  continuityVideoId?: string
+  /** strict 保证真实连续性；independent 显式允许各段独立生成。 */
+  continuityMode?: 'strict' | 'independent'
   label?: string
   generateAudio?: boolean
   /** 节点级三轴覆盖（P3）；不传则用游戏级 manifest.styleAxes。 */
@@ -316,6 +328,7 @@ async function buildVideoGenerationReferences(
     const payload = await resolveAssetImagePayload(octx, asset)
     references.push({ role, assetId, mime: payload.mime, bytes: payload.bytes })
   }
+  if (input.continuityVideoId) await push(input.continuityVideoId, 'reference_video')
   if (input.continuityFirstFrameId) await push(input.continuityFirstFrameId, 'first_frame')
   for (const assetId of input.characterRefIds.filter(Boolean)) {
     await push(assetId, 'reference_image')
@@ -330,12 +343,13 @@ async function buildVideoGenerationReferences(
 async function resolveVideoRoleBindings(octx: OrchestrateCtx, input: VideoGenInput): Promise<VideoRefBinding[]> {
   const bindings: VideoRefBinding[] = []
   let idx = 1
-  const push = (assetId: string, semantic: string): void => {
+  const push = (assetId: string, semantic: string, isVideo = false): void => {
     const asset = getAsset(octx.dir, assetId)
     if (!asset) throw new Error(`参考图不存在：${assetId}`)
-    bindings.push({ index: idx, role: semantic, label: asset.label })
+    bindings.push({ index: idx, role: semantic, label: asset.label, isVideo })
     idx++
   }
+  if (input.continuityVideoId) push(input.continuityVideoId, '延长视频', true)
   if (input.continuityFirstFrameId) push(input.continuityFirstFrameId, '续接首帧')
   for (const cid of input.characterRefIds.filter(Boolean)) push(cid, '角色')
   for (const sid of input.sceneRefIds.filter(Boolean)) push(sid, '场景')
@@ -380,6 +394,7 @@ export async function generateVideo(
       characterRefIds: input.characterRefIds,
       sceneRefIds: input.sceneRefIds,
       continuityFirstFrameId: input.continuityFirstFrameId,
+      continuityVideoId: input.continuityVideoId,
       extend: input.extend === true,
     },
   })
@@ -410,14 +425,12 @@ export async function generateVideo(
         characterRefIds: input.characterRefIds,
         sceneRefIds: input.sceneRefIds,
         continuityFirstFrameId: input.continuityFirstFrameId,
+        continuityVideoId: input.continuityVideoId,
         extend: input.extend,
         transitionHint: input.transitionHint,
       },
     }
-    const generated = await generateWithVideoGenerationGateway(
-      gateway,
-      capabilityInput,
-      async () => {
+    const legacyGenerate = async () => {
         const { roles } = await resolveVideoRoleImages(octx, input)
         const { bytes, mime, sourceUrl, taskId } = await genVideoAndWait(
           octx,
@@ -436,8 +449,14 @@ export async function generateVideo(
           generationId: taskId,
           providerTaskId: taskId,
         }
-      },
-    )
+    }
+    let generated: GeneratedVideo
+    if (input.continuityVideoId) {
+      if (!gateway?.extend) throw new Error('当前 provider 未提供原生视频续接能力')
+      generated = await gateway.extend(capabilityInput)
+    } else {
+      generated = await generateWithVideoGenerationGateway(gateway, capabilityInput, legacyGenerate)
+    }
     const file = writeMediaFile(octx.dir, id, extForMime(generated.mime), generated.bytes)
     const ready = updateAsset(octx.dir, id, {
       status: 'ready',
@@ -454,6 +473,7 @@ export async function generateVideo(
         characterRefIds: input.characterRefIds,
         sceneRefIds: input.sceneRefIds,
         continuityFirstFrameId: input.continuityFirstFrameId,
+        continuityVideoId: input.continuityVideoId,
         extend: input.extend === true,
         taskId: generated.providerTaskId ?? generated.generationId,
         generationId: generated.generationId,
@@ -533,8 +553,9 @@ async function registerVideoTailFrame(
 
 /**
  * 生成一个节点的成片：时长 ≤ 15s 走单段（= generateVideo）；> 15s 自动按 15s 拆段，
- * 逐段顺序生成；每段完成后提取真实尾帧并作为下一段 first_frame，第 2 段起同时
- * 前置 V-PROMPT-15。Prompt 中引用的槽位与实际上传的尾帧严格一致。
+ * 逐段顺序生成；优先把上一段视频交给 provider-native extend，未提供该能力时才
+ * 提取真实尾帧作为下一段 first_frame。strict 模式会在首笔付费任务前预检续接能力；
+ * independent 模式由调用方显式接受各段独立生成。
  * 返回按顺序的分段资产数组（长度 = 段数）；上层把它们拼进 node.data.media（或做多 clip 时间线）。
  */
 export async function generateNodeVideo(
@@ -547,11 +568,29 @@ export async function generateNodeVideo(
   if (segments.length <= 1) {
     return [await generateVideo(octx, input, pollOpts)]
   }
+  const continuityMode = input.continuityMode ?? 'strict'
+  const nativeExtend = continuityMode === 'strict'
+    && createVideoGenerationGateway(octx.capabilities, octx.gameId)?.extend !== undefined
+  if (continuityMode === 'strict' && !nativeExtend && !octx.tailFrameExtractor) {
+    try {
+      await (octx.tailFrameAvailabilityCheck ?? assertVideoTailFrameExtractionAvailable)()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(
+        `无法生成超过 ${SEEDANCE_MAX_SHOT_DURATION} 秒的连续视频，已在首笔付费任务前终止：${detail}。`
+        + `请将 durationSeconds 限制为 ${SEEDANCE_MAX_SHOT_DURATION}，`
+        + '或显式设置 continuityMode="independent" 接受独立分段。',
+        { cause: error },
+      )
+    }
+  }
   const baseLabel = input.label ?? `视频 · ${input.nodeName}`
   const out: MediaAsset[] = []
   let continuityFirstFrameId = input.continuityFirstFrameId
+  let continuityVideoId = input.continuityVideoId
   for (let i = 0; i < segments.length; i++) {
-    const isExtend = input.extend === true || i > 0
+    const isExtend = continuityMode === 'strict' && (input.extend === true || i > 0)
+    const usePreviousVideo = nativeExtend && i > 0
     const defaultTransitionHint = i > 0
       ? `接上一段（第 ${i} 段）尾部，人物、机位、光影、表演节奏无缝延续`
       : undefined
@@ -563,13 +602,22 @@ export async function generateNodeVideo(
       transitionHint: isExtend
         ? input.transitionHint ?? defaultTransitionHint
         : undefined,
-      continuityFirstFrameId,
+      continuityFirstFrameId: continuityMode === 'independent'
+        ? i === 0 ? input.continuityFirstFrameId : undefined
+        : usePreviousVideo ? undefined : continuityFirstFrameId,
+      continuityVideoId: continuityMode === 'independent'
+        ? undefined
+        : usePreviousVideo ? continuityVideoId : i === 0 ? input.continuityVideoId : undefined,
     }
     const video = await generateVideo(octx, seg, pollOpts)
     out.push(video)
     if (i < segments.length - 1) {
-      const tailFrame = await registerVideoTailFrame(octx, video, i + 1)
-      continuityFirstFrameId = tailFrame.id
+      if (nativeExtend) {
+        continuityVideoId = video.id
+      } else if (continuityMode === 'strict') {
+        const tailFrame = await registerVideoTailFrame(octx, video, i + 1)
+        continuityFirstFrameId = tailFrame.id
+      }
     }
   }
   return out

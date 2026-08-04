@@ -55,10 +55,10 @@ import-character-refs + import-scene-refs
   → 把返回的 asset.id 绑定到节点 media.ref
 ```
 
-`generate-node-video` 超过 15 秒时逐段串行：上一段成片落盘后，服务端用 `ffmpeg`
-提取真实尾帧并登记为 `shot_image`，再把该图作为下一段 `first_frame`。Prompt 中的
-`@图片N` 与实际尾帧输入使用同一槽位；抽帧失败会终止生成，不会退化成只有续接文案。
-运行该工具的服务端 `PATH` 必须包含可执行的 `ffmpeg`。
+`generate-node-video` 超过 15 秒时逐段串行：优先使用 Provider 原生视频续接（Kino
+直接把上一段作为 `@视频N`）；没有该能力时，服务端用 `ffmpeg` 提取真实尾帧并作为
+下一段 `first_frame`。`strict` 模式会在首笔付费任务前预检，不会做到一半才因缺少
+`ffmpeg` 失败；只有调用方显式传 `continuityMode="independent"` 时才允许独立分段。
 
 素材写入 `.forgeax/games/<slug>/assets/`。蓝图写入 `.forgeax/games/<slug>/blueprint.json`，首次保存补 `.forgeax/games/<slug>/project.json`。
 
