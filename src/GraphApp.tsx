@@ -30,7 +30,14 @@ const NAV: Array<{ id: GraphView; label: string; hint: string }> = [
   { id: 'play', label: '试玩', hint: '新引擎预览 · 跑当前编辑的场景' },
 ]
 
-function readPane(): 'left' | 'center' | null {
+export type GraphAppPane = 'left' | 'center' | null
+
+export interface GraphAppProps {
+  pane?: GraphAppPane
+  gameId?: string
+}
+
+function readPane(): GraphAppPane {
   try {
     const p = new URLSearchParams(location.search).get('pane')
     return p === 'left' || p === 'center' ? p : null
@@ -107,9 +114,9 @@ function GraphMain(): JSX.Element {
   )
 }
 
-export function GraphApp(): JSX.Element {
+export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JSX.Element {
   injectStyleOnce('graph-app-shell', CSS)
-  const [pane] = useState(readPane)
+  const [pane] = useState(() => explicitPane === undefined ? readPane() : explicitPane)
   const ensureBoot = useGraphScenario((s) => s.ensureBoot)
 
   // split-pane 嵌入态才开跨 iframe 同步桥；独立运行零开销。
@@ -122,12 +129,12 @@ export function GraphApp(): JSX.Element {
     return <div className="ga-root is-pane-left"><GraphSidebar /></div>
   }
   if (pane === 'center') {
-    return <div className="ga-root is-pane-center"><GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap></div>
+    return <div className="ga-root is-pane-center"><GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}><GraphMain /></GameBootstrap></div>
   }
   return (
     <div className="ga-root">
       <GraphSidebar />
-      <GameBootstrap onBoot={(gameId) => ensureBoot(gameId)}><GraphMain /></GameBootstrap>
+      <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}><GraphMain /></GameBootstrap>
     </div>
   )
 }

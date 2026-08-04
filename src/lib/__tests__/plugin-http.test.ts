@@ -29,15 +29,18 @@ describe('pluginFetch + forgeaxHttp', () => {
     vi.unstubAllGlobals()
   })
 
-  it('sends rewritten URL after host rewrite is installed', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
-    vi.stubGlobal('fetch', fetchMock)
-    forgeaxHttp.defaults.rewrite = [
-      { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
-    ]
+  it.each(['/vibe/', '/__fx-plugin/wb-game-video/'])(
+    'rewrites the logical path before applying plugin base %s',
+    async (pluginBase) => {
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
+      vi.stubGlobal('fetch', fetchMock)
+      forgeaxHttp.defaults.rewrite = [
+        { from: /^\/__gva__\/(.*)$/, to: '/proxy/gva/$1' },
+      ]
 
-    await pluginFetch('/__gva__/assets')
+      await pluginFetch('/__gva__/assets', undefined, pluginBase)
 
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/proxy/gva/assets')
-  })
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${pluginBase.replace(/\/$/, '')}/proxy/gva/assets`)
+    },
+  )
 })

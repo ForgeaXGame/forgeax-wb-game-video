@@ -17,6 +17,10 @@ export function pluginUrl(path: string, rawBase = RAW_BASE): string {
   return `${prefix}${path}`
 }
 
-export function pluginFetch(input: string, init?: RequestInit): Promise<Response> {
-  return forgeaxHttp.fetch(pluginUrl(input), init)
+export function pluginFetch(
+  input: string,
+  init?: RequestInit,
+  rawBase = RAW_BASE,
+): Promise<Response> {
+  return forgeaxHttp.fetch(pluginUrl(forgeaxHttp.rewriteUrl(input), rawBase), init)
 }

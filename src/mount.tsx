@@ -41,7 +41,12 @@ export function mount(
   initLocaleSync()
   rootEl.classList.add('ks-app-host')
   const reactRoot: Root = createRoot(rootEl)
-  reactRoot.render(<GraphApp />)
+  reactRoot.render(
+    <GraphApp
+      pane={options.pane}
+      gameId={options.slug ?? undefined}
+    />,
+  )
   return {
     unmount: () => {
       reactRoot.unmount()
