@@ -1,0 +1,4 @@
+# Demo / narration mp4s stay in dist for local marketplace checkout.
+# NOTE: package.json has a "files" allowlist, so root .npmignore is ignored by
+# npm-packlist. The matching exclude is also listed there as "!**/*.mp4".
+**/*.mp4

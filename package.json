@@ -16,7 +16,8 @@
     "forgeax-extension.json",
     "schemas",
     "README.md",
-    "SKILL.md"
+    "SKILL.md",
+    "!**/*.mp4"
   ],
   "exports": {
     ".": "./dist/index.js",
