@@ -13,6 +13,23 @@ import {
 } from './host-media-client'
 
 export type KinoMediaType = HostMediaType | 'font'
+export type KinoProviderKind = 'local' | 's3' | 'cos' | 'kino'
+export type KinoUploadMime =
+  | 'video/mp4'
+  | 'image/png'
+  | 'image/jpeg'
+  | 'image/webp'
+  | 'image/gif'
+  | 'audio/mpeg'
+  | 'audio/wav'
+  | 'audio/ogg'
+  | 'audio/mp4'
+  | 'audio/aac'
+  | 'font/woff2'
+  | 'font/woff'
+  | 'font/ttf'
+  | 'font/otf'
+export interface KinoProviderCapabilities { provider: KinoProviderKind; media_types: KinoMediaType[]; upload_mimes: KinoUploadMime[] }
 export type KinoResourceType = 'KEYFRAME' | 'SHOT_VIDEO' | 'CHARACTER_IMAGE' | 'CHARACTER_TURNAROUND' | 'LOCATION_IMAGE' | 'PROJECT_COVER_IMAGE' | 'UPLOAD' | 'OTHER' | 'GENERATION'
 export interface KinoResourceSourceMeta { task_id?: string; prompt?: string; model?: string; seed?: number; width?: number; height?: number; duration_ms?: number; mime_type?: string; extra?: Record<string, unknown> }
 export interface KinoResourceDTO { resource_id: string; game_id: string; media_type: KinoMediaType; name?: string; type?: KinoResourceType; url: string; remark?: string; source?: string; source_meta?: KinoResourceSourceMeta; created_at: number; updated_at: number }
@@ -28,8 +45,19 @@ export interface ListKinoResourcesQuery { game_id: string; media_type?: KinoMedi
 export interface KinoRequestOptions { signal?: AbortSignal }
 export class KinoClientError extends Error { constructor(message: string, readonly status: number, readonly errorCode?: string) { super(message); this.name = 'KinoClientError' } }
 export const MAX_KINO_RESOURCE_PAGE_SIZE = 100
+/** Host media SSOT only accepts these three kinds; font stays advertised for local/dev providers. */
+const HOST_CAPABILITIES: KinoProviderCapabilities = {
+  provider: 'kino',
+  media_types: ['video', 'image', 'audio'],
+  upload_mimes: [
+    'video/mp4',
+    'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+    'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac',
+  ],
+}
 
 export interface KinoVideoClient {
+  capabilities(options?: KinoRequestOptions): Promise<KinoProviderCapabilities>
   prepareUpload(input: PrepareUploadInput, options?: KinoRequestOptions): Promise<DirectUploadResponse>
   list(query: ListKinoResourcesQuery, options?: KinoRequestOptions): Promise<KinoResourcePage>
   get(resourceId: string, gameId: string, options?: KinoRequestOptions): Promise<KinoResourceDTO>
@@ -58,6 +86,9 @@ export function createKinoVideoClient(options: CreateKinoVideoClientOptions = {}
   const media = options.media ?? createHostMediaClient({ ready: async () => getWorkbenchHost().ready() })
   const uploads = new Map<string, UploadReceipt>()
   return {
+    async capabilities() {
+      return HOST_CAPABILITIES
+    },
     async prepareUpload(input, request) {
       const filename = input.file_name?.trim()
       if (!filename) throw new KinoClientError('Upload filename is required', 400, 'media_input_invalid')

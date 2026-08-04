@@ -1,4 +1,4 @@
-# @forgeax/wb-game-video
+# @forgeax-extension/wb-game-video
 
 玩法优先的视频游戏蓝图编辑器与运行时。它把视频演出、血条、QTE、限时选择和热点交互组合成可序列化的 `GraphLibraryDocument`，由纯 TypeScript 状态机确定性执行。
 
@@ -51,12 +51,12 @@ tarball、路径 override 或 vendored provenance。
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
-`@forgeax/workbench-host@0.2.2`。包导出 `@forgeax/wb-game-video/host`，其中的 `host`
+`@forgeax/workbench-host@0.2.2`。包导出 `@forgeax-extension/wb-game-video/host`，其中的 `host`
 提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
 创建唯一的 `WorkbenchExtensionContext`：
 
 ```ts
-import { host as videoGameWorkbenchExtension } from '@forgeax/wb-game-video/host'
+import { host as videoGameWorkbenchExtension } from '@forgeax-extension/wb-game-video/host'
 import { createWorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 
 const response = await workspace.withGameRoot(
@@ -113,7 +113,7 @@ location 或默认 slug 推导这些值。包读写和扩展请求分别使用 `
 1. 先发布已经过评审的 `@forgeax/workbench-host@0.2.2`；
 2. 从 registry 验证其类型与能力契约，并更新 `bun.lock`；
 3. 完成 frozen install、测试、构建和 pack 检查后，最后发布
-   `@forgeax/wb-game-video@0.2.1`。
+   `@forgeax-extension/wb-game-video@0.2.1`。
 
 ## 代码导航
 

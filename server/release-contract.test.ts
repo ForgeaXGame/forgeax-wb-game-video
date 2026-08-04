@@ -92,7 +92,7 @@ describe('release identity', () => {
   })
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
-    expect(pkg.name).toBe('@forgeax/wb-game-video')
+    expect(pkg.name).toBe('@forgeax-extension/wb-game-video')
     expect(pkg.version).toBe('0.2.1')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
