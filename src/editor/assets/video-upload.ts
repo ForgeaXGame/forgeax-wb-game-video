@@ -9,7 +9,6 @@ import type {
 import { KinoClientError } from './kino-api'
 import { forgeaxHttp } from '../../lib/forgeax-http'
 import { getWorkbenchHost } from '../../lib/workbench-host'
-import { forgeaxHttp } from '../../lib/forgeax-http'
 
 export const MAX_VIDEO_UPLOAD_BYTES = 104_857_600
 export const VIDEO_UPLOAD_MIME = 'video/mp4' as const
