@@ -77,7 +77,7 @@ describe('host-backed generation references', () => {
     }])
   })
 
-  test('passes uploaded references through the host media contract', async () => {
+  test('passes uploaded references through the host videoGeneration broker', async () => {
     const registry = createRegistry()
     const generateVideo = vi.fn(async () => ({
       assets: [{
@@ -90,7 +90,7 @@ describe('host-backed generation references', () => {
       model: 'test',
     }))
     const context = {
-      models: { generateVideo },
+      videoGeneration: { generateVideo },
     } as unknown as WorkbenchExtensionContext
     const orchestrator = createHostGenerationOrchestrator(context, registry)
 
@@ -116,7 +116,7 @@ describe('host-backed generation references', () => {
   test('fails before calling the host when references are missing', async () => {
     const registry = createRegistry()
     const generateVideo = vi.fn()
-    const context = { models: { generateVideo } } as unknown as WorkbenchExtensionContext
+    const context = { videoGeneration: { generateVideo } } as unknown as WorkbenchExtensionContext
     const orchestrator = createHostGenerationOrchestrator(context, registry)
 
     await expect(orchestrator.generateVideo({

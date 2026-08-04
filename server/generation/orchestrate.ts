@@ -114,7 +114,13 @@ export function createHostGenerationOrchestrator(context: WorkbenchExtensionCont
       const style = await axes(registry, input.styleAxes); const refs = await references(registry, [input.continuityFirstFrameId ?? '', ...input.characterRefIds, ...input.sceneRefIds])
       const bindings: VideoRefBinding[] = refs.map((_, index) => ({ index: index + 1, role: index === 0 && input.continuityFirstFrameId ? '续接首帧' : index < input.characterRefIds.length + Number(Boolean(input.continuityFirstFrameId)) ? '角色' : '场景' }))
       const prompt = buildSeedanceVideoPrompt({ seedancePrompt: input.seedancePrompt, storyText: input.storyText, nodeName: input.nodeName, durationSeconds: input.durationSeconds, artStyle: input.artStyle ?? style.artMedia, styleKeywords: input.styleKeywords ?? style.styleKeywords, refs: bindings, extend: input.extend, transitionHint: input.transitionHint })
-      return await registry.persistGenerated(generated((await context.models.generateVideo({ prompt, references: refs, durationSeconds: input.durationSeconds, metadata: { sceneNodeId: input.sceneNodeId, generateAudio: input.generateAudio ?? false, extend: input.extend ?? false } })).assets, 'video'), { registryId: id, filenamePrefix: 'video', productionType: 'video_clip', sceneNodeId: input.sceneNodeId, label, prompt, durationMs: Math.round(input.durationSeconds * 1000), meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds } })
+      // Video generation must use the Host broker (media.video.generate → Kino),
+      // never a product-specific CE/legacy gateway via models alone.
+      const gateway = context.videoGeneration ?? {
+        generateVideo: (request: Parameters<typeof context.models.generateVideo>[0]) =>
+          context.models.generateVideo(request),
+      }
+      return await registry.persistGenerated(generated((await gateway.generateVideo({ prompt, references: refs, durationSeconds: input.durationSeconds, metadata: { sceneNodeId: input.sceneNodeId, generateAudio: input.generateAudio ?? false, extend: input.extend ?? false } })).assets, 'video'), { registryId: id, filenamePrefix: 'video', productionType: 'video_clip', sceneNodeId: input.sceneNodeId, label, prompt, durationMs: Math.round(input.durationSeconds * 1000), meta: { characterRefIds: input.characterRefIds, sceneRefIds: input.sceneRefIds } })
     } catch (error) { const failed = await registry.update(id, { status: 'failed', error: generationError(error) }); if (failed) throw Object.assign(error instanceof Error ? error : new Error(generationError(error)), { asset: failed }); throw error }
   }
   return {

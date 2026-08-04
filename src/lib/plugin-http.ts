@@ -4,7 +4,9 @@ import { getWorkbenchHost } from './workbench-host'
 /** Resolves an extension-relative media path from the accepted handshake. */
 export function pluginUrl(path: string): string {
   if (/^(?:https?:|blob:|data:)/.test(path)) return path
-  return getWorkbenchHost().extension.url(path)
+  const rewritten = forgeaxHttp.rewriteUrl(path)
+  if (/^(?:https?:|blob:|data:)/.test(rewritten)) return rewritten
+  return getWorkbenchHost().extension.url(rewritten)
 }
 
 /**

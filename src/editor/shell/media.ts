@@ -18,7 +18,7 @@ import {
 import { fetchRegistryAssets } from '../assets/registry-assets'
 import type { MediaAsset, MediaKind, StyleAxes } from '../assets/registry-types'
 import { ExtensionResponseError, getWorkbenchHost, readExtensionJson } from '../../lib/workbench-host'
-import { pluginUrl } from '../../lib/plugin-http'
+import { pluginFetch, pluginUrl } from '../../lib/plugin-http'
 
 let defaultKinoClient: KinoVideoClient | undefined
 
@@ -163,7 +163,7 @@ export async function listRegistryAssets(game?: string, kind?: MediaKind): Promi
 export async function getRegistryAsset(game: string, id: string): Promise<MediaAsset | null> {
   void game
   try {
-    const r = await getWorkbenchHost().extension.fetch(`assets/${encodeURIComponent(id)}`)
+    const r = await pluginFetch(`assets/${encodeURIComponent(id)}`)
     const j = await readExtensionJson(r) as { asset?: MediaAsset | null }
     return j.asset ?? null
   } catch (error) {
@@ -195,7 +195,7 @@ export interface GenerateVideoRequest {
 /** 读游戏级风格三轴（manifest.styleAxes）。离线/无端点返回 null。 */
 export async function getGameStyleAxes(game: string): Promise<StyleAxes | null> {
   void game
-  const r = await getWorkbenchHost().extension.fetch('style-axes')
+  const r = await pluginFetch('style-axes')
   const j = await readExtensionJson(r) as { styleAxes?: StyleAxes | null }
   return j.styleAxes ?? null
 }
@@ -203,7 +203,7 @@ export async function getGameStyleAxes(game: string): Promise<StyleAxes | null> 
 /** 浅合并写游戏级风格三轴，返回合并后结果。 */
 export async function setGameStyleAxes(game: string, axes: StyleAxes): Promise<StyleAxes | null> {
   void game
-  const r = await getWorkbenchHost().extension.fetch('style-axes', {
+  const r = await pluginFetch('style-axes', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(axes),

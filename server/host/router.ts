@@ -11,6 +11,10 @@ import {
   getAssetIdFromArgs,
   WbServiceInputError,
 } from './wb-service'
+import { WB_GAME_VIDEO_POST_SERVICE_ROUTES } from './http-routes'
+
+export { WB_GAME_VIDEO_HTTP_ROUTES, WB_GAME_VIDEO_POST_SERVICE_ROUTES } from './http-routes'
+export type { WbGameVideoHttpRoute, WbGameVideoServiceMethod } from './http-routes'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -126,26 +130,11 @@ function parsePositiveInteger(value: string | undefined, label: string, allowZer
   return parsed
 }
 
-type ServiceMethod =
-  | 'importCharacterRefs'
-  | 'importSceneRefs'
-  | 'generateShotScript'
-  | 'generateKeyframe'
-  | 'generateVideo'
-  | 'generateNodeVideo'
-
-const POST_ROUTES = new Map<string, ServiceMethod>([
-  ['references/characters/import', 'importCharacterRefs'],
-  ['references/scenes/import', 'importSceneRefs'],
-  ['generation/shot-script', 'generateShotScript'],
-  ['generation/keyframe', 'generateKeyframe'],
-  ['generation/video', 'generateVideo'],
-  ['generation/node-video', 'generateNodeVideo'],
-])
-
 /**
  * Creates the transport-neutral extension router. Framework adapters remain
  * host responsibilities and receive these status/headers/body values verbatim.
+ *
+ * Route inventory SSOT: `./http-routes.ts`.
  */
 export function createWbGameVideoRouter(
   context: WorkbenchExtensionContext,
@@ -229,7 +218,7 @@ export function createWbGameVideoRouter(
           })
         }
         if (method === 'POST') {
-          const serviceMethod = POST_ROUTES.get(path)
+          const serviceMethod = WB_GAME_VIDEO_POST_SERVICE_ROUTES.get(path)
           if (serviceMethod) {
             exactQuery(request.query, [])
             return jsonResponse(
