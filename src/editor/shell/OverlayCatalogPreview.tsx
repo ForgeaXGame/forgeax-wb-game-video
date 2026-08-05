@@ -18,6 +18,7 @@ import { renderOverlayChildPreview } from './overlayChildPreview'
 import { defaultsForComponent, isInteractive } from './editors'
 import { OVERLAY_PRESET_MIME } from './ComponentLibrary'
 import { overlayFitTargets } from './overlay-fit-targets'
+import aiParameterFillIcon from './assets/ai-parameter-fill.png'
 import {
   OverlayCanvasInteraction,
   type CanvasBox,
@@ -273,6 +274,15 @@ const PREVIEW_CSS = `
   font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 3px;
   background: #7a2020; color: #ffd9d9; pointer-events: none;
 }
+/* 按键重复：框内右上角警告图标，避开外侧 AI 快捷入口。 */
+.ocp-key-warn-icon {
+  position: absolute; right: 3px; top: 3px; z-index: 6;
+  width: 18px; height: 18px; border-radius: 5px;
+  display: grid; place-items: center;
+  background: #d8d8d8; color: #ff5b5b; pointer-events: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,.28);
+}
+.ocp-key-warn-icon svg { display: block; width: 12px; height: 12px; }
 /* 选中态尺寸标牌默认放在下方；靠近边缘时由渲染逻辑切换到可见侧。 */
 .ocp-dim {
   position:absolute; z-index:4; white-space:nowrap;
@@ -285,11 +295,11 @@ const PREVIEW_CSS = `
 .ocp-dim.is-left { right:calc(100% + 5px); top:50%; transform:translateY(-50%); }
 .ocp-dim.is-right { left:calc(100% + 5px); top:50%; transform:translateY(-50%); }
 .ocp-ai-quick {
-  width:28px; height:22px; padding:0;
-  border:1px solid #666; border-radius:4px;
-  background:#353535; color:#888; font:inherit; font-size:10px; white-space:nowrap;
+  display:block; width:18px; height:18px; padding:0;
+  border:0; border-radius:0; background:transparent; opacity:1;
   pointer-events:none;
 }
+.ocp-ai-quick img { display:block; width:18px; height:18px; }
 .ocp-ai-hover-zone {
   position:absolute; z-index:5; display:flex; pointer-events:auto;
 }
@@ -302,6 +312,12 @@ const PREVIEW_CSS = `
 }
 .ocp-viewport .oci-frame.is-selected {
   border-style:solid; border-color:#ff9c2a;
+}
+.ocp-viewport .oci-frame.is-warn,
+.ocp-viewport .oci-frame.is-selected.is-warn,
+.ocp-viewport .oci-frame.is-passive.is-hovered.is-warn {
+  border-style:solid; border-color:#ff6b6b;
+  box-shadow:0 0 0 1px rgba(255,107,107,.48);
 }
 `
 
@@ -394,6 +410,8 @@ export interface OverlayCatalogPreviewProps {
   onPatchChildLayout?: (childId: string, patch: Partial<Layout>) => void
   /** 交互热区重叠冲突集变化时回调（DOM 实测得出）——供上层做参数列表标红 / banner。 */
   onWarnChange?: (ids: Set<string>) => void
+  /** 按键重复冲突的 childId（跨界面/节点扫描）；画布红框 + 右上角警告图标。 */
+  keyConflictChildIds?: ReadonlySet<string>
   /** 是否显示铺满舞台的白色虚线设计框；基础界面只读预览关闭。 */
   showDesignCanvas?: boolean
   /** 只在预览中把每个组件的真实内容居中，不修改持久化 layout。 */
@@ -415,6 +433,7 @@ export function OverlayCatalogPreview({
   onAddChild,
   onPatchChildLayout,
   onWarnChange,
+  keyConflictChildIds,
   showDesignCanvas = true,
   centerChildren = false,
   showTimeScrubber,
@@ -734,10 +753,11 @@ export function OverlayCatalogPreview({
         zIndex: num(child.layout?.zIndex, 0),
         movable: !!onPatchChildLayout,
         resizable: false,
-        warn: warnIds.has(child.id),
+        warn: warnIds.has(child.id) || !!keyConflictChildIds?.has(child.id),
+        keyConflict: !!keyConflictChildIds?.has(child.id),
       }
     })
-  }, [centerChildren, contentBoxes, onPatchChildLayout, overlay.children, warnIds])
+  }, [centerChildren, contentBoxes, keyConflictChildIds, onPatchChildLayout, overlay.children, warnIds])
 
   return (
     <div className={`ocp-root${fillAvailableHeight ? ' is-workspace-fill' : ''}`}>
@@ -861,11 +881,28 @@ export function OverlayCatalogPreview({
               renderFrame={(item, state) => {
                 const sizeLabelSide = overlaySizeLabelSide(state.box, stagePx)
                 const aiControlSide = overlayAiControlSide(state.box, stagePx, sizeLabelSide)
+                const hotspotWarn = warnIds.has(item.id)
                 return (
                   <>
-                  {item.warn ? (
+                  {hotspotWarn ? (
                     <span className="ocp-warn-tag" title="与另一交互组件热区重叠，运行时点击会互相遮挡">
                       重叠
+                    </span>
+                  ) : null}
+                  {item.keyConflict ? (
+                    <span
+                      className="ocp-key-warn-icon"
+                      data-testid={`key-conflict-icon-${item.id}`}
+                      title="交互按键与其它界面或组件重复"
+                      aria-label="按键重复"
+                    >
+                      <svg viewBox="0 0 12 12" aria-hidden="true">
+                        <path
+                          fill="currentColor"
+                          fillRule="evenodd"
+                          d="M6 1.05 11.35 10.6H.65L6 1.05Zm0 2.55c.38 0 .66.26.62.62l-.4 3.35a.55.55 0 0 1-1.1 0l-.4-3.35c-.04-.36.24-.62.62-.62Zm0 5.55a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44Z"
+                        />
+                      </svg>
                     </span>
                   ) : null}
                   {state.selected ? (
@@ -884,7 +921,20 @@ export function OverlayCatalogPreview({
                           onPointerEnter={() => setAiHoveredChildId(item.id)}
                           onPointerLeave={() => setAiHoveredChildId((current) => current === item.id ? null : current)}
                         >
-                          <button type="button" className="ocp-ai-quick" disabled>AI</button>
+                          <button
+                            type="button"
+                            className="ocp-ai-quick"
+                            aria-label="AI"
+                            disabled
+                          >
+                            <img
+                              src={aiParameterFillIcon}
+                              alt=""
+                              aria-hidden="true"
+                              width={18}
+                              height={18}
+                            />
+                          </button>
                         </span>
                       ) : null}
                     </>

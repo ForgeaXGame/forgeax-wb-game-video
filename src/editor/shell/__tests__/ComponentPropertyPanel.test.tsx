@@ -2,12 +2,14 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BattleSkillManifest } from '../../../runtime/component-host/components/new/BattleSkill'
+import { TextOptionManifest } from '../../../runtime/component-host/components/new/TextOption'
 import { registerComponent, unregisterComponent } from '../../../runtime/registry/component-registry'
 import { ComponentPropertyPanel } from '../ComponentPropertyPanel'
 
 afterEach(() => {
   cleanup()
   unregisterComponent('BattleSkill')
+  unregisterComponent('TextOption')
 })
 
 const baseProps = {
@@ -354,5 +356,89 @@ describe('ComponentPropertyPanel', () => {
     )
     expect(screen.getByText('在画布或图层中选择一个组件。')).toBeTruthy()
     expect(screen.getByRole('tab', { name: '组件' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('marks duplicate interaction keys in the 交互按键 section', () => {
+    registerComponent('BattleSkill', BattleSkillManifest)
+    const selectedChild = {
+      id: 'skills',
+      component: 'BattleSkill',
+      inputs: { heavyKey: 'C' },
+    }
+    const conflicts = new Map([
+      ['hud/skills/heavyKey', {
+        site: {
+          id: 'hud/skills/heavyKey',
+          overlayId: 'hud',
+          overlayTitle: '战斗 HUD',
+          childId: 'skills',
+          componentId: 'BattleSkill',
+          componentName: '战斗技能条',
+          inputKey: 'heavyKey',
+          inputLabel: '重攻击按键',
+          interactionName: '重攻击',
+          key: 'C',
+          normalizedKey: 'C',
+        },
+        others: [{
+          id: 'other/opt/triggerKey',
+          overlayId: 'other',
+          overlayTitle: '新方案 3',
+          childId: 'opt',
+          componentId: 'TextOption',
+          componentName: '文字交互',
+          inputKey: 'triggerKey',
+          inputLabel: '触发按键',
+          interactionName: '触发',
+          key: 'C',
+          normalizedKey: 'C',
+        }],
+      }],
+    ])
+
+    render(
+      <ComponentPropertyPanel
+        {...baseProps}
+        overlay={{ id: 'hud', children: [selectedChild] }}
+        selectedChild={selectedChild}
+        keyConflicts={conflicts}
+      />,
+    )
+
+    const heavy = screen.getByDisplayValue('C')
+    expect(heavy.closest('[data-key-conflict="true"]')).toBeTruthy()
+    expect(screen.getByText('按键重复')).toBeTruthy()
+    fireEvent.pointerEnter(heavy.closest('[data-key-conflict]')!)
+    expect(screen.getByRole('tooltip').textContent).toBe('按键C已应用于文字交互-触发')
+  })
+
+  it('does not focus or activate controls when field labels are clicked', () => {
+    registerComponent('TextOption', TextOptionManifest)
+    const selectedChild = {
+      id: 'option',
+      component: 'TextOption',
+      inputs: {},
+    }
+    const { container } = render(
+      <ComponentPropertyPanel
+        {...baseProps}
+        overlay={{ id: 'hud', children: [selectedChild] }}
+        selectedChild={selectedChild}
+      />,
+    )
+
+    const fontSizeInput = container.querySelector<HTMLInputElement>('input[type="number"]')!
+    const fontSizeLabel = screen.getByText('字号')
+    const fontSizeLayout = fontSizeLabel.closest<HTMLElement>('.cff-field-layout')!
+    fireEvent.click(fontSizeLabel)
+    expect(document.activeElement).not.toBe(fontSizeInput)
+    expect(getComputedStyle(fontSizeLayout).gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))')
+
+    fireEvent.click(screen.getByText('字色'))
+    expect(document.querySelector('.gc-cp-panel')).toBeNull()
+    expect(container.querySelector('.cff-property-grid label')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '#F0F0F0' }))
+    expect(document.querySelector('.gc-cp-panel')).toBeTruthy()
   })
 })

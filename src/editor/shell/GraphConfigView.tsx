@@ -1,6 +1,6 @@
 /**
  * GraphConfigView —— 新引擎场景级配置中间页（界面 / 规则）。
- * 与蓝图共用 graphScenario store；顶部工具条：保存 / 版本 / 重置。
+ * 与蓝图共用 graphScenario store。规则页保留顶部版本/保存条；界面画布不再显示该条。
  *
  * 两种形态：
  *  - **界面**（overlays）：目录只在应用左栏，主区直接渲染单个 OverlaySchemeEditor；
@@ -238,15 +238,17 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: 'var(--work, #0e0c09)' }}>
-      <div style={{ padding: 8, borderBottom: '1px solid var(--line-soft, #2e2924)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', color: 'var(--txt, #f6f1e9)' }}>
-        <VersionPicker />
-        <button onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
-        <button onClick={() => { if (confirm('重置为内置 demo 数据？当前未保存的编辑将丢失。')) reset() }}>↺ 重置</button>
-        {isDraft ? (
-          <span style={{ opacity: 0.85, fontSize: 12, color: '#ffc53d' }}>⚠ 未保存草稿</span>
-        ) : null}
-        {savedTip ? <span style={{ opacity: 0.6, fontSize: 11 }}>{savedTip}</span> : null}
-      </div>
+      {!overlaysMode ? (
+        <div style={{ padding: 8, borderBottom: '1px solid var(--line-soft, #2e2924)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', color: 'var(--txt, #f6f1e9)' }}>
+          <VersionPicker />
+          <button onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
+          <button onClick={() => { if (confirm('重置为内置 demo 数据？当前未保存的编辑将丢失。')) reset() }}>↺ 重置</button>
+          {isDraft ? (
+            <span style={{ opacity: 0.85, fontSize: 12, color: '#ffc53d' }}>⚠ 未保存草稿</span>
+          ) : null}
+          {savedTip ? <span style={{ opacity: 0.6, fontSize: 11 }}>{savedTip}</span> : null}
+        </div>
+      ) : null}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {overlaysMode ? (
           (() => {

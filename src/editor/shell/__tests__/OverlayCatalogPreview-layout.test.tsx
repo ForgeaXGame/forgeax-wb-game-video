@@ -295,6 +295,8 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       expect(container.querySelector('[data-canvas-item="damage"]')).toHaveClass('is-hovered')
       const ai = screen.getByRole('button', { name: 'AI' })
       expect(ai).toBeDisabled()
+      expect(ai.querySelector('img')).toHaveAttribute('width', '18')
+      expect(ai.querySelector('img')).toHaveAttribute('height', '18')
       expect(screen.getByTestId('ai-hover-zone-damage')).toHaveAttribute('data-ai-control-side', 'top')
     })
 

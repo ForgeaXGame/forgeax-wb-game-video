@@ -36,6 +36,10 @@ import type {
   VariableCreateHandler,
 } from './component-form-fields'
 import { ComponentInputsDisclosure } from './ComponentInputsDisclosure'
+import {
+  collectCurrentNodeKeyBindingSites,
+  findKeyBindingConflicts,
+} from './keyBindingConflicts'
 import { overlayDisplayLabel, PRESET_SCHEME_BY_ID } from './schemeOverlays'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { NodeActionsEditor } from './NodeActionsEditor'
@@ -1188,6 +1192,9 @@ export function NodeInspector({
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
   const d = node.data
+  const keyConflicts = findKeyBindingConflicts(
+    collectCurrentNodeKeyBindingSites(overlays, nodeId, d.overlayNodes),
+  )
   const nodeIds = graph.nodes.map((n) => n.id)
   /** 下拉展示：中文名称只显示名称；没有中文名称时保留 id 兜底。 */
   const nodeLabel = (id: string) => {
@@ -1622,6 +1629,11 @@ export function NodeInspector({
                           onCreateEntity={onCreateEntity}
                           onCreateVariable={onCreateVariable}
                           onCreateFormula={onCreateFormula}
+                          keyConflicts={{
+                            overlayId: mid,
+                            childId: child.id,
+                            conflicts: keyConflicts,
+                          }}
                         />
                       )
                     })}

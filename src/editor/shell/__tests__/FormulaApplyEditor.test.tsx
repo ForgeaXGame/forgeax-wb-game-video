@@ -17,6 +17,41 @@ function chooseCascade(trigger: HTMLElement, ...labels: string[]): void {
 }
 
 describe('FormulaApplyEditor variable guidance', () => {
+  it('renders incomplete parameter binding as a dark warning bar with AI entry', () => {
+    const formula: Formula = {
+      id: 'formula-param',
+      name: '参数公式',
+      ast: { t: 'hole', id: 'param', holeId: 'param', kind: 'number', label: '参数' },
+    }
+    const { container } = render(
+      <FormulaApplyEditor
+        formulaId={formula.id}
+        holeBindings={{}}
+        formulas={{ [formula.id]: formula }}
+        entities={{}}
+        variables={{}}
+        propertyLayout
+        onChange={vi.fn()}
+      />,
+    )
+
+    const alert = container.querySelector<HTMLElement>('[data-formula-binding-alert]')!
+    expect(alert).toHaveStyle({
+      background: '#222',
+      color: '#ff6b6b',
+      borderRadius: '8px',
+      padding: '0px 8px 0px 10px',
+    })
+    expect(alert.style.gap).toBe('')
+    expect(alert.style.minHeight).toBe('')
+    expect(alert).toHaveTextContent('参数绑定未完成：参数（尚未选择数值来源），补全后才会用于结算')
+    const aiButton = screen.getByRole('button', { name: 'AI 补全参数' })
+    expect(aiButton).toBeDisabled()
+    expect(aiButton).toHaveStyle({ width: '18px', height: '18px' })
+    expect(aiButton.querySelector('img')).toHaveAttribute('width', '18')
+    expect(aiButton.querySelector('img')).toHaveAttribute('height', '18')
+  })
+
   it('prompts the author to create a variable referenced by the selected formula', () => {
     const formula: Formula = {
       id: 'formula-rage',

@@ -4,7 +4,7 @@
  * 基础界面保留只读居中预览，但不显示设计框、不允许结构编辑，也不展示控件库。
  * 组件增删改经回调交给持有 scenario.ui.overlays 的上层（GraphConfigView）。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { Entity, Layout, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
@@ -18,6 +18,11 @@ import {
   type VariableCreateHandler,
 } from './component-form-fields'
 import { ComponentPropertyPanel } from './ComponentPropertyPanel'
+import {
+  collectCurrentOverlayKeyBindingSites,
+  findKeyBindingConflicts,
+  keyConflictChildIds,
+} from './keyBindingConflicts'
 import { injectStyleOnce } from '../../styles/injectStyle'
 
 const WORKSPACE_CSS = `
@@ -211,6 +216,20 @@ export function OverlaySchemeEditor({
   )
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
+  const overlays = useMemo(
+    () => overlayCatalog ?? { [overlayId]: overlay },
+    [overlay, overlayCatalog, overlayId],
+  )
+  const keyConflicts = useMemo(
+    () => findKeyBindingConflicts(
+      collectCurrentOverlayKeyBindingSites(overlay, overlays),
+    ),
+    [overlay, overlays],
+  )
+  const keyConflictIds = useMemo(
+    () => keyConflictChildIds(overlayId, keyConflicts),
+    [keyConflicts, overlayId],
+  )
   const selectedChild = overlay.children.find((child) => child.id === selectedChildId)
 
   useEffect(() => {
@@ -278,6 +297,7 @@ export function OverlaySchemeEditor({
               ? undefined
               : (childId, patch) => onPatchChild(childId, { layout: patch })}
             onWarnChange={locked ? undefined : setWarnIds}
+            keyConflictChildIds={keyConflictIds}
             showDesignCanvas={!locked}
             centerChildren={locked}
             showTimeScrubber={false}
@@ -353,7 +373,12 @@ export function OverlaySchemeEditor({
               ) : null}
               {overlay.children.map((child) => {
                 const selected = child.id === selectedChildId
-                const warn = warnIds.has(child.id)
+                const hotspotWarn = warnIds.has(child.id)
+                const keyWarn = keyConflictIds.has(child.id)
+                const warn = hotspotWarn || keyWarn
+                const warnTitle = keyWarn
+                  ? '交互按键与其它界面或组件重复'
+                  : '与另一交互组件热区重叠，运行时点击会互相遮挡'
                 return (
                   <button
                     type="button"
@@ -370,7 +395,7 @@ export function OverlaySchemeEditor({
                       <span className="ose-layer-id">· {child.id}</span>
                     </span>
                     {warn ? (
-                      <span style={{ flex: 'none', color: '#ff6b6b', fontSize: 11 }} title="与另一交互组件热区重叠，运行时点击会互相遮挡">⚠</span>
+                      <span style={{ flex: 'none', color: '#ff6b6b', fontSize: 11 }} title={warnTitle}>⚠</span>
                     ) : null}
                   </button>
                 )
@@ -398,6 +423,7 @@ export function OverlaySchemeEditor({
         onCreateEntity={onCreateEntity}
         onCreateVariable={onCreateVariable}
         onCreateFormula={onCreateFormula}
+        keyConflicts={keyConflicts}
       />
     </div>
   )

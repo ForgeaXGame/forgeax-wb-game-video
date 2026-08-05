@@ -7,6 +7,7 @@ import {
   type EntityAttributeCreateHandler,
   type EntityCreateHandler,
   type FormulaCreateHandler,
+  type KeyBindingConflictContext,
   type VariableCreateHandler,
 } from './component-form-fields'
 
@@ -23,6 +24,7 @@ export function ComponentInputsDisclosure({
   onCreateEntity,
   onCreateVariable,
   onCreateFormula,
+  keyConflicts,
 }: {
   childId: string
   componentId: string
@@ -36,6 +38,7 @@ export function ComponentInputsDisclosure({
   onCreateEntity?: EntityCreateHandler
   onCreateVariable?: VariableCreateHandler
   onCreateFormula?: FormulaCreateHandler
+  keyConflicts?: KeyBindingConflictContext
 }): JSX.Element {
   const componentName = getComponentManifest(componentId)?.label ?? componentId
   const summary = summarizeComponentInputs(componentId, values)
@@ -53,6 +56,7 @@ export function ComponentInputsDisclosure({
       onCreateEntity={onCreateEntity}
       onCreateVariable={onCreateVariable}
       onCreateFormula={onCreateFormula}
+      keyConflicts={keyConflicts}
     />
   )
 

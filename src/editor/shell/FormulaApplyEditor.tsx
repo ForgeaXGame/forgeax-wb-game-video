@@ -10,6 +10,7 @@ import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import { createRng } from '../../runtime/engine/rng'
 import { LooseNumberInput } from './TermChainEditor'
 import { CascadingPicker, type CascadingPickerOption } from './CascadingPicker'
+import aiParameterFillIcon from './assets/ai-parameter-fill.png'
 import {
   compileFormula,
   formulaHoleBindingIssues,
@@ -45,6 +46,56 @@ const row: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', flex
 const hint: CSSProperties = { fontSize: 11, opacity: 0.65, lineHeight: 1.4 }
 const holeLbl: CSSProperties = { fontSize: 11, opacity: 0.8, minWidth: 120 }
 const ATTR_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/
+
+function BindingIncompleteAlert({ children }: { children: string }): JSX.Element {
+  return (
+    <div
+      role="alert"
+      data-formula-binding-alert
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        width: '100%',
+        boxSizing: 'border-box',
+        padding: '0 8px 0 10px',
+        borderRadius: 8,
+        background: '#222',
+        color: '#ff6b6b',
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+      <button
+        type="button"
+        disabled
+        aria-label="AI 补全参数"
+        title="AI 补全暂不可用"
+        style={{
+          flex: 'none',
+          display: 'block',
+          width: 18,
+          height: 18,
+          padding: 0,
+          border: 0,
+          borderRadius: 0,
+          background: 'transparent',
+          cursor: 'not-allowed',
+          opacity: 1,
+        }}
+      >
+        <img
+          src={aiParameterFillIcon}
+          alt=""
+          aria-hidden="true"
+          width={18}
+          height={18}
+          style={{ display: 'block' }}
+        />
+      </button>
+    </div>
+  )
+}
 
 interface FormulaCreateDraft {
   entityId: string
@@ -853,11 +904,11 @@ export function FormulaApplyEditor({
               )
             }) : null}
           {visibleBindingIssues.length > 0 ? (
-            <p role="alert" style={{ ...hint, color: '#ffb86c', fontWeight: 600 }}>
-              参数绑定未完成：
-              {visibleBindingIssues.map((issue) => `${issue.label}（${issue.reason}）`).join('、')}。
-              补全后才会用于结算。
-            </p>
+            <BindingIncompleteAlert>
+              {`参数绑定未完成：${visibleBindingIssues
+                .map((issue) => `${issue.label}（${issue.reason}）`)
+                .join('、')}，补全后才会用于结算`}
+            </BindingIncompleteAlert>
           ) : propertyLayout ? null : bindingIssues.length > 0 ? null : sampleValue != null ? (
             <p style={hint}>≈ {sampleValue}<span style={{ opacity: 0.6 }}>（按样例实体/变量值试算）</span></p>
           ) : (
