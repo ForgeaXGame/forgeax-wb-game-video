@@ -326,3 +326,180 @@ MCP 命名：`toMcpName('wb-game-video:get-graph')` → `workbench__wb_game_vide
 1. **Host Media HTTP + 可恢复上传**：需把 `createArrivalMediaCapability` 升为 `ResumableMediaCapability`（补 `update` + uploads 四件套），才能挂上 `/games/:gameId/media*`。
 2. **视频生成**：需注册 `media.video.generate@1`（如 `@forgeax-extension/kino-video-provider`）并注入 `context.videoGeneration`；当前 `model-gateway-adapter.generateVideo` 仅抛错。
 3. **agentic_os**：不补 Host；对齐能力靠 mate 的 `/__workbench__/v1` + MCP 暴露面即可。
+
+---
+
+## 附录 B · `/api/game-host` 与 Workbench Host 的现行映射
+
+> [!IMPORTANT]
+> `/api/game-host` **没有被删除，也不属于 §7 / A.5 的禁止路径**。ForgeaX Studio
+> 当前同时挂载 `/api/game-host` 与 `/__workbench__/v1`：前者是产品级 Game Host
+> HTTP 表面，后者是扩展消费的共享 Workbench Host HTTP 表面。二者不是 HTTP
+> 代理关系：package 侧由两套 adapter 操作同一份游戏目录 SSOT，版本侧共同复用
+> `game-git.ts`。
+
+### B.1 两个 HTTP 表面如何汇合
+
+```mermaid
+flowchart TD
+    UI["wb-game-video 页面操作"]
+    Client["ExtensionClient: gamePackage / versions"]
+    Workbench["Workbench Host: /__workbench__/v1"]
+    Product["产品 Game Host: /api/game-host"]
+    Workspace["ForgeaxWorkspaceAdapter"]
+    Version["ForgeaxVersionAdapter"]
+    Router["createGameHostRouter"]
+    Scoped["scoped files + locks"]
+    Package["game-package 产品实现"]
+    Git["game-git 版本实现"]
+    Disk[".forgeax/games/{gameId}"]
+
+    UI --> Client
+    Client --> Workbench
+    Workbench --> Workspace
+    Workbench --> Version
+    Product --> Router
+    Router --> Package
+    Router --> Git
+    Workspace --> Scoped
+    Version --> Git
+    Scoped --> Disk
+    Package --> Disk
+    Git --> Disk
+```
+
+Workbench Host 的 ForgeaX 产品接线位于：
+
+- `forgeax-server/src/workbench/runtime.ts`：注入 `createForgeaxWorkspaceAdapter()` 与
+  `createForgeaxVersionAdapter()`；
+- `forgeax-platform-io/src/workbench/workspace-adapter.ts`：把 `gameId` 限定到
+  `.forgeax/games/{gameId}`，提供文件、锁和版本 capability；
+- `forgeax-platform-io/src/workbench/version-adapter.ts`：复用
+  `game-git.ts` 的 `createVersion`、`currentVersion`、`listVersions` 与历史文件读取；
+- `forgeax-platform-io/src/api/game-host.ts`：提供 `/api/game-host` 的产品 HTTP 路由，
+  同样复用 `game-package.ts` 与 `game-git.ts`。
+
+### B.2 Package / version 路径逐项映射
+
+下表中的 Workbench 路径均相对常见 mount `/__workbench__/v1`。页面不得自行硬编码
+这个 mount；嵌入态必须使用 nonce-bound handshake 下发的 `endpoints.gamePackage`、
+`endpoints.gameVersions` 与 `endpoints.gameComponents`。
+
+| 页面能力 | `ExtensionClient` 调用 | Workbench Host 路径 | Game Host 对应路径 | 共享底层 |
+|:--|:--|:--|:--|:--|
+| 查询 package 状态 | `gamePackage.status()` | `GET /games/:gameId/package/status` | `GET /api/game-host/games/:slug/package/status` | 同一 package 文件集合；各自校验/投影 |
+| 初始化 package | `gamePackage.initialize()` | `POST /games/:gameId/package/initialize?runtimeId=` | `POST /api/game-host/games/:slug/package/initialize` | Workbench runtime seed / 产品 `seedProvider` 写同一布局 |
+| 读取 package | `gamePackage.load()` | `GET /games/:gameId/package` | `GET /api/game-host/games/:slug/package` | Workbench scoped files / `game-package.ts` 读同一 SSOT |
+| 保存 package | `gamePackage.save(patch)` | `PUT /games/:gameId/package` | `PUT /api/game-host/games/:slug/package` | Workbench package lock / `game-package.ts` 事务写 |
+| 创建版本 | `versions.create(message)` | `POST /games/:gameId/versions` | `POST /api/game-host/games/:slug/versions` | `game-git.ts:createVersion` |
+| 列出版本 | `versions.list()` | `GET /games/:gameId/versions` | `GET /api/game-host/games/:slug/versions` | `game-git.ts:listVersions` |
+| 查询当前版本 | `versions.current()` | `GET /games/:gameId/versions/current` | `GET /api/game-host/games/:slug/versions/current` | `game-git.ts:currentVersion` |
+| 读取历史 package | `versions.loadPackage(tag)` | `GET /games/:gameId/versions/:tag/package` | `GET /api/game-host/games/:slug/versions/:tag/package` | git tag 文件读取 |
+| 加载游戏组件 | `gameComponents.moduleUrl(path)` | `GET /games/:gameId/components/:path` | `GET /api/game-host/games/:slug/components/:path` | 同一游戏目录组件产物；各自做路径约束 |
+
+> [!NOTE]
+> `:gameId` 是 Workbench 契约中的宿主绑定身份，`:slug` 是 ForgeaX 产品路由的路径参数。
+> 在 ForgeaX 当前 adapter 中二者指向同一个安全游戏目录，但扩展不得自行把 `gameId`
+> 归一化成 slug，也不得在 handshake endpoint 缺失时私自回退到 `/api/game-host`。
+
+> [!NOTE]
+> B.2 是**能力语义映射**，不是响应 JSON 必然逐字一致。例如产品 Game Host 的版本列表
+> 可能包在 `{ versions: [...] }` 中，而 Workbench `versions.list()` 返回规范化列表。
+
+### B.3 页面行为的硬要求
+
+- 保存操作必须经 `gamePackage.save()` 成功后才清除本地 draft；保存 package 与创建版本是
+  两个显式动作，不得把一次普通保存悄悄变成 git commit/tag。
+- 创建、刷新、读取历史版本必须经 `versions.*`；`versions.supported() === false` 时页面应
+  隐藏相关操作或明确显示“宿主不支持版本能力”，不得静默展示一个永远为空的版本器。
+- ForgeaX 生产宿主必须在 handshake 中提供 `gameVersions`；缺失应作为产品接线错误进入
+  集成测试，而不是由页面吞掉后返回 `null` / `[]`。
+- `/api/game-host` 继续服务需要产品级 Game Host API 的调用方；`wb-game-video` 嵌入页只消费
+  Workbench Host endpoint，避免把产品路径、端口或部署拓扑写进扩展发布包。
+
+---
+
+## 附录 C · REQUIRED：恢复 `src/runtime/sdk`
+
+> [!WARNING]
+> `src/runtime/sdk` 在 `084662a release: prepare wb-game-video 0.2.0` 中被整目录删除；
+> 必须从该提交的父提交中恢复被删除的 `src/runtime/sdk` 原有内容，不用 `PlayerBootstrap`
+> 替代该目录。
+
+需要恢复：
+
+- `src/runtime/sdk/client/__tests__/sdk-client.test.ts`
+- `src/runtime/sdk/client/asset-resolver.ts`
+- `src/runtime/sdk/client/game-package-client.ts`
+- `src/runtime/sdk/react/RuntimeGameApp.tsx`
+- `src/runtime/sdk/server/__tests__/game-media-middleware.test.ts`
+- `src/runtime/sdk/server/game-media-middleware.ts`
+- `src/runtime/sdk/server/vite.config.ts`
+- `src/runtime/sdk/standalone/main.tsx`
+- `src/runtime/sdk/standalone/styles.css`
+- `src/runtime/sdk/standalone/wb-game-video.html`
+- `src/runtime/sdk/tsconfig.json`
+
+---
+
+## 附录 D · 待补全的 SDK 接口映射资料
+
+> [!IMPORTANT]
+> 本附录记录的是下一步需要继续收集并补写到本文的内容，不是已经完成的结论，也不是
+> 代码修改方案。执行本附录时只梳理源码、核对事实并更新本文，不修改业务代码。
+
+### D.1 预期迁移效果
+
+1. `wb-game-video` 将作为一个对外导出 SDK 的包使用。
+2. SDK 内已有多处固化的接口调用。SDK 被不同项目使用时，对方不一定提供相同的接口路径，
+   因此需要具备接口映射能力：SDK 发出请求时，由接入项目把 SDK 使用的地址转换为该项目
+   实际服务的地址。
+3. 不同项目初始化 SDK 时，需要传入 SDK 运行所需的参数，以及接口映射或请求拦截配置。
+   完成映射后，SDK 的各项功能应能在不同项目中运行，而不要求各项目使用完全相同的路径。
+4. EA 当前已经存在对应路径的服务。EA 可以不配置映射；如果显式配置，则映射结果应保持
+   原路径不变。
+
+### D.2 下一步必须收集的内容
+
+后续梳理不能只复述本文已经列出的接口，必须以当前源码调用点和宿主路由实现为证据，完成：
+
+1. 找出 `wb-game-video` 当前所有需要做映射的接口，包括请求 Method、完整路径形状、路径参数、
+   query、调用位置和业务用途。
+2. 对本文前面已经记录过的接口，也按 D.3 的统一格式重新给出，不能只补新增接口。
+3. 梳理这些映射接口在哪里做，以及如何能映射拦截到 SDK 的实际调用；必须写明具体映射位置、
+   拦截方式和覆盖范围，不能仅凭存在映射代码就判断完成。
+4. 给出映射前与映射后的逐项对应关系，并说明不同项目初始化 SDK 时，应从哪里提供对应配置。
+5. EA 一列写出当前实际落点；无需转换的接口明确写“原样”，不能省略该列。
+6. 单独补全 `/api/game-host`：核对 package、保存、初始化、版本、历史版本、component 等相关
+   路径目前如何与 SDK 使用的接口对应，映射发生在哪里，以及实际调用如何被映射拦截。
+7. 对没有 `/api/game-host` 对应路径的接口，也必须明确写出当前实际服务落点，不能为了补齐
+   表格而推测或虚构接口。
+8. 核对 `src/runtime/sdk` 被删除前的原始内容，并把需要原样恢复的范围写清楚；恢复范围以
+   附录 C 为起点继续核对，不增加构建、测试或跨仓命令说明。
+
+### D.3 统一输出格式
+
+每个接口至少按下表字段输出；同一路径的不同 Method 或不同业务语义需要分开记录：
+
+| 字段 | 要求 |
+|:--|:--|
+| 接口 | Method + 映射前完整路径形状 |
+| 用途 | 该接口在 SDK 功能中的实际作用 |
+| SDK 调用位置 | 发起调用的具体源码文件和入口 |
+| 当前服务实现 | 当前由哪个宿主、router、adapter 或 capability 实现 |
+| 当前映射位置 | 映射或拦截发生的具体源码文件和入口；没有则明确写“无” |
+| 映射拦截方式 | 写明如何拦截 SDK 的实际调用、具体入口及覆盖范围 |
+| EA 对应地址 | EA 当前实际地址；无需转换时写“原样”并列出原路径 |
+| 其他项目接入点 | 初始化 SDK 时由哪个参数、配置或宿主能力提供目标地址 |
+| 映射后对应关系 | 映射前地址 → 目标服务地址；未知目标不得自行假设 |
+| 代码证据 | 支撑结论的源码文件与符号 |
+
+最终结果应让后续实现者仅通过本文就能知道：哪些接口必须映射、每个接口做什么、映射在哪里、
+现有拦截是否覆盖、EA 为什么可以原样使用，以及其他项目需要在初始化 SDK 时提供什么信息。
+
+### D.4 本轮边界
+
+- 只收集和整理事实，并把结果继续补充到 `docs/outbound-apis.md`。
+- 不修改 SDK、Workbench Host、`/api/game-host`、router、adapter 或页面业务代码。
+- 不在资料缺失时设计新接口、新参数或新映射机制；无法确认的内容标记为待确认并附上缺失证据。
+- 不执行 `src/runtime/sdk` 的代码恢复；实际恢复在后续明确进入实现阶段时按附录 C 进行。
