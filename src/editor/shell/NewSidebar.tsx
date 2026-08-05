@@ -5,7 +5,6 @@
  * 对应 GraphMain 的一个视图。未接入主区路由的 mock 树节点不作为可点击导航。
  */
 import { injectStyleOnce } from '../../styles/injectStyle'
-import { useGraphScenario } from '../persist/graphScenarioStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
 
 interface NavItem {
@@ -98,21 +97,12 @@ const NEW_SIDEBAR_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.ns-footer {
-  flex: none;
-  padding: 6px 12px;
-  border-top: 1px solid rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.45);
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 `
 
 export function NewSidebar(): JSX.Element {
   injectStyleOnce('new-sidebar', NEW_SIDEBAR_CSS)
   const view = useGraphView((state) => state.view)
   const setView = useGraphView((state) => state.setView)
-  const nodeCount = useGraphScenario((state) => state.graph?.nodes?.length ?? 0)
 
   return (
     <aside className="ns-sidebar" aria-label="视频游戏工坊">
@@ -131,9 +121,6 @@ export function NewSidebar(): JSX.Element {
           </button>
         ))}
       </nav>
-      <div className="ns-footer" aria-label={`当前节点总数 ${nodeCount}`}>
-        节点总数 {nodeCount}
-      </div>
     </aside>
   )
 }
