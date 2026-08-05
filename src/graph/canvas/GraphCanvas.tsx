@@ -64,8 +64,8 @@ function ensureCanvasStyle(): void {
     /* 展开 ⋮ 菜单时把整个 RF 节点抬到最上，避免「添加节点」等 tip 被右侧节点盖住 */
     .react-flow__node:has(.gv-bp-node-more:hover),.react-flow__node:has(.gv-bp-node-more:focus-within){z-index:1000!important}
     .react-flow,.react-flow__renderer{overflow:hidden!important}
-    /* 画布底色对齐 Figma 设计稿：#333333。 */
-    .react-flow__pane{background:#333333}
+    /* 画布底色：#232323。 */
+    .react-flow__pane{background:#232323}
     /* Figma 13135_19511：边连线 stroke-width 1（防 xyflow 默认 .react-flow__edge-path 的 1px 覆盖）。
        traversed(animated) 边 1.5px；配色由每条边的 inline style 提供，此处只兜底粗细。 */
     .react-flow__edge-path{stroke-width:1px}
@@ -663,7 +663,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
       {/* Figma 12414_5350 演出摘要行：左 "演出" 标签 12px 白 40%，右 "视频名称" 12px 白 80%，左右边距 8px。
           加底部圆角以对齐卡片，防止 #232323 背景在角落漏出。 */}
       {(details.performance || details.interfaces.length > 0 || details.settlements.length > 0) && (
-        <div data-testid="node-content-info" style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr)', columnGap: 8, rowGap: 4, padding: '4px 8px', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
+        <div data-testid="node-content-info" style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr)', columnGap: 8, rowGap: 4, padding: '4px 8px', borderTop: '1px solid rgba(255,255,255,0.06)', background: '#232323', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
           {details.performance && (
             <>
               <span style={{ color: 'rgba(255,255,255,0.40)', fontSize: 12 }}>演出</span>
