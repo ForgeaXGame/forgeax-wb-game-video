@@ -572,7 +572,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
           const first = fx.outputs[0]
           const firstFid = first?.data?.flowId ?? first?.id
           const firstDisplay = first?.data?.displayLabel ?? first?.label ?? firstFid
-          const firstColor = first ? handleColor(firstFid) : 'rgba(255,255,255,0.60)'
+          const firstColor = first ? handleColor(firstFid ?? '') : 'rgba(255,255,255,0.60)'
           return (
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: 'rgba(255,255,255,0.60)', height: 17 }}>
               {fx.inputs.map((h) => (

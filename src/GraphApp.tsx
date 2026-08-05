@@ -15,6 +15,7 @@ import { GraphPlaySurface } from './editor/shell/GraphPlaySurface'
 import { NewSidebar } from './editor/shell/NewSidebar'
 import { useGraphScenario } from './editor/persist/graphScenarioStore'
 import { useGraphView, installGraphViewSync } from './editor/persist/graphViewStore'
+import { installUiNavSync } from './editor/persist/uiNavSync'
 import { NODIA_DEMO } from './editor/demo/demo'
 import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
@@ -63,11 +64,16 @@ export function GraphApp(): JSX.Element {
 
   useEffect(() => {
     if (pane === null) return
-    return installGraphViewSync()
+    const disposeView = installGraphViewSync()
+    const disposeUiNav = installUiNavSync(pane)
+    return () => {
+      disposeUiNav()
+      disposeView()
+    }
   }, [pane])
 
   if (pane === 'left') {
-    return <div className="ga-root is-pane-left"><NewSidebar /></div>
+    return <div className="ga-root is-pane-left"><NewSidebar uiNavMode="left" /></div>
   }
   if (pane === 'center') {
     return <div className="ga-root is-pane-center"><GameBootstrap slug={gameSlug} onBoot={() => ensureBoot(gameSlug, NODIA_DEMO)}><GraphMain /></GameBootstrap></div>

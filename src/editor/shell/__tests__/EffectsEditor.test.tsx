@@ -87,6 +87,46 @@ describe('EffectsEditor numeric operations', () => {
     expect(latest[0]).toMatchObject({ op: 'add', value: 4 })
   })
 
+  it('replaces subtraction with division instead of nesting unary wraps', () => {
+    let latest: GraphEffect[] = []
+    function Harness(): JSX.Element {
+      const [effects, setEffects] = useState<GraphEffect[]>([{
+        kind: 'attr',
+        entityId: 'hero',
+        attr: 'hp',
+        op: 'add',
+        value: 10,
+      }])
+      latest = effects
+      return (
+        <EffectsEditor
+          value={effects}
+          propertyLayout
+          entities={{
+            hero: {
+              id: 'hero',
+              name: '主角',
+              attrs: { hp: 100 },
+              attrMeta: { hp: { label: '生命值' } },
+            },
+          }}
+          onChange={setEffects}
+        />
+      )
+    }
+
+    render(<Harness />)
+
+    fireEvent.click(screen.getByRole('button', { name: '−' }))
+    expect(latest[0]).toMatchObject({ op: 'add', value: { expr: '-(10)' } })
+
+    // − → ÷：先还原到点 − 前的操作数，再套 ÷，不得出现 1/(-(10))
+    fireEvent.click(screen.getByRole('button', { name: '÷' }))
+    expect(screen.getByRole('button', { name: '÷' }).classList.contains('is-on')).toBe(true)
+    expect(screen.getByRole('button', { name: '−' }).classList.contains('is-on')).toBe(false)
+    expect(latest[0]).toMatchObject({ op: 'mul', value: { expr: '1/(10)' } })
+  })
+
   it('keeps manual value mode after switching from an entity binding and then choosing subtraction', () => {
     let latest: GraphEffect[] = []
     function Harness(): JSX.Element {

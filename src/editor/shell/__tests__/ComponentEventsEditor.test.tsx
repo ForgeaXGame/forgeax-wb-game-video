@@ -69,7 +69,8 @@ describe('ComponentEventsEditor', () => {
         onCatalogChange={onCatalogChange}
       />,
     )
-    expect(screen.getByText('q:pass')).toBeTruthy()
+    expect(screen.queryByText('q:pass')).toBeNull()
+    expect(screen.queryByText('目录动作（所有挂载继承）')).toBeNull()
     expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /效果/ }))
     expect(onCatalogChange).toHaveBeenCalledWith([
@@ -343,7 +344,42 @@ describe('NodeInspector overlay events', () => {
 })
 
 describe('OverlaySchemeEditor selected child', () => {
-  it('does not show the internal scheme id below the name input', () => {
+  it('separates the canvas workspace, bottom tabs, and component property panel', () => {
+    const onRemoveChild = vi.fn()
+    render(
+      <OverlaySchemeEditor
+        overlayId="hud"
+        overlay={{
+          id: 'hud',
+          children: [
+            { id: 'damage', component: 'DamageFloatText', inputs: { parameter: '-25' } },
+            { id: 'gain', component: 'GainFloatText', inputs: { parameter: '+50' } },
+          ],
+        }}
+        entities={{}}
+        variables={{}}
+        usageCount={0}
+        onRename={vi.fn()}
+        onRemove={vi.fn()}
+        onAddChild={vi.fn()}
+        onRemoveChild={onRemoveChild}
+        onPatchChild={vi.fn()}
+        onReactionsChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('overlay-scheme-workspace')).toBeTruthy()
+    expect(screen.getByTestId('component-property-panel')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '图层' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('overlay-layers')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /伤害飘字 · damage/ }))
+    expect(screen.getByRole('heading', { name: '文本信息' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除组件' }))
+    expect(onRemoveChild).toHaveBeenCalledWith('damage')
+  })
+
+  it('does not render scheme management inside the canvas', () => {
     render(
       <OverlaySchemeEditor
         overlayId="scheme-9"
@@ -360,13 +396,12 @@ describe('OverlaySchemeEditor selected child', () => {
       />,
     )
 
-    expect(screen.getByDisplayValue('第1个新方案')).toBeTruthy()
+    expect(screen.queryByDisplayValue('第1个新方案')).toBeNull()
     expect(screen.queryByText('scheme-9')).toBeNull()
   })
 
-  it('requires confirmation before deleting a custom interface scheme', () => {
+  it('leaves custom scheme deletion to the global navigation', () => {
     const onRemove = vi.fn()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(
       <OverlaySchemeEditor
         overlayId="custom-hud"
@@ -383,13 +418,8 @@ describe('OverlaySchemeEditor selected child', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
-    expect(confirm).toHaveBeenCalledWith('确定删除自定义界面方案「战斗界面」？当前仍被 2 个节点引用，删除后这些挂载将无法解析界面。')
+    expect(screen.queryByRole('button', { name: '删除' })).toBeNull()
     expect(onRemove).not.toHaveBeenCalled()
-
-    confirm.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
-    expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
   it('defaults overlapping components to the visually topmost child', async () => {
@@ -512,7 +542,7 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(screen.getByTestId('overlay-selected-child-editor')).toBeTruthy()
     expect(screen.getByText(/^参数 ·/)).toBeTruthy()
     expect(screen.getByText('事件')).toBeTruthy()
-    expect(screen.getByText('q:pass')).toBeTruthy()
+    expect(screen.queryByText('q:pass')).toBeNull()
     expect(screen.queryByRole('button', { name: /调整qte大小/ })).toBeNull()
   })
 
@@ -541,17 +571,20 @@ describe('OverlaySchemeEditor selected child', () => {
         onReactionsChange={vi.fn()}
       />,
     )
-    const currentField = screen.getByText('血量').parentElement!
+    const currentField = screen.getAllByText('血量')
+      .find((element) => element.tagName !== 'H2')!.parentElement!
     expect(screen.getByText(/不能增删或拖动组件/)).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: '控件库' })).toBeNull()
+    expect(screen.getByRole('tab', { name: '图层' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('button', { name: '删除组件' })).toBeNull()
     expect(document.querySelector('[data-overlay-design-canvas]')).toBeNull()
     expect(document.querySelector('[data-overlay-centered-child="hp"]')).toBeTruthy()
     expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
     expect(document.querySelector('[data-canvas-item="hp"]')).toHaveClass('is-selected')
     expect(screen.queryByText('虚拟画布尺寸')).toBeNull()
     expect(screen.queryByRole('button', { name: /调整BattlePlayerHpBar大小/ })).toBeNull()
-    expect(currentField.style.gridTemplateColumns).toBe('7em minmax(0, 1fr)')
-    expect(currentField.style.columnGap).toBe('8px')
-    expect(currentField.style.fontSize).toBe('11px')
+    expect(currentField.classList.contains('editor-property-cascade-field')).toBe(true)
+    expect(currentField.querySelector(':scope > span')?.textContent).toBe('血量')
     expect(screen.queryByRole('radiogroup', { name: '血量来源' })).toBeNull()
     const current = currentField
       .querySelector('input[aria-label="常量数值"]') as HTMLInputElement
@@ -616,14 +649,16 @@ describe('OverlaySchemeEditor selected child', () => {
     expect(screen.queryByLabelText('界面方案画布')).toBeNull()
     expect(screen.getByLabelText('基础界面组件边界')).toBeTruthy()
     expect(container.querySelector('[data-canvas-item="choice"]')).toHaveClass('is-selected')
-    expect((screen.getByTestId('overlay-event-editor') as HTMLFieldSetElement).disabled).toBe(false)
-    expect(screen.getByText('choice:ying')).toBeTruthy()
-    const effectButtons = screen.getAllByRole('button', { name: '＋ 添加效果' })
-    const spawnButtons = screen.getAllByRole('combobox', { name: '添加显示界面' })
+    expect(screen.getByTestId('overlay-event-editor')).not.toHaveAttribute('disabled')
+    expect(screen.queryByText('choice:ying')).toBeNull()
+    const effectButtons = screen.getAllByRole('button', { name: '添加效果' })
+    const spawnButtons = screen.getAllByRole('button', { name: '添加界面' })
     expect(effectButtons[0]).not.toBeDisabled()
     expect(spawnButtons[0]).not.toBeDisabled()
     fireEvent.click(effectButtons[0]!)
     expect(onReactionsChange).toHaveBeenCalled()
+    fireEvent.click(spawnButtons[0]!)
+    expect(onReactionsChange).toHaveBeenCalledTimes(2)
   })
 
   it('does not render an event section for a component without exported events', () => {
@@ -695,6 +730,21 @@ describe('ComponentFormFields defaults', () => {
     expect(controlRow).toHaveStyle({ flexDirection: 'column', alignItems: 'stretch' })
     expect(picker.parentElement).toHaveClass('is-narrow-safe')
     expect(literalInput).toHaveStyle({ width: '100%', minWidth: '0' })
+  })
+
+  it('lets fixed text span the full property-panel row', () => {
+    render(
+      <ComponentFormFields
+        componentId="StatusNotice"
+        values={{ fixedText: '获得道具' }}
+        density="property"
+        onChange={() => undefined}
+      />,
+    )
+
+    const field = screen.getByText('固定文本', { selector: 'span' }).closest('.cff-property-field')
+    expect(field).toHaveClass('is-full-width')
+    expect(field).toHaveStyle({ gridColumn: '1 / -1' })
   })
 
   it('stacks formula selection above its parameter bindings in compact component fields', () => {

@@ -540,6 +540,17 @@ describe('NodeInspector · 结算选中联动', () => {
       from: 'rageHud/value',
       ttlMs: 1200,
     }])
+    const duration = screen.getByRole('spinbutton', { name: '显示时长' })
+    fireEvent.change(duration, { target: { value: '' } })
+    expect(disappearance).toHaveValue('duration')
+    expect(screen.getByRole('spinbutton', { name: '显示时长' })).toBeTruthy()
+    expect(latest.nodes[0]?.data.reactions?.[0]?.do).toEqual([{
+      kind: 'spawn',
+      from: 'rageHud/value',
+      ttlMs: 1200,
+    }])
+    fireEvent.blur(duration)
+    expect(duration).toHaveValue(1200)
   })
 
   it('条件结算可隐藏当前节点已经添加的整个界面', () => {

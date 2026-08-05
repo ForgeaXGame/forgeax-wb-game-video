@@ -221,37 +221,32 @@ function OverlaySnapGuides({
 
 const PREVIEW_CSS = `
 .ocp-root { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ocp-root.is-workspace-fill { height:100%; min-height:0; gap:0; }
 .ocp-stage {
   position: relative;
   container-type: size;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border-radius: 8px;
   overflow: hidden;
-  background: linear-gradient(165deg, #1a1510 0%, #0a0908 55%, #12100e 100%);
-  border: 1px solid rgba(255,255,255,.08);
-  box-shadow: inset 0 0 40px rgba(0,0,0,.45);
+  background: #000;
 }
-.ocp-stage.is-dropping { border-color: var(--gc-accent, #c8955a); box-shadow: inset 0 0 40px rgba(200,149,90,.25); }
+.ocp-root.is-workspace-fill .ocp-stage {
+  flex:1; min-height:0; height:100%; aspect-ratio:auto;
+}
+.ocp-viewport {
+  position:relative; width:100%; aspect-ratio:16 / 9; overflow:hidden;
+  flex:none; container-type:size; background:#4c4c4c;
+}
+.ocp-root.is-workspace-fill .ocp-viewport {
+  width:min(100%, 177.7778cqh); height:auto; max-height:100%; aspect-ratio:16 / 9;
+}
+.ocp-stage.is-dropping { box-shadow:inset 0 0 0 1px #ff9c2a; }
 .ocp-design-canvas {
   position:absolute; z-index:48; box-sizing:border-box; pointer-events:none;
-  border: 1px dashed rgba(190,196,204,.72);
-  border-radius: inherit;
-  background:
-    linear-gradient(to right, rgba(190,196,204,.1) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(190,196,204,.1) 1px, transparent 1px);
-  background-position: calc(50% + 0.5 * var(--ocp-grid-step)) calc(50% + 0.5 * var(--ocp-grid-step));
-  background-size: var(--ocp-grid-step) var(--ocp-grid-step);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
-}
-.ocp-design-canvas::before,.ocp-design-canvas::after {
-  content:''; position:absolute; pointer-events:none; opacity:.45;
-}
-.ocp-design-canvas::before {
-  left:50%; top:0; bottom:0; border-left:1px dashed rgba(112,190,184,.55);
-}
-.ocp-design-canvas::after {
-  left:0; right:0; top:50%; border-top:1px dashed rgba(112,190,184,.55);
+  border:0; background:none;
 }
 .ocp-snap-guides { position:absolute; inset:0; z-index:60; pointer-events:none; }
 .ocp-snap-guide {
@@ -278,23 +273,81 @@ const PREVIEW_CSS = `
   font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 3px;
   background: #7a2020; color: #ffd9d9; pointer-events: none;
 }
-/* 选中态：框内侧右下角只显示位置；宽高由方案整体 bounds 统一展示。 */
+/* 选中态尺寸标牌默认放在下方；靠近边缘时由渲染逻辑切换到可见侧。 */
 .ocp-dim {
-  position: absolute; right: 2px; bottom: 2px; white-space: nowrap;
+  position:absolute; z-index:4; white-space:nowrap;
   font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 3px;
   background: var(--gc-accent, #c8955a); color: #1a1510; pointer-events: none;
   font-variant-numeric: tabular-nums; font-weight: 600;
-  opacity: 0; visibility: hidden; transition: opacity .12s ease;
 }
-.ocp-align-tag {
-  position:absolute; left:2px; bottom:2px; white-space:nowrap;
-  font-size:9px; line-height:1; padding:2px 5px; border-radius:3px;
-  background:rgba(72,155,149,.92); color:#f2fffd; pointer-events:none; font-weight:600;
-  opacity:0; visibility:hidden; transition:opacity .12s ease;
+.ocp-dim.is-bottom { left:50%; top:calc(100% + 5px); transform:translateX(-50%); }
+.ocp-dim.is-top { left:50%; bottom:calc(100% + 5px); transform:translateX(-50%); }
+.ocp-dim.is-left { right:calc(100% + 5px); top:50%; transform:translateY(-50%); }
+.ocp-dim.is-right { left:calc(100% + 5px); top:50%; transform:translateY(-50%); }
+.ocp-ai-quick {
+  width:28px; height:22px; padding:0;
+  border:1px solid #666; border-radius:4px;
+  background:#353535; color:#888; font:inherit; font-size:10px; white-space:nowrap;
+  pointer-events:none;
 }
-.oci-frame.is-hovered > .ocp-dim,
-.oci-frame.is-hovered > .ocp-align-tag { opacity:1; visibility:visible; }
+.ocp-ai-hover-zone {
+  position:absolute; z-index:5; display:flex; pointer-events:auto;
+}
+.ocp-ai-hover-zone.is-top { right:0; bottom:100%; padding-bottom:5px; }
+.ocp-ai-hover-zone.is-bottom { right:0; top:100%; padding-top:5px; }
+.ocp-ai-hover-zone.is-left { right:100%; top:0; padding-right:5px; }
+.ocp-ai-hover-zone.is-right { left:100%; top:0; padding-left:5px; }
+.ocp-viewport .oci-frame.is-passive.is-hovered:not(.is-selected) {
+  border-style:solid; border-color:#ff9c2a; box-shadow:none;
+}
+.ocp-viewport .oci-frame.is-selected {
+  border-style:solid; border-color:#ff9c2a;
+}
 `
+
+export type OverlaySizeLabelSide = 'bottom' | 'top' | 'left' | 'right'
+
+export function overlaySizeLabelSide(
+  box: CanvasBox,
+  stage: { w: number; h: number },
+  clearancePx = 22,
+): OverlaySizeLabelSide {
+  const spaces = {
+    bottom: (1 - box.top - box.height) * stage.h,
+    top: box.top * stage.h,
+    right: (1 - box.left - box.width) * stage.w,
+    left: box.left * stage.w,
+  }
+  if (spaces.bottom >= clearancePx) return 'bottom'
+  if (spaces.top >= clearancePx) return 'top'
+  if (spaces.right >= clearancePx) return 'right'
+  if (spaces.left >= clearancePx) return 'left'
+  return (Object.entries(spaces) as Array<[OverlaySizeLabelSide, number]>)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'bottom'
+}
+
+export function overlayAiControlSide(
+  box: CanvasBox,
+  stage: { w: number; h: number },
+  sizeLabelSide: OverlaySizeLabelSide,
+): OverlaySizeLabelSide {
+  const spaces: Record<OverlaySizeLabelSide, number> = {
+    bottom: (1 - box.top - box.height) * stage.h,
+    top: box.top * stage.h,
+    right: (1 - box.left - box.width) * stage.w,
+    left: box.left * stage.w,
+  }
+  const required: Record<OverlaySizeLabelSide, number> = {
+    top: 27,
+    bottom: 27,
+    left: 33,
+    right: 33,
+  }
+  const preferred: OverlaySizeLabelSide[] = ['top', 'right', 'left', 'bottom']
+  return preferred.find((side) => side !== sizeLabelSide && spaces[side] >= required[side])
+    ?? preferred.find((side) => spaces[side] >= required[side])
+    ?? preferred.sort((a, b) => spaces[b] - spaces[a])[0]!
+}
 
 function mockHudCtx(entities: Record<string, Entity> | undefined, variables: Record<string, Variable> | undefined): SkinCtx {
   const ents: SkinCtx['hud']['entities'] = {}
@@ -349,6 +402,8 @@ export interface OverlayCatalogPreviewProps {
   showTimeScrubber?: boolean
   /** 非交互预览也显示组件内容边界选择框；基础界面使用。 */
   showSelectionFrames?: boolean
+  /** 在界面编辑器中心区内填满分配到的舞台高度；其它预览仍保持 16:9。 */
+  fillAvailableHeight?: boolean
 }
 
 export function OverlayCatalogPreview({
@@ -364,6 +419,7 @@ export function OverlayCatalogPreview({
   centerChildren = false,
   showTimeScrubber,
   showSelectionFrames = false,
+  fillAvailableHeight = false,
 }: OverlayCatalogPreviewProps): JSX.Element {
   injectStyleOnce('overlay-catalog-preview', PREVIEW_CSS)
   bootEditorSkins()
@@ -381,6 +437,7 @@ export function OverlayCatalogPreview({
   const warnSigRef = useRef('')
   /** 各按钮真实事件热区（归一 stage 坐标）——画布叠加可视化。 */
   const [hotAreas, setHotAreas] = useState<Array<NBox & { warn: boolean }>>([])
+  const [aiHoveredChildId, setAiHoveredChildId] = useState<string | null>(null)
   const hotSigRef = useRef('')
   /** stage 当前像素尺寸——选中态显示 x,y · w×h 像素读数用。 */
   const [stagePx, setStagePx] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
@@ -683,9 +740,11 @@ export function OverlayCatalogPreview({
   }, [centerChildren, contentBoxes, onPatchChildLayout, overlay.children, warnIds])
 
   return (
-    <div className="ocp-root">
-      <div
-        className={`ocp-stage${interactive ? ' is-interactive' : ''}${dropping ? ' is-dropping' : ''}`}
+    <div className={`ocp-root${fillAvailableHeight ? ' is-workspace-fill' : ''}`}>
+      <div className={`ocp-stage${interactive ? ' is-interactive' : ''}${dropping ? ' is-dropping' : ''}`}>
+        <div
+          className="ocp-viewport"
+          data-overlay-viewport
         onDragOver={
           onAddChild
             ? (e) => {
@@ -797,10 +856,13 @@ export function OverlayCatalogPreview({
               onReorder={onPatchChildLayout
                 ? (id, direction) => reorder(id, direction)
                 : undefined}
+              frameVisibility="active"
               ariaLabel={interactive ? '界面方案画布' : '基础界面组件边界'}
-              renderFrame={(item, state) => (
-                <>
-                  <span className="ocp-hit-tag">{item.label}</span>
+              renderFrame={(item, state) => {
+                const sizeLabelSide = overlaySizeLabelSide(state.box, stagePx)
+                const aiControlSide = overlayAiControlSide(state.box, stagePx, sizeLabelSide)
+                return (
+                  <>
                   {item.warn ? (
                     <span className="ocp-warn-tag" title="与另一交互组件热区重叠，运行时点击会互相遮挡">
                       重叠
@@ -808,32 +870,30 @@ export function OverlayCatalogPreview({
                   ) : null}
                   {state.selected ? (
                     <>
-                      {(() => {
-                        const alignment = overlayBoxCenterAlignment(
-                          FULL_STAGE_CANVAS,
-                          state.box,
-                          {
-                            x: stagePx.w > 0 ? 1 / stagePx.w : 0.005,
-                            y: stagePx.h > 0 ? 1 / stagePx.h : 0.005,
-                          },
-                        )
-                        const label = alignment === 'center'
-                          ? 'XY 轴居中'
-                          : alignment === 'x-center'
-                            ? 'X 轴居中'
-                            : alignment === 'y-center'
-                              ? 'Y 轴居中'
-                              : ''
-                        return label ? <span className="ocp-align-tag">{label}</span> : null
-                      })()}
-                      <span className="ocp-dim">
-                        {Math.round(state.box.left * stagePx.w)},{Math.round(state.box.top * stagePx.h)}
+                      <span
+                        className={`ocp-dim is-${sizeLabelSide}`}
+                        data-size-label-side={sizeLabelSide}
+                      >
+                        {Math.round(state.box.width * stagePx.w)} × {Math.round(state.box.height * stagePx.h)}
                       </span>
+                      {state.hovered || aiHoveredChildId === item.id ? (
+                        <span
+                          className={`ocp-ai-hover-zone is-${aiControlSide}`}
+                          data-ai-control-side={aiControlSide}
+                          data-testid={`ai-hover-zone-${item.id}`}
+                          onPointerEnter={() => setAiHoveredChildId(item.id)}
+                          onPointerLeave={() => setAiHoveredChildId((current) => current === item.id ? null : current)}
+                        >
+                          <button type="button" className="ocp-ai-quick" disabled>AI</button>
+                        </span>
+                      ) : null}
                     </>
                   ) : null}
-                </>
-              )}
+                  </>
+                )
+              }}
             />}
+        </div>
         </div>
       </div>
       {/* 预览时刻拖条：仅只读预览态显示（规则 tab 等）；界面 tab 可交互态不显，画布固定 t=400ms 渲染。 */}

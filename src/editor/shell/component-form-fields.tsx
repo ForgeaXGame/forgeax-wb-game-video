@@ -435,6 +435,8 @@ function renderInput(
   onCreateEntity?: EntityCreateHandler,
   onCreateVariable?: VariableCreateHandler,
   onCreateFormula?: FormulaCreateHandler,
+  stackExpressionControls = true,
+  propertyLayout = false,
 ): JSX.Element | null {
   const val = values[inp.key]
   const label = inp.label ?? inp.key
@@ -496,12 +498,89 @@ function renderInput(
   if (inp.component === 'numberExpr') {
     const optional = inp.required !== true && inp.default === undefined
     const isNewComponent = NEW_COMPONENT_IDS.has(componentId)
-    const stackControls = compact && isNewComponent
+    const stackControls = compact && isNewComponent && stackExpressionControls
     const preferredEntities = preferredEntityIds(componentId, pickers?.entities)
     const semantic = attributeSemantic(componentId, inp.key)
     const semanticAttrIds = semantic ? SEMANTIC_FALLBACK_IDS[semantic] : undefined
     const createTemplate = attributeCreateTemplate(componentId, inp.key)
     const createEntityTemplate = entityCreateTemplate(componentId)
+    const expressionEditor = inp.valueType === 'string' ? (
+      <TextValueInput
+        value={(val ?? inp.default) as TextOrRef | undefined}
+        entities={pickers?.entities}
+        variables={pickers?.variables}
+        formulas={pickers?.formulas}
+        preferredEntityIds={preferredEntities}
+        entityNameOnly={
+          (isHpBarComponent(componentId) && inp.key === 'label')
+          || (componentId === 'Dialogue' && inp.key === 'speaker')
+        }
+        createAttribute={onCreateEntityAttribute
+          ? {
+            ...(createTemplate ? { template: createTemplate } : {}),
+            onCreate: onCreateEntityAttribute,
+          }
+          : undefined}
+        createEntity={onCreateEntity
+          ? {
+            ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+            onCreate: onCreateEntity,
+          }
+          : undefined}
+        createVariable={isNewComponent && onCreateVariable
+          ? { onCreate: onCreateVariable }
+          : undefined}
+        createFormula={isNewComponent && onCreateFormula
+          ? { onCreate: onCreateFormula }
+          : undefined}
+        stackControls={stackControls}
+        propertyLayout={propertyLayout}
+        onChange={(next) => onPatch(inp.key, next)}
+      />
+    ) : (
+      <ValueInput
+        value={val as NumOrExpr | string | undefined}
+        defaultValue={typeof inp.default === 'number' ? inp.default : undefined}
+        entities={pickers?.entities}
+        variables={pickers?.variables}
+        formulas={pickers?.formulas}
+        preferredEntityIds={preferredEntities}
+        preferredAttrIds={semanticAttrIds}
+        allowAttribute={semantic
+          ? (entity, attrId) => attributeMatchesSemantic(entity, attrId, semantic)
+          : undefined}
+        createAttribute={onCreateEntityAttribute
+          ? {
+            ...(createTemplate ? { template: createTemplate } : {}),
+            onCreate: onCreateEntityAttribute,
+          }
+          : undefined}
+        createEntity={onCreateEntity
+          ? {
+            ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
+            onCreate: onCreateEntity,
+          }
+          : undefined}
+        createVariable={isNewComponent && onCreateVariable
+          ? { onCreate: onCreateVariable }
+          : undefined}
+        createFormula={isNewComponent && onCreateFormula
+          ? { onCreate: onCreateFormula }
+          : undefined}
+        stackControls={stackControls}
+        propertyLayout={propertyLayout}
+        onChange={(next) => onPatch(inp.key, next)}
+        emptyWhenUndefined={optional}
+      />
+    )
+    if (propertyLayout) {
+      return (
+        <div key={inp.key} className="editor-property-cascade-field" title={hint}>
+          <span>{label}</span>
+          {expressionEditor}
+        </div>
+      )
+    }
     return (
       <div
         key={inp.key}
@@ -522,73 +601,7 @@ function renderInput(
         }}
       >
         <span style={{ opacity: 0.55, flexShrink: 0, fontSize: 11, paddingTop: 6, whiteSpace: 'nowrap' }}>{label}</span>
-        {inp.valueType === 'string' ? (
-          <TextValueInput
-            value={(val ?? inp.default) as TextOrRef | undefined}
-            entities={pickers?.entities}
-            variables={pickers?.variables}
-            formulas={pickers?.formulas}
-            preferredEntityIds={preferredEntities}
-            entityNameOnly={
-              (isHpBarComponent(componentId) && inp.key === 'label')
-              || (componentId === 'Dialogue' && inp.key === 'speaker')
-            }
-            createAttribute={onCreateEntityAttribute
-              ? {
-                ...(createTemplate ? { template: createTemplate } : {}),
-                onCreate: onCreateEntityAttribute,
-              }
-              : undefined}
-            createEntity={onCreateEntity
-              ? {
-                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
-                onCreate: onCreateEntity,
-              }
-              : undefined}
-            createVariable={isNewComponent && onCreateVariable
-              ? { onCreate: onCreateVariable }
-              : undefined}
-            createFormula={isNewComponent && onCreateFormula
-              ? { onCreate: onCreateFormula }
-              : undefined}
-            stackControls={stackControls}
-            onChange={(next) => onPatch(inp.key, next)}
-          />
-        ) : (
-          <ValueInput
-            value={val as NumOrExpr | string | undefined}
-            defaultValue={typeof inp.default === 'number' ? inp.default : undefined}
-            entities={pickers?.entities}
-            variables={pickers?.variables}
-            formulas={pickers?.formulas}
-            preferredEntityIds={preferredEntities}
-            preferredAttrIds={semanticAttrIds}
-            allowAttribute={semantic
-              ? (entity, attrId) => attributeMatchesSemantic(entity, attrId, semantic)
-              : undefined}
-            createAttribute={onCreateEntityAttribute
-              ? {
-                ...(createTemplate ? { template: createTemplate } : {}),
-                onCreate: onCreateEntityAttribute,
-              }
-              : undefined}
-            createEntity={onCreateEntity
-              ? {
-                ...(createEntityTemplate ? { template: createEntityTemplate } : {}),
-                onCreate: onCreateEntity,
-              }
-              : undefined}
-            createVariable={isNewComponent && onCreateVariable
-              ? { onCreate: onCreateVariable }
-              : undefined}
-            createFormula={isNewComponent && onCreateFormula
-              ? { onCreate: onCreateFormula }
-              : undefined}
-            stackControls={stackControls}
-            onChange={(next) => onPatch(inp.key, next)}
-            emptyWhenUndefined={optional}
-          />
-        )}
+        {expressionEditor}
       </div>
     )
   }
@@ -814,6 +827,7 @@ export function ComponentFormFields({
   values,
   onChange,
   pickers,
+  includeKeys,
   excludeKeys,
   density = 'default',
   labelWidth,
@@ -827,13 +841,15 @@ export function ComponentFormFields({
   values: Record<string, unknown>
   onChange: (next: Record<string, unknown>) => void
   pickers?: EditorPickerCtx
+  /** 仅渲染指定字段；右栏按语义拆分配置分类时使用。 */
+  includeKeys?: string[]
   /**
    * 排除某些字段——已有专属编辑器接管时用（如 x/y 走 PositionEditor、
    * speaker 走「显示说话人前缀」开关、events 走结算区自带的分支编辑）。
    */
   excludeKeys?: string[]
-  /** compact：节点检视器等窄栏——标量保持单项单行，复合项折叠。 */
-  density?: 'default' | 'compact'
+  /** compact：节点检视器窄栏；property：右侧属性栏双列，并让动态值内部横排。 */
+  density?: 'default' | 'compact' | 'property'
   /** compact 模式的标签列宽；界面 Tab 使用足以容纳「总时长ms」的稳定宽度。 */
   labelWidth?: CSSProperties['width']
   /** compact 模式的控件列宽；省略时动态表达式继续占满剩余空间。 */
@@ -847,9 +863,15 @@ export function ComponentFormFields({
   /** 新组件动态值缺少公式时，经级联确认后补建到场景公式目录。 */
   onCreateFormula?: FormulaCreateHandler
 }): JSX.Element | null {
-  const compact = density === 'compact'
+  const compact = density !== 'default'
+  const propertyLayout = density === 'property'
   const allInputs = getComponentManifest(componentId)?.inputs ?? []
-  const inputs = excludeKeys?.length ? allInputs.filter((inp) => !excludeKeys.includes(inp.key)) : allInputs
+  const includedInputs = includeKeys
+    ? allInputs.filter((input) => includeKeys.includes(input.key))
+    : allInputs
+  const inputs = excludeKeys?.length
+    ? includedInputs.filter((inp) => !excludeKeys.includes(inp.key))
+    : includedInputs
   if (!inputs.length) {
     return <div style={{ fontSize: 11, opacity: 0.5 }}>该组件无可配 inputs（component={componentId}）</div>
   }
@@ -871,19 +893,43 @@ export function ComponentFormFields({
         <div style={grouped ? { marginBottom: 6 } : undefined}>
           {grouped ? groupLabel('参数配置') : null}
           {compact ? (
-            <div style={{ display: 'grid', gap: 2, alignItems: 'center', width: '100%', minWidth: 0 }}>
-              {paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+            <div
+              className={propertyLayout ? 'cff-property-grid' : undefined}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: propertyLayout ? 'repeat(2, minmax(0, 1fr))' : undefined,
+                columnGap: propertyLayout ? 8 : undefined,
+                gap: propertyLayout ? undefined : 2,
+                alignItems: 'center',
+                width: '100%',
+                minWidth: 0,
+              }}
+            >
+              {paramScalars.map((inp) => (
+                <div
+                  key={inp.key}
+                  className={`cff-property-field${inp.component === 'numberExpr' ? ' is-expression' : ''}${inp.key === 'fixedText' ? ' is-full-width' : ''}`}
+                  style={{
+                    minWidth: 0,
+                    gridColumn: propertyLayout && (inp.component === 'numberExpr' || inp.key === 'fixedText')
+                      ? '1 / -1'
+                      : undefined,
+                  }}
+                >
+                  {renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout)}
+                </div>
+              ))}
             </div>
           ) : (
             paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))
           )}
-          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout))}
         </div>
       ) : null}
       {events.length > 0 ? (
         <div style={grouped ? { borderTop: '1px solid #2f2f2f', paddingTop: 5 } : undefined}>
           {grouped ? groupLabel('事件配置') : null}
-          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))}
+          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout))}
         </div>
       ) : null}
     </div>
