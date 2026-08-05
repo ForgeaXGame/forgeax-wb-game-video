@@ -261,7 +261,7 @@ function actionDescriptions(action: NodeAction, context: CanvasSettlementContext
   }
   if (action.kind === 'spawn') {
     const overlayId = action.from.split('/')[0] ?? action.from
-    return [`显示 ${context.overlays?.[overlayId]?.title?.trim() || overlayId}`]
+    return [`绑定 ${context.overlays?.[overlayId]?.title?.trim() || overlayId}`]
   }
   const mount = context.node?.data.overlayNodes?.find((item) => (item.id ?? item.overlay) === action.mountId)
   return [`隐藏 ${context.overlays?.[mount?.overlay ?? '']?.title?.trim() || mount?.overlay || action.mountId}`]
