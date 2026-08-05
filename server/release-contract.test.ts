@@ -164,6 +164,8 @@ describe('release identity', () => {
       'schemas',
       'README.md',
       'SKILL.md',
+      '!**/*.mp4',
+      '!**/*.map',
     ])
     expect(pkg.files).not.toContain('vendor')
   })
