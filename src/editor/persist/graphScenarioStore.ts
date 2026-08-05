@@ -38,6 +38,7 @@ import {
   removeUiTreeNode as removeTreeNode,
   renameUiTreeFolder as renameTreeFolder,
 } from './ui-tree'
+import { broadcastBlueprintIntent } from './graphBlueprintSync'
 
 export type BlueprintTitleActionOk = { ok: true; id?: string }
 export type BlueprintTitleActionErr = { ok: false; reason: 'duplicate_title' | 'not_found' }
@@ -530,6 +531,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         fitSignal: s.fitSignal + 1,
       }))
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'created', doc })
       return { ok: true, id: doc.id }
     },
     renameBlueprint: (id, title) => {
@@ -542,17 +544,25 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       }
       set({ blueprints: { ...st.blueprints, [id]: { ...st.blueprints[id]!, title: nextTitle } } })
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'renamed', id, title: nextTitle })
       return { ok: true }
     },
-    selectBlueprint: (id) => set((st) => {
-      if (id === st.activeBlueprintId) return { selectedNodeId: null }
-      return {
-        activeBlueprintId: id,
-        graph: st.blueprints[id]?.graph ?? EMPTY_GRAPH,
-        selectedNodeId: null,
-        fitSignal: st.fitSignal + 1,
+    selectBlueprint: (id) => {
+      const prev = get().activeBlueprintId
+      set((st) => {
+        if (id === st.activeBlueprintId) return { selectedNodeId: null }
+        return {
+          activeBlueprintId: id,
+          graph: st.blueprints[id]?.graph ?? EMPTY_GRAPH,
+          selectedNodeId: null,
+          fitSignal: st.fitSignal + 1,
+        }
+      })
+      const next = get()
+      if (id !== prev && next.blueprints[id]) {
+        broadcastBlueprintIntent({ type: 'select', id })
       }
-    }),
+    },
     setMainBlueprint: (id) => {
       let changed = false
       set((st) => {
@@ -560,7 +570,10 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         changed = true
         return { mainBlueprintId: id }
       })
-      if (changed) scheduleDraft()
+      if (changed) {
+        scheduleDraft()
+        broadcastBlueprintIntent({ type: 'mainSet', id })
+      }
     },
     deleteBlueprint: (id) => {
       const st = get()
@@ -572,6 +585,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       const nextActive = st.activeBlueprintId === id ? st.mainBlueprintId : st.activeBlueprintId
       set({ blueprints: next, activeBlueprintId: nextActive, graph: next[nextActive]?.graph ?? EMPTY_GRAPH })
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'deleted', id, nextActive })
       return { ok: true }
     },
     importBlueprint: (doc) => {
