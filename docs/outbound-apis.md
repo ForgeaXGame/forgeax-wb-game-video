@@ -207,103 +207,122 @@ POST generation/shot-script 或 tool generate-shot-script
 路径相对 Workbench mount（常见为 `/__workbench__/v1`）；`extensionApi` / `toolCall` 以 handshake 为准。  
 `:gameId` / `:assetId` / `:uploadId` / `:runtimeId` / `:tag` / `:path` 为路径参数。
 
+### Arrival Studio Cat 对照说明（2026-08-05）
+
+| 包 | 角色 |
+|:--|:--|
+| **agentic_mate** | Workbench Host：`registerArrivalWorkbenchRoutes` 挂载 `/__workbench__/v1`，加载 `@forgeax-extension/wb-game-video`，注入 Arrival adapters（workspace / version / media / models），并经 MCP 暴露 `workbench__wb_game_video__*` |
+| **agentic_os** | **无** Host HTTP / capability 实现；经 `as-mate-tools` MCP（`mcp__as-mate-tools__…` / mate `/mcp`）消费 mate 暴露的 Workbench tools |
+
+状态：`✅` 已具备 · `🟡` 部分具备 · `❌` 缺失 · `—` 不适用（不由该包实现）
+
+关键源码：`arrival-studio-cat/packages/agentic_mate/src/services/workbench-host/`（`register-routes.ts` / `runtime.ts` / `media-adapter.ts` / `model-gateway-adapter.ts` / `mcp-tools.ts`）
+
 ### A.1 Host Workbench（`@forgeax/workbench-host`）
 
-| Method | Path | 功能 |
-|:--|:--|:--|
-| `GET` | `/catalog?gameId=` | 返回该游戏的 Workbench 公共目录（能力 / 端点摘要） |
-| `GET` | `/tools?gameId=` | 列出当前游戏可用的 Agent tools |
-| `POST` | `/tools/call` | 调用指定 tool（body 含 `toolId` + `args`） |
-| `GET`/`HEAD` | `/runtime/:runtimeId/...` | 拉取 runtime 静态资源文件 |
-| `GET`/`HEAD` | `/games/:gameId/components/:path` | 拉取游戏组件模块文件 |
-| `GET` | `/games/:gameId/package` | 读取游戏包（含图 / blueprint） |
-| `PUT` | `/games/:gameId/package` | 保存游戏包 |
-| `GET` | `/games/:gameId/package/status` | 查询包状态（是否已初始化 / 空包等） |
-| `POST` | `/games/:gameId/package/initialize?runtimeId=` | 用指定 runtime 初始化空包 |
-| `GET` | `/games/:gameId/versions` | 列出 git 版本标签 |
-| `POST` | `/games/:gameId/versions` | 创建新版本（commit/tag） |
-| `GET` | `/games/:gameId/versions/current` | 查询当前版本与 dirty 状态 |
-| `GET` | `/games/:gameId/versions/:tag/package` | 按版本标签读取历史包 |
-| `GET` | `/games/:gameId/media?type=` | 列出媒体资产（可按 image/video/audio 过滤） |
-| `PUT` | `/games/:gameId/media` | 整包直传小文件并登记为媒体资产 |
-| `GET`/`HEAD` | `/games/:gameId/media/:assetId` | 读取 / 探测媒体内容流（播放） |
-| `PATCH` | `/games/:gameId/media/:assetId` | 更新媒体元数据（filename / metadata） |
-| `DELETE` | `/games/:gameId/media/:assetId` | 删除媒体资产 |
-| `POST` | `/games/:gameId/media/uploads` | 创建可恢复上传会话 |
-| `GET` | `/games/:gameId/media/uploads/:uploadId` | 查询上传会话进度 |
-| `PUT` | `/games/:gameId/media/uploads/:uploadId` | 写入上传分片（`upload-offset`） |
-| `POST` | `/games/:gameId/media/uploads/:uploadId/complete` | 完成上传并落成媒体资产 |
-| `*` | `/extension/:runtimeId/{extensionPath}?gameId=` | 转发到扩展自有 HTTP 路由（见 A.2） |
+| Method | Path | 功能 | agentic_mate | agentic_os |
+|:--|:--|:--|:--|:--|
+| `GET` | `/catalog?gameId=` | 返回该游戏的 Workbench 公共目录（能力 / 端点摘要） | ✅ `GET /__workbench__/v1/catalog` → `host.catalog` | — |
+| `GET` | `/tools?gameId=` | 列出当前游戏可用的 Agent tools | ✅ `GET /__workbench__/v1/tools` → `host.listTools` | — |
+| `POST` | `/tools/call` | 调用指定 tool（body 含 `toolId` + `args`） | ✅ `POST /__workbench__/v1/tools/call`；另 MCP `workbench__wb_game_video__*` | 🟡 经 `as-mate-tools` MCP 间接调用（不直连 HTTP） |
+| `GET`/`HEAD` | `/runtime/:runtimeId/...` | 拉取 runtime 静态资源文件 | ✅ `host.runtimeRoot` | — |
+| `GET`/`HEAD` | `/games/:gameId/components/:path` | 拉取游戏组件模块文件 | ✅ `host.componentFile`（`workspace-adapter`） | — |
+| `GET` | `/games/:gameId/package` | 读取游戏包（含图 / blueprint） | ✅ `GamePackageService.read` | — |
+| `PUT` | `/games/:gameId/package` | 保存游戏包 | ✅ `GamePackageService.update` | — |
+| `GET` | `/games/:gameId/package/status` | 查询包状态（是否已初始化 / 空包等） | ✅ `GamePackageService.status` | — |
+| `POST` | `/games/:gameId/package/initialize?runtimeId=` | 用指定 runtime 初始化空包 | ✅ `GamePackageService.initialize` + 扩展 `createSeed` | — |
+| `GET` | `/games/:gameId/versions` | 列出 git 版本标签 | ✅ `VersionService.list`（`version-adapter`） | — |
+| `POST` | `/games/:gameId/versions` | 创建新版本（commit/tag） | ✅ `VersionService.create` | — |
+| `GET` | `/games/:gameId/versions/current` | 查询当前版本与 dirty 状态 | ✅ `VersionService.current` | — |
+| `GET` | `/games/:gameId/versions/:tag/package` | 按版本标签读取历史包 | ✅ `VersionService.readAtTag` | — |
+| `GET` | `/games/:gameId/media?type=` | 列出媒体资产（可按 image/video/audio 过滤） | ❌ HTTP 未挂载（media 非 `ResumableMediaCapability`） | — |
+| `PUT` | `/games/:gameId/media` | 整包直传小文件并登记为媒体资产 | ❌ 同上 → `media_not_configured` | — |
+| `GET`/`HEAD` | `/games/:gameId/media/:assetId` | 读取 / 探测媒体内容流（播放） | ❌ 同上；现返回 URL 指向旧 `extension/.../media/assets/:id` | — |
+| `PATCH` | `/games/:gameId/media/:assetId` | 更新媒体元数据（filename / metadata） | ❌ `media-adapter` 无 `update` | — |
+| `DELETE` | `/games/:gameId/media/:assetId` | 删除媒体资产 | 🟡 服务端 `context.media.delete` 有；Host Media HTTP 未挂 | — |
+| `POST` | `/games/:gameId/media/uploads` | 创建可恢复上传会话 | ❌ 无 `createUpload` | — |
+| `GET` | `/games/:gameId/media/uploads/:uploadId` | 查询上传会话进度 | ❌ 无 `getUpload` | — |
+| `PUT` | `/games/:gameId/media/uploads/:uploadId` | 写入上传分片（`upload-offset`） | ❌ 无 `writeUploadChunk` | — |
+| `POST` | `/games/:gameId/media/uploads/:uploadId/complete` | 完成上传并落成媒体资产 | ❌ 无 `completeUpload` | — |
+| `*` | `/extension/:runtimeId/{extensionPath}?gameId=` | 转发到扩展自有 HTTP 路由（见 A.2） | ✅ `host.extension` → wb-game-video `createRouter` | — |
 
 ### A.2 Extension router（挂在 A.1 的 `/extension/:runtimeId/…` 下）
 
 相对 path（完整形如 `/extension/:runtimeId/assets`）：
 
-| Method | Path | 功能 |
-|:--|:--|:--|
-| `GET` | `assets` | 列出扩展素材层资产（manifest + 过滤） |
-| `GET` | `assets/:id` | 按 id 取单个素材层资产 |
-| `GET` | `media/bundled/:name` | 读取扩展内置 demo 媒体文件 |
-| `GET` | `style-axes` | 读取风格三轴配置 |
-| `POST` | `style-axes` | 写入 / 覆盖风格三轴配置 |
-| `POST` | `references/characters/import` | 从游戏角色目录导入角色参考图到媒体层 |
-| `POST` | `references/scenes/import` | 从场景纹理目录导入场景参考图到媒体层 |
-| `POST` | `generation/shot-script` | 生成节点分镜文案（经 Host LLM） |
-| `POST` | `generation/keyframe` | 生成关键帧 / 分镜图（经 Host 图像模型） |
-| `POST` | `generation/video` | 生成单段视频 ≤15s（经 Host 视频生成） |
-| `POST` | `generation/node-video` | 生成超长节点视频（自动分段续接） |
+| Method | Path | 功能 | agentic_mate | agentic_os |
+|:--|:--|:--|:--|:--|
+| `GET` | `assets` | 列出扩展素材层资产（manifest + 过滤） | ✅ 转发 `/__workbench__/v1/extension/:runtimeId/assets` | — |
+| `GET` | `assets/:id` | 按 id 取单个素材层资产 | ✅ 同上转发 | — |
+| `GET` | `media/bundled/:name` | 读取扩展内置 demo 媒体文件 | ✅ 同上转发 | — |
+| `GET` | `style-axes` | 读取风格三轴配置 | ✅ 同上转发 | — |
+| `POST` | `style-axes` | 写入 / 覆盖风格三轴配置 | ✅ 同上转发 | — |
+| `POST` | `references/characters/import` | 从游戏角色目录导入角色参考图到媒体层 | ✅ 转发；下游用 `context.media.put`（本地 `.kubee/workbench-media/`） | — |
+| `POST` | `references/scenes/import` | 从场景纹理目录导入场景参考图到媒体层 | ✅ 同上 | — |
+| `POST` | `generation/shot-script` | 生成节点分镜文案（经 Host LLM） | ✅ 转发 → `context.models.generateText`（sidecar LLM） | — |
+| `POST` | `generation/keyframe` | 生成关键帧 / 分镜图（经 Host 图像模型） | ✅ 转发 → `context.models.generateImage`（sidecar image） | — |
+| `POST` | `generation/video` | 生成单段视频 ≤15s（经 Host 视频生成） | ❌ 转发可达，但缺 `media.video.generate@1` / `videoGeneration` | — |
+| `POST` | `generation/node-video` | 生成超长节点视频（自动分段续接） | ❌ 同上 | — |
 
 退役（应 404，勿对接）：
 
-| Method | Path | 功能 |
-|:--|:--|:--|
-| `*` | `media/resources` | 旧扩展自有媒体列表（已迁 Host media） |
-| `*` | `media/resources/:id` | 旧扩展自有媒体详情 |
-| `*` | `media/resources/:id/content` | 旧扩展自有媒体内容流 |
-| `*` | `media/assets/:id` | 旧扩展媒体资产路由 |
+| Method | Path | 功能 | agentic_mate | agentic_os |
+|:--|:--|:--|:--|:--|
+| `*` | `media/resources` | 旧扩展自有媒体列表（已迁 Host media） | 🟡 勿对接；mate 播放 URL 仍可能拼到旧 `media/assets/:id` | — |
+| `*` | `media/resources/:id` | 旧扩展自有媒体详情 | 🟡 同上 | — |
+| `*` | `media/resources/:id/content` | 旧扩展自有媒体内容流 | 🟡 同上 | — |
+| `*` | `media/assets/:id` | 旧扩展媒体资产路由 | 🟡 mate `media-adapter` 仍用此 URL 作播放 workaround | — |
 
 ### A.3 Tool gateway（`POST /tools/call` 的 `toolId`）
 
-| toolId | 功能 |
-|:--|:--|
-| `wb-game-video:author-guide` | 返回作者指南 / 编排说明（静态） |
-| `wb-game-video:get-graph` | 读取当前游戏图数据 |
-| `wb-game-video:save-graph` | 保存当前游戏图数据 |
-| `wb-game-video:list-videos` | 列出内置演出视频库可用 `media.ref` |
-| `wb-game-video:list-assets` | 列出共享素材层资产 |
-| `wb-game-video:get-asset` | 按 id 获取单个素材层资产 |
-| `wb-game-video:import-character-refs` | 导入角色参考图（同 HTTP import） |
-| `wb-game-video:import-scene-refs` | 导入场景参考图（同 HTTP import） |
-| `wb-game-video:generate-shot-script` | 生成分镜文案（同 `generation/shot-script`） |
-| `wb-game-video:generate-keyframe` | 生成关键帧（同 `generation/keyframe`） |
-| `wb-game-video:generate-video` | 生成单段视频（同 `generation/video`） |
-| `wb-game-video:generate-node-video` | 生成超长节点视频（同 `generation/node-video`） |
+| toolId | 功能 | agentic_mate | agentic_os |
+|:--|:--|:--|:--|
+| `wb-game-video:author-guide` | 返回作者指南 / 编排说明（静态） | ✅ `/tools/call` + MCP `workbench__wb_game_video__author_guide` | 🟡 经 `as-mate-tools` MCP 消费 |
+| `wb-game-video:get-graph` | 读取当前游戏图数据 | ✅ + `workbench__wb_game_video__get_graph` | 🟡 同上 |
+| `wb-game-video:save-graph` | 保存当前游戏图数据 | ✅ + `…__save_graph` | 🟡 同上 |
+| `wb-game-video:list-videos` | 列出内置演出视频库可用 `media.ref` | ✅ + `…__list_videos` | 🟡 同上 |
+| `wb-game-video:list-assets` | 列出共享素材层资产 | ✅ + `…__list_assets` | 🟡 同上 |
+| `wb-game-video:get-asset` | 按 id 获取单个素材层资产 | ✅ + `…__get_asset` | 🟡 同上 |
+| `wb-game-video:import-character-refs` | 导入角色参考图（同 HTTP import） | ✅ + `…__import_character_refs` | 🟡 同上 |
+| `wb-game-video:import-scene-refs` | 导入场景参考图（同 HTTP import） | ✅ + `…__import_scene_refs` | 🟡 同上 |
+| `wb-game-video:generate-shot-script` | 生成分镜文案（同 `generation/shot-script`） | ✅ 网关 + `generateText` sidecar | 🟡 同上（能力依赖 mate） |
+| `wb-game-video:generate-keyframe` | 生成关键帧（同 `generation/keyframe`） | ✅ 网关 + `generateImage` sidecar | 🟡 同上 |
+| `wb-game-video:generate-video` | 生成单段视频（同 `generation/video`） | ❌ 网关可调，runtime 抛 `capability_unavailable`（`media.video.generate@1`） | ❌ 同上受限 |
+| `wb-game-video:generate-node-video` | 生成超长节点视频（同 `generation/node-video`） | ❌ 同上 | ❌ 同上受限 |
+
+MCP 命名：`toMcpName('wb-game-video:get-graph')` → `workbench__wb_game_video__get_graph`（`mcp-tools.ts`）。
 
 ### A.4 宿主 Capability（无固定 HTTP path；由 Host 实现）
 
-| API | 功能 |
-|:--|:--|
-| `context.media.list` | 服务端列出媒体资产 |
-| `context.media.put` | 服务端写入媒体字节并登记 |
-| `context.media.read` | 服务端读取媒体内容 |
-| `context.media.update` | 服务端更新媒体元数据 |
-| `context.media.delete` | 服务端删除媒体资产 |
-| `context.media.createUpload` / `getUpload` / `writeUploadChunk` / `completeUpload` | 服务端可恢复上传（与 A.1 uploads 同语义） |
-| `context.models.generateText` | 文本生成（分镜文案等） |
-| `context.models.generateImage` | 图像生成（关键帧 / 分镜图） |
-| `context.models.generateVideo` | 视频生成 fallback |
-| `context.videoGeneration.generateVideo` | 视频生成优先入口（`media.video.generate` v1） |
-| `context.files.*` | 读写游戏目录文件（graph / manifest / intake） |
+| API | 功能 | agentic_mate | agentic_os |
+|:--|:--|:--|:--|
+| `context.media.list` | 服务端列出媒体资产 | ✅ `createArrivalMediaCapability.list`（本地 `.kubee/workbench-media/`，非 Kino/COS） | — |
+| `context.media.put` | 服务端写入媒体字节并登记 | ✅ `media-adapter.put` | — |
+| `context.media.read` | 服务端读取媒体内容 | ✅ `media-adapter.read` | — |
+| `context.media.update` | 服务端更新媒体元数据 | ❌ 未实现 | — |
+| `context.media.delete` | 服务端删除媒体资产 | ✅ `media-adapter.delete` | — |
+| `context.media.createUpload` / `getUpload` / `writeUploadChunk` / `completeUpload` | 服务端可恢复上传（与 A.1 uploads 同语义） | ❌ 未实现（阻塞 Host Media HTTP） | — |
+| `context.models.generateText` | 文本生成（分镜文案等） | ✅ `createArrivalModelGateway.generateText` → sidecar LLM | — |
+| `context.models.generateImage` | 图像生成（关键帧 / 分镜图） | ✅ `generateImage` → sidecar image + `media.put` | — |
+| `context.models.generateVideo` | 视频生成 fallback | ❌ `generateVideo` 固定抛 `capability_unavailable` | — |
+| `context.videoGeneration.generateVideo` | 视频生成优先入口（`media.video.generate` v1） | ❌ 未挂 `providerExtensions` / `kino-video-provider` | — |
+| `context.files.*` | 读写游戏目录文件（graph / manifest / intake） | ✅ `createArrivalWorkspaceAdapter` → `GameFileCapability` | — |
 
 ### A.5 已禁止路径（历史对照，勿实现）
 
-| Method | Path | 功能（历史） |
-|:--|:--|:--|
-| `*` | `/api/v1/kino/**` | 旧直连 Kino 媒体 CRUD / 播放 |
-| `*` | `/__video-upload-proxy/**` | 旧开发态上传代理改写 |
-| `*` | `/__ce-api__/chat` | 旧 CE 文本 chat 网关 |
-| `*` | `/__ce-api__/gemini-text` | 旧 CE 多模态文本网关 |
-| `*` | `/__ce-api__/generate-image` | 旧 CE 图像生成网关 |
-| `*` | `/__ce-api__/generate-video` | 旧 CE 视频任务提交 |
-| `*` | `/__ce-api__/video-status` | 旧 CE 视频任务轮询 |
-| `*` | `/__gva__/media/:id` | 旧本地 registry 媒体流 |
+| Method | Path | 功能（历史） | agentic_mate | agentic_os |
+|:--|:--|:--|:--|:--|
+| `*` | `/api/v1/kino/**` | 旧直连 Kino 媒体 CRUD / 播放 | — 不应作为 Workbench Host 路径；遗留 Kino studio 另线 | — |
+| `*` | `/__video-upload-proxy/**` | 旧开发态上传代理改写 | — 勿实现 | — |
+| `*` | `/__ce-api__/chat` | 旧 CE 文本 chat 网关 | — 勿实现（mate 用 sidecar LLM） | — |
+| `*` | `/__ce-api__/gemini-text` | 旧 CE 多模态文本网关 | — 勿实现 | — |
+| `*` | `/__ce-api__/generate-image` | 旧 CE 图像生成网关 | — 勿实现 | — |
+| `*` | `/__ce-api__/generate-video` | 旧 CE 视频任务提交 | — 勿实现 | — |
+| `*` | `/__ce-api__/video-status` | 旧 CE 视频任务轮询 | — 勿实现 | — |
+| `*` | `/__gva__/media/:id` | 旧本地 registry 媒体流 | — 勿实现 | — |
+
+### A.6 Arrival 缺口摘要（对照本清单）
+
+1. **Host Media HTTP + 可恢复上传**：需把 `createArrivalMediaCapability` 升为 `ResumableMediaCapability`（补 `update` + uploads 四件套），才能挂上 `/games/:gameId/media*`。
+2. **视频生成**：需注册 `media.video.generate@1`（如 `@forgeax-extension/kino-video-provider`）并注入 `context.videoGeneration`；当前 `model-gateway-adapter.generateVideo` 仅抛错。
+3. **agentic_os**：不补 Host；对齐能力靠 mate 的 `/__workbench__/v1` + MCP 暴露面即可。
