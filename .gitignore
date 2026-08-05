@@ -75,3 +75,4 @@ dist/
 .codebuddy/
 assets/CodeBuddyAssets/
 .playwright-mcp/
+.playwright-cli/
