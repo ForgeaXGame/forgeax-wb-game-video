@@ -67,9 +67,17 @@ function ensureCanvasStyle(): void {
     /* 画布底色：#232323。 */
     .react-flow__pane{background:#232323}
     /* Figma 13135_19511：边连线 stroke-width 1（防 xyflow 默认 .react-flow__edge-path 的 1px 覆盖）。
-       traversed(animated) 边 1.5px；配色由每条边的 inline style 提供，此处只兜底粗细。 */
+       试玩已走路径（animated）：品牌橙 #FF9C2A + 虚线流动动画（对齐改版前运行路径效果）。 */
     .react-flow__edge-path{stroke-width:1px}
-    .react-flow__edge.animated .react-flow__edge-path{stroke-width:1.5px}
+    @keyframes gv-edge-dashdraw{from{stroke-dashoffset:10}to{stroke-dashoffset:0}}
+    .react-flow__edge.animated .react-flow__edge-path,
+    .react-flow__edge.gv-edge-traversed .react-flow__edge-path,
+    .react-flow__edge-path.gv-edge-path-traversed{
+      stroke:#FF9C2A!important;stroke-width:2px!important;
+      stroke-dasharray:5!important;animation:gv-edge-dashdraw .5s linear infinite!important;
+    }
+    .react-flow__edge.animated path.react-flow__edge-interaction,
+    .react-flow__edge.gv-edge-traversed path.react-flow__edge-interaction{stroke-dasharray:none!important;animation:none!important}
     /* Figma 15195_74435：三按钮横排，白 5% 底、无边框、8px 圆角、30px 高、14px 白字。 */
     /* Figma 15195_74423：三按钮定位到画布顶部 bar 右侧（bar 高 58，按钮高 30，top 14 垂直居中）。 */
     .gv-canvas-chrome{position:absolute;right:12px;top:14px;z-index:6;display:flex;gap:12px;pointer-events:none}
@@ -358,12 +366,17 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
   const accent = BADGE_COLOR[fx.data.badge] ?? '#4b5563'
   const canEdit = !!(onInsertAfter || onDuplicate || onDelete)
   // Figma 12414_5350：节点卡片背景 #232323、圆角 12、常态 box-shadow 0 0 15px 10px rgba(0,0,0,0.08)。
-  // 选中态：加蓝色 outline 2px #7DACED（offset -1px，不挤占布局）。
-  // 预览播放中（active）：蓝色外发光 box-shadow 0 0 15px 10px rgba(70,124,201,0.65)。
-  // 预览播放 + 选中：outline 与外发光叠加。
+  // 选中态（编辑）：蓝色 outline 2px #7DACED。
+  // 试玩运行中（active）：品牌橙 #FF9C2A outline + 橙色外发光（与已走路径同色，对齐改版前 #f5a623）。
+  // active 优先于 selected：运行游标不应被编辑选中蓝框盖掉。
   const baseShadow = '0px 0px 15px 10px rgba(0,0,0,0.08)'
-  const playShadow = '0px 0px 15px 10px rgba(70,124,201,0.65)'
+  const playShadow = '0px 0px 15px 10px rgba(255,156,42,0.55)'
   const boxShadow = active ? playShadow : baseShadow
+  const outline = active
+    ? '2px solid #FF9C2A'
+    : selected
+      ? '2px solid #7DACED'
+      : 'none'
 
   // Figma 14947_83595：子蓝图/子流程节点标题栏颜色。
   // 子蓝图 = 绿色 rgba(69.66,200.65,69.66,0.20)；子流程 = 黄色 rgba(234,179,8,0.20)（沿用 subflow badge 色）。
@@ -387,7 +400,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
         fontSize: 14,
         overflow: 'visible',
         boxShadow: boxShadow,
-        outline: selected ? '2px solid #7DACED' : 'none',
+        outline,
         outlineOffset: -1,
       }}
     >
@@ -709,8 +722,12 @@ const nodeTypes = { perf: PerfNode }
 
 type FlowEdgeData = {
   onDelete?: (edgeId: string) => void
+  /** 试玩已走路径；写在 data 里比只靠 RF `animated` 更稳（自定义边必读到）。 */
+  traversed?: boolean
   [key: string]: unknown
 }
+
+const TRAVERSED_EDGE_STROKE = '#FF9C2A'
 
 /**
  * 流程边：正向用 smoothstep（正交折线）；**回环/回退边**（目标在源左侧，LR 布局里即"往回连"）
@@ -726,6 +743,7 @@ function FlowEdge({
   sourcePosition,
   targetPosition,
   style,
+  animated,
   data,
 }: EdgeProps): JSX.Element {
   const [hovered, setHovered] = useState(false)
@@ -773,17 +791,34 @@ function FlowEdge({
       sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 12,
     })
   }
+  // 试玩已走路径：橙色虚线流动。优先读 data.traversed（rfEdges 显式写入），兼读 RF animated。
+  const traversed = Boolean((data as FlowEdgeData | undefined)?.traversed) || Boolean(animated)
+  const edgeStyle = traversed
+    ? {
+        ...style,
+        stroke: TRAVERSED_EDGE_STROKE,
+        strokeWidth: 2,
+        strokeDasharray: '5',
+        animation: 'gv-edge-dashdraw 0.5s linear infinite',
+      }
+    : {
+        ...style,
+        // Figma 13135_19419：回环边兜底色与主流一致 #467CC9。
+        stroke: (style?.stroke as string | undefined) ?? '#467CC9',
+      }
   return (
     <>
       <g onMouseEnter={showDelete} onMouseLeave={hideDelete}>
         <BaseEdge
+          // key 强制在 idle↔traversed 切换时重挂 path，避免 xyflow 缓存旧 stroke。
+          key={traversed ? 'traversed' : 'idle'}
           id={id}
           path={path}
+          className={traversed ? 'gv-edge-path-traversed' : undefined}
           // Figma 13135_19511：边为纯线条，不渲染任何末端 marker（无箭头）。
           markerEnd={undefined}
           interactionWidth={24}
-          // Figma 13135_19419：回环边兜底色与主流一致 #467CC9。
-          style={{ ...style, stroke: backward ? (style?.stroke ?? '#467CC9') : style?.stroke }}
+          style={edgeStyle}
         />
       </g>
       {onDelete && hovered && (
@@ -1081,11 +1116,15 @@ function GraphCanvasInner({
           label: e.label,
           type: 'flow',
           // Figma 13135_19511：边连线为纯线条（无箭头），stroke #467CC9、stroke-width 1。
-          // 激活态（traversed）用更亮的 #7DACED + 加粗到 1.5px 区分。
+          // 试玩已走路径：#FF9C2A 虚线流动；data.traversed + animated + className 三路同开。
           animated: traversedEdgeIds?.has(e.id) ?? false,
-          style: traversedEdgeIds?.has(e.id) ? { stroke: '#7DACED', strokeWidth: 1.5 } : { stroke: '#467CC9', strokeWidth: 1 },
+          className: traversedEdgeIds?.has(e.id) ? 'gv-edge-traversed' : undefined,
+          style: traversedEdgeIds?.has(e.id)
+            ? { stroke: TRAVERSED_EDGE_STROKE, strokeWidth: 2, strokeDasharray: '5' }
+            : { stroke: '#467CC9', strokeWidth: 1 },
           data: {
             onDelete: readOnly ? undefined : onDeleteEdge,
+            traversed: traversedEdgeIds?.has(e.id) ?? false,
           } as FlowEdgeData,
         })),
     [fx, traversedEdgeIds, visibleNodeIds, readOnly, onDeleteEdge],
