@@ -83,11 +83,11 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
       version: '0.2.1',
       peerDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.2',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.4',
       },
       devDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.2',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.4',
       },
       exports: options.packageExports ?? {
         '.': './dist/index.js',

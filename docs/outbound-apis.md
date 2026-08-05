@@ -503,3 +503,94 @@ Workbench Host 的 ForgeaX 产品接线位于：
 - 不修改 SDK、Workbench Host、`/api/game-host`、router、adapter 或页面业务代码。
 - 不在资料缺失时设计新接口、新参数或新映射机制；无法确认的内容标记为待确认并附上缺失证据。
 - 不执行 `src/runtime/sdk` 的代码恢复；实际恢复在后续明确进入实现阶段时按附录 C 进行。
+
+---
+
+## 附录 E · ForgeaX vs Arrival 架构对照
+
+> 扩展两侧都消费 **Workbench Host**；`/api/game-host` 仅是 ForgeaX **产品**第二轨。  
+> 能力语义（存包 / 打版本）可重叠，扩展发布包不得硬编码 `/api/game-host`。
+
+```mermaid
+flowchart TB
+  subgraph EXT["wb-game-video 扩展（发布包）"]
+    UI["编辑器 UI"]
+    Client["ExtensionClient / WorkbenchBrowserClient<br/>gamePackage · versions · media · extension.fetch · tool.call"]
+    UI --> Client
+  end
+
+  subgraph FX["ForgeaX Studio 侧"]
+    direction TB
+    FX_Embed["Studio 嵌入<br/>iframe / in-process mount"]
+    FX_HS["Workbench handshake<br/>endpoints: gamePackage / gameVersions / media / extensionApi / toolCall<br/>→ 指向 /__workbench__/v1/..."]
+
+    subgraph FX_WB["Workbench Host 轨（扩展该用的）"]
+      FX_Mount["forgeax-server 挂载<br/>/__workbench__/v1"]
+      FX_WS["ForgeaxWorkspaceAdapter"]
+      FX_VER["ForgeaxVersionAdapter"]
+      FX_MEDIA["Forgeax Media adapter<br/>（Kino 等）"]
+      FX_MODELS["models / videoGeneration broker"]
+    end
+
+    subgraph FX_GH["产品 Game Host 轨（扩展不直连）"]
+      FX_API["/api/game-host/games/:slug/...<br/>package · versions · components"]
+      FX_PKG["game-package.ts"]
+      FX_GIT["game-git.ts"]
+      FX_Other["Studio 产品 UI / 其他团队 / CLI"]
+    end
+
+    FX_Disk["磁盘 SSOT<br/>.forgeax/games/&lt;slug&gt;/"]
+
+    FX_Embed --> FX_HS
+    FX_HS --> Client
+    Client -->|"只打 Workbench 路径"| FX_Mount
+    FX_Mount --> FX_WS & FX_VER & FX_MEDIA & FX_MODELS
+    FX_WS --> FX_Disk
+    FX_VER --> FX_GIT
+    FX_GIT --> FX_Disk
+    FX_Other --> FX_API
+    FX_API --> FX_PKG & FX_GIT
+    FX_PKG --> FX_Disk
+  end
+
+  subgraph ARR["Arrival 侧（agentic_mate + vag_web）"]
+    direction TB
+    ARR_Embed["agentstudio InlinePanel<br/>in-process mount + rewrite"]
+    ARR_RW["ARRIVAL_WORKBENCH_REWRITE<br/>/__workbench__/v1 → /as-mate-backend/api/workbench/v1"]
+    ARR_GW["网关 / nginx<br/>strip /as-mate-backend"]
+    ARR_HS["Workbench handshake<br/>endpoints → Workbench mount<br/>（无 /api/game-host）"]
+
+    subgraph ARR_WB["Workbench Host 轨（唯一主轨）"]
+      ARR_Mount["mate 挂载<br/>今日 /__workbench__/v1<br/>目标对外 /as-mate-backend/api/workbench/v1"]
+      ARR_WS["ArrivalWorkspaceAdapter"]
+      ARR_VER["ArrivalVersionAdapter"]
+      ARR_MEDIA["ArrivalMediaCapability<br/>本地 .kubee/workbench-media/<br/>❌ Host Media HTTP 未齐"]
+      ARR_MODELS["Model gateway<br/>✅ text/image · ❌ video broker"]
+      ARR_EXT["extension router → wb-game-video"]
+      ARR_MCP["MCP workbench__wb_game_video__*"]
+    end
+
+    ARR_NoGH["❌ 不存在 /api/game-host"]
+    ARR_Disk["游戏目录 SSOT<br/>mate workspace / games/&lt;id&gt;/"]
+    ARR_OS["agentic_os<br/>只经 as-mate-tools MCP 调 tools<br/>不挂 Host HTTP"]
+
+    ARR_Embed --> ARR_RW --> Client
+    ARR_Embed --> ARR_HS --> Client
+    Client --> ARR_GW --> ARR_Mount
+    ARR_Mount --> ARR_WS & ARR_VER & ARR_MEDIA & ARR_MODELS & ARR_EXT
+    ARR_Mount --> ARR_MCP
+    ARR_WS & ARR_VER --> ARR_Disk
+    ARR_OS -.->|"MCP"| ARR_MCP
+  end
+```
+
+### E.1 怎么读
+
+| | ForgeaX | Arrival |
+|:--|:--|:--|
+| **扩展用什么** | 只打 **`/__workbench__/v1/**`**（handshake 下发） | 同样只打 Workbench；浏览器先 **rewrite** 成 `/as-mate-backend/api/workbench/v1/**` |
+| **产品另用什么** | 另有 **`/api/game-host`**，给 Studio / 其他调用方 | **没有** game-host；package / versions 只走 mate 的 Workbench |
+| **重叠在哪** | 两边都能「存包 / 打版本」，磁盘可同一套语义 | Arrival 用自己的 workspace / version adapter，不挂第二套 product HTTP |
+| **Arrival 缺口** | — | Media HTTP + video broker（图中 ❌）；见附录 A.6 |
+
+一句话：**扩展两侧都用 Workbench Host；`/api/game-host` 只是 ForgeaX 产品第二轨，Arrival 不抄这轨。**

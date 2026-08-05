@@ -54,7 +54,7 @@ import-character-refs + import-scene-refs
 ## 宿主契约
 
 发布时需要 `@forgeax/extension-platform@0.0.2` 与
-`@forgeax/workbench-host@0.2.2`。宿主加载 `@forgeax-extension/wb-game-video/host` 的 `host`
+`/workbench-host.2.3`。宿主加载 `@forgeax-extension/wb-game-video/host` 的 `host`
 导出，并注入游戏工作区、版本、媒体、模型、视频生成与服务 capability。所有工具和扩展 HTTP 路由共享同一
 `WorkbenchExtensionContext`；不支持根据 URL、进程环境、全局 active game 或工具参数选择游戏。
 浏览器必须等待 nonce-bound handshake，并只使用 handshake 返回的游戏身份和端点。版本与游戏

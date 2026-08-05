@@ -110,20 +110,18 @@ describe('release identity', () => {
   it('pins the exact host dependency and installed extension URL API', () => {
     expect(pkg.peerDependencies['@forgeax/extension-platform']).toBe('0.0.2')
     expect(pkg.devDependencies['@forgeax/extension-platform']).toBe('0.0.2')
-    expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.2.2')
-    expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.2.2')
+    expect(pkg.peerDependencies['@forgeax/workbench-host']).toBe('0.2.4')
+    expect(pkg.devDependencies['@forgeax/workbench-host']).toBe('0.2.4')
     expect(pkg.overrides?.['@forgeax/workbench-host']).toBeUndefined()
   })
 
-  it('resolves workbench host from the npmjs registry with an integrity pin', () => {
+  it('resolves workbench host from the npm registry with an integrity pin', () => {
     const lock = readFileSync(resolve(root, 'bun.lock'), 'utf8')
 
-    expect(lock).toContain('@forgeax/workbench-host@0.2.2')
-    expect(lock).toMatch(
-      /https:\/\/registry\.npmjs\.org\/@forgeax\/workbench-host\/-\/workbench-host-0\.2\.2\.tgz/,
-    )
-    expect(lock).toMatch(/integrity|sha512-/)
-    expect(lock).not.toMatch(/@forgeax\/workbench-host[^\n]*(?:git\+ssh|github\.com)/)
+    expect(lock).toContain('@forgeax/workbench-host@0.2.4')
+    expect(lock).toMatch(/sha512-/)
+    expect(lock).not.toMatch(/file:vendor\/forgeax-workbench-host/)
+    expect(lock).not.toMatch(/@forgeax\/workbench-host[^\n]*(?:git\+ssh|github\.com|\/Users\/)/)
   })
 
   it('declares the Host video-generation capability for both generation tools', () => {

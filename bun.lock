@@ -18,7 +18,7 @@
       },
       "devDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "file:vendor/forgeax-workbench-host-0.2.3.tgz",
+        "@forgeax/workbench-host": "0.2.4",
         "@testing-library/jest-dom": "^7.0.0",
         "@testing-library/react": "^16.3.2",
         "@types/node": "^22.10.0",
@@ -34,7 +34,7 @@
       },
       "peerDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "0.2.3",
+        "@forgeax/workbench-host": "0.2.4",
       },
     },
   },
@@ -143,7 +143,7 @@
 
     "@forgeax/extension-platform": ["@forgeax/extension-platform@0.0.2", "https://mirrors.tencent.com/npm/@forgeax/extension-platform/-/extension-platform-0.0.2.tgz", {}, "sha512-FvPk1d/s1x1jM4T0IAaTZrzniKzpIY/FRXQMgXsxt9MI94YH9msm0yo3GCYHEfsn2E9X0s0qmHGDqk5Kx2LSNA=="],
 
-    "@forgeax/workbench-host": ["@forgeax/workbench-host@vendor/forgeax-workbench-host-0.2.3.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-bFr8uIxVH+kaKM1oWYGMfMKG5oYmRr+F/+/YmiWI5Q0viqjp+M8Ilp6yfr0X+xZ8tAeRMk1OWTkpfhn1Ij/HLw=="],
+    "@forgeax/workbench-host": ["@forgeax/workbench-host@0.2.4", "", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-v699lqDjwkQd1SnUrI6OIbJfGX1prH+bSN6xFM4V+534wCUb1Dn5iJg2mshuhBu9rULXafwLewm9wBpeYIzviQ=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
@@ -581,7 +581,7 @@
 
     "yallist": ["yallist@3.1.1", "https://registry.npmmirror.com/yallist/-/yallist-3.1.1.tgz", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
 
-    "zod": ["zod@3.25.76", "https://mirrors.tencent.com/npm/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "zundo": ["zundo@2.3.0", "https://registry.npmmirror.com/zundo/-/zundo-2.3.0.tgz", { "peerDependencies": { "zustand": "^4.3.0 || ^5.0.0" } }, "sha512-4GXYxXA17SIKYhVbWHdSEU04P697IMyVGXrC2TnzoyohEAWytFNOKqOp5gTGvaW93F/PM5Y0evbGtOPF0PWQwQ=="],
 

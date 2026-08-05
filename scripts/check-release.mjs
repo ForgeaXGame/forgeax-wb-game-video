@@ -11,7 +11,7 @@ const PACKAGE_NAME = '@forgeax-extension/wb-game-video'
 const PLATFORM_PACKAGE = '@forgeax/extension-platform'
 const PLATFORM_VERSION = '0.0.2'
 const WORKBENCH_HOST_PACKAGE = '@forgeax/workbench-host'
-const WORKBENCH_HOST_VERSION = '0.2.2'
+const WORKBENCH_HOST_VERSION = '0.2.4'
 const HOST_BACKEND_ENTRY = './dist/server/host.js'
 const VIDEO_GENERATION_TOOL_IDS = [
   'wb-game-video:generate-video',
