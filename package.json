@@ -67,7 +67,7 @@
   },
   "devDependencies": {
     "@forgeax/extension-platform": "0.0.2",
-    "@forgeax/workbench-host": "0.2.3",
+    "@forgeax/workbench-host": "file:vendor/forgeax-workbench-host-0.2.3.tgz",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.10.0",
