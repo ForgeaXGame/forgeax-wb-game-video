@@ -10,7 +10,7 @@ import { create, useStore } from 'zustand'
 import { temporal } from 'zundo'
 import type { TemporalState, ZundoOptions } from 'zundo'
 import type {
-  BlueprintDoc, GameGraph, GameScenario, GraphLibraryDocument, GraphTextStylePreset, ScenarioMetaFields,
+  BlueprintDoc, GameGraph, GameScenario, GraphLibraryDocument, GraphTextStylePreset, ScenarioMetaFields, UiTree,
 } from '../../runtime/schema/graph-schema'
 import type { TextStyleGroup } from '../text/text-style'
 import { loadStore, saveProject, saveDraft, clearDraft, loadDraft, commitVersion, currentVersion, listVersions, loadVersionProject, type VersionEntry, type GameVersion } from './persist-client'
@@ -31,6 +31,16 @@ import { blueprintsReferencing, findReferenceCycle } from '../../graph/edit/blue
 import { resolveEntryAfterGraphChange } from '../../graph/edit/graph-scope'
 import { loadGameComponents } from '../../runtime/component-host'
 import { NODIA_DEMO } from '../demo/demo'
+import {
+  addUiTreeFolder as addTreeFolder,
+  addUiTreeScheme as addTreeScheme,
+  ensureUiTree,
+  moveUiTreeNode as moveTreeNode,
+  removeUiTreeNode as removeTreeNode,
+  renameUiTreeFolder as renameTreeFolder,
+} from './ui-tree'
+import { broadcastBlueprintIntent } from './graphBlueprintSync'
+
 
 export type BlueprintTitleActionOk = { ok: true; id?: string }
 export type BlueprintTitleActionErr = { ok: false; reason: 'duplicate_title' | 'not_found' }
@@ -39,9 +49,11 @@ export type ScenarioIdRenameActionResult = { ok: true } | { ok: false; reason: '
 
 /** 载入 demo / 文档时保证基础覆盖物存在——用于 reset()/首次落座。 */
 function withBuiltinSchemes<T extends GameScenario>(s: T): T {
+  const overlays = ensureBuiltinSchemes(s.ui?.overlays)
   return {
     ...s,
-    ui: { ...s.ui, overlays: ensureBuiltinSchemes(s.ui?.overlays) },
+    ui: { ...s.ui, overlays },
+    uiTree: ensureUiTree((s as T & { uiTree?: UiTree }).uiTree, overlays),
   } as T
 }
 
@@ -66,7 +78,8 @@ function resolveActiveDoc(state: Pick<GraphScenarioStore, 'blueprints' | 'active
 
 /** ui.overlays 缺失基础覆盖物则补（作用于共享 meta，不覆盖已有）。 */
 function withBuiltinSchemesMeta(m: ScenarioMetaFields): ScenarioMetaFields {
-  return { ...m, ui: { ...m.ui, overlays: ensureBuiltinSchemes(m.ui?.overlays) } }
+  const overlays = ensureBuiltinSchemes(m.ui?.overlays)
+  return { ...m, ui: { ...m.ui, overlays }, uiTree: ensureUiTree(m.uiTree, overlays) }
 }
 
 /**
@@ -154,6 +167,12 @@ interface GraphScenarioStore {
   ensureBoot: (game: string, demo?: GameScenario) => Promise<void>
   setGraph: (g: GameGraph | ((g: GameGraph) => GameGraph)) => void
   setMeta: (m: ScenarioMetaFields | ((m: ScenarioMetaFields) => ScenarioMetaFields)) => void
+  setUiTree: (tree: UiTree | ((tree: UiTree) => UiTree)) => void
+  addUiTreeFolder: (parentId: string | null, folder: { id: string; name: string }, index?: number) => void
+  addUiTreeScheme: (parentId: string | null, scheme: { id: string; overlayId: string }, index?: number) => void
+  removeUiTreeNode: (id: string) => void
+  moveUiTreeNode: (id: string, parentId: string | null, index?: number) => void
+  renameUiTreeFolder: (id: string, name: string) => void
   renameScenarioId: (rename: ScenarioIdRename) => ScenarioIdRenameActionResult
   /** 原子写回整份 scenario（graph + meta 一次 set，避免拆两次 set 产生额外历史步）；写主蓝图。 */
   setScenario: (s: GameScenario) => void
@@ -456,6 +475,28 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       })
       scheduleDraft()
     },
+    setUiTree: (tree) => {
+      get().setMeta((meta) => {
+        const current = ensureUiTree(meta.uiTree, meta.ui?.overlays)
+        const next = typeof tree === 'function' ? tree(current) : tree
+        return next === meta.uiTree ? meta : { ...meta, uiTree: next }
+      })
+    },
+    addUiTreeFolder: (parentId, folder, index) => {
+      get().setUiTree((tree) => addTreeFolder(tree, parentId, folder, index))
+    },
+    addUiTreeScheme: (parentId, scheme, index) => {
+      get().setUiTree((tree) => addTreeScheme(tree, parentId, scheme, index))
+    },
+    removeUiTreeNode: (id) => {
+      get().setUiTree((tree) => removeTreeNode(tree, id))
+    },
+    moveUiTreeNode: (id, parentId, index) => {
+      get().setUiTree((tree) => moveTreeNode(tree, id, parentId, index))
+    },
+    renameUiTreeFolder: (id, name) => {
+      get().setUiTree((tree) => renameTreeFolder(tree, id, name))
+    },
     renameScenarioId: (rename) => {
       const migrated = renameScenarioId(get().meta, get().blueprints, rename)
       if (!migrated.ok) return migrated
@@ -507,6 +548,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         fitSignal: s.fitSignal + 1,
       }))
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'created', doc })
       return { ok: true, id: doc.id }
     },
     renameBlueprint: (id, title) => {
@@ -519,17 +561,25 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       }
       set({ blueprints: { ...st.blueprints, [id]: { ...st.blueprints[id]!, title: nextTitle } } })
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'renamed', id, title: nextTitle })
       return { ok: true }
     },
-    selectBlueprint: (id) => set((st) => {
-      if (id === st.activeBlueprintId) return { selectedNodeId: null }
-      return {
-        activeBlueprintId: id,
-        graph: st.blueprints[id]?.graph ?? EMPTY_GRAPH,
-        selectedNodeId: null,
-        fitSignal: st.fitSignal + 1,
+    selectBlueprint: (id) => {
+      const prev = get().activeBlueprintId
+      set((st) => {
+        if (id === st.activeBlueprintId) return { selectedNodeId: null }
+        return {
+          activeBlueprintId: id,
+          graph: st.blueprints[id]?.graph ?? EMPTY_GRAPH,
+          selectedNodeId: null,
+          fitSignal: st.fitSignal + 1,
+        }
+      })
+      const next = get()
+      if (id !== prev && next.blueprints[id]) {
+        broadcastBlueprintIntent({ type: 'select', id })
       }
-    }),
+    },
     setMainBlueprint: (id) => {
       let changed = false
       set((st) => {
@@ -537,7 +587,10 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         changed = true
         return { mainBlueprintId: id }
       })
-      if (changed) scheduleDraft()
+      if (changed) {
+        scheduleDraft()
+        broadcastBlueprintIntent({ type: 'mainSet', id })
+      }
     },
     deleteBlueprint: (id) => {
       const st = get()
@@ -549,6 +602,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       const nextActive = st.activeBlueprintId === id ? st.mainBlueprintId : st.activeBlueprintId
       set({ blueprints: next, activeBlueprintId: nextActive, graph: next[nextActive]?.graph ?? EMPTY_GRAPH })
       scheduleDraft()
+      broadcastBlueprintIntent({ type: 'deleted', id, nextActive })
       return { ok: true }
     },
     importBlueprint: (doc) => {

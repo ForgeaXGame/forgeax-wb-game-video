@@ -55,13 +55,22 @@ const CASCADING_PICKER_CSS = `
 }
 .gc-cascade-root.is-narrow-safe .gc-cascade-trigger { min-width: 0; }
 .gc-cascade-trigger:hover, .gc-cascade-trigger[aria-expanded="true"] {
-  border-color: var(--color-brand-primary, #d4ff48);
+  border-color: rgb(255, 156, 42);
 }
 .gc-cascade-trigger-label {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .gc-cascade-trigger-label.is-placeholder { opacity: .45; }
-.gc-cascade-trigger-arrow { flex: none; opacity: .65; }
+.gc-cascade-trigger-arrow {
+  flex: none;
+  width: 12px;
+  height: 8px;
+  margin: 0 2px 0 4px;
+  opacity: .65;
+  transform-origin: 50% 50%;
+  transition: transform 140ms ease;
+}
+.gc-cascade-trigger[aria-expanded="true"] .gc-cascade-trigger-arrow { transform: rotateX(180deg); }
 .gc-cascade-panel {
   z-index: var(--z-top, 9999); box-sizing: border-box; display: block;
   width: max-content; max-width: calc(100vw - 16px);
@@ -82,6 +91,12 @@ const CASCADING_PICKER_CSS = `
   overflow-y: auto; scrollbar-gutter: stable; padding: 5px;
   border-right: 1px solid var(--color-border-default, #404040);
 }
+/* 通用单列下拉：高度随选项收缩，选项多时才滚动到 max-height。 */
+.gc-cascade-panel.is-fit-content .gc-cascade-column {
+  height: auto;
+  max-height: min(280px, calc(100vh - 16px));
+  scrollbar-gutter: auto;
+}
 .gc-cascade-column.has-editor { width: 240px; min-width: 240px; }
 .gc-cascade-column:last-child { border-right: 0; }
 .gc-cascade-item {
@@ -92,7 +107,7 @@ const CASCADING_PICKER_CSS = `
 .gc-cascade-item:hover, .gc-cascade-item:focus-visible, .gc-cascade-item.is-active {
   background: var(--color-background-hover, rgba(255,255,255,.08));
 }
-.gc-cascade-item.is-selected { color: var(--color-brand-primary, #d4ff48); }
+.gc-cascade-item.is-selected { color: rgb(255, 156, 42); }
 .gc-cascade-item:disabled { opacity: .45; cursor: default; }
 .gc-cascade-item.is-detail:disabled { opacity: .78; }
 .gc-cascade-item.is-create {
@@ -113,8 +128,8 @@ const CASCADING_PICKER_CSS = `
 .gc-cascade-item-create-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gc-cascade-item.is-confirm {
   justify-content: center; text-align: center;
-  color: var(--color-brand-primary, #d4ff48);
-  background: color-mix(in srgb, var(--color-brand-primary, #d4ff48) 10%, transparent);
+  color: rgb(255, 156, 42);
+  background: color-mix(in srgb, rgb(255, 156, 42) 10%, transparent);
 }
 .gc-cascade-item.is-confirm .gc-cascade-item-label { flex: 0 1 auto; text-align: center; }
 .gc-cascade-item-label {
@@ -140,7 +155,7 @@ const CASCADING_PICKER_CSS = `
   background: var(--color-background-base, #191919); color: inherit; font: inherit;
 }
 .gc-cascade-editor textarea { height: 68px; min-height: 68px; resize: vertical; line-height: 1.4; }
-.gc-cascade-editor input:focus, .gc-cascade-editor textarea:focus { outline: none; border-color: var(--color-brand-primary, #d4ff48); }
+.gc-cascade-editor input:focus, .gc-cascade-editor textarea:focus { outline: none; border-color: rgb(255, 156, 42); }
 .gc-cascade-editor input[aria-invalid="true"], .gc-cascade-editor textarea[aria-invalid="true"] { border-color: var(--color-status-danger, #ef6a6a); }
 .gc-cascade-editor-error { color: var(--color-status-danger, #ef6a6a); line-height: 1.35; overflow-wrap: anywhere; }
 .gc-cascade-create-dialog {
@@ -254,6 +269,7 @@ export function CascadingPicker({
   options,
   onSelect,
   narrowSafe = false,
+  fitContent = false,
 }: {
   ariaLabel: string
   value: string
@@ -262,6 +278,8 @@ export function CascadingPicker({
   options: readonly CascadingPickerOption[]
   onSelect: (value: string) => void
   narrowSafe?: boolean
+  /** 面板高度随选项收缩（max-height 上限），用于扁平单列下拉。 */
+  fitContent?: boolean
 }): JSX.Element {
   injectStyleOnce('gc-cascading-picker', CASCADING_PICKER_CSS)
   const [open, setOpen] = useState(false)
@@ -458,7 +476,7 @@ export function CascadingPicker({
   const panel = open ? (
     <div
       ref={panelRef}
-      className="gc-cascade-panel"
+      className={`gc-cascade-panel${fitContent ? ' is-fit-content' : ''}`}
       role="menu"
       aria-label={`${ariaLabel}选项`}
       style={panelStyle ?? HIDDEN_PANEL_STYLE}
@@ -658,7 +676,20 @@ export function CascadingPicker({
         <span className={`gc-cascade-trigger-label${displayValue ? '' : ' is-placeholder'}`}>
           {displayValue || placeholder || ''}
         </span>
-        <span className="gc-cascade-trigger-arrow">▾</span>
+        <svg
+          className="gc-cascade-trigger-arrow"
+          viewBox="0 0 12 9"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M1.5 2.25 6 6.75l4.5-4.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {typeof document !== 'undefined' && panel ? createPortal(panel, document.body) : null}
       {typeof document !== 'undefined' && createDialog ? createPortal(createDialog, document.body) : null}

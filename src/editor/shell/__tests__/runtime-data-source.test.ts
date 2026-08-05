@@ -9,6 +9,6 @@ function source(relativePath: string): string {
 describe('workbench runtime data sources', () => {
   it('does not use the bundled NODIA demo as the editor or play surface source', () => {
     expect(source('GraphApp.tsx')).not.toMatch(/NODIA_DEMO/)
-    expect(source('editor/shell/BlueprintLibraryView.tsx')).not.toMatch(/NODIA_DEMO/)
+    expect(source('editor/shell/GraphStudio.tsx')).not.toMatch(/NODIA_DEMO/)
   })
 })
