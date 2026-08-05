@@ -5,6 +5,7 @@
  * BlueprintLibraryView；其它顶层（视频/界面/资产/规则）仍为 mock。
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 import { useGraphScenario } from '../persist/graphScenarioStore'
@@ -266,63 +267,82 @@ const NEW_SIDEBAR_CSS = `
 .ns-act:hover, .ns-act.is-on { color: var(--ns-text); background: rgba(255,255,255,0.10); }
 .ns-act.is-danger:hover, .ns-act.is-danger.is-on { color: #ff8e8e; }
 .ns-act svg { width: 14px; height: 14px; display: block; }
-.ns-pop {
-  z-index: 40;
+/* portal 到 body 的删除确认；位置 / --ns-arrow 由 placeAdaptivePop 写入。 */
+.ns-pop-confirm {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-  padding: 8px;
+  gap: 8px;
+  min-width: 160px;
+  max-width: min(240px, calc(100vw - 16px));
+  padding: 10px;
   background: #3a3a3a;
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  color: var(--ns-text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  color: #fff;
+  font-family: 'PingFang SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
-.ns-pop-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.ns-pop-row input {
-  flex: 1;
-  min-width: 0;
+.ns-pop-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #3a3a3a;
+  border: 1px solid rgba(255,255,255,0.16);
+  transform: rotate(45deg);
+  pointer-events: none;
   box-sizing: border-box;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid rgba(255,255,255,0.24);
-  border-radius: 4px;
-  background: rgba(44,44,44,0.55);
-  color: var(--ns-text);
-  font-family: inherit;
-  font-size: 14px;
 }
-.ns-pop-row input:focus { outline: 1px solid rgba(255,255,255,0.45); }
-.ns-pop-ok {
-  flex: none;
-  height: 28px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.14);
-  color: var(--ns-text);
-  cursor: pointer;
-  font-family: inherit;
+/* 浮层在按钮下方 → 箭头在顶边朝上指向按钮 */
+.ns-pop-confirm[data-side="below"] .ns-pop-arrow {
+  top: -5px;
+  left: var(--ns-arrow);
+  margin-left: -4px;
+  border-right: none;
+  border-bottom: none;
+}
+/* 浮层在按钮上方 → 箭头在底边朝下 */
+.ns-pop-confirm[data-side="above"] .ns-pop-arrow {
+  bottom: -5px;
+  left: var(--ns-arrow);
+  margin-left: -4px;
+  border-left: none;
+  border-top: none;
+}
+/* 浮层在按钮右侧 → 箭头在左边朝左 */
+.ns-pop-confirm[data-side="right"] .ns-pop-arrow {
+  left: -5px;
+  top: var(--ns-arrow);
+  margin-top: -4px;
+  border-right: none;
+  border-top: none;
+}
+/* 浮层在按钮左侧 → 箭头在右边朝右 */
+.ns-pop-confirm[data-side="left"] .ns-pop-arrow {
+  right: -5px;
+  top: var(--ns-arrow);
+  margin-top: -4px;
+  border-left: none;
+  border-bottom: none;
+}
+.ns-pop-confirm-msg {
   font-size: 13px;
-  white-space: nowrap;
+  line-height: 1.4;
+  color: rgba(255,255,255,0.80);
+  word-break: break-word;
 }
-.ns-pop-ok:hover { background: rgba(255,255,255,0.22); }
-.ns-pop-error { font-size: 12px; color: #ff8e8e; }
-.ns-pop-confirm-msg { font-size: 13px; line-height: 1.4; color: var(--ns-text-80); }
-.ns-pop-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.ns-pop-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .ns-pop-confirm-actions button {
   height: 26px;
   padding: 0 10px;
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 4px;
   background: transparent;
-  color: var(--ns-text-80);
+  color: rgba(255,255,255,0.80);
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
@@ -466,7 +486,7 @@ function NsRow({
           title="重命名"
           onClick={() => {
             if (isEditing) bp.cancelRename()
-            else bp.openRename(node.id, null!)
+            else bp.openRename(node.id)
           }}
         >
           {PencilIcon}
@@ -482,32 +502,19 @@ function NsRow({
             >
               {HomeIcon}
             </button>
-            <div className="ns-act-anchor" ref={bp.pendingDeleteId === node.id ? bp.deleteRootRef : undefined}>
-              <button
-                type="button"
-                className={`ns-act is-danger${bp.pendingDeleteId === node.id ? ' is-on' : ''}`}
-                aria-label={`删除 ${node.label}`}
-                title="删除"
-                aria-expanded={bp.pendingDeleteId === node.id}
-                onClick={(e) => {
-                  if (bp.pendingDeleteId === node.id) bp.cancelDelete()
-                  else bp.openDelete(node.id, e.currentTarget)
-                }}
-              >
-                {TrashIcon}
-              </button>
-              {bp.pendingDeleteId === node.id && bp.deletePopStyle && (
-                <div className="ns-pop" role="dialog" aria-label="删除蓝图" style={bp.deletePopStyle}>
-                  <div className="ns-pop-confirm-msg">
-                    确定删除「{bp.pendingTitle}」？此操作不可撤销。
-                  </div>
-                  <div className="ns-pop-confirm-actions">
-                    <button type="button" onClick={bp.cancelDelete}>取消</button>
-                    <button type="button" className="is-danger" onClick={bp.confirmDelete}>确认删除</button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              className={`ns-act is-danger${bp.pendingDeleteId === node.id ? ' is-on' : ''}`}
+              aria-label={`删除 ${node.label}`}
+              title="删除"
+              aria-expanded={bp.pendingDeleteId === node.id}
+              onClick={(e) => {
+                if (bp.pendingDeleteId === node.id) bp.cancelDelete()
+                else bp.openDelete(node.id, e.currentTarget)
+              }}
+            >
+              {TrashIcon}
+            </button>
           </>
         )}
       </>
@@ -826,6 +833,28 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
       <div className="ns-footer" aria-label={`当前节点总数 ${nodeCount}`}>
         节点总数 {nodeCount}
       </div>
+      {bp.pendingDeleteId && bp.deletePopStyle && bp.deletePopSide && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            ref={bp.deletePopRef}
+            className="ns-pop-confirm"
+            data-side={bp.deletePopSide}
+            role="dialog"
+            aria-label="删除蓝图"
+            style={bp.deletePopStyle}
+          >
+            <span className="ns-pop-arrow" aria-hidden />
+            <div className="ns-pop-confirm-msg">
+              确定删除「{bp.pendingTitle}」？
+            </div>
+            <div className="ns-pop-confirm-actions">
+              <button type="button" onClick={bp.cancelDelete}>取消</button>
+              <button type="button" className="is-danger" onClick={bp.confirmDelete}>确认</button>
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
     </aside>
   )
 }
