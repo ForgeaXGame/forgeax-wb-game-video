@@ -3,11 +3,12 @@
  * 都对应 GraphMain 的真实视图：蓝图/视频/资产/界面/规则/试玩。
  *
  * Page layout 把 sidebar/workspace 两个 Panel 放成左右布局，宿主给两个 iframe
- * 分别传 `?pane=left` / `?pane=center`。两个 iframe 通过 graphViewStore 与
- * BroadcastChannel 同步当前 tab；无 pane 时仍按侧栏 + 主区独立运行。
+ * 分别传 `?pane=left` / `?pane=center`。两个 iframe 通过 graphViewStore /
+ * uiNavSync / graphBlueprintSync 同步 tab、界面树与蓝图库意图。
+ * 无 pane 时仍按侧栏 + 主区独立运行。
  */
 import { useEffect, useState } from 'react'
-import { BlueprintLibraryView } from './editor/shell/BlueprintLibraryView'
+import { GraphStudio } from './editor/shell/GraphStudio'
 import { GraphVideoView } from './editor/shell/GraphVideoView'
 import { GraphAssetView } from './editor/shell/GraphAssetView'
 import { GraphConfigView } from './editor/shell/GraphConfigView'
@@ -16,6 +17,7 @@ import { NewSidebar } from './editor/shell/NewSidebar'
 import { useGraphScenario } from './editor/persist/graphScenarioStore'
 import { useGraphView, installGraphViewSync } from './editor/persist/graphViewStore'
 import { installUiNavSync } from './editor/persist/uiNavSync'
+import { installGraphBlueprintSync } from './editor/persist/graphBlueprintSync'
 import { NODIA_DEMO } from './editor/demo/demo'
 import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
@@ -35,7 +37,7 @@ function GraphMain(): JSX.Element {
   const view = useGraphView((state) => state.view)
   return (
     <main className="ga-main">
-      {view === 'graph' && <BlueprintLibraryView />}
+      {view === 'graph' && <GraphStudio scenario={NODIA_DEMO} />}
       {view === 'video' && <GraphVideoView />}
       {view === 'assets' && <GraphAssetView />}
       {view === 'ui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'overlays', label: '自定义界面' }]} scenario={NODIA_DEMO} />}
@@ -56,6 +58,21 @@ function GraphMain(): JSX.Element {
   )
 }
 
+function LeftPane({ gameSlug }: { gameSlug: string }): JSX.Element {
+  const ensureBoot = useGraphScenario((state) => state.ensureBoot)
+
+  useEffect(() => {
+    // 侧栏不包 GameBootstrap（避免 package guide 顶掉导航），但仍需加载同一 persist。
+    ensureBoot(gameSlug, NODIA_DEMO)
+  }, [ensureBoot, gameSlug])
+
+  return (
+    <div className="ga-root is-pane-left">
+      <NewSidebar uiNavMode="left" />
+    </div>
+  )
+}
+
 export function GraphApp(): JSX.Element {
   injectStyleOnce('graph-app-shell', CSS)
   const [pane] = useState(readPane)
@@ -66,22 +83,32 @@ export function GraphApp(): JSX.Element {
     if (pane === null) return
     const disposeView = installGraphViewSync()
     const disposeUiNav = installUiNavSync(pane)
+    const disposeBp = installGraphBlueprintSync()
     return () => {
+      disposeBp()
       disposeUiNav()
       disposeView()
     }
   }, [pane])
 
   if (pane === 'left') {
-    return <div className="ga-root is-pane-left"><NewSidebar uiNavMode="left" /></div>
+    return <LeftPane gameSlug={gameSlug} />
   }
   if (pane === 'center') {
-    return <div className="ga-root is-pane-center"><GameBootstrap slug={gameSlug} onBoot={() => ensureBoot(gameSlug, NODIA_DEMO)}><GraphMain /></GameBootstrap></div>
+    return (
+      <div className="ga-root is-pane-center">
+        <GameBootstrap slug={gameSlug} onBoot={() => ensureBoot(gameSlug, NODIA_DEMO)}>
+          <GraphMain />
+        </GameBootstrap>
+      </div>
+    )
   }
   return (
     <div className="ga-root">
       <NewSidebar />
-      <GameBootstrap slug={gameSlug} onBoot={() => ensureBoot(gameSlug, NODIA_DEMO)}><GraphMain /></GameBootstrap>
+      <GameBootstrap slug={gameSlug} onBoot={() => ensureBoot(gameSlug, NODIA_DEMO)}>
+        <GraphMain />
+      </GameBootstrap>
     </div>
   )
 }
