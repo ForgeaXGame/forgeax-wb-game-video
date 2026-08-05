@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax-extension/wb-game-video",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "kind": "workbench",
   "displayName": {
     "zh": "\u89c6\u9891\u6e38\u620f",

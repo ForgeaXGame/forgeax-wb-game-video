@@ -93,10 +93,10 @@ describe('release identity', () => {
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax-extension/wb-game-video')
-    expect(pkg.version).toBe('0.2.3')
+    expect(pkg.version).toBe('0.2.4')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe('0.2.3')
+    expect(manifest.version).toBe('0.2.4')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),
@@ -164,6 +164,8 @@ describe('release identity', () => {
       'SKILL.md',
       '!**/*.mp4',
       '!**/*.map',
+      '!dist/HYShangWei-*.woff2',
+      '!dist/**/*.map',
     ])
     expect(pkg.files).not.toContain('vendor')
   })
