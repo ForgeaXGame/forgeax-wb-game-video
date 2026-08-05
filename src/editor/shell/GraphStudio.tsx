@@ -613,13 +613,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', zIndex: 0, overflow: 'hidden', isolation: 'isolate' }}>
       {/* 左：可编辑画布 + 运行时高亮（点节点=选中编辑；双击子流程容器下钻） */}
       <div ref={canvasHostRef} className="gv-canvas-host" style={{ flex: 1, minWidth: 0, borderRight: '1px solid #2e2924', position: 'relative', overflow: 'hidden', contain: 'paint' }}>
-        {/* Figma 15195_74423：画布顶部 bar（58px，#2C2C2C）常驻。左侧面包屑；
+        {/* Figma 15195_74423：画布顶部 bar（58px，#333333）常驻。左侧面包屑；
   右侧三按钮由 GraphCanvas 的 .gv-canvas-chrome 用 CSS 定位到本 bar 右侧对齐。 */}
         <div
   style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: 58, zIndex: 5,
             display: 'flex', gap: 8, alignItems: 'center', padding: '0 10px',
-     background: '#2C2C2C',
+     background: '#333333',
    fontSize: 14, pointerEvents: 'none',
           }}
         >
