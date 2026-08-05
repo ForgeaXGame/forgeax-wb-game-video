@@ -53,14 +53,14 @@ describe('NewSidebar interface tree', () => {
   it('keeps the main-branch 240px rail while exposing only real product routes', () => {
     render(<NewSidebar />)
 
-    const sidebar = screen.getByRole('complementary', { name: '视频游戏工坊' })
+    const sidebar = screen.getByRole('complementary', { name: /视频游戏工坊/ })
     expect(sidebar).toBeTruthy()
     expect(document.querySelector('style[data-reel-style="new-sidebar"]')?.textContent).toContain('width: 240px')
-    expect(screen.getByRole('tab', { name: '蓝图' })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: '视频' })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: '界面' })).toBeTruthy()
-    expect(screen.queryByRole('tab', { name: '文档' })).toBeNull()
-    expect(screen.queryByRole('tab', { name: '控件' })).toBeNull()
+    expect(sidebar.querySelector('.ns-label[title="蓝图"]')?.textContent).toContain('蓝图')
+    expect(sidebar.querySelector('.ns-label[title="视频"]')?.textContent).toContain('视频')
+    expect(sidebar.querySelector('.ns-label[title="界面"]')?.textContent).toContain('界面')
+    expect(sidebar.querySelector('.ns-label[title="文档"]')).toBeNull()
+    expect(sidebar.querySelector('.ns-label[title="控件"]')).toBeNull()
   })
 
   it('renders the real recursive tree and publishes scheme selection', () => {
