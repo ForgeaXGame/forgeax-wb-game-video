@@ -16,6 +16,7 @@ export default defineConfig({
   sourcemap: true,
   clean: false,
   external: ['@forgeax/extension-platform'],
+  noExternal: ['@forgeax-extension/wb-asset-canvas'],
   onSuccess: async () => {
     await cp('server/engine/llm/skills', 'dist/skills', { recursive: true })
   },

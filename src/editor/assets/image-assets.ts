@@ -36,6 +36,11 @@ function toMediaAsset(resource: KinoResourceDTO, referenceType: ImageReferenceTy
     label: resource.name,
     url: resource.url,
     sourceModule: 'wb-game-video',
+    provider: {
+      kind: 'kino',
+      ref: resource.url,
+      upstreamResourceId: resource.resource_id,
+    },
     mime: file.type,
     bytes: file.size,
     createdAt: resource.created_at,

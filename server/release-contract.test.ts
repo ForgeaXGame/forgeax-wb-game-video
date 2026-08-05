@@ -17,6 +17,7 @@ const expectedTools = [
   'wb-game-video:generate-shot-script',
   'wb-game-video:generate-keyframe',
   'wb-game-video:generate-video',
+  'wb-game-video:generate-video-clip',
   'wb-game-video:generate-node-video',
   'wb-game-video:list-assets',
   'wb-game-video:get-asset',
@@ -203,7 +204,7 @@ describe('release identity', () => {
   })
 
   it('derives game identity from the host binding for every public tool', () => {
-    expect(manifest.provides.tools).toHaveLength(11)
+    expect(manifest.provides.tools).toHaveLength(12)
 
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)

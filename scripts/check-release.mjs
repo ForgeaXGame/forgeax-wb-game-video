@@ -6,6 +6,12 @@ import {
 } from 'node:fs/promises'
 import { extname, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import {
+  ASSET_CANVAS_DIRECTORY,
+  ASSET_CANVAS_DEV_SPEC,
+  ASSET_CANVAS_PACKAGE,
+  validateGenerationPackage,
+} from './asset-canvas-generation-package.mjs'
 
 const PACKAGE_NAME = '@forgeax-extension/wb-game-video'
 const PLATFORM_PACKAGE = '@forgeax/extension-platform'
@@ -19,9 +25,7 @@ const VIDEO_GENERATION_TOOL_IDS = [
 ]
 const REQUIRED_VIDEO_CAPABILITY = { id: 'media.video.generate', version: 1 }
 const FORBIDDEN_PROVIDER_INTEGRATION_TEXT = [
-  'wb-asset-canvas',
   'arrival-kino',
-  '/api/v1/kino',
   '__video-upload-proxy',
 ]
 const PUBLISHED_TEXT_PATHS = [
@@ -301,6 +305,17 @@ function validatePackage(pkg, errors) {
     }
   }
 
+  const assetCanvasRuntimeSpec = pkg.dependencies?.[ASSET_CANVAS_PACKAGE]
+  const assetCanvasDevSpec = pkg.devDependencies?.[ASSET_CANVAS_PACKAGE]
+  if (assetCanvasRuntimeSpec !== undefined) {
+    errors.push(`${ASSET_CANVAS_PACKAGE} must remain build-time-only in devDependencies`)
+  }
+  if (assetCanvasDevSpec !== ASSET_CANVAS_DEV_SPEC) {
+    errors.push(
+      `devDependencies.${ASSET_CANVAS_PACKAGE} must be ${ASSET_CANVAS_DEV_SPEC}; received ${JSON.stringify(assetCanvasDevSpec)}`,
+    )
+  }
+
   if (!Array.isArray(pkg.files) || !pkg.files.includes('dist') || pkg.files.includes('vendor')) {
     errors.push('package files must include dist and exclude vendor')
   }
@@ -439,6 +454,10 @@ export async function validateRelease(root) {
     'forgeax-extension.json',
     errors,
   )
+
+  errors.push(...await validateGenerationPackage(
+    resolve(packageRoot, ASSET_CANVAS_DIRECTORY),
+  ))
 
   if (pkg) {
     validatePackage(pkg, errors)

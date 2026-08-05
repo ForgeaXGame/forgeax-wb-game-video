@@ -46,7 +46,7 @@ function assertRefs(input: VideoGenInput): void {
     throw new Error('视频生成缺必传参考图：character_ref（角色参考图）+ scene_ref（场景参考图）')
   }
 }
-function generated(assets: HostMediaAsset[], type: 'image' | 'video'): HostMediaAsset {
+export function generated(assets: HostMediaAsset[], type: 'image' | 'video'): HostMediaAsset {
   const asset = assets.find((candidate) => candidate.type === type)
   if (!asset) throw new Error(`Model gateway did not return a generated ${type}`)
   return asset
@@ -57,7 +57,7 @@ async function axes(registry: HostAssetRegistry, override?: StyleAxes): Promise<
 async function references(registry: HostAssetRegistry, ids: readonly string[]): Promise<MediaReference[]> {
   return Promise.all(ids.filter(Boolean).map((id) => registry.mediaReference(id)))
 }
-function generationError(error: unknown): string {
+export function generationError(error: unknown): string {
   return (error instanceof Error ? error.message : 'Generation failed')
     .replace(/file:\/\/\S+/gi, '[redacted]').replace(/https?:\/\/\S+/gi, '[redacted]').slice(0, 400)
 }

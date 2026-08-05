@@ -25,11 +25,17 @@ const oldBrandName = ['reel', 'studio'].join('-')
 const reviewedWorkbenchHostCommit = '15a573679ad058e4d04fadea2f5c90abb29d2245'
 
 interface FixtureOptions {
+  assetCanvasDeclarationSource?: string
+  assetCanvasDevSpec?: string | null
+  assetCanvasExtraFiles?: Record<string, string>
+  assetCanvasPackageManifest?: Record<string, unknown>
+  assetCanvasRuntimeSource?: string
   backendKeys?: string[]
   malformedManifest?: boolean
   malformedPackage?: boolean
   manifestVersion?: string
   manifestBackend?: string
+  missingAssetCanvasPackage?: boolean
   missingBackend?: boolean
   missingNamedHost?: boolean
   missingReturns?: boolean
@@ -75,6 +81,10 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
     integrity: hostIntegrity,
   })
 
+  const assetCanvasDevSpec = options.assetCanvasDevSpec === undefined
+    ? 'file:vendor/wb-asset-canvas-generation'
+    : options.assetCanvasDevSpec
+
   if (options.malformedPackage) {
     writeFileSync(resolve(root, 'package.json'), '{ invalid package JSON\n')
   } else {
@@ -88,6 +98,9 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
       devDependencies: {
         '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
         '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.4',
+        ...(assetCanvasDevSpec === null
+          ? {}
+          : { '@forgeax-extension/wb-asset-canvas': assetCanvasDevSpec }),
       },
       exports: options.packageExports ?? {
         '.': './dist/index.js',
@@ -98,6 +111,36 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
         ? { overrides: { '@forgeax/workbench-host': options.localPackagePath } }
         : {}),
     })
+  }
+  if (!options.missingAssetCanvasPackage) {
+    const assetCanvasRoot = resolve(root, 'vendor/wb-asset-canvas-generation')
+    mkdirSync(resolve(assetCanvasRoot, 'dist'), { recursive: true })
+    writeJson(
+      resolve(assetCanvasRoot, 'package.json'),
+      options.assetCanvasPackageManifest ?? {
+        name: '@forgeax-extension/wb-asset-canvas',
+        version: '0.2.0',
+        type: 'module',
+        exports: {
+          './generation': {
+            types: './dist/generation-lib.d.ts',
+            import: './dist/generation-lib.js',
+          },
+        },
+      },
+    )
+    writeFileSync(
+      resolve(assetCanvasRoot, 'dist/generation-lib.js'),
+      options.assetCanvasRuntimeSource ?? 'export const generation = true\n',
+    )
+    writeFileSync(
+      resolve(assetCanvasRoot, 'dist/generation-lib.d.ts'),
+      options.assetCanvasDeclarationSource ?? 'export declare const generation: true\n',
+    )
+    for (const [path, source] of Object.entries(options.assetCanvasExtraFiles ?? {})) {
+      mkdirSync(resolve(assetCanvasRoot, dirname(path)), { recursive: true })
+      writeFileSync(resolve(assetCanvasRoot, path), source)
+    }
   }
   if (options.malformedManifest) {
     writeFileSync(resolve(root, 'forgeax-extension.json'), '{ invalid manifest JSON\n')
@@ -205,10 +248,11 @@ describe('validateRelease', () => {
       expect.stringContaining('requiresCapabilities'),
     )
 
+    // 'wb-asset-canvas' and '/api/v1/kino' are intentionally not forbidden: this
+    // extension keeps a direct kino integration and vendors wb-asset-canvas at
+    // build time (see FORBIDDEN_PROVIDER_INTEGRATION_TEXT in check-release.mjs).
     for (const forbiddenPublishedText of [
-      'wb-asset-canvas',
       'arrival-kino',
-      '/api/v1/kino',
       '__video-upload-proxy',
     ]) {
       const providerWiringRoot = createFixture(`provider-wiring-${forbiddenPublishedText.replaceAll('/', '-')}`, {
@@ -236,6 +280,138 @@ describe('validateRelease', () => {
 
     expect(await validateRelease(fixtureRoot)).toContainEqual(
       expect.stringContaining(videoGenerationToolIds[1]),
+    )
+  })
+
+  it('rejects a missing asset-canvas devDependency', async () => {
+    const fixtureRoot = createFixture('missing-asset-canvas-dependency', {
+      assetCanvasDevSpec: null,
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('devDependencies.@forgeax-extension/wb-asset-canvas must be'),
+    )
+  })
+
+  it('rejects an incorrect asset-canvas devDependency spec', async () => {
+    const fixtureRoot = createFixture('incorrect-asset-canvas-spec', {
+      assetCanvasDevSpec: 'file:vendor/wrong-asset-canvas.tgz',
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('file:vendor/wb-asset-canvas-generation'),
+    )
+  })
+
+  it('rejects a missing asset-canvas generation package', async () => {
+    const fixtureRoot = createFixture('missing-asset-canvas-generation-package', {
+      missingAssetCanvasPackage: true,
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('generation package directory is not readable'),
+    )
+  })
+
+  it.each([
+    ['name', '@forgeax-extension/wrong-package'],
+    ['version', '0.1.0'],
+    ['exports', { '.': './dist/generation-lib.js' }],
+  ])('rejects an incorrect generation package %s', async (field, value) => {
+    const fixtureRoot = createFixture(`incorrect-generation-package-${field}`, {
+      assetCanvasPackageManifest: {
+        name: '@forgeax-extension/wb-asset-canvas',
+        version: '0.2.0',
+        type: 'module',
+        exports: {
+          './generation': {
+            types: './dist/generation-lib.d.ts',
+            import: './dist/generation-lib.js',
+          },
+        },
+        [field]: value,
+      },
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining(`generation package ${field}`),
+    )
+  })
+
+  it.each([
+    ['type', 'commonjs'],
+    ['scripts', { postinstall: 'node steal-secrets.js' }],
+    ['bin', { hidden: './dist/generation-lib.js' }],
+    ['imports', { '#hidden': './dist/generation-lib.js' }],
+  ])('rejects extra generation package manifest surface %s', async (field, value) => {
+    const fixtureRoot = createFixture(`generation-package-manifest-${field}`, {
+      assetCanvasPackageManifest: {
+        name: '@forgeax-extension/wb-asset-canvas',
+        version: '0.2.0',
+        type: 'module',
+        exports: {
+          './generation': {
+            types: './dist/generation-lib.d.ts',
+            import: './dist/generation-lib.js',
+          },
+        },
+        [field]: value,
+      },
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('generation package manifest must exactly equal'),
+    )
+  })
+
+  it.each([
+    'dependencies',
+    'devDependencies',
+    'peerDependencies',
+    'optionalDependencies',
+    'bundledDependencies',
+    'bundleDependencies',
+  ])('rejects non-empty generation package %s', async (section) => {
+    const fixtureRoot = createFixture(`generation-package-${section}`, {
+      assetCanvasPackageManifest: {
+        name: '@forgeax-extension/wb-asset-canvas',
+        version: '0.2.0',
+        type: 'module',
+        exports: {
+          './generation': {
+            types: './dist/generation-lib.d.ts',
+            import: './dist/generation-lib.js',
+          },
+        },
+        [section]: section.includes('bundled') || section.includes('bundle')
+          ? ['private-package']
+          : { 'private-package': 'git+ssh://example.invalid/private.git' },
+      },
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining(`generation package ${section} must be empty or absent`),
+    )
+  })
+
+  it('rejects files outside the generation package whitelist', async () => {
+    const fixtureRoot = createFixture('generation-package-extra-file', {
+      assetCanvasExtraFiles: { 'README.md': 'not part of the skinny package\n' },
+    })
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('must equal whitelist'),
+    )
+  })
+
+  it.each([
+    ['runtime', { assetCanvasRuntimeSource: "import value from 'private-runtime'\n" }],
+    ['declarations', { assetCanvasDeclarationSource: "export type { Value } from 'private-types'\n" }],
+  ])('rejects external imports from generation %s', async (kind, source) => {
+    const fixtureRoot = createFixture(`generation-package-${kind}-import`, source)
+
+    expect(await validateRelease(fixtureRoot)).toContainEqual(
+      expect.stringContaining('must not import external modules'),
     )
   })
 

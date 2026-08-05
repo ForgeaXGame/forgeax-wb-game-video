@@ -241,6 +241,7 @@ export interface VideoAssetLibraryProps {
   selectedId: string
   boundId?: string
   onSelect: (id: string) => void
+  onOpenGenerate?: () => void
   onDeleted?: (id: string) => void
   controller: VideoAssetsController
   listBodyRef?: Ref<HTMLDivElement>
@@ -263,6 +264,7 @@ export function VideoAssetLibrary({
   selectedId,
   boundId,
   onSelect,
+  onOpenGenerate,
   onDeleted,
   controller,
   listBodyRef,
@@ -464,6 +466,15 @@ export function VideoAssetLibrary({
             onChange={(e) => void onFileChange(e)}
           />
         </label>
+        {onOpenGenerate ? (
+          <button
+            type="button"
+            className="val-head-upload"
+            onClick={onOpenGenerate}
+          >
+            <span aria-hidden>✨</span> {t('videoAssets.generate.entry')}
+          </button>
+        ) : null}
         <button type="button" className={`val-head-select${selectionMode ? ' is-on' : ''}`} aria-label={selectionMode ? '退出多选' : '多选视频'} disabled={actionsBusy} onClick={() => { setSelectionMode((current) => !current); setBatchSelection(new Set()) }}>☑</button>
         {showUploadStatus ? (
           <div className="val-head-status" role="status" aria-live="polite">

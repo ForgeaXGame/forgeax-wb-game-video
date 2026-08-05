@@ -52,7 +52,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:boundaries": "node scripts/check-module-boundaries.mjs",
-    "check:release": "node scripts/check-release.mjs"
+    "check:release": "node scripts/check-release.mjs",
+    "pack:generation-dependency": "node scripts/pack-asset-canvas-generation.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
@@ -73,6 +74,7 @@
   "devDependencies": {
     "@forgeax/extension-platform": "0.0.2",
     "@forgeax/workbench-host": "0.2.4",
+    "@forgeax-extension/wb-asset-canvas": "file:vendor/wb-asset-canvas-generation",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.10.0",
