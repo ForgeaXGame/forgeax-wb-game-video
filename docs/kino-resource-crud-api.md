@@ -1,17 +1,19 @@
 # Kino Resource CRUD API
 
-> 状态：当前实现说明 · 2026-08-04  
-> 源码入口：[`src/editor/assets/kino-api.ts`](../src/editor/assets/kino-api.ts)  
+> 状态：**SUPERSEDED · 2026-08-05**  
+> 当前对外请求 SSOT 见 [`outbound-apis.md`](./outbound-apis.md)。  
+> 下文仍描述旧 `/api/v1/kino` 与 `/__ce-api__` 形状，仅作迁移对照；生产代码已改为 Host `/games/:gameId/media` + capability broker。
+
+> 源码入口：[`src/editor/assets/kino-api.ts`](../src/editor/assets/kino-api.ts)（现为 Host media shim）  
 > 上传编排：[`src/editor/assets/video-upload.ts`](../src/editor/assets/video-upload.ts)  
 > 视频库 Hook：[`src/editor/assets/useVideoAssets.ts`](../src/editor/assets/useVideoAssets.ts)  
 > 图/音/字体库：[`src/editor/assets/assetLibraryClient.ts`](../src/editor/assets/assetLibraryClient.ts)
 
-插件内资源 CRUD 的 HTTP 契约集中在 `createKinoVideoClient`。默认 base：`/api/v1/kino`。  
-浏览器与服务端经同一套路径访问；URL rewrite（如 Arrival 宿主）由 `forgeaxHttp` 注入，不改变本契约的 path/body。
+~~插件内资源 CRUD 的 HTTP 契约集中在 `createKinoVideoClient`。默认 base：`/api/v1/kino`。~~  
+**现行：** `createKinoVideoClient` 只适配 Host media；默认 base 来自 handshake `gamePackage` → `/games/:gameId/media`。
 
 > [!IMPORTANT]
-> 这是扩展内部对上游 Kino provider 的客户端契约，不是包根公开导出 API。外部宿主应通过
-> rewrite / 代理对齐 `/api/v1/kino/*`，不要直接依赖 `src/editor/assets` 路径。
+> 不要再对接 `/api/v1/kino/*`。宿主应实现 Workbench Host media 契约（见 `outbound-apis.md` §1）。
 
 ## 目录
 
