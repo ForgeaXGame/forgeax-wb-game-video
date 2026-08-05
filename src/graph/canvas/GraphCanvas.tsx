@@ -41,16 +41,15 @@ function ensureCanvasStyle(): void {
   }
   // 每次调用写回，避免 HMR 后旧 CSS（含错误间距）残留。
   s.textContent = `
-    /* Figma 14597_19658：Control Panel 竖条 —— 白 5% 底、圆角 8、白系图标，与蓝图地图等高对齐。 */
-    .react-flow__controls{box-shadow:0 2px 12px rgba(0,0,0,.5);border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.05)}
-    .react-flow__controls-button{background:transparent;border-bottom:1px solid rgba(255,255,255,0.08);width:33px;height:29px}
-    .react-flow__controls-button:last-child{border-bottom:none}
-    .react-flow__controls-button:hover{background:rgba(255,255,255,0.10)}
+    /* Control Panel：上 12 / 左右 4 / 图标间距 8，无分隔线（覆盖 xyflow 默认 border-bottom）。 */
+    .react-flow__controls{display:flex;flex-direction:column;gap:8px;padding:12px 4px;box-shadow:0 2px 12px rgba(0,0,0,.5);border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.05)}
+    .react-flow__controls-button{display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:transparent;border:none!important;border-bottom:none!important;width:25px;height:25px;padding:0}
+    .react-flow__controls-button:last-child{border-bottom:none!important}
+    .react-flow__controls-button:hover{background:rgba(255,255,255,0.10);border-radius:4px}
     .react-flow__controls-button svg{fill:rgba(255,255,255,0.80);max-width:16px;max-height:16px}
-    /* Figma 14597_19658：蓝图地图 —— 圆角 8、描边白 10%、视口指示品牌橙。贴左下角。 */
-    .gv-graph-minimap.react-flow__panel.bottom.left{left:12px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.10);box-shadow:0 2px 12px rgba(0,0,0,.55);background:#12151c;cursor:grab}
-    /* Control Panel：紧贴蓝图地图右侧（地图宽 168 + 左 12 + 间距 8 = 188） */
-    .react-flow__controls.react-flow__panel.bottom.left{left:188px}
+    /* 蓝图地图 / Control Panel：同底对齐；间距 6px（地图宽 168 + 左 12 + 6 = 186）。 */
+    .gv-graph-minimap.react-flow__panel.bottom.left{left:12px;bottom:0;margin:0;box-sizing:border-box;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.05);box-shadow:0 2px 12px rgba(0,0,0,.55);background:rgba(255,255,255,0.05);cursor:grab}
+    .react-flow__controls.react-flow__panel.bottom.left{left:186px;bottom:0;margin:0;box-sizing:border-box}
     .gv-graph-minimap:active{cursor:grabbing}
     .gv-graph-minimap-svg{display:block;width:100%;height:100%;touch-action:none}
     .gv-graph-minimap-board{fill:#1a2030;stroke:#2a3344;stroke-width:1}
@@ -61,11 +60,20 @@ function ensureCanvasStyle(): void {
     .react-flow__attribution{display:none}
     /* 节点内可溢出（右侧 hover 菜单）；外层 gv-canvas-host 用 contain:paint 裁命中区，防止渗到工具条 */
     .react-flow__node{overflow:visible!important}
-    /* 展开 ⋮ 菜单时把整个 RF 节点抬到最上，避免「添加节点」等 tip 被右侧节点盖住 */
-    .react-flow__node:has(.gv-bp-node-more:hover),.react-flow__node:has(.gv-bp-node-more:focus-within){z-index:1000!important}
+    /*
+     * 节点层必须压过边层。xyflow 的 .react-flow__nodes 默认无 position，z-index 不生效；
+     * 而每条边 SVG 自带 position:absolute + 可达 1000 的 inline zIndex，会盖住节点右侧溢出菜单。
+     */
+    .react-flow__edges{position:absolute!important;z-index:2!important}
+    .react-flow__edges svg{z-index:0!important}
+    .react-flow__edgelabel-renderer{position:absolute!important;z-index:3!important}
+    .react-flow__nodes{position:absolute!important;width:100%;height:100%;z-index:5!important}
+    /* 展开 ⋮ 菜单时再抬一层，避免被相邻节点盖住 */
+    .react-flow__node:has(.gv-bp-node-more:hover),.react-flow__node:has(.gv-bp-node-more:focus-within){z-index:10000!important}
+    .gv-bp-node-actions,.gv-bp-menu{z-index:10001}
     .react-flow,.react-flow__renderer{overflow:hidden!important}
-    /* 画布底色：#232323。 */
-    .react-flow__pane{background:#232323}
+    /* 画布底色：#333。 */
+    .react-flow__pane{background:#333}
     /* Figma 13135_19511：边连线 stroke-width 1（防 xyflow 默认 .react-flow__edge-path 的 1px 覆盖）。
        试玩已走路径（animated）：品牌橙 #FF9C2A + 虚线流动动画（对齐改版前运行路径效果）。 */
     .react-flow__edge-path{stroke-width:1px}
@@ -87,21 +95,22 @@ function ensureCanvasStyle(): void {
     .gv-canvas-chrome .gv-chrome-ico svg{display:block}
     .gv-bp-node{position:relative}
     /* 标题行右侧 ⋮：与文案同排垂直居中，无底色；hover ⋮ 才展开后插/复制/删除 */
-    .gv-bp-node-more{position:relative;flex:none;z-index:20;display:flex;align-items:center}
+    /* z-index 高于节点选中描边，避免蓝/橙框盖住右侧操作条 */
+    .gv-bp-node-more{position:relative;flex:none;z-index:40;display:flex;align-items:center}
     .gv-bp-more-btn{display:flex;align-items:center;justify-content:center;width:18px;height:18px;margin:0;padding:0;border:none;border-radius:4px;background:transparent;color:#9aa2b1;cursor:pointer;line-height:0}
     .gv-bp-more-btn:hover,.gv-bp-node-more:hover .gv-bp-more-btn{background:transparent;color:#e8eaed}
     .gv-bp-more-btn svg{width:14px;height:14px}
-    .gv-bp-node-actions{position:absolute;top:0;left:100%;z-index:30;padding-left:4px;opacity:0;pointer-events:none;transform:translateX(-4px);transition:opacity .12s,transform .12s}
-    .gv-bp-node-more:hover .gv-bp-node-actions,.gv-bp-node-more:focus-within .gv-bp-node-actions{opacity:1;pointer-events:auto;transform:translateX(0)}
-    .gv-bp-menu{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border-radius:10px;background:rgba(27,23,19,.96);border:1px solid #4a4036;box-shadow:0 8px 24px rgba(0,0,0,.55),0 0 0 1px rgba(240,136,64,.12);overflow:visible}
-    .gv-bp-menu button{position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0;background:transparent;border:none;border-radius:7px;color:#e8eaed;padding:0;cursor:pointer;line-height:0;overflow:visible}
-    .gv-bp-menu button:hover{background:rgba(240,136,64,.16);color:#fff}
-    .gv-bp-menu button.danger{color:#f0a8a8}
-    .gv-bp-menu button.danger:hover{background:rgba(239,68,68,.18);color:#ffb4b4}
-    .gv-bp-menu button svg{width:16px;height:16px;opacity:.92}
-    .gv-bp-menu button[data-tip]::after{content:attr(data-tip);position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);white-space:nowrap;padding:5px 10px;font-size:11px;line-height:1.3;border-radius:6px;background:rgba(20,18,16,.96);border:1px solid #4a4036;color:#e8eaed;box-shadow:0 4px 12px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .1s;z-index:40}
-    .gv-bp-menu button[data-tip]:hover::after{opacity:1}
-    .gv-bp-menu .sep{width:20px;height:1px;margin:2px 0;background:#3a342c}
+    /* Figma 竖条；padding-left 作 hover 桥并把菜单外推到节点面板右侧 */
+    .gv-bp-node-actions{position:absolute;top:0;left:100%;z-index:50;padding-left:12px;opacity:0;pointer-events:none;transition:opacity .12s}
+    .gv-bp-node-more:hover .gv-bp-node-actions,.gv-bp-node-more:focus-within .gv-bp-node-actions{opacity:1;pointer-events:auto}
+    /* 底色先铺画布同色再叠白 10%，保证不透明，避免底下连线「透」出来像盖住菜单 */
+    .gv-bp-menu{display:flex;flex-direction:column;align-items:center;box-sizing:border-box;width:19px;height:65px;gap:5px;padding:5px 2px;border-radius:4px;background:color-mix(in srgb, #fff 10%, #333);border:none;box-shadow:none;overflow:visible}
+    .gv-bp-menu button{position:relative;display:flex;align-items:center;justify-content:center;width:15px;height:15px;margin:0;background:transparent;border:none;border-radius:0;color:rgba(255,255,255,0.80);padding:0;cursor:pointer;line-height:0;overflow:visible}
+    .gv-bp-menu button:hover{background:transparent;color:#fff}
+    .gv-bp-menu button.danger{color:rgba(255,180,180,0.90)}
+    .gv-bp-menu button.danger:hover{background:transparent;color:#ffb4b4}
+    .gv-bp-menu button svg{width:14px;height:14px;opacity:.92}
+    .gv-bp-menu button[data-tip]::after{display:none}
     .gv-sel-bar{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(27,23,19,.94);border:1px solid #403830;color:#f6f1e9;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.45);white-space:nowrap}
     .gv-sel-bar button{background:#252019;border:1px solid #403830;color:#f6f1e9;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
     .gv-sel-bar button:hover{border-color:#f08840}
@@ -307,7 +316,8 @@ export function minimapNodeColor(node: { data: unknown }): string {
 }
 
 const HANDLE_COLOR: Record<string, string> = {
-  default: '#6b7280',
+  // 默认推进：与左侧「输入」同色（白 60%）
+  default: 'rgba(255,255,255,0.60)',
   pass: '#22c55e',
   good: '#84cc16',
   fail: '#ef4444',
@@ -316,7 +326,7 @@ const HANDLE_COLOR: Record<string, string> = {
 }
 function handleColor(id: string): string {
   if (HANDLE_COLOR[id]) return HANDLE_COLOR[id]!
-  if (id === 'default') return '#6b7280'
+  if (id === 'default') return 'rgba(255,255,255,0.60)'
   return '#3b82f6' // 交互出口（pass/fail/选项/热点…）
 }
 
@@ -365,18 +375,15 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
   const { fx, details, active, isGroup, isPack, isEntry, onDrill, onInsertAfter, onDuplicate, onDelete } = data as CanvasNodeViewData
   const accent = BADGE_COLOR[fx.data.badge] ?? '#4b5563'
   const canEdit = !!(onInsertAfter || onDuplicate || onDelete)
-  // Figma 12414_5350：节点卡片背景 #232323、圆角 12、常态 box-shadow 0 0 15px 10px rgba(0,0,0,0.08)。
-  // 选中态（编辑）：蓝色 outline 2px #7DACED。
-  // 试玩运行中（active）：品牌橙 #FF9C2A outline + 橙色外发光（与已走路径同色，对齐改版前 #f5a623）。
-  // active 优先于 selected：运行游标不应被编辑选中蓝框盖掉。
-  const baseShadow = '0px 0px 15px 10px rgba(0,0,0,0.08)'
-  const playShadow = '0px 0px 15px 10px rgba(255,156,42,0.55)'
-  const boxShadow = active ? playShadow : baseShadow
-  const outline = active
-    ? '2px solid #FF9C2A'
+  // 常态阴影对齐设计稿。选中/试玩描边用 inset box-shadow（不用 outline），
+  // 避免描边画在溢出的右侧操作条上面。active 优先于 selected。
+  const baseShadow = '0 0 15.618px 10.412px rgba(0, 0, 0, 0.08)'
+  const playShadow = '0 0 15px 10px rgba(255,156,42,0.55)'
+  const boxShadow = active
+    ? `${playShadow}, inset 0 0 0 2px #FF9C2A`
     : selected
-      ? '2px solid #7DACED'
-      : 'none'
+      ? `${baseShadow}, inset 0 0 0 2px #7DACED`
+      : baseShadow
 
   // Figma 14947_83595：子蓝图/子流程节点标题栏颜色。
   // 子蓝图 = 绿色 rgba(69.66,200.65,69.66,0.20)；子流程 = 黄色 rgba(234,179,8,0.20)（沿用 subflow badge 色）。
@@ -399,9 +406,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
         color: '#FFFFFF',
         fontSize: 14,
         overflow: 'visible',
-        boxShadow: boxShadow,
-        outline,
-        outlineOffset: -1,
+        boxShadow,
       }}
     >
       {/* 标题栏：子蓝图/子流程使用对应颜色背景 + 类型标签 + 「进入」按钮；
@@ -463,7 +468,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                       className="nodrag nopan"
                       role="menuitem"
                       aria-label="后插"
-                      data-tip="添加节点"
+                      title="添加节点"
                       onClick={(e) => {
                         e.stopPropagation()
                         onInsertAfter?.(id)
@@ -476,7 +481,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                       className="nodrag nopan"
                       role="menuitem"
                       aria-label="复制"
-                      data-tip={`复制此节点（${MOD_HINT}D）`}
+                      title={`复制此节点（${MOD_HINT}D）`}
                       onClick={(e) => {
                         e.stopPropagation()
                         onDuplicate?.(id)
@@ -484,13 +489,12 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                     >
                       {Ico.copy}
                     </button>
-                    <div className="sep" aria-hidden />
                     <button
                       type="button"
                       className="nodrag nopan danger"
                       role="menuitem"
                       aria-label="删除"
-                      data-tip="删除此节点"
+                      title="删除此节点"
                       onClick={(e) => {
                         e.stopPropagation()
                         onDelete?.(id)
@@ -532,7 +536,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                       className="nodrag nopan"
                       role="menuitem"
                       aria-label="后插"
-                      data-tip="添加节点"
+                      title="添加节点"
                       onClick={(e) => {
                         e.stopPropagation()
                         onInsertAfter?.(id)
@@ -545,7 +549,7 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                       className="nodrag nopan"
                       role="menuitem"
                       aria-label="复制"
-                      data-tip={`复制此节点（${MOD_HINT}D）`}
+                      title={`复制此节点（${MOD_HINT}D）`}
                       onClick={(e) => {
                         e.stopPropagation()
                         onDuplicate?.(id)
@@ -553,13 +557,12 @@ function PerfNode({ id, data, selected }: NodeProps): JSX.Element {
                     >
                       {Ico.copy}
                     </button>
-                    <div className="sep" aria-hidden />
                     <button
                       type="button"
                       className="nodrag nopan danger"
                       role="menuitem"
                       aria-label="删除"
-                      data-tip="删除此节点"
+                      title="删除此节点"
                       onClick={(e) => {
                         e.stopPropagation()
                         onDelete?.(id)
@@ -1115,6 +1118,8 @@ function GraphCanvasInner({
           targetHandle: e.targetHandle,
           label: e.label,
           type: 'flow',
+          // 锁死边 z，避免选中节点时 xyflow 把相连边抬到与节点同级、盖住右侧操作条。
+          zIndex: 0,
           // Figma 13135_19511：边连线为纯线条（无箭头），stroke #467CC9、stroke-width 1。
           // 试玩已走路径：#FF9C2A 虚线流动；data.traversed + animated + className 三路同开。
           animated: traversedEdgeIds?.has(e.id) ?? false,
@@ -1338,6 +1343,7 @@ function GraphCanvasInner({
         elementsSelectable={!readOnly}
         edgesFocusable={!readOnly}
         edgesReconnectable={false}
+        elevateEdgesOnSelect={false}
         selectionKeyCode={readOnly ? null : 'Shift'}
         multiSelectionKeyCode={null}
         selectionMode={SelectionMode.Partial}
