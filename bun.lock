@@ -18,7 +18,7 @@
       },
       "devDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "0.2.2",
+        "@forgeax/workbench-host": "file:/Users/simonsliu/Documents/Development/arrival-studio-cat/packages/agentic_mate/vendor/forgeax-workbench-host-0.2.3.tgz",
         "@testing-library/jest-dom": "^7.0.0",
         "@testing-library/react": "^16.3.2",
         "@types/node": "^22.10.0",
@@ -34,7 +34,7 @@
       },
       "peerDependencies": {
         "@forgeax/extension-platform": "0.0.2",
-        "@forgeax/workbench-host": "0.2.2",
+        "@forgeax/workbench-host": "0.2.3",
       },
     },
   },
@@ -143,7 +143,7 @@
 
     "@forgeax/extension-platform": ["@forgeax/extension-platform@0.0.2", "https://mirrors.tencent.com/npm/@forgeax/extension-platform/-/extension-platform-0.0.2.tgz", {}, "sha512-FvPk1d/s1x1jM4T0IAaTZrzniKzpIY/FRXQMgXsxt9MI94YH9msm0yo3GCYHEfsn2E9X0s0qmHGDqk5Kx2LSNA=="],
 
-    "@forgeax/workbench-host": ["@forgeax/workbench-host@0.2.2", "https://registry.npmjs.org/@forgeax/workbench-host/-/workbench-host-0.2.2.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-511JKhkx5rJLhYaqP+CvyQJkvDlbeVtX2EUNgZfXtvo9W0swTj7KGvPIwBRIPOhUaAzxQDbaHVwh2WrHCAIyWQ=="],
+    "@forgeax/workbench-host": ["@forgeax/workbench-host@/Users/simonsliu/Documents/Development/arrival-studio-cat/packages/agentic_mate/vendor/forgeax-workbench-host-0.2.3.tgz", { "dependencies": { "@forgeax/extension-platform": "0.0.2", "ajv": "^8.17.1", "zod": "^3.25.0" }, "peerDependencies": { "fastify": "^5.0.0", "hono": "^4.0.0", "react": "^19.0.0", "vite": "^6.0.0" }, "optionalPeers": ["fastify", "hono", "react", "vite"] }, "sha512-bFr8uIxVH+kaKM1oWYGMfMKG5oYmRr+F/+/YmiWI5Q0viqjp+M8Ilp6yfr0X+xZ8tAeRMk1OWTkpfhn1Ij/HLw=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

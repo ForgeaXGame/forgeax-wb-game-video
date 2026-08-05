@@ -1,10 +1,11 @@
-import { forgeaxHttp } from './forgeax-http'
+import { rewriteUrl } from '@forgeax/workbench-host/browser'
+import { getActiveRewriteRules } from './forgeax-http'
 import { getWorkbenchHost } from './workbench-host'
 
 /** Resolves an extension-relative media path from the accepted handshake. */
 export function pluginUrl(path: string): string {
   if (/^(?:https?:|blob:|data:)/.test(path)) return path
-  const rewritten = forgeaxHttp.rewriteUrl(path)
+  const rewritten = rewriteUrl(path, getActiveRewriteRules())
   if (/^(?:https?:|blob:|data:)/.test(rewritten)) return rewritten
   return getWorkbenchHost().extension.url(rewritten)
 }
@@ -14,7 +15,7 @@ export function pluginUrl(path: string): string {
  * (or raw fetch for absolute/opaque URLs).
  */
 export function pluginFetch(input: string, init?: RequestInit): Promise<Response> {
-  const rewritten = forgeaxHttp.rewriteUrl(input)
+  const rewritten = rewriteUrl(input, getActiveRewriteRules())
   if (/^(?:https?:|blob:|data:)/.test(rewritten)) return fetch(rewritten, init)
   return getWorkbenchHost().extension.fetch(rewritten, init)
 }
