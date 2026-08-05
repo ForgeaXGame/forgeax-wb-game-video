@@ -141,7 +141,9 @@ export const TIMELINE_MAX_LAYER = 15
 // 默认可见轨数（0..MIN-1）；更多轨道由固定高度视口纵向滚动查看。
 export const TIMELINE_MIN_TRACKS = 6
 export const ZOOM_MIN = 1
-export const ZOOM_MAX = 20
+export const ZOOM_MAX = 5
+/** 缩放步进（±按钮 / 滑轨吸附粒度）。 */
+export const ZOOM_STEP = 0.2
 
 /** 前端时间输入分度：0.01 秒（底层仍存毫秒）。 */
 export const TIME_STEP_SEC = 0.01
@@ -185,6 +187,15 @@ export function fmtDur(ms: number): string {
   const m = Math.floor(totalSec / 60)
   const s = totalSec - m * 60
   return `${m}:${s.toFixed(2).padStart(5, '0')}`
+}
+
+/** ruler 时刻标签（Figma 15635:85018）：`mm:ss` 双双补零；亚秒刻度加一位小数（`00:00.5`）。 */
+export function fmtTickClock(ms: number): string {
+  const totalSec = Math.max(0, ms) / 1000
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec - m * 60
+  const ss = Number.isInteger(s) ? String(s).padStart(2, '0') : s.toFixed(1).padStart(4, '0')
+  return `${String(m).padStart(2, '0')}:${ss}`
 }
 
 export function clampMs(v: number, min: number, max: number): number {
@@ -232,7 +243,7 @@ export function buildMaterialTicks(maxMs: number, pxPerMs: number): Array<{ ms: 
   const nice = [100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000]
   const step = nice.find((n) => n >= rawMs) ?? 120000
   const out: Array<{ ms: number; label: string }> = []
-  for (let t = 0; t <= maxMs + 1; t += step) out.push({ ms: t, label: fmtDur(t) })
+  for (let t = 0; t <= maxMs + 1; t += step) out.push({ ms: t, label: fmtTickClock(t) })
   return out
 }
 
