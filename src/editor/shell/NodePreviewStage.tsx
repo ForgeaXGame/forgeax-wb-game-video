@@ -97,6 +97,35 @@ const NPS_CSS = `
   padding: 10px; min-height: 0; overflow-y: auto; flex: 1;
 }
 .nps-frame { flex: none; }
+/* Figma 14935:70362：编辑态视频面 = 浅灰半透圆角面；控制条叠进面内底部（渐变遮罩 + 进度条 + 图标控件）。
+   限定 .nps-frame-edit：FlowNodePreviewStage 的 .nps-frame 仍走 gc-frame 暖色面（本次不动）。 */
+.nps-frame-edit {
+  background: rgba(217,217,217,0.1);
+  border: none;
+  border-radius: 10px;
+}
+/* Figma 15635:84858：视频控制卡 = 帧下方独立卡片（#292625 + 白 6% 描边，圆角 4），
+   左：暂停/重播/音量（图标 15px，间距 12）；右：时长。不再使用帧内渐变 HUD。 */
+.nps-video-controls {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  background: #292625; border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;
+  padding: 4.5px 10px;
+}
+.nps-video-controls-left { display: flex; align-items: center; gap: 12px; height: 15px; }
+.nps-video-controls-right { display: flex; align-items: center; gap: 8px; }
+.nps-video-controls button {
+  flex: none; width: 15px; height: 15px; padding: 0; border: none; border-radius: 0;
+  background: none; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.nps-video-controls button:hover { background: none; }
+.nps-hud-btn-dim { opacity: .4; }
+.nps-hud-time {
+  font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.8);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.nps-hud-time > span { color: rgba(255,255,255,0.4); }
+.nps-video-controls .nps-timeline-toggle { color: rgba(255,255,255,.6); }
+.nps-video-controls .nps-timeline-toggle:hover { color: #fff; }
 .nps-stage-empty {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 4px;
@@ -112,7 +141,6 @@ const NPS_CSS = `
   border-radius: 7px; cursor: pointer; font-size: 12px; line-height: 1;
 }
 .nps-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
-.nps-time { color: var(--gc-faint); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nps-controls .nps-mute { margin-left: auto; }
 .nps-controls .nps-timeline-toggle {
   margin-left: auto; padding: 0; color: var(--gc-muted); transition:
@@ -172,11 +200,56 @@ function isFullStageMountLayout(layout: Layout | undefined): boolean {
   )
 }
 
-function fmtTime(ms: number): string {
+/** HUD 时长格式（Figma 14935:70362：`00:00` 样式，分秒皆两位）。 */
+function fmtHudTime(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000))
   const m = Math.floor(total / 60)
   const s = total % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+/** HUD 播放三角：设计只给了暂停双柱（播放态），暂停态按其同族实心白三角补全。 */
+function HudPlayIcon(): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15.618 15.618" fill="none" aria-hidden>
+      <path d="M4.2 2.6 L11.6 7.809 L4.2 13.018 Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** HUD 暂停双柱（Figma 14935:70362 导出矢量：15.618 盒内两根 1.952×11.713 白柱，间距 3.904）。 */
+function HudPauseIcon(): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15.618 15.618" fill="none" aria-hidden>
+      <rect x="3.904" y="1.952" width="1.952" height="11.713" fill="currentColor" />
+      <rect x="9.761" y="1.952" width="1.952" height="11.714" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** HUD 音量（Figma 14935:70362 导出的是 lucide Volume2 分段矢量；直接渲染同 glyph 的 lucide 标准路径）。 */
+function HudVolumeIcon(): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M11 5 6 9H2v6h4l5 4V5Z" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  )
+}
+
+/** 重播图标（Figma 15635:84858 导出的 cphrefresh 矢量：双弧箭头，stroke 1.3）。 */
+function HudRefreshIcon(): JSX.Element {
+  return (
+    <svg width="15" height="15" viewBox="0 0 13.7283 13.6675" fill="none" aria-hidden>
+      <path
+        d="M13.0133 7.48458C12.6881 10.5934 10.0592 13.0167 6.86425 13.0167C4.37954 13.0167 2.23716 11.551 1.25449 9.43708M0.681329 12.3658V9.11167H2.63383M0.715016 6.18292C1.04023 3.07411 3.66917 0.650833 6.86411 0.650833C9.3488 0.650833 11.4911 2.11649 12.4738 4.23042M13.047 1.30167V4.55583H11.0945"
+        stroke="currentColor"
+        strokeWidth="1.30167"
+        strokeLinecap="square"
+      />
+    </svg>
+  )
 }
 
 /**
@@ -575,6 +648,13 @@ function EditableNodePreviewStage({
     onMutedChange(!muted)
   }
 
+  /** 从头重播（控制卡刷新钮）：播放头归零并起播；无视频时仅归零播放头。 */
+  function replayFromStart(): void {
+    seekTo(0)
+    const v = videoRef.current
+    if (v) void v.play().catch(() => { /* autoplay 限制 */ })
+  }
+
   // ── 写回（全部走 graphMaterialOps 既有映射，无新协议字段） ─────────────────
   /** 时间轴挂载条整体平移（patchMaterialGraph 的 mount 分支）。 */
   function patchMaterial(item: MaterialItem, patch: { startMs?: number; endMs?: number; zIndex?: number; markerMs?: number }): void {
@@ -894,7 +974,7 @@ function EditableNodePreviewStage({
 
   return (
     <div className="nps-root">
-      <div className="gc-frame nps-frame" data-type="video">
+      <div className="gc-frame nps-frame nps-frame-edit" data-type="video">
         {previewSrc && !loadError ? (
           <video
             key={`${node.id}:${mediaRef}`}
@@ -1050,15 +1130,24 @@ function EditableNodePreviewStage({
         </div>
       </div>
 
-      <div className="nps-controls">
-        <button type="button" onClick={togglePlay} title={isVideoPlaying ? '暂停' : '播放'} aria-label={isVideoPlaying ? '暂停' : '播放'}>
-          {isVideoPlaying ? '⏸' : '▶'}
-        </button>
-        <span className="nps-time">{fmtTime(playheadMs)} / {fmtTime(maxMs)}</span>
-        <button type="button" className="nps-mute" onClick={toggleMute} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
-          {muted ? '🔇' : '🔊'}
-        </button>
-        {timelineToggle}
+      {/* 视频控制卡（Figma 15635:84858）：帧下方独立卡片——左：暂停/重播/音量；右：时长。
+          重播复用既有 seekTo + play（togglePlay 播完重开的同源动作），无视频时按钮行为同前为空值守卫。 */}
+      <div className="nps-video-controls">
+        <div className="nps-video-controls-left">
+          <button type="button" onClick={togglePlay} title={isVideoPlaying ? '暂停' : '播放'} aria-label={isVideoPlaying ? '暂停' : '播放'}>
+            {isVideoPlaying ? <HudPauseIcon /> : <HudPlayIcon />}
+          </button>
+          <button type="button" onClick={replayFromStart} title="从头重播" aria-label="从头重播">
+            <HudRefreshIcon />
+          </button>
+          <button type="button" className={muted ? 'nps-hud-btn-dim' : undefined} onClick={toggleMute} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
+            <HudVolumeIcon />
+          </button>
+        </div>
+        <div className="nps-video-controls-right">
+          <span className="nps-hud-time">{fmtHudTime(playheadMs)}<span> / {fmtHudTime(maxMs)}</span></span>
+          {timelineToggle}
+        </div>
       </div>
 
       {/* 「添加控件」= 覆盖物挂载入口：前 5 个未挂载覆盖物点击直接挂载，「更多」展开完整列表。 先暂时隐藏 */}
@@ -1110,10 +1199,14 @@ function EditableNodePreviewStage({
 
       {timelineExpanded ? (
         <div id={timelineId} ref={timelineHostRef}>
+          {/* key=node.id：切节点整体重挂载——zoom（1× 默认）等时间轴本地状态随之重置，
+              避免上一个节点的 20× 残留到下一个节点（滚动条莫名变长）。 */}
           <MaterialTimeline
+            key={node.id}
             materials={timelineMaterials}
             maxMs={maxMs}
             playheadMs={playheadMs}
+            videoSrc={previewSrc}
             mediaPlayhead={playMode === 'loop' && mediaRef
               ? { materialKey: NODE_VIDEO_TRACK_KEY, localMs: mediaPlayheadMs }
               : undefined}

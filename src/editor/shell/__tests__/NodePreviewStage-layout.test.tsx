@@ -37,7 +37,7 @@ describe('NodePreviewStage overlay layout', () => {
     expect(container.querySelector('.mtl-root')).not.toBeNull()
     const collapse = screen.getByRole('button', { name: '收起时间轴' })
     expect(collapse).toHaveAttribute('aria-expanded', 'true')
-    expect(collapse.closest('.nps-controls')).not.toBeNull()
+    expect(collapse.closest('.nps-video-controls')).not.toBeNull()
     expect(screen.getByTestId('custom-timeline-icon')).toHaveTextContent('collapse')
 
     fireEvent.click(collapse)
@@ -65,7 +65,8 @@ describe('NodePreviewStage overlay layout', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /时间轴/ })).toBeNull()
+    // 折叠钮（收起/展开时间轴）默认隐藏；时间轴自身的缩放控件（缩小/放大）常驻，不在此断言范围。
+    expect(screen.queryByRole('button', { name: /^(收起|展开)时间轴$/ })).toBeNull()
     expect(container.querySelector('.mtl-root')).not.toBeNull()
   })
 
