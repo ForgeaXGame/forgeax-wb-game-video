@@ -226,6 +226,7 @@ export function FormulaApplyEditor({
   variables,
   onChange,
   showFormulaPicker = true,
+  propertyLayout = false,
   createAttribute,
   createEntity,
   createVariable,
@@ -237,6 +238,8 @@ export function FormulaApplyEditor({
   variables: Record<string, Variable> | undefined
   onChange: (next: NumOrExpr) => void
   showFormulaPicker?: boolean
+  /** 右栏赋值区：公式摘要占满一行；参数 label 与级联同一行。 */
+  propertyLayout?: boolean
   createAttribute?: FormulaAttributeCreateConfig
   createEntity?: FormulaEntityCreateConfig
   createVariable?: FormulaVariableCreateConfig
@@ -298,7 +301,12 @@ export function FormulaApplyEditor({
     : null
 
   return (
-    <div style={box}>
+    <div
+      data-formula-apply={propertyLayout ? 'property' : undefined}
+      style={propertyLayout
+        ? { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', minWidth: 0 }
+        : box}
+    >
       {showFormulaPicker ? (
         <div style={row} role="group" aria-label="选择公式">
           <select value={formulaId} onChange={(e) => pickFormula(e.target.value)} aria-label="公式" style={{ flex: 1, minWidth: 140 }}>
@@ -313,7 +321,24 @@ export function FormulaApplyEditor({
         <p style={hint}>该公式已被删除，数值维持上次编译结果；请另选一个公式。</p>
       ) : (
         <>
-          <p style={hint}>公式：{formulaPreview(formula, holeBindings)}</p>
+          <p
+            data-formula-preview
+            style={propertyLayout
+              ? {
+                margin: 0,
+                minHeight: 28,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: '#181818',
+                color: 'rgba(255,255,255,.45)',
+                fontSize: 12,
+                lineHeight: '20px',
+                boxSizing: 'border-box',
+              }
+              : hint}
+          >
+            公式：{formulaPreview(formula, holeBindings)}
+          </p>
           {missingVariables.length > 0 ? (
             <p role="alert" style={{ ...hint, color: '#ffb86c' }}>
               公式引用的变量「{missingVariables.join('、')}」尚未创建，请先到「规则 → 变量」创建变量。
@@ -323,10 +348,7 @@ export function FormulaApplyEditor({
               该公式需要变量，请先到「规则 → 变量」创建变量。
             </p>
           ) : null}
-          {holes.length === 0 ? (
-            <p style={hint}>该公式没有留空位，直接应用即可。</p>
-          ) : (
-            holes.map((h) => {
+          {holes.length > 0 ? holes.map((h) => {
               const binding = holeBindings[h.holeId]
               const label = h.label ?? '留空位'
               const boundEntityId = binding?.kind === 'entityAttr' ? binding.entityId : ''
@@ -727,93 +749,116 @@ export function FormulaApplyEditor({
                   : binding?.kind === 'var' && binding.varId
                     ? variableDisplayName(variables?.[binding.varId], binding.varId)
                     : ''
+              const selectHoleSource = (value: string): void => {
+                const createAction = createActions.get(value)
+                if (createAction) {
+                  let nextEntities = entities
+                  if (createAction.entityRequest && createEntity) {
+                    createEntity.onCreate(createAction.entityRequest)
+                    nextEntities = ensureEntity(nextEntities, createAction.entityRequest)
+                  }
+                  if (createAttribute) {
+                    createAttribute.onCreate(createAction.attributeRequest)
+                    nextEntities = ensureEntityAttribute(
+                      nextEntities,
+                      createAction.attributeRequest,
+                    )
+                  }
+                  if (formula) {
+                    onChange(compileFormula(
+                      formula,
+                      { ...holeBindings, [h.holeId]: createAction.binding },
+                      nextEntities,
+                    ))
+                  }
+                  return
+                }
+                const variableCreateRequest = variableCreateActions.get(value)
+                if (variableCreateRequest && createVariable) {
+                  createVariable.onCreate(variableCreateRequest)
+                  setHole(h.holeId, {
+                    kind: 'var',
+                    varId: variableCreateRequest.variableId,
+                  })
+                  return
+                }
+                if (value === 'constant') {
+                  setHole(h.holeId, {
+                    kind: 'number',
+                    value: binding?.kind === 'number' ? binding.value : 0,
+                  })
+                  return
+                }
+                const varId = parseVariableKey(value)
+                if (varId) {
+                  setHole(h.holeId, { kind: 'var', varId })
+                  return
+                }
+                const selected = parseEntityAttrKey(value)
+                if (!selected) return
+                setHole(h.holeId, {
+                  kind: 'entityAttr',
+                  entityId: selected.entityId,
+                  attr: selected.attrId,
+                })
+              }
+              const constantInput = h.kind === 'number' && binding?.kind === 'number' ? (
+                <LooseNumberInput
+                  value={binding.value}
+                  onChange={(value) => setHole(h.holeId, { kind: 'number', value })}
+                  aria-label={label}
+                  style={propertyLayout
+                    ? { flex: 'none', width: '100%', minWidth: 0 }
+                    : { width: 120 }}
+                />
+              ) : null
               return (
                 <div
                   key={h.holeId}
                   role="group"
                   aria-label={`参数：${label}`}
-                  style={{ ...row, border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6 }}
+                  className={propertyLayout ? 'editor-property-formula-param' : undefined}
+                  style={propertyLayout
+                    ? { display: 'flex', flexDirection: 'column', gap: 12, width: '100%', minWidth: 0 }
+                    : { ...row, border: '1px solid var(--gc-accent-line, #2a2a2a)', borderRadius: 6, padding: 6 }}
                 >
-                  <span style={holeLbl}>{label}{h.kind === 'entityAttr' && h.suggestAttr ? `（约定：${h.suggestAttr}）` : ''}</span>
-                  <CascadingPicker
-                    ariaLabel={`${label}来源`}
-                    value={sourceValue}
-                    displayValue={sourceDisplayValue}
-                    placeholder="选择来源..."
-                    options={sourceOptions}
-                    onSelect={(value) => {
-                      const createAction = createActions.get(value)
-                      if (createAction) {
-                        let nextEntities = entities
-                        if (createAction.entityRequest && createEntity) {
-                          createEntity.onCreate(createAction.entityRequest)
-                          nextEntities = ensureEntity(nextEntities, createAction.entityRequest)
-                        }
-                        if (createAttribute) {
-                          createAttribute.onCreate(createAction.attributeRequest)
-                          nextEntities = ensureEntityAttribute(
-                            nextEntities,
-                            createAction.attributeRequest,
-                          )
-                        }
-                        if (formula) {
-                          onChange(compileFormula(
-                            formula,
-                            { ...holeBindings, [h.holeId]: createAction.binding },
-                            nextEntities,
-                          ))
-                        }
-                        return
-                      }
-                      const variableCreateRequest = variableCreateActions.get(value)
-                      if (variableCreateRequest && createVariable) {
-                        createVariable.onCreate(variableCreateRequest)
-                        setHole(h.holeId, {
-                          kind: 'var',
-                          varId: variableCreateRequest.variableId,
-                        })
-                        return
-                      }
-                      if (value === 'constant') {
-                        setHole(h.holeId, {
-                          kind: 'number',
-                          value: binding?.kind === 'number' ? binding.value : 0,
-                        })
-                        return
-                      }
-                      const varId = parseVariableKey(value)
-                      if (varId) {
-                        setHole(h.holeId, { kind: 'var', varId })
-                        return
-                      }
-                      const selected = parseEntityAttrKey(value)
-                      if (!selected) return
-                      setHole(h.holeId, {
-                        kind: 'entityAttr',
-                        entityId: selected.entityId,
-                        attr: selected.attrId,
-                      })
-                    }}
-                  />
-                  {h.kind === 'number' && binding?.kind === 'number' && (
-                    <LooseNumberInput
-                      value={binding.value}
-                      onChange={(value) => setHole(h.holeId, { kind: 'number', value })}
-                      aria-label={label}
-                      style={{ width: 120 }}
-                    />
+                  {propertyLayout ? (
+                    <div className="editor-property-formula-param-row">
+                      <span>参数</span>
+                      <CascadingPicker
+                        ariaLabel={`${label}来源`}
+                        value={sourceValue}
+                        displayValue={sourceDisplayValue || label}
+                        placeholder="选择来源..."
+                        options={sourceOptions}
+                        narrowSafe
+                        onSelect={selectHoleSource}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <span style={holeLbl}>{label}{h.kind === 'entityAttr' && h.suggestAttr ? `（约定：${h.suggestAttr}）` : ''}</span>
+                      <CascadingPicker
+                        ariaLabel={`${label}来源`}
+                        value={sourceValue}
+                        displayValue={sourceDisplayValue}
+                        placeholder="选择来源..."
+                        options={sourceOptions}
+                        onSelect={selectHoleSource}
+                      />
+                    </>
                   )}
+                  {constantInput}
                 </div>
               )
-            })
-          )}
+            }) : null}
           {visibleBindingIssues.length > 0 ? (
             <p role="alert" style={{ ...hint, color: '#ffb86c', fontWeight: 600 }}>
               参数绑定未完成：
               {visibleBindingIssues.map((issue) => `${issue.label}（${issue.reason}）`).join('、')}。
               补全后才会用于结算。
             </p>
-          ) : bindingIssues.length > 0 ? null : sampleValue != null ? (
+          ) : propertyLayout ? null : bindingIssues.length > 0 ? null : sampleValue != null ? (
             <p style={hint}>≈ {sampleValue}<span style={{ opacity: 0.6 }}>（按样例实体/变量值试算）</span></p>
           ) : (
             <p style={hint}>已填满，结算时按当前实体/变量值求值。</p>

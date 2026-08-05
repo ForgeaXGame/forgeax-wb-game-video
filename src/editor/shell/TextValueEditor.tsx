@@ -130,6 +130,7 @@ export function TextValueEditor({
   createVariable,
   createFormula,
   stackControls = false,
+  propertyLayout = false,
   onChange,
 }: {
   value: TextOrRef | undefined
@@ -143,6 +144,7 @@ export function TextValueEditor({
   createVariable?: ValueExprVariableCreateConfig
   createFormula?: ValueExprFormulaCreateConfig
   stackControls?: boolean
+  propertyLayout?: boolean
   onChange: (next: TextOrRef) => void
 }): JSX.Element {
   const [createDraft, setCreateDraft] = useState<EntityCreateDraft | null>(null)
@@ -603,8 +605,9 @@ export function TextValueEditor({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', minWidth: 0 }}>
+    <div data-text-value-editor style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', minWidth: 0 }}>
       <div
+        data-text-value-controls
         style={stackControls
           ? { ...row, flexDirection: 'column', alignItems: 'stretch' }
           : row}
@@ -616,7 +619,7 @@ export function TextValueEditor({
           placeholder="文本：我方 · 状态：entity.hero.name / var.qi · 公式：伤害公式"
           options={pickerOptions}
           onSelect={selectContent}
-          narrowSafe={stackControls}
+          narrowSafe={stackControls || propertyLayout}
         />
         {selected === 'literal' ? (
           <input
@@ -624,7 +627,7 @@ export function TextValueEditor({
             value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
             placeholder="输入固定文本"
             onChange={(event) => onChange(event.target.value)}
-            style={stackControls
+            style={stackControls || propertyLayout
               ? { flex: 'none', width: '100%', minWidth: 0, boxSizing: 'border-box' }
               : { flex: '0 1 40%', minWidth: 120, boxSizing: 'border-box' }}
           />
@@ -639,6 +642,7 @@ export function TextValueEditor({
           variables={variables}
           onChange={onChange}
           showFormulaPicker={false}
+          propertyLayout={propertyLayout}
           createAttribute={createAttribute}
           createEntity={createEntity}
           createVariable={createVariable}

@@ -84,7 +84,13 @@ function renderPicker(): void {
 describe('CascadingPicker interaction stability', () => {
   it('sizes the popup from visible columns and scrolls each column independently', () => {
     renderPicker()
-    fireEvent.click(screen.getByRole('combobox', { name: '绑定属性' }))
+    const trigger = screen.getByRole('combobox', { name: '绑定属性' })
+    const arrow = trigger.querySelector('.gc-cascade-trigger-arrow')
+    expect(arrow?.tagName.toLowerCase()).toBe('svg')
+    expect(arrow?.querySelector('path')).toHaveAttribute('d', 'M1.5 2.25 6 6.75l4.5-4.5')
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(window.getComputedStyle(arrow!).transform).toBe('rotateX(180deg)')
 
     const panel = screen.getByRole('menu', { name: '绑定属性选项' })
     expect(panel.style.width).toBe('')
