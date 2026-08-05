@@ -214,6 +214,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
   })
 
   it('shows selected size on a visible side and only reveals disabled AI controls on hover', async () => {
+    const onKeyConflictIconClick = vi.fn()
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-overlay-fit-target')) {
         return {
@@ -257,6 +258,8 @@ describe('OverlayCatalogPreview fixed canvas', () => {
         selectedChildId="damage"
         onSelectChild={vi.fn()}
         onPatchChildLayout={vi.fn()}
+        keyConflictChildIds={new Set(['damage'])}
+        onKeyConflictIconClick={onKeyConflictIconClick}
       />,
     )
 
@@ -280,9 +283,17 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       { left: 0.4, top: 0.4, width: 0.2, height: 0.2 },
       { w: 200, h: 100 },
       'bottom',
-    )).toBe('top')
+    )).toBe('right')
     const size = await screen.findByText('40 × 20')
     expect(size).toHaveAttribute('data-size-label-side', 'bottom')
+    fireEvent.click(screen.getByRole('button', { name: '按键重复' }))
+    expect(onKeyConflictIconClick).toHaveBeenCalledWith('damage')
+    const previewStyles = document.querySelector(
+      'style[data-reel-style="overlay-catalog-preview"]',
+    )?.textContent
+    expect(previewStyles).toContain(
+      '.ocp-key-warn-icon:hover:not(:disabled),\n.ocp-key-warn-icon:active:not(:disabled) {\n  background:#d8d8d8; color:#ff5b5b;',
+    )
     expect(screen.queryByText(/轴居中/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'AI' })).toBeNull()
 
@@ -297,7 +308,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       expect(ai).toBeDisabled()
       expect(ai.querySelector('img')).toHaveAttribute('width', '18')
       expect(ai.querySelector('img')).toHaveAttribute('height', '18')
-      expect(screen.getByTestId('ai-hover-zone-damage')).toHaveAttribute('data-ai-control-side', 'top')
+      expect(screen.getByTestId('ai-hover-zone-damage')).toHaveAttribute('data-ai-control-side', 'right')
     })
 
     const aiZone = screen.getByTestId('ai-hover-zone-damage')

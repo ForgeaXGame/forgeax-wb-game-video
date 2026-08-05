@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useEffect, useRef, type JSX } from 'react'
 import type { Entity, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
@@ -719,6 +719,8 @@ export interface ComponentPropertyPanelProps {
   onCreateFormula?: FormulaCreateHandler
   /** 跨界面/节点的交互按键冲突表。 */
   keyConflicts?: KeyBindingConflictContext['conflicts']
+  /** 画布告警图标触发的右栏定位请求；nonce 允许重复点击同一组件。 */
+  keyConflictFocusRequest?: { childId: string; nonce: number }
 }
 
 export function ComponentPropertyPanel({
@@ -738,7 +740,9 @@ export function ComponentPropertyPanel({
   onCreateVariable,
   onCreateFormula,
   keyConflicts,
+  keyConflictFocusRequest,
 }: ComponentPropertyPanelProps): JSX.Element {
+  const panelRef = useRef<HTMLElement>(null)
   const overlays = overlayCatalog ?? { [overlay.id]: overlay }
   const selectedEvents = selectedChild
     ? aggregateOverlayEvents(
@@ -765,6 +769,13 @@ export function ComponentPropertyPanel({
   const keyConflictContext: KeyBindingConflictContext | undefined = selectedChild && keyConflicts
     ? { overlayId: overlay.id, childId: selectedChild.id, conflicts: keyConflicts }
     : undefined
+
+  useEffect(() => {
+    if (!keyConflictFocusRequest || selectedChild?.id !== keyConflictFocusRequest.childId) return
+    panelRef.current
+      ?.querySelector<HTMLElement>('[data-key-conflict="true"]')
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [keyConflictFocusRequest, selectedChild?.id])
   const renderParameterSection = (
     section: { title: string; keys: string[] | undefined },
   ): JSX.Element | null => {
@@ -802,6 +813,7 @@ export function ComponentPropertyPanel({
 
   return (
     <aside
+      ref={panelRef}
       className="cpp-panel"
       data-testid="component-property-panel"
       style={{

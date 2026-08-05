@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import { OverlaySchemeEditor } from '../OverlaySchemeEditor'
+import { overlayStageMaxPercent, OverlaySchemeEditor } from '../OverlaySchemeEditor'
 
 afterEach(cleanup)
 
@@ -38,7 +38,7 @@ describe('OverlaySchemeEditor workspace layout', () => {
     expect(stageRegion).toHaveClass('ose-stage')
     expect(libraryRegion).toHaveClass('ose-bottom')
     expect(stageRegion).toHaveStyle({ height: '56%' })
-    expect(getComputedStyle(stageRegion).maxHeight).toBe('calc(100% - 190px)')
+    expect(getComputedStyle(stageRegion).maxHeight).toBe('min(calc(100% - 190px), 56.25cqw)')
     expect(getComputedStyle(libraryRegion).minHeight).toBe('184px')
     expect(getComputedStyle(stage).backgroundColor).toBe('#000')
     expect(container.querySelector('[data-overlay-viewport]')).toHaveStyle({ aspectRatio: '16 / 9' })
@@ -57,6 +57,15 @@ describe('OverlaySchemeEditor workspace layout', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '56')
     fireEvent.keyDown(separator, { key: 'ArrowDown' })
     expect(separator).toHaveAttribute('aria-valuenow', '58')
+  })
+
+  it('caps stage height at the current width-derived 16:9 height', () => {
+    const maxPercent = overlayStageMaxPercent({ width: 1200, height: 1000 })
+    expect(maxPercent).toBe(67.5)
+    expect(1000 * maxPercent / 100).toBe(675)
+
+    // 较矮工作区先受底部 190px 最小空间约束。
+    expect(overlayStageMaxPercent({ width: 1200, height: 700 })).toBeCloseTo(510 / 7)
   })
 
   it('defaults to layers when the scheme already has children', () => {

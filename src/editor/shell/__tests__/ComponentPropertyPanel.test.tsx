@@ -396,7 +396,7 @@ describe('ComponentPropertyPanel', () => {
       }],
     ])
 
-    render(
+    const { rerender } = render(
       <ComponentPropertyPanel
         {...baseProps}
         overlay={{ id: 'hud', children: [selectedChild] }}
@@ -410,6 +410,20 @@ describe('ComponentPropertyPanel', () => {
     expect(screen.getByText('按键重复')).toBeTruthy()
     fireEvent.pointerEnter(heavy.closest('[data-key-conflict]')!)
     expect(screen.getByRole('tooltip').textContent).toBe('按键C已应用于文字交互-触发')
+
+    const conflictField = heavy.closest<HTMLElement>('[data-key-conflict="true"]')!
+    const scrollIntoView = vi.fn()
+    conflictField.scrollIntoView = scrollIntoView
+    rerender(
+      <ComponentPropertyPanel
+        {...baseProps}
+        overlay={{ id: 'hud', children: [selectedChild] }}
+        selectedChild={selectedChild}
+        keyConflicts={conflicts}
+        keyConflictFocusRequest={{ childId: 'skills', nonce: 1 }}
+      />,
+    )
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
   })
 
   it('does not focus or activate controls when field labels are clicked', () => {

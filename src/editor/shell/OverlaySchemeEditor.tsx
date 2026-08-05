@@ -32,10 +32,11 @@ const WORKSPACE_CSS = `
 }
 .ose-workspace {
   position:relative; display:flex; flex:1; flex-direction:column; min-width:0; min-height:0;
-  overflow:hidden; background:#2c2c2c;
+  overflow:hidden; background:#2c2c2c; container-type:inline-size;
 }
 .ose-stage {
-  position:relative; flex:none; min-height:180px; max-height:calc(100% - 190px);
+  position:relative; flex:none; min-height:180px;
+  max-height:min(calc(100% - 190px), 56.25cqw);
   overflow:hidden; background:#000;
 }
 .ose-bottom {
@@ -92,6 +93,20 @@ function topmostChildId(children: Overlay['children']): string {
     }
     return top
   }, null)?.id ?? ''
+}
+
+const MIN_STAGE_PERCENT = 30
+const MIN_BOTTOM_HEIGHT_PX = 190
+
+/** 舞台拉伸上限：既保留底部工作区，又不超过当前可用宽度对应的完整 16:9 高度。 */
+export function overlayStageMaxPercent(
+  workspace: Pick<DOMRect, 'width' | 'height'> | undefined,
+): number {
+  if (!workspace || workspace.width <= 0 || workspace.height <= 0) return 100
+  const aspectHeight = workspace.width * 9 / 16
+  const bottomLimitedHeight = Math.max(0, workspace.height - MIN_BOTTOM_HEIGHT_PX)
+  const maxHeight = Math.min(aspectHeight, bottomLimitedHeight)
+  return Math.max(MIN_STAGE_PERCENT, Math.min(100, maxHeight / workspace.height * 100))
 }
 
 /**
@@ -214,6 +229,9 @@ export function OverlaySchemeEditor({
   const [bottomTab, setBottomTab] = useState<'library' | 'layers'>(
     locked || overlay.children.length > 0 ? 'layers' : 'library',
   )
+  const [keyConflictFocusRequest, setKeyConflictFocusRequest] = useState<
+    { childId: string; nonce: number } | undefined
+  >()
   // 交互热区重叠冲突（DOM 实测，来自画布回调）——组件清单里对应行标红。
   const [warnIds, setWarnIds] = useState<Set<string>>(() => new Set())
   const overlays = useMemo(
@@ -298,6 +316,13 @@ export function OverlaySchemeEditor({
               : (childId, patch) => onPatchChild(childId, { layout: patch })}
             onWarnChange={locked ? undefined : setWarnIds}
             keyConflictChildIds={keyConflictIds}
+            onKeyConflictIconClick={(childId) => {
+              setSelectedChildId(childId)
+              setKeyConflictFocusRequest((current) => ({
+                childId,
+                nonce: (current?.nonce ?? 0) + 1,
+              }))
+            }}
             showDesignCanvas={!locked}
             centerChildren={locked}
             showTimeScrubber={false}
@@ -312,8 +337,8 @@ export function OverlaySchemeEditor({
           role="separator"
           aria-label="调整画布区域高度"
           aria-orientation="horizontal"
-          aria-valuemin={30}
-          aria-valuemax={72}
+          aria-valuemin={MIN_STAGE_PERCENT}
+          aria-valuemax={100}
           aria-valuenow={Math.round(stagePercent)}
           onPointerDown={(event) => {
             resizingStageRef.current = true
@@ -324,7 +349,10 @@ export function OverlaySchemeEditor({
             const rect = workspaceRef.current?.getBoundingClientRect()
             if (!rect || rect.height <= 0) return
             const next = ((event.clientY - rect.top) / rect.height) * 100
-            setStagePercent(Math.max(30, Math.min(72, next)))
+            setStagePercent(Math.max(
+              MIN_STAGE_PERCENT,
+              Math.min(overlayStageMaxPercent(rect), next),
+            ))
           }}
           onPointerUp={(event) => {
             resizingStageRef.current = false
@@ -336,8 +364,11 @@ export function OverlaySchemeEditor({
           onKeyDown={(event) => {
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
             event.preventDefault()
-            setStagePercent((current) =>
-              Math.max(30, Math.min(72, current + (event.key === 'ArrowDown' ? 2 : -2))))
+            const max = overlayStageMaxPercent(workspaceRef.current?.getBoundingClientRect())
+            setStagePercent((current) => Math.max(
+              MIN_STAGE_PERCENT,
+              Math.min(max, current + (event.key === 'ArrowDown' ? 2 : -2)),
+            ))
           }}
         />
 
@@ -424,6 +455,7 @@ export function OverlaySchemeEditor({
         onCreateVariable={onCreateVariable}
         onCreateFormula={onCreateFormula}
         keyConflicts={keyConflicts}
+        keyConflictFocusRequest={keyConflictFocusRequest}
       />
     </div>
   )

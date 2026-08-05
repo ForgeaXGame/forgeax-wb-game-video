@@ -274,13 +274,18 @@ const PREVIEW_CSS = `
   font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 3px;
   background: #7a2020; color: #ffd9d9; pointer-events: none;
 }
-/* 按键重复：框内右上角警告图标，避开外侧 AI 快捷入口。 */
+/* 按键重复：框内右上角可点击警告图标，避开外侧 AI 快捷入口。 */
 .ocp-key-warn-icon {
   position: absolute; right: 3px; top: 3px; z-index: 6;
   width: 18px; height: 18px; border-radius: 5px;
   display: grid; place-items: center;
-  background: #d8d8d8; color: #ff5b5b; pointer-events: none;
+  padding:0; border:0; background: #d8d8d8; color: #ff5b5b;
+  pointer-events: auto; cursor:pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,.28);
+}
+.ocp-key-warn-icon:hover:not(:disabled),
+.ocp-key-warn-icon:active:not(:disabled) {
+  background:#d8d8d8; color:#ff5b5b;
 }
 .ocp-key-warn-icon svg { display: block; width: 12px; height: 12px; }
 /* 选中态尺寸标牌默认放在下方；靠近边缘时由渲染逻辑切换到可见侧。 */
@@ -359,7 +364,7 @@ export function overlayAiControlSide(
     left: 33,
     right: 33,
   }
-  const preferred: OverlaySizeLabelSide[] = ['top', 'right', 'left', 'bottom']
+  const preferred: OverlaySizeLabelSide[] = ['right', 'top', 'left', 'bottom']
   return preferred.find((side) => side !== sizeLabelSide && spaces[side] >= required[side])
     ?? preferred.find((side) => spaces[side] >= required[side])
     ?? preferred.sort((a, b) => spaces[b] - spaces[a])[0]!
@@ -412,6 +417,8 @@ export interface OverlayCatalogPreviewProps {
   onWarnChange?: (ids: Set<string>) => void
   /** 按键重复冲突的 childId（跨界面/节点扫描）；画布红框 + 右上角警告图标。 */
   keyConflictChildIds?: ReadonlySet<string>
+  /** 点击按键重复图标：上层选中组件并定位右栏冲突字段。 */
+  onKeyConflictIconClick?: (childId: string) => void
   /** 是否显示铺满舞台的白色虚线设计框；基础界面只读预览关闭。 */
   showDesignCanvas?: boolean
   /** 只在预览中把每个组件的真实内容居中，不修改持久化 layout。 */
@@ -434,6 +441,7 @@ export function OverlayCatalogPreview({
   onPatchChildLayout,
   onWarnChange,
   keyConflictChildIds,
+  onKeyConflictIconClick,
   showDesignCanvas = true,
   centerChildren = false,
   showTimeScrubber,
@@ -890,11 +898,17 @@ export function OverlayCatalogPreview({
                     </span>
                   ) : null}
                   {item.keyConflict ? (
-                    <span
+                    <button
+                      type="button"
                       className="ocp-key-warn-icon"
                       data-testid={`key-conflict-icon-${item.id}`}
                       title="交互按键与其它界面或组件重复"
                       aria-label="按键重复"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onKeyConflictIconClick?.(item.id)
+                      }}
                     >
                       <svg viewBox="0 0 12 12" aria-hidden="true">
                         <path
@@ -903,7 +917,7 @@ export function OverlayCatalogPreview({
                           d="M6 1.05 11.35 10.6H.65L6 1.05Zm0 2.55c.38 0 .66.26.62.62l-.4 3.35a.55.55 0 0 1-1.1 0l-.4-3.35c-.04-.36.24-.62.62-.62Zm0 5.55a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44Z"
                         />
                       </svg>
-                    </span>
+                    </button>
                   ) : null}
                   {state.selected ? (
                     <>
