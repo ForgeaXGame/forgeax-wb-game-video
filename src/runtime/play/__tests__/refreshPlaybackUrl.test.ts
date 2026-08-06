@@ -9,6 +9,9 @@ describe('refreshPlaybackUrl', () => {
     expect(refreshPlaybackUrl('/__workbench__/v1/games/demo/media/clip?view=play', 3)).toBe(
       '/__workbench__/v1/games/demo/media/clip?view=play&__gva_refresh=3',
     )
+    expect(refreshPlaybackUrl('/api/v1/kino/resources/clip/content?game_id=demo', 4)).toBe(
+      '/api/v1/kino/resources/clip/content?game_id=demo&__gva_refresh=4',
+    )
   })
 
   it('does not touch direct provider URLs', () => {

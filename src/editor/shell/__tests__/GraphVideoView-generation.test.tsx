@@ -12,12 +12,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../persist/graphScenarioStore', () => ({
-  useGraphScenario: (selector: (state: { graph: { nodes: never[], edges: never[] } }) => unknown) => (
-    selector({ graph: { nodes: [], edges: [] } })
+  useGraphScenario: (selector: (state: { game: string, graph: { nodes: never[], edges: never[] } }) => unknown) => (
+    selector({ game: 'demo', graph: { nodes: [], edges: [] } })
   ),
 }))
-
-vi.mock('../../persist/gameScope', () => ({ getGameSlug: () => 'demo' }))
 
 vi.mock('../../assets/useVideoAssets', () => ({
   useVideoAssets: () => ({

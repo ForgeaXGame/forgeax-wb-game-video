@@ -32,20 +32,20 @@ describe('resolveMediaSrc', () => {
 
   it('routes generated a-vid resources through the registry playback endpoint', () => {
     expect(resolveMediaSrc('a-vid-generated', 'demo game')).toBe(
-      'https://host.test/__workbench__/v1/games/demo-game/media/a-vid-generated',
+      '/api/v1/kino/resources/a-vid-generated/content?game_id=demo%20game',
     )
   })
 
   it('routes registry audio ids through the same media endpoint as video (BGM 决策 A)', () => {
-    // 媒体二进制归 Host；资产类型只保留在 wb-game-video 的 manifest 记录中。
+    // 媒体二进制归 Kino；资产类型只保留在 wb-game-video 的 manifest 记录中。
     expect(resolveMediaSrc('a-aud-bgm-battle', 'demo game')).toBe(
-      'https://host.test/__workbench__/v1/games/demo-game/media/a-aud-bgm-battle',
+      '/api/v1/kino/resources/a-aud-bgm-battle/content?game_id=demo%20game',
     )
   })
 
   it('routes stable Kino ids through the Kino content endpoint', () => {
     expect(resolveMediaSrc('res/123', 'demo game')).toBe(
-      'https://host.test/__workbench__/v1/games/demo-game/media/res%2F123',
+      '/api/v1/kino/resources/res%2F123/content?game_id=demo%20game',
     )
   })
 

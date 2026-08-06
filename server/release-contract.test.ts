@@ -43,6 +43,12 @@ const mainOwnedRuntimeFiles = new Set([
   'src/runtime/component-host/index.ts',
   'src/runtime/play/GamePlayer.tsx',
 ])
+// wb-game-video intentionally keeps a direct Kino integration instead of
+// adopting the host-media SSOT migration; see scripts/check-release.mjs's
+// FORBIDDEN_PROVIDER_INTEGRATION_TEXT for the matching release-gate carve-out.
+const kinoDirectIntegrationFiles = new Set([
+  'src/editor/assets/kino-api.ts',
+])
 const releaseGuardFiles = new Set([
   'scripts/check-release.mjs',
 ])
@@ -66,6 +72,7 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
       || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
       || mainOwnedRuntimeFiles.has(relativePath)
+      || kinoDirectIntegrationFiles.has(relativePath)
       || releaseGuardFiles.has(relativePath)
     ) {
       return []

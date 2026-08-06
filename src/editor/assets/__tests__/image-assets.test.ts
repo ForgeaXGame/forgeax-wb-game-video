@@ -91,6 +91,8 @@ describe('uploadReferenceImage', () => {
               url: 'https://upload.example/image-token',
               headers: { 'content-type': 'image/png' },
               expires_at: '2099-01-01T00:00:00.000Z',
+              chunk_size: 3,
+              chunk_count: 1,
             },
             object_url: 'https://media.example/reference.png',
             upload_token: 'opaque-token',

@@ -857,10 +857,10 @@ describe('useClipGeneration', () => {
     act(() => result.current.submit(request))
     await flush()
     expect(submitClip).toHaveBeenCalledWith(expect.objectContaining({
-      gameSlug: 'demo',
       prompt: request.prompt,
       requestId: requestIdA,
     }))
+    expect(submitClip.mock.calls[0]?.[0]).not.toHaveProperty('gameSlug')
     expect(result.current.state).toEqual({
       phase: 'succeeded', transport: 'tool', assetId: 'tool-result',
     })
