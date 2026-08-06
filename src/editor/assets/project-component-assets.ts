@@ -2,17 +2,57 @@ import * as React from 'react'
 import type { ComponentType } from 'react'
 import type { ComponentDef } from '../../runtime/registry/component-registry'
 import type { ComponentManifest } from '../../runtime/schema/node-config-schema'
-import {
-  gameComponentRegister,
-  importGameComponentModule,
-  type GameComponentModule,
-} from '../../runtime/component-host/game-component-module'
+import { getWorkbenchHost } from '../../lib/workbench-host'
+
+interface ProjectComponentModule {
+  // Project-owned modules are untyped ESM at this boundary.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  register?: (host: any) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  default?: { register?: (host: any) => void } | ((host: any) => void)
+}
 
 export interface ProjectComponentAsset {
   source: 'project-component'
   componentId: string
   manifest: ComponentManifest
   renderer: ComponentType<Record<string, unknown>>
+}
+
+function projectComponentRegister<Host>(
+  module: ProjectComponentModule,
+): ((host: Host) => void) | null {
+  if (typeof module.register === 'function') return module.register as (host: Host) => void
+  if (typeof module.default === 'function') return module.default as (host: Host) => void
+  if (typeof module.default === 'object' && typeof module.default?.register === 'function') {
+    return module.default.register as (host: Host) => void
+  }
+  return null
+}
+
+async function importProjectComponentModule(
+  gameId: string,
+  base = '',
+): Promise<ProjectComponentModule | null> {
+  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
+  const urls = isDev
+    ? [`${base}/@game-components/${encodeURIComponent(gameId)}/index.js`]
+    : []
+  try {
+    const url = getWorkbenchHost().gameComponents.moduleUrl('index.js')
+    if (url) urls.push(url)
+  } catch {
+    // Standalone development has no accepted Workbench context.
+  }
+  for (const url of new Set(urls)) {
+    try {
+      const module = (await import(/* @vite-ignore */ url)) as ProjectComponentModule
+      if (projectComponentRegister(module)) return module
+    } catch {
+      // Try the next source; source-only controls have no built artifact in dev.
+    }
+  }
+  return null
 }
 
 interface ProjectComponentCollector {
@@ -36,7 +76,7 @@ function manifestFromDefinition(id: string, definition: ComponentDef): Component
   }
 }
 
-export function collectProjectComponentAssets(module: GameComponentModule): ProjectComponentAsset[] {
+export function collectProjectComponentAssets(module: ProjectComponentModule): ProjectComponentAsset[] {
   const pending = new Map<string, Partial<ProjectComponentAsset>>()
   const entryFor = (componentId: string): Partial<ProjectComponentAsset> => {
     let entry = pending.get(componentId)
@@ -59,7 +99,7 @@ export function collectProjectComponentAssets(module: GameComponentModule): Proj
     registerInteractionSkin() {},
     registerHpBar() {},
   }
-  gameComponentRegister<ProjectComponentCollector>(module)?.(collector)
+  projectComponentRegister<ProjectComponentCollector>(module)?.(collector)
   return [...pending.values()].filter((entry): entry is ProjectComponentAsset =>
     entry.source === 'project-component'
       && typeof entry.componentId === 'string'
@@ -69,6 +109,6 @@ export function collectProjectComponentAssets(module: GameComponentModule): Proj
 }
 
 export async function loadProjectComponentAssets(slug: string, base = ''): Promise<ProjectComponentAsset[]> {
-  const module = await importGameComponentModule(slug, base)
+  const module = await importProjectComponentModule(slug, base)
   return module ? collectProjectComponentAssets(module) : []
 }
