@@ -176,7 +176,7 @@ describe('GraphStudio 节点配置分栏', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
     expect(screen.getByTestId('node-panel-columns')).toHaveStyle({
-      gridTemplateColumns: 'minmax(340px, 3fr) 5px minmax(280px, 2fr)',
+      gridTemplateColumns: 'minmax(340px, 711fr) 5px minmax(280px, 500fr)',
     })
     expect(screen.getByRole('button', { name: '收起预览区' })).toBeTruthy()
     expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
@@ -274,9 +274,53 @@ describe('GraphStudio 节点配置分栏', () => {
 
     fireEvent.click(screen.getByTitle('关闭'))
     await waitFor(() => {
-      expect(screen.queryByText('节点配置 · Intro')).toBeNull()
+      expect(screen.queryByText('Intro调试面板')).toBeNull()
       expect(screen.queryByTitle('隐藏')).toBeNull()
     })
+  })
+
+  it('切换节点后时间轴缩放重置为 1×（不沿用上节点的缩放残留）', async () => {
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    const { container } = render(<GraphStudio scenario={SCENARIO} />)
+    const canvas = () => container.querySelector<HTMLElement>('.gc-mtimeline-canvas')!
+
+    // jsdom 视口宽 0 → 画布宽 = zoom × 1px，放大后不再是 1px。
+    fireEvent.click(screen.getByRole('button', { name: '时间轴放大' }))
+    expect(canvas().style.width).not.toBe('1px')
+    expect(screen.getByRole('slider', { name: '时间轴缩放' })).toHaveAttribute('aria-valuenow', '1.2')
+
+    act(() => { useGraphScenario.getState().setSelectedNode('second') })
+    await waitFor(() => expect(canvas().style.width).toBe('1px'))
+    expect(screen.getByRole('slider', { name: '时间轴缩放' })).toHaveAttribute('aria-valuenow', '1')
+  })
+
+  it('一级页签在 Agent 空态与节点调试面板间切换', () => {
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    // 默认选中调试面板页签；Agent 页签未选中且无空态占位。
+    expect(screen.getByRole('tab', { name: 'Intro调试面板' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: 'Agent' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.queryByTestId('node-panel-agent')).toBeNull()
+
+    // 切到 Agent：显示空态占位；配置内容仅隐藏不卸载，组件本地状态保留。
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent' }))
+    expect(screen.getByTestId('node-panel-agent')).toBeTruthy()
+    expect(screen.getByTestId('node-config-tab-content').style.display).toBe('none')
+
+    // 切回调试面板：内容恢复可见。
+    fireEvent.click(screen.getByRole('tab', { name: 'Intro调试面板' }))
+    expect(screen.queryByTestId('node-panel-agent')).toBeNull()
+    expect(screen.getByTestId('node-config-tab-content').style.display).toBe('contents')
+  })
+
+  it('预览展开时一级页签栏仍只属于右侧表单列', () => {
+    window.localStorage.setItem('wb-game-video.nodePanel.previewOpen', '1')
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    // 预览列展开时，页签栏仍挂在右侧表单列内，不横跨预览区。
+    expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+    expect(screen.getByTestId('node-inspector-column').querySelector('[role="tablist"]')).toBeTruthy()
+    expect(screen.getByTestId('node-preview-column').querySelector('[role="tablist"]')).toBeNull()
   })
 
   it('按时间轴像素比例在当前指针前添加不重叠的结算', async () => {
@@ -325,7 +369,7 @@ describe('GraphStudio 节点配置分栏', () => {
     render(<GraphStudio scenario={SCENARIO} />)
 
     fireEvent.click(screen.getByTestId('rf__node-intro'))
-    expect(screen.getByText('节点配置 · Intro')).toBeTruthy()
+    expect(screen.getByText('Intro调试面板')).toBeTruthy()
 
     fireEvent.keyDown(document, { key: 'Delete', code: 'Delete' })
     fireEvent.keyUp(document, { key: 'Delete', code: 'Delete' })
@@ -333,7 +377,7 @@ describe('GraphStudio 节点配置分栏', () => {
     expect(confirm).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByTitle('关闭'))
-    await waitFor(() => { expect(screen.queryByText('节点配置 · Intro')).toBeNull() })
+    await waitFor(() => { expect(screen.queryByText('Intro调试面板')).toBeNull() })
 
     fireEvent.keyDown(document, { key: 'Delete', code: 'Delete' })
     fireEvent.keyUp(document, { key: 'Delete', code: 'Delete' })
