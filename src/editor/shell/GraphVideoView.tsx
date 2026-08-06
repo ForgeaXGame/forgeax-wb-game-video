@@ -1,29 +1,28 @@
 /**
  * GraphVideoView —— 「新引擎 › 视频」= 视频素材编辑器（UI/交互对齐旧 VideoCatalogTab）。
  *
- * 保留素材库和纯视频预览；不再承载节点绑定、生成配置或组件编辑能力。
+ * 保留素材库和全屏视频预览；不再承载节点绑定、生成配置或组件编辑能力。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../../i18n'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { useGraphView } from '../persist/graphViewStore'
 import {
   VideoAssetLibrary,
   type VideoLibraryEntry,
 } from '../assets/VideoAssetLibrary'
 import { useVideoAssets } from '../assets/useVideoAssets'
-import { useClipGeneration } from '../assets/generation/useClipGeneration'
+import { createKinoVideoClient } from '../assets/kino-api'
+import { VideoExternalImportDialog } from '../assets/VideoExternalImportDialog'
+import { useVideoGenerationWorkspace } from '../assets/generation/useVideoGenerationWorkspace'
+import { consumeVideoAssetSelection } from '../assets/generation/videoGenerationNavigation'
 import {
   VideoGenSheet,
-  type RecentGeneratedClip,
 } from '../assets/generation/VideoGenSheet'
-import type { VgenImageAsset } from '../assets/generation/VgenImagePicker'
 import {
-  listRegistryAssets,
-  resolveAssetSrc,
   resolveMediaSrc,
   registryMediaUrl,
 } from './media'
-import type { MediaAsset } from '../assets/registry-types'
 import {
   GraphVideoPreviewPanel,
 } from './GraphVideoPreviewPanel'
@@ -49,11 +48,15 @@ export function GraphVideoView(): JSX.Element {
   const uploadGroup = t('videoAssets.group.upload')
   const game = useGraphScenario((s) => s.game)
   const videoController = useVideoAssets(game)
-  const [regAssets, setRegAssets] = useState<MediaAsset[]>([])
+  const kinoClient = useMemo(() => createKinoVideoClient(), [])
+  const setView = useGraphView((state) => state.setView)
+  const { regAssets, imageAssets, recentClips, clipGeneration } = useVideoGenerationWorkspace(game, videoController)
   const listBodyRef = useRef<HTMLDivElement | null>(null)
-  const [selectedId, setSelectedId] = useState<string>('')
+  const [selectedId, setSelectedId] = useState<string>(() => consumeVideoAssetSelection() ?? '')
   const [genSheetOpen, setGenSheetOpen] = useState(false)
+  const [externalImportOpen, setExternalImportOpen] = useState(false)
   const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
+  const [fullscreenRequest, setFullscreenRequest] = useState<{ id: string, nonce: number } | null>(null)
 
   const graph = useGraphScenario((s) => s.graph)
   const scenario = useMemo<GameScenario>(
@@ -61,18 +64,7 @@ export function GraphVideoView(): JSX.Element {
     [graph],
   )
 
-  // 共享素材层轮询（mtime 级 5s）：驱动生成中占位 + 角色/场景参考图。
-  useEffect(() => {
-    let alive = true
-    const pull = async (): Promise<void> => {
-      const all = await listRegistryAssets(game)
-      if (!alive) return
-      setRegAssets(all)
-    }
-    void pull()
-    const timer = window.setInterval(() => void pull(), 5000)
-    return () => { alive = false; window.clearInterval(timer) }
-  }, [game])
+  // 共享素材层轮询、生成参考图与最近任务由 generation workspace 统一维护。
 
   const supplementalEntries = useMemo<VideoLibraryEntry[]>(() => {
     return regAssets
@@ -87,60 +79,6 @@ export function GraphVideoView(): JSX.Element {
         durMs: v.durationMs,
       }))
   }, [regAssets, game, generatedGroup])
-
-  const imageAssets = useMemo<VgenImageAsset[]>(() => {
-    return regAssets.flatMap((asset) => {
-      if (asset.kind !== 'image' || asset.status !== 'ready') return []
-      const kind = asset.productionType === 'character_ref'
-        ? 'character_ref'
-        : asset.productionType === 'scene_ref'
-          ? 'scene_ref'
-          : asset.productionType === 'shot_image'
-            ? 'keyframe'
-            : null
-      if (!kind) return []
-      return [{
-        id: asset.id,
-        resourceId: asset.provider?.kind === 'kino'
-          ? nonEmptyString(asset.provider.upstreamResourceId)
-          : undefined,
-        label: asset.label ?? asset.name ?? asset.id,
-        kind,
-        thumbUrl: resolveAssetSrc(asset, game),
-      }]
-    })
-  }, [game, regAssets])
-
-  const recentClips = useMemo<RecentGeneratedClip[]>(() => {
-    const clips: RecentGeneratedClip[] = regAssets
-      .filter(isRecentClipAsset)
-      .map((asset) => ({
-        id: asset.id,
-        label: asset.label ?? asset.name ?? asset.id,
-        createdAt: asset.createdAt,
-        status: asset.status,
-        posterUrl: stringMeta(asset.meta, 'posterUrl') ?? stringMeta(asset.meta, 'thumbnailUrl'),
-        playbackUrl: asset.status === 'ready' ? resolveAssetSrc(asset, game) : undefined,
-      }))
-    for (const item of videoController.items) {
-      if (item.type !== 'GENERATION') continue
-      clips.push({
-        id: item.id,
-        label: item.label,
-        createdAt: item.updatedAt ?? 0,
-        status: 'ready',
-        playbackUrl: item.url,
-      })
-    }
-    return [...new Map(clips.map((clip) => [clip.id, clip])).values()]
-      .sort((left, right) => right.createdAt - left.createdAt)
-      .slice(0, 5)
-  }, [game, regAssets, videoController.items])
-
-  const clipGeneration = useClipGeneration(regAssets, {
-    gameSlug: game,
-    onTerminal: videoController.refresh,
-  })
 
   const entries = useMemo<VideoEntry[]>(() => {
     const seen = new Set<string>()
@@ -183,45 +121,36 @@ export function GraphVideoView(): JSX.Element {
   }
 
   return (
-    <div className="gc-tab gc-tab-video">
+    <div className="gc-tab gc-tab-video val-video-workspace">
       <VideoAssetLibrary
         gameId={game}
         scenario={scenario}
         supplementalEntries={supplementalEntries}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        onOpenGenerate={() => setGenSheetOpen(true)}
+        onOpenPreview={(id) => setFullscreenRequest((current) => ({ id, nonce: (current?.nonce ?? 0) + 1 }))}
+        onOpenGenerate={() => {
+          setGenSheetOpen(true)
+          setView('video-generate')
+        }}
+        onOpenExternalImport={() => setExternalImportOpen(true)}
         onDeleted={handleVideoDeleted}
         controller={videoController}
         listBodyRef={listBodyRef}
       />
-      <section className="gc-preview">
-        {timelineEntry ? (
-          <div className="gc-stage gc-stage-video">
-            <div className="gc-video-head">
-              <div>
-                <div className="gc-video-title">{timelineEntry.label}</div>
-                <div className="gc-video-sub">素材预览</div>
-              </div>
-            </div>
-            <div className="gc-video-top">
-              <GraphVideoPreviewPanel
-                timelineEntry={timelineEntry}
-                previewEntry={selectedEntry}
-                previewSrc={previewSrc}
-                maxMs={maxMs}
-                uploading={videoController.uploading}
-                onReplace={videoController.replaceResource}
-                onDurationChange={(ms) => {
-                  setVideoDurationMs(ms)
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          <EmptyPreview text="选择一个视频素材以预览" />
-        )}
-      </section>
+      {timelineEntry ? (
+        <GraphVideoPreviewPanel
+          timelineEntry={timelineEntry}
+          previewEntry={selectedEntry}
+          previewSrc={previewSrc}
+          maxMs={maxMs}
+          fullscreenRequest={fullscreenRequest?.id === timelineEntry.id ? fullscreenRequest.nonce : undefined}
+          fullscreenOnly
+          uploading={videoController.uploading}
+          onReplace={videoController.replaceResource}
+          onDurationChange={setVideoDurationMs}
+        />
+      ) : null}
       <VideoGenSheet
         open={genSheetOpen}
         gameSlug={game}
@@ -237,32 +166,19 @@ export function GraphVideoView(): JSX.Element {
           setGenSheetOpen(false)
         }}
       />
+      <VideoExternalImportDialog
+        open={externalImportOpen}
+        targetGameId={game}
+        client={kinoClient}
+        onImport={async (source, name) => {
+          const imported = await videoController.importExternal(source, name)
+          if (imported) {
+            setSelectedId(imported.resource_id)
+          }
+          return imported
+        }}
+        onClose={() => setExternalImportOpen(false)}
+      />
     </div>
   )
-}
-
-function stringMeta(meta: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
-  const value = meta?.[key]
-  return typeof value === 'string' ? value : undefined
-}
-
-function nonEmptyString(value: string | undefined): string | undefined {
-  const trimmed = value?.trim()
-  return trimmed || undefined
-}
-
-function isRecentClipAsset(
-  asset: MediaAsset,
-): asset is MediaAsset & { status: RecentGeneratedClip['status'] } {
-  return asset.kind === 'video'
-    && asset.productionType === 'video_clip'
-    && asset.status !== 'placeholder'
-}
-
-      function EmptyPreview({text}: {text: string }): JSX.Element {
-  return (
-      <div className="gc-stage gc-empty-preview">
-        <div className="gc-empty-note">{text}</div>
-      </div>
-      )
 }

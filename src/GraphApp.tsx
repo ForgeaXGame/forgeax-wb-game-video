@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GraphStudio } from './editor/shell/GraphStudio'
 import { GraphVideoView } from './editor/shell/GraphVideoView'
+import { VideoGenerationPage } from './editor/shell/VideoGenerationPage'
 import { GraphAssetView } from './editor/shell/GraphAssetView'
 import { GraphConfigView } from './editor/shell/GraphConfigView'
 import { GraphPlaySurface } from './editor/shell/GraphPlaySurface'
@@ -49,6 +50,7 @@ function resolveGameSlug(explicit?: string): string {
 /** 主区——当前 tab 对应的内容。center pane 的全部内容。 */
 function GraphMain(): JSX.Element {
   const view = useGraphView((state) => state.view)
+  const setView = useGraphView((state) => state.setView)
   const scenarioFromStore = useGraphScenario((s) => s.scn)
   const loadEpoch = useGraphScenario((s) => s.loadEpoch)
   // The host package is the only runtime source. The bundled demo remains
@@ -61,6 +63,7 @@ function GraphMain(): JSX.Element {
     <main className="ga-main">
       {view === 'graph' && <GraphStudio scenario={scenario} />}
       {view === 'video' && <GraphVideoView />}
+      {view === 'video-generate' && <VideoGenerationPage onBack={() => setView('video')} />}
       {view === 'assets' && <GraphAssetView />}
       {view === 'ui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'overlays', label: '自定义界面' }]} scenario={scenario} />}
       {view === 'rule' && (

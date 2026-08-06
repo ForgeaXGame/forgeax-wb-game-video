@@ -45,6 +45,7 @@ const MOCK_ENTRIES: readonly NavNode[] = [
         id: 'vid-generated',
         label: '生成视频',
         kind: 'branch',
+        view: 'video-generate',
         children: [
           { id: 'vid-gen-door', label: 'narr-door.mp4', kind: 'leaf' },
           { id: 'vid-gen-land', label: 'narr-land.mp4', kind: 'leaf' },

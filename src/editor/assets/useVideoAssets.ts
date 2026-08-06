@@ -15,6 +15,7 @@ import {
 } from './video-upload'
 import { useKinoVideoCache, useKinoVideoResources } from './kinoVideoCacheStore'
 import { deleteSequentially } from './batch-delete'
+import { createExternalVideoImportInput } from './video-external-import'
 import { t } from '../../i18n'
 
 export const DEFAULT_VIDEO_PAGE_SIZE = 20
@@ -45,6 +46,7 @@ export interface VideoAssetsController {
   loadPage: (page: number) => Promise<void>
   loadMore: () => Promise<void>
   upload: (file: File) => Promise<KinoResourceDTO | undefined>
+  importExternal: (source: KinoResourceDTO, name: string) => Promise<KinoResourceDTO | undefined>
   replaceResource: (resourceId: string, file: File) => Promise<KinoResourceDTO | undefined>
   renameResource: (resourceId: string, name: string) => Promise<KinoResourceDTO | undefined>
   retryComplete: () => Promise<KinoResourceDTO | undefined>
@@ -304,6 +306,40 @@ export function useVideoAssets(
     [runUpload],
   )
 
+  const importExternal = useCallback(
+    async (source: KinoResourceDTO, name: string): Promise<KinoResourceDTO | undefined> => {
+      const generation = ++crudGeneration.current
+      setMutating(true)
+      setLocalError(null)
+      try {
+        const resource = await client.create(
+          createExternalVideoImportInput(gameId, source, name),
+          { signal: abortRef.current?.signal },
+        )
+        if (!mountedRef.current || generation !== crudGeneration.current) {
+          return undefined
+        }
+        const imported = toListItem(resource, client)
+        setLocalItems((currentItems) => mergeUniqueItems([imported], currentItems))
+        setLocalTotal((currentTotal) => currentTotal + 1)
+        upsertCacheResource(resource)
+        await refresh()
+        return resource
+      } catch (err) {
+        if (!mountedRef.current || generation !== crudGeneration.current) {
+          return undefined
+        }
+        setLocalError(safeErrorMessage(err))
+        throw err
+      } finally {
+        if (mountedRef.current && generation === crudGeneration.current) {
+          setMutating(false)
+        }
+      }
+    },
+    [client, gameId, refresh, upsertCacheResource],
+  )
+
   const renameResource = useCallback(
     async (resourceId: string, name: string): Promise<KinoResourceDTO | undefined> => {
       const nextName = name.trim()
@@ -480,6 +516,7 @@ export function useVideoAssets(
     loadPage,
     loadMore,
     upload,
+    importExternal,
     replaceResource,
     renameResource,
     retryComplete,
