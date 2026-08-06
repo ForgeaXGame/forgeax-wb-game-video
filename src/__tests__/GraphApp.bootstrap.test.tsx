@@ -44,6 +44,7 @@ vi.mock('../editor/assets/catalog', () => ({
 }))
 vi.mock('../editor/shell/GraphStudio', () => ({ GraphStudio: () => <div>blueprint</div> }))
 vi.mock('../editor/shell/GraphVideoView', () => ({ GraphVideoView: () => <div>video</div> }))
+vi.mock('../editor/shell/VideoGenerationPage', () => ({ VideoGenerationPage: () => <div>video-generation</div> }))
 vi.mock('../editor/shell/GraphAssetView', () => ({ GraphAssetView: () => <div>assets</div> }))
 vi.mock('../editor/shell/GraphConfigView', () => ({ GraphConfigView: () => <div>config</div> }))
 vi.mock('../editor/shell/GraphPlaySurface', () => ({ GraphPlaySurface: () => <div>play</div> }))

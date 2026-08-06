@@ -37,6 +37,8 @@ export interface RecentGeneratedClip {
 
 export interface VideoGenSheetProps {
   open: boolean
+  /** `sheet` keeps the existing overlay; `page` renders the same form in a route view. */
+  variant?: 'sheet' | 'page'
   gameSlug: string
   imageAssets: readonly VgenImageAsset[]
   recentClips: readonly RecentGeneratedClip[]
@@ -69,6 +71,7 @@ const SIZE_OPTIONS: readonly {
 
 export function VideoGenSheet({
   open,
+  variant = 'sheet',
   gameSlug,
   imageAssets,
   recentClips,
@@ -285,16 +288,18 @@ export function VideoGenSheet({
       : t('videoAssets.generate.submit')
 
   return (
-    <div className="vgen-sheet on">
-      <div className="vgen-backdrop" role="presentation" onClick={requestClose} />
+    <div className={`vgen-sheet vgen-${variant} on`}>
+      {variant === 'sheet' ? <div className="vgen-backdrop" role="presentation" onClick={requestClose} /> : null}
       <form
-        className="vgen-panel"
-        role="dialog"
-        aria-modal="true"
+        className={`vgen-panel${variant === 'page' ? ' is-page' : ''}`}
+        role={variant === 'page' ? 'main' : 'dialog'}
+        aria-modal={variant === 'page' ? undefined : 'true'}
         aria-labelledby={titleId}
         aria-describedby={subtitleId}
         onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => trapFocus(event, event.currentTarget)}
+        onKeyDown={(event) => {
+          if (variant === 'sheet') trapFocus(event, event.currentTarget)
+        }}
         onSubmit={submit}
       >
         <header className="vgen-head">
@@ -302,7 +307,7 @@ export function VideoGenSheet({
             <h2 id={titleId} className="vgen-title">{t('videoAssets.generate.title')}</h2>
             <p id={subtitleId} className="vgen-sub">{subtitle}</p>
           </div>
-          <button
+          {variant === 'sheet' ? <button
             ref={closeButtonRef}
             type="button"
             className="vgen-close"
@@ -310,11 +315,11 @@ export function VideoGenSheet({
             onClick={requestClose}
           >
             ✕
-          </button>
+          </button> : null}
         </header>
 
         <div className="vgen-body">
-          <div className="vgen-column">
+          <div className={`vgen-column${variant === 'page' ? ' vgen-page-composer' : ''}`}>
             <section className="vgen-card" aria-labelledby={`${titleId}-inputs`}>
               <h3 id={`${titleId}-inputs`} className="vgen-card-title">{t('videoAssets.generate.inputs')}</h3>
               <label className="vgen-label" htmlFor={modeId}>{t('videoAssets.generate.modeLabel')}</label>
@@ -496,7 +501,7 @@ export function VideoGenSheet({
             </section>
           </div>
 
-          <div className="vgen-column vgen-column-output">
+          <div className={`vgen-column vgen-column-output${variant === 'page' ? ' vgen-page-results' : ''}`}>
             <section className="vgen-card" aria-labelledby={`${titleId}-output`}>
               <div className="vgen-card-head">
                 <h3 id={`${titleId}-output`} className="vgen-card-title">{t('videoAssets.generate.output')}</h3>

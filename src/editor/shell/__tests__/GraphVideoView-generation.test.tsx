@@ -17,6 +17,8 @@ vi.mock('../../persist/graphScenarioStore', () => ({
   ),
 }))
 
+vi.mock('../../persist/gameScope', () => ({ getGameSlug: () => 'demo' }))
+
 vi.mock('../../assets/useVideoAssets', () => ({
   useVideoAssets: () => ({
     loading: false,

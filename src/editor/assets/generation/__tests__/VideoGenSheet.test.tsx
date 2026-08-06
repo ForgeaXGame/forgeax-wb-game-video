@@ -66,6 +66,15 @@ describe('VideoGenSheet', () => {
     expect(container.querySelectorAll('.vgen-column')).toHaveLength(2)
   })
 
+  it('keeps the page variant as a route workspace instead of the sheet dialog', () => {
+    const { container } = renderSheet({ variant: 'page' })
+
+    expect(screen.getByRole('main', { name: '生成视频素材' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(container.querySelector('.vgen-page-results')).toBeInTheDocument()
+    expect(container.querySelector('.vgen-page-composer')).toBeInTheDocument()
+  })
+
   it('renders the English generation resource without falling back to translation keys', () => {
     setLocale('en')
     renderSheet()
@@ -347,7 +356,7 @@ describe('VideoGenSheet', () => {
     )
   })
 
-  it('exposes generation from the asset-library header only when requested', () => {
+  it('keeps the generation entry visible and disables it until a handler is supplied', () => {
     const onOpenGenerate = vi.fn()
     const controller = {
       loading: false,
@@ -366,6 +375,7 @@ describe('VideoGenSheet', () => {
       loadPage: vi.fn(async () => {}),
       loadMore: vi.fn(async () => {}),
       upload: vi.fn(async () => undefined),
+      importExternal: vi.fn(async () => undefined),
       replaceResource: vi.fn(async () => undefined),
       renameResource: vi.fn(async () => undefined),
       retryComplete: vi.fn(async () => undefined),
@@ -394,6 +404,6 @@ describe('VideoGenSheet', () => {
         onSelect={() => {}}
       />,
     )
-    expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '生成' })).toBeDisabled()
   })
 })
