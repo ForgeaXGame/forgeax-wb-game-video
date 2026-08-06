@@ -39,6 +39,11 @@ export interface MaterialItem {
    * 未标记 = 仍跟随方案，改方案会同步；标记后可在素材属性里「↺ 回连方案」。
    */
   overridden?: boolean
+  /**
+   * 视频条帧画面地址（剪映同款 Filmstrip）。
+   * 优先于 `MaterialTimeline` 的统一 `videoSrc`；Flow 多段预览用它按片段各自抽帧。
+   */
+  videoSrc?: string
 }
 
 /**

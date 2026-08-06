@@ -1,0 +1,62 @@
+import { cleanup, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { MaterialTimeline } from '../MaterialTimeline'
+import { TIMELINE_LAYER_STEP, TIMELINE_LAYER_TOP, TIMELINE_MIN_TRACKS } from '../materialTimelineShared'
+
+afterEach(cleanup)
+
+/**
+ * 画布高度必须只由轨道内容派生，不得回读视口 clientHeight。
+ *
+ * 回读会形成自激振荡：clientHeight 被横向滚动条扣掉 10px → 画布高度跟着变 →
+ * 触发/撤销纵向滚动条 → clientWidth 再变 10px → canvasPx 变 → 又改布局。
+ * 表现为时间轴宽高在 10px 间每帧来回抽动，并使视频条帧画面位图反复重建。
+ * 「内容矮时填满可视区」由 CSS `min-height: 100%` 声明式完成，不需要测量。
+ */
+describe('MaterialTimeline · 视口几何', () => {
+  const CONTENT_H = TIMELINE_LAYER_TOP + TIMELINE_MIN_TRACKS * TIMELINE_LAYER_STEP + 8
+
+  function renderTimeline({ clientWidth, clientHeight }: { clientWidth: number; clientHeight: number }) {
+    const widthSpy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth)
+    const heightSpy = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(clientHeight)
+    const { container } = render(
+      <MaterialTimeline
+        materials={[]}
+        maxMs={10_000}
+        playheadMs={0}
+        selectedMaterialKey={null}
+        onSelectMaterial={vi.fn()}
+        onPatchMaterial={vi.fn()}
+      />,
+    )
+    return { canvas: container.querySelector<HTMLElement>('.gc-mtimeline-canvas')!, widthSpy, heightSpy }
+  }
+
+  it('视口比内容高时，画布高度仍是内容高（填满交给 CSS min-height）', () => {
+    const { canvas, widthSpy, heightSpy } = renderTimeline({ clientWidth: 600, clientHeight: 999 })
+    try {
+      expect(canvas.style.width).toBe('600px')
+      expect(canvas.style.height).toBe(`${CONTENT_H}px`)
+    } finally {
+      widthSpy.mockRestore()
+      heightSpy.mockRestore()
+    }
+  })
+
+  it('视口内高变化（横向滚动条出现/消失）不改变画布高度', () => {
+    const tall = renderTimeline({ clientWidth: 600, clientHeight: 403 })
+    const tallHeight = tall.canvas.style.height
+    tall.widthSpy.mockRestore()
+    tall.heightSpy.mockRestore()
+    cleanup()
+
+    const short = renderTimeline({ clientWidth: 600, clientHeight: 393 })
+    try {
+      expect(short.canvas.style.height).toBe(tallHeight)
+    } finally {
+      short.widthSpy.mockRestore()
+      short.heightSpy.mockRestore()
+    }
+  })
+})
