@@ -140,6 +140,9 @@ const manifestTools = [
     sceneNodeId: 'node-1', nodeName: 'Opening',
     characterRefIds: ['character-ref'], sceneRefIds: ['scene-ref'],
   }],
+  ['wb-game-video:generate-video-clip', 'generateVideoClip', {
+    prompt: 'A rainy alley',
+  }],
   ['wb-game-video:generate-node-video', 'generateNodeVideo', {
     sceneNodeId: 'node-1', nodeName: 'Opening',
     characterRefIds: ['character-ref'], sceneRefIds: ['scene-ref'],

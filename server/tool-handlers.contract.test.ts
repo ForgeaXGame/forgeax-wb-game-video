@@ -108,5 +108,9 @@ describe('host tool context contract', () => {
       context,
       { gameSlug: 'other' },
     )).rejects.toThrow('additional properties')
+    await expect(tools['wb-game-video:generate-video-clip']!(
+      context,
+      { gameSlug: 'other', prompt: 'A rainy alley', mode: 't2v' },
+    )).rejects.toThrow('additional properties')
   })
 })

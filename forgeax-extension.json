@@ -124,6 +124,22 @@
         }
       },
       {
+        "id": "wb-game-video:generate-video-clip",
+        "args": "./schemas/generate-video-clip.args.json",
+        "returns": "./schemas/generate-video-clip.returns.json",
+        "requiresCapabilities": [
+          {
+            "id": "media.video.generate",
+            "version": 1
+          }
+        ],
+        "exposedToAI": true,
+        "description": {
+          "zh": "\u5728\u7d20\u6750\u5e93\u76f4\u63a5\u751f\u6210\u4e00\u6bb5\u89c6\u9891\u7d20\u6750\uff08\u4e0d\u7ed1\u5b9a\u8282\u70b9\uff0c\u63d0\u793a\u8bcd\u76f4\u4f20 kino provider\uff09",
+          "en": "Generate a standalone video clip into the asset library (node-free, prompt passed through to the kino provider)"
+        }
+      },
+      {
         "id": "wb-game-video:generate-node-video",
         "args": "./schemas/generate-node-video.args.json",
         "returns": "./schemas/generate-node-video.returns.json",

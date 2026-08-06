@@ -102,7 +102,7 @@ describe('试玩表面挂载床轨', () => {
   it('GraphPlaySurface：整表面即试玩，进场就起文档床', () => {
     render(<GraphPlaySurface scenario={SCENARIO} />)
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
-      'https://host.test/__workbench__/v1/games/game-nodia-fighting/media/a-aud-story',
+      '/api/v1/kino/resources/a-aud-story/content?game_id=game-nodia-fighting',
     ])
     const deck = decks()[0] as HTMLAudioElement
     expect(deck.muted).toBe(true)
@@ -120,7 +120,7 @@ describe('试玩表面挂载床轨', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '▶ 从此试玩' }))
     expect(decks().map((el) => el.getAttribute('src'))).toEqual([
-      'https://host.test/__workbench__/v1/games/game-nodia-fighting/media/a-aud-story',
+      '/api/v1/kino/resources/a-aud-story/content?game_id=game-nodia-fighting',
     ])
     const deck = decks()[0] as HTMLAudioElement
     expect(deck.muted).toBe(true)

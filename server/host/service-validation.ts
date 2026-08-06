@@ -3,6 +3,7 @@ import generateKeyframeSchema from '../../schemas/generate-keyframe.args.json'
 import generateNodeVideoSchema from '../../schemas/generate-node-video.args.json'
 import generateShotScriptSchema from '../../schemas/generate-shot-script.args.json'
 import generateVideoSchema from '../../schemas/generate-video.args.json'
+import generateVideoClipSchema from '../../schemas/generate-video-clip.args.json'
 import getAssetSchema from '../../schemas/get-asset.args.json'
 import getGraphSchema from '../../schemas/get-graph.args.json'
 import importCharacterRefsSchema from '../../schemas/import-character-refs.args.json'
@@ -22,6 +23,7 @@ export type ServiceSchemaName =
   | 'generateShotScript'
   | 'generateKeyframe'
   | 'generateVideo'
+  | 'generateVideoClip'
   | 'generateNodeVideo'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
@@ -36,6 +38,7 @@ const validators: Record<ServiceSchemaName, ValidateFunction> = {
   generateShotScript: ajv.compile(generateShotScriptSchema),
   generateKeyframe: ajv.compile(generateKeyframeSchema),
   generateVideo: ajv.compile(generateVideoSchema),
+  generateVideoClip: ajv.compile(generateVideoClipSchema),
   generateNodeVideo: ajv.compile(generateNodeVideoSchema),
 }
 

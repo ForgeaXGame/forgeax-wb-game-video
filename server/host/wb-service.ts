@@ -19,6 +19,7 @@ import {
   type KeyframeInput,
   type VideoGenInput,
 } from '../generation/orchestrate'
+import { generateVideoClip, type GenerateVideoClipArgs } from '../generation/clip'
 import {
   importCharacterRefsFromHost,
   importSceneRefsFromHost,
@@ -50,6 +51,7 @@ export interface WbGameVideoService {
   generateShotScript(input: unknown): Promise<unknown>
   generateKeyframe(input: unknown): Promise<unknown>
   generateVideo(input: unknown): Promise<unknown>
+  generateVideoClip(input: unknown): Promise<unknown>
   generateNodeVideo(input: unknown): Promise<unknown>
 }
 
@@ -280,6 +282,28 @@ function keyframeInput(value: unknown): KeyframeInput {
   }
 }
 
+function videoClipInput(value: unknown): GenerateVideoClipArgs {
+  const input = record(value)
+  assertOnlyKeys(input, [
+    'prompt', 'durationSeconds', 'generateAudio', 'mode',
+    'firstFrameAssetId', 'lastFrameAssetId', 'referenceImageAssetIds',
+    'label', 'requestId',
+  ])
+  return {
+    prompt: stringValue(input.prompt, 'prompt', true)!,
+    durationSeconds: numberValue(input.durationSeconds, 'durationSeconds', 8, 15),
+    generateAudio: input.generateAudio === true,
+    mode: input.mode as GenerateVideoClipArgs['mode'],
+    firstFrameAssetId: stringValue(input.firstFrameAssetId, 'firstFrameAssetId'),
+    lastFrameAssetId: stringValue(input.lastFrameAssetId, 'lastFrameAssetId'),
+    referenceImageAssetIds: input.referenceImageAssetIds === undefined
+      ? undefined
+      : stringArray(input.referenceImageAssetIds, 'referenceImageAssetIds'),
+    label: stringValue(input.label, 'label'),
+    requestId: stringValue(input.requestId, 'requestId'),
+  }
+}
+
 function videoInput(value: unknown, maximumDuration: number): VideoGenInput {
   const input = record(value)
   assertOnlyKeys(input, [
@@ -458,6 +482,10 @@ export function createWbGameVideoService(
       } catch (error) {
         return { asset: null, error: publicErrorMessage(error) }
       }
+    },
+    async generateVideoClip(value) {
+      assertSchema('generateVideoClip', value)
+      return generateVideoClip(context, videoClipInput(value), registry)
     },
     async generateNodeVideo(value) {
       assertSchema('generateNodeVideo', value)

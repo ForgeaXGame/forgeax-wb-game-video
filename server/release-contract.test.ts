@@ -17,6 +17,7 @@ const expectedTools = [
   'wb-game-video:generate-shot-script',
   'wb-game-video:generate-keyframe',
   'wb-game-video:generate-video',
+  'wb-game-video:generate-video-clip',
   'wb-game-video:generate-node-video',
   'wb-game-video:list-assets',
   'wb-game-video:get-asset',
@@ -42,6 +43,12 @@ const mainOwnedRuntimeFiles = new Set([
   'src/runtime/component-host/index.ts',
   'src/runtime/play/GamePlayer.tsx',
 ])
+// wb-game-video intentionally keeps a direct Kino integration instead of
+// adopting the host-media SSOT migration; see scripts/check-release.mjs's
+// FORBIDDEN_PROVIDER_INTEGRATION_TEXT for the matching release-gate carve-out.
+const kinoDirectIntegrationFiles = new Set([
+  'src/editor/assets/kino-api.ts',
+])
 const releaseGuardFiles = new Set([
   'scripts/check-release.mjs',
 ])
@@ -65,6 +72,7 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
       || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
       || mainOwnedRuntimeFiles.has(relativePath)
+      || kinoDirectIntegrationFiles.has(relativePath)
       || releaseGuardFiles.has(relativePath)
     ) {
       return []
@@ -203,7 +211,7 @@ describe('release identity', () => {
   })
 
   it('derives game identity from the host binding for every public tool', () => {
-    expect(manifest.provides.tools).toHaveLength(11)
+    expect(manifest.provides.tools).toHaveLength(12)
 
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)
