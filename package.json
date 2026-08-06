@@ -39,6 +39,7 @@
   ],
   "scripts": {
     "dev": "bun scripts/dev.ts",
+    "dev:standalone": "bun run build:backend && bun scripts/dev.ts --standalone",
     "dev:frontend": "vite --host",
     "dev:backend": "tsup --watch",
     "build": "bun run build:frontend && bun run build:backend && bun run build:standalone && bun run check:release",

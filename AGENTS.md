@@ -49,10 +49,16 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
 ```bash
 bun install --frozen-lockfile
 bun run dev
+bun run dev:standalone
 bun run test
 bun run lint
 bun run build
 ```
+
+`bun run dev:standalone` 只新增开发态 `/dev.html` 父页面，由它通过官方 `WorkbenchFrame`
+提供 nonce-bound handshake；扩展运行时仍从 handshake 读取身份与 endpoints。该入口不得替换
+`index.html`、manifest `entry.frontend` 或 Studio host 的 iframe 路径，且本地数据只能写入
+被忽略的 `.workbench-dev/games/`。
 
 `bun test` 只跑 server/release-contract gate；需要浏览器环境的完整测试使用 `bun run test`。
 
