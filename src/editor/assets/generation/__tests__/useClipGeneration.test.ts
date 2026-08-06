@@ -102,20 +102,24 @@ describe('generation HTTP API', () => {
     vi.restoreAllMocks()
   })
 
-  it('posts the controlled UI shape to the private route and maps snake_case task fields', async () => {
+  it('posts the native kino create payload and maps snake_case task fields', async () => {
     const fetchImpl = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(VIDEO_GENERATIONS_API_PATH)
       expect(init).toMatchObject({ method: 'POST', credentials: 'include' })
       expect(JSON.parse(String(init?.body))).toEqual({
-        gameSlug: 'demo',
-        prompt: request.prompt,
-        durationSeconds: 8,
+        game_id: 'demo',
+        media_type: 'video',
+        model: 'seedance2',
         size: '1440x2560',
-        resolution: '1080p',
-        generateAudio: true,
-        firstFrameResourceId: 'first-resource',
-        lastFrameResourceId: 'last-resource',
-        referenceImageResourceIds: ['ref-1'],
+        duration_sec: 8,
+        add_to_resource: true,
+        content: [
+          { type: 'text', text: request.prompt },
+          { type: 'resource', resource_id: 'first-resource', frame_position: 'first' },
+          { type: 'resource', resource_id: 'last-resource', frame_position: 'last' },
+          { type: 'resource', resource_id: 'ref-1' },
+        ],
+        extra: { generate_audio: true, resolution: '1080p' },
       })
       return Promise.resolve(envelope({
         generation_id: 'gen-1',
@@ -150,7 +154,7 @@ describe('generation HTTP API', () => {
     const fetchImpl = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/gen%2F1')) {
-        expect(url).toBe(`${VIDEO_GENERATIONS_API_PATH}/gen%2F1?gameSlug=demo%20game`)
+        expect(url).toBe(`${VIDEO_GENERATIONS_API_PATH}/gen%2F1`)
         return Promise.resolve(envelope({
           generation_id: 'gen/1',
           status: 'succeeded',
@@ -158,7 +162,7 @@ describe('generation HTTP API', () => {
           resource: { resource_id: 'res-1', url: 'must-not-be-consumed' },
         }))
       }
-      expect(url).toBe(`${VIDEO_GENERATIONS_API_PATH}?gameSlug=demo%20game`)
+      expect(url).toBe(`${VIDEO_GENERATIONS_API_PATH}?game_id=demo%20game&media_type=video&page_size=50`)
       return Promise.resolve(envelope({
         items: [
           { generation_id: 'newer', status: 'polling', created_at: 20 },
