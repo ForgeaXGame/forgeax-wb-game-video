@@ -12,7 +12,19 @@ import {
 } from '../kino-api'
 
 export const CLIP_GENERATION_TOOL_ID = 'wb-game-video:generate-video-clip'
-export const VIDEO_GENERATIONS_API_PATH = '/api/private/v1/kino/generations'
+// Kino 原生 generations API（经网关直达 kino 服务端）。此前指向 forgeax
+// server-private 的 /api/private/v1/kino/generations —— Arrival 侧没有该私有
+// 服务，请求/响应契约由本文件直接翻译成 kino 原生格式。
+export const VIDEO_GENERATIONS_API_PATH = '/api/v1/kino/generations'
+
+// 与 forgeax server-private 的服务端默认值保持一致（DEFAULT_KINO_VIDEO_MODEL）。
+const DEFAULT_VIDEO_MODEL = 'seedance2'
+const ACTIVE_GENERATION_STATUSES = new Set<VideoGenerationStatus>([
+  'pending',
+  'submitting',
+  'polling',
+])
+const LIST_PAGE_SIZE = 50
 
 export type KinoVideoSize = '2560x1440' | '1440x2560' | '2496x1664' | '1664x2496'
 export type KinoVideoResolution = '720p' | '1080p'
@@ -126,13 +138,45 @@ export class VideoGenerationConnectionUnavailableError extends Error {
   }
 }
 
+/** 把私有契约的平铺参数翻译成 kino 原生 create 请求体。 */
+function toKinoCreatePayload(params: VideoGenerationParams): Record<string, unknown> {
+  const content: Array<Record<string, unknown>> = [{ type: 'text', text: params.prompt }]
+  if (params.firstFrameResourceId) {
+    content.push({
+      type: 'resource',
+      resource_id: params.firstFrameResourceId,
+      frame_position: 'first',
+    })
+  }
+  if (params.lastFrameResourceId) {
+    content.push({
+      type: 'resource',
+      resource_id: params.lastFrameResourceId,
+      frame_position: 'last',
+    })
+  }
+  for (const resourceId of params.referenceImageResourceIds ?? []) {
+    content.push({ type: 'resource', resource_id: resourceId })
+  }
+  return {
+    game_id: params.gameSlug,
+    media_type: 'video',
+    model: params.model || DEFAULT_VIDEO_MODEL,
+    size: params.size,
+    duration_sec: params.durationSeconds,
+    add_to_resource: true,
+    content,
+    extra: { generate_audio: params.generateAudio, resolution: params.resolution },
+  }
+}
+
 export async function createVideoGeneration(
   params: VideoGenerationParams,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask> {
   const dto = await requestVideoGenerationEnvelope<VideoGenerationTaskDTO>(VIDEO_GENERATIONS_API_PATH, {
     method: 'POST',
-    json: params,
+    json: toKinoCreatePayload(params),
     signal: options.signal,
   })
   return toVideoGenerationTask(dto)
@@ -143,26 +187,36 @@ export async function getVideoGeneration(
   generationId: string,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask> {
+  // kino 原生单查只认路径参数，任务归属由服务端会话判定；gameSlug 仅保留在
+  // 签名里以维持调用方兼容。
+  void gameSlug
   const dto = await requestVideoGenerationEnvelope<VideoGenerationTaskDTO>(
     `${VIDEO_GENERATIONS_API_PATH}/${encodeURIComponent(generationId)}`,
-    { query: { gameSlug }, signal: options.signal },
+    { signal: options.signal },
   )
   return toVideoGenerationTask(dto)
 }
 
-/** The server already returns active tasks newest-first; do not re-filter or re-sort here. */
+/**
+ * kino 原生 list 不支持"仅进行中"的多状态过滤（status 参数单值），这里拉最近
+ * 一页后在客户端过滤 + 按 created_at 降序 —— 与 forgeax server-private 的
+ * 私有 API 行为一致。
+ */
 export async function listActiveVideoGenerations(
   gameSlug: string,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask[]> {
   const page = await requestVideoGenerationEnvelope<ActiveVideoGenerationsDTO>(VIDEO_GENERATIONS_API_PATH, {
-    query: { gameSlug },
+    query: { game_id: gameSlug, media_type: 'video', page_size: String(LIST_PAGE_SIZE) },
     signal: options.signal,
   })
   if (!page || !Array.isArray(page.items)) {
     throw new KinoClientError('Video generation list returned an invalid response', 502, 'upstream_unavailable')
   }
-  return page.items.map(toVideoGenerationTask)
+  return page.items
+    .map(toVideoGenerationTask)
+    .filter((task) => ACTIVE_GENERATION_STATUSES.has(task.status))
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
 }
 
 /** Only a missing private route or a browser-level connection failure enables Phase 1 fallback. */
