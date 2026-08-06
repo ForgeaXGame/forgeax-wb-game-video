@@ -17,6 +17,7 @@ import {
 
 export const CLIP_GENERATION_SOURCE = 'asset-library-generation'
 export const CLIP_GENERATION_POLL_INTERVAL_MS = 3_000
+export const CLIP_GENERATION_POLL_MAX_CONSECUTIVE_FAILURES = 3
 
 export type ClipGenPhase = 'idle' | 'submitting' | 'generating' | 'succeeded' | 'failed'
 
@@ -91,6 +92,7 @@ export function useClipGeneration(
   const epochRef = useRef(0)
   const trackedToolRef = useRef<TrackedSubmission | null>(null)
   const activeTasksRef = useRef<readonly VideoGenerationTask[]>([])
+  const pollFailuresRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
@@ -117,6 +119,7 @@ export function useClipGeneration(
     const controller = new AbortController()
     abortRef.current = controller
     trackedToolRef.current = null
+    pollFailuresRef.current = 0
     return { epoch: epochRef.current, controller }
   }, [clearTimer])
 
@@ -158,8 +161,18 @@ export function useClipGeneration(
     let task: VideoGenerationTask
     try {
       task = await getGenerationRef.current(taskGameSlug, generationId, { signal })
+      pollFailuresRef.current = 0
     } catch (error) {
       if (!isCurrent(epoch)) return
+      pollFailuresRef.current += 1
+      if (pollFailuresRef.current < CLIP_GENERATION_POLL_MAX_CONSECUTIVE_FAILURES) {
+        // Transient failure: don't produce a false failed terminal state, the cloud task is still running.
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          void pollHttpTask(taskGameSlug, generationId, epoch, signal)
+        }, pollIntervalMs)
+        return
+      }
       clearTimer()
       setState((current) => ({
         phase: 'failed',
@@ -320,7 +333,6 @@ export function useClipGeneration(
 
   const submit = useCallback((request: ClipGenerationRequest): void => {
     const { epoch, controller } = beginTrackingEpoch()
-    activeTasksRef.current = []
     if (preferredTransportRef.current === 'tool') {
       startToolFallback(request, epoch)
       return
@@ -337,7 +349,13 @@ export function useClipGeneration(
       (task) => {
         if (!isCurrent(epoch)) return
         preferredTransportRef.current = 'http'
-        adoptHttpTask(request.gameSlug, task, epoch, controller.signal, [task])
+        adoptHttpTask(
+          request.gameSlug,
+          task,
+          epoch,
+          controller.signal,
+          [task, ...activeTasksRef.current.filter((candidate) => candidate.generationId !== task.generationId)],
+        )
       },
       (error: unknown) => {
         if (!isCurrent(epoch)) return
@@ -353,10 +371,9 @@ export function useClipGeneration(
 
   const cancel = useCallback((): void => {
     beginTrackingEpoch()
-    activeTasksRef.current = []
     setState(preferredTransportRef.current === 'tool'
-      ? { phase: 'idle', transport: 'tool' }
-      : IDLE_STATE)
+      ? { phase: 'idle', transport: 'tool', activeTasks: activeTasksRef.current }
+      : { phase: 'idle', activeTasks: activeTasksRef.current })
   }, [beginTrackingEpoch])
 
   const track = useCallback((generationId: string): void => {

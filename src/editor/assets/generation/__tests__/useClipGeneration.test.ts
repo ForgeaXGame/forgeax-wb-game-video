@@ -19,6 +19,7 @@ import {
 } from '../generation-api'
 import {
   CLIP_GENERATION_POLL_INTERVAL_MS,
+  CLIP_GENERATION_POLL_MAX_CONSECUTIVE_FAILURES,
   CLIP_GENERATION_SOURCE,
   useClipGeneration,
   type ClipGenerationRegistryEntry,
@@ -312,6 +313,10 @@ describe('useClipGeneration', () => {
 
     act(() => result.current.submit(request))
     await flush()
+    // A polling error is tolerated for CLIP_GENERATION_POLL_MAX_CONSECUTIVE_FAILURES
+    // consecutive attempts before it is treated as a terminal failure.
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
     await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
     expect(result.current.state).toMatchObject({
       phase: 'failed',
@@ -320,6 +325,102 @@ describe('useClipGeneration', () => {
       error: 'Generation not found',
     })
     expect(submitClip).not.toHaveBeenCalled()
+  })
+
+  it('tolerates transient poll failures below the threshold without flashing failed', async () => {
+    expect(CLIP_GENERATION_POLL_MAX_CONSECUTIVE_FAILURES).toBe(3)
+    const rejection = new Error('transient network blip')
+    const getGeneration = vi.fn()
+      .mockRejectedValueOnce(rejection)
+      .mockRejectedValueOnce(rejection)
+      .mockResolvedValue(task('gen-transient', 'polling'))
+    const { result } = renderHook(() => useClipGeneration([], {
+      createGeneration: vi.fn().mockResolvedValue(task('gen-transient', 'submitting')),
+      getGeneration,
+    }))
+
+    act(() => result.current.submit(request))
+    await flush()
+    expect(result.current.state).toMatchObject({ phase: 'generating', generationId: 'gen-transient' })
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(getGeneration).toHaveBeenCalledTimes(1)
+    expect(result.current.state.phase).toBe('generating')
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(getGeneration).toHaveBeenCalledTimes(2)
+    expect(result.current.state.phase).toBe('generating')
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(getGeneration).toHaveBeenCalledTimes(3)
+    expect(result.current.state).toMatchObject({ phase: 'generating', generationId: 'gen-transient' })
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(getGeneration).toHaveBeenCalledTimes(4)
+  })
+
+  it('marks failed only once poll failures reach the consecutive threshold, then stops polling', async () => {
+    const rejection = new Error('persistent failure')
+    const getGeneration = vi.fn().mockRejectedValue(rejection)
+    const { result } = renderHook(() => useClipGeneration([], {
+      createGeneration: vi.fn().mockResolvedValue(task('gen-persistent', 'submitting')),
+      getGeneration,
+    }))
+
+    act(() => result.current.submit(request))
+    await flush()
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(result.current.state.phase).toBe('generating')
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(result.current.state.phase).toBe('generating')
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(result.current.state).toMatchObject({
+      phase: 'failed',
+      transport: 'http',
+      generationId: 'gen-persistent',
+      error: rejection.message,
+    })
+    expect(getGeneration).toHaveBeenCalledTimes(3)
+
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS * 3))
+    expect(getGeneration).toHaveBeenCalledTimes(3)
+  })
+
+  it('resets the consecutive-failure counter across cancel so a fresh submit is not prematurely marked failed', async () => {
+    const rejection = new Error('transient network blip')
+    const failuresByGenerationId: Record<string, number> = {}
+    const getGeneration = vi.fn((_gameSlug: string, generationId: string) => {
+      failuresByGenerationId[generationId] = (failuresByGenerationId[generationId] ?? 0) + 1
+      if (generationId === 'gen-first') return Promise.reject(rejection)
+      if (generationId === 'gen-second' && failuresByGenerationId[generationId] === 1) {
+        return Promise.reject(rejection)
+      }
+      return Promise.resolve(task(generationId, 'polling'))
+    })
+    const createGeneration = vi.fn()
+      .mockResolvedValueOnce(task('gen-first', 'submitting'))
+      .mockResolvedValueOnce(task('gen-second', 'submitting'))
+    const { result } = renderHook(() => useClipGeneration([], {
+      createGeneration,
+      getGeneration,
+    }))
+
+    act(() => result.current.submit(request))
+    await flush()
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    expect(result.current.state.phase).toBe('generating')
+
+    act(() => result.current.cancel())
+    expect(result.current.state).toMatchObject({ phase: 'idle' })
+
+    act(() => result.current.submit(request))
+    await flush()
+    await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
+    // If the previous epoch's 2 accrued failures had leaked into this submission,
+    // this single failure would already reach the 3-failure threshold and fail.
+    expect(result.current.state.phase).toBe('generating')
   })
 
   it('cancel stops local tracking and ignores a stale in-flight response', async () => {
@@ -335,10 +436,16 @@ describe('useClipGeneration', () => {
     await flush()
     await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
     act(() => result.current.cancel())
-    expect(result.current.state).toEqual({ phase: 'idle' })
+    expect(result.current.state).toEqual({
+      phase: 'idle',
+      activeTasks: [task('gen-cancel', 'polling')],
+    })
 
     await act(async () => pendingPoll.resolve(task('gen-cancel', 'succeeded')))
-    expect(result.current.state).toEqual({ phase: 'idle' })
+    expect(result.current.state).toEqual({
+      phase: 'idle',
+      activeTasks: [task('gen-cancel', 'polling')],
+    })
     expect(onTerminal).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -563,6 +670,44 @@ describe('useClipGeneration', () => {
     expect(result.current.state).toMatchObject({ generationId: 'gen-old', activeTasks: tasks })
     await act(async () => vi.advanceTimersByTime(CLIP_GENERATION_POLL_INTERVAL_MS))
     expect(getGeneration).toHaveBeenCalledWith('demo', 'gen-old', { signal: expect.any(AbortSignal) })
+  })
+
+  it('cancel preserves recovered active tasks in state', async () => {
+    const tasks = [
+      task('gen-a', 'polling', { createdAt: 20 }),
+      task('gen-b', 'pending', { createdAt: 10 }),
+    ]
+    const { result } = renderHook(() => useClipGeneration([], {
+      gameSlug: 'demo',
+      listActiveGenerations: vi.fn().mockResolvedValue(tasks),
+    }))
+
+    await flush()
+    expect(result.current.state.activeTasks).toEqual(tasks)
+
+    act(() => result.current.cancel())
+    expect(result.current.state).toMatchObject({ phase: 'idle', activeTasks: tasks })
+  })
+
+  it('submit after recovery keeps prior active tasks and prepends the new one', async () => {
+    const restored = [
+      task('gen-restored-a', 'polling', { createdAt: 20 }),
+      task('gen-restored-b', 'pending', { createdAt: 10 }),
+    ]
+    const createGeneration = vi.fn().mockResolvedValue(task('gen-new', 'submitting'))
+    const { result } = renderHook(() => useClipGeneration([], {
+      gameSlug: 'demo',
+      listActiveGenerations: vi.fn().mockResolvedValue(restored),
+      createGeneration,
+    }))
+
+    await flush()
+    act(() => result.current.submit(request))
+    await flush()
+    expect(result.current.state.activeTasks).toEqual([
+      task('gen-new', 'submitting'),
+      ...restored,
+    ])
   })
 
   it('keeps idle when recovery is empty or fails', async () => {
