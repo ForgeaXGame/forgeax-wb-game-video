@@ -30,6 +30,14 @@ bun run lint
 bun run build
 ```
 
+`bun run build` 依次跑 frontend、backend、`build:standalone` 与 `check:release`。
+Standalone 播放页产物在 `dist/standalone/`；单独构建或预览：
+
+```bash
+bun run build:standalone
+bun run start:standalone
+```
+
 `bun run dev` 启动 Vite 开发适配器（固定 `15185`）和后端 watch。适配器只挂载
 `/__workbench__/v1` 的标准 Workbench HTTP 契约；用宿主 iframe 的 nonce-bound
 handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提供旧的兼容业务路由。
@@ -51,8 +59,13 @@ tarball、路径 override 或 vendored provenance。
 ## 宿主集成
 
 发布包要求精确 peer：`@forgeax/extension-platform@0.0.2` 与
-`/workbench-host.2.3`。包导出 `@forgeax-extension/wb-game-video/host`，其中的 `host`
-提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
+`/workbench-host.2.3`。包导出：
+
+- `@forgeax-extension/wb-game-video` / `./host` — Workbench 扩展 host（seed、工具、router）
+- `@forgeax-extension/wb-game-video/standalone` — standalone 播放页 HTML（`dist/standalone/wb-game-video.html`）
+- `@forgeax-extension/wb-game-video/styles.css` — 编辑器样式
+
+其中的 `host` 提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
 创建唯一的 `WorkbenchExtensionContext`：
 
 ```ts

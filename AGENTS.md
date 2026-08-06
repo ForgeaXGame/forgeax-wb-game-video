@@ -56,14 +56,16 @@ bun run build
 
 `bun test` 只跑 server/release-contract gate；需要浏览器环境的完整测试使用 `bun run test`。
 
-发布前 `bun run build` 必须成功；它会依次生成前端、后端产物并执行 release validator。Vite
-只作为本地开发适配器，不再生成或发布 standalone host。
+发布前 `bun run build` 必须成功；它会依次生成前端、后端、standalone 产物并执行 release validator。
+Standalone 播放页由 `bun run build:standalone` 产出到 `dist/standalone/`（源码在 `src/runtime/sdk/`）；
+本地预览可用 `bun run start:standalone`。Workbench Vite 适配器仍只服务 `/__workbench__/v1` 开发握手。
 
 ## 目录
 
 | 领域 | 位置 |
 |---|---|
 | schema、状态机、组件宿主、校验 | `src/runtime/` |
+| standalone SDK / 播放入口 | `src/runtime/sdk/` |
 | 蓝图画布与编辑纯函数 | `src/graph/` |
 | 工坊壳、持久化、素材与显式 demo | `src/editor/` |
 | AI 工具、生成编排、素材登记 | `server/` |

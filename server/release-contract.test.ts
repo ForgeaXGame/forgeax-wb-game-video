@@ -140,6 +140,7 @@ describe('release identity', () => {
   it('exports the compiled host module with the declared tool map', async () => {
     expect(pkg.exports['.']).toBe('./dist/index.js')
     expect(pkg.exports['./host']).toBe('./dist/server/host.js')
+    expect(pkg.exports['./standalone']).toBe('./dist/standalone/wb-game-video.html')
     expect(manifest.entry.backend).toBe('./dist/server/host.js')
 
     const backend = await import(compiledBackendUrl)

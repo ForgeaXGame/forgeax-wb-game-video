@@ -25,7 +25,8 @@
   "exports": {
     ".": "./dist/index.js",
     "./host": "./dist/server/host.js",
-    "./styles.css": "./dist/index.css"
+    "./styles.css": "./dist/index.css",
+    "./standalone": "./dist/standalone/wb-game-video.html"
   },
   "keywords": [
     "forgeax-plugin",
@@ -40,10 +41,12 @@
     "dev": "bun scripts/dev.ts",
     "dev:frontend": "vite --host",
     "dev:backend": "tsup --watch",
-    "build": "bun run build:frontend && bun run build:backend && bun run check:release",
+    "build": "bun run build:frontend && bun run build:backend && bun run build:standalone && bun run check:release",
     "build:frontend": "tsc -p tsconfig.build.json && vite build",
     "build:backend": "tsup",
+    "build:standalone": "tsc -p src/runtime/sdk/tsconfig.json && vite build --config src/runtime/sdk/server/vite.config.ts",
     "build:nodia-seed": "bun scripts/build-nodia-seed.mjs",
+    "start:standalone": "bun run build:standalone && vite preview --config src/runtime/sdk/server/vite.config.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && node scripts/check-module-boundaries.mjs",
     "test": "vitest run",

@@ -421,12 +421,14 @@ Workbench Host 的 ForgeaX 产品接线位于：
 
 ## 附录 C · REQUIRED：恢复 `src/runtime/sdk`
 
-> [!WARNING]
-> `src/runtime/sdk` 在 `084662a release: prepare wb-game-video 0.2.0` 中被整目录删除；
-> 必须从该提交的父提交中恢复被删除的 `src/runtime/sdk` 原有内容，不用 `PlayerBootstrap`
-> 替代该目录。
+> [!NOTE]
+> **已恢复（2026-08-06）**：从 `084662a^` 原样 checkout 下列路径；见
+> [`docs/superpowers/specs/2026-08-06-restore-runtime-sdk-design.md`](./superpowers/specs/2026-08-06-restore-runtime-sdk-design.md)
+> （Approach A）。`build:standalone` / `start:standalone` 已重新挂进 `package.json`；
+> 发布导出增加 `./standalone` → `dist/standalone/wb-game-video.html`。
+> URL 映射 / SDK init 拦截仍属附录 D，**未**在本轮实现。
 
-需要恢复：
+已恢复：
 
 - `src/runtime/sdk/client/__tests__/sdk-client.test.ts`
 - `src/runtime/sdk/client/asset-resolver.ts`
@@ -499,10 +501,11 @@ Workbench Host 的 ForgeaX 产品接线位于：
 
 ### D.4 本轮边界
 
-- 只收集和整理事实，并把结果继续补充到 `docs/outbound-apis.md`。
-- 不修改 SDK、Workbench Host、`/api/game-host`、router、adapter 或页面业务代码。
+- 源码恢复（附录 C）已于 2026-08-06 按 Approach A 完成；映射实现仍未开始。
+- 补全本附录时只收集和整理事实，并把结果继续补充到 `docs/outbound-apis.md`。
+- 不修改 Workbench Host、`/api/game-host`、router、adapter 或页面业务代码（SDK 源码恢复除外）。
 - 不在资料缺失时设计新接口、新参数或新映射机制；无法确认的内容标记为待确认并附上缺失证据。
-- 不执行 `src/runtime/sdk` 的代码恢复；实际恢复在后续明确进入实现阶段时按附录 C 进行。
+- 不在本附录阶段执行映射代码；映射实现待本表补全后另开实现轮。
 
 ---
 
