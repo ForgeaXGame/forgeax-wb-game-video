@@ -92,12 +92,12 @@ function createFixture(name: string, options: FixtureOptions = {}): string {
       name: options.packageName ?? '@forgeax-extension/wb-game-video',
       version: '0.2.4',
       peerDependencies: {
-        '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.4',
+        '@forgeax/extension-platform': options.platformVersion ?? '0.0.3',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.6',
       },
       devDependencies: {
-        '@forgeax/extension-platform': options.platformVersion ?? '0.0.2',
-        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.4',
+        '@forgeax/extension-platform': options.platformVersion ?? '0.0.3',
+        '@forgeax/workbench-host': options.workbenchHostVersion ?? '0.2.6',
         ...(assetCanvasDevSpec === null
           ? {}
           : { '@forgeax-extension/wb-asset-canvas': assetCanvasDevSpec }),

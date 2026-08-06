@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax-extension/wb-game-video",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "kind": "workbench",
   "displayName": {
-    "zh": "\u89c6\u9891\u6e38\u620f",
+    "zh": "视频游戏",
     "en": "Video Game Studio"
   },
   "description": {
-    "zh": "\u89c6\u9891\u6e38\u620f\uff08\u73a9\u6cd5\u4f18\u5148\uff09\u84dd\u56fe\u7f16\u8f91\u5668\u4e0e\u8fd0\u884c\u65f6 \u00b7 \u6f14\u51fa\u8282\u70b9\u56fe + Boss \u6218 / \u8840\u6761 / QTE \u95ef\u5173 / \u9650\u65f6\u00b7\u6682\u505c\u9009\u62e9 / \u53ef\u70b9\u70ed\u70b9\uff0c\u65b0\u5f15\u64ce GameGraph \u4e3a\u552f\u4e00 SSOT",
-    "en": "Video-game (gameplay-on-video) blueprint editor & runtime \u2014 a graph of performance nodes with boss battles, HP bars, QTE, timed/pause choices, clickable hotspots. The GameGraph engine is the single source of truth."
+    "zh": "视频游戏（玩法优先）蓝图编辑器与运行时 · 演出节点图 + Boss 战 / 血条 / QTE 闯关 / 限时·暂停选择 / 可点热点，新引擎 GameGraph 为唯一 SSOT",
+    "en": "Video-game (gameplay-on-video) blueprint editor & runtime — a graph of performance nodes with boss battles, HP bars, QTE, timed/pause choices, clickable hotspots. The GameGraph engine is the single source of truth."
   },
   "author": {
     "name": "forgeax",
     "email": "dev@forgeax.local"
   },
-  "icon": "\ud83c\udfae",
+  "icon": "🎮",
   "keywords": [
     "game-video",
     "video-game",
@@ -29,7 +29,7 @@
     "workbench": {
       "id": "wb-game-video",
       "lens": "by-category",
-      "icon": "\ud83c\udfae",
+      "icon": "🎮",
       "position": 161,
       "panelSize": "lg",
       "surface": "split",
@@ -63,7 +63,7 @@
         "returns": "./schemas/get-graph.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u8bfb\u53d6\u5bbf\u4e3b\u7ed1\u5b9a\u6e38\u620f\u7684\u5e93\u6587\u6863\uff08\u539f scenario \u5f62\u72b6 + manifest.packs\uff0c\u542b\u4e3b\u84dd\u56fe\uff09\uff1b\u65e0\u76d8\u6570\u636e\u65f6\u8fd4\u56de { project: null }\u3002\u6e38\u620f\u8eab\u4efd\u7531\u5bbf\u4e3b\u4e0a\u4e0b\u6587\u63d0\u4f9b\u3002\u6539\u56fe\u524d\u5148\u8c03\u5b83\u62ff\u73b0\u6709\u84dd\u56fe\u4e0e nodes/edges\u3002",
+          "zh": "读取宿主绑定游戏的库文档（原 scenario 形状 + manifest.packs，含主蓝图）；无盘数据时返回 { project: null }。游戏身份由宿主上下文提供。改图前先调它拿现有蓝图与 nodes/edges。",
           "en": "Read the host-bound game's library document (original scenario shape + manifest.packs including main), or { project: null } when there is no disk data. Game identity comes from the host context. Call before editing to get blueprints and their nodes/edges."
         }
       },
@@ -73,7 +73,7 @@
         "returns": "./schemas/save-graph.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u6574\u672c\u8986\u76d6\u5199\u5bbf\u4e3b\u7ed1\u5b9a\u6e38\u620f\u7684 GraphLibraryDocument \u5230 blueprint.json\uff1b\u9996\u6b21\u5199\u5165\u65f6\u8865 project.json\u3002\u6e38\u620f\u8eab\u4efd\u4e0d\u7531\u5de5\u5177\u53c2\u6570\u9009\u62e9\u3002title \u5f53\u524d\u5ffd\u7565\uff0c\u6210\u529f\u56fa\u5b9a\u8fd4\u56de {ok:true, versions:[], gameSlug}\uff1b\u7f3a project \u65f6\u8fd4\u56de {ok:false, errors}\u3002",
+          "zh": "整本覆盖写宿主绑定游戏的 GraphLibraryDocument 到 blueprint.json；首次写入时补 project.json。游戏身份不由工具参数选择。title 当前忽略，成功固定返回 {ok:true, versions:[], gameSlug}；缺 project 时返回 {ok:false, errors}。",
           "en": "Overwrite the host-bound game's GraphLibraryDocument in blueprint.json and create project.json on the first write. Tool arguments cannot select game identity. title is currently ignored. Success returns {ok:true, versions:[], gameSlug}; a missing project returns {ok:false, errors}."
         }
       },
@@ -83,7 +83,7 @@
         "returns": "./schemas/list-videos.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u5217\u51fa\u5185\u7f6e\u6f14\u51fa\u89c6\u9891\u5e93\u53ef\u7528\u7684 media.ref\uff08basename\uff09\u3002\u7f16\u6392\u8282\u70b9\u7ed1\u89c6\u9891\u524d\u5148\u8c03\u5b83\u770b\u6709\u54ea\u4e9b\u7247\u6bb5\u3002",
+          "zh": "列出内置演出视频库可用的 media.ref（basename）。编排节点绑视频前先调它看有哪些片段。",
           "en": "List available built-in performance-video media.ref values (basenames). Call before binding videos to nodes."
         }
       },
@@ -93,7 +93,7 @@
         "returns": "./schemas/generate-shot-script.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u7b2c1\u6b65\u00b7\u4e3a\u4e00\u4e2a\u6f14\u51fa\u8282\u70b9\u751f\u6210 Seedance V2 \u955c\u5934\u811a\u672c\uff08\u9632\u5b57\u5e55/\u4e00\u81f4\u6027/POV \u7b49 prompt IP\uff0c\u7eaf\u6587\u672c\uff0c\u4e0d\u843d\u7d20\u6750\u5c42\uff09\u3002\u751f\u6210\u89c6\u9891\u524d\u5148\u62ff\u5b83\u4f5c seedancePrompt\u3002",
+          "zh": "第1步·为一个演出节点生成 Seedance V2 镜头脚本（防字幕/一致性/POV 等 prompt IP，纯文本，不落素材层）。生成视频前先拿它作 seedancePrompt。",
           "en": "Step 1: generate a Seedance V2 shot script for one node (anti-subtitle / consistency / POV prompt IP; text only, no registry write). Get it first as the seedancePrompt before generating video."
         }
       },
@@ -103,7 +103,7 @@
         "returns": "./schemas/generate-keyframe.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u7b2c2\u6b65\u00b7\u751f\u6210\u4e00\u5f20\u5206\u955c\u56fe/\u5173\u952e\u5e27\uff0c\u843d\u5171\u4eab\u7d20\u6750\u5c42\u3002\u53ef\u4f20 character_ref/scene_ref \u4f5c\u53ea\u8bfb\u53c2\u8003\u56fe\u3001styleAxes \u8986\u76d6\u98ce\u683c\u4e09\u8f74\u3002mode='keyframe'\uff08\u9ed8\u8ba4\uff0c\u5355\u5e27\u5f69\u8272\u5173\u952e\u5e27\u2192shot_image\uff09\u6216 'grid_storyboard'\uff086 \u9762\u677f\u9ed1\u767d previs \u6545\u4e8b\u677f\u2192grid_storyboard\uff0cgrid \u91cc\u53ef\u7ed9 nodeRole/endingKind/choiceRevealMoment\uff09\u3002\u8fd4\u56de MediaAsset\u3002",
+          "zh": "第2步·生成一张分镜图/关键帧，落共享素材层。可传 character_ref/scene_ref 作只读参考图、styleAxes 覆盖风格三轴。mode='keyframe'（默认，单帧彩色关键帧→shot_image）或 'grid_storyboard'（6 面板黑白 previs 故事板→grid_storyboard，grid 里可给 nodeRole/endingKind/choiceRevealMoment）。返回 MediaAsset。",
           "en": "Step 2: generate a keyframe/storyboard image into the shared registry. Pass character_ref/scene_ref as read-only refs and styleAxes to override the 3-axis style. mode='keyframe' (default, single colored keyframe -> shot_image) or 'grid_storyboard' (6-panel B&W previs storyboard -> grid_storyboard; grid.nodeRole/endingKind/choiceRevealMoment steer hard contracts). Returns a MediaAsset."
         }
       },
@@ -119,7 +119,7 @@
         ],
         "exposedToAI": true,
         "description": {
-          "zh": "\u7b2c3\u6b65\u00b7\u4e3a\u4e00\u8282\u70b9\u751f\u6210\u4e00\u6bb5\u89c6\u9891\uff08\u226415s \u5355\u6bb5\uff09\uff0c\u843d\u5171\u4eab\u7d20\u6750\u5c42\uff08video_clip\uff09\u3002\u5fc5\u4f20 characterRefIds+sceneRefIds\uff08\u7f3a\u5219\u62a5\u9519\uff0c\u7edd\u4e0d\u9759\u9ed8\u964d\u7ea7\uff09\u3002\u53ef\u4f20 styleAxes \u8986\u76d6\u4e09\u8f74\u3001extend+transitionHint \u505a\u663e\u5f0f\u7eed\u63a5\u3002\u628a\u8fd4\u56de asset.id \u7ed1\u5230 node.data.media.ref\u3002\u8d85\u957f\u8282\u70b9\u7528 wb-game-video:generate-node-video\u3002",
+          "zh": "第3步·为一节点生成一段视频（≤15s 单段），落共享素材层（video_clip）。必传 characterRefIds+sceneRefIds（缺则报错，绝不静默降级）。可传 styleAxes 覆盖三轴、extend+transitionHint 做显式续接。把返回 asset.id 绑到 node.data.media.ref。超长节点用 wb-game-video:generate-node-video。",
           "en": "Step 3: generate one video segment (<=15s) for a node into the shared registry (video_clip). REQUIRES characterRefIds + sceneRefIds (hard error if missing). Optional styleAxes (3-axis override) and extend+transitionHint (explicit continuation). Bind the returned asset.id to node.data.media.ref. For long nodes use wb-game-video:generate-node-video."
         }
       },
@@ -135,7 +135,7 @@
         ],
         "exposedToAI": true,
         "description": {
-          "zh": "\u5728\u7d20\u6750\u5e93\u76f4\u63a5\u751f\u6210\u4e00\u6bb5\u89c6\u9891\u7d20\u6750\uff08\u4e0d\u7ed1\u5b9a\u8282\u70b9\uff0c\u63d0\u793a\u8bcd\u76f4\u4f20 kino provider\uff09",
+          "zh": "在素材库直接生成一段视频素材（不绑定节点，提示词直传 kino provider）",
           "en": "Generate a standalone video clip into the asset library (node-free, prompt passed through to the kino provider)"
         }
       },
@@ -151,7 +151,7 @@
         ],
         "exposedToAI": true,
         "description": {
-          "zh": "\u7b2c3\u6b65(\u8d85\u957f\u7248)\u00b7\u4e3a\u4e00\u8282\u70b9\u751f\u6210\u6210\u7247\uff0cdurationSeconds > 15s \u65f6\u81ea\u52a8\u62c6\u6bb5\uff1b\u4f18\u5148\u4f7f\u7528 Provider \u539f\u751f\u89c6\u9891\u7eed\u63a5\uff08Kino \u76f4\u63a5\u5f15\u7528\u4e0a\u4e00\u6bb5\u89c6\u9891\uff09\uff0c\u5426\u5219\u624d\u7528 ffmpeg \u63d0\u53d6\u771f\u5b9e\u5c3e\u5e27\u3002strict \u6a21\u5f0f\u5728\u9996\u7b14\u4ed8\u8d39\u4efb\u52a1\u524d\u9884\u68c0\uff1b\u53ef\u663e\u5f0f\u4f20 continuityMode=independent \u63a5\u53d7\u72ec\u7acb\u5206\u6bb5\u3002\u5fc5\u4f20 character/scene \u53c2\u8003\u56fe\uff0c\u8fd4\u56de\u6309\u5e8f assets[]\u3002",
+          "zh": "第3步(超长版)·为一节点生成成片，durationSeconds > 15s 时自动拆段；优先使用 Provider 原生视频续接（Kino 直接引用上一段视频），否则才用 ffmpeg 提取真实尾帧。strict 模式在首笔付费任务前预检；可显式传 continuityMode=independent 接受独立分段。必传 character/scene 参考图，返回按序 assets[]。",
           "en": "Step 3 (long-form): auto-split videos longer than 15s. Prefer provider-native continuation (Kino references the previous video), then fall back to ffmpeg tail-frame extraction. Strict mode preflights before the first paid task; continuityMode=independent explicitly accepts separate segments. REQUIRES character/scene refs and returns ordered assets[]."
         }
       },
@@ -161,7 +161,7 @@
         "returns": "./schemas/list-assets.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u5217\u51fa\u5171\u4eab\u7d20\u6750\u5c42\u7684\u8d44\u4ea7\uff08\u53ef\u6309 kind/productionType/sceneNodeId \u8fc7\u6ee4\uff09\u3002\u6311\u53c2\u8003\u56fe\u6216\u67e5\u751f\u6210\u4ea7\u7269\u65f6\u7528\u3002",
+          "zh": "列出共享素材层的资产（可按 kind/productionType/sceneNodeId 过滤）。挑参考图或查生成产物时用。",
           "en": "List shared-registry assets (filter by kind/productionType/sceneNodeId). Use to pick reference images or inspect generated outputs."
         }
       },
@@ -171,7 +171,7 @@
         "returns": "./schemas/get-asset.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u53d6\u5355\u6761\u7d20\u6750\u8d44\u4ea7\uff08\u542b status/file/error \u7b49\uff09\uff0c\u8f6e\u8be2\u751f\u6210\u8fdb\u5ea6\u6216\u6821\u9a8c\u7ed1\u5b9a\u7528\u3002",
+          "zh": "取单条素材资产（含 status/file/error 等），轮询生成进度或校验绑定用。",
           "en": "Fetch a single registry asset (status/file/error, etc.) for polling generation progress or verifying a binding."
         }
       },
@@ -181,7 +181,7 @@
         "returns": "./schemas/import-refs.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u8de8\u6a21\u5757\u53ea\u8bfb\u62ff\u6599\u00b7\u8bfb\u53d6 wb-character \u5df2\u4ea7\u51fa\u7684\u89d2\u8272\u7acb\u7ed8\uff0c\u901a\u8fc7\u5bbf\u4e3b media capability \u6301\u4e45\u5316\u526f\u672c\u5e76\u767b\u8bb0\u6210 character_ref\uff1b\u4e0d\u6539\u89d2\u8272\u6e90\u76ee\u5f55\u3002\u751f\u6210\u89c6\u9891\u524d\u5148\u5907\u9f50\u89d2\u8272\u53c2\u8003\u56fe\u3002",
+          "zh": "跨模块只读拿料·读取 wb-character 已产出的角色立绘，通过宿主 media capability 持久化副本并登记成 character_ref；不改角色源目录。生成视频前先备齐角色参考图。",
           "en": "Cross-module read-only intake: read wb-character portraits, persist copies through the host media capability, and register them as character_ref without modifying the source directory. Call before video generation to stock character references."
         }
       },
@@ -191,7 +191,7 @@
         "returns": "./schemas/import-refs.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "\u8de8\u6a21\u5757\u53ea\u8bfb\u62ff\u6599\u00b7\u8bfb\u53d6\u573a\u666f\u6a21\u5757\u53d1\u5e03\u5230 textures/ \u7684\u8d34\u56fe\uff0c\u901a\u8fc7\u5bbf\u4e3b media capability \u6301\u4e45\u5316\u526f\u672c\u5e76\u767b\u8bb0\u6210 scene_ref\uff1b\u4e0d\u6539\u573a\u666f\u6e90\u76ee\u5f55\u3002\u751f\u6210\u89c6\u9891\u524d\u5148\u5907\u9f50\u573a\u666f\u53c2\u8003\u56fe\u3002",
+          "zh": "跨模块只读拿料·读取场景模块发布到 textures/ 的贴图，通过宿主 media capability 持久化副本并登记成 scene_ref；不改场景源目录。生成视频前先备齐场景参考图。",
           "en": "Cross-module read-only intake: read scene textures from textures/, persist copies through the host media capability, and register them as scene_ref without modifying the source directory. Call before video generation to stock scene references."
         }
       }

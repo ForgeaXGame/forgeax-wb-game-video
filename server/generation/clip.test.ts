@@ -95,7 +95,7 @@ describe('generateVideoClip', () => {
           { assetId: 'host:last', role: 'last_frame' },
         ],
       })
-      return { assets: [{ id: 'generated-video', type: 'video', contentType: 'video/mp4', url: 'memory://generated-video' }] }
+      return { assets: [{ id: 'generated-video', type: 'video' as const, contentType: 'video/mp4', url: 'memory://generated-video' }] }
     })
     const context = createContext(generateVideo)
 
@@ -124,7 +124,7 @@ describe('generateVideoClip', () => {
         { assetId: 'host:reference', role: 'reference_image' },
         { assetId: 'host:first', role: 'reference_image' },
       ])
-      return { assets: [{ id: 'generated-video', type: 'video', contentType: 'video/mp4', url: 'memory://generated-video' }] }
+      return { assets: [{ id: 'generated-video', type: 'video' as const, contentType: 'video/mp4', url: 'memory://generated-video' }] }
     })
     const context = createContext(generateVideo)
 
