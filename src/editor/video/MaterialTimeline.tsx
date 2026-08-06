@@ -22,6 +22,8 @@ import {
   clampMs,
   clampZoom,
   fmtDur,
+  initialViewportWidthLatch,
+  latchViewportWidth,
   layerFromPointerY,
   layerTop,
   materialClass,
@@ -283,7 +285,9 @@ export function MaterialTimeline({
     ? Math.max(0, seekDragSensitivity)
     : 1
   const [zoom, setZoom] = useState(1)
-  const [viewportW, setViewportW] = useState(0)
+  // 视口宽经闩锁采纳：滚动条显隐引起的来回抖动会被收敛掉（见 latchViewportWidth）。
+  const [viewportWidthLatch, setViewportWidthLatch] = useState(initialViewportWidthLatch)
+  const viewportW = viewportWidthLatch.width
   const [drag, setDrag] = useState<DragState | null>(null)
   const [dropHint, setDropHint] = useState<{ ms: number; zIndex: number } | null>(null)
 
@@ -338,7 +342,7 @@ export function MaterialTimeline({
     const vp = timelineViewportRef.current
     if (!vp) return
     const measure = () => {
-      setViewportW(vp.clientWidth)
+      setViewportWidthLatch((state) => latchViewportWidth(state, vp.clientWidth))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -1102,6 +1106,8 @@ const MATERIAL_TIMELINE_CSS = `
   border: 1px solid var(--gc-line-soft);
   background: rgba(0,0,0,0.22);
   overflow: auto;
+  /* 刻意不用 scrollbar-gutter: stable —— 常驻沟槽会破坏设计稿的时间轴观感。
+     滚动条显隐引起的宽度自激振荡改由 latchViewportWidth 在测量侧收敛。 */
   overscroll-behavior: contain;
 }
 .mtl-root .gc-mtimeline-canvas {
@@ -1109,6 +1115,13 @@ const MATERIAL_TIMELINE_CSS = `
   min-width: 100%;
   min-height: 100%;
   touch-action: none;
+  /* 右缘装饰（播放头游标半个头、绑定界面组标签等）不得挤出可滚动宽度：
+     否则播放到结尾时会凭空冒出横向滚动条，再牵动纵向滚动条一起抽动。
+     clip 不建立滚动容器，sticky 刻度尺仍以视口为吸附参考。 */
+  overflow-x: clip;
+  /* 关掉滚动锚定：内容增长（新片段 / 帧画面就绪）时浏览器别自行改 scrollLeft，
+     否则会与播放头跟随互相打架。 */
+  overflow-anchor: none;
 }
 .mtl-root .gc-mtimeline-canvas.is-seekable { cursor: text; }
 .mtl-root.is-readonly .gc-mtimeline-canvas.is-seekable,
