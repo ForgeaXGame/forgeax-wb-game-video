@@ -71,6 +71,13 @@ import {
   shiftMountWindowGraph,
 } from '../video/graphMaterialOps'
 import { FlowNodePreviewStage, type FlowNodePreviewState } from './FlowNodePreviewStage'
+import {
+  formatPreviewTime,
+  PreviewPauseIcon,
+  PreviewPlayIcon,
+  PreviewRefreshIcon,
+  PreviewVolumeIcon,
+} from './nodePreviewControls'
 
 export type { FlowNodePreviewState } from './FlowNodePreviewStage'
 
@@ -97,8 +104,8 @@ const NPS_CSS = `
   padding: 10px; min-height: 0; overflow-y: auto; flex: 1;
 }
 .nps-frame { flex: none; }
-/* Figma 14935:70362：编辑态视频面 = 浅灰半透圆角面；控制条叠进面内底部（渐变遮罩 + 进度条 + 图标控件）。
-   限定 .nps-frame-edit：FlowNodePreviewStage 的 .nps-frame 仍走 gc-frame 暖色面（本次不动）。 */
+/* Figma 14935:70362：节点编辑与全流程预览共用浅灰半透圆角视频面。
+   .nps-frame-edit 是这套视觉壳的历史类名，不表示可编辑能力；交互权限仍由各模式自身控制。 */
 .nps-frame-edit {
   background: rgba(217,217,217,0.1);
   border: none;
@@ -131,25 +138,6 @@ const NPS_CSS = `
   align-items: center; justify-content: center; gap: 4px;
   color: rgba(246,241,233,.45); font-size: 11px; pointer-events: none; padding: 0 16px; text-align: center;
 }
-.nps-controls {
-  display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-radius: 9px;
-  background: var(--gc-panel2); border: 1px solid var(--gc-line-soft); flex: none;
-}
-.nps-controls button {
-  flex: none; width: 30px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--gc-accent-line); background: var(--gc-accent-soft); color: var(--gc-text);
-  border-radius: 7px; cursor: pointer; font-size: 12px; line-height: 1;
-}
-.nps-controls button:hover { background: rgba(240,136,64,.24); border-color: var(--gc-accent); }
-.nps-controls .nps-mute { margin-left: auto; }
-.nps-controls .nps-timeline-toggle {
-  margin-left: auto; padding: 0; color: var(--gc-muted); transition:
-    background var(--motion-duration-base, 150ms) var(--motion-ease-out, ease),
-    border-color var(--motion-duration-base, 150ms) var(--motion-ease-out, ease),
-    color var(--motion-duration-fast, 110ms) var(--motion-ease-out, ease);
-}
-.nps-controls .nps-mute + .nps-timeline-toggle { margin-left: 0; }
-.nps-controls .nps-timeline-toggle:hover { color: var(--gc-text); }
 .nps-timeline-toggle-icon {
   position: relative; flex: none; width: 16px; height: 16px; display: block;
 }
@@ -200,58 +188,6 @@ function isFullStageMountLayout(layout: Layout | undefined): boolean {
     && layout.bottom == null
     && layout.translateX == null
     && layout.translateY == null
-  )
-}
-
-/** HUD 时长格式（Figma 14935:70362：`00:00` 样式，分秒皆两位）。 */
-function fmtHudTime(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-}
-
-/** HUD 播放三角：设计只给了暂停双柱（播放态），暂停态按其同族实心白三角补全。 */
-function HudPlayIcon(): JSX.Element {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15.618 15.618" fill="none" aria-hidden>
-      <path d="M4.2 2.6 L11.6 7.809 L4.2 13.018 Z" fill="currentColor" />
-    </svg>
-  )
-}
-
-/** HUD 暂停双柱（Figma 14935:70362 导出矢量：15.618 盒内两根 1.952×11.713 白柱，间距 3.904）。 */
-function HudPauseIcon(): JSX.Element {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15.618 15.618" fill="none" aria-hidden>
-      <rect x="3.904" y="1.952" width="1.952" height="11.713" fill="currentColor" />
-      <rect x="9.761" y="1.952" width="1.952" height="11.714" fill="currentColor" />
-    </svg>
-  )
-}
-
-/** HUD 音量（Figma 14935:70362 导出的是 lucide Volume2 分段矢量；直接渲染同 glyph 的 lucide 标准路径）。 */
-function HudVolumeIcon(): JSX.Element {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M11 5 6 9H2v6h4l5 4V5Z" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-    </svg>
-  )
-}
-
-/** 重播图标（Figma 15635:84858 导出的 cphrefresh 矢量：双弧箭头，stroke 1.3）。 */
-function HudRefreshIcon(): JSX.Element {
-  return (
-    <svg width="15" height="15" viewBox="0 0 13.7283 13.6675" fill="none" aria-hidden>
-      <path
-        d="M13.0133 7.48458C12.6881 10.5934 10.0592 13.0167 6.86425 13.0167C4.37954 13.0167 2.23716 11.551 1.25449 9.43708M0.681329 12.3658V9.11167H2.63383M0.715016 6.18292C1.04023 3.07411 3.66917 0.650833 6.86411 0.650833C9.3488 0.650833 11.4911 2.11649 12.4738 4.23042M13.047 1.30167V4.55583H11.0945"
-        stroke="currentColor"
-        strokeWidth="1.30167"
-        strokeLinecap="square"
-      />
-    </svg>
   )
 }
 
@@ -1138,17 +1074,17 @@ function EditableNodePreviewStage({
       <div className="nps-video-controls">
         <div className="nps-video-controls-left">
           <button type="button" onClick={togglePlay} title={isVideoPlaying ? '暂停' : '播放'} aria-label={isVideoPlaying ? '暂停' : '播放'}>
-            {isVideoPlaying ? <HudPauseIcon /> : <HudPlayIcon />}
+            {isVideoPlaying ? <PreviewPauseIcon /> : <PreviewPlayIcon />}
           </button>
           <button type="button" onClick={replayFromStart} title="从头重播" aria-label="从头重播">
-            <HudRefreshIcon />
+            <PreviewRefreshIcon />
           </button>
           <button type="button" className={muted ? 'nps-hud-btn-dim' : undefined} onClick={toggleMute} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
-            <HudVolumeIcon />
+            <PreviewVolumeIcon />
           </button>
         </div>
         <div className="nps-video-controls-right">
-          <span className="nps-hud-time">{fmtHudTime(playheadMs)}<span> / {fmtHudTime(maxMs)}</span></span>
+          <span className="nps-hud-time">{formatPreviewTime(playheadMs)}<span> / {formatPreviewTime(maxMs)}</span></span>
           {timelineToggle}
         </div>
       </div>

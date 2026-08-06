@@ -66,4 +66,19 @@ describe('videoFilmstrip · 时间轴视频条集成', () => {
     )
     expect(bare.container.querySelector('canvas.gc-filmstrip')).toBeNull()
   })
+
+  it('prefers per-material videoSrc over the timeline-level videoSrc', () => {
+    const { container } = render(
+      <MaterialTimeline
+        materials={[{ ...VIDEO_MATERIAL, videoSrc: '/segment.mp4' }]}
+        maxMs={10_000}
+        playheadMs={0}
+        selectedMaterialKey={null}
+        videoSrc="/fallback.mp4"
+        onSelectMaterial={vi.fn()}
+        onPatchMaterial={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('canvas.gc-filmstrip')).not.toBeNull()
+  })
 })

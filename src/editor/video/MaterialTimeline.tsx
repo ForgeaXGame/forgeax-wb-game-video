@@ -61,11 +61,15 @@ function ZoomInIcon(): JSX.Element {
   )
 }
 
-/** 缩放滑块的菱形把手（Figma 14935:70530 的 czstag：白 tag 旋转 135°）。 */
-function ZoomThumbIcon(): JSX.Element {
+/**
+ * 游标把手（Figma 14935:70530 的 czstag：tag 旋转 135° → 直角尖端朝下）。
+ * 缩放滑轨把手与播放头头部共用这一个形状，两处不各画一份尖角。
+ * 颜色由调用方给：滑轨用设计的白，播放头传 `currentColor` 交给 CSS 定色。
+ */
+function ScrubCursorIcon({ fill = '#fff' }: { fill?: string }): JSX.Element {
   return (
     <svg width="10" height="10" viewBox="0 0 10.0018 10.002" fill="none" aria-hidden style={{ transform: 'rotate(135deg)', display: 'block' }}>
-      <path d="M4.8201 10.002L0 5.18198L5.18144 0.00889066L10.0016 0.000511834V4.82899L4.8201 10.002Z" fill="#fff" />
+      <path d="M4.8201 10.002L0 5.18198L5.18144 0.00889066L10.0016 0.000511834V4.82899L4.8201 10.002Z" fill={fill} />
     </svg>
   )
 }
@@ -280,7 +284,6 @@ export function MaterialTimeline({
     : 1
   const [zoom, setZoom] = useState(1)
   const [viewportW, setViewportW] = useState(0)
-  const [viewportInnerH, setViewportInnerH] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
   const [dropHint, setDropHint] = useState<{ ms: number; zIndex: number } | null>(null)
 
@@ -329,13 +332,13 @@ export function MaterialTimeline({
     + videoRowExtraPx
   const ruleTicks = useMemo(() => buildMaterialTicks(maxMs, pxPerMs), [maxMs, pxPerMs])
 
-  // 视口宽度 → canvasPx 基准；视口内高 → 画布地板。ResizeObserver 跟随布局变化。
+  // 视口宽度 → canvasPx 基准。ResizeObserver 跟随布局变化。
+  // 刻意不回读 clientHeight：见画布 style 处注释（会与滚动条互相触发形成自激振荡）。
   useEffect(() => {
     const vp = timelineViewportRef.current
     if (!vp) return
     const measure = () => {
       setViewportW(vp.clientWidth)
-      setViewportInnerH(vp.clientHeight)
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -637,7 +640,7 @@ export function MaterialTimeline({
             onPointerDown={startZoomScrub}
           >
             <span className="gc-zoomfill" style={{ width: `${zoomRatio * 100}%` }} />
-            <span className="gc-zoomthumb" style={{ left: `${zoomRatio * 100}%` }}><ZoomThumbIcon /></span>
+            <span className="gc-zoomthumb" style={{ left: `${zoomRatio * 100}%` }}><ScrubCursorIcon /></span>
           </span>
           <button
             type="button"
@@ -658,9 +661,11 @@ export function MaterialTimeline({
         <div
           ref={timelineRef}
           className={`gc-mtimeline-canvas${onSeek ? ' is-seekable' : ''}`}
-          // 画布高度取内容与视口内高的较大者：内容矮时恰好填满可视区（边框不占出幻影滚动），
-          // 内容高时按真实高度出纵向滚动条。
-          style={{ width: `${canvasPx}px`, height: `${Math.max(canvasHeight, viewportInnerH)}px` }}
+          // 高度只写内容高。「内容矮时填满可视区」交给 CSS `min-height: 100%`——
+          // 一旦改成 max(内容高, 视口 clientHeight) 就会自激振荡：clientHeight 被横向
+          // 滚动条扣掉 10px → 画布变矮/变高 → 纵向滚动条出现/消失 → clientWidth 又变
+          // 10px → canvasPx 变 → 回到第一步，每帧抽动一次并重建帧画面位图。
+          style={{ width: `${canvasPx}px`, height: `${canvasHeight}px` }}
           onPointerDown={onSeek ? onCanvasPointerDown : undefined}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -709,7 +714,9 @@ export function MaterialTimeline({
             data-playhead-ms={Math.round(playheadMs)}
             style={{ left: `${playheadMs * pxPerMs}px` }}
             aria-hidden
-          />
+          >
+            <span className="gc-playhead-cursor"><ScrubCursorIcon fill="currentColor" /></span>
+          </div>
           {mediaPlayheadTimelineMs != null && mediaPlayheadMaterial ? (
             <div
               className="gc-media-playhead"
@@ -973,9 +980,10 @@ export function MaterialTimeline({
                       {editable && !fixedWidth && !m.locked ? (
                         <button className="gc-mhandle is-left" onPointerDown={(e) => onPointerDown(e, m, 'start')} aria-label="调整起点" />
                       ) : null}
-                      {/* 视频条的帧画面层（剪映同款）：左右让出 5.6px 露出双端把手，帧与刻度尺对位。 */}
+                      {/* 视频条的帧画面层（剪映同款）：左右让出 5.6px 露出双端把手，帧与刻度尺对位。
+                          片段级 videoSrc 优先（Flow 多段），否则回落宿主统一 videoSrc（单节点编辑预览）。 */}
                       {m.kind === 'video' ? (
-                        <VideoFilmstrip src={videoSrc} width={width} maxMs={m.endMs - m.startMs} height={40} />
+                        <VideoFilmstrip src={m.videoSrc ?? videoSrc} width={width} maxMs={m.endMs - m.startMs} height={40} />
                       ) : null}
                       {/* 窄条上不渲染文字：否则会盖住两侧手柄的点击区（文案仍在 title 里可悬停看）。 */}
                       {width >= CLIP_LABEL_MIN_PX ? (
@@ -1173,28 +1181,32 @@ const MATERIAL_TIMELINE_CSS = `
   color: rgba(255,255,255,0.25);
   font-variant-numeric: tabular-nums;
 }
+/* Figma 14947:80565：竖线 = 1px、rgba(255,198,42,.6)，设计上不带光晕（故显式 box-shadow: none
+   压掉 catalogCss 的橙色外发光）。1px 线用 -0.5px 偏移才落在时刻正中。 */
 .mtl-root .gc-playhead {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
-  transform: translateX(-1px);
-  background: var(--gc-accent);
-  box-shadow: 0 0 12px rgba(240,136,64,.65);
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: rgba(255,198,42,0.6);
+  box-shadow: none;
   z-index: 8;
   pointer-events: none;
 }
-.mtl-root .gc-playhead::before {
-  content: "";
+/* 压掉 catalogCss 的橙色圆点头：头部形状改由 .gc-playhead-cursor 里的游标 SVG 承担。 */
+.mtl-root .gc-playhead::before { content: none; }
+/* 头部游标：设计稿没给播放头头部，沿用缩放滑轨把手的尖角形状（ScrubCursorIcon），
+   取竖线同色好读成一个整体——竖线 60% 不透明，头部满色以便抓得住视线。 */
+.mtl-root .gc-playhead-cursor {
   position: absolute;
-  top: 2px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--gc-accent);
-  box-shadow: 0 0 8px rgba(240,136,64,.85);
+  width: 10px;
+  height: 10px;
+  color: #ffc62a;
+  pointer-events: none;
 }
 .mtl-root .gc-media-playhead {
   position: absolute;
