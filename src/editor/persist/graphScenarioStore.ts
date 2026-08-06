@@ -223,7 +223,22 @@ let bootAttemptId = 0
 let cleanFingerprint: string | null = null
 /** Host tip revision token for optimistic PUT locking. */
 let tipRevision: string | null = null
+/** Serialize tip mutations so an older request can never finish after a newer one. */
+let tipWriteTail: Promise<void> | null = null
 let unloadHooksInstalled = false
+
+function enqueueTipWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = tipWriteTail ? tipWriteTail.then(operation, operation) : operation()
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  tipWriteTail = tail
+  void tail.then(() => {
+    if (tipWriteTail === tail) tipWriteTail = null
+  })
+  return result
+}
 
 /** Stable serialize of the library document for dirty checks. */
 export function projectFingerprint(doc: GraphLibraryDocument): string {
@@ -234,6 +249,7 @@ export function projectFingerprint(doc: GraphLibraryDocument): string {
 export function resetCleanFingerprintForTests(): void {
   cleanFingerprint = null
   tipRevision = null
+  tipWriteTail = null
 }
 
 // ── 撤销/重做（zundo）─────────────────────────────────────────────────────────
@@ -283,16 +299,19 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     const cycle = findReferenceCycle(project)
     if (cycle) return false
     const savedFp = projectFingerprint(project)
-    const res = await saveProject(project, game, tipRevision)
-    if (!res.ok) return false
-    tipRevision = res.revision
-    cleanFingerprint = savedFp
-    const nowDirty = projectFingerprint(get().authoringProject()) !== savedFp
-    set({ isDraft: nowDirty })
-    if (checkpoint) {
-      await checkpointTip(game)
-    }
-    return true
+    return enqueueTipWrite(async () => {
+      const res = await saveProject(project, game, tipRevision)
+      if (!res.ok) return false
+      tipRevision = res.revision
+      cleanFingerprint = savedFp
+      const nowDirty = projectFingerprint(get().authoringProject()) !== savedFp
+      set({ isDraft: nowDirty })
+      if (!nowDirty) clearDraftTimer()
+      if (checkpoint) {
+        await checkpointTip(game)
+      }
+      return true
+    })
   }
   const installUnloadHooks = () => {
     if (unloadHooksInstalled || typeof window === 'undefined') return
@@ -327,7 +346,8 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     }).filter((i) => i.level === 'error')
     const savedFp = projectFingerprint(project)
     set({ isDraft: false, savedTip: errs.length ? `保存中 · ⚠ ${errs.length} 处校验错误` : '保存中…' })
-    const done = saveProject(project, game, tipRevision).then((res) => {
+    const done = enqueueTipWrite(async () => {
+      const res = await saveProject(project, game, tipRevision)
       if (!res.ok) {
         scheduleDraft()
         set({ savedTip: '保存失败 · tip 未写入，请检查 Host 后重试' })
@@ -341,6 +361,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         savedTip: errs.length ? `已保存 · ⚠ ${errs.length} 处校验错误` : `已保存 ${new Date().toLocaleTimeString()}`,
       })
       if (nowDirty) scheduleDraft()
+      else clearDraftTimer()
       return true
     })
     // eslint-disable-next-line no-console
