@@ -13,6 +13,7 @@ import { BASIC_UI_FOLDER_ID, ensureUiTree, findUiTreeNode } from '../persist/ui-
 import { sendUiNavCommand, useUiNavMirror } from '../persist/uiNavSync'
 import { useUiSelection } from '../persist/uiSelectionStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
+import { useAssetNav } from '../persist/assetNavStore'
 import { blueprintListItems } from './blueprintNav'
 import { useBlueprintNavActions, type BlueprintNavActions } from './useBlueprintNavActions'
 import { UiTreeView, type UiTreeViewNode } from './UiTreeView'
@@ -116,6 +117,12 @@ const MOCK_ENTRIES: readonly NavNode[] = [
   },
   { id: 'play', label: '试玩', kind: 'entry', view: 'play' },
 ]
+
+const ASSET_ROOT_BY_NAV_ID = {
+  'as-video': 'video',
+  'as-image': 'image',
+  'as-bgm': 'audio',
+} as const
 
 function buildNavTree(
   blueprints: Parameters<typeof blueprintListItems>[0],
@@ -703,6 +710,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   injectStyleOnce('new-sidebar', NEW_SIDEBAR_CSS)
   const view = useGraphView((s) => s.view)
   const setView = useGraphView((s) => s.setView)
+  const setAssetRoot = useAssetNav((s) => s.setRoot)
   const blueprints = useGraphScenario((s) => s.blueprints)
   const mainId = useGraphScenario((s) => s.mainBlueprintId)
   const activeBlueprintId = useGraphScenario((s) => s.activeBlueprintId)
@@ -770,6 +778,12 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   }
 
   const onSelect = (node: NavNode): void => {
+    const assetRoot = ASSET_ROOT_BY_NAV_ID[node.id as keyof typeof ASSET_ROOT_BY_NAV_ID]
+    if (assetRoot) {
+      setAssetRoot(assetRoot)
+      setView('assets')
+      return
+    }
     if (node.blueprint) {
       selectBlueprint(node.id)
       setView('graph')

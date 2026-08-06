@@ -17,7 +17,7 @@ import * as React from 'react'
 import { registerComponent, type ComponentDef } from '../registry/component-registry'
 import { registerOverlayRenderer } from './rendererRegistry'
 import { registerCoreSkins, INTERACTION_SKINS, HP_BAR_COMPONENTS, type SkinPositioning } from './components'
-import { getWorkbenchHost } from '../../lib/workbench-host'
+import { gameComponentRegister, importGameComponentModule } from './game-component-module'
 
 /** 交互皮肤登记项（编辑器下拉/定位查询用）。commons 内建 + 游戏仓贡献合并。 */
 export interface InteractionSkinEntry {
@@ -69,11 +69,6 @@ export function skinDefaultAnchor(id: string | undefined): { x: number; y: numbe
   return interactionSkins().find((s) => s.id === id)?.defaultAnchor
 }
 
-export interface GameComponentModule {
-  register?: (host: ComponentHostApi) => void
-  default?: { register?: (host: ComponentHostApi) => void } | ((host: ComponentHostApi) => void)
-}
-
 function hostApi(): ComponentHostApi {
   return {
     React,
@@ -98,47 +93,20 @@ export function registerBuiltins(): void {
 
 const loadedGames = new Set<string>()
 
-function pickRegister(mod: GameComponentModule): ((host: ComponentHostApi) => void) | null {
-  if (typeof mod.register === 'function') return mod.register
-  if (typeof mod.default === 'function') return mod.default
-  if (typeof mod.default === 'object' && typeof mod.default?.register === 'function') return mod.default.register
-  return null
-}
-
 /**
- * 加载并注册某游戏仓的专属组件。**免构建优先**：
- *   1. Workbench —— 通过握手上下文的 `gameComponents.moduleUrl()` 读取游戏仓构建产物；
- *   2. dev —— 在没有构建产物时，直接吃游戏仓 `components/index.tsx` **源码**，经扩展 vite 现场编译
- *      （`/@game-components/<slug>/index.js`，见 vite.config `gameComponentsDevPlugin`）；
+ * 加载并注册某游戏仓的专属组件。优先读取 Workbench 模块，开发期再由
+ * wb-game-video 的本地源码适配器转译 `components/index.tsx|ts`。
  * 都拿不到 / 无 `register` → 静默 false，运行时继续用内建集（fail-soft）。
  * `base` 用于非同源场景显式指定源（dev 一般同源，留空即可）。
  */
 export async function loadGameComponents(slug: string | undefined, base = ''): Promise<boolean> {
   if (!slug || loadedGames.has(slug)) return false
   loadedGames.add(slug)
-  const s = encodeURIComponent(slug)
-  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  const candidates = [
-    (() => {
-      try {
-        return getWorkbenchHost().gameComponents.moduleUrl('index.js')
-      } catch {
-        return null
-      }
-    })(),
-    ...(isDev ? [`${base}/@game-components/${s}/index.js`] : []),
-  ].filter((url): url is string => Boolean(url))
-  for (const url of candidates) {
-    try {
-      const mod = (await import(/* @vite-ignore */ url)) as GameComponentModule
-      const reg = pickRegister(mod)
-      if (reg) {
-        reg(hostApi())
-        return true
-      }
-    } catch {
-      /* 未构建 / 无源码 / 加载失败 → 试下一个 */
-    }
+  const module = await importGameComponentModule(slug, base)
+  const register = module ? gameComponentRegister<ComponentHostApi>(module) : null
+  if (register) {
+    register(hostApi())
+    return true
   }
   loadedGames.delete(slug)
   return false
