@@ -193,13 +193,13 @@ describe('EffectsEditor numeric operations', () => {
     fireEvent.click(screen.getByRole('combobox', { name: '实体' }))
     expect(screen.getByRole('menuitem', { name: '主角' })).toBeTruthy()
     fireEvent.click(screen.getByRole('menuitem', { name: '新增实体' }))
-    expect(screen.getByRole('textbox', { name: '效果目标的新实体 ID' })).toHaveValue('entity1')
+    expect(screen.queryByRole('textbox', { name: '效果目标的新实体 ID' })).toBeNull()
     fireEvent.keyDown(document, { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('combobox', { name: '属性' }))
     expect(screen.getByRole('menuitem', { name: '生命值' })).toBeTruthy()
     fireEvent.click(screen.getByRole('menuitem', { name: '新增属性' }))
-    expect(screen.getByRole('textbox', { name: '主角的新属性 ID' })).toHaveValue('attr0')
+    expect(screen.queryByRole('textbox', { name: '主角的新属性 ID' })).toBeNull()
     fireEvent.keyDown(document, { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('combobox', { name: '数值来源' }))

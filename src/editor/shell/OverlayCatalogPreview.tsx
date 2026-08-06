@@ -18,7 +18,7 @@ import { renderOverlayChildPreview } from './overlayChildPreview'
 import { defaultsForComponent, isInteractive } from './editors'
 import { OVERLAY_PRESET_MIME } from './ComponentLibrary'
 import { overlayFitTargets } from './overlay-fit-targets'
-import aiParameterFillIcon from './assets/ai-parameter-fill.png'
+import { AiParameterFillButton } from './AiParameterFillButton'
 import {
   OverlayCanvasInteraction,
   type CanvasBox,
@@ -302,7 +302,7 @@ const PREVIEW_CSS = `
 .ocp-ai-quick {
   display:block; width:18px; height:18px; padding:0;
   border:0; border-radius:0; background:transparent; opacity:1;
-  pointer-events:none;
+  pointer-events:auto;
 }
 .ocp-ai-quick img { display:block; width:18px; height:18px; }
 .ocp-ai-hover-zone {
@@ -935,20 +935,7 @@ export function OverlayCatalogPreview({
                           onPointerEnter={() => setAiHoveredChildId(item.id)}
                           onPointerLeave={() => setAiHoveredChildId((current) => current === item.id ? null : current)}
                         >
-                          <button
-                            type="button"
-                            className="ocp-ai-quick"
-                            aria-label="AI"
-                            disabled
-                          >
-                            <img
-                              src={aiParameterFillIcon}
-                              alt=""
-                              aria-hidden="true"
-                              width={18}
-                              height={18}
-                            />
-                          </button>
+                          <AiParameterFillButton className="ocp-ai-quick" />
                         </span>
                       ) : null}
                     </>

@@ -10,7 +10,7 @@ import { tryEvalExpr, type EvalCtx } from '../../runtime/engine/expr'
 import { createRng } from '../../runtime/engine/rng'
 import { LooseNumberInput } from './TermChainEditor'
 import { CascadingPicker, type CascadingPickerOption } from './CascadingPicker'
-import aiParameterFillIcon from './assets/ai-parameter-fill.png'
+import { AiParameterFillButton } from './AiParameterFillButton'
 import {
   compileFormula,
   formulaHoleBindingIssues,
@@ -66,33 +66,7 @@ function BindingIncompleteAlert({ children }: { children: string }): JSX.Element
       }}
     >
       <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
-      <button
-        type="button"
-        disabled
-        aria-label="AI 补全参数"
-        title="AI 补全暂不可用"
-        style={{
-          flex: 'none',
-          display: 'block',
-          width: 18,
-          height: 18,
-          padding: 0,
-          border: 0,
-          borderRadius: 0,
-          background: 'transparent',
-          cursor: 'not-allowed',
-          opacity: 1,
-        }}
-      >
-        <img
-          src={aiParameterFillIcon}
-          alt=""
-          aria-hidden="true"
-          width={18}
-          height={18}
-          style={{ display: 'block' }}
-        />
-      </button>
+      <AiParameterFillButton />
     </div>
   )
 }
@@ -492,18 +466,6 @@ export function FormulaApplyEditor({
                       label: `配置「${draft.attrLabel.trim() || label}」属性`,
                       children: [
                         {
-                          key: `detail:${actionKey}:id`,
-                          label: '属性 ID',
-                          editor: {
-                            value: draft.attrId,
-                            ariaLabel: `${entityDisplayName(entity, entityOption.id)}的新属性 ID`,
-                            pattern: '[A-Za-z_][A-Za-z0-9_-]*',
-                            invalid: !ATTR_ID_PATTERN.test(attrId) || attributeIdOccupied(entity, attrId),
-                            onChange: (value: string) =>
-                              patchCreateDraft(draftKey, defaults, { attrId: value }),
-                          },
-                        },
-                        {
                           key: `detail:${actionKey}:label`,
                           label: '显示名',
                           editor: {
@@ -616,17 +578,6 @@ export function FormulaApplyEditor({
                   label: `配置「${draft.entityName.trim() || defaultEntityName}」实体`,
                   children: [
                     {
-                      key: `detail:${actionKey}:entity-id`,
-                      label: '实体 ID',
-                      editor: {
-                        value: draft.entityId,
-                        ariaLabel: '新实体 ID',
-                        invalid: !validEntityId(entityId) || catalogIdOccupied(entities, entityId),
-                        onChange: (value: string) =>
-                          patchCreateDraft(draftKey, defaults, { entityId: value }),
-                      },
-                    },
-                    {
                       key: `detail:${actionKey}:entity-name`,
                       label: '实体显示名',
                       editor: {
@@ -635,18 +586,6 @@ export function FormulaApplyEditor({
                         invalid: !draft.entityName.trim(),
                         onChange: (value: string) =>
                           patchCreateDraft(draftKey, defaults, { entityName: value }),
-                      },
-                    },
-                    {
-                      key: `detail:${actionKey}:attr-id`,
-                      label: '属性 ID',
-                      editor: {
-                        value: draft.attrId,
-                        ariaLabel: '新属性 ID',
-                        pattern: '[A-Za-z_][A-Za-z0-9_-]*',
-                        invalid: !ATTR_ID_PATTERN.test(attrId),
-                        onChange: (value: string) =>
-                          patchCreateDraft(draftKey, defaults, { attrId: value }),
                       },
                     },
                     {
@@ -727,16 +666,6 @@ export function FormulaApplyEditor({
                   presentation: 'create',
                   label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
                   children: [
-                    {
-                      key: `detail:${actionKey}:id`,
-                      label: '变量 ID',
-                      editor: {
-                        value: draft.variableId,
-                        ariaLabel: `${label}的新变量 ID`,
-                        invalid: !variableId || catalogIdOccupied(variables, variableId),
-                        onChange: (value: string) => patch({ variableId: value }),
-                      },
-                    },
                     {
                       key: `detail:${actionKey}:name`,
                       label: '显示名',

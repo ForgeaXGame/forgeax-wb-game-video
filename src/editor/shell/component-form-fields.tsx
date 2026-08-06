@@ -721,6 +721,7 @@ function renderInput(
       <span key={inp.key}>
         {wrap(
           <select
+            aria-label={label}
             value={selectedValue}
             onChange={(e) => onPatch(inp.key, e.target.value)}
             style={{

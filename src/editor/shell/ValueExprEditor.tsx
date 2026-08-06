@@ -385,33 +385,12 @@ export function ValueExprEditor({
         label: `配置「${draft.entityName.trim() || createEntityTemplate.name}」实体`,
         children: [
           {
-            key: `detail:${actionKey}:entity-id`,
-            label: '实体 ID',
-            editor: {
-              value: draft.entityId,
-              ariaLabel: '新实体 ID',
-              invalid: !entityId || catalogIdOccupied(entities, entityId),
-              onChange: (value: string) => patchDraft(draftKey, defaults, { entityId: value }),
-            },
-          },
-          {
             key: `detail:${actionKey}:entity-name`,
             label: '实体显示名',
             editor: {
               value: draft.entityName,
               ariaLabel: '新实体显示名',
               onChange: (value: string) => patchDraft(draftKey, defaults, { entityName: value }),
-            },
-          },
-          {
-            key: `detail:${actionKey}:id`,
-            label: '属性 ID',
-            editor: {
-              value: draft.attrId,
-              ariaLabel: '新属性 ID',
-              pattern: '[A-Za-z_][A-Za-z0-9_-]*',
-              invalid: !ATTR_ID_PATTERN.test(attrId),
-              onChange: (value: string) => patchDraft(draftKey, defaults, { attrId: value }),
             },
           },
           {
@@ -509,17 +488,6 @@ export function ValueExprEditor({
               label: `配置「${draft.attrLabel.trim() || request.attrId}」属性`,
               children: [
                 {
-                  key: `detail:${actionKey}:id`,
-                  label: '属性 ID',
-                  editor: {
-                    value: draft.attrId,
-                    ariaLabel: `${entry.entityName}的新属性 ID`,
-                    pattern: '[A-Za-z_][A-Za-z0-9_-]*',
-                    invalid: !ATTR_ID_PATTERN.test(attrId) || attributeIdOccupied(entry.source, attrId),
-                    onChange: (value: string) => patchDraft(draftKey, defaults, { attrId: value }),
-                  },
-                },
-                {
                   key: `detail:${actionKey}:label`,
                   label: '显示名',
                   editor: {
@@ -607,16 +575,6 @@ export function ValueExprEditor({
             label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
             children: [
               {
-                key: `detail:${actionKey}:id`,
-                label: '变量 ID',
-                editor: {
-                  value: draft.variableId,
-                  ariaLabel: '新变量 ID',
-                  invalid: !variableId || catalogIdOccupied(variables, variableId),
-                  onChange: (value: string) => patch({ variableId: value }),
-                },
-              },
-              {
                 key: `detail:${actionKey}:name`,
                 label: '显示名',
                 editor: {
@@ -702,21 +660,11 @@ export function ValueExprEditor({
             label: `配置「${draft.name.trim() || formulaId || defaultId}」公式`,
             children: [
               {
-                key: `detail:${actionKey}:id`,
-                label: '公式 ID',
-                editor: {
-                  value: draft.formulaId,
-                  ariaLabel: '新公式 ID',
-                  invalid: !formulaId || catalogIdOccupied(formulas, formulaId),
-                  onChange: (value: string) => patch({ formulaId: value }),
-                },
-              },
-              {
                 key: `detail:${actionKey}:name`,
-                label: '显示名',
+                label: '公式名',
                 editor: {
                   value: draft.name,
-                  ariaLabel: '新公式显示名',
+                  ariaLabel: '新公式名',
                   onChange: (value: string) => patch({ name: value }),
                 },
               },

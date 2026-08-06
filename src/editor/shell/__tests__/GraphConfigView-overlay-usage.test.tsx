@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph, GameScenario } from '../../../runtime/schema/graph-schema'
 import { registerCoreSkins } from '../../../runtime/component-host/components'
@@ -134,8 +134,7 @@ describe('GraphConfigView overlay usage', () => {
     const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
     render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
 
-    const hpSelect = within(screen.getByText('血量').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })
+    const hpSelect = screen.getAllByRole('combobox', { name: '数值内容' })[0]!
     fireEvent.click(hpSelect)
     fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '主角' }))
@@ -182,8 +181,7 @@ describe('GraphConfigView overlay usage', () => {
     const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
     render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
 
-    const hpPicker = within(screen.getByText('血量').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })
+    const hpPicker = screen.getAllByRole('combobox', { name: '数值内容' })[0]!
     chooseCascade(hpPicker, '实体属性', '新增实体')
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
 
@@ -198,8 +196,7 @@ describe('GraphConfigView overlay usage', () => {
     })
 
     chooseCascade(
-      within(screen.getByText('血量').parentElement!)
-        .getByRole('combobox', { name: '数值内容' }),
+      screen.getAllByRole('combobox', { name: '数值内容' })[0]!,
       '变量',
       '新增变量',
     )
@@ -221,12 +218,11 @@ describe('GraphConfigView overlay usage', () => {
     })
 
     chooseCascade(
-      within(screen.getByText('血量').parentElement!)
-        .getByRole('combobox', { name: '数值内容' }),
+      screen.getAllByRole('combobox', { name: '数值内容' })[0]!,
       '公式',
       '新增公式',
     )
-    fireEvent.change(screen.getByRole('textbox', { name: '新公式显示名' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '新公式名' }), {
       target: { value: '界面计算' },
     })
     fireEvent.change(screen.getByRole('textbox', { name: '新公式内容' }), {

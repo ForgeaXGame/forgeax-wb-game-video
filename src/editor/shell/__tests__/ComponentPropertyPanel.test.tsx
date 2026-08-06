@@ -41,7 +41,7 @@ describe('ComponentPropertyPanel', () => {
     const panel = screen.getByTestId('component-property-panel')
     expect(panel.style.maxWidth).toBe('480px')
     expect(panel).toHaveStyle({ background: '#303030', borderLeft: '1px solid rgba(0,0,0,.4)' })
-    expect(screen.getByRole('tab', { name: 'Agent' })).toBeDisabled()
+    expect(screen.queryByRole('tab', { name: 'Agent' })).toBeNull()
     expect(screen.getByRole('tab', { name: 'qte' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('button', { name: '更多操作' })).toBeDisabled()
     const actions = screen.getByLabelText('组件操作')

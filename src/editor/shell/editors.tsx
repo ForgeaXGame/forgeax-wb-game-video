@@ -575,16 +575,6 @@ export function EntitySelect({
       label: `配置「${draft.name.trim() || entityId || defaultId}」实体`,
       children: [
         {
-          key: `detail:${actionKey}:id`,
-          label: '实体 ID',
-          editor: {
-            value: draft.entityId,
-            ariaLabel: '效果目标的新实体 ID',
-            invalid: !entityId || catalogIdOccupied(entities, entityId),
-            onChange: (next) => patch({ entityId: next }),
-          },
-        },
-        {
           key: `detail:${actionKey}:name`,
           label: '显示名',
           editor: {
@@ -733,16 +723,6 @@ export function AttrSelect({
       presentation: 'create',
       label: `配置「${draft.label.trim() || attrId || defaultAttrId}」属性`,
       children: [
-        {
-          key: `detail:${actionKey}:id`,
-          label: '属性 ID',
-          editor: {
-            value: draft.attrId,
-            ariaLabel: `${entityDisplayName(entity, entityId)}的新属性 ID`,
-            invalid: !attrId || occupiedAttr,
-            onChange: (next) => patch({ attrId: next }),
-          },
-        },
         {
           key: `detail:${actionKey}:label`,
           label: '显示名',

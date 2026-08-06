@@ -831,9 +831,6 @@ export function ComponentPropertyPanel({
     >
       <style>{panelStyles}</style>
       <div className="cpp-tabs" role="tablist" aria-label="属性面板">
-        <button className="cpp-tab" type="button" role="tab" aria-selected="false" disabled>
-          Agent
-        </button>
         <button
           className="cpp-tab is-active"
           type="button"

@@ -283,17 +283,6 @@ export function TextValueEditor({
             label: `配置「${draft.label.trim() || attrId || defaultAttrId}」属性`,
             children: [
               {
-                key: `detail:${actionKey}:id`,
-                label: '属性 ID',
-                editor: {
-                  value: draft.attrId,
-                  ariaLabel: `${entityDisplayName(source, entity.id)}的新属性 ID`,
-                  pattern: '[A-Za-z_][A-Za-z0-9_-]*',
-                  invalid: !ATTR_ID_PATTERN.test(attrId) || attributeIdOccupied(source, attrId),
-                  onChange: (value: string) => patch({ attrId: value }),
-                },
-              },
-              {
                 key: `detail:${actionKey}:label`,
                 label: '显示名',
                 editor: {
@@ -335,17 +324,6 @@ export function TextValueEditor({
         presentation: 'create' as const,
         label: `配置「${createEntityTemplate.name}」实体`,
         children: [
-          {
-            key: `detail:${createEntityKey}:id`,
-            label: '实体 ID',
-            editor: {
-              value: entityDraft.entityId,
-              ariaLabel: '新实体 ID',
-              invalid: !entityDraft.entityId.trim()
-                || catalogIdOccupied(entities, entityDraft.entityId.trim()),
-              onChange: (entityId: string) => setCreateDraft({ ...entityDraft, entityId }),
-            },
-          },
           {
             key: `detail:${createEntityKey}:name`,
             label: '显示名',
@@ -413,16 +391,6 @@ export function TextValueEditor({
             presentation: 'create' as const,
             label: `配置「${draft.name.trim() || variableId || defaultId}」变量`,
             children: [
-              {
-                key: `detail:${actionKey}:id`,
-                label: '变量 ID',
-                editor: {
-                  value: draft.variableId,
-                  ariaLabel: '新变量 ID',
-                  invalid: !variableId || catalogIdOccupied(variables, variableId),
-                  onChange: (value: string) => patch({ variableId: value }),
-                },
-              },
               {
                 key: `detail:${actionKey}:name`,
                 label: '显示名',
@@ -504,21 +472,11 @@ export function TextValueEditor({
             label: `配置「${draft.name.trim() || formulaId || defaultId}」公式`,
             children: [
               {
-                key: `detail:${actionKey}:id`,
-                label: '公式 ID',
-                editor: {
-                  value: draft.formulaId,
-                  ariaLabel: '新公式 ID',
-                  invalid: !formulaId || catalogIdOccupied(formulas, formulaId),
-                  onChange: (value: string) => patch({ formulaId: value }),
-                },
-              },
-              {
                 key: `detail:${actionKey}:name`,
-                label: '显示名',
+                label: '公式名',
                 editor: {
                   value: draft.name,
-                  ariaLabel: '新公式显示名',
+                  ariaLabel: '新公式名',
                   onChange: (value: string) => patch({ name: value }),
                 },
               },

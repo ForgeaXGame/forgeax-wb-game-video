@@ -295,7 +295,7 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       '.ocp-key-warn-icon:hover:not(:disabled),\n.ocp-key-warn-icon:active:not(:disabled) {\n  background:#d8d8d8; color:#ff5b5b;',
     )
     expect(screen.queryByText(/轴居中/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'AI' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'AI 补全参数' })).toBeNull()
 
     fireEvent.pointerMove(screen.getByRole('application', { name: '界面方案画布' }), {
       clientX: 100,
@@ -304,8 +304,9 @@ describe('OverlayCatalogPreview fixed canvas', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[data-canvas-item="damage"]')).toHaveClass('is-hovered')
-      const ai = screen.getByRole('button', { name: 'AI' })
+      const ai = screen.getByRole('button', { name: 'AI 补全参数' })
       expect(ai).toBeDisabled()
+      expect(ai).toHaveStyle({ cursor: 'not-allowed' })
       expect(ai.querySelector('img')).toHaveAttribute('width', '18')
       expect(ai.querySelector('img')).toHaveAttribute('height', '18')
       expect(screen.getByTestId('ai-hover-zone-damage')).toHaveAttribute('data-ai-control-side', 'right')
@@ -317,9 +318,9 @@ describe('OverlayCatalogPreview fixed canvas', () => {
       clientX: 199,
       clientY: 99,
     })
-    await waitFor(() => expect(screen.getByRole('button', { name: 'AI' })).toBeDisabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'AI 补全参数' })).toBeDisabled())
     fireEvent.pointerLeave(screen.getByTestId('ai-hover-zone-damage'))
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'AI' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'AI 补全参数' })).toBeNull())
   })
 
   it('keeps an unselected hover to a yellow frame without helper copy', async () => {

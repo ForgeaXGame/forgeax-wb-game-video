@@ -141,8 +141,10 @@ const CASCADING_PICKER_CSS = `
   color: var(--color-text-secondary, #a8a8a8);
   font-size: 10px; line-height: 1.2; text-align: right;
 }
-.gc-cascade-item-mark { width: 14px; flex: none; text-align: center; }
-.gc-cascade-item-arrow { flex: none; opacity: .55; }
+.gc-cascade-item-mark,
+.gc-cascade-item-arrow { width: 14px; flex: none; text-align: center; }
+.gc-cascade-item-mark { margin-left: auto; }
+.gc-cascade-item-arrow { opacity: .55; font-size: 18px; line-height: 1; }
 .gc-cascade-editor {
   box-sizing: border-box; display: grid; gap: 4px; width: 100%; padding: 5px 8px;
   color: inherit; font-size: 11px;
@@ -294,6 +296,9 @@ export function CascadingPicker({
   const [createDialogStyle, setCreateDialogStyle] = useState<CSSProperties | null>(null)
 
   const columns = menuColumns(options, activePath)
+  const renderedColumns = columns
+    .map((column, depth) => ({ column, depth }))
+    .reverse()
   const panelPathKey = activePath.join('/')
   const createPathKey = createPath?.join('/') ?? ''
   const createOption = createPath ? optionAtPath(options, createPath) : undefined
@@ -377,7 +382,11 @@ export function CascadingPicker({
       const top = placeAbove
         ? Math.max(8, rect.top - panelHeight - gap)
         : Math.min(window.innerHeight - 8, rect.bottom + gap)
-      const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - panelWidth - 8))
+      // 根列固定贴近触发器右边缘；子列按视觉顺序向左扩展。
+      const left = Math.min(
+        Math.max(8, rect.right - panelWidth),
+        Math.max(8, window.innerWidth - panelWidth - 8),
+      )
       setPanelStyle({
         position: 'fixed',
         top,
@@ -410,15 +419,30 @@ export function CascadingPicker({
       const dialogWidth = Math.min(dialogRect.width, window.innerWidth - 16)
       const dialogHeight = Math.min(dialogRect.height, window.innerHeight - 16)
       const gap = 5
+      const roomLeft = anchorRect.left - 8
+      const roomRight = window.innerWidth - anchorRect.right - 8
+      const canPlaceLeft = roomLeft >= dialogWidth + gap
+      const canPlaceRight = roomRight >= dialogWidth + gap
+      const placeHorizontally = canPlaceLeft || canPlaceRight
+      const placeLeft = canPlaceLeft || (!canPlaceRight && roomLeft >= roomRight)
       const below = window.innerHeight - anchorRect.bottom
       const placeAbove = below < dialogHeight + gap && anchorRect.top > below
-      const top = placeAbove
-        ? Math.max(8, anchorRect.top - dialogHeight - gap)
-        : Math.min(window.innerHeight - dialogHeight - 8, anchorRect.bottom + gap)
-      const left = Math.min(
-        Math.max(8, anchorRect.left),
-        Math.max(8, window.innerWidth - dialogWidth - 8),
-      )
+      const top = placeHorizontally
+        ? Math.min(
+          Math.max(8, anchorRect.top),
+          Math.max(8, window.innerHeight - dialogHeight - 8),
+        )
+        : placeAbove
+          ? Math.max(8, anchorRect.top - dialogHeight - gap)
+          : Math.min(window.innerHeight - dialogHeight - 8, anchorRect.bottom + gap)
+      const left = placeHorizontally
+        ? placeLeft
+          ? anchorRect.left - dialogWidth - gap
+          : anchorRect.right + gap
+        : Math.min(
+          Math.max(8, anchorRect.left),
+          Math.max(8, window.innerWidth - dialogWidth - 8),
+        )
       setCreateDialogStyle({
         position: 'fixed',
         top,
@@ -482,7 +506,7 @@ export function CascadingPicker({
       style={panelStyle ?? HIDDEN_PANEL_STYLE}
     >
       <div className="gc-cascade-content">
-        {columns.map((column, depth) => (
+        {renderedColumns.map(({ column, depth }) => (
           <div
             className={`gc-cascade-column${column.some((option) => option.editor) ? ' has-editor' : ''}`}
             role="group"
@@ -549,6 +573,11 @@ export function CascadingPicker({
                     option.key,
                   ].join('/') : option.children?.length ? active : undefined}
                   disabled={option.disabled}
+                  onPointerEnter={() => {
+                    if (!createItem && !option.disabled && option.children?.length) {
+                      activateBranch(option, depth)
+                    }
+                  }}
                   onClick={(event) => choose(option, depth, event.currentTarget)}
                 >
                   {createItem ? (
@@ -558,8 +587,8 @@ export function CascadingPicker({
                     </>
                   ) : (
                     <>
-                      {!confirmItem ? (
-                        <span className="gc-cascade-item-mark">{selected ? '✓' : ''}</span>
+                      {!confirmItem && option.children?.length ? (
+                        <span className="gc-cascade-item-arrow" aria-hidden="true">‹</span>
                       ) : null}
                       <span className="gc-cascade-item-label">{option.label}</span>
                       {option.secondaryText != null ? (
@@ -567,7 +596,9 @@ export function CascadingPicker({
                           {option.secondaryText}
                         </span>
                       ) : null}
-                      {option.children?.length ? <span className="gc-cascade-item-arrow">›</span> : null}
+                      {!confirmItem && !option.children?.length && selected ? (
+                        <span className="gc-cascade-item-mark" aria-hidden="true">✓</span>
+                      ) : null}
                     </>
                   )}
                 </button>
