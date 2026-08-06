@@ -1,26 +1,25 @@
 /**
- * 图存储客户端 —— 走 handshake 绑定的 Workbench package client。
+ * Graph store client — Workbench package tip is the SSOT.
  *
- *   · 唯一真相（玩法）= `GraphLibraryDocument`，落盘为游戏仓 `blueprint.json`。
- *   · 保存：写入完整 package 的 blueprint patch。
- *   · 读取：返回 `{ project, blueprint, assetsManifest }`。
- *   · 未保存草稿只在 localStorage。
- *
+ *   · Tip = `GET/PUT …/package` (working-tree blueprint).
+ *   · User versions = explicit `versions.create` → visible `vN` tags.
+ *   · Close/flush may call `versions.checkpoint` (internal commit, not listed).
+ *   · Restore writes a tag back onto tip via `versions.restore`.
  */
 import { getWorkbenchHost } from '../../lib/workbench-host'
 import type { GraphLibraryDocument } from '../../runtime/schema/graph-schema'
 
-/** 保留类型以兼容既有 import；game-host 版本载体是 git tag。 */
+/** Kept for existing imports; game-host versions are git tags. */
 export interface VersionEntry {
   id: string
   savedAt: number
 }
 export interface GraphStore {
-  /** 磁盘最新已保存文档（package.blueprint）。 */
+  /** Remote tip document (package.blueprint). */
   project: GraphLibraryDocument | null
-  /** localStorage 未保存草稿。 */
-  draft: GraphLibraryDocument | null
-  /** 兼容字段；game-host 下恒为空，版本查询走独立的 git-tag API。 */
+  /** Tip content revision from Host (optimistic lock). */
+  revision: string | null
+  /** Compatibility field; always empty under game-host. */
   versions: VersionEntry[]
 }
 
@@ -30,7 +29,7 @@ export interface CurrentVersion {
   dirty: boolean
 }
 
-/** 游戏仓 git 版本条目（tag = vN）。 */
+/** User-visible game version entry (tag = vN). */
 export interface GameVersion {
   tag: string
   createdAt: number
@@ -44,12 +43,16 @@ function acceptedGameId(game: string): string {
   return game
 }
 
-const draftKey = (game: string) => `wb-game-video:graph:${acceptedGameId(game)}:draft`
-
 function packageBlueprint(value: unknown): GraphLibraryDocument | null {
   if (!value || typeof value !== 'object') return null
   const blueprint = (value as { blueprint?: unknown }).blueprint
   return blueprint && typeof blueprint === 'object' ? blueprint as GraphLibraryDocument : null
+}
+
+function packageRevision(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null
+  const revision = (value as { revision?: unknown }).revision
+  return typeof revision === 'string' && revision.length > 0 ? revision : null
 }
 
 function isLibraryDocument(value: unknown): value is GraphLibraryDocument {
@@ -95,55 +98,43 @@ function gameVersionValue(value: unknown): GameVersion | null {
   }
 }
 
-function readLocal<T>(key: string): T | null {
-  try {
-    const s = localStorage.getItem(key)
-    return s ? (JSON.parse(s) as T) : null
-  } catch {
-    return null
-  }
-}
-function writeLocal(key: string, v: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(v))
-  } catch {
-    /* quota / SSR：best-effort */
-  }
-}
-function removeLocal(key: string): void {
-  try {
-    localStorage.removeItem(key)
-  } catch {
-    /* best-effort */
-  }
-}
-
 export async function loadStore(game: string): Promise<GraphStore> {
   acceptedGameId(game)
-  const project = packageBlueprint(await getWorkbenchHost().gamePackage.load())
+  const loaded = await getWorkbenchHost().gamePackage.load()
+  const project = packageBlueprint(loaded)
   if (!isLibraryDocument(project)) {
     throw new TypeError('Host package blueprint is missing or invalid')
   }
-  return { project, draft: readLocal<GraphLibraryDocument>(draftKey(game)), versions: [] }
+  return {
+    project,
+    revision: packageRevision(loaded),
+    versions: [],
+  }
 }
 
 /**
- * 原子 patch blueprint；宿主在 package lock 内只改对应文件，不覆盖 project/manifest。
- * 返回 { ok } —— PUT 成功清草稿。失败保留草稿由调用方回滚 UI。
+ * Flush tip blueprint. Optional baseRevision enables Host optimistic locking.
+ * Returns { ok, revision } — revision updates the local lock token on success.
  */
-export async function saveProject(project: GraphLibraryDocument, game: string): Promise<{ ok: boolean }> {
+export async function saveProject(
+  project: GraphLibraryDocument,
+  game: string,
+  baseRevision?: string | null,
+): Promise<{ ok: boolean; revision: string | null }> {
   acceptedGameId(game)
   try {
-    await getWorkbenchHost().gamePackage.save({ blueprint: project })
-    removeLocal(draftKey(game))
-    return { ok: true }
+    const saved = await getWorkbenchHost().gamePackage.save({
+      blueprint: project,
+      ...(baseRevision ? { baseRevision } : {}),
+    })
+    return { ok: true, revision: packageRevision(saved) }
   } catch {
-    /* 离线/无宿主 → best-effort */
+    /* offline / host unavailable — best-effort */
   }
-  return { ok: false }
+  return { ok: false, revision: null }
 }
 
-/** 打一个新版本（游戏仓 git annotated tag vN）。返回新 tag 或 null。 */
+/** Create a user-visible version tag (vN). */
 export async function commitVersion(game: string, message?: string): Promise<CurrentVersion | null> {
   acceptedGameId(game)
   const versions = getWorkbenchHost().versions
@@ -156,7 +147,48 @@ export async function commitVersion(game: string, message?: string): Promise<Cur
   }
 }
 
-/** 读当前最新版本（tag + hash + dirty）。无宿主/无仓 → 全 null。 */
+/** Internal tip checkpoint — not listed in user versions. */
+export async function checkpointTip(
+  game: string,
+  message = '[workbench] checkpoint',
+): Promise<{ ok: boolean; commitHash: string | null }> {
+  acceptedGameId(game)
+  const versions = getWorkbenchHost().versions
+  if (!versions.supported() || typeof versions.checkpoint !== 'function') {
+    return { ok: false, commitHash: null }
+  }
+  try {
+    const value = await versions.checkpoint(message)
+    const commitHash =
+      value && typeof value === 'object' && typeof (value as { commitHash?: unknown }).commitHash === 'string'
+        ? (value as { commitHash: string }).commitHash
+        : null
+    return { ok: true, commitHash }
+  } catch {
+    return { ok: false, commitHash: null }
+  }
+}
+
+/** Restore a user version onto tip, then return the tip blueprint. */
+export async function restoreVersionToTip(
+  game: string,
+  tag: string,
+): Promise<GraphLibraryDocument | null> {
+  acceptedGameId(game)
+  const versions = getWorkbenchHost().versions
+  if (!versions.supported() || typeof versions.restore !== 'function') return null
+  try {
+    const restored = await versions.restore(tag)
+    const fromRestore = packageBlueprint(restored)
+    if (isLibraryDocument(fromRestore)) return fromRestore
+    // Host restore may return package without requiring a second load.
+    return packageBlueprint(await getWorkbenchHost().gamePackage.load())
+  } catch {
+    return null
+  }
+}
+
+/** Read current HEAD version status (tag + hash + dirty). */
 export async function currentVersion(game: string): Promise<CurrentVersion> {
   acceptedGameId(game)
   const versions = getWorkbenchHost().versions
@@ -168,7 +200,7 @@ export async function currentVersion(game: string): Promise<CurrentVersion> {
   }
 }
 
-/** 列出该游戏所有版本（vN，最新在前）。无宿主/无仓 → []。 */
+/** List user-visible versions (vN, newest first). */
 export async function listVersions(game: string): Promise<GameVersion[]> {
   acceptedGameId(game)
   const versions = getWorkbenchHost().versions
@@ -184,8 +216,8 @@ export async function listVersions(game: string): Promise<GameVersion[]> {
 }
 
 /**
- * 读某个版本 tag 的 blueprint（只读 `git show`，不 checkout、不改历史）。
- * 用于「载入旧版到编辑器」——载入后由用户再保存成新版本。
+ * Preview-only: read a historical tag package without mutating tip.
+ * Prefer {@link restoreVersionToTip} for editor SSOT restore.
  */
 export async function loadVersionProject(game: string, tag: string): Promise<GraphLibraryDocument | null> {
   acceptedGameId(game)
@@ -198,14 +230,9 @@ export async function loadVersionProject(game: string, tag: string): Promise<Gra
   }
 }
 
-export function saveDraft(project: GraphLibraryDocument, game: string): void {
-  writeLocal(draftKey(game), project)
-}
-
-export function clearDraft(game: string): void {
-  removeLocal(draftKey(game))
-}
-
-export function loadDraft(game: string): GraphLibraryDocument | null {
-  return readLocal<GraphLibraryDocument>(draftKey(game))
+/** @deprecated localStorage drafts are no longer the SSOT; kept as no-ops for call sites mid-migration. */
+export function saveDraft(_project: GraphLibraryDocument, _game: string): void {}
+export function clearDraft(_game: string): void {}
+export function loadDraft(_game: string): GraphLibraryDocument | null {
+  return null
 }

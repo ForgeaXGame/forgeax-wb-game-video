@@ -2,9 +2,9 @@
  * 新引擎（graph）场景的**共享状态 store** —— 让「蓝图·新 / 实体 / 变量 / 规则 / 场景 / 试玩·新」
  * 这些并行视图共用**同一份 graph + 场景级 meta + 持久化**。
  *
- * 持久化模型：SSOT = `blueprint.json` 中原 scenario 形状 + `manifest`
- * （含 main 与全部子蓝图）。进入优先级：草稿 > 磁盘最新 > 空库（零节点）。
- * 「重置」才回内置 demo。
+ * 持久化模型：SSOT = 远端 tip（`blueprint.json` + Host package）。
+ * 进入只信 tip；平时 debounce Flush tip；关页 Flush tip + 内部 checkpoint。
+ * 用户版本仅主动打 tag；恢复旧版走 restore 写回 tip。
  */
 import { create, useStore } from 'zustand'
 import { temporal } from 'zundo'
@@ -13,7 +13,7 @@ import type {
   BlueprintDoc, GameGraph, GameScenario, GraphLibraryDocument, GraphTextStylePreset, ScenarioMetaFields, UiTree,
 } from '../../runtime/schema/graph-schema'
 import type { TextStyleGroup } from '../text/text-style'
-import { loadStore, saveProject, saveDraft, clearDraft, loadDraft, commitVersion, currentVersion, listVersions, loadVersionProject, type VersionEntry, type GameVersion } from './persist-client'
+import { loadStore, saveProject, clearDraft, loadDraft, commitVersion, checkpointTip, currentVersion, listVersions, restoreVersionToTip, type VersionEntry, type GameVersion } from './persist-client'
 import { computeGraphLayout } from '../../graph/edit/graph-layout'
 import { validateGraph } from '../../runtime/validate/validate'
 import { ensureBuiltinSchemes } from '../demo/builtin-schemes'
@@ -163,7 +163,7 @@ interface GraphScenarioStore {
    * 落盘不要用这个。
    */
   playScn: (rootBlueprintId?: string) => GameScenario
-  /** 首次进入某 game 时载入（草稿>磁盘最新）；已 boot 同 game 则跳过。demo 仅供「重置」。 */
+  /** 首次进入某 game 时载入远端 tip；已 boot 同 game 则跳过。demo 仅供「重置」。 */
   ensureBoot: (game: string, demo?: GameScenario) => Promise<void>
   setGraph: (g: GameGraph | ((g: GameGraph) => GameGraph)) => void
   setMeta: (m: ScenarioMetaFields | ((m: ScenarioMetaFields) => ScenarioMetaFields)) => void
@@ -176,7 +176,7 @@ interface GraphScenarioStore {
   renameScenarioId: (rename: ScenarioIdRename) => ScenarioIdRenameActionResult
   /** 原子写回整份 scenario（graph + meta 一次 set，避免拆两次 set 产生额外历史步）；写主蓝图。 */
   setScenario: (s: GameScenario) => void
-  /** 标记未保存草稿 + 防抖写盘（撤销/重做后调用，让恢复的状态也落草稿）。 */
+  /** 标记未保存 + 防抖 Flush tip（撤销/重做后调用）。 */
   touchDraft: () => void
   /** 新增/覆盖一个用户自定义文字预设（按 subtitle/overlay 分组持久化）。 */
   addTextStylePreset: (group: TextStyleGroup, preset: GraphTextStylePreset) => void
@@ -201,8 +201,7 @@ interface GraphScenarioStore {
   commit: (message?: string) => Promise<string | null>
   /** 刷新版本列表（游戏仓 git tags）。 */
   refreshVersions: () => Promise<void>
-  /** 载入某个历史版本到编辑器（非破坏式：只把该版内容放进当前工作数据；
-   *  内容异于当前干净基线时才标草稿；不改 git 历史、不 checkout；用户保存时才新增一版）。 */
+  /** 将用户版本 restore 写回 tip，再载入编辑器（SSOT 变为该内容）。 */
   loadVersion: (tag: string) => Promise<void>
   pick: (value: string) => void
   reset: () => void
@@ -219,19 +218,22 @@ let bootGame: string | null = null
 let bootAttemptId = 0
 
 /**
- * 上次「干净」落盘/载入内容的指纹。`isDraft` 只表示「当前编辑内容 ≠ 这份干净基线」，
- * 而不是「曾经点过编辑」——保存成功后无改动不得再提示「未保存草稿」。
+ * Last clean tip fingerprint. `isDraft` means editor content ≠ this baseline.
  */
 let cleanFingerprint: string | null = null
+/** Host tip revision token for optimistic PUT locking. */
+let tipRevision: string | null = null
+let unloadHooksInstalled = false
 
-/** 稳定序列化整份库文档，供草稿脏检查。 */
+/** Stable serialize of the library document for dirty checks. */
 export function projectFingerprint(doc: GraphLibraryDocument): string {
   return JSON.stringify(doc)
 }
 
-/** 测试钩子：重置干净基线（避免用例间串扰）。 */
+/** Test hook: reset clean baseline (avoid cross-test bleed). */
 export function resetCleanFingerprintForTests(): void {
   cleanFingerprint = null
+  tipRevision = null
 }
 
 // ── 撤销/重做（zundo）─────────────────────────────────────────────────────────
@@ -260,23 +262,51 @@ const HISTORY_OPTIONS: ZundoOptions<GraphScenarioStore, TrackedState> = {
 }
 
 export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get) => {
-  // 按内容相对干净基线判定草稿：有实质差异才标脏 + 防抖写 localStorage；内容回到基线则清提示与草稿。
+  // Content dirty vs tip baseline → debounce Flush tip (PUT package).
   const scheduleDraft = () => {
     const game = get().game
     const fp = projectFingerprint(get().authoringProject())
     const dirty = cleanFingerprint === null || fp !== cleanFingerprint
     set({ isDraft: dirty })
     clearDraftTimer()
-    // 只有 Host handshake 绑定了游戏身份后才允许写入按游戏隔离的草稿。
     if (!game) return
-    if (!dirty) {
-      clearDraft(game)
-      return
-    }
-    draftTimer = setTimeout(() => saveDraft(get().authoringProject(), game), 800)
+    if (!dirty) return
+    draftTimer = setTimeout(() => {
+      void flushTip(false)
+    }, 800)
   }
-  // 保存核心（save 与 commit 共用）：环检测 → 校验 → PUT blueprint。返回 PUT 的 promise，
-  // 让 commit() 能 await 到落盘完成再打版本（避免 blueprint 未落盘就 git commit 的竞态）。
+  /** Flush tip immediately. When `checkpoint` is true, also create an internal git checkpoint. */
+  const flushTip = async (checkpoint: boolean): Promise<boolean> => {
+    const game = get().game
+    if (!game) return false
+    const project = get().authoringProject()
+    const cycle = findReferenceCycle(project)
+    if (cycle) return false
+    const savedFp = projectFingerprint(project)
+    const res = await saveProject(project, game, tipRevision)
+    if (!res.ok) return false
+    tipRevision = res.revision
+    cleanFingerprint = savedFp
+    const nowDirty = projectFingerprint(get().authoringProject()) !== savedFp
+    set({ isDraft: nowDirty })
+    if (checkpoint) {
+      await checkpointTip(game)
+    }
+    return true
+  }
+  const installUnloadHooks = () => {
+    if (unloadHooksInstalled || typeof window === 'undefined') return
+    unloadHooksInstalled = true
+    const onLeave = () => {
+      clearDraftTimer()
+      void flushTip(true)
+    }
+    window.addEventListener('pagehide', onLeave)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') onLeave()
+    })
+  }
+  // Shared save core (save + commit): cycle check → validate → PUT tip.
   const runSave = (): { blocked: boolean; errs: number; done: Promise<boolean> } => {
     const game = get().game
     if (!game) {
@@ -297,23 +327,20 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
     }).filter((i) => i.level === 'error')
     const savedFp = projectFingerprint(project)
     set({ isDraft: false, savedTip: errs.length ? `保存中 · ⚠ ${errs.length} 处校验错误` : '保存中…' })
-    const done = saveProject(project, game).then((res) => {
+    const done = saveProject(project, game, tipRevision).then((res) => {
       if (!res.ok) {
         scheduleDraft()
-        set({ savedTip: '保存失败 · 草稿仍在本地，请检查 game-host 端点后重试' })
+        set({ savedTip: '保存失败 · tip 未写入，请检查 Host 后重试' })
         return false
       }
-      // 以本次成功落盘的内容为新基线；若保存途中又有编辑，按新内容重新判脏。
+      tipRevision = res.revision
       cleanFingerprint = savedFp
       const nowDirty = projectFingerprint(get().authoringProject()) !== savedFp
       set({
         isDraft: nowDirty,
         savedTip: errs.length ? `已保存 · ⚠ ${errs.length} 处校验错误` : `已保存 ${new Date().toLocaleTimeString()}`,
       })
-      if (nowDirty) {
-        clearDraftTimer()
-        draftTimer = setTimeout(() => saveDraft(get().authoringProject(), game), 800)
-      }
+      if (nowDirty) scheduleDraft()
       return true
     })
     // eslint-disable-next-line no-console
@@ -377,6 +404,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       const attemptId = ++bootAttemptId
       const attempt = (async () => {
         try {
+          installUnloadHooks()
           const s = await loadStore(game)
           const applyDoc = (doc: GraphLibraryDocument) => {
             const norm = normalizeLoadedDocument(doc, demo)
@@ -392,25 +420,16 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
               loadEpoch: cur.loadEpoch + 1,
             }))
           }
-          // 进入优先级：未保存草稿 > 磁盘最新文档。干净基线始终取磁盘最新；
-          // 草稿是否脏 = 内容是否异于该基线。缺失/无效包直接失败，绝不覆盖为空库。
-          if (isLibraryDocument(s.project)) {
-            cleanFingerprint = projectFingerprint(normalizeLoadedDocument(s.project, demo))
-          }
-          if (isLibraryDocument(s.draft)) {
-            applyDoc(s.draft)
-            scheduleDraft()
-          } else if (isLibraryDocument(s.project)) {
-            applyDoc(s.project)
-            cleanFingerprint = projectFingerprint(get().authoringProject())
-            set({ isDraft: false })
-          } else {
+          // Tip-only boot: never prefer localStorage draft over remote tip.
+          if (!isLibraryDocument(s.project)) {
             throw new TypeError('Host package blueprint is missing or invalid')
           }
-          set({ booted: true })
+          tipRevision = s.revision
+          applyDoc(s.project)
+          cleanFingerprint = projectFingerprint(get().authoringProject())
+          set({ isDraft: false, booted: true })
           void currentVersion(game).then((cv) => set({ currentTag: cv.tag }))
           void listVersions(game).then((vs) => set({ gameVersions: vs }))
-          // 尽力加载该游戏仓专属组件（dist/components）；未构建/离线则静默用平台内建集。
           void loadGameComponents(game)
         } catch (cause) {
           if (get().game === game) set({ booted: false })
@@ -676,16 +695,22 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       set({ gameVersions: await listVersions(get().game) })
     },
 
-    // 非破坏式载入某历史版本：读该 tag 的 blueprint 放进当前编辑数据；
-    // 不 checkout、不改 git 历史。内容若已等于当前干净基线（如刚保存的最新版）则不标草稿。
-    // 覆盖未保存草稿的二次确认由 VersionPicker 的 popConfirm 负责，此处不再弹原生 confirm。
+    // Restore user version onto tip, then reload editor from restored tip.
     loadVersion: async (tag: string) => {
-      const doc = await loadVersionProject(get().game, tag)
+      const game = get().game
+      const doc = await restoreVersionToTip(game, tag)
       if (!isLibraryDocument(doc)) {
-        set({ savedTip: `载入 ${tag} 失败` })
+        set({ savedTip: `恢复 ${tag} 失败` })
         return
       }
       clearDraftTimer()
+      // Refresh tip revision after restore mutated Host tip.
+      try {
+        const reloaded = await loadStore(game)
+        tipRevision = reloaded.revision
+      } catch {
+        tipRevision = null
+      }
       const demo = get().demo
       const norm = demo ? normalizeLoadedDocument(doc, demo) : normalizeDocument(doc)
       const mainId = norm.manifest.mainPackId
@@ -696,15 +721,13 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
         meta: metaFromDocument(norm),
         graph: norm.manifest.packs[mainId]?.graph ?? EMPTY_GRAPH,
         currentTag: tag,
+        isDraft: false,
         loadEpoch: st.loadEpoch + 1,
         fitSignal: st.fitSignal + 1,
+        savedTip: `已恢复版本 ${tag} 为当前 tip`,
       }))
-      scheduleDraft()
-      set({
-        savedTip: get().isDraft
-          ? `已载入版本 ${tag}（未保存 · 保存后将成为新版本）`
-          : `已载入版本 ${tag}`,
-      })
+      cleanFingerprint = projectFingerprint(get().authoringProject())
+      void listVersions(game).then((vs) => set({ gameVersions: vs }))
     },
 
     // 重置：用内置 demo 替换当前内容（含全部子蓝图）。若与当前版本不同则标未保存草稿。

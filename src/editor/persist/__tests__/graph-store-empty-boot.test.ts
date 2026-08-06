@@ -4,8 +4,8 @@ vi.mock('../persist-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../persist-client')>()
   return {
     ...actual,
-    loadStore: vi.fn(async () => ({ project: null, draft: null, versions: [] })),
-    saveProject: vi.fn(async () => ({ ok: true })),
+    loadStore: vi.fn(async () => ({ project: null, revision: null, versions: [] })),
+    saveProject: vi.fn(async () => ({ ok: true, revision: 'rev' })),
     currentVersion: vi.fn(async () => ({ tag: null, commitHash: null, dirty: false })),
     listVersions: vi.fn(async () => []),
   }
@@ -77,7 +77,7 @@ describe('store boot failures', () => {
     const loadError = new Error('temporary package read failure')
     vi.mocked(loadStore)
       .mockRejectedValueOnce(loadError)
-      .mockResolvedValueOnce({ project: demo, draft: null, versions: [] })
+      .mockResolvedValueOnce({ project: demo, revision: 'rev-demo', versions: [] })
 
     await expect(useGraphScenario.getState().ensureBoot('brand-new-game', demo)).rejects.toThrow(loadError)
 
