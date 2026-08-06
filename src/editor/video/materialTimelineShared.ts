@@ -76,10 +76,15 @@ export interface TimelinePointMarker {
   draggable?: boolean
 }
 
-/** 无固定时间坐标的结算条件；在时间轴上以贯穿节点时长的条件条表达。 */
+/** 无固定时间坐标的结算条件；每个条件在时间轴上独占一轨（行结构：↻ 条件 chips → 动作 chips）。 */
 export interface TimelineConditionMarker {
   id: string
+  /** 完整文案（title / 无障碍名），由条件侧 + 动作侧拼接。 */
   label: string
+  /** 条件侧分段 chips（如 [分数, 增加] / [满足 2 项条件]）。 */
+  conditionChips: string[]
+  /** 动作侧分段 chips（效果 / 绑定界面 / 推进各一段）。 */
+  actionChips: string[]
 }
 
 /**
