@@ -20,15 +20,13 @@ export type WbGameVideoHttpRoute = {
   /** Service method for POST routes that share the JSON body → service pattern. */
   readonly service?: WbGameVideoServiceMethod
   /** Free-form GET/POST handlers implemented in router.ts. */
-  readonly kind?: 'list-assets' | 'get-asset' | 'bundled-media' | 'get-style-axes' | 'set-style-axes' | 'get-asset-library' | 'set-asset-library'
+  readonly kind?: 'list-assets' | 'get-asset' | 'bundled-media' | 'get-style-axes' | 'set-style-axes'
 }
 
 /** Ordered for documentation; router may use maps for O(1) lookup. */
 export const WB_GAME_VIDEO_HTTP_ROUTES: readonly WbGameVideoHttpRoute[] = [
   { method: 'GET', path: 'assets', kind: 'list-assets' },
   { method: 'GET', path: 'assets/:id', kind: 'get-asset' },
-  { method: 'GET', path: 'asset-library', kind: 'get-asset-library' },
-  { method: 'POST', path: 'asset-library', kind: 'set-asset-library' },
   { method: 'GET', path: 'media/bundled/:name', kind: 'bundled-media' },
   { method: 'GET', path: 'style-axes', kind: 'get-style-axes' },
   { method: 'POST', path: 'style-axes', kind: 'set-style-axes' },
