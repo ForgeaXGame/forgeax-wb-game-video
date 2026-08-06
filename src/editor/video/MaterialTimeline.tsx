@@ -22,6 +22,8 @@ import {
   clampMs,
   clampZoom,
   fmtDur,
+  initialViewportWidthLatch,
+  latchViewportWidth,
   layerFromPointerY,
   layerTop,
   materialClass,
@@ -283,7 +285,9 @@ export function MaterialTimeline({
     ? Math.max(0, seekDragSensitivity)
     : 1
   const [zoom, setZoom] = useState(1)
-  const [viewportW, setViewportW] = useState(0)
+  // 视口宽经闩锁采纳：滚动条显隐引起的来回抖动会被收敛掉（见 latchViewportWidth）。
+  const [viewportWidthLatch, setViewportWidthLatch] = useState(initialViewportWidthLatch)
+  const viewportW = viewportWidthLatch.width
   const [drag, setDrag] = useState<DragState | null>(null)
   const [dropHint, setDropHint] = useState<{ ms: number; zIndex: number } | null>(null)
 
@@ -338,7 +342,7 @@ export function MaterialTimeline({
     const vp = timelineViewportRef.current
     if (!vp) return
     const measure = () => {
-      setViewportW(vp.clientWidth)
+      setViewportWidthLatch((state) => latchViewportWidth(state, vp.clientWidth))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -1102,10 +1106,8 @@ const MATERIAL_TIMELINE_CSS = `
   border: 1px solid var(--gc-line-soft);
   background: rgba(0,0,0,0.22);
   overflow: auto;
-  /* 纵向滚动条常驻占位：canvasPx 由 clientWidth 派生，若滚动条来去改变 clientWidth，
-     就会「画布变宽 → 出横向滚动条 → 内高变矮 → 出纵向滚动条 → 画布变窄」地自激振荡。
-     留稳定沟槽后 clientWidth 与滚动条显隐无关，环被切断。 */
-  scrollbar-gutter: stable;
+  /* 刻意不用 scrollbar-gutter: stable —— 常驻沟槽会破坏设计稿的时间轴观感。
+     滚动条显隐引起的宽度自激振荡改由 latchViewportWidth 在测量侧收敛。 */
   overscroll-behavior: contain;
 }
 .mtl-root .gc-mtimeline-canvas {

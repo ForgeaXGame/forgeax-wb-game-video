@@ -61,8 +61,9 @@ describe('MaterialTimeline · 视口几何', () => {
   })
 
   /**
-   * 余下的振荡通路在浏览器侧（JS 不参与）：滚动条显隐改 clientWidth / 内高，
-   * 而 canvasPx 由 clientWidth 派生。两条 CSS 声明把它彻底切断，故在此立契约。
+   * 右缘装饰（结尾处播放头游标半个头、绑定界面组标签）曾把可滚动宽度撑大，
+   * 于是「播放到结尾」会凭空冒出横向滚动条，再牵动纵向滚动条一起抽动。
+   * 裁掉这份溢出是根治；滚动条不常驻占位（设计稿观感），故不用 scrollbar-gutter。
    */
   describe('滚动条无关性（CSS 契约）', () => {
     function ruleBlock(css: string, selector: string): string {
@@ -70,21 +71,23 @@ describe('MaterialTimeline · 视口几何', () => {
       return match?.[0] ?? ''
     }
 
+    /** 只看真实声明：注释里提到某属性（如「刻意不用 X」）不算生效。 */
     function timelineCss(): string {
       const { widthSpy, heightSpy } = renderTimeline({ clientWidth: 600, clientHeight: 400 })
       widthSpy.mockRestore()
       heightSpy.mockRestore()
-      return document.querySelector('style[data-reel-style="material-timeline"]')?.textContent ?? ''
+      const raw = document.querySelector('style[data-reel-style="material-timeline"]')?.textContent ?? ''
+      return raw.replace(/\/\*[\s\S]*?\*\//g, '')
     }
-
-    it('视口给纵向滚动条留常驻沟槽，clientWidth 不随显隐变化', () => {
-      expect(ruleBlock(timelineCss(), '.gc-mtimeline-viewport')).toContain('scrollbar-gutter: stable')
-    })
 
     it('画布横向裁掉右缘装饰溢出，结尾播放头不会凭空触发横向滚动条', () => {
       const block = ruleBlock(timelineCss(), '.gc-mtimeline-canvas')
       expect(block).toContain('overflow-x: clip')
       expect(block).toContain('overflow-anchor: none')
+    })
+
+    it('不给滚动条留常驻沟槽（会破坏设计稿观感；振荡在测量侧收敛）', () => {
+      expect(timelineCss()).not.toContain('scrollbar-gutter')
     })
   })
 })
