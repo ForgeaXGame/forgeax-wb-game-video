@@ -101,7 +101,7 @@ const NPS_CSS = `
   --gc-accent-soft: var(--accent-soft, rgba(240,136,64,.16));
   --gc-accent-line: var(--accent-line, rgba(240,136,64,.42));
   display: flex; flex-direction: column; gap: 8px;
-  padding: 10px; min-height: 0; overflow-y: auto; flex: 1;
+  padding: 10px; min-height: 0; overflow-y: auto; flex: 1; background: #2C2C2C;
 }
 .nps-frame { flex: none; }
 /* Figma 14935:70362：节点编辑与全流程预览共用浅灰半透圆角视频面。

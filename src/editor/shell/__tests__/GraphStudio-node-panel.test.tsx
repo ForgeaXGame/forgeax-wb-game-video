@@ -175,9 +175,9 @@ describe('GraphStudio 节点配置分栏', () => {
     expect(screen.getByTestId('node-inspector-column')).toHaveStyle({ minWidth: '280px' })
 
     fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
-    expect(screen.getByTestId('node-panel-columns')).toHaveStyle({
-      gridTemplateColumns: 'minmax(340px, 711fr) 5px minmax(280px, 500fr)',
-    })
+    expect(screen.getByTestId('node-panel-columns').style.gridTemplateColumns)
+      .toBe('minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))')
+    expect(screen.queryByTitle('拖动调整预览区宽度')).toBeNull()
     expect(screen.getByRole('button', { name: '收起预览区' })).toBeTruthy()
     expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('1')
 
@@ -193,6 +193,61 @@ describe('GraphStudio 节点配置分栏', () => {
       expect(screen.queryByTestId('node-preview-column')).toBeNull()
       expect(window.localStorage.getItem('wb-game-video.nodePanel.previewOpen')).toBe('0')
     })
+  })
+
+  it('收起预览时保留抽屉内容到 220ms 动画结束', async () => {
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
+    expect(screen.getByTestId('node-panel-columns')).toHaveAttribute('data-preview-open', 'true')
+    expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '收起预览区' }))
+    expect(screen.getByTestId('node-panel-columns')).toHaveAttribute('data-preview-open', 'false')
+    expect(screen.getByTestId('node-preview-column')).toBeTruthy()
+
+    await waitFor(
+      () => expect(screen.queryByTestId('node-preview-column')).toBeNull(),
+      { timeout: 500 },
+    )
+  })
+
+  it('预览抽屉开合不改变右侧配置列的轨道与占位', async () => {
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    const columns = screen.getByTestId('node-panel-columns')
+    const collapsedTracks = columns.style.gridTemplateColumns
+    expect(screen.getByTestId('node-inspector-column')).toHaveStyle({ gridColumn: '2' })
+
+    fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
+    expect(columns.style.gridTemplateColumns).toBe(collapsedTracks)
+    expect(screen.getByTestId('node-inspector-column')).toHaveStyle({ gridColumn: '2' })
+
+    fireEvent.click(screen.getByRole('button', { name: '收起预览区' }))
+    expect(columns.style.gridTemplateColumns).toBe(collapsedTracks)
+    await waitFor(
+      () => expect(screen.queryByTestId('node-preview-column')).toBeNull(),
+      { timeout: 500 },
+    )
+    expect(columns.style.gridTemplateColumns).toBe(collapsedTracks)
+    expect(screen.getByTestId('node-inspector-column')).toHaveStyle({ gridColumn: '2' })
+  })
+
+  it('用裁切层揭开固定最终宽度的预览内容', () => {
+    render(<GraphStudio scenario={SCENARIO} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '展开预览区' }))
+
+    expect(screen.getByTestId('node-preview-column')).toHaveStyle({
+      gridColumn: '1',
+      overflow: 'hidden',
+    })
+    const content = screen.getByTestId('node-preview-content')
+    expect(content).toHaveStyle({
+      position: 'absolute',
+      right: '0px',
+    })
+    expect(content.style.width).toBe('var(--gv-preview-target-w)')
   })
 
   it('切换节点时保持节点预览的声音开关', async () => {

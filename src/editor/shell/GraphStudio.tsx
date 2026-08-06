@@ -72,17 +72,32 @@ function ensureToolbarStyle(): void {
     .gv-graph-toolbar{position:relative;z-index:2;flex-shrink:0;background:#1b1713;border-bottom:1px solid #2e2924;color:#f6f1e9}
     .gv-graph-toolbar button,.gv-graph-toolbar select{background:#252019;border:1px solid #403830;color:#f6f1e9;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
     .gv-graph-toolbar button:hover,.gv-graph-toolbar select:hover{background:#2f2923;border-color:#f08840}
-    .gv-splitter{flex:none;width:5px;margin:0 -1px;cursor:col-resize;background:transparent;transition:background .12s;z-index:3}
-    .gv-splitter:hover,.gv-splitter.is-drag{background:rgba(240,136,64,.4)}
+    .gv-node-panel{
+      /* 配置列宽与预览开合无关；预览内容始终保持 target 宽度，只有裁切轨道 0 ↔ target 在动。 */
+      --gv-form-w:clamp(${FORM_W_MIN}px,28vw,500px);
+      --gv-preview-target-w:calc(var(--gv-form-w) * 711 / 500);
+      --gv-preview-w:0px;
+      /* 与画布的分隔线是两列之外的额外一像素，不算进设计宽度，否则右列会跟着差 1px。 */
+      border-left:1px solid #2e2924;
+      width:calc(var(--gv-form-w) + var(--gv-preview-w) + 1px);
+      will-change:width;
+      transition:width var(--motion-duration-panel,220ms) var(--motion-ease-out,cubic-bezier(0,0,.2,1));
+    }
+    .gv-node-panel[data-preview-open="true"]{--gv-preview-w:var(--gv-preview-target-w)}
+    .gv-node-panel-columns{
+      transition:grid-template-columns var(--motion-duration-panel,220ms) var(--motion-ease-out,cubic-bezier(0,0,.2,1));
+    }
+    .gv-node-preview-column{position:relative;overflow:hidden}
+    @media (prefers-reduced-motion:reduce){
+      .gv-node-panel,.gv-node-panel-columns{transition-duration:1ms!important}
+    }
   `
 }
 
-/** 节点面板分栏：默认预览占 60%，拖拽后记住像素宽度；表单保持可操作的最小宽度。 */
-const PREVIEW_W_KEY = 'wb-game-video.nodePanel.previewW'
-const PREVIEW_W_MIN = 340
+/** 节点面板分栏：Figma 设计宽度为预览 711px + 表单 500px，窄屏保持同比缩放。 */
 const FORM_W_MIN = 280
-const SPLITTER_W = 5
 const PREVIEW_OPEN_KEY = 'wb-game-video.nodePanel.previewOpen'
+const PREVIEW_DRAWER_MOTION_MS = 220
 
 /**
  * 预览区开关拉片（Figma 14597:20050）：#2C2C2C 左尖拉片 + 向左渐亮的白描边 + 视频库图标，
@@ -277,12 +292,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     setFocusedMountId(null)
     setFocusedLifecycleIndex(null)
   }, [focusedLifecycleIndex, focusedMountId])
-  // 节点配置面板：左侧预览区宽度（px，可拖调，localStorage 记忆）。
-  const [previewW, setPreviewW] = useState<number | null>(() => {
-    if (typeof window === 'undefined') return null
-    const v = Number(window.localStorage.getItem(PREVIEW_W_KEY))
-    return Number.isFinite(v) && v >= PREVIEW_W_MIN ? v : null
-  })
   // 已有节点间切换沿用上次状态并跨会话记忆；只有新建节点时强制收起（见 addPerfNode）。
   const [previewOpen, setPreviewOpen] = useState(
     () => typeof window !== 'undefined' && window.localStorage.getItem(PREVIEW_OPEN_KEY) === '1',
@@ -415,6 +424,21 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
     && !getSubFlowPack(selectedNode.data)
   // 试玩浮层与节点预览互斥显示，但不改 previewOpen：关闭试玩后恢复用户原有预览状态。
   const effectivePreviewOpen = previewOpen && !playOpen && selectedCanConfigurePerformance
+  // 关闭时让预览内容保留到抽屉动画结束再卸载；只控制视觉生命周期，不改变预览业务状态。
+  const [previewDrawerMounted, setPreviewDrawerMounted] = useState(effectivePreviewOpen)
+  useEffect(() => {
+    if (effectivePreviewOpen) {
+      setPreviewDrawerMounted(true)
+      return
+    }
+    const reducedMotion = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const timer = window.setTimeout(
+      () => setPreviewDrawerMounted(false),
+      reducedMotion ? 0 : PREVIEW_DRAWER_MOTION_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [effectivePreviewOpen])
   useEffect(() => {
     if (!effectivePreviewOpen) setSettlementInsertTimeMs(null)
   }, [effectivePreviewOpen])
@@ -444,35 +468,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       st.setMeta(metaFromDocument(next))
     },
     [canvasGraph, selected, setCanvasGraph],
-  )
-  /** 预览/表单分栏拖拽：pointer capture 跟踪横向位移，松手写回 localStorage。 */
-  const startPreviewDrag = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      const el = e.currentTarget
-      const startX = e.clientX
-      const previewColumn = el.previousElementSibling as HTMLElement | null
-      const startW = previewColumn?.getBoundingClientRect().width ?? previewW ?? PREVIEW_W_MIN
-      const maxW = Math.max(PREVIEW_W_MIN, (panelRef.current?.clientWidth ?? 960) - FORM_W_MIN - SPLITTER_W)
-      el.classList.add('is-drag')
-      el.setPointerCapture(e.pointerId)
-      const onMove = (ev: PointerEvent): void => {
-        const next = Math.round(Math.max(PREVIEW_W_MIN, Math.min(maxW, startW + (ev.clientX - startX))))
-        setPreviewW(next)
-      }
-      const onUp = (): void => {
-        el.classList.remove('is-drag')
-        el.removeEventListener('pointermove', onMove)
-        el.removeEventListener('pointerup', onUp)
-        setPreviewW((w) => {
-          if (typeof window !== 'undefined' && w != null) window.localStorage.setItem(PREVIEW_W_KEY, String(w))
-          return w
-        })
-      }
-      el.addEventListener('pointermove', onMove)
-      el.addEventListener('pointerup', onUp)
-    },
-    [previewW],
   )
   // 面板实际宽度跟随测量（clamp 宽度 + 窗口缩放都会变），用于夹住预览区上限。
   useEffect(() => {
@@ -835,15 +830,15 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       {selected && (
         <div
           ref={panelRef}
+          className="gv-node-panel"
+          data-preview-open={effectivePreviewOpen}
           style={{
-            // 展开预览时让节点面板最多占主区 90%；总宽对齐 Figma 14597:20310（预览 711 + 配置 500 = 1211）。
-            // 预览收起时只留表单宽度——否则表单会被拉到 960px，面板照旧占地方，收起就白收了。
-            width: effectivePreviewOpen ? 'clamp(960px, 66vw, 1211px)' : `clamp(${FORM_W_MIN}px, 28vw, 500px)`,
-            maxWidth: effectivePreviewOpen ? '90%' : '80%',
+            // 宽度 = 配置列 + 预览列，两者由 .gv-node-panel 的 CSS 变量给出：
+            // 满宽时是 Figma 14597:20310 的 711 + 500 = 1211，窄屏两列同比缩小。
+            maxWidth: '90%',
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
-            borderLeft: '1px solid #2e2924',
             // 给预览区拉片定位：它骑在面板左缘（向左探出 34px 压在画布上），面板自身不裁剪。
             position: 'relative',
           }}
@@ -853,31 +848,43 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
           {selectedCanConfigurePerformance ? (
             <PreviewTogglePill open={effectivePreviewOpen} onToggle={togglePreviewSurface} />
           ) : null}
-          {/* 展开态默认 711:500（Figma 14597:20310 预览区:配置列）；拖拽后首列改用用户设定宽度。
-              窄面板仍保证预览略宽于表单。 */}
+          {/* 展开态固定 711:500（Figma 14597:20310 预览区:配置列），窄屏同比缩放。 */}
           <div
             data-testid="node-panel-columns"
+            data-preview-open={effectivePreviewOpen}
+            className="gv-node-panel-columns"
             style={{
               flex: 1,
               minHeight: 0,
-              display: effectivePreviewOpen ? 'grid' : 'flex',
-              gridTemplateColumns: effectivePreviewOpen
-                ? `${previewW == null ? `minmax(${PREVIEW_W_MIN}px, 711fr)` : `${previewW}px`} ${SPLITTER_W}px minmax(${FORM_W_MIN}px, 500fr)`
+              display: selectedCanConfigurePerformance ? 'grid' : 'flex',
+              gridTemplateColumns: selectedCanConfigurePerformance
+                ? 'minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))'
                 : undefined,
-              overflowX: 'auto',
+              overflowX: 'hidden',
             }}
           >
-            {selectedNode && effectivePreviewOpen ? (
-              <>
+            {selectedNode && selectedCanConfigurePerformance && previewDrawerMounted ? (
+              <div
+                data-testid="node-preview-column"
+                className="gv-node-preview-column"
+                style={{
+                  // 本层只负责从右向左扩大裁切窗口；内部内容从第一帧起就是最终宽度。
+                  gridColumn: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}
+              >
                 <div
-                  data-testid="node-preview-column"
+                  data-testid="node-preview-content"
                   style={{
-                    // 列宽由外层 grid 管：默认 3:2，拖拽后首列固定为 previewW。
-                    // Figma 14597:20633：左侧预览是独立区域，底色 #2C2C2C 与右列页签栏同色。
-                    minWidth: PREVIEW_W_MIN,
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: 'var(--gv-preview-target-w)',
                     display: 'flex',
                     flexDirection: 'column',
-                    overflow: 'hidden',
+                    // Figma 14597:20633：左侧预览是独立区域，底色与右列页签栏同色。
                     background: '#2C2C2C',
                   }}
                 >
@@ -895,19 +902,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                     onFocusLifecycle={focusLifecycleFromPreview}
                   />
                 </div>
-                <div
-                  className="gv-splitter"
-                  onPointerDown={startPreviewDrag}
-                  title="拖动调整预览区宽度"
-                />
-              </>
+              </div>
             ) : null}
             {/* 右列：一级页签栏是本列头部（预览展开时不再横跨整板），下方配置内容独立滚动。
-                收起态由面板的 28vw 给出舒适宽度；展开态表单下限 280px，把空间优先留给预览。
+                固定占第 2 栏——预览列在收起动画结束后会卸载，不锁死列号它会掉进宽度为 0 的第 1 栏。
                 长下拉文案会把表单撑到 ~880px，中等宽度也出现不必要的横向滚动。 */}
             <div
               data-testid="node-inspector-column"
-              style={{ flex: `1 0 ${FORM_W_MIN}px`, minWidth: FORM_W_MIN, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+              style={{ gridColumn: 2, flex: `1 0 ${FORM_W_MIN}px`, minWidth: FORM_W_MIN, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
             >
               {/* 一级页签栏（Figma 14597:21458）：Agent（预留空态）｜{节点名}调试面板，✕ 关闭右置。 */}
               <NodePanelTabBar
