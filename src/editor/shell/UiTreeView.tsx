@@ -17,10 +17,10 @@ export interface UiTreeViewProps {
   usageByOverlay?: Record<string, number>
   selectedTreeNodeId: string | null
   onSelect: (node: UiTreeViewNode) => void
-  onAddFolder: (parentId: string) => void
-  onAddScheme: (parentId: string) => void
   onRename: (nodeId: string, name: string) => void
   onDelete: (node: UiTreeViewNode) => void
+  /** 起始层级：子树挂在左栏「界面」行下时传 1，使缩进与主树 depth*8 连续。 */
+  baseDepth?: number
 }
 
 const UI_TREE_CSS = `
@@ -28,7 +28,7 @@ const UI_TREE_CSS = `
 .uit-branch { display:flex; flex-direction:column; width:100%; min-width:0; }
 .uit-row {
   box-sizing:border-box; width:100%; min-width:0; height:42px;
-  display:flex; align-items:center; gap:4px; padding-right:0;
+  display:flex; align-items:center; gap:4px; padding-right:8px;
   border-bottom:1px solid rgba(255,255,255,.10); background:transparent; color:#fff;
 }
 .uit-row:hover { background:rgba(255,255,255,.05); }
@@ -42,24 +42,31 @@ const UI_TREE_CSS = `
 }
 .uit-toggle {
   width:20px; height:20px; flex:none; display:inline-flex; align-items:center; justify-content:center;
-  text-align:center; opacity:.72; font-size:15px; line-height:20px;
-  border:0; padding:0; background:transparent; color:inherit; cursor:pointer;
+  border:0; padding:0; background:transparent; color:#fff; cursor:pointer;
+  transition:transform .18s ease;
 }
-.uit-row:hover .uit-toggle,.uit-row:focus-within .uit-toggle { opacity:1; }
+.uit-toggle svg { width:20px; height:20px; display:block; }
+.uit-toggle.is-collapsed { transform:rotate(-90deg); }
 .uit-label {
   min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   font-size:16px; line-height:26px;
 }
 .uit-usage { flex:none; font-size:11px; opacity:.65; }
+.uit-row-actions {
+  flex:none; display:none; align-items:center; gap:8px; margin-left:8px;
+}
+.uit-row:hover .uit-row-actions,
+.uit-row:focus-within .uit-row-actions,
+.uit-row-actions:has(.is-open) { display:inline-flex; }
 .uit-icon-btn {
-  width:20px; height:20px; flex:none; border:0; border-radius:2px; background:transparent;
-  color:rgba(255,255,255,.72); cursor:pointer; padding:0; opacity:0; pointer-events:none;
-  transition:opacity .12s, background .12s;
+  all:unset; box-sizing:border-box; width:16px; height:16px; flex:none;
+  display:inline-flex; align-items:center; justify-content:center; border-radius:3px;
+  color:rgba(255,255,255,.40); cursor:pointer;
+  transition:color .12s, background .12s;
 }
-.uit-row:hover .uit-icon-btn,.uit-row:focus-within .uit-icon-btn,.uit-icon-btn.is-open {
-  opacity:1; pointer-events:auto;
-}
-.uit-icon-btn:hover,.uit-icon-btn.is-open { background:rgba(255,255,255,.12); color:#fff; }
+.uit-icon-btn:hover,.uit-icon-btn.is-open { background:rgba(255,255,255,.10); color:#fff; }
+.uit-icon-btn.is-danger:hover,.uit-icon-btn.is-danger.is-open { color:#ff8e8e; }
+.uit-icon-btn svg { width:14px; height:14px; display:block; }
 .uit-children { display:flex; flex-direction:column; width:100%; min-width:0; }
 .uit-menu {
   box-sizing:border-box; width:calc(100% - 24px); min-width:0;
@@ -82,11 +89,30 @@ const UI_TREE_CSS = `
 .uit-confirm-actions { display:flex; justify-content:flex-end; gap:5px; }
 .ns-empty {
   min-height:42px; display:flex; align-items:center; border-bottom:1px solid rgba(255,255,255,.10);
-  color:rgba(255,255,255,.45); font-size:13px;
+  color:rgba(255,255,255,.45); font-size:13px; padding-left:8px;
 }
 `
 
-type RowMode = 'menu' | 'rename' | 'delete' | null
+type RowMode = 'rename' | 'delete' | null
+
+const ChevronIcon = (
+  <svg viewBox="0 0 20 20" fill="none" aria-hidden>
+    <path d="M15 12.5L10 7.5L5 12.5" stroke="currentColor" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const PencilIcon = (
+  <svg viewBox="0 0 14 14" fill="none" aria-hidden>
+    <path d="M10.2083 6.41732L12.5416 4.08398L9.91661 1.45898L7.58327 3.79232L1.75 9.62565V12.2506H4.37494L10.2083 6.41732ZM7.58327 3.79232L10.2083 6.41732" stroke="currentColor" strokeWidth="1.16667" />
+  </svg>
+)
+
+const TrashIcon = (
+  <svg viewBox="0 0 14 14" fill="none" aria-hidden>
+    <path d="M12.25 2.91602H1.75M2.91667 2.91602H11.0833L10.7917 12.8327H3.20833L2.91667 2.91602ZM4.95833 1.16602H9.04167V2.91602H4.95833V1.16602Z" stroke="currentColor" strokeWidth="1.16667" strokeLinecap="square" />
+    <path d="M7 5.25V10.5" stroke="currentColor" strokeWidth="1.16667" strokeLinecap="square" />
+  </svg>
+)
 
 function UiTreeRow({
   node,
@@ -95,8 +121,6 @@ function UiTreeRow({
   usageByOverlay,
   selectedTreeNodeId,
   onSelect,
-  onAddFolder,
-  onAddScheme,
   onRename,
   onDelete,
 }: UiTreeViewProps & { node: UiTreeViewNode; depth: number }): JSX.Element {
@@ -122,7 +146,7 @@ function UiTreeRow({
     <div className="uit-branch" role="treeitem" aria-expanded={isFolder ? expanded : undefined}>
       <div
         className={`uit-row${selectedTreeNodeId === node.id ? ' is-selected' : ''}`}
-        style={{ paddingLeft: Math.min(depth * 24, 96) }}
+        style={{ paddingLeft: depth * 8 }}
       >
         <div
           className="uit-main"
@@ -143,7 +167,7 @@ function UiTreeRow({
         >
           <button
             type="button"
-            className="uit-toggle"
+            className={`uit-toggle${isFolder && !expanded ? ' is-collapsed' : ''}`}
             aria-label={isFolder ? `${expanded ? '收起' : '展开'}${label}` : undefined}
             tabIndex={isFolder ? 0 : -1}
             onClick={(event) => {
@@ -152,7 +176,7 @@ function UiTreeRow({
               setExpanded((value) => !value)
             }}
           >
-            {isFolder ? (expanded ? '⌄' : '›') : ''}
+            {isFolder ? ChevronIcon : null}
           </button>
           {mode === 'rename' ? (
             <span className="uit-edit" onClick={(event) => event.stopPropagation()}>
@@ -174,25 +198,29 @@ function UiTreeRow({
           {!isFolder && usage > 0 && <span className="uit-usage" title={`被 ${usage} 个节点引用`}>⇢{usage}</span>}
         </div>
         {!node.readOnly && mode !== 'rename' && (
-          <button
-            type="button"
-            className={`uit-icon-btn${mode ? ' is-open' : ''}`}
-            aria-label={`${label}操作`}
-            aria-expanded={mode !== null}
-            onClick={() => setMode((value) => (value ? null : 'menu'))}
-          >
-            ⋯
-          </button>
+          <span className="uit-row-actions" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="uit-icon-btn"
+              aria-label={`重命名 ${label}`}
+              title="重命名"
+              onClick={() => setMode('rename')}
+            >
+              {PencilIcon}
+            </button>
+            <button
+              type="button"
+              className={`uit-icon-btn is-danger${mode === 'delete' ? ' is-open' : ''}`}
+              aria-label={`删除 ${label}`}
+              title="删除"
+              aria-expanded={mode === 'delete'}
+              onClick={() => setMode((value) => (value === 'delete' ? null : 'delete'))}
+            >
+              {TrashIcon}
+            </button>
+          </span>
         )}
       </div>
-      {mode === 'menu' && (
-        <div className="uit-menu" role="menu" aria-label={`${label}操作菜单`}>
-          {isFolder && <button type="button" onClick={() => { onAddFolder(node.id); setExpanded(true); setMode(null) }}>＋ 子文件夹</button>}
-          {isFolder && <button type="button" onClick={() => { onAddScheme(node.id); setExpanded(true); setMode(null) }}>＋ 方案</button>}
-          <button type="button" onClick={() => setMode('rename')}>重命名</button>
-          <button type="button" className="is-danger" onClick={() => setMode('delete')}>删除</button>
-        </div>
-      )}
       {mode === 'delete' && (
         <div className="uit-menu" role="dialog" aria-label={`删除${label}`}>
           <div className="uit-confirm">
@@ -219,8 +247,6 @@ function UiTreeRow({
               usageByOverlay={usageByOverlay}
               selectedTreeNodeId={selectedTreeNodeId}
               onSelect={onSelect}
-              onAddFolder={onAddFolder}
-              onAddScheme={onAddScheme}
               onRename={onRename}
               onDelete={onDelete}
             />
@@ -233,10 +259,11 @@ function UiTreeRow({
 
 export function UiTreeView(props: UiTreeViewProps): JSX.Element {
   injectStyleOnce('ui-tree-view', UI_TREE_CSS)
+  const baseDepth = props.baseDepth ?? 0
   return (
     <div className="uit-tree" role="tree" aria-label="界面方案树">
       {props.nodes.length > 0 ? props.nodes.map((node) => (
-        <UiTreeRow key={node.id} {...props} node={node} depth={0} />
+        <UiTreeRow key={node.id} {...props} node={node} depth={baseDepth} />
       )) : <div className="ns-empty">暂无界面方案</div>}
     </div>
   )
