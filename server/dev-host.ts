@@ -39,22 +39,6 @@ function within(root: string, candidate: string): boolean {
   return path === '' || (!path.startsWith('..') && !path.startsWith(`..${sep}`))
 }
 
-/**
- * Node cannot fsync a directory handle on Windows (`EPERM`), even though the
- * preceding rename/unlink has already completed. The generic development
- * adapter uses that POSIX durability barrier; keep its bounded path authority
- * while treating only this unsupported barrier as a successful dev operation.
- */
-async function tolerateWindowsDirectorySync(operation: () => Promise<void>): Promise<void> {
-  try {
-    await operation()
-  } catch (error) {
-    const cause = error as NodeJS.ErrnoException
-    if (process.platform === 'win32' && cause.code === 'EPERM' && cause.syscall === 'fsync') return
-    throw error
-  }
-}
-
 class LocalDevWorkspace implements WorkspaceAdapter {
   private readonly gamesRoot: string
 
@@ -117,11 +101,11 @@ class LocalDevWorkspace implements WorkspaceAdapter {
       },
       async write(path, contents) {
         assertActive()
-        await tolerateWindowsDirectorySync(() => bounded.write(path, contents))
+        await bounded.write(path, contents)
       },
       async delete(path) {
         assertActive()
-        await tolerateWindowsDirectorySync(() => bounded.delete(path))
+        await bounded.delete(path)
       },
       async withLocks(keys, work) {
         assertActive()
