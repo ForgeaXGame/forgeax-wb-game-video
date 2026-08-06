@@ -91,6 +91,7 @@ export async function generateVideoClip(
       sceneNodeId: ASSET_LIBRARY_NODE_ID,
       label: validated.label,
       prompt: args.prompt,
+      // durationMs 记录的是请求时长而非产物实际时长；provider 未回传真实时长。
       durationMs: Math.round(validated.durationSeconds * 1_000),
       meta: {
         source: ASSET_LIBRARY_SOURCE,
@@ -222,6 +223,7 @@ async function assertImageAsset(registry: HostAssetRegistry, assetId: string): P
   }
   return asset
 }
+
 
 function optionalAssetId(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined

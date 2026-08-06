@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { t } from '../../../i18n'
 import type { MediaStatus } from '../registry-types'
 import {
   assertClipGenerationRequestId,
@@ -475,9 +476,9 @@ function assertReferenceIdentities(
 }
 
 function missingReferenceIdentity(transport: ReferenceIdentityTransport): Error {
-  return new Error(transport === 'http'
-    ? 'Selected reference media is unavailable for HTTP generation. Choose it again.'
-    : 'Selected reference media is unavailable for tool generation. Choose it again.')
+  return new Error(t(transport === 'http'
+    ? 'videoAssets.generate.validation.referenceUnavailableHttp'
+    : 'videoAssets.generate.validation.referenceUnavailableTool'))
 }
 
 function isNonEmptyId(value: string | undefined): value is string {

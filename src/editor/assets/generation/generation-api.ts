@@ -3,6 +3,8 @@ import {
   type ForgeaXToolPort,
 } from '@forgeax-extension/wb-asset-canvas/generation'
 import {
+  KINO_NETWORK_FAILURE_MESSAGE,
+  KINO_PLAIN_HTTP_404_MESSAGE,
   KinoClientError,
   requestKinoEnvelope,
   type KinoEnvelopeRequestOptions,
@@ -107,8 +109,6 @@ interface ActiveVideoGenerationsDTO {
 }
 
 const defaultClient = new HttpForgeaXToolClient()
-const PLAIN_ROUTE_NOT_FOUND_MESSAGE = 'Request failed with HTTP 404'
-const NETWORK_REQUEST_FAILED_MESSAGE = 'Network request failed'
 
 /** Explicit sentinel for an unmounted private route; Kino business 404s never become this error. */
 export class VideoGenerationRouteUnavailableError extends Error {
@@ -244,14 +244,14 @@ function isPlainRouteNotFound(error: unknown): boolean {
   return error instanceof KinoClientError
     && error.status === 404
     && error.errorCode === 'not_found'
-    && error.message === PLAIN_ROUTE_NOT_FOUND_MESSAGE
+    && error.message === KINO_PLAIN_HTTP_404_MESSAGE
 }
 
 function isBrowserConnectionFailure(error: unknown): boolean {
   return error instanceof KinoClientError
     && error.status === 502
     && error.errorCode === 'network_error'
-    && error.message === NETWORK_REQUEST_FAILED_MESSAGE
+    && error.message === KINO_NETWORK_FAILURE_MESSAGE
 }
 
 function toVideoGenerationTask(dto: VideoGenerationTaskDTO): VideoGenerationTask {
