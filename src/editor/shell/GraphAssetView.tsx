@@ -129,7 +129,7 @@ export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX
   }, [gameId])
   useEffect(() => {
     let active = true
-    void loadProjectComponentAssets(gameId).then((components) => {
+    void loadProjectComponentAssets().then((components) => {
       if (!active) return
       setProjectComponents(components)
     })

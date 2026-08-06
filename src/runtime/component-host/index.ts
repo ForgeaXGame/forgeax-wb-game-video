@@ -106,27 +106,21 @@ function pickRegister(mod: GameComponentModule): ((host: ComponentHostApi) => vo
 }
 
 /**
- * 加载并注册某游戏仓的专属组件。开发期优先由 wb-game-video 的本地源码
- * 适配器转译 `components/index.tsx|ts`，生产环境读取 Workbench 模块。
+ * 加载并注册某游戏仓的专属组件。模块来源由 Workbench Host 决定；
+ * 开发期可转译源码，生产环境提供构建产物。
  * 都拿不到 / 无 `register` → 静默 false，运行时继续用内建集（fail-soft）。
- * `base` 用于非同源场景显式指定源（dev 一般同源，留空即可）。
  */
-export async function loadGameComponents(slug: string | undefined, base = ''): Promise<boolean> {
+export async function loadGameComponents(slug: string | undefined): Promise<boolean> {
   if (!slug || loadedGames.has(slug)) return false
   loadedGames.add(slug)
-  const s = encodeURIComponent(slug)
-  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  const candidates = [
-    ...(isDev ? [`${base}/@game-components/${s}/index.js`] : []),
-    (() => {
-      try {
-        return getWorkbenchHost().gameComponents.moduleUrl('index.js')
-      } catch {
-        return null
-      }
-    })(),
-  ].filter((url): url is string => Boolean(url))
-  for (const url of candidates) {
+  const url = (() => {
+    try {
+      return getWorkbenchHost().gameComponents.moduleUrl('index.js')
+    } catch {
+      return null
+    }
+  })()
+  if (url) {
     try {
       const mod = (await import(/* @vite-ignore */ url)) as GameComponentModule
       const reg = pickRegister(mod)
@@ -135,7 +129,7 @@ export async function loadGameComponents(slug: string | undefined, base = ''): P
         return true
       }
     } catch {
-      /* 未构建 / 无源码 / 加载失败 → 试下一个 */
+      /* 模块不可用 → 回落内建集 */
     }
   }
   loadedGames.delete(slug)

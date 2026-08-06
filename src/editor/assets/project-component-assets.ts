@@ -30,29 +30,20 @@ function projectComponentRegister<Host>(
   return null
 }
 
-async function importProjectComponentModule(
-  gameId: string,
-  base = '',
-): Promise<ProjectComponentModule | null> {
-  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  const urls = isDev
-    ? [`${base}/@game-components/${encodeURIComponent(gameId)}/index.js`]
-    : []
+async function importProjectComponentModule(): Promise<ProjectComponentModule | null> {
+  let url: string | null
   try {
-    const url = getWorkbenchHost().gameComponents.moduleUrl('index.js')
-    if (url) urls.push(url)
+    url = getWorkbenchHost().gameComponents.moduleUrl('index.js')
   } catch {
-    // Standalone development has no accepted Workbench context.
+    return null
   }
-  for (const url of new Set(urls)) {
-    try {
-      const module = (await import(/* @vite-ignore */ url)) as ProjectComponentModule
-      if (projectComponentRegister(module)) return module
-    } catch {
-      // Try the next source; source-only controls have no built artifact in dev.
-    }
+  if (!url) return null
+  try {
+    const module = (await import(/* @vite-ignore */ url)) as ProjectComponentModule
+    return projectComponentRegister(module) ? module : null
+  } catch {
+    return null
   }
-  return null
 }
 
 interface ProjectComponentCollector {
@@ -108,7 +99,7 @@ export function collectProjectComponentAssets(module: ProjectComponentModule): P
   )
 }
 
-export async function loadProjectComponentAssets(slug: string, base = ''): Promise<ProjectComponentAsset[]> {
-  const module = await importProjectComponentModule(slug, base)
+export async function loadProjectComponentAssets(): Promise<ProjectComponentAsset[]> {
+  const module = await importProjectComponentModule()
   return module ? collectProjectComponentAssets(module) : []
 }
