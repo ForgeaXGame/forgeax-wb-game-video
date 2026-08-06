@@ -12,12 +12,12 @@ import {
 } from '../kino-api'
 
 export const CLIP_GENERATION_TOOL_ID = 'wb-game-video:generate-video-clip'
-// Kino 原生 generations API（经网关直达 kino 服务端）。此前指向 forgeax
-// server-private 的 /api/private/v1/kino/generations —— Arrival 侧没有该私有
+// Kino 原生 generations API（经网关直达 kino 服务端）。此前指向旧服务端的
+// /api/private/v1/kino/generations —— Arrival 侧没有该私有
 // 服务，请求/响应契约由本文件直接翻译成 kino 原生格式。
 export const VIDEO_GENERATIONS_API_PATH = '/api/v1/kino/generations'
 
-// 与 forgeax server-private 的服务端默认值保持一致（DEFAULT_KINO_VIDEO_MODEL）。
+// 与服务端默认值保持一致（DEFAULT_KINO_VIDEO_MODEL）。
 const DEFAULT_VIDEO_MODEL = 'seedance2'
 const ACTIVE_GENERATION_STATUSES = new Set<VideoGenerationStatus>([
   'pending',
@@ -199,8 +199,7 @@ export async function getVideoGeneration(
 
 /**
  * kino 原生 list 不支持"仅进行中"的多状态过滤（status 参数单值），这里拉最近
- * 一页后在客户端过滤 + 按 created_at 降序 —— 与 forgeax server-private 的
- * 私有 API 行为一致。
+ * 一页后在客户端过滤 + 按 created_at 降序 —— 与旧服务端的私有 API 行为一致。
  */
 export async function listActiveVideoGenerations(
   gameSlug: string,

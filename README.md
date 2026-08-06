@@ -139,7 +139,7 @@ location 或默认 slug 推导这些值。包读写和扩展请求分别使用 `
 1. 先发布已经过评审的 `/workbench-host.2.3`；
 2. 从 registry 验证其类型与能力契约，并更新 `bun.lock`；
 3. 完成 frozen install、测试、构建和 pack 检查后，最后发布
-   `@forgeax-extension/wb-game-video@0.2.4`。
+   `@forgeax-extension/wb-game-video@0.3.1`。
 
 ## 代码导航
 
