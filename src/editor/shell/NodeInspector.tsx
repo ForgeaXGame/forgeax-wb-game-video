@@ -556,7 +556,7 @@ function LifecycleReactionsEditor({
               onFocusIndex?.(i)
             }}
             style={{
-              border: `1px solid ${focused ? '#5ad4c0' : '#2a2a2a'}`,
+              border: `1px solid ${focused ? '#b9d79c' : '#2a2a2a'}`,
               borderRadius: 6,
               padding: 6,
               transition: 'border-color 120ms ease',

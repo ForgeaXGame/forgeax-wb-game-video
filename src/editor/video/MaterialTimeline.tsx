@@ -70,6 +70,29 @@ function ZoomThumbIcon(): JSX.Element {
   )
 }
 
+/** 条件结算行的循环图标（Figma 14947:80583 cphrefresh 导出矢量，stroke 1.215）。 */
+function CondRefreshIcon(): JSX.Element {
+  return (
+    <svg width="13" height="13" viewBox="0 0 12.8114 12.7546" fill="none" aria-hidden style={{ flex: 'none', display: 'block' }}>
+      <path
+        d="M12.1441 6.98468C11.8406 9.88587 9.38732 12.1473 6.40578 12.1473C4.08703 12.1473 2.08774 10.7795 1.1707 8.80677M0.635822 11.5399V8.50309H2.45791M0.667259 5.76995C0.970753 2.86878 3.4241 0.607364 6.40565 0.607364C8.72439 0.607364 10.7236 1.97513 11.6407 3.94786M12.1756 1.21473V4.25155H10.3535"
+        stroke="currentColor"
+        strokeWidth="1.21473"
+        strokeLinecap="square"
+      />
+    </svg>
+  )
+}
+
+/** 条件结算行「条件 → 动作」的分隔箭头（Figma 14947:80590 aeqarrow-right 导出矢量）。 */
+function CondArrowIcon(): JSX.Element {
+  return (
+    <svg width="11" height="9" viewBox="0 0 10.1212 8.39888" fill="none" aria-hidden style={{ flex: 'none', display: 'block' }}>
+      <path d="M5.92179 7.53994L9.26229 4.19944L5.92179 0.858942M8.50309 4.19944H0.607364" stroke="currentColor" strokeWidth="1.21473" strokeLinecap="square" />
+    </svg>
+  )
+}
+
 /**
  * 材料条渲染最小宽度（px）。= 左手柄 8 + 中间可拖区 ≥6 + 右手柄 8。
  * 极短窗口（几十 ms）按真实比例只有几 px 宽时，两个手柄会叠在一起、起点抓不到，
@@ -182,7 +205,7 @@ const SPAWN_END_DRAG_PREFIX = '__spawnend:'
 /** 绑定界面的最短可见跨度：一个吸附格，保证结束永不落到宿主结算时刻或它之前。 */
 const MIN_SPAWN_SPAN_MS = 10
 /** 绑定界面组虚线框相对组内条的留白，避免框线贴着条边。 */
-const SPAWN_GROUP_PAD_X = 7
+const SPAWN_GROUP_PAD_X = 5
 /**
  * 纵向留白只能取 1px：轨距 34、条高 32，相邻两行之间只有 2px 空隙，两组的框各分 1px 才刚好
  * 平铺不压线。要更多纵向留白就得给每组额外占一行，那是作者不愿付的代价。
@@ -257,6 +280,7 @@ export function MaterialTimeline({
     : 1
   const [zoom, setZoom] = useState(1)
   const [viewportW, setViewportW] = useState(0)
+  const [viewportInnerH, setViewportInnerH] = useState(0)
   const [drag, setDrag] = useState<DragState | null>(null)
   const [dropHint, setDropHint] = useState<{ ms: number; zIndex: number } | null>(null)
 
@@ -274,7 +298,7 @@ export function MaterialTimeline({
   // 无限轨：可见轨数由数据里最大 zIndex 派生，并永远多留一条空轨用于「拖到新轨=新增一轨」。
   const dataMaxLayer = activeList.reduce((mx, it) => Math.max(mx, it.zIndex), 0)
   // 结算独占一轨（排在材料轨之后）：它是"何时执行动作"，与界面窗口是不同维度。
-  // 无确定时间的条件结算再独占下一轨；最后仍留一条空投放轨。
+  // 无确定时间的条件结算每个各占一轨；最后仍留一条空投放轨。
   const settlementMarkers = (pointMarkers ?? []).filter((m) => m.kind === 'settlement')
   const lifecycleMarkers = (pointMarkers ?? []).filter((m) => m.kind === 'lifecycle' || m.kind === 'derived')
   // 绑定界面组占据材料轨与菱形轨之间的若干行，因此菱形轨要整体下移让出空间。
@@ -282,11 +306,12 @@ export function MaterialTimeline({
   const spawnRowCount = spawnGroupsMaxRow(spawnGroupList)
   const lifecycleTrack = dataMaxLayer + 1 + spawnRowCount
   const conditionTrack = lifecycleTrack + (lifecycleMarkers.length ? 1 : 0)
+  const conditionCount = conditionMarkers?.length ?? 0
   const trackCount = Math.max(
     TIMELINE_MIN_TRACKS,
     dataMaxLayer + 2,
     lifecycleMarkers.length || spawnRowCount ? lifecycleTrack + 2 : 0,
-    conditionMarkers?.length ? conditionTrack + 2 : 0,
+    conditionCount ? conditionTrack + conditionCount + 1 : 0,
   )
   // 流程预览锁定首段建立的 px/ms；后续片段等比例追加，视口通过横向滚动跟随。
   const firstSegmentMs = segments?.[0]
@@ -296,18 +321,22 @@ export function MaterialTimeline({
   const canvasPx = Math.max(1, (viewportW || 1) * zoom * durationWidthScale)
   const pxPerMs = canvasPx / maxMs
   const canvasHeight = TIMELINE_LAYER_TOP + trackCount * TIMELINE_LAYER_STEP + 8 + videoRowExtraPx
-  const viewportHeight = TIMELINE_LAYER_TOP
+  // 视口下限高度（≈6 轨）：宿主给了 flex 定界时视口继续生长填满剩余空间，此值只作地板。
+  const viewportMinHeight = TIMELINE_LAYER_TOP
     + TIMELINE_MIN_TRACKS * TIMELINE_LAYER_STEP
     + 8
     + TIMELINE_SCROLLBAR_RESERVE_PX
     + videoRowExtraPx
   const ruleTicks = useMemo(() => buildMaterialTicks(maxMs, pxPerMs), [maxMs, pxPerMs])
 
-  // 视口宽度 → canvasPx 基准。ResizeObserver 跟随布局变化。
+  // 视口宽度 → canvasPx 基准；视口内高 → 画布地板。ResizeObserver 跟随布局变化。
   useEffect(() => {
     const vp = timelineViewportRef.current
     if (!vp) return
-    const measure = () => setViewportW(vp.clientWidth)
+    const measure = () => {
+      setViewportW(vp.clientWidth)
+      setViewportInnerH(vp.clientHeight)
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(vp)
@@ -555,7 +584,7 @@ export function MaterialTimeline({
   return (
     <div
       className={`mtl-root${editable ? '' : ' is-readonly'}`}
-      style={{ '--gc-timeline-h': `${viewportHeight}px` } as CSSProperties}
+      style={{ '--gc-timeline-h': `${viewportMinHeight}px` } as CSSProperties}
     >
       <div className="gc-materialbar">
         <span className="gc-materialbar-meta">控件时间轴</span>
@@ -629,7 +658,9 @@ export function MaterialTimeline({
         <div
           ref={timelineRef}
           className={`gc-mtimeline-canvas${onSeek ? ' is-seekable' : ''}`}
-          style={{ width: `${canvasPx}px`, height: `${canvasHeight}px` }}
+          // 画布高度取内容与视口内高的较大者：内容矮时恰好填满可视区（边框不占出幻影滚动），
+          // 内容高时按真实高度出纵向滚动条。
+          style={{ width: `${canvasPx}px`, height: `${Math.max(canvasHeight, viewportInnerH)}px` }}
           onPointerDown={onSeek ? onCanvasPointerDown : undefined}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -723,7 +754,7 @@ export function MaterialTimeline({
           })}
           {lifecycleMarkers.length ? (
             <div className="gc-life-lane" style={{ top: `${rowTop(lifecycleTrack)}px`, width: `${canvasPx}px` }} aria-hidden>
-              <span className="gc-life-lane-tag">结算</span>
+              <span className="gc-life-lane-tag">时间轴结算</span>
             </div>
           ) : null}
           {lifecycleMarkers.map((mk) => {
@@ -865,34 +896,32 @@ export function MaterialTimeline({
               </Fragment>
             )
           })}
-          {conditionMarkers?.length ? (
-            <div
-              className="gc-condition-lane"
-              style={{ top: `${rowTop(conditionTrack)}px`, width: `${canvasPx}px` }}
+          {/* 条件结算：每个条件独占一轨的行条（↻ 条件 chips → 动作 chips），无固定 ms 故左对齐。 */}
+          {conditionMarkers?.map((marker, i) => (
+            <button
+              key={marker.id}
+              type="button"
+              className={`gc-condition-band${selectedPointMarkerId === marker.id ? ' is-selected' : ''}`}
+              style={{ top: `${rowTop(conditionTrack + i)}px` }}
+              title={marker.label}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (selectable) onSelectPointMarker?.(marker.id)
+              }}
+              tabIndex={selectable ? 0 : -1}
+              aria-disabled={!selectable}
             >
-              <span className="gc-condition-lane-tag">条件结算</span>
-              <div className="gc-condition-list">
-                {conditionMarkers.map((marker) => (
-                  <button
-                    key={marker.id}
-                    type="button"
-                    className={`gc-condition-band${selectedPointMarkerId === marker.id ? ' is-selected' : ''}`}
-                    title={marker.label}
-                    onPointerDown={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (selectable) onSelectPointMarker?.(marker.id)
-                    }}
-                    tabIndex={selectable ? 0 : -1}
-                    aria-disabled={!selectable}
-                  >
-                    <span aria-hidden>↻</span>
-                    <span>{marker.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+              <CondRefreshIcon />
+              {marker.conditionChips.map((chip, ci) => (
+                <span key={`c${ci}`} className="gc-cond-chip">{chip}</span>
+              ))}
+              <CondArrowIcon />
+              {marker.actionChips.map((chip, ai) => (
+                <span key={`a${ai}`} className="gc-cond-chip">{chip}</span>
+              ))}
+            </button>
+          ))}
           {dropHint ? (
             <div
               className="gc-mdrop"
@@ -1057,8 +1086,10 @@ const MATERIAL_TIMELINE_CSS = `
 }
 .mtl-root .gc-mtimeline-viewport {
   position: relative;
-  height: var(--gc-timeline-h, 240px);
-  min-height: 204px;
+  /* 默认占满宿主剩余竖直空间（宿主经 flex 链给定界）；轨道内容超出时才出现纵向滚动条。
+     无外界定界时回落到 6 轨下限高度，行为与旧固定高度一致。 */
+  flex: 1 1 auto;
+  min-height: var(--gc-timeline-h, 240px);
   border-radius: 10px;
   border: 1px solid var(--gc-line-soft);
   background: rgba(0,0,0,0.22);
@@ -1186,7 +1217,7 @@ const MATERIAL_TIMELINE_CSS = `
   background: #78b7ff;
 }
 /* 节点级时刻标记：菱形上方的竖虚线 + 可拖菱形。与橙色播放头刻意区分——播放头是"现在播到哪"，
-   这些是"这一刻会发生一件事"。路由结算=蓝紫，动作结算=青绿；两种菱形错开高度，
+   这些是"这一刻会发生一件事"。路由结算=蓝紫，动作结算=嫩绿；两种菱形错开高度，
    同一 ms 上重合时也还能各自抓到。 */
 .mtl-root .gc-point-mark {
   position: absolute;
@@ -1198,8 +1229,9 @@ const MATERIAL_TIMELINE_CSS = `
   border-left: 1px dashed currentColor;
 }
 .mtl-root .gc-point-mark.is-settlement { color: rgba(147,163,247,.85); }
-/* 动作结算竖线比路由结算淡一档：一个节点可能有多条结算，避免时间轴过于杂乱。 */
-.mtl-root .gc-point-mark.is-lifecycle { color: rgba(90,212,192,.5); }
+/* 动作结算竖线比路由结算淡一档：一个节点可能有多条结算，避免时间轴过于杂乱。
+   嫩绿视觉来源 Figma 14947:80568。 */
+.mtl-root .gc-point-mark.is-lifecycle { color: rgba(185,215,156,.55); }
 .mtl-root .gc-point-head {
   position: absolute;
   left: 0;
@@ -1225,22 +1257,23 @@ const MATERIAL_TIMELINE_CSS = `
 }
 .mtl-root .gc-point-mark.is-dragging { border-left-style: solid; }
 
-/* 结算绑定界面：组框圈住同一结算下的全部界面，条本身只有右手柄（起点归菱形）。 */
+/* 结算绑定界面：组框圈住同一结算下的全部界面，条本身只有右手柄（起点归菱形）。
+   与结算菱形同属一个视觉簇，同用嫩绿（Figma 14947:80568）。 */
 .mtl-root .gc-spawn-group {
   position: absolute;
-  border: 1px dashed rgba(90,212,192,.5);
-  border-radius: 10px;
-  background: rgba(90,212,192,.06);
+  border: 1px dashed rgba(185,215,156,.45);
+  border-radius: 6px;
+  background: rgba(103,151,58,.06);
   pointer-events: none;
   z-index: 1;
 }
 /* 宿主菱形被选中：整组连同标签一起提亮，与菱形的选中态同步。 */
 .mtl-root .gc-spawn-group.is-selected {
-  border-color: rgba(143,240,224,.95);
-  background: rgba(90,212,192,.16);
-  box-shadow: 0 0 12px rgba(90,212,192,.3);
+  border-color: rgba(214,237,189,.95);
+  background: rgba(103,151,58,.16);
+  box-shadow: 0 0 12px rgba(185,215,156,.3);
 }
-.mtl-root .gc-spawn-group.is-selected .gc-spawn-group-tag { color: #e8fffb; }
+.mtl-root .gc-spawn-group.is-selected .gc-spawn-group-tag { color: #f2f9e8; }
 /* 标签放在组框右外侧、纵向居中：框现在上下平铺，标签若压在框顶就会盖住上一组。
    右侧那片区域一定是空的——每行只有一条界面，行也从不共用。 */
 .mtl-root .gc-spawn-group-tag {
@@ -1252,7 +1285,7 @@ const MATERIAL_TIMELINE_CSS = `
   padding: 0 5px;
   border-radius: 4px;
   background: var(--gc-panel2);
-  color: rgba(143,240,224,.9);
+  color: rgba(214,237,189,.9);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -1272,14 +1305,15 @@ const MATERIAL_TIMELINE_CSS = `
 .mtl-root .gc-mclip.is-spawn.is-open-ended.is-selected { mask-image: none; }
 .mtl-root.is-readonly .gc-mclip.is-spawn { cursor: default; }
 
-/* 结算轨：独占材料轨之后的一行；定时/推导时刻显示菱形。 */
+/* 结算轨：独占材料轨之后的一行；定时/推导时刻显示菱形。（视觉：Figma 14947:80568） */
 .mtl-root .gc-life-lane {
   position: absolute;
   left: 0;
-  height: 32px;
-  border: 1px dashed rgba(90,212,192,.28);
-  border-radius: 8px;
-  background: rgba(90,212,192,.05);
+  height: 26px;
+  margin-top: 4px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 4px;
+  background: rgba(103,151,58,.1);
   pointer-events: none;
   z-index: 1;
 }
@@ -1289,7 +1323,7 @@ const MATERIAL_TIMELINE_CSS = `
   top: 50%;
   transform: translate(-50%, -50%);
   font-size: 10px;
-  color: rgba(90,212,192,.58);
+  color: rgba(255,255,255,.6);
   letter-spacing: .04em;
   white-space: nowrap;
   pointer-events: none;
@@ -1300,9 +1334,9 @@ const MATERIAL_TIMELINE_CSS = `
   width: 13px;
   height: 13px;
   transform: translate(-50%, -50%) rotate(45deg);
-  background: #5ad4c0;
-  border: 1px solid #123;
-  box-shadow: 0 0 8px rgba(90,212,192,.55);
+  background: #b9d79c;
+  border: 1px solid #1f2416;
+  box-shadow: 0 0 8px rgba(185,215,156,.55);
   cursor: ew-resize;
   pointer-events: auto;
   z-index: 6;
@@ -1310,79 +1344,62 @@ const MATERIAL_TIMELINE_CSS = `
 .mtl-root .gc-life-head:hover,
 .mtl-root .gc-point-mark.is-dragging .gc-life-head,
 .mtl-root .gc-point-mark.is-selected .gc-life-head {
-  background: #8ff0e0;
-  box-shadow: 0 0 14px rgba(90,212,192,.95);
+  background: #d6edbd;
+  box-shadow: 0 0 14px rgba(185,215,156,.95);
 }
 /* 选中：菱形加白边，竖线仍保持虚线，只提高对比度与右侧高亮配置块对应。 */
 .mtl-root .gc-point-mark.is-selected .gc-life-head { border-color: #f6f1e9; }
-.mtl-root .gc-point-mark.is-selected { border-left-style: dashed; color: rgba(90,212,192,.9); }
-.mtl-root .gc-point-mark.is-derived { color: rgba(90,212,192,.62); }
+.mtl-root .gc-point-mark.is-selected { border-left-style: dashed; color: rgba(185,215,156,.9); }
+.mtl-root .gc-point-mark.is-derived { color: rgba(185,215,156,.62); }
 .mtl-root .gc-life-head.is-derived {
-  background: rgba(18,34,32,.92);
+  background: rgba(26,32,18,.92);
   border: 2px solid currentColor;
   box-shadow: none;
   cursor: pointer;
 }
 .mtl-root .gc-point-mark.is-derived:hover .gc-life-head,
 .mtl-root .gc-point-mark.is-derived.is-selected .gc-life-head {
-  background: rgba(90,212,192,.18);
-  border-color: #d8fff8;
-  box-shadow: 0 0 10px rgba(90,212,192,.65);
+  background: rgba(185,215,156,.18);
+  border-color: #e9f5d6;
+  box-shadow: 0 0 10px rgba(185,215,156,.65);
 }
-.mtl-root .gc-condition-lane {
-  position: absolute;
-  left: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  box-sizing: border-box;
-  border: 1px dashed rgba(90,212,192,.25);
-  border-radius: 8px;
-  background: rgba(90,212,192,.035);
-  z-index: 2;
-}
-.mtl-root .gc-condition-lane-tag {
-  flex: none;
-  font-size: 10px;
-  color: rgba(90,212,192,.58);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.mtl-root .gc-condition-list {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-}
+/* 条件结算：每个条件独占一轨的行条——↻ 条件 chips → 动作 chips（视觉 Figma 14947:80577）。
+   无固定 ms 坐标，条身按内容宽度左对齐，纵向与 34px 轨距居中。 */
 .mtl-root .gc-condition-band {
-  min-width: 0;
-  max-width: 240px;
-  height: 24px;
+  position: absolute;
+  left: 4px;
+  height: 26px;
+  margin-top: 4px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  gap: 6px;
+  max-width: calc(100% - 8px);
+  padding: 0 12px;
   overflow: hidden;
-  border: 1px dashed rgba(90,212,192,.48);
-  border-radius: 5px;
-  background: rgba(90,212,192,.08);
-  color: rgba(202,255,246,.78);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 4px;
+  background: rgba(103,151,58,.1);
+  color: rgba(255,255,255,.6);
   font-size: 10px;
+  font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  text-overflow: ellipsis;
+  z-index: 2;
 }
-.mtl-root .gc-condition-band span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.mtl-root .gc-cond-chip {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255,255,255,.05);
+  line-height: 1.5;
+}
 .mtl-root .gc-condition-band:hover,
 .mtl-root .gc-condition-band.is-selected {
-  border-color: rgba(143,240,224,.95);
-  background: rgba(90,212,192,.18);
-  color: #e8fffb;
-  box-shadow: 0 0 10px rgba(90,212,192,.28);
+  border-color: rgba(214,237,189,.95);
+  background: rgba(103,151,58,.18);
+  color: #f2f9e8;
+  box-shadow: 0 0 10px rgba(185,215,156,.28);
 }
 .mtl-root .gc-mdrop {
   position: absolute;

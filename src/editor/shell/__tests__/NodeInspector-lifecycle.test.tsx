@@ -234,7 +234,7 @@ describe('NodeInspector · 结算选中联动', () => {
     const second = container.querySelector<HTMLElement>('[data-lifecycle-effect-index="1"]')
     expect(first).toHaveAttribute('data-selected', 'false')
     expect(second).toHaveAttribute('data-selected', 'true')
-    expect(second?.style.border).toContain('#5ad4c0')
+    expect(second?.style.border).toContain('#b9d79c')
     expect(second?.style.background).toBe('')
     expect(second?.style.boxShadow).toBe('')
     expect(screen.getByText('结算')).toBeTruthy()

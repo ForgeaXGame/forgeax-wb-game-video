@@ -181,7 +181,10 @@ const NPS_CSS = `
 .nps-more-pop button { justify-content: flex-start; width: 100%; border-color: transparent; background: transparent; }
 .nps-more-pop button:hover { background: var(--gc-accent-soft); border-color: var(--gc-accent-line); }
 .nps-more-empty { font-size: 11px; color: var(--gc-faint); padding: 6px 8px; }
-.nps-root .mtl-root { flex: none; }
+/* 时间轴宿主列：占满预览列剩余竖直空间（flex 链定界），轨道超出时滚动发生在时间轴视口内部，
+   而不是顶高整列。mtl-root 沿链接力；视口自身地板高度由 --gc-timeline-h 保底。 */
+.nps-root .nps-timeline-host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.nps-root .nps-timeline-host > .mtl-root { flex: 1 1 auto; min-height: 0; }
 `
 
 const NODE_VIDEO_TRACK_KEY = '__node-video__'
@@ -1198,7 +1201,7 @@ function EditableNodePreviewStage({
       </div>
 
       {timelineExpanded ? (
-        <div id={timelineId} ref={timelineHostRef}>
+        <div id={timelineId} ref={timelineHostRef} className="nps-timeline-host">
           {/* key=node.id：切节点整体重挂载——zoom（1× 默认）等时间轴本地状态随之重置，
               避免上一个节点的 20× 残留到下一个节点（滚动条莫名变长）。 */}
           <MaterialTimeline

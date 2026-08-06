@@ -277,7 +277,7 @@ export function FlowNodePreviewStage({
       </div>
 
       {timelineExpanded ? (
-        <div ref={timelineHostRef} id={timelineId}>
+        <div ref={timelineHostRef} id={timelineId} className="nps-timeline-host">
           <MaterialTimeline
             materials={flow.timeline.materials}
             maxMs={flow.timeline.maxMs}
