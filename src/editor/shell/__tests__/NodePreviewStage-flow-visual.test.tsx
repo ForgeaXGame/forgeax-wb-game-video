@@ -73,6 +73,8 @@ describe('NodePreviewStage · Flow preview visual contract', () => {
 
     expect(screen.getByTestId('flow-node-preview')).toBeTruthy()
     expect(container.querySelector('.nps-frame')).toHaveClass('nps-frame-edit')
+    expect(getComputedStyle(container.querySelector('.nps-root') as HTMLElement).backgroundColor)
+      .toBe('#2C2C2C')
 
     const controls = container.querySelector('.nps-flow-controls')
     expect(controls).toHaveClass('nps-video-controls')
