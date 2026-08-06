@@ -307,7 +307,9 @@ export function createDevWorkbenchHost(
     manifest: mergeManifestLayers([rawManifest]),
     packageRoot: extensionRoot,
     frontendEntry: 'index.html',
-    backendEntry: 'server/host.ts',
+    // The Vite plugin runs in Node and the trusted backend loader uses native
+    // dynamic import, so the dev host must consume the tsup watcher output.
+    backendEntry: 'dist/server/host.js',
   })
 
   return createWorkbenchHost({

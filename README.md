@@ -30,6 +30,19 @@ bun run lint
 bun run build
 ```
 
+要脱离 Studio 单独运行完整编辑器，使用开发 host shell：
+
+```bash
+bun run dev:standalone
+# http://localhost:15185/dev.html
+```
+
+该入口仅在 Vite 开发服务中存在。它使用官方 `WorkbenchFrame` 提供同样的 nonce-bound
+handshake，并将所选游戏的数据写入 `.workbench-dev/games/<gameId>/`。它不修改生产
+`index.html`、扩展 manifest 或 Studio iframe 入口；Studio 仍使用宿主注入的真实游戏工作区
+和服务能力。命令会先构建一次 Node 可加载的扩展后端，再启动前端与后端 watcher；开发
+host 的版本记录与媒体存储是进程内实现，模型生成能力不可用。
+
 `bun run build` 依次跑 frontend、backend、`build:standalone` 与 `check:release`。
 Standalone 播放页产物在 `dist/standalone/`；单独构建或预览：
 
