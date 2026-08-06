@@ -124,6 +124,10 @@ class LocalDevWorkspace implements WorkspaceAdapter {
         assertActive()
         return options.versioning.createVersion(gameRoot, message)
       },
+      async createCheckpoint(message) {
+        assertActive()
+        return options.versioning.createCheckpoint(gameRoot, message)
+      },
       async currentVersion() {
         assertActive()
         return options.versioning.currentVersion(gameRoot)
@@ -186,6 +190,54 @@ class LocalDevVersions implements VersionAdapter {
     }
   }
 
+  // Mirrors the host InMemoryVersionAdapter semantics: identical tip is an
+  // idempotent no-op (`created: false`), and checkpoints never show up as
+  // user-visible versions.
+  async createCheckpoint(gameRoot: string, message: string) {
+    const history = this.versions.get(gameRoot) ?? []
+    const files = new Map<string, Uint8Array>()
+    for (const path of packageFiles) {
+      try {
+        files.set(path, new Uint8Array(await readFile(resolve(gameRoot, path))))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+    }
+    const latest = history.at(-1)
+    const same = latest !== undefined
+      && files.size === latest.files.size
+      && [...files.entries()].every(([path, bytes]) => {
+        const previous = latest.files.get(path)
+        return previous !== undefined
+          && previous.byteLength === bytes.byteLength
+          && previous.every((value, index) => value === bytes[index])
+      })
+    if (same && latest) {
+      return {
+        commitHash: latest.commitHash,
+        message,
+        createdAt: latest.createdAt,
+        created: false,
+      }
+    }
+    const sequence = history.length + 1
+    const checkpoint = {
+      tag: `checkpoint-${sequence}`,
+      commitHash: `local-checkpoint-${sequence}`,
+      message,
+      createdAt: new Date().toISOString(),
+      files,
+    }
+    history.push(checkpoint)
+    this.versions.set(gameRoot, history)
+    return {
+      commitHash: checkpoint.commitHash,
+      message,
+      createdAt: checkpoint.createdAt,
+      created: true,
+    }
+  }
+
   async currentVersion(gameRoot: string) {
     const version = this.versions.get(gameRoot)?.at(-1)
     return version
@@ -194,12 +246,14 @@ class LocalDevVersions implements VersionAdapter {
   }
 
   async listVersions(gameRoot: string) {
-    return (this.versions.get(gameRoot) ?? []).map((version) => ({
-      tag: version.tag,
-      commitHash: version.commitHash,
-      message: version.message,
-      createdAt: version.createdAt,
-    }))
+    return (this.versions.get(gameRoot) ?? [])
+      .filter((version) => version.tag.startsWith('dev-'))
+      .map((version) => ({
+        tag: version.tag,
+        commitHash: version.commitHash,
+        message: version.message,
+        createdAt: version.createdAt,
+      }))
   }
 
   async readFileAtVersion(gameRoot: string, tag: string, path: string) {
