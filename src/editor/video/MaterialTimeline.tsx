@@ -1102,6 +1102,10 @@ const MATERIAL_TIMELINE_CSS = `
   border: 1px solid var(--gc-line-soft);
   background: rgba(0,0,0,0.22);
   overflow: auto;
+  /* 纵向滚动条常驻占位：canvasPx 由 clientWidth 派生，若滚动条来去改变 clientWidth，
+     就会「画布变宽 → 出横向滚动条 → 内高变矮 → 出纵向滚动条 → 画布变窄」地自激振荡。
+     留稳定沟槽后 clientWidth 与滚动条显隐无关，环被切断。 */
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
 .mtl-root .gc-mtimeline-canvas {
@@ -1109,6 +1113,13 @@ const MATERIAL_TIMELINE_CSS = `
   min-width: 100%;
   min-height: 100%;
   touch-action: none;
+  /* 右缘装饰（播放头游标半个头、绑定界面组标签等）不得挤出可滚动宽度：
+     否则播放到结尾时会凭空冒出横向滚动条，再牵动纵向滚动条一起抽动。
+     clip 不建立滚动容器，sticky 刻度尺仍以视口为吸附参考。 */
+  overflow-x: clip;
+  /* 关掉滚动锚定：内容增长（新片段 / 帧画面就绪）时浏览器别自行改 scrollLeft，
+     否则会与播放头跟随互相打架。 */
+  overflow-anchor: none;
 }
 .mtl-root .gc-mtimeline-canvas.is-seekable { cursor: text; }
 .mtl-root.is-readonly .gc-mtimeline-canvas.is-seekable,

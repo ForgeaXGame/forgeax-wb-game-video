@@ -59,4 +59,32 @@ describe('MaterialTimeline · 视口几何', () => {
       short.heightSpy.mockRestore()
     }
   })
+
+  /**
+   * 余下的振荡通路在浏览器侧（JS 不参与）：滚动条显隐改 clientWidth / 内高，
+   * 而 canvasPx 由 clientWidth 派生。两条 CSS 声明把它彻底切断，故在此立契约。
+   */
+  describe('滚动条无关性（CSS 契约）', () => {
+    function ruleBlock(css: string, selector: string): string {
+      const match = css.match(new RegExp(`${selector.replace('.', '\\.')} \\{[^}]*\\}`))
+      return match?.[0] ?? ''
+    }
+
+    function timelineCss(): string {
+      const { widthSpy, heightSpy } = renderTimeline({ clientWidth: 600, clientHeight: 400 })
+      widthSpy.mockRestore()
+      heightSpy.mockRestore()
+      return document.querySelector('style[data-reel-style="material-timeline"]')?.textContent ?? ''
+    }
+
+    it('视口给纵向滚动条留常驻沟槽，clientWidth 不随显隐变化', () => {
+      expect(ruleBlock(timelineCss(), '.gc-mtimeline-viewport')).toContain('scrollbar-gutter: stable')
+    })
+
+    it('画布横向裁掉右缘装饰溢出，结尾播放头不会凭空触发横向滚动条', () => {
+      const block = ruleBlock(timelineCss(), '.gc-mtimeline-canvas')
+      expect(block).toContain('overflow-x: clip')
+      expect(block).toContain('overflow-anchor: none')
+    })
+  })
 })
