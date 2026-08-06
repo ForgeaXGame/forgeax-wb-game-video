@@ -262,6 +262,20 @@ const panelStyles = `
     color: #fff !important;
   }
 
+  .cpp-panel input:focus,
+  .cpp-panel select:focus,
+  .cpp-panel textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .cpp-section-body .gc-cascade-trigger:hover,
+  .cpp-section-body .gc-cascade-trigger:focus,
+  .cpp-section-body .gc-cascade-trigger[aria-expanded='true'] {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
   .cpp-section-body input[type='number'] {
     appearance: textfield;
     -moz-appearance: textfield;

@@ -486,12 +486,18 @@ export function TextValueEditor({
                 editor: {
                   value: draft.content,
                   ariaLabel: '新公式内容',
-                  placeholder: '如：max(?攻击力 * ?倍率 - ?防御力, 0)',
+                  placeholder: '公式详情，或发送给agent的公式描述\n如：max(?攻击力 * ?倍率 - ?防御力, 0)',
                   multiline: true,
                   invalid: !formulaAst,
                   error: formulaError,
                   onChange: (value: string) => patch({ content: value }),
                 },
+              },
+              {
+                key: `${actionKey}:agent`,
+                label: '发送agent',
+                presentation: 'agent' as const,
+                disabled: true,
               },
               {
                 key: actionKey,

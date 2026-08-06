@@ -298,12 +298,18 @@ describe('numberExpr dropdown labels', () => {
     fireEvent.click(screen.getByRole('combobox', { name: '数值内容' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '公式' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '新增公式' }))
-    expect(screen.getByRole('textbox', { name: '新公式内容' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '新公式内容' })).toHaveAttribute(
+      'placeholder',
+      '公式详情，或发送给agent的公式描述\n如：max(?攻击力 * ?倍率 - ?防御力, 0)',
+    )
     expect(screen.queryByRole('textbox', { name: '新公式 ID' })).toBeNull()
     fireEvent.change(screen.getByRole('textbox', { name: '新公式名' }), {
       target: { value: '新伤害' },
     })
     const confirm = screen.getByRole('button', { name: '确认' })
+    const sendAgent = screen.getByRole('button', { name: '发送agent' })
+    expect(sendAgent).toBeDisabled()
+    expect(sendAgent.nextElementSibling).toBe(confirm)
     expect(screen.getByRole('textbox', { name: '新公式内容' })).toHaveAttribute('aria-invalid', 'true')
     expect(confirm).toBeDisabled()
     fireEvent.change(screen.getByRole('textbox', { name: '新公式内容' }), {
@@ -387,6 +393,11 @@ describe('numberExpr dropdown labels', () => {
       '公式',
       '新增公式',
     )
+    expect(screen.getByRole('textbox', { name: '新公式内容' })).toHaveAttribute(
+      'placeholder',
+      '公式详情，或发送给agent的公式描述\n如：max(?攻击力 * ?倍率 - ?防御力, 0)',
+    )
+    expect(screen.getByRole('button', { name: '发送agent' })).toBeDisabled()
     fireEvent.change(screen.getByRole('textbox', { name: '新公式内容' }), {
       target: { value: '7' },
     })

@@ -98,6 +98,11 @@ describe('CascadingPicker interaction stability', () => {
     expect(panel.style.height).toBe('')
     expect(window.getComputedStyle(panel).overflowX).toBe('auto')
     expect(window.getComputedStyle(panel).overflowY).toBe('hidden')
+    const pickerStyles = document.querySelector('style[data-reel-style="gc-cascading-picker"]')?.textContent
+    expect(pickerStyles?.match(/background: rgba\(20, 20, 20, 1\);/g)).toHaveLength(2)
+    expect(pickerStyles).toContain(
+      'outline: none; box-shadow: none; border-color: rgba(255, 255, 255, 0.08);',
+    )
     expect(panel.querySelector('.gc-cascade-content')).toBeTruthy()
     const initialColumns = within(panel).getAllByRole('group')
     expect(initialColumns).toHaveLength(3)
@@ -203,6 +208,7 @@ describe('CascadingPicker interaction stability', () => {
     expect(confirm).toHaveClass('is-confirm')
     expect(confirm.children).toHaveLength(1)
     expect(window.getComputedStyle(confirm).justifyContent).toBe('center')
+    expect(window.getComputedStyle(confirm).height).toBe('28px')
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: '新增实体' })).toBeNull()
