@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { AssetLibraryPanel } from '../assets/AssetLibraryPanel'
 import {
@@ -5,7 +6,7 @@ import {
   type AssetLibraryClient,
   useAssetLibrary,
 } from '../assets/assetLibraryClient'
-import { getGameSlug } from '../persist/gameScope'
+import { useGraphScenario } from '../persist/graphScenarioStore'
 
 const CSS = `
 .alp-root { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
@@ -82,11 +83,11 @@ const CSS = `
 
 export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX.Element {
   injectStyleOnce('graph-asset-view', CSS)
+  const game = useGraphScenario((s) => s.game)
+  const defaultClient = useMemo(() => createKinoAssetLibraryClient(), [])
   const controller = useAssetLibrary(
-    getGameSlug() ?? 'game-nodia-fighting',
-    client ?? kinoAssetLibraryClient,
+    game,
+    client ?? defaultClient,
   )
   return <AssetLibraryPanel controller={controller} />
 }
-
-const kinoAssetLibraryClient = createKinoAssetLibraryClient()

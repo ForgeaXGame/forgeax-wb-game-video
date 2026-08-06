@@ -1,21 +1,21 @@
-const RAW_BASE = import.meta.env.BASE_URL ?? '/'
+import { rewriteUrl } from '@forgeax/workbench-host/browser'
+import { getActiveRewriteRules } from './forgeax-http'
+import { getWorkbenchHost } from './workbench-host'
 
-function basePrefix(rawBase: string): string {
-  if (!rawBase || rawBase === './') return ''
-  return rawBase.replace(/\/$/, '')
-}
-
-export function pluginUrl(path: string, rawBase = RAW_BASE): string {
+/** Resolves an extension-relative media path from the accepted handshake. */
+export function pluginUrl(path: string): string {
   if (/^(?:https?:|blob:|data:)/.test(path)) return path
-  if (!path.startsWith('/')) return path
-  // Host APIs are rooted at the origin. Prefixing them with the plugin mount
-  // makes Vite return its HTML fallback for GET and an empty 404 for POST.
-  if (/^\/api(?:\/|$|\?)/.test(path)) return path
-  const prefix = basePrefix(rawBase)
-  if (!prefix || path === prefix || path.startsWith(`${prefix}/`)) return path
-  return `${prefix}${path}`
+  const rewritten = rewriteUrl(path, getActiveRewriteRules())
+  if (/^(?:https?:|blob:|data:)/.test(rewritten)) return rewritten
+  return getWorkbenchHost().extension.url(rewritten)
 }
 
+/**
+ * Rewrite the logical path once, then dispatch through the workbench host
+ * (or raw fetch for absolute/opaque URLs).
+ */
 export function pluginFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(pluginUrl(input), init)
+  const rewritten = rewriteUrl(input, getActiveRewriteRules())
+  if (/^(?:https?:|blob:|data:)/.test(rewritten)) return fetch(rewritten, init)
+  return getWorkbenchHost().extension.fetch(rewritten, init)
 }

@@ -7,40 +7,36 @@
 - `src/runtime/schema/node-config-schema.ts`、`react-flow-schema.ts`、`graph-schema.ts` 是发布数据契约；增删字段必须取得专门同意。
 - `src/runtime` 不得依赖 `src/graph` 或编辑器壳。状态机不接触 DOM/React，不使用 `Math.random`。
 - 图中只有 `perf` 演出节点；路由判断放在边上，副作用放在 reaction 中，UI 放在 overlay/component 中。
-- 运行入口是根 `graph`；私有子流程从节点 `data.subProcess.graph` 解析，可复用子蓝图从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
-- `subProcess.entry` 只指向直属子图节点；父子图不得直接连边，同一蓝图的全部嵌套层共享节点/边 id 命名空间。
-
-## 组件修改边界
-
-- 除非用户明确指定，所有组件相关改动只面向新组件，不修改旧组件的实现、manifest、预设、编辑行为或测试预期。
-- 新组件实现位于 `src/runtime/component-host/components/new/`。修改共享编辑器或运行时基础设施时，必须用新组件 id 明确限定行为，确保旧 component id 行为不变。
+- 运行入口是根 `graph`；子流程从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
 
 ## 持久化与启动
 
-- 权威蓝图：`.forgeax/games/<slug>/blueprint.json`。
-- 项目元信息：同目录 `project.json`，首次工具保存时按需创建。
-- 共享生成素材：同目录 `assets/`；角色和场景引用从 `characters/`、`textures/` 只读导入。
+- 权威蓝图是宿主绑定游戏工作区内的逻辑路径 `blueprint.json`。
+- 项目元信息是同一工作区内的 `project.json`，首次工具保存时按需创建。
+- 共享生成素材位于逻辑目录 `assets/`；角色和场景引用从 `characters/`、`textures/`
+  只读导入。所有路径都通过 `WorkbenchExtensionContext.files` 访问，物理布局由宿主决定。
 - `save-graph` 的 `title` 是保留参数，当前不产生版本；成功结果的 `versions` 固定为空数组。
-- 未保存草稿使用 localStorage。空项目使用空库，内置 demo 只在显式“重置”时载入。
+- 未保存草稿使用 localStorage。未初始化项目只允许经 `GameBootstrap` 引导调用宿主初始化；
+  已初始化 package 读取失败必须显示错误，不得在前端自动保存空库覆盖原蓝图。
 
 AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
 
 ## 宿主上下文
 
-后端只接受两种明确的宿主上下文：
+后端只接受宿主构造的 `WorkbenchExtensionContext`：
 
-- Arrival：`ctx.gameId` 是绑定 id，`ctx.cwd` 是当前游戏根，`ctx.extensionDir` 是扩展根。
-- ForgeaX：`ctx.game` 是绑定 id，`ctx.projectRoot` 是项目根，`ctx.cwd` 是扩展根；当前
-  游戏根为 `ctx.projectRoot/.forgeax/games/<ctx.game>`。
+- `gameId` 是唯一游戏身份，必须原样使用，不做 slug 归一化；
+- `gameRoot` 已由宿主解析，扩展不得再解释产品级路径字段；
+- `files` 是限定游戏根的文件能力，复合写事务必须使用 `withLocks`；
+- `media` 与 `models` 是唯一媒体和模型服务入口。
 
-内部按需统一成 `boundGameId` / `gameRoot` / `extensionRoot`。`list-videos` 只要求
-`extensionRoot`，允许在无游戏绑定的 ForgeaX 会话中调用；其余游戏读写、生成和共享素材
-工具要求 `boundGameId + gameRoot`。不得读取全局 active-game，不得把 ForgeaX 的扩展
-`cwd` 当成项目根。显式 `gameSlug` 必须与绑定 id 逐字一致。game id 支持中文与单字符；
-只拒绝空值、`.`、`..` 和路径分隔符。
+11 个 AI 工具的公开 args schema 都不得包含 `gameSlug` 或其它可由调用者选择的游戏字段。
+不得读取全局 active-game、进程环境或当前目录来推导游戏与服务地址。
 
-`ctx.env` 只包含 manifest 声明且后端实际读取的 `FORGEAX_SERVER_URL` /
-`FORGEAX_SERVER_PORT`。
+浏览器只接受 nonce-bound handshake 的 `ExtensionClient.ready()` 结果。`gameId`、`runtimeId`
+和所有 endpoint 都来自该结果；不得从 query、location 或默认 slug 推导。版本功能必须先检查
+`versions.supported()`；游戏组件只允许使用 `gameComponents.moduleUrl()`，缺 capability
+时隐藏或明确报不支持，不得拼备用地址。
 
 扩展后端是宿主进程内加载的 fully-trusted 代码；manifest 的权限和 `requestedEnv`
 是声明与审计信息，不构成进程隔离，也不限制进程已有的 Node 能力。
@@ -51,20 +47,25 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
   `--port` 覆盖为其它端口。
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run dev
 bun run test
 bun run lint
 bun run build
 ```
 
+`bun test` 只跑 server/release-contract gate；需要浏览器环境的完整测试使用 `bun run test`。
+
 发布前 `bun run build` 必须成功；它会依次生成前端、后端、standalone 产物并执行 release validator。
+Standalone 播放页由 `bun run build:standalone` 产出到 `dist/standalone/`（源码在 `src/runtime/sdk/`）；
+本地预览可用 `bun run start:standalone`。Workbench Vite 适配器仍只服务 `/__workbench__/v1` 开发握手。
 
 ## 目录
 
 | 领域 | 位置 |
 |---|---|
 | schema、状态机、组件宿主、校验 | `src/runtime/` |
+| standalone SDK / 播放入口 | `src/runtime/sdk/` |
 | 蓝图画布与编辑纯函数 | `src/graph/` |
 | 工坊壳、持久化、素材与显式 demo | `src/editor/` |
 | AI 工具、生成编排、素材登记 | `server/` |

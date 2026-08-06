@@ -14,7 +14,6 @@ import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
 import { OverlaySchemeEditor } from './OverlaySchemeEditor'
 import { VersionPicker } from './VersionPicker'
 import { useGraphScenario, graphUndo, graphRedo } from '../persist/graphScenarioStore'
-import { getGameSlug } from '../persist/gameScope'
 import {
   NEW_COMPONENT_PRESETS,
   BASE_HUD_PREFIX,
@@ -57,9 +56,7 @@ function findSchemeNodeId(nodes: readonly UiTreeNode[], overlayId: string): stri
   return undefined
 }
 
-export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario }: { tabs: ConfigTab[]; title?: string; icon?: string; scenario: GameScenario }): JSX.Element {
-  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
-  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
+export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario: _scenario }: { tabs: ConfigTab[]; title?: string; icon?: string; scenario: GameScenario }): JSX.Element {
   const meta = useGraphScenario((s) => s.meta)
   const blueprints = useGraphScenario((s) => s.blueprints)
   const isDraft = useGraphScenario((s) => s.isDraft)
@@ -68,9 +65,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   const renameScenarioId = useGraphScenario((s) => s.renameScenarioId)
   const doCommit = useGraphScenario((s) => s.commit) // 保存 = 打版本
   const reset = useGraphScenario((s) => s.reset)
-  const ensureBoot = useGraphScenario((s) => s.ensureBoot)
-
-  useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
 
   // 键盘撤销/重做：Ctrl/⌘+Z 撤销，Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做；输入框内不拦截（留给原生文本撤销）。
   useEffect(() => {

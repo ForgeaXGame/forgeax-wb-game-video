@@ -3,7 +3,10 @@ import type { ReactNode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { GraphApp } from '../GraphApp'
 
-const ensureBoot = vi.hoisted(() => vi.fn())
+const { ensureBoot, bootstrapProps } = vi.hoisted(() => ({
+  ensureBoot: vi.fn(),
+  bootstrapProps: vi.fn(),
+}))
 
 const mockScenarioState = vi.hoisted(() => {
   const blueprints = {
@@ -23,11 +26,17 @@ const mockScenarioState = vi.hoisted(() => {
     setMainBlueprint: vi.fn(),
     authoringProject: () => ({ manifest: { packs: {} } }),
     meta: { ui: { overlays: {} }, uiTree: { root: [] } },
+    scn: () => ({ graph: { nodes: [] as never[] } }),
+    loadEpoch: 0,
   }
 })
 
 vi.mock('../editor/bootstrap/GameBootstrap', () => ({
-  GameBootstrap: ({ children }: { children: ReactNode }) => <div data-testid="bootstrap">{children}</div>,
+  GameBootstrap: ({ children, onBoot, gameId }: { children: ReactNode; onBoot?: (gameId: string) => void; gameId?: string }) => {
+    bootstrapProps({ gameId })
+    onBoot?.('猫')
+    return <div data-testid="bootstrap">{children}</div>
+  },
 }))
 vi.mock('../editor/assets/catalog', () => ({
   ZHANDOU_VIDEOS: {},
@@ -63,6 +72,7 @@ vi.mock('../styles/injectStyle', () => ({ injectStyleOnce: vi.fn() }))
 
 afterEach(() => {
   ensureBoot.mockClear()
+  bootstrapProps.mockClear()
   window.history.replaceState({}, '', '/')
 })
 
@@ -91,4 +101,23 @@ test('wraps the center pane with bootstrap before rendering the main surface', (
   render(<GraphApp />)
   expect(screen.getByTestId('bootstrap')).toBeTruthy()
   expect(screen.getByText('blueprint')).toBeTruthy()
+})
+
+test('passes the handshake game id to the single boot owner', () => {
+  window.history.replaceState({}, '', '/?pane=center')
+  ensureBoot.mockClear()
+  render(<GraphApp />)
+  expect(ensureBoot).toHaveBeenCalledWith('猫')
+})
+
+test('uses explicit in-process pane and game id without changing the host URL', () => {
+  window.history.replaceState({}, '', '/?pane=left&slug=other')
+  bootstrapProps.mockClear()
+
+  render(<GraphApp pane="center" gameId="arrival-game" />)
+
+  expect(screen.queryByRole('complementary')).toBeNull()
+  expect(screen.getByTestId('bootstrap')).toBeTruthy()
+  expect(bootstrapProps).toHaveBeenCalledWith({ gameId: 'arrival-game' })
+  expect(location.search).toBe('?pane=left&slug=other')
 })

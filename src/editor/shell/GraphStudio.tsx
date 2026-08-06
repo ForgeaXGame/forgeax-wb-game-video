@@ -25,7 +25,6 @@ import { claimPlayerFocus, releasePlayerFocus } from '../../runtime/input/player
 import { bootEditorSkins } from '../init'
 import { BgmPlayer, GameStage, PlaybackClockProvider, useControlledPlaybackTimeout, VideoAudioToggle } from '../../runtime/play'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { getGameSlug } from '../persist/gameScope'
 import { dropOverlayIfUnreferenced } from '../../graph/edit/overlay-edit'
 import { removeMountGraph } from '../video/graphMaterialOps'
 import { resolveMediaSrc } from './media'
@@ -154,13 +153,9 @@ function PreviewTogglePill({ open, onToggle }: { open: boolean, onToggle: () => 
   )
 }
 
-const kinoAssetLibraryClient = createKinoAssetLibraryClient()
-
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
   ensureToolbarStyle()
-  // 宿主 iframe 传 `?slug=`（见 gameScope.ts）；勿只读 `?game=`，否则会落到默认 demo 命名空间。
-  const game = useMemo(() => getGameSlug() ?? 'game-nodia-fighting', [])
   const playRootRef = useRef<HTMLDivElement | null>(null)
   const [playRootEl, setPlayRootEl] = useState<HTMLElement | null>(null)
   const bindPlayRoot = (el: HTMLDivElement | null) => {
@@ -172,6 +167,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
 
   // 共享场景 store（蓝图/实体/变量/规则/场景/试玩 并行视图共用同一份 graph+meta+持久化）。
   const graph = useGraphScenario((s) => s.graph)
+  const game = useGraphScenario((s) => s.game)
   const isDraft = useGraphScenario((s) => s.isDraft)
   const fitSignal = useGraphScenario((s) => s.fitSignal)
   const loadEpoch = useGraphScenario((s) => s.loadEpoch)
@@ -227,7 +223,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const variables = useGraphScenario((s) => s.meta.variables)
   // meta.formulas 在 schema 里存为 `Record<string, unknown>`（runtime ↛ editor）；编辑器侧窄化回 Formula。
   const formulas = useGraphScenario((s) => s.meta.formulas) as Record<string, Formula> | undefined
-  const ensureBoot = useGraphScenario((s) => s.ensureBoot)
   // 保存 = 打版本：一次性存 blueprint + 组件（服务端钩子）+ git tag vN。
   const doCommit = useGraphScenario((s) => s.commit)
   const reset = useGraphScenario((s) => s.reset)
@@ -333,12 +328,12 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   const [bgmRunKey, setBgmRunKey] = useState(0)
   const [videoOptions, setVideoOptions] = useState<VideoOption[]>([])
   const [videoOptionsError, setVideoOptionsError] = useState<string | null>(null)
+  const kinoAssetLibraryClient = useMemo(() => createKinoAssetLibraryClient(), [])
   const kinoResources = useKinoVideoResources(game)
   // 节点面板「音乐」下拉候选（与「视频」同款）：Kino media_type=audio，展示形状在壳层拼。
   const audio = useProjectAssets(game, 'audio', kinoAssetLibraryClient)
   const audioOptions = useMemo(() => audioAssetOptions(audio.items), [audio.items])
 
-  useEffect(() => { ensureBoot(game, scenario) }, [game, scenario, ensureBoot])
   useEffect(() => {
     const seen = new Set<string>()
     const kino: VideoOption[] = []

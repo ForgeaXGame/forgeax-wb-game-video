@@ -7,6 +7,24 @@ import type { GameNode, GameScenario } from '../../../runtime/schema/graph-schem
 import { node, scnOf } from '../../../runtime/__tests__/test-fixtures'
 import { NodePreviewStage } from '../NodePreviewStage'
 
+const hostClient = vi.hoisted(() => ({
+  extension: {
+    fetch: vi.fn(),
+    url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\//, '')}`),
+  },
+  tool: { call: vi.fn() },
+}))
+
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => hostClient,
+  ExtensionResponseError: class ExtensionResponseError extends Error {
+    constructor(readonly status: number, message: string) {
+      super(message)
+    }
+  },
+  readExtensionJson: vi.fn(),
+}))
+
 beforeAll(registerCoreSkins)
 afterEach(() => {
   cleanup()
