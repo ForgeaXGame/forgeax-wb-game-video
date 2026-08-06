@@ -33,7 +33,7 @@ describe('placeAdaptivePop', () => {
     expect(placement!.side).toBe('below')
     expect(placement!.style).toMatchObject({ position: 'fixed', top: 232, left: 44 })
     // 按钮中心 x=212，浮层 left=44 → arrow = 168
-    expect(placement!.style['--ns-arrow' as keyof typeof placement.style]).toBe('168px')
+    expect(placement!.style).toHaveProperty('--ns-arrow', '168px')
   })
 
   it('flips above when there is no room below', () => {

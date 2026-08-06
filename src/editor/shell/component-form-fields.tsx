@@ -19,6 +19,7 @@ import { hasOptionEventsInput } from './editors'
 import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, ValueInput, type ComponentEventLike, type EditorPickerCtx } from './editors'
 import type { TextOrRef } from './TextValueEditor'
 import { ColorPicker } from './ColorPicker'
+import { KeyConflictInput } from './KeyConflictInput'
 import { entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
 import type {
   EntityAttributeCreateRequest,
@@ -26,6 +27,15 @@ import type {
   FormulaCreateRequest,
   VariableCreateRequest,
 } from './metaCatalog'
+import type { KeyBindingConflict } from './keyBindingConflicts'
+import { conflictForInput, keyConflictTooltip } from './keyBindingConflicts'
+
+/** 右栏/检视器传入的按键冲突上下文；缺省则不做按键重复校验 UI。 */
+export interface KeyBindingConflictContext {
+  overlayId: string
+  childId: string
+  conflicts: ReadonlyMap<string, KeyBindingConflict>
+}
 
 /**
  * events 编辑器的 variant 由触发的输入标记本身决定，不查组件 id 也不查任何跨组件分类表：
@@ -145,10 +155,10 @@ function defaultPlaceholder(inp: ComponentInput): string | undefined {
 
 function field(label: string, node: JSX.Element, title?: string): JSX.Element {
   return (
-    <label style={rowStyle} title={title}>
+    <div className="cff-field-layout" style={rowStyle} title={title}>
       <span style={lbl}>{label}</span>
       {node}
-    </label>
+    </div>
   )
 }
 
@@ -160,7 +170,8 @@ function compactField(
   controlWidth?: CSSProperties['width'],
 ): JSX.Element {
   return (
-    <label
+    <div
+      className="cff-field-layout"
       style={{
         display: 'grid',
         gridTemplateColumns: `${labelWidth ?? DEFAULT_COMPACT_LABEL_WIDTH} minmax(0, ${controlWidth ?? `${COMPACT_CONTROL_WIDTH}px`})`,
@@ -180,7 +191,7 @@ function compactField(
         {label}
       </span>
       {node}
-    </label>
+    </div>
   )
 }
 
@@ -437,12 +448,17 @@ function renderInput(
   onCreateFormula?: FormulaCreateHandler,
   stackExpressionControls = true,
   propertyLayout = false,
+  keyConflicts?: KeyBindingConflictContext,
 ): JSX.Element | null {
   const val = values[inp.key]
   const label = inp.label ?? inp.key
   const hint = fieldHint(inp)
   const wrap = (node: JSX.Element): JSX.Element =>
     compact ? compactField(label, node, hint, labelWidth, controlWidth) : field(label, node, hint)
+  const keyConflict = keyConflicts
+    ? conflictForInput(keyConflicts.conflicts, keyConflicts.overlayId, keyConflicts.childId, inp.key)
+    : undefined
+  const keyConflictTip = keyConflictTooltip(keyConflict)
 
   // 有 component 优先用它渲染（复合编辑器）；events / effects 直接出结构化子编辑器，textStyle / qteCues 暂交「视频」轨。
   if (inp.component === 'events' || inp.component === 'hotspotEvents') {
@@ -705,6 +721,7 @@ function renderInput(
       <span key={inp.key}>
         {wrap(
           <select
+            aria-label={label}
             value={selectedValue}
             onChange={(e) => onPatch(inp.key, e.target.value)}
             style={{
@@ -763,7 +780,27 @@ function renderInput(
         </span>
       )
     case 'string':
-    default:
+    default: {
+      const isKeyField = /key$/i.test(inp.key) || /按键/.test(label)
+      if (isKeyField && keyConflicts) {
+        return (
+          <span key={inp.key}>
+            {wrap(
+              <KeyConflictInput
+                value={typeof val === 'string' ? val : ''}
+                placeholder={defaultPlaceholder(inp)}
+                conflict={!!keyConflict}
+                tooltip={keyConflictTip}
+                onChange={(next) => onPatch(inp.key, next)}
+                style={{
+                  width: compact ? '100%' : undefined,
+                  maxWidth: compact ? COMPACT_CONTROL_WIDTH : undefined,
+                }}
+              />,
+            )}
+          </span>
+        )
+      }
       return (
         <span key={inp.key}>
           {wrap(
@@ -783,6 +820,7 @@ function renderInput(
           )}
         </span>
       )
+    }
   }
 }
 
@@ -836,6 +874,7 @@ export function ComponentFormFields({
   onCreateEntity,
   onCreateVariable,
   onCreateFormula,
+  keyConflicts,
 }: {
   componentId: string
   values: Record<string, unknown>
@@ -862,6 +901,8 @@ export function ComponentFormFields({
   onCreateVariable?: VariableCreateHandler
   /** 新组件动态值缺少公式时，经级联确认后补建到场景公式目录。 */
   onCreateFormula?: FormulaCreateHandler
+  /** 交互按键重复冲突（右栏/方案编辑传入）。 */
+  keyConflicts?: KeyBindingConflictContext
 }): JSX.Element | null {
   const compact = density !== 'default'
   const propertyLayout = density === 'property'
@@ -916,20 +957,20 @@ export function ComponentFormFields({
                       : undefined,
                   }}
                 >
-                  {renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout)}
+                  {renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, true, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout, keyConflicts)}
                 </div>
               ))}
             </div>
           ) : (
-            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula))
+            paramScalars.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, false, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, false, keyConflicts))
           )}
-          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout))}
+          {paramComplexes.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout, keyConflicts))}
         </div>
       ) : null}
       {events.length > 0 ? (
         <div style={grouped ? { borderTop: '1px solid #2f2f2f', paddingTop: 5 } : undefined}>
           {grouped ? groupLabel('事件配置') : null}
-          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout))}
+          {events.map((inp) => renderInput(componentId, inp, inputs, values, onPatch, onChange, pickers, compact, labelWidth, compactControlWidth, onCreateEntityAttribute, onCreateEntity, onCreateVariable, onCreateFormula, true, propertyLayout, keyConflicts))}
         </div>
       ) : null}
     </div>

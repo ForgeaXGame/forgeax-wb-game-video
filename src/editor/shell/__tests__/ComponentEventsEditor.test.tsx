@@ -837,7 +837,7 @@ describe('ComponentFormFields defaults', () => {
       '我方',
       '新增属性',
     )
-    expect(screen.getByRole('textbox', { name: '我方的新属性 ID' })).toHaveValue('hpMax')
+    expect(screen.queryByRole('textbox', { name: '我方的新属性 ID' })).toBeNull()
     expect(screen.getByRole('button', { name: '确认' })).toBeEnabled()
   })
 
@@ -1225,15 +1225,12 @@ describe('ComponentFormFields defaults', () => {
     expect(screen.queryByRole('menuitem', { name: 'attack' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: 'defense' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '攻击力' })).toBeNull()
-    expect(screen.getByRole('textbox', { name: '小怪的新属性 ID' })).toHaveValue('hp2')
+    expect(screen.queryByRole('textbox', { name: '小怪的新属性 ID' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '小怪的新属性显示名' })).toHaveValue('当前血量')
     expect(screen.getByRole('textbox', { name: '小怪的新属性初始值' })).toHaveValue('100')
     expect(screen.queryByRole('menuitem', { name: '最小值：0' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '最大值：100' })).toBeNull()
 
-    fireEvent.change(screen.getByRole('textbox', { name: '小怪的新属性 ID' }), {
-      target: { value: 'lifeNow' },
-    })
     fireEvent.change(screen.getByRole('textbox', { name: '小怪的新属性显示名' }), {
       target: { value: '生命值' },
     })
@@ -1243,12 +1240,12 @@ describe('ComponentFormFields defaults', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
 
     expect(screen.getByTestId('entities-state')).toHaveTextContent(
-      '"attrs":{"attack":20,"defense":10,"hp":30,"lifeNow":88}',
+      '"attrs":{"attack":20,"defense":10,"hp":30,"hp2":88}',
     )
     expect(screen.getByTestId('entities-state')).toHaveTextContent(
-      '"lifeNow":{"label":"生命值","initial":88,"min":0,"max":100}',
+      '"hp2":{"label":"生命值","initial":88,"min":0,"max":100}',
     )
-    expect(latestValues.current).toMatchObject({ expr: 'entity.boss.attr.lifeNow' })
+    expect(latestValues.current).toMatchObject({ expr: 'entity.boss.attr.hp2' })
     expect(onChange).toHaveBeenCalled()
   })
 
@@ -1279,22 +1276,19 @@ describe('ComponentFormFields defaults', () => {
       .getByRole('combobox', { name: '文本内容' })
     chooseCascade(labelPicker, '实体', '新增实体')
 
-    expect(screen.getByRole('textbox', { name: '新实体 ID' })).toHaveValue('ent-boss')
+    expect(screen.queryByRole('textbox', { name: '新实体 ID' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '新实体显示名' })).toHaveValue('敌方')
     expect(screen.queryByRole('textbox', { name: '新实体类型' })).toBeNull()
 
-    fireEvent.change(screen.getByRole('textbox', { name: '新实体 ID' }), {
-      target: { value: 'enemy-chief' },
-    })
     fireEvent.change(screen.getByRole('textbox', { name: '新实体显示名' }), {
       target: { value: '首领' },
     })
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
 
     expect(screen.getByTestId('entities-state')).toHaveTextContent(
-      '"enemy-chief":{"id":"enemy-chief","name":"首领","attrs":{},"attrMeta":{}}',
+      '"ent-boss":{"id":"ent-boss","name":"首领","attrs":{},"attrMeta":{}}',
     )
-    expect(latestValues.label).toEqual({ ref: 'entity.enemy-chief.name' })
+    expect(latestValues.label).toEqual({ ref: 'entity.ent-boss.name' })
   })
 
   it('creates an entity and the required hp property from an empty catalog', () => {
@@ -1327,23 +1321,17 @@ describe('ComponentFormFields defaults', () => {
       .getByRole('combobox', { name: '数值内容' })
     chooseCascade(hpPicker, '实体属性', '新增实体')
 
-    expect(screen.getByRole('textbox', { name: '新实体 ID' })).toHaveValue('ent-boss')
+    expect(screen.queryByRole('textbox', { name: '新实体 ID' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '新实体显示名' })).toHaveValue('敌方')
     expect(screen.queryByRole('textbox', { name: '新实体类型' })).toBeNull()
-    expect(screen.getByRole('textbox', { name: '新属性 ID' })).toHaveValue('hp')
+    expect(screen.queryByRole('textbox', { name: '新属性 ID' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '新属性显示名' })).toHaveValue('当前血量')
     expect(screen.getByRole('textbox', { name: '新属性初始值' })).toHaveValue('100')
     expect(screen.queryByRole('menuitem', { name: '最小值：0' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '最大值：100' })).toBeNull()
 
-    fireEvent.change(screen.getByRole('textbox', { name: '新实体 ID' }), {
-      target: { value: 'enemy-boss' },
-    })
     fireEvent.change(screen.getByRole('textbox', { name: '新实体显示名' }), {
       target: { value: '魔王' },
-    })
-    fireEvent.change(screen.getByRole('textbox', { name: '新属性 ID' }), {
-      target: { value: 'vitality' },
     })
     fireEvent.change(screen.getByRole('textbox', { name: '新属性显示名' }), {
       target: { value: '生命值' },
@@ -1354,12 +1342,12 @@ describe('ComponentFormFields defaults', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认' }))
 
     expect(screen.getByTestId('entities-state')).toHaveTextContent(
-      '"enemy-boss":{"id":"enemy-boss","name":"魔王","attrs":{"vitality":90}',
+      '"ent-boss":{"id":"ent-boss","name":"魔王","attrs":{"hp":90}',
     )
     expect(screen.getByTestId('entities-state')).toHaveTextContent(
-      '"vitality":{"label":"生命值","initial":90,"min":0,"max":100}',
+      '"hp":{"label":"生命值","initial":90,"min":0,"max":100}',
     )
-    expect(latestValues.current).toMatchObject({ expr: 'entity.enemy-boss.attr.vitality' })
+    expect(latestValues.current).toMatchObject({ expr: 'entity.ent-boss.attr.hp' })
   })
 
   it('uses dynamic text pickers for subtitle speaker and dialogue text', () => {

@@ -16,6 +16,7 @@ import {
 import newComponents from '../../runtime/component-host/components/new'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { overlayContentAndHitTargets } from './overlay-fit-targets'
+import { AiParameterFillButton } from './AiParameterFillButton'
 
 /** 拖拽 MIME：库 chip → 画布落地时用它取组件 id。 */
 export const OVERLAY_PRESET_MIME = 'application/x-overlay-preset'
@@ -48,11 +49,11 @@ const LIB_CSS = `
 .ocl-search::placeholder { color:#8f8f8f; }
 .ocl-search:focus { box-shadow:0 0 0 1px #ff9c2a; }
 .ocl-grid {
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); grid-auto-rows:92px;
+  display:grid; grid-template-columns:repeat(auto-fill, 134px); grid-auto-rows:139px;
   align-content:start; gap:0 12px; min-height:0; padding:8px 14px 16px; overflow:auto;
 }
 .ocl-card {
-  display:flex; flex-direction:column; min-width:0; height:92px; padding:7px 4px 0; overflow:hidden;
+  display:flex; flex-direction:column; min-width:0; width:134px; height:139px; padding:7px 0 0; overflow:hidden;
   box-sizing:border-box; border:0; cursor:grab; user-select:none;
   background:transparent; color:#d2d2d2; font:inherit; text-align:center;
   transition:background .12s;
@@ -60,12 +61,21 @@ const LIB_CSS = `
 .ocl-card:hover { background:transparent; color:#ffc066; }
 .ocl-card:active { cursor:grabbing; }
 .ocl-preview {
-  position:relative; flex:1; min-height:0; overflow:hidden;
-  border-radius:6px; background:#474747;
+  position:relative; flex:none; width:134px; height:108px; overflow:hidden;
+  border-radius:6px; background:rgba(255,255,255,.1);
+  transition:background .12s;
 }
+.ocl-card:hover .ocl-preview { background:rgba(255,255,255,.2); }
 .ocl-card[data-library-kind="folder"] .ocl-preview {
   border-radius:0 6px 6px; clip-path:polygon(0 12%,32% 12%,39% 0,100% 0,100% 100%,0 100%);
 }
+.ocl-ai-slot {
+  position:absolute; z-index:2; top:4px; right:4px; display:block;
+  width:18px; height:18px; visibility:hidden;
+}
+.ocl-preview:hover .ocl-ai-slot { visibility:visible; }
+.ocl-ai-quick { pointer-events:auto; }
+.ocl-ai-quick img { display:block; width:18px; height:18px; }
 .ocl-render-stage {
   position:absolute; left:0; top:0; width:640px; height:360px; container-type:size;
   transform-origin:0 0; pointer-events:none;
@@ -243,6 +253,9 @@ function ComponentCard({
           style={{ transform, visibility: box ? 'visible' : 'hidden' }}
         >
           <Preview {...props} preview previewTimeMs={400} />
+        </span>
+        <span className="ocl-ai-slot">
+          <AiParameterFillButton className="ocl-ai-quick" />
         </span>
       </span>
       <span className="ocl-name">{label}</span>

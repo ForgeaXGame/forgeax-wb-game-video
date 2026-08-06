@@ -24,7 +24,24 @@ describe('ComponentLibrary', () => {
     expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
       .toContain('.ocl-card:hover { background:transparent; color:#ffc066; }')
     expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
+      .toContain('border-radius:6px; background:rgba(255,255,255,.1);')
+    expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
+      .toContain('.ocl-card:hover .ocl-preview { background:rgba(255,255,255,.2); }')
+    expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
+      .toContain('position:relative; flex:none; width:134px; height:108px; overflow:hidden;')
+    expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
+      .toContain('.ocl-preview:hover .ocl-ai-slot { visibility:visible; }')
+    expect(document.querySelector('style[data-reel-style="overlay-component-library"]')?.textContent)
       .not.toContain('border-bottom:1px solid #464646')
+    const aiButtons = screen.getByTestId('component-library').querySelectorAll<HTMLButtonElement>('.ocl-ai-quick')
+    expect(aiButtons).toHaveLength(11)
+    expect(aiButtons[0]).toBeDisabled()
+    expect(aiButtons[0]).toHaveStyle({ cursor: 'not-allowed' })
+    expect(aiButtons[0]).toHaveAttribute('aria-label', 'AI 补全参数')
+    expect(aiButtons[0]).toHaveAttribute('title', 'AI 补全暂不可用')
+    expect(aiButtons[0]?.querySelector('img')).toHaveAttribute('src', expect.stringContaining('ai-parameter-fill'))
+    expect(aiButtons[0]?.querySelector('img')).toHaveAttribute('width', '18')
+    expect(aiButtons[0]?.querySelector('img')).toHaveAttribute('height', '18')
     expect(screen.getByText('示例对白')).toBeTruthy()
     expect(document.querySelector('.gv-status-notice')).toHaveStyle({ '--preview-t': '400ms' })
     expect(screen.queryByText('转场')).toBeNull()
@@ -49,7 +66,7 @@ describe('ComponentLibrary', () => {
         return { left: 0, top: 0, right: 640, bottom: 360, width: 640, height: 360 } as DOMRect
       }
       if (this.classList.contains('ocl-preview')) {
-        return { left: 0, top: 0, right: 92, bottom: 60, width: 92, height: 60 } as DOMRect
+        return { left: 0, top: 0, right: 134, bottom: 108, width: 134, height: 108 } as DOMRect
       }
       if (this.hasAttribute('data-overlay-fit-target')) {
         return { left: 120, top: 80, right: 320, bottom: 120, width: 200, height: 40 } as DOMRect

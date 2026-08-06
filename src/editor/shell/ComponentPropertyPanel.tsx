@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useEffect, useRef, type JSX } from 'react'
 import type { Entity, Overlay, OverlayReaction, Variable } from '../../runtime/schema/graph-schema'
 import type { ComponentInput } from '../../runtime/schema/node-config-schema'
 import { aggregateOverlayEvents } from '../../runtime/schema/overlay-events'
@@ -12,6 +12,7 @@ import {
   type EntityAttributeCreateHandler,
   type EntityCreateHandler,
   type FormulaCreateHandler,
+  type KeyBindingConflictContext,
   type VariableCreateHandler,
 } from './component-form-fields'
 import { componentTypeLabel } from './editors'
@@ -244,8 +245,8 @@ const panelStyles = `
     min-width: 0;
   }
 
-  .cpp-section-body label > span:first-child,
-  .cpp-section-body label > div:first-child {
+  .cpp-section-body .cff-field-layout > span:first-child,
+  .cpp-section-body .cff-field-layout > div:first-child {
     color: rgba(255, 255, 255, 0.6) !important;
     opacity: 1 !important;
     font-size: 14px !important;
@@ -259,6 +260,20 @@ const panelStyles = `
     border-radius: 8px !important;
     background: #181818 !important;
     color: #fff !important;
+  }
+
+  .cpp-panel input:focus,
+  .cpp-panel select:focus,
+  .cpp-panel textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .cpp-section-body .gc-cascade-trigger:hover,
+  .cpp-section-body .gc-cascade-trigger:focus,
+  .cpp-section-body .gc-cascade-trigger[aria-expanded='true'] {
+    border-color: rgba(255, 255, 255, 0.08) !important;
   }
 
   .cpp-section-body input[type='number'] {
@@ -319,7 +334,7 @@ const panelStyles = `
     padding-bottom: 0;
   }
 
-  .cpp-section-body.is-new-component .cff-property-field label {
+  .cpp-section-body.is-new-component .cff-property-field .cff-field-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     column-gap: 8px !important;
   }
@@ -716,6 +731,10 @@ export interface ComponentPropertyPanelProps {
   onCreateEntity?: EntityCreateHandler
   onCreateVariable?: VariableCreateHandler
   onCreateFormula?: FormulaCreateHandler
+  /** 跨界面/节点的交互按键冲突表。 */
+  keyConflicts?: KeyBindingConflictContext['conflicts']
+  /** 画布告警图标触发的右栏定位请求；nonce 允许重复点击同一组件。 */
+  keyConflictFocusRequest?: { childId: string; nonce: number }
 }
 
 export function ComponentPropertyPanel({
@@ -734,7 +753,10 @@ export function ComponentPropertyPanel({
   onCreateEntity,
   onCreateVariable,
   onCreateFormula,
+  keyConflicts,
+  keyConflictFocusRequest,
 }: ComponentPropertyPanelProps): JSX.Element {
+  const panelRef = useRef<HTMLElement>(null)
   const overlays = overlayCatalog ?? { [overlay.id]: overlay }
   const selectedEvents = selectedChild
     ? aggregateOverlayEvents(
@@ -758,6 +780,16 @@ export function ComponentPropertyPanel({
   const selectedParameterSections = selectedChild && selectedIsNewComponent
     ? parameterSections(selectedChild.component)
     : []
+  const keyConflictContext: KeyBindingConflictContext | undefined = selectedChild && keyConflicts
+    ? { overlayId: overlay.id, childId: selectedChild.id, conflicts: keyConflicts }
+    : undefined
+
+  useEffect(() => {
+    if (!keyConflictFocusRequest || selectedChild?.id !== keyConflictFocusRequest.childId) return
+    panelRef.current
+      ?.querySelector<HTMLElement>('[data-key-conflict="true"]')
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [keyConflictFocusRequest, selectedChild?.id])
   const renderParameterSection = (
     section: { title: string; keys: string[] | undefined },
   ): JSX.Element | null => {
@@ -785,6 +817,7 @@ export function ComponentPropertyPanel({
               onCreateEntity={onCreateEntity}
               onCreateVariable={onCreateVariable}
               onCreateFormula={onCreateFormula}
+              keyConflicts={section.title === '交互按键' ? keyConflictContext : undefined}
             />
           </div>
         </div>
@@ -794,6 +827,7 @@ export function ComponentPropertyPanel({
 
   return (
     <aside
+      ref={panelRef}
       className="cpp-panel"
       data-testid="component-property-panel"
       style={{
@@ -811,9 +845,6 @@ export function ComponentPropertyPanel({
     >
       <style>{panelStyles}</style>
       <div className="cpp-tabs" role="tablist" aria-label="属性面板">
-        <button className="cpp-tab" type="button" role="tab" aria-selected="false" disabled>
-          Agent
-        </button>
         <button
           className="cpp-tab is-active"
           type="button"

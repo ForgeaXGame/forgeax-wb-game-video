@@ -22,7 +22,7 @@ export interface CascadingPickerOption {
   disabled?: boolean
   /** 父级展开时自动继续展开此分支；同级最多设置一个。 */
   defaultOpen?: boolean
-  presentation?: 'detail' | 'create' | 'confirm'
+  presentation?: 'detail' | 'create' | 'agent' | 'confirm'
   editor?: {
     value: string
     ariaLabel: string
@@ -77,7 +77,7 @@ const CASCADING_PICKER_CSS = `
   overflow-x: auto; overflow-y: hidden;
   border: 1px solid var(--color-border-default, #404040);
   border-radius: var(--radius-md, 8px);
-  background: var(--color-background-floating, #242424);
+  background: rgba(20, 20, 20, 1);
   color: var(--color-text-primary, #f3f3f3);
   box-shadow: var(--ks-shadow-lift, 0 10px 28px rgba(0,0,0,.55));
 }
@@ -131,7 +131,13 @@ const CASCADING_PICKER_CSS = `
   color: rgb(255, 156, 42);
   background: color-mix(in srgb, rgb(255, 156, 42) 10%, transparent);
 }
+.gc-cascade-item.is-agent {
+  justify-content: center; text-align: center;
+  color: #111; background: #fff;
+}
+.gc-cascade-item.is-agent:disabled { opacity: 1; cursor: not-allowed; }
 .gc-cascade-item.is-confirm .gc-cascade-item-label { flex: 0 1 auto; text-align: center; }
+.gc-cascade-item.is-agent .gc-cascade-item-label { flex: 0 1 auto; text-align: center; }
 .gc-cascade-item-label {
   min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -141,8 +147,10 @@ const CASCADING_PICKER_CSS = `
   color: var(--color-text-secondary, #a8a8a8);
   font-size: 10px; line-height: 1.2; text-align: right;
 }
-.gc-cascade-item-mark { width: 14px; flex: none; text-align: center; }
-.gc-cascade-item-arrow { flex: none; opacity: .55; }
+.gc-cascade-item-mark,
+.gc-cascade-item-arrow { width: 14px; flex: none; text-align: center; }
+.gc-cascade-item-mark { margin-left: auto; }
+.gc-cascade-item-arrow { opacity: .55; font-size: 18px; line-height: 1; }
 .gc-cascade-editor {
   box-sizing: border-box; display: grid; gap: 4px; width: 100%; padding: 5px 8px;
   color: inherit; font-size: 11px;
@@ -155,7 +163,9 @@ const CASCADING_PICKER_CSS = `
   background: var(--color-background-base, #191919); color: inherit; font: inherit;
 }
 .gc-cascade-editor textarea { height: 68px; min-height: 68px; resize: vertical; line-height: 1.4; }
-.gc-cascade-editor input:focus, .gc-cascade-editor textarea:focus { outline: none; border-color: rgb(255, 156, 42); }
+.gc-cascade-editor input:focus, .gc-cascade-editor textarea:focus {
+  outline: none; box-shadow: none; border-color: rgba(255, 255, 255, 0.08);
+}
 .gc-cascade-editor input[aria-invalid="true"], .gc-cascade-editor textarea[aria-invalid="true"] { border-color: var(--color-status-danger, #ef6a6a); }
 .gc-cascade-editor-error { color: var(--color-status-danger, #ef6a6a); line-height: 1.35; overflow-wrap: anywhere; }
 .gc-cascade-create-dialog {
@@ -163,7 +173,7 @@ const CASCADING_PICKER_CSS = `
   width: min(260px, calc(100vw - 16px)); padding: 8px;
   border: 1px solid var(--color-border-default, #505050);
   border-radius: var(--radius-md, 8px);
-  background: var(--color-background-floating, #242424); color: var(--color-text-primary, #f3f3f3);
+  background: rgba(20, 20, 20, 1); color: var(--color-text-primary, #f3f3f3);
   box-shadow: var(--ks-shadow-lift, 0 12px 30px rgba(0,0,0,.62));
 }
 .gc-cascade-create-dialog-header {
@@ -181,7 +191,10 @@ const CASCADING_PICKER_CSS = `
   background: var(--color-background-hover, rgba(255,255,255,.08)); color: inherit;
 }
 .gc-cascade-create-dialog .gc-cascade-editor { padding: 4px 2px; }
-.gc-cascade-create-dialog .gc-cascade-item.is-confirm { width: 100%; margin-top: 5px; }
+.gc-cascade-create-dialog-actions { display:flex; gap:8px; margin-top:5px; }
+.gc-cascade-create-dialog-actions .gc-cascade-item {
+  flex:1; width:auto; height:28px; min-height:28px; margin:0; padding:3px 8px; border-radius:6px;
+}
 `
 
 function findOptionPath(
@@ -294,6 +307,9 @@ export function CascadingPicker({
   const [createDialogStyle, setCreateDialogStyle] = useState<CSSProperties | null>(null)
 
   const columns = menuColumns(options, activePath)
+  const renderedColumns = columns
+    .map((column, depth) => ({ column, depth }))
+    .reverse()
   const panelPathKey = activePath.join('/')
   const createPathKey = createPath?.join('/') ?? ''
   const createOption = createPath ? optionAtPath(options, createPath) : undefined
@@ -377,7 +393,11 @@ export function CascadingPicker({
       const top = placeAbove
         ? Math.max(8, rect.top - panelHeight - gap)
         : Math.min(window.innerHeight - 8, rect.bottom + gap)
-      const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - panelWidth - 8))
+      // 根列固定贴近触发器右边缘；子列按视觉顺序向左扩展。
+      const left = Math.min(
+        Math.max(8, rect.right - panelWidth),
+        Math.max(8, window.innerWidth - panelWidth - 8),
+      )
       setPanelStyle({
         position: 'fixed',
         top,
@@ -410,15 +430,30 @@ export function CascadingPicker({
       const dialogWidth = Math.min(dialogRect.width, window.innerWidth - 16)
       const dialogHeight = Math.min(dialogRect.height, window.innerHeight - 16)
       const gap = 5
+      const roomLeft = anchorRect.left - 8
+      const roomRight = window.innerWidth - anchorRect.right - 8
+      const canPlaceLeft = roomLeft >= dialogWidth + gap
+      const canPlaceRight = roomRight >= dialogWidth + gap
+      const placeHorizontally = canPlaceLeft || canPlaceRight
+      const placeLeft = canPlaceLeft || (!canPlaceRight && roomLeft >= roomRight)
       const below = window.innerHeight - anchorRect.bottom
       const placeAbove = below < dialogHeight + gap && anchorRect.top > below
-      const top = placeAbove
-        ? Math.max(8, anchorRect.top - dialogHeight - gap)
-        : Math.min(window.innerHeight - dialogHeight - 8, anchorRect.bottom + gap)
-      const left = Math.min(
-        Math.max(8, anchorRect.left),
-        Math.max(8, window.innerWidth - dialogWidth - 8),
-      )
+      const top = placeHorizontally
+        ? Math.min(
+          Math.max(8, anchorRect.top),
+          Math.max(8, window.innerHeight - dialogHeight - 8),
+        )
+        : placeAbove
+          ? Math.max(8, anchorRect.top - dialogHeight - gap)
+          : Math.min(window.innerHeight - dialogHeight - 8, anchorRect.bottom + gap)
+      const left = placeHorizontally
+        ? placeLeft
+          ? anchorRect.left - dialogWidth - gap
+          : anchorRect.right + gap
+        : Math.min(
+          Math.max(8, anchorRect.left),
+          Math.max(8, window.innerWidth - dialogWidth - 8),
+        )
       setCreateDialogStyle({
         position: 'fixed',
         top,
@@ -482,7 +517,7 @@ export function CascadingPicker({
       style={panelStyle ?? HIDDEN_PANEL_STYLE}
     >
       <div className="gc-cascade-content">
-        {columns.map((column, depth) => (
+        {renderedColumns.map(({ column, depth }) => (
           <div
             className={`gc-cascade-column${column.some((option) => option.editor) ? ' has-editor' : ''}`}
             role="group"
@@ -549,6 +584,11 @@ export function CascadingPicker({
                     option.key,
                   ].join('/') : option.children?.length ? active : undefined}
                   disabled={option.disabled}
+                  onPointerEnter={() => {
+                    if (!createItem && !option.disabled && option.children?.length) {
+                      activateBranch(option, depth)
+                    }
+                  }}
                   onClick={(event) => choose(option, depth, event.currentTarget)}
                 >
                   {createItem ? (
@@ -558,8 +598,8 @@ export function CascadingPicker({
                     </>
                   ) : (
                     <>
-                      {!confirmItem ? (
-                        <span className="gc-cascade-item-mark">{selected ? '✓' : ''}</span>
+                      {!confirmItem && option.children?.length ? (
+                        <span className="gc-cascade-item-arrow" aria-hidden="true">‹</span>
                       ) : null}
                       <span className="gc-cascade-item-label">{option.label}</span>
                       {option.secondaryText != null ? (
@@ -567,7 +607,9 @@ export function CascadingPicker({
                           {option.secondaryText}
                         </span>
                       ) : null}
-                      {option.children?.length ? <span className="gc-cascade-item-arrow">›</span> : null}
+                      {!confirmItem && !option.children?.length && selected ? (
+                        <span className="gc-cascade-item-mark" aria-hidden="true">✓</span>
+                      ) : null}
                     </>
                   )}
                 </button>
@@ -607,7 +649,9 @@ export function CascadingPicker({
           ×
         </button>
       </div>
-      {createOption.children?.map((option) => {
+      {createOption.children?.filter(
+        (option) => option.presentation !== 'agent' && option.presentation !== 'confirm',
+      ).map((option) => {
         if (option.editor) {
           const editor = option.editor
           return (
@@ -639,23 +683,41 @@ export function CascadingPicker({
             </label>
           )
         }
-        const optionLabel = option.presentation === 'confirm' ? '确认' : option.label
         return (
           <button
             type="button"
             className={[
               'gc-cascade-item',
               option.presentation === 'detail' ? 'is-detail' : '',
-              option.presentation === 'confirm' ? 'is-confirm' : '',
             ].filter(Boolean).join(' ')}
             disabled={option.disabled}
             onClick={() => chooseCreateOption(option)}
             key={option.key}
           >
-            <span className="gc-cascade-item-label">{optionLabel}</span>
+            <span className="gc-cascade-item-label">{option.label}</span>
           </button>
         )
       })}
+      <div className="gc-cascade-create-dialog-actions">
+        {createOption.children?.filter(
+          (option) => option.presentation === 'agent' || option.presentation === 'confirm',
+        ).map((option) => (
+          <button
+            type="button"
+            className={[
+              'gc-cascade-item',
+              option.presentation === 'agent' ? 'is-agent' : 'is-confirm',
+            ].join(' ')}
+            disabled={option.disabled}
+            onClick={() => chooseCreateOption(option)}
+            key={option.key}
+          >
+            <span className="gc-cascade-item-label">
+              {option.presentation === 'confirm' ? '确认' : option.label}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   ) : null
 
