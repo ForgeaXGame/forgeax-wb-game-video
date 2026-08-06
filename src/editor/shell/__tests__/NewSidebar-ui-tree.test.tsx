@@ -75,10 +75,24 @@ describe('NewSidebar interface tree', () => {
     })
   })
 
-  it('creates an overlay and tree reference in one shared meta update', () => {
+  it('creates top-level folders from the 界面 add button before schemes can be added inside', () => {
     render(<NewSidebar />)
-    fireEvent.click(screen.getByRole('button', { name: '战斗操作' }))
-    fireEvent.click(screen.getByRole('button', { name: '＋ 方案' }))
+    fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
+
+    const selectedId = useUiSelection.getState().selectedTreeNodeId!
+    const meta = useGraphScenario.getState().meta
+    expect(findUiTreeNode(meta.uiTree!, selectedId)).toMatchObject({
+      kind: 'folder',
+      name: '新文件夹',
+    })
+    expect(meta.uiTree?.root.some((node) => node.id === selectedId)).toBe(true)
+    expect(useGraphView.getState().view).toBe('ui')
+  })
+
+  it('creates an overlay in the selected folder from the 界面 add button', () => {
+    render(<NewSidebar />)
+    fireEvent.click(screen.getByRole('button', { name: '选择文件夹 战斗' }))
+    fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
 
     const selection = useUiSelection.getState()
     expect(selection.selectedOverlayId).toBeTruthy()
@@ -93,18 +107,16 @@ describe('NewSidebar interface tree', () => {
     })
   })
 
-  it('persists nested folder create, rename, and delete operations', () => {
+  it('persists nested folder rename and delete operations', () => {
     render(<NewSidebar />)
-    fireEvent.click(screen.getByRole('button', { name: '战斗操作' }))
-    fireEvent.click(screen.getByRole('button', { name: '＋ 子文件夹' }))
+    fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
     const folderId = useUiSelection.getState().selectedTreeNodeId!
     expect(findUiTreeNode(useGraphScenario.getState().meta.uiTree!, folderId)).toMatchObject({
       kind: 'folder',
       name: '新文件夹',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '新文件夹操作' }))
-    fireEvent.click(screen.getByRole('button', { name: '重命名' }))
+    fireEvent.click(screen.getByLabelText('重命名 新文件夹'))
     fireEvent.change(screen.getByRole('textbox', { name: '重命名文件夹' }), {
       target: { value: '过场界面' },
     })
@@ -113,16 +125,14 @@ describe('NewSidebar interface tree', () => {
       name: '过场界面',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '过场界面操作' }))
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    fireEvent.click(screen.getByLabelText('删除 过场界面'))
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
     expect(findUiTreeNode(useGraphScenario.getState().meta.uiTree!, folderId)).toBeUndefined()
   })
 
   it('deletes a scheme reference and its overlay together', () => {
     render(<NewSidebar />)
-    fireEvent.click(screen.getByRole('button', { name: '战斗 HUD操作' }))
-    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    fireEvent.click(screen.getByLabelText('删除 战斗 HUD'))
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 
     const meta = useGraphScenario.getState().meta

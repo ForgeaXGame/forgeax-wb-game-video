@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { BASIC_UI_FOLDER_ID, ensureUiTree } from '../persist/ui-tree'
+import { BASIC_UI_FOLDER_ID, ensureUiTree, findUiTreeNode } from '../persist/ui-tree'
 import { sendUiNavCommand, useUiNavMirror } from '../persist/uiNavSync'
 import { useUiSelection } from '../persist/uiSelectionStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
@@ -25,6 +25,8 @@ export interface NavNode {
   kind: NavKind
   view?: GraphView
   canAddChild?: boolean
+  /** 子项由节点外部组件渲染（如界面 UiTreeView），但本行仍应按可展开节点布局。 */
+  externallyExpandable?: boolean
   /** 真实蓝图叶子：走 store CRUD；主蓝图可重命名，不可删除/设为入口。 */
   blueprint?: boolean
   /** 是否为入口蓝图。 */
@@ -58,7 +60,10 @@ const MOCK_ENTRIES: readonly NavNode[] = [
     label: '界面',
     kind: 'entry',
     view: 'ui',
+    canAddChild: true,
+    externallyExpandable: true,
     // 子树由真实 UiTreeView 渲染（main #115），不再用 mock children。
+    // 行内加号在「自定义界面(ui-folder:custom)」下新建界面方案。
   },
   {
     id: 'assets',
@@ -442,6 +447,7 @@ interface NsRowProps {
   mainId: string
   bp: BlueprintNavActions
   onToggle: (id: string) => void
+  onExternalToggle: (node: NavNode, expanded: boolean) => void
   onSelect: (node: NavNode) => void
   onMockAddChild: (node: NavNode) => void
   onMockRename: (node: NavNode) => void
@@ -450,10 +456,11 @@ interface NsRowProps {
 
 function NsRow({
   node, depth, expanded, activeId, mainId, bp,
-  onToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
+  onToggle, onExternalToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
 }: NsRowProps): JSX.Element {
   const hasChildren = !!(node.children && node.children.length > 0)
-  const isExpanded = expanded.has(node.id)
+  const isExpandable = hasChildren || !!node.externallyExpandable
+  const isExpanded = node.externallyExpandable ? activeId === node.id : expanded.has(node.id)
   const isActive = activeId === node.id
   const indent = depth * 8
   const isBlueprintLeaf = !!node.blueprint
@@ -564,7 +571,7 @@ function NsRow({
       <div
         className={`ns-row${isActive ? ' is-active' : ''}${isEditing ? ' is-editing' : ''}`}
         role="treeitem"
-        aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-expanded={isExpandable ? isExpanded : undefined}
         aria-selected={isActive}
         tabIndex={0}
         style={{ paddingLeft: indent }}
@@ -576,14 +583,18 @@ function NsRow({
           }
         }}
       >
-        {hasChildren && (
+        {isExpandable && (
           <button
             type="button"
             className={`ns-chev${isExpanded ? '' : ' is-collapsed'}`}
             aria-label={isExpanded ? '折叠' : '展开'}
             onClick={(e) => {
               e.stopPropagation()
-              onToggle(node.id)
+              if (node.externallyExpandable) {
+                onExternalToggle(node, isExpanded)
+              } else {
+                onToggle(node.id)
+              }
             }}
           >
             {ChevronIcon}
@@ -673,6 +684,7 @@ function NsRow({
                 mainId={mainId}
                 bp={bp}
                 onToggle={onToggle}
+                onExternalToggle={onExternalToggle}
                 onSelect={onSelect}
                 onMockAddChild={onMockAddChild}
                 onMockRename={onMockRename}
@@ -708,7 +720,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     ]))
     : localOverlays
   const uiTree = uiNavMode === 'left'
-    ? (remoteSnapshot?.uiTree ?? { root: [] })
+    ? ensureUiTree(remoteSnapshot?.uiTree, overlays)
     : ensureUiTree(meta?.uiTree, localOverlays)
   const uiNodes = toViewNodes(uiTree.root)
   const overlayUsage = uiNavMode === 'left'
@@ -751,6 +763,11 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     })
   }
 
+  const onExternalToggle = (node: NavNode, isExpanded: boolean): void => {
+    if (node.id !== 'ui') return
+    setView(isExpanded ? 'graph' : 'ui')
+  }
+
   const onSelect = (node: NavNode): void => {
     if (node.blueprint) {
       selectBlueprint(node.id)
@@ -768,6 +785,33 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
 
   const onMockAddChild = (node: NavNode): void => {
     setExpanded((cur) => new Set(cur).add(node.id))
+    if (node.id === 'ui') {
+      // 未进入文件夹时先创建根文件夹；选中可编辑文件夹后，顶层加号新建方案；
+      // 选中方案时则在其父文件夹继续新建方案。
+      // 文件夹行尾只保留重命名 / 删除，与其它导航树分支一致。
+      setView('ui')
+      const selectedNode = selectedTreeNodeId ? findUiTreeNode(uiTree, selectedTreeNodeId) : undefined
+      let targetFolderId = selectedNode?.kind === 'folder' ? selectedNode.id : null
+      if (selectedNode?.kind === 'scheme') {
+        const findParentFolderId = (nodes: readonly UiTreeViewNode[], targetId: string, parentId: string | null = null): string | null => {
+          for (const item of nodes) {
+            if (item.id === targetId) return parentId
+            if (item.kind === 'folder') {
+              const found = findParentFolderId(item.children ?? [], targetId, item.id)
+              if (found) return found
+            }
+          }
+          return null
+        }
+        targetFolderId = findParentFolderId(uiNodes, selectedNode.id)
+      }
+      if (targetFolderId && targetFolderId !== BASIC_UI_FOLDER_ID) {
+        sendUiNavCommand({ type: 'add-scheme', parentId: targetFolderId }, uiNavMode)
+      } else {
+        sendUiNavCommand({ type: 'add-root-folder' }, uiNavMode)
+      }
+      return
+    }
     // eslint-disable-next-line no-console
     console.log('[NewSidebar] add child for', node.id)
   }
@@ -793,6 +837,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
               mainId={mainId}
               bp={bp}
               onToggle={onToggle}
+              onExternalToggle={onExternalToggle}
               onSelect={onSelect}
               onMockAddChild={onMockAddChild}
               onMockRename={onMockRename}
@@ -805,13 +850,12 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
                   overlays={overlays}
                   usageByOverlay={overlayUsage}
                   selectedTreeNodeId={selectedTreeNodeId}
+                  baseDepth={1}
                   onSelect={(treeNode) => {
                     const overlayId = treeNode.kind === 'scheme' ? (treeNode.overlayId ?? null) : null
                     selectUiNode(treeNode.id, overlayId)
                     sendUiNavCommand({ type: 'select', treeNodeId: treeNode.id, overlayId }, uiNavMode)
                   }}
-                  onAddFolder={(parentId) => sendUiNavCommand({ type: 'add-folder', parentId }, uiNavMode)}
-                  onAddScheme={(parentId) => sendUiNavCommand({ type: 'add-scheme', parentId }, uiNavMode)}
                   onRename={(nodeId, name) => sendUiNavCommand({ type: 'rename', nodeId, name }, uiNavMode)}
                   onDelete={(treeNode) => {
                     if (!treeNode.readOnly) sendUiNavCommand({ type: 'remove', nodeId: treeNode.id }, uiNavMode)
