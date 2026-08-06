@@ -393,13 +393,6 @@ const NEW_SIDEBAR_CSS = `
   width: 100%;
   min-width: 0;
 }
-.ns-footer {
-  flex: none;
-  padding: 6px 12px;
-  border-top: 1px solid rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.45);
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 `
 
 function toViewNodes(nodes: readonly UiTreeViewNode[]): UiTreeViewNode[] {
@@ -697,7 +690,6 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   injectStyleOnce('new-sidebar', NEW_SIDEBAR_CSS)
   const view = useGraphView((s) => s.view)
   const setView = useGraphView((s) => s.setView)
-  const nodeCount = useGraphScenario((s) => s.graph?.nodes?.length ?? 0)
   const blueprints = useGraphScenario((s) => s.blueprints)
   const mainId = useGraphScenario((s) => s.mainBlueprintId)
   const activeBlueprintId = useGraphScenario((s) => s.activeBlueprintId)
@@ -829,9 +821,6 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
             ) : null}
           </Fragment>
         ))}
-      </div>
-      <div className="ns-footer" aria-label={`当前节点总数 ${nodeCount}`}>
-        节点总数 {nodeCount}
       </div>
       {bp.pendingDeleteId && bp.deletePopStyle && bp.deletePopSide && typeof document !== 'undefined'
         ? createPortal(
