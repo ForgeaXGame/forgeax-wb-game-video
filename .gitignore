@@ -76,3 +76,4 @@ dist/
 assets/CodeBuddyAssets/
 .playwright-mcp/
 .playwright-cli/.worktrees/
+.playwright-cli/

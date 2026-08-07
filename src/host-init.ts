@@ -15,6 +15,7 @@ import {
   resetPendingDocumentTypes,
   setPendingDocumentTypes,
 } from './editor/persist/pendingDocumentsStore'
+import { setHostGameSlug } from './editor/persist/gameScope'
 
 export type WorkbenchInitOptions = {
   rewrite?: RewriteRule[]
@@ -147,6 +148,8 @@ export function getDocumentMountOptions(): {
 export function applyHostInit(options: WorkbenchInitOptions = {}): void {
   acquireHostInit(options.rewrite)
   initDepth += 1
+  // 进程内挂载没有 URL slug，跨 tab 同步频道要靠这里拿到 game 标识才能隔离。
+  if (options.slug !== undefined) setHostGameSlug(options.slug)
   activeInspectorEl = options.inspectorEl
   activePreviewEl = options.previewEl
   activeOnNodeSelect = options.onNodeSelect
