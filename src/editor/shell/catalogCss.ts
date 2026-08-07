@@ -1054,4 +1054,79 @@ ${PREVIEW_CLOCK_CSS}
   border: 1px solid var(--gc-line); background: rgba(0,0,0,.28); color: var(--gc-text);
   border-radius: 6px; padding: 3px 6px; font-size: 11.5px;
 }
+/* ── 规则页基础框架：变量、实体、公式必须共享此工具栏与 token。 ── */
+.gc-rule-stage {
+  --rule-surface: #333333;
+  --rule-input: #1a1a1a;
+  --rule-text: #fff;
+  --rule-muted: rgba(255,255,255,.4);
+  --rule-divider: rgba(255,255,255,.1);
+  flex: 1; min-width: 0; min-height: 0; overflow: auto;
+  background: var(--rule-surface);
+  color: var(--rule-text);
+  font-family: Inter, "PingFang SC", sans-serif;
+}
+.gc-rule-root {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 24px;
+  background: var(--rule-surface);
+  font-size: 14px;
+}
+.gc-rule-toolbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+  min-height: 48px;
+  margin: -24px -24px 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--rule-divider);
+  background: var(--rule-surface);
+}
+.gc-rule-section-title {
+  margin-right: auto;
+  color: var(--rule-text);
+  font: 600 18px/24px "PingFang SC", sans-serif;
+}
+.gc-rule-button {
+  display: inline-flex; height: 32px; align-items: center; justify-content: center; gap: 6px;
+  box-sizing: border-box; padding: 0 12px;
+  border: 0; border-radius: 8px;
+  background: rgba(255,255,255,.1); color: var(--rule-text);
+  cursor: pointer;
+}
+.gc-rule-button:hover { background: rgba(255,255,255,.16); }
+.gc-rule-button-icon {
+  position: relative; display: inline-block; width: 14px; height: 14px; flex: 0 0 14px;
+}
+.gc-rule-button-icon::before, .gc-rule-button-icon::after {
+  content: ""; position: absolute; top: 6px; left: 0; width: 14px; height: 2px;
+  border-radius: 1px; background: currentColor;
+}
+.gc-rule-button-icon::after { transform: rotate(90deg); }
+.gc-rule-button > span:last-child {
+  font-family: "PingFang SC", sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  line-height: 18px !important;
+  transform: translateY(-1px);
+}
+.gc-rule-search-wrap { position: relative; display: inline-flex; align-items: center; }
+.gc-rule-search {
+  box-sizing: border-box; width: 200px; height: 32px;
+  padding: 1px 8px 3px 36px !important;
+  border: 0; border-radius: 8px; outline: 0;
+  background: rgba(255,255,255,.1); color: var(--rule-text);
+  font-family: "PingFang SC", sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  line-height: 18px !important;
+}
+.gc-rule-search::placeholder { color: var(--rule-muted); opacity: 1; }
+.gc-rule-search:focus { box-shadow: 0 0 0 1px rgba(255,255,255,.45); }
+.gc-rule-search-icon {
+  position: absolute; z-index: 1; left: 12px; top: 50%;
+  display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center;
+  transform: translateY(-50%); pointer-events: none;
+}
+.gc-rule-search-icon img { display: block; width: 16px; height: 16px; opacity: .72; }
 `
