@@ -41,7 +41,9 @@ AI 工具共 12 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
 > [!IMPORTANT]
 > `video-game` 模式下新项目的初始化内容**预期由本扩展提供**，但具体是什么**尚未定案**，本节
 > 当前只登记边界与约束，不描述内容。定案前不要在任何宿主里替代性地实现一份，也不要把下面
-> 任何一条当成已确认结论。
+> 任何一条当成已确认结论。Arrival 侧"服务端按 mode 直接初始化"的机制方案见
+> `arrival-studio/docs/superpowers/plans/2026-08-07-wb-game-video-bootstrap-per-host.md`
+> （机制与 seed 内容解耦；该计划不决定本节的内容问题）。
 
 引导页是否出现完全由宿主磁盘状态决定，不是宿主 UI 差异：
 [`GameBootstrap`](./src/editor/bootstrap/GameBootstrap.tsx) 调 `host.gamePackage.status()`，
