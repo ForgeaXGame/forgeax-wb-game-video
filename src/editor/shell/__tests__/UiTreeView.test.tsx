@@ -36,26 +36,36 @@ function setup(overrides: Partial<Parameters<typeof UiTreeView>[0]> = {}) {
 }
 
 describe('UiTreeView', () => {
-  it('recursively renders nested folders and scheme overlay titles', () => {
+  it('renders folders collapsed by default and expands them one level at a time', () => {
     setup()
     expect(screen.getByText('战斗界面')).toBeTruthy()
+    expect(screen.queryByText('首领战')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗界面' }))
     expect(screen.getByText('首领战')).toBeTruthy()
+    expect(screen.queryByText('首领 HUD')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开首领战' }))
     expect(screen.getByText('首领 HUD')).toBeTruthy()
     expect(screen.getByText('首领 HUD').closest('.uit-main')?.querySelector('.uit-toggle')).toBeNull()
   })
 
   it('collapses and expands a folder without selecting it', () => {
     const props = setup()
-    fireEvent.click(screen.getByRole('button', { name: '收起战斗界面' }))
     expect(screen.queryByText('首领战')).toBeNull()
-    expect(props.onSelect).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '展开战斗界面' }))
     expect(screen.getByText('首领战')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '收起战斗界面' }))
+    expect(screen.queryByText('首领战')).toBeNull()
+    expect(props.onSelect).not.toHaveBeenCalled()
   })
 
   it('selects a scheme with both tree and overlay identity', () => {
     const props = setup()
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗界面' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开首领战' }))
     fireEvent.click(screen.getByRole('button', { name: '选择界面方案 首领 HUD' }))
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({
       id: 'scheme-node',
@@ -65,6 +75,8 @@ describe('UiTreeView', () => {
 
   it('uses 8px hierarchy steps aligned with the sidebar nav tree', () => {
     setup({ selectedTreeNodeId: 'scheme-node' })
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗界面' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开首领战' }))
 
     const label = screen.getByText('首领 HUD')
     expect(label.getAttribute('title')).toBe('首领 HUD')
@@ -76,6 +88,8 @@ describe('UiTreeView', () => {
 
   it('offsets the whole subtree by baseDepth so it nests under the 界面 row', () => {
     setup({ selectedTreeNodeId: 'scheme-node', baseDepth: 1 })
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗界面' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开首领战' }))
 
     // baseDepth=1 时根层从 8px 起算，最深层 (1+2)*8 = 24px。
     const label = screen.getByText('首领 HUD')
@@ -104,6 +118,7 @@ describe('UiTreeView', () => {
     const props = setup()
 
     fireEvent.click(screen.getByLabelText('新增界面 战斗界面'))
+    fireEvent.click(screen.getByRole('button', { name: '展开首领战' }))
     const input = screen.getByPlaceholderText('新建界面名称')
     fireEvent.change(input, { target: { value: '战斗结算' } })
     fireEvent.keyDown(input, { key: 'Enter' })
