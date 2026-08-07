@@ -107,6 +107,7 @@ function buildNavTree(
       canAddChild: true,
       children: bpChildren,
     },
+    { id: 'play', label: '试玩', kind: 'entry', view: 'play' },
     {
       id: 'ui',
       label: '界面',
@@ -116,7 +117,6 @@ function buildNavTree(
       externallyExpandable: true,
       // 子树由真实 UiTreeView 渲染；行内加号沿用既有界面新建逻辑。
     },
-    { id: 'play', label: '试玩', kind: 'entry', view: 'play' },
     assets,
     rules,
     {

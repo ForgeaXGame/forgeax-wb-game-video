@@ -83,10 +83,16 @@ describe('NewSidebar interface tree', () => {
     expect(sidebar).toBeTruthy()
     expect(document.querySelector('style[data-reel-style="new-sidebar"]')?.textContent).toContain('width: 196px')
     expect(sidebar.querySelector('.ns-label[title="蓝图"]')?.textContent).toContain('蓝图')
+    expect(sidebar.querySelector('.ns-label[title="试玩"]')?.textContent).toContain('试玩')
     expect(sidebar.querySelector('.ns-label[title="视频"]')?.textContent).toContain('视频')
     expect(sidebar.querySelector('.ns-label[title="界面"]')?.textContent).toContain('界面')
     expect(sidebar.querySelector('.ns-label[title="文档"]')?.textContent).toContain('文档')
     expect(sidebar.querySelector('.ns-label[title="控件"]')?.textContent).toContain('控件')
+    // Top-level order: 文档 → 蓝图 → 试玩 → 界面 → …
+    const topLabels = [...sidebar.querySelectorAll('[role="tree"] > [role="treeitem"] .ns-label')]
+      .map((el) => el.getAttribute('title'))
+    expect(topLabels.indexOf('蓝图')).toBeLessThan(topLabels.indexOf('试玩'))
+    expect(topLabels.indexOf('试玩')).toBeLessThan(topLabels.indexOf('界面'))
   })
 
   it('reserves the disclosure icon column for top-level leaves', () => {
