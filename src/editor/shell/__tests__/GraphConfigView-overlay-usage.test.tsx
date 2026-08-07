@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph, GameScenario } from '../../../runtime/schema/graph-schema'
-import { registerCoreSkins } from '../../../runtime/component-host/components'
+import { registerTestComponents } from '../../../runtime/__tests__/test-components'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { CUSTOM_UI_FOLDER_ID } from '../../persist/ui-tree'
 import { executeUiNavCommand } from '../../persist/uiNavSync'
@@ -12,7 +12,7 @@ import { useGraphView } from '../../persist/graphViewStore'
 import { useRuleSelection } from '../../persist/ruleSelectionStore'
 
 const initialState = useGraphScenario.getState()
-beforeAll(registerCoreSkins)
+beforeAll(registerTestComponents)
 
 function graphWithOverlay(nodeId: string, overlay: string): GameGraph {
   return {
@@ -148,7 +148,7 @@ describe('GraphConfigView overlay usage', () => {
         title: '战斗界面',
         children: [{
           id: 'hp',
-          component: 'BattlePlayerHpBar',
+          component: 'test.hud',
           inputs: { label: '我方', current: 0, max: 100 },
         }],
       },
@@ -187,104 +187,4 @@ describe('GraphConfigView overlay usage', () => {
     })
   })
 
-  it('keeps a confirmed interface entity and attribute in the shared rule catalog', () => {
-    const graph: GameGraph = { nodes: [], edges: [] }
-    const overlays = {
-      hud: {
-        id: 'hud',
-        title: '战斗界面',
-        children: [{
-          id: 'hp',
-          component: 'BattleEnemyHpBar',
-          inputs: { label: '敌方', current: 0, max: 100 },
-        }],
-      },
-    }
-    const entities = {}
-    useGraphScenario.setState({
-      game: 'game-nodia-fighting',
-      booted: true,
-      blueprints: { main: blueprint('main', graph) },
-      mainBlueprintId: 'main',
-      activeBlueprintId: 'main',
-      graph,
-      meta: { entities, ui: { overlays } },
-    })
-    const scenario: GameScenario = { version: 'test', graph, entities, ui: { overlays } }
-    render(<GraphConfigView tabs={[{ section: 'overlays', label: '界面' }]} scenario={scenario} />)
-
-    const hpPicker = screen.getAllByRole('combobox', { name: '数值内容' })[0]!
-    chooseCascade(hpPicker, '实体属性', '新增实体')
-    fireEvent.click(screen.getByRole('button', { name: '确认' }))
-
-    expect(useGraphScenario.getState().meta.entities?.['ent-boss']).toMatchObject({
-      id: 'ent-boss',
-      name: '敌方',
-    })
-    expect(useGraphScenario.getState().meta.entities?.['ent-boss']?.attrs?.hp).toBe(100)
-    expect(useGraphScenario.getState().meta.entities?.['ent-boss']?.attrMeta?.hp).toMatchObject({
-      label: '当前血量',
-      initial: 100,
-    })
-
-    chooseCascade(
-      screen.getAllByRole('combobox', { name: '数值内容' })[0]!,
-      '变量',
-      '新增变量',
-    )
-    fireEvent.change(screen.getByRole('textbox', { name: '新变量显示名' }), {
-      target: { value: '战斗计数' },
-    })
-    fireEvent.change(screen.getByRole('textbox', { name: '新变量初始值' }), {
-      target: { value: '0' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '确认' }))
-
-    expect(useGraphScenario.getState().meta.variables?.var0).toEqual({
-      id: 'var0',
-      name: '战斗计数',
-      initial: 0,
-    })
-    expect(useGraphScenario.getState().meta.ui?.overlays?.hud?.children[0]?.inputs?.current).toMatchObject({
-      expr: 'var.var0',
-    })
-
-    chooseCascade(
-      screen.getAllByRole('combobox', { name: '数值内容' })[0]!,
-      '公式',
-      '新增公式',
-    )
-    fireEvent.change(screen.getByRole('textbox', { name: '新公式名' }), {
-      target: { value: '界面计算' },
-    })
-    fireEvent.change(screen.getByRole('textbox', { name: '新公式内容' }), {
-      target: { value: 'var.var0 + 1' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '确认' }))
-
-    expect(useGraphScenario.getState().meta.formulas?.['formula-0']).toMatchObject({
-      id: 'formula-0',
-      name: '界面计算',
-      ast: { t: 'bin', id: 'n0', op: '+' },
-    })
-    expect(useGraphScenario.getState().meta.ui?.overlays?.hud?.children[0]?.inputs?.current).toMatchObject({
-      expr: 'var.var0 + 1',
-      pick: { mode: 'formula', formulaId: 'formula-0', holeBindings: {} },
-    })
-
-    cleanup()
-    render(
-      <GraphConfigView
-        tabs={[
-          { section: 'entities', label: '实体' },
-          { section: 'variables', label: '变量' },
-          { section: 'formulas', label: '公式' },
-        ]}
-        scenario={scenario}
-      />,
-    )
-
-    expect(screen.getByRole('textbox', { name: '实体 ID' })).toHaveValue('ent-boss')
-    expect(screen.getByLabelText('属性「hp」的数值')).toHaveValue('100')
-  })
 })

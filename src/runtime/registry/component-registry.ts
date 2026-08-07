@@ -52,6 +52,15 @@ export class ComponentRegistry {
     return this.components.get(componentId)
   }
 
+  /** 复制当前表（Session 隔离 / createDefault* 用）。 */
+  clone(): ComponentRegistry {
+    const next = new ComponentRegistry()
+    for (const [id, def] of this.components) {
+      next.registerComponent(id, def)
+    }
+    return next
+  }
+
   /** 组件契约视图：inputs + events（无静态 events 时从 inputs 默认值折）。 */
   getManifest(componentId: string): ComponentManifest | undefined {
     const p = this.getComponent(componentId)

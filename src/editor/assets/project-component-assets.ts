@@ -54,8 +54,6 @@ interface ProjectComponentCollector {
     renderer: ComponentType<Record<string, unknown>>,
     manifest?: ComponentManifest,
   ): void
-  registerInteractionSkin(): void
-  registerHpBar(): void
 }
 
 function manifestFromDefinition(id: string, definition: ComponentDef): ComponentManifest {
@@ -87,8 +85,6 @@ export function collectProjectComponentAssets(module: ProjectComponentModule): P
       entry.renderer = renderer
       if (manifest) entry.manifest = manifest
     },
-    registerInteractionSkin() {},
-    registerHpBar() {},
   }
   projectComponentRegister<ProjectComponentCollector>(module)?.(collector)
   return [...pending.values()].filter((entry): entry is ProjectComponentAsset =>

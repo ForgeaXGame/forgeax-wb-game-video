@@ -4,25 +4,25 @@
  * 一律经 RuntimeComponentHost 解析 numberExpr / bind+attr 后，以扁平 props 交给叶子。
  * 事件经 `emit` → session.emitEvent。
  */
-import { Component, createContext, useContext, type ComponentType, type CSSProperties, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ComponentType, type CSSProperties, type ErrorInfo, type ReactNode } from 'react'
 import type { ComponentManifest } from '../schema/node-config-schema'
 import type { OverlaySnap, OverlayMountSnap, HudSnap } from '../engine/session'
 import type { ConditionTarget } from '../engine/condition'
 import { childWrapStyle, layoutHasExplicitSize, mountWrapStyle } from '../schema/layout'
-import { isPlayerFocused } from '../input/playerFocus'
 import {
   RuntimeComponentHost,
   type OverlayRendererRegistration,
 } from './RuntimeComponentHost'
 
 export type { OverlayRendererRegistration } from './RuntimeComponentHost'
+export { PlayerRootContext, usePlayerKeyGate } from '../input/playerFocus'
 
 /** 皮肤组件渲染时可读的游戏态上下文（vars/entities/score/flags）。 */
 export interface SkinCtx {
   hud: HudSnap
   /**
    * 选项门控求值目标（与引擎 condition 同源）。
-   * 试玩面应注入 `runtime.state`；缺省时 `isOptionLocked` 用 hud 拼弱化态。
+   * 试玩面应注入 `runtime.state`；缺省时皮肤可自行用 hud 拼弱化态。
    */
   condition?: ConditionTarget
 }
@@ -37,15 +37,6 @@ export interface OverlayProps {
   previewPlaying?: boolean
 }
 export type OverlayComponent = ComponentType<OverlayProps>
-
-/** Player 根节点（供交互皮做焦点门控）。由 GraphPlayer / PlaySurface 注入。 */
-export const PlayerRootContext = createContext<HTMLElement | null>(null)
-
-/** 交互皮 keydown 前调用：仅当前焦点 Player 放行。 */
-export function usePlayerKeyGate(): (e?: KeyboardEvent) => boolean {
-  const root = useContext(PlayerRootContext)
-  return () => isPlayerFocused(root)
-}
 
 function SkinErrorChip({ name, message }: { name: string; message: string }): ReactNode {
   return (
@@ -93,6 +84,15 @@ export class SkinRegistry {
   /** 是否已注册 overlay 渲染器。 */
   hasOverlayRenderer(id: string): boolean {
     return this.overlay.has(id)
+  }
+
+  /** 复制当前表（Session 隔离 / createCoreSkinRegistry 用）。 */
+  clone(): SkinRegistry {
+    const next = new SkinRegistry()
+    for (const [id, registration] of this.overlay) {
+      next.registerOverlayRenderer(id, registration.component, registration.manifest)
+    }
+    return next
   }
 
   /**
@@ -163,7 +163,7 @@ export class SkinRegistry {
   }
 
   /**
-   * @deprecated 默认渲染器已迁到 `component-host/components/*`，由 `createCoreSkinRegistry` /
+   * @deprecated 内建渲染器由 `component-host` 的 `createCoreSkinRegistry` /
    * `registerCoreSkins` 安装。保留为空操作以免旧调用方炸。
    */
   registerCoreRenderers(): void {}

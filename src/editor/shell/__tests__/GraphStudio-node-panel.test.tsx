@@ -28,7 +28,7 @@ vi.mock('../../../lib/workbench-host', () => ({
       super(message)
     }
   },
-  readExtensionJson: vi.fn(),
+  readExtensionJson: vi.fn(async () => ({ styleAxes: null, assets: [] })),
 }))
 
 vi.mock('../../assets/kinoVideoCacheStore', () => ({ useKinoVideoResources }))
@@ -88,7 +88,7 @@ const FOCUS_SCENARIO: GameScenario = {
       hud: {
         id: 'hud',
         title: 'HUD',
-        children: [{ id: 'damage', component: 'DamageFloatText', window: { startMs: 500, endMs: 2_500 }, trigger: { when: 'enter' }, inputs: { value: 20 } }],
+        children: [{ id: 'damage', component: 'test.float', window: { startMs: 500, endMs: 2_500 }, trigger: { when: 'enter' }, inputs: { value: 20 } }],
       },
     },
   },

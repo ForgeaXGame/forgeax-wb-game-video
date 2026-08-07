@@ -158,7 +158,7 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 两者共享内容选择体验，但分别交给数值表达式引擎和字符串引用解析器。
 
 **边界（务必遵守）**：`numberExpr` 只表示编辑器允许写数值或表达式，运行时消费方仍必须明确
-求值。`GraphEffect.value`、`NodeAction.spawn.inputs` 由引擎求值；`components/new` 下的动态
+求值。`GraphEffect.value`、`NodeAction.spawn.inputs` 由引擎求值；`components` 下的动态
 飘字与玩家/敌方血条通过 `components/numericValue.ts` 求值。其它挂载态组件的 number 字段不会
 因为打了 `numberExpr` 标记就自动解表达式，新增标记时必须同时补运行时消费。
 
