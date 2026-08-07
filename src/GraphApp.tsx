@@ -32,6 +32,7 @@ import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
 import { useGlobalVideoGenerationTracker } from './editor/assets/generation/videoGenerationStore'
 import { useVideoAssets, type VideoAssetsController } from './editor/assets/useVideoAssets'
 import { installKinoVideoCacheSync } from './editor/assets/kinoVideoCacheStore'
+import { installTipSyncPolling } from './editor/persist/tipSyncPolling'
 
 export type GraphAppPane = 'left' | 'center' | null
 
@@ -132,6 +133,7 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
   injectStyleOnce('graph-app-shell', CSS)
   const [pane] = useState(() => (explicitPane === undefined ? readPane() : explicitPane))
   const ensureBoot = useGraphScenario((state) => state.ensureBoot)
+  const booted = useGraphScenario((state) => state.booted)
   const gameSlug = resolveGameSlug(gameId)
 
   useEffect(() => {
@@ -155,6 +157,11 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
   }, [pane])
 
   useEffect(() => installKinoVideoCacheSync(), [])
+
+  useEffect(() => {
+    if (!booted) return
+    return installTipSyncPolling()
+  }, [booted])
 
   if (pane === 'left') {
     return <LeftPane gameSlug={gameSlug} />

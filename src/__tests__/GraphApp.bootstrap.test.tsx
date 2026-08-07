@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { GraphApp } from '../GraphApp'
+import { installTipSyncPolling } from '../editor/persist/tipSyncPolling'
 
 const { ensureBoot, bootstrapProps } = vi.hoisted(() => ({
   ensureBoot: vi.fn(),
@@ -28,6 +29,8 @@ const mockScenarioState = vi.hoisted(() => {
     meta: { ui: { overlays: {} }, uiTree: { root: [] } },
     scn: () => ({ graph: { nodes: [] as never[] } }),
     loadEpoch: 0,
+    booted: true,
+    syncTipIfClean: vi.fn(async () => 'unchanged' as const),
   }
 })
 
@@ -86,10 +89,14 @@ vi.mock('../editor/persist/graphBlueprintSync', () => ({
 }))
 vi.mock('../editor/persist/gameScope', () => ({ getGameSlug: () => 'demo' }))
 vi.mock('../styles/injectStyle', () => ({ injectStyleOnce: vi.fn() }))
+vi.mock('../editor/persist/tipSyncPolling', () => ({
+  installTipSyncPolling: vi.fn(() => () => {}),
+}))
 
 afterEach(() => {
   ensureBoot.mockClear()
   bootstrapProps.mockClear()
+  vi.mocked(installTipSyncPolling).mockClear()
   window.history.replaceState({}, '', '/')
 })
 
@@ -119,6 +126,7 @@ test('wraps the center pane with bootstrap before rendering the main surface', (
   render(<GraphApp />)
   expect(screen.getByTestId('bootstrap')).toBeTruthy()
   expect(screen.getByText('blueprint')).toBeTruthy()
+  expect(installTipSyncPolling).toHaveBeenCalled()
 })
 
 test('passes the handshake game id to the single boot owner', () => {
