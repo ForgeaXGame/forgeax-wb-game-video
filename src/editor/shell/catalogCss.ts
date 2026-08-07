@@ -1167,7 +1167,7 @@ ${PREVIEW_CLOCK_CSS}
 .gc-rule-dialog-close { position:absolute; top:18px; right:20px; width:32px; height:32px; border:0; background:transparent; color:#fff; font-size:30px; line-height:1; cursor:pointer; }
 .gc-rule-dialog-input { width:100%; box-sizing:border-box; margin:28px 0 auto; padding:8px 12px; border:1px solid rgba(255,255,255,.2); border-radius:8px; outline:0; background:#333; color:#fff; font:400 16px/24px "PingFang SC",sans-serif; }
 .gc-rule-dialog-actions { display:flex; justify-content:center; gap:16px; margin-top:32px; }
-.gc-rule-dialog-actions button { width:120px; height:32px; border:0; border-radius:8px; background:#fff; color:#000; font:600 16px/24px "PingFang SC",sans-serif; cursor:pointer; }
+.gc-rule-dialog-actions button { display:flex; align-items:center; justify-content:center; box-sizing:border-box; width:120px; height:32px; padding:1px 28px; border:0; border-radius:8px; background:#fff; color:#000; font:600 16px/24px "PingFang SC",sans-serif; cursor:pointer; }
 .gc-rule-dialog-actions button.is-danger { background:linear-gradient(90deg,#ff7001,#ff9c2a); }
 .gc-rule-dialog-actions button:disabled { cursor:not-allowed; opacity:.5; }
 .gc-rule-new-entity-dialog { min-height:340px; }
