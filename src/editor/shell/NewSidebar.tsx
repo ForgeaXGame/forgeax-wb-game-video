@@ -293,7 +293,7 @@ const NEW_SIDEBAR_CSS = `
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0;
+  padding: 12px;
 }
 .ns-scroll::-webkit-scrollbar { width: 6px; }
 .ns-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 3px; }
