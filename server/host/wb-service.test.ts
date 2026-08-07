@@ -427,6 +427,26 @@ describe('createWbGameVideoService', () => {
     expect(decoder.decode(files.entries.get('blueprint.json')!)).toBe(snap)
   })
 
+  test('patchGraph reads inside the lock so concurrent batches both land', async () => {
+    const { context, files } = createContext()
+    const service = createWbGameVideoService(context)
+    const before = await service.getGraph({}) as {
+      project: { graph: { nodes: Array<{ id: string }> } }
+    }
+    const [first, second] = before.project.graph.nodes
+
+    const results = await Promise.all([
+      service.patchGraph({ ops: [{ op: 'set-node-field', nodeId: first!.id, field: 'name', value: '甲' }] }),
+      service.patchGraph({ ops: [{ op: 'set-node-field', nodeId: second!.id, field: 'name', value: '乙' }] }),
+    ]) as Array<{ ok: boolean }>
+
+    expect(results.every((result) => result.ok)).toBe(true)
+    const after = JSON.parse(decoder.decode(files.entries.get('blueprint.json')!))
+    const nameOf = (id: string) => after.graph.nodes.find((n: { id: string }) => n.id === id).data.name
+    expect(nameOf(first!.id)).toBe('甲')
+    expect(nameOf(second!.id)).toBe('乙')
+  })
+
   test('keeps an authoritative blueprint readable when project metadata is corrupt', async () => {
     const { context, files } = createContext()
     files.entries.set('project.json', encoder.encode('{broken'))

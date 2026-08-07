@@ -69,12 +69,31 @@ function requireString(op: Record<string, unknown>, key: string, index: number):
   return value
 }
 
+/**
+ * 编辑 helper 对缺失目标一律 no-op（画布手势需要这种宽容），但工具批次必须硬失败：
+ * 否则 AI 拿着错 id 也能收到 ok，改动静默丢失。
+ */
+function requireNode(graph: GameGraph, nodeId: string): void {
+  if (!graph.nodes.some((node) => node.id === nodeId)) {
+    throw new Error(`node not found: ${nodeId}`)
+  }
+}
+
+function requireEdge(graph: GameGraph, edgeId: string): void {
+  if (!graph.edges.some((edge) => edge.id === edgeId)) {
+    throw new Error(`edge not found: ${edgeId}`)
+  }
+}
+
 function applyOverlayOp(
   doc: GraphLibraryDocument,
   packId: string,
+  nodeId: string,
   edit: (scenario: GraphLibraryDocument) => GraphLibraryDocument,
 ): GraphLibraryDocument {
-  const scenario = edit({ ...doc, graph: doc.manifest.packs[packId]!.graph })
+  const graph = doc.manifest.packs[packId]!.graph
+  requireNode(graph, nodeId)
+  const scenario = edit({ ...doc, graph })
   return withPackGraph({ ...doc, ui: scenario.ui }, packId, scenario.graph)
 }
 
@@ -126,6 +145,7 @@ export function applyPatchGraphOps(
         doc = withPackGraph(doc, packId, graph)
       } else if (kind === 'set-node-data') {
         const nodeId = requireString(op, 'nodeId', i)
+        requireNode(graph, nodeId)
         const patch = { ...(op.patch as Record<string, unknown>) }
         for (const [key, value] of Object.entries(patch)) {
           if (value === null) patch[key] = undefined
@@ -138,9 +158,12 @@ export function applyPatchGraphOps(
         if (!node.id) node.id = `n-${randomUUID()}`
         doc = withPackGraph(doc, packId, addNode(graph, node))
       } else if (kind === 'remove-node') {
-        doc = withPackGraph(doc, packId, removeNode(graph, requireString(op, 'nodeId', i)))
+        const nodeId = requireString(op, 'nodeId', i)
+        requireNode(graph, nodeId)
+        doc = withPackGraph(doc, packId, removeNode(graph, nodeId))
       } else if (kind === 'insert-node-after') {
         const afterId = requireString(op, 'afterId', i)
+        requireNode(graph, afterId)
         const inserted = insertNodeAfter(graph, afterId, {
           name: typeof op.name === 'string' ? op.name : undefined,
           gapX: typeof op.gapX === 'number' ? op.gapX : undefined,
@@ -156,11 +179,16 @@ export function applyPatchGraphOps(
           data: op.data as EdgeRouting | undefined,
           id: typeof op.id === 'string' ? op.id : undefined,
         }
+        requireNode(graph, spec.source)
+        requireNode(graph, spec.target)
         doc = withPackGraph(doc, packId, connect(graph, spec))
       } else if (kind === 'disconnect') {
-        doc = withPackGraph(doc, packId, disconnect(graph, requireString(op, 'edgeId', i)))
+        const edgeId = requireString(op, 'edgeId', i)
+        requireEdge(graph, edgeId)
+        doc = withPackGraph(doc, packId, disconnect(graph, edgeId))
       } else if (kind === 'update-edge-data') {
         const edgeId = requireString(op, 'edgeId', i)
+        requireEdge(graph, edgeId)
         doc = withPackGraph(doc, packId, updateEdgeData(graph, edgeId, op.data as EdgeRouting))
       } else if (kind === 'patch-node-bgm') {
         const nodeId = requireString(op, 'nodeId', i)
@@ -170,21 +198,21 @@ export function applyPatchGraphOps(
         doc = withPackGraph(doc, packId, patchNodeData(graph, nodeId, { bgm }))
       } else if (kind === 'ensure-node-overlay') {
         const nodeId = requireString(op, 'nodeId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           ensureNodeOverlay(scenario, nodeId) as GraphLibraryDocument)
       } else if (kind === 'add-overlay-child') {
         const nodeId = requireString(op, 'nodeId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           addOverlayChild(scenario, nodeId, op.child as OverlayChild) as GraphLibraryDocument)
       } else if (kind === 'remove-overlay-child') {
         const nodeId = requireString(op, 'nodeId', i)
         const childId = requireString(op, 'childId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           removeOverlayChild(scenario, nodeId, childId) as GraphLibraryDocument)
       } else if (kind === 'patch-overlay-child') {
         const nodeId = requireString(op, 'nodeId', i)
         const childId = requireString(op, 'childId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           patchOverlayChild(
             scenario,
             nodeId,
@@ -194,7 +222,7 @@ export function applyPatchGraphOps(
       } else if (kind === 'patch-overlay-child-params') {
         const nodeId = requireString(op, 'nodeId', i)
         const childId = requireString(op, 'childId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           patchOverlayChildParams(
             scenario,
             nodeId,
@@ -204,7 +232,7 @@ export function applyPatchGraphOps(
       } else if (kind === 'patch-overlay-mount') {
         const nodeId = requireString(op, 'nodeId', i)
         const mountId = requireString(op, 'mountId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           patchOverlayMount(
             scenario,
             nodeId,
@@ -214,10 +242,12 @@ export function applyPatchGraphOps(
       } else if (kind === 'reset-overlay-override') {
         const nodeId = requireString(op, 'nodeId', i)
         const childId = requireString(op, 'childId', i)
-        doc = applyOverlayOp(doc, packId, (scenario) =>
+        doc = applyOverlayOp(doc, packId, nodeId, (scenario) =>
           resetOverride(scenario, nodeId, childId) as GraphLibraryDocument)
       } else if (kind === 'attach-sub-process') {
-        doc = withPackGraph(doc, packId, attachSubProcess(graph, requireString(op, 'nodeId', i)))
+        const nodeId = requireString(op, 'nodeId', i)
+        requireNode(graph, nodeId)
+        doc = withPackGraph(doc, packId, attachSubProcess(graph, nodeId))
       } else if (kind === 'make-empty-sub-flow-pack') {
         const pack = makeEmptySubFlowPack({
           id: typeof op.id === 'string' ? op.id : undefined,

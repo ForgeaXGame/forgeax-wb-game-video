@@ -242,6 +242,74 @@ describe('applyPatchGraphOps', () => {
     expect(process?.graph.nodes.some((node) => node.id === process.entry)).toBe(true)
   })
 
+  test.each([
+    ['set-node-data', { op: 'set-node-data', nodeId: 'missing-node', patch: { storyText: 'x' } }],
+    ['remove-node', { op: 'remove-node', nodeId: 'missing-node' }],
+    ['insert-node-after', { op: 'insert-node-after', afterId: 'missing-node' }],
+    ['attach-sub-process', { op: 'attach-sub-process', nodeId: 'missing-node' }],
+    ['ensure-node-overlay', { op: 'ensure-node-overlay', nodeId: 'missing-node' }],
+    [
+      'add-overlay-child',
+      {
+        op: 'add-overlay-child',
+        nodeId: 'missing-node',
+        child: { id: 'caption', component: 'test.dialogue' },
+      },
+    ],
+    ['remove-overlay-child', { op: 'remove-overlay-child', nodeId: 'missing-node', childId: 'caption' }],
+    [
+      'patch-overlay-child',
+      { op: 'patch-overlay-child', nodeId: 'missing-node', childId: 'caption', patch: {} },
+    ],
+    [
+      'patch-overlay-child-params',
+      { op: 'patch-overlay-child-params', nodeId: 'missing-node', childId: 'caption', inputs: {} },
+    ],
+    [
+      'patch-overlay-mount',
+      { op: 'patch-overlay-mount', nodeId: 'missing-node', mountId: 'node:missing-node', patch: {} },
+    ],
+    ['reset-overlay-override', { op: 'reset-overlay-override', nodeId: 'missing-node', childId: 'caption' }],
+    ['disconnect', { op: 'disconnect', edgeId: 'missing-edge' }],
+    ['update-edge-data', { op: 'update-edge-data', edgeId: 'missing-edge', data: { weight: 2 } }],
+  ])('%s fails the batch when the target is missing', (_name, op) => {
+    const doc = normalizeDocument(structuredClone(blueprint) as GraphLibraryDocument)
+    const before = JSON.stringify(doc)
+    const result = applyPatchGraphOps(doc, { ops: [op as Record<string, unknown>] })
+    expect(result).toMatchObject({ ok: false, failedOpIndex: 0 })
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
+  test.each([
+    ['source', { source: 'missing-node', target: undefined }],
+    ['target', { source: undefined, target: 'missing-node' }],
+  ])('connect fails the batch when %s is missing', (_name, endpoints) => {
+    const doc = normalizeDocument(structuredClone(blueprint) as GraphLibraryDocument)
+    const [first, second] = doc.graph.nodes
+    const result = applyPatchGraphOps(doc, {
+      ops: [{
+        op: 'connect',
+        source: endpoints.source ?? first!.id,
+        target: endpoints.target ?? second!.id,
+      }],
+    })
+    expect(result).toMatchObject({ ok: false, failedOpIndex: 0 })
+  })
+
+  test('reports the failing index when a missing target appears mid-batch', () => {
+    const doc = normalizeDocument(structuredClone(blueprint) as GraphLibraryDocument)
+    const nodeId = doc.graph.nodes[0]!.id
+    const result = applyPatchGraphOps(doc, {
+      ops: [
+        { op: 'set-node-data', nodeId, patch: { storyText: 'kept?' } },
+        { op: 'remove-node', nodeId: 'missing-node' },
+      ],
+    })
+    expect(result).toMatchObject({ ok: false, failedOpIndex: 1 })
+    if (result.ok) return
+    expect(result.errors[0]).toContain('missing-node')
+  })
+
   test('make-empty-sub-flow-pack adds a normalized manifest pack', () => {
     const doc = normalizeDocument(structuredClone(blueprint) as GraphLibraryDocument)
     const result = applyPatchGraphOps(doc, {

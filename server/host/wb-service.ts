@@ -400,28 +400,27 @@ export function createWbGameVideoService(
     async patchGraph(value) {
       assertSchema('patchGraph', value)
       const input = record(value)
-      const bytes = await context.files.read(BLUEPRINT_FILE)
-      const current = parseGraph(bytes)
-      if (!current) {
-        return { ok: false, errors: ['缺少 blueprint.json'], gameSlug: context.gameId }
-      }
-      const applied = applyPatchGraphOps(current, {
-        blueprintId: typeof input.blueprintId === 'string' ? input.blueprintId : undefined,
-        ops: input.ops as Array<Record<string, unknown>>,
-      })
-      if (!applied.ok) {
-        return {
-          ok: false,
-          errors: applied.errors,
-          failedOpIndex: applied.failedOpIndex,
-          gameSlug: context.gameId,
+      // 整个 read→apply→validate→write 必须在同一把锁里：增量补丁基于读到的那份文档，
+      // 锁外读会让并发批次各自基于旧快照覆盖对方。
+      type PatchOutcome =
+        | { ok: true; applied: number }
+        | { ok: false; errors: string[]; failedOpIndex?: number }
+      const outcome = await context.files.withLocks<PatchOutcome>([GRAPH_SAVE_LOCK], async () => {
+        const current = parseGraph(await context.files.read(BLUEPRINT_FILE))
+        if (!current) {
+          return { ok: false, errors: ['缺少 blueprint.json'] }
         }
-      }
-      const errors = validateDocument(applied.document)
-      if (errors.length) {
-        return { ok: false, errors, gameSlug: context.gameId }
-      }
-      await context.files.withLocks([GRAPH_SAVE_LOCK], async () => {
+        const applied = applyPatchGraphOps(current, {
+          blueprintId: typeof input.blueprintId === 'string' ? input.blueprintId : undefined,
+          ops: input.ops as Array<Record<string, unknown>>,
+        })
+        if (!applied.ok) {
+          return { ok: false, errors: applied.errors, failedOpIndex: applied.failedOpIndex }
+        }
+        const errors = validateDocument(applied.document)
+        if (errors.length) {
+          return { ok: false, errors }
+        }
         await context.files.write(
           BLUEPRINT_FILE,
           encoder.encode(JSON.stringify(applied.document, null, 2)),
@@ -432,10 +431,19 @@ export function createWbGameVideoService(
             encoder.encode(JSON.stringify(projectMetadata(context.gameId), null, 2)),
           )
         }
+        return { ok: true, applied: applied.applied }
       })
+      if (!outcome.ok) {
+        return {
+          ok: false,
+          errors: outcome.errors,
+          failedOpIndex: outcome.failedOpIndex,
+          gameSlug: context.gameId,
+        }
+      }
       return {
         ok: true,
-        applied: applied.applied,
+        applied: outcome.applied,
         versions: [],
         gameSlug: context.gameId,
       }
