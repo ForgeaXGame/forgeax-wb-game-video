@@ -26,6 +26,7 @@ function setup(overrides: Partial<Parameters<typeof UiTreeView>[0]> = {}) {
     overlays,
     selectedTreeNodeId: null,
     onSelect: vi.fn(),
+    onAddScheme: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
@@ -40,6 +41,7 @@ describe('UiTreeView', () => {
     expect(screen.getByText('战斗界面')).toBeTruthy()
     expect(screen.getByText('首领战')).toBeTruthy()
     expect(screen.getByText('首领 HUD')).toBeTruthy()
+    expect(screen.getByText('首领 HUD').closest('.uit-main')?.querySelector('.uit-toggle')).toBeNull()
   })
 
   it('collapses and expands a folder without selecting it', () => {
@@ -96,5 +98,19 @@ describe('UiTreeView', () => {
     expect(screen.getByRole('dialog', { name: '删除战斗界面' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
     expect(props.onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'folder-root' }))
+  })
+
+  it('composes a named interface below a folder and omits add actions from schemes', () => {
+    const props = setup()
+
+    fireEvent.click(screen.getByLabelText('新增界面 战斗界面'))
+    const input = screen.getByPlaceholderText('新建界面名称')
+    fireEvent.change(input, { target: { value: '战斗结算' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(props.onAddScheme).toHaveBeenCalledWith('folder-root', '战斗结算')
+    expect(screen.queryByLabelText('新增界面 首领 HUD')).toBeNull()
+    expect(screen.getByLabelText('重命名 首领 HUD')).toBeTruthy()
+    expect(screen.getByLabelText('删除 首领 HUD')).toBeTruthy()
   })
 })

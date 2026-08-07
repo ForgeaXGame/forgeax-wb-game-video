@@ -9,6 +9,7 @@ import { useUiSelection } from '../../persist/uiSelectionStore'
 import { GraphConfigView } from '../GraphConfigView'
 import { NewSidebar } from '../NewSidebar'
 import { useGraphView } from '../../persist/graphViewStore'
+import { useRuleSelection } from '../../persist/ruleSelectionStore'
 
 const initialState = useGraphScenario.getState()
 beforeAll(registerCoreSkins)
@@ -42,9 +43,39 @@ afterEach(() => {
   cleanup()
   useGraphScenario.setState(initialState, true)
   useUiSelection.getState().clearUiSelection()
+  useGraphView.setState({ view: 'graph' })
+  useRuleSelection.setState({ section: 'entities', itemId: null })
 })
 
 describe('GraphConfigView overlay usage', () => {
+  it('renders the rule section selected by the navigation store', () => {
+    const graph: GameGraph = { nodes: [], edges: [] }
+    const scenario: GameScenario = { version: 'test', graph }
+    useGraphScenario.setState({
+      graph,
+      blueprints: { main: blueprint('main', graph) },
+      mainBlueprintId: 'main',
+      activeBlueprintId: 'main',
+      meta: {},
+    })
+    useGraphView.setState({ view: 'rule' })
+    useRuleSelection.setState({ section: 'formulas', itemId: null })
+
+    render(
+      <GraphConfigView
+        tabs={[
+          { section: 'entities', label: '实体' },
+          { section: 'variables', label: '变量' },
+          { section: 'formulas', label: '公式' },
+        ]}
+        scenario={scenario}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '＋ 新建公式' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '搜索公式' })).toBeTruthy()
+  })
+
   it('counts references from the main blueprint and unopened sub-blueprints', () => {
     const overlayId = 'scheme-shared'
     const mainGraph = graphWithOverlay('main-node', overlayId)
@@ -73,6 +104,7 @@ describe('GraphConfigView overlay usage', () => {
       </>,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '展开 界面' }))
     expect(screen.getByText('⇢2')).toBeTruthy()
     expect(screen.queryByText('被 2 个节点引用')).toBeNull()
   })
