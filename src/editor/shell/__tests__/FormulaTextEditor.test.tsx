@@ -42,12 +42,34 @@ describe('FormulaTextEditor hole guidance', () => {
       target: { value: 'max(?攻击力, 0) + floor(?倍率)' },
     })
     const highlight = container.querySelector('.gc-fx-highlight')
-    // max / floor 各被包成一个 .gc-fx-ref-tag（函数名 tag），?参数 仍是 hole tag。
-    const refTags = highlight?.querySelectorAll('.gc-fx-ref-tag')
-    expect(refTags?.length).toBe(2)
-    expect(refTags?.[0]?.textContent).toBe('max')
-    expect(refTags?.[1]?.textContent).toBe('floor')
+    // max(...) / floor(...) 各被包成一个 .gc-fx-fn-tag（含括号及内部内容），?参数 仍是 hole tag。
+    const fnTags = highlight?.querySelectorAll('.gc-fx-fn-tag')
+    expect(fnTags?.length).toBe(2)
+    expect(fnTags?.[0]?.textContent).toBe('max(?攻击力, 0)')
+    expect(fnTags?.[1]?.textContent).toBe('floor(?倍率)')
+    // 括号内的 ?参数 仍单独高亮成 hole tag
     expect(highlight?.querySelectorAll('.gc-fx-hole-tag')).toHaveLength(2)
+  })
+
+  it('nests function tags with descending background opacity', () => {
+    const { container } = render(
+      <FormulaTextEditor ast={{ t: 'num', id: 'n0', v: 0 }} onChange={vi.fn()} />,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: '公式表达式' }), {
+      target: { value: 'max(floor(?x), 1)' },
+    })
+    const fnTags = container.querySelectorAll('.gc-fx-fn-tag')
+    // 外层 max(...) + 内层 floor(...)，两层嵌套
+    expect(fnTags.length).toBe(2)
+    const outer = fnTags[0]! as HTMLElement
+    const inner = fnTags[1]! as HTMLElement
+    expect(outer.textContent).toBe('max(floor(?x), 1)')
+    expect(inner.textContent).toBe('floor(?x)')
+    // 外层透明度高（0.18），内层减半（0.09）
+    const outerAlpha = parseFloat(outer.style.background.match(/[\d.]+(?=\))/)?.[0] ?? '0')
+    const innerAlpha = parseFloat(inner.style.background.match(/[\d.]+(?=\))/)?.[0] ?? '0')
+    expect(outerAlpha).toBeGreaterThan(innerAlpha)
+    expect(outerAlpha).toBeCloseTo(0.18, 2)
   })
 })
 
@@ -227,16 +249,14 @@ describe('FormulaTextEditor authoring syntax', () => {
 
     fireEvent.click(variable)
     fireEvent.click(screen.getByRole('menuitem', { name: /连击/ }))
-    // 连续插入的 tag 与前一个 tag 粘连成标识符会让解析失败，insert 自动补空格隔开。
-    expect(input.value).toBe('entity.ent-player.attr.attack var.combo')
+    expect(input.value).toBe('entity.ent-player.attr.attackvar.combo')
 
     fireEvent.click(fn)
     fireEvent.click(screen.getByRole('menuitem', { name: 'max()' }))
-    expect(input.value).toBe('entity.ent-player.attr.attack var.combo max()')
+    expect(input.value).toBe('entity.ent-player.attr.attackvar.combomax()')
 
     fireEvent.click(parameter)
-    // 统一补空格：')' 非空格，插入 ?参数 前补一个空格隔开。
-    expect(input.value).toBe('entity.ent-player.attr.attack var.combo max() ?参数')
+    expect(input.value).toBe('entity.ent-player.attr.attackvar.combomax()?参数')
   })
 
   it('keeps empty catalog actions visible and disabled', () => {

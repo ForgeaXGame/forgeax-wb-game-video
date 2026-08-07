@@ -34,14 +34,10 @@ const FUNCTIONS = ['floor', 'round', 'abs', 'min', 'max', 'chance', 'rand', 'ran
 const FUNCTION_OPTIONS = FUNCTIONS.map((fn) => ({ value: fn, label: `${fn}()` }))
 // 函数名按长度降序，避免 `rand` 截断 `randInt`；后跟 `(` 才算函数调用 tag。
 const FN_NAMES = [...FUNCTIONS].sort((a, b) => b.length - a.length).join('|')
-const FORMULA_TOKEN_RE = new RegExp(
-  `\\?[\\p{L}_][\\p{L}\\p{N}_]*|entity\\.[\\p{L}\\p{N}_-]+\\.attr\\.[\\p{L}\\p{N}_-]+|var\\.[\\p{L}\\p{N}_.-]+|(?:${FN_NAMES})(?=\\()`,
-  'gu',
-)
 const refTokenStyle: CSSProperties = {
   color: '#78b9d6',
   background: 'rgba(91,153,181,.12)',
-  borderRadius: 3,
+  borderRadius: 6,
   boxShadow: 'inset 0 0 0 1px rgba(91,153,181,.28)',
 }
 
@@ -100,27 +96,111 @@ function varName(id: string, variables?: Record<string, Variable>): string {
 
 /** 把参数和状态引用渲染成不同 token，短横线因此明确属于整段引用。 */
 export function FormulaSyntax({ text }: { text: string }): JSX.Element {
+  return <>{parseFormulaSyntax(text, 0)}</>
+}
+
+// 非 token 字符（用于切分）：函数名后跟 ( 才算函数调用；?参数 / entity.x.attr.y / var.x 是独立 token。
+const FN_CALL_RE = new RegExp(`(?:${FN_NAMES})(?=\\()`, 'u')
+const NON_FN_TOKEN_RE = /\?[\p{L}_][\p{L}\p{N}_]*|entity\.[\p{L}\p{N}_-]+\.attr\.[\p{L}\p{N}_-]+|var\.[\p{L}\p{N}_.-]+/u
+
+/**
+ * 递归解析公式文本为带 tag 的 JSX：
+ *  - 函数调用 `fn(...)` 整段（含括号及内部内容）包一个函数 tag，背景按嵌套深度递减
+ *    （外层 rgba(255,255,255,.18)，每往内一层透明度减半）；
+ *  - 括号内的 ?参数 / entity.x.attr.y / var.x 仍单独成 tag，叠在函数 tag 背景上；
+ *  - 平衡括号匹配，支持嵌套 max(floor(?x), 1)。
+ */
+function parseFormulaSyntax(text: string, depth: number): JSX.Element[] {
   const parts: JSX.Element[] = []
   let cursor = 0
-  for (const match of text.matchAll(FORMULA_TOKEN_RE)) {
-    const index = match.index
-    if (index > cursor) {
-      parts.push(<Fragment key={`text-${cursor}`}>{text.slice(cursor, index)}</Fragment>)
+  let key = 0
+  while (cursor < text.length) {
+    const rest = text.slice(cursor)
+    // 优先匹配函数调用 fn( ... )
+    const fnMatch = rest.match(FN_CALL_RE)
+    const fnIndex = fnMatch?.index ?? -1
+    const tokMatch = rest.match(NON_FN_TOKEN_RE)
+    const tokIndex = tokMatch?.index ?? -1
+    // 取更靠前的匹配；同位置时函数优先（函数名不会与 ?/entity./var. 重叠）。
+    const useFn = fnIndex !== -1 && (tokIndex === -1 || fnIndex <= tokIndex)
+    if (useFn && fnIndex !== -1) {
+      const fnName = fnMatch![0]
+      const nameStart = cursor + fnIndex
+      // fnIndex 处是函数名，其后紧跟 '('
+      const openParen = nameStart + fnName.length
+      if (text[openParen] !== '(') {
+        // 不该发生（前瞻已保证），兜底当普通文本
+        parts.push(<Fragment key={`t-${key++}`}>{text.slice(cursor, cursor + 1)}</Fragment>)
+        cursor += 1
+        continue
+      }
+      // 普通文本前缀
+      if (fnIndex > 0) parts.push(<Fragment key={`t-${key++}`}>{text.slice(cursor, nameStart)}</Fragment>)
+      // 找平衡闭括号
+      const close = findMatchingParen(text, openParen)
+      if (close === -1) {
+        // 括号不平衡：函数名 + 之后全部当一个 tag（容错）
+        parts.push(
+          <span className="gc-fx-fn-tag" style={fnTagStyle(depth)} key={`fn-${key++}`}>
+            {fnName + text.slice(openParen)}
+          </span>,
+        )
+        break
+      }
+      const inner = text.slice(openParen + 1, close)
+      parts.push(
+        <span className="gc-fx-fn-tag" style={fnTagStyle(depth)} key={`fn-${key++}`}>
+          {fnName}
+          <span style={{ color: 'inherit' }}>(</span>
+          {inner.length > 0 ? parseFormulaSyntax(inner, depth + 1) : null}
+          <span style={{ color: 'inherit' }}>)</span>
+        </span>,
+      )
+      cursor = close + 1
+      continue
     }
-    const token = match[0]
-    const className = token.startsWith('?') ? 'gc-fx-hole-tag' : 'gc-fx-ref-tag'
-    const style = token.startsWith('?') ? undefined : refTokenStyle
-    parts.push(
-      <span className={className} style={style} key={`token-${index}`}>
-        {token}
-      </span>,
-    )
-    cursor = index + token.length
+    if (tokIndex !== -1) {
+      const token = tokMatch![0]
+      const tokStart = cursor + tokIndex
+      if (tokIndex > 0) parts.push(<Fragment key={`t-${key++}`}>{text.slice(cursor, tokStart)}</Fragment>)
+      const className = token.startsWith('?') ? 'gc-fx-hole-tag' : 'gc-fx-ref-tag'
+      const style = token.startsWith('?') ? undefined : refTokenStyle
+      parts.push(
+        <span className={className} style={style} key={`tok-${key++}`}>
+          {token}
+        </span>,
+      )
+      cursor = tokStart + token.length
+      continue
+    }
+    // 无匹配：剩余全部当普通文本
+    parts.push(<Fragment key={`t-${key++}`}>{rest}</Fragment>)
+    break
   }
-  if (cursor < text.length) {
-    parts.push(<Fragment key={`text-${cursor}`}>{text.slice(cursor)}</Fragment>)
+  return parts
+}
+
+/** 找 openParen 处 '(' 的平衡闭括号索引；不平衡返回 -1。 */
+function findMatchingParen(text: string, openParen: number): number {
+  let depth = 0
+  for (let i = openParen; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '(') depth += 1
+    else if (ch === ')') {
+      depth -= 1
+      if (depth === 0) return i
+    }
   }
-  return <>{parts}</>
+  return -1
+}
+
+/** 函数 tag 背景：外层 rgba(255,255,255,.18)，每往内一层透明度减半递减。 */
+function fnTagStyle(depth: number): CSSProperties {
+  const alpha = Math.max(0.02, Number((0.18 * Math.pow(0.5, depth)).toFixed(3)))
+  return {
+    background: `rgba(255,255,255,${alpha})`,
+    borderRadius: 6,
+  }
 }
 
 export function FormulaHelpContent(): JSX.Element {
@@ -270,15 +350,8 @@ export function FormulaTextEditor({
     }
     const start = Math.min(lastSelectionRef.current.start, base.length)
     const end = Math.min(Math.max(start, lastSelectionRef.current.end), base.length)
-    // 插入 tag（?参数 / entity.x.attr.y / var.x / fn()）时统一与前后隔开：只要相邻不是空格就补一个，
-    // 避免与字母粘连成标识符、也避免紧贴运算符造成视觉混乱。前面已有空格则不重复补。
-    const before = base[start - 1] ?? ''
-    const after = base[end] ?? ''
-    const padBefore = before && before !== ' ' ? ' ' : ''
-    const padAfter = after && after !== ' ' ? ' ' : ''
-    const inserted = padBefore + frag + padAfter
-    const next = base.slice(0, start) + inserted + base.slice(end)
-    const pos = start + inserted.length
+    const next = base.slice(0, start) + frag + base.slice(end)
+    const pos = start + frag.length
     lastSelectionRef.current = { start: pos, end: pos }
     setDraft(next)
     revalidate(next)
@@ -286,38 +359,6 @@ export function FormulaTextEditor({
       ta.focus()
       ta.setSelectionRange(pos, pos)
     })
-  }
-
-  /**
-   * 原子删除：无选区 Backspace 时，若光标紧跟在一个标签 token（?参数 / entity.x.attr.y /
-   * var.x）后或落在其内部，一次性删掉整个 token，而不是逐字符拆删。
-   * 返回 true 表示已处理（调用方 preventDefault）。
-   */
-  function deleteTokenBackspace(ta: HTMLTextAreaElement): boolean {
-    const pos = ta.selectionStart
-    if (pos !== ta.selectionEnd) return false // 有选区：交给默认行为
-    const base = draft ?? canonical
-    if (pos === 0) return false
-    // 找包含 pos 的 token：token 区间 [start, end]，pos 落在 (start, end] 即视为「在该 token 内/紧随其后」。
-    for (const match of base.matchAll(FORMULA_TOKEN_RE)) {
-      const start = match.index ?? -1
-      const end = start + match[0].length
-      if (pos > start && pos <= end) {
-        committedTextRef.current = null
-        const next = base.slice(0, start) + base.slice(end)
-        lastSelectionRef.current = { start, end: start }
-        setDraft(next)
-        revalidate(next)
-        // 等 React 把新 value 写回 textarea DOM 后再定位光标，否则 setSelectionRange
-        // 会被随后的渲染覆盖（与 insert 同样的 rAF 套路）。
-        requestAnimationFrame(() => {
-          ta.focus()
-          ta.setSelectionRange(start, start)
-        })
-        return true
-      }
-    }
-    return false
   }
 
   const entityOptions = useMemo<CascadingPickerOption[]>(() => listEntityOptions(entities)
@@ -393,9 +434,6 @@ export function FormulaTextEditor({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(latestTextRef.current) }
-            else if (e.key === 'Backspace' && !e.shiftKey && !e.metaKey && !e.altKey && deleteTokenBackspace(e.currentTarget)) {
-              e.preventDefault()
-            }
           }}
         />
       </div>
