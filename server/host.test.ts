@@ -129,6 +129,14 @@ function createContext() {
 const manifestTools = [
   ['wb-game-video:get-graph', 'getGraph', {}],
   ['wb-game-video:save-graph', 'saveGraph', { project: blueprint }],
+  ['wb-game-video:patch-graph', 'patchGraph', {
+    ops: [{
+      op: 'set-node-field',
+      nodeId: blueprint.graph.nodes[0]!.id,
+      field: 'name',
+      value: 'Patched opening',
+    }],
+  }],
   ['wb-game-video:list-videos', 'listVideos', {}],
   ['wb-game-video:generate-shot-script', 'generateShotScript', {
     nodeName: 'Opening', storyText: 'Hero enters',

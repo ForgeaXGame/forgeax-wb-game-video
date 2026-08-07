@@ -29,6 +29,7 @@ import {
   type ServiceSchemaName,
 } from './service-validation'
 import { NODIA_ASSETS_MANIFEST } from './nodia-assets'
+import { applyPatchGraphOps } from './patch-graph-ops'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -43,6 +44,7 @@ export class WbServiceInputError extends TypeError {
 export interface WbGameVideoService {
   getGraph(input?: unknown): Promise<unknown>
   saveGraph(input: unknown): Promise<unknown>
+  patchGraph(input: unknown): Promise<unknown>
   listVideos(input: unknown): Promise<unknown>
   listAssets(query: unknown): Promise<unknown>
   getAsset(assetId: string): Promise<unknown>
@@ -394,6 +396,49 @@ export function createWbGameVideoService(
         }
       })
       return { ok: true, versions: [], gameSlug: context.gameId }
+    },
+    async patchGraph(value) {
+      assertSchema('patchGraph', value)
+      const input = record(value)
+      const bytes = await context.files.read(BLUEPRINT_FILE)
+      const current = parseGraph(bytes)
+      if (!current) {
+        return { ok: false, errors: ['缺少 blueprint.json'], gameSlug: context.gameId }
+      }
+      const applied = applyPatchGraphOps(current, {
+        blueprintId: typeof input.blueprintId === 'string' ? input.blueprintId : undefined,
+        ops: input.ops as Array<Record<string, unknown>>,
+      })
+      if (!applied.ok) {
+        return {
+          ok: false,
+          errors: applied.errors,
+          failedOpIndex: applied.failedOpIndex,
+          gameSlug: context.gameId,
+        }
+      }
+      const errors = validateDocument(applied.document)
+      if (errors.length) {
+        return { ok: false, errors, gameSlug: context.gameId }
+      }
+      await context.files.withLocks([GRAPH_SAVE_LOCK], async () => {
+        await context.files.write(
+          BLUEPRINT_FILE,
+          encoder.encode(JSON.stringify(applied.document, null, 2)),
+        )
+        if (!await context.files.read(PROJECT_FILE)) {
+          await context.files.write(
+            PROJECT_FILE,
+            encoder.encode(JSON.stringify(projectMetadata(context.gameId), null, 2)),
+          )
+        }
+      })
+      return {
+        ok: true,
+        applied: applied.applied,
+        versions: [],
+        gameSlug: context.gameId,
+      }
     },
     async listVideos(value) {
       assertSchema('listVideos', value)

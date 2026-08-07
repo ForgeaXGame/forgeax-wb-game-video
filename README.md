@@ -9,12 +9,13 @@
 - 未保存草稿留在浏览器 localStorage。未初始化项目由 `GameBootstrap` 引导用户显式创建
   Nodia seed；已初始化 package 读取失败会进入可重试错误页，不会自动写入空蓝图。
 - 游戏身份只来自宿主：后端读取 `WorkbenchExtensionContext.gameId`，浏览器等待 nonce-bound
-  handshake 后读取 `ExtensionClient.ready()` 返回的 `gameId`。11 个 AI 工具都不接受调用者提供的
+  handshake 后读取 `ExtensionClient.ready()` 返回的 `gameId`。12 个 AI 工具都不接受调用者提供的
   `gameSlug`。
-- `wb-game-video:save-graph` 覆盖保存整份文档，`title` 当前忽略，成功返回
-  `{ ok: true, versions: [], gameSlug }`，其中 `gameSlug` 是宿主绑定 id 的回显。
+- AI 使用 `wb-game-video:patch-graph` 原子增量改图；任一 op 或整本校验失败时不写盘。
+  `wb-game-video:save-graph` 保留给编辑器 UI 覆盖保存整份文档，不向 AI 暴露。
 - 运行时组件位于 [`src/runtime/component-host`](./src/runtime/component-host)，图中只保存组件 id 与可序列化输入。
-- 扩展同时提供 11 个 AI 工具：图读写、内置视频列表、镜头脚本/关键帧/视频生成、素材查询和角色/场景引用导入。完整调用契约见 [`SKILL.md`](./SKILL.md)。
+- 扩展提供 13 个 host 工具，其中 12 个向 AI 暴露：增量改图、图读取、内置视频列表、
+  镜头脚本/关键帧/视频生成、素材查询和角色/场景引用导入。完整调用契约见 [`SKILL.md`](./SKILL.md)。
 
 ## 本地开发
 
@@ -109,7 +110,7 @@ PR #141 后不再存在 `registerInteractionSkin`、`registerHpBar`，也不再�
 该组件目录是仓内内建 catalog，不是受支持的 npm 子路径。公开包入口仅以上述根入口、`./host`、
 `./styles.css`、`./standalone` 为准。
 
-其中的 `host` 提供游戏包 seed、11 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
+其中的 `host` 提供游戏包 seed、13 个工具和扩展 HTTP router。生产宿主负责加载它，并为每个已解析的游戏
 创建唯一的 `WorkbenchExtensionContext`：
 
 ```ts

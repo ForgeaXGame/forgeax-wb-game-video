@@ -13,11 +13,13 @@ trigger: /wb-game-video
 | tool id | 用途 |
 |---|---|
 | `wb-game-video:get-graph` | 读取当前游戏的完整蓝图；无文件时返回 `project: null` |
-| `wb-game-video:save-graph` | 覆盖写入 `blueprint.json`；`title` 当前忽略；成功返回空 `versions` |
+| `wb-game-video:save-graph` | 仅供编辑器 UI 覆盖写入 `blueprint.json`；不向 AI 暴露 |
+| `wb-game-video:patch-graph` | AI 增量改图；顺序应用 `ops`，失败时整批不写盘 |
 | `wb-game-video:list-videos` | 列出扩展内置视频的 `media.ref` |
 | `wb-game-video:generate-shot-script` | 为节点生成镜头脚本文本 |
 | `wb-game-video:generate-keyframe` | 生成关键帧或分镜图并登记素材 |
 | `wb-game-video:generate-video` | 生成不超过 15 秒的单段视频 |
+| `wb-game-video:generate-video-clip` | 直接生成不绑定节点的视频素材 |
 | `wb-game-video:generate-node-video` | 为长节点拆段并连续生成视频 |
 | `wb-game-video:list-assets` | 按类型、生产方式或节点查询共享素材 |
 | `wb-game-video:get-asset` | 查询一条素材的状态、文件或错误 |
@@ -28,13 +30,13 @@ trigger: /wb-game-video
 
 ```text
 wb-game-video:get-graph({})
-  → 修改 project.graph / project.manifest.packs
-  → 校验节点、边、变量、素材和组件引用
-  → wb-game-video:save-graph({ project })
+  → 根据现有节点、边和蓝图 id 构造增量 ops
+  → wb-game-video:patch-graph({ blueprintId?, ops })
 ```
 
 如果 `get-graph` 返回 `project: null`，先创建空的 `GraphLibraryDocument`；不要自动注入 demo。Nodia demo 只用于用户显式重置。
-游戏身份始终来自宿主绑定；所有 11 个工具都不接受 `gameSlug` 或其它游戏选择参数。
+AI 改图只使用 `patch-graph`，不要拼接整本 `project` 调用 `save-graph`。游戏身份始终来自宿主绑定；
+所有 12 个 AI 工具都不接受 `gameSlug` 或其它游戏选择参数。
 
 ## 视频生产闭环
 

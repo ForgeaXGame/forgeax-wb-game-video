@@ -29,11 +29,12 @@
 - 项目元信息是同一工作区内的 `project.json`，首次工具保存时按需创建。
 - 共享生成素材位于逻辑目录 `assets/`；角色和场景引用从 `characters/`、`textures/`
   只读导入。所有路径都通过 `WorkbenchExtensionContext.files` 访问，物理布局由宿主决定。
-- `save-graph` 的 `title` 是保留参数，当前不产生版本；成功结果的 `versions` 固定为空数组。
+- AI 改图必须使用 `patch-graph` 原子增量 ops；`save-graph` 只供 UI 整本保存，不向 AI 暴露。
+  两者当前都不产生版本，成功结果的 `versions` 固定为空数组。
 - 未保存草稿使用 localStorage。未初始化项目只允许经 `GameBootstrap` 引导调用宿主初始化；
   已初始化 package 读取失败必须显示错误，不得在前端自动保存空库覆盖原蓝图。
 
-AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
+AI 工具共 12 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
 
 ## 宿主上下文
 
@@ -44,7 +45,7 @@ AI 工具共 11 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。
 - `files` 是限定游戏根的文件能力，复合写事务必须使用 `withLocks`；
 - `media` 与 `models` 是唯一媒体和模型服务入口。
 
-11 个 AI 工具的公开 args schema 都不得包含 `gameSlug` 或其它可由调用者选择的游戏字段。
+12 个 AI 工具的公开 args schema 都不得包含 `gameSlug` 或其它可由调用者选择的游戏字段。
 不得读取全局 active-game、进程环境或当前目录来推导游戏与服务地址。
 
 浏览器只接受 nonce-bound handshake 的 `ExtensionClient.ready()` 结果。`gameId`、`runtimeId`

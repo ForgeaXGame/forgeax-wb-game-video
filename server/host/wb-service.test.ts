@@ -393,6 +393,40 @@ describe('createWbGameVideoService', () => {
     expect(cwd).not.toHaveBeenCalled()
   })
 
+  test('patchGraph renames a node without rewriting the full project arg', async () => {
+    const { context, files } = createContext()
+    const service = createWbGameVideoService(context)
+    const before = await service.getGraph({}) as {
+      project: { graph: { nodes: Array<{ id: string }> } }
+    }
+    const nodeId = before.project.graph.nodes[0]!.id
+    const result = await service.patchGraph({
+      ops: [{ op: 'set-node-field', nodeId, field: 'name', value: '过桥' }],
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      applied: 1,
+      versions: [],
+      gameSlug: '游戏一',
+    })
+    const after = JSON.parse(decoder.decode(files.entries.get('blueprint.json')!))
+    expect(after.graph.nodes.find((n: { id: string }) => n.id === nodeId).data.name).toBe('过桥')
+    expect(files.calls).toContain('locks:wb-game-video-graph-save')
+  })
+
+  test('patchGraph does not write when an op fails', async () => {
+    const { context, files } = createContext()
+    const service = createWbGameVideoService(context)
+    const snap = decoder.decode(files.entries.get('blueprint.json')!)
+    const result = await service.patchGraph({
+      ops: [{ op: 'set-node-field', nodeId: 'nope', field: 'name', value: 'x' }],
+    }) as { ok: boolean }
+
+    expect(result.ok).toBe(false)
+    expect(decoder.decode(files.entries.get('blueprint.json')!)).toBe(snap)
+  })
+
   test('keeps an authoritative blueprint readable when project metadata is corrupt', async () => {
     const { context, files } = createContext()
     files.entries.set('project.json', encoder.encode('{broken'))
