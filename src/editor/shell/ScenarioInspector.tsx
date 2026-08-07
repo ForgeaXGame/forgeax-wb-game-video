@@ -37,7 +37,6 @@ const sectionTitle: CSSProperties = {
   zIndex: 2,
   background: 'var(--gc-panel, #1b1713)',
 }
-const variableGridColumns = 'minmax(0, 0.9fr) minmax(0, 1.5fr) minmax(4rem, 0.5fr) minmax(3.5rem, 0.55fr) 2rem'
 const entityAttrGrid = 'minmax(4.5rem, 0.45fr) minmax(0, 0.9fr) minmax(4rem, 0.5fr) minmax(7rem, 1.25fr) 2rem'
 const FORMULA_RULES_CSS = `
 .sir-formulas { min-width:0; }
@@ -213,12 +212,13 @@ function field(label: string, node: JSX.Element): JSX.Element {
   )
 }
 
-function EditableIdInput({ value, existing, rename, onRename, label }: {
+function EditableIdInput({ value, existing, rename, onRename, label, className }: {
   value: string
   existing: Record<string, unknown>
   rename: Omit<ScenarioIdRename, 'newId'> | { kind: 'attribute'; entityId: string; oldId: string }
   onRename: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
   label: string
+  className?: string
 }): JSX.Element {
   const [draft, setDraft] = useState(value)
   useEffect(() => { setDraft(value) }, [value])
@@ -230,7 +230,7 @@ function EditableIdInput({ value, existing, rename, onRename, label }: {
     const result = onRename({ ...rename, newId: next } as ScenarioIdRename)
     if (!result.ok) { window.alert(`${label} 无法修改：ID 已存在`); setDraft(value) }
   }
-  return <input value={draft} aria-label={label} aria-invalid={Boolean(error)} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); e.currentTarget.blur() } }} />
+  return <input className={className} value={draft} aria-label={label} aria-invalid={Boolean(error)} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(value); e.currentTarget.blur() } }} />
 }
 
 function ValueSettings({ values, onChange, label }: {
@@ -276,7 +276,10 @@ function ValueSettings({ values, onChange, label }: {
 function OptionalNumberInput({ value, onCommit, label }: { value?: number; onCommit: (value: number | undefined) => void; label: string }): JSX.Element {
   const [draft, setDraft] = useState(value == null ? '' : String(value))
   useEffect(() => setDraft(value == null ? '' : String(value)), [value])
-  return <input type="text" inputMode="decimal" value={draft} aria-label={label} placeholder="未设置" style={{ width: '100%', minWidth: 0, padding: '4px 6px', background: 'rgba(0,0,0,.18)', border: '1px solid rgba(255,255,255,.13)', borderRadius: 4 }} onChange={(e) => setDraft(e.target.value)} onBlur={() => {
+  return <input className="gc-rule-range-input" type="text" inputMode="decimal" value={draft} aria-label={label} placeholder="未设置" onChange={(e) => {
+    const next = e.target.value
+    if (/^-?(?:\d+)?(?:\.\d*)?$/.test(next)) setDraft(next)
+  }} onBlur={() => {
     const raw = draft.trim()
     const parsed = Number(raw)
     onCommit(raw && Number.isFinite(parsed) ? parsed : undefined)
@@ -289,17 +292,186 @@ function ScalarValueInput({ value, onChange, label, style }: {
   label: string
   style?: CSSProperties
 }): JSX.Element {
-  const isString = typeof value === 'string'
   return (
-    <>
-      <select value={isString ? 'string' : 'number'} aria-label={`${label}类型`} onChange={(event) => onChange(event.target.value === 'string' ? '' : 0)} style={{ minWidth: 0, width: '100%' }}>
-        <option value="number">数值</option>
-        <option value="string">字符</option>
-      </select>
-      {isString
+    <div className="gc-rule-scalar-input">
+      {typeof value === 'string'
         ? <input type="text" value={value} aria-label={label} onChange={(event) => onChange(event.target.value)} style={style} />
         : <LooseNumberInput value={value} aria-label={label} emptyValue={0} onChange={onChange} style={style} />}
-    </>
+    </div>
+  )
+}
+
+function RuleOverflowAction({ label, currentName, onRename, onDelete }: {
+  label: string
+  currentName: string
+  onRename: (name: string) => void
+  onDelete: () => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null)
+  const rootRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    const closeWhenOutside = (event: PointerEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeWhenOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeWhenOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <span ref={rootRef} className="gc-rule-overflow">
+      <button type="button" className="gc-rule-icon-button" aria-label={`${label}更多操作`} aria-expanded={open} onClick={() => setOpen((value) => !value)}>⋯</button>
+      {open ? (
+        <span className="gc-rule-menu" role="menu">
+          <button type="button" onClick={() => { setOpen(false); setDialog('rename') }}>重命名</button>
+          <button type="button" onClick={() => { setOpen(false); setDialog('delete') }}>删除</button>
+        </span>
+      ) : null}
+      {dialog ? <RuleActionDialog
+        action={dialog}
+        label={label}
+        currentName={currentName}
+        onClose={() => setDialog(null)}
+        onRename={(name) => { onRename(name); setDialog(null) }}
+        onDelete={() => { onDelete(); setDialog(null) }}
+      /> : null}
+    </span>
+  )
+}
+
+function RuleActionDialog({ action, label, currentName, onClose, onRename, onDelete }: {
+  action: 'rename' | 'delete'
+  label: string
+  currentName: string
+  onClose: () => void
+  onRename: (name: string) => void
+  onDelete: () => void
+}): JSX.Element {
+  const [name, setName] = useState(currentName)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const noun = label.replace(/^(实体|属性|变量|公式)\s+/, '').trim()
+
+  useEffect(() => {
+    if (action === 'rename') inputRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [action, onClose])
+
+  return createPortal(
+    <div className="gc-rule-dialog-backdrop" role="presentation" onPointerDown={(event) => {
+      if (event.target === event.currentTarget) onClose()
+    }}>
+      <section className="gc-rule-dialog" role="dialog" aria-modal="true" aria-label={`${action === 'rename' ? '重命名' : '删除'}${label}`}>
+        <button type="button" className="gc-rule-dialog-close" aria-label="关闭弹窗" onClick={onClose}>×</button>
+        {action === 'rename' ? <>
+          <h2>重命名{label}</h2>
+          <input ref={inputRef} className="gc-rule-dialog-input" aria-label={`${label}新名称`} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => {
+            if (event.key === 'Enter' && name.trim()) onRename(name.trim())
+          }} />
+          <div className="gc-rule-dialog-actions">
+            <button type="button" onClick={onClose}>取消</button>
+            <button type="button" className="is-danger" disabled={!name.trim()} onClick={() => onRename(name.trim())}>确认</button>
+          </div>
+        </> : <>
+          <h2>删除{label}</h2>
+          <p>确认删除<span>{noun}</span>吗？工程中对这个{label.startsWith('实体') ? '实体' : '属性'}的调用引用将被清除。</p>
+          <div className="gc-rule-dialog-actions">
+            <button type="button" onClick={onClose}>取消</button>
+            <button type="button" className="is-danger" onClick={onDelete}>删除</button>
+          </div>
+        </>}
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function NewEntityDialog({ defaultId, existing, onClose, onCreate }: {
+  defaultId: string
+  existing: Record<string, Entity>
+  onClose: () => void
+  onCreate: (name: string, id: string) => void
+}): JSX.Element {
+  const [name, setName] = useState('')
+  const [id, setId] = useState(defaultId)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const validId = Boolean(id.trim()) && !Object.hasOwn(existing, id.trim())
+  const canCreate = Boolean(name.trim()) && validId
+
+  useEffect(() => {
+    nameRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  return createPortal(
+    <div className="gc-rule-dialog-backdrop" role="presentation" onPointerDown={(event) => {
+      if (event.target === event.currentTarget) onClose()
+    }}>
+      <section className="gc-rule-dialog gc-rule-new-entity-dialog" role="dialog" aria-modal="true" aria-label="新建实体">
+        <h2>新建</h2>
+        <label>实体名称
+          <input ref={nameRef} aria-label="实体名称" placeholder="例如:主角" value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label>实体id
+          <input aria-label="实体id" placeholder="这里默认填入的是当前已有实体id的数值+1" value={id} onChange={(event) => setId(event.target.value)} />
+        </label>
+        <div className="gc-rule-dialog-actions">
+          <button type="button" onClick={onClose}>取消</button>
+          <button type="button" className="is-danger" disabled={!canCreate} onClick={() => onCreate(name.trim(), id.trim())}>确认</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function NewVariableDialog({ defaultId, existing, onClose, onCreate }: {
+  defaultId: string
+  existing: Record<string, Variable>
+  onClose: () => void
+  onCreate: (name: string, id: string) => void
+}): JSX.Element {
+  const [name, setName] = useState('')
+  const [id, setId] = useState(defaultId)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const valid = Boolean(name.trim() && id.trim() && !Object.hasOwn(existing, id.trim()))
+  useEffect(() => {
+    nameRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+  return createPortal(
+    <div className="gc-rule-dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section className="gc-rule-dialog gc-rule-new-entity-dialog" role="dialog" aria-modal="true" aria-label="新建变量">
+        <h2>新建</h2>
+        <label>变量名称<input ref={nameRef} aria-label="变量名称" placeholder="例如:金币" value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label>变量id<input aria-label="变量id" placeholder="这里默认填入的是当前已有变量id的数值+1" value={id} onChange={(event) => setId(event.target.value)} /></label>
+        <div className="gc-rule-dialog-actions">
+          <button type="button" onClick={onClose}>取消</button>
+          <button type="button" className="is-danger" disabled={!valid} onClick={() => onCreate(name.trim(), id.trim())}>确认</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
   )
 }
 
@@ -464,6 +636,8 @@ export function ScenarioInspector({
   const [variableSearch, setVariableSearch] = useState('')
   const [entitySearch, setEntitySearch] = useState('')
   const [formulaSearch, setFormulaSearch] = useState('')
+  const [newVariableOpen, setNewVariableOpen] = useState(false)
+  const [newEntityOpen, setNewEntityOpen] = useState(false)
   useEffect(() => {
     if (section === 'formulas' && focusItemId) setFormulaSearch('')
   }, [focusItemId, section])
@@ -537,7 +711,7 @@ export function ScenarioInspector({
   const variableEntries = Object.entries(variables).filter(([id, variable]) =>
     !normalizedVariableSearch || [id, variable.name].some((part) => part?.toLocaleLowerCase().includes(normalizedVariableSearch)))
   const entityEntries = Object.entries(entities).filter(([id, entity]) =>
-    !normalizedEntitySearch || [id, entity.name].some((part) => part?.toLocaleLowerCase().includes(normalizedEntitySearch)))
+    !normalizedEntitySearch || [id, entity.name].some((part) => part?.toLocaleLowerCase().includes(normalizedEntitySearch))).reverse()
   const formulaEntries = Object.entries(formulas).filter(([id, formula]) => {
     if (!normalizedFormulaSearch) return true
     return [id, formula.name, formula.description]
@@ -632,54 +806,26 @@ export function ScenarioInspector({
             title="变量"
             search={variableSearch}
             onSearchChange={setVariableSearch}
-            onCreate={() => {
-                const id = allocId('var', variables)
-                setVariables({ ...variables, [id]: { id, name: id, initial: 0 } })
-              }}
+            onCreate={() => setNewVariableOpen(true)}
           />
-          {Object.keys(variables).length > 0 ? (
-            <div
-              aria-hidden
-              style={{
-                display: 'grid',
-                gridTemplateColumns: variableGridColumns,
-                gap: 8,
-                padding: '0 10px',
-                margin: '8px 0 2px',
-                color: 'var(--gc-faint, #8c8377)',
-                fontSize: 10,
-                letterSpacing: '0.08em',
-              }}
-            >
-              <span>ID</span>
-              <span>名称</span>
-              <span>类型</span>
-              <span>初值</span>
-              <span />
-            </div>
-          ) : null}
+          {newVariableOpen ? <NewVariableDialog
+            defaultId={allocId('var', variables)}
+            existing={variables}
+            onClose={() => setNewVariableOpen(false)}
+            onCreate={(name, id) => {
+              setVariables({ ...variables, [id]: { id, name, initial: 0, value: 0 } })
+              setNewVariableOpen(false)
+            }}
+          /> : null}
+          {Object.keys(variables).length > 0 ? <div className="gc-rule-grid-head gc-rule-grid-head--attributes gc-rule-variable-head" aria-hidden>
+            <span>变量名 + id</span><span>初始值</span><span>最小值</span><span>最大值</span><span />
+          </div> : null}
           {variableEntries.map(([key, v]) => (
-            <div
-              key={key}
-              id={`rule-item:${key}`}
-              style={{
-                ...box,
-                display: 'grid',
-                gridTemplateColumns: variableGridColumns,
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 8px',
-                background: 'rgba(255,255,255,0.025)',
-              }}
-            >
-              <EditableIdInput value={v.id} existing={variables} rename={{ kind: 'variable', oldId: key }} onRename={onRenameId} label="变量 ID" />
-              <input
-                value={v.name ?? ''}
-                placeholder="变量名称"
-                aria-label={`${v.id} 的名称`}
-                onChange={(e) => setVariables({ ...variables, [key]: { ...v, id: key, name: e.target.value } })}
-                style={{ width: '100%', minWidth: 0 }}
-              />
+            <div key={key} id={`rule-item:${key}`} className="gc-rule-attribute-row gc-rule-variable-row">
+              <div className={`gc-rule-id-pair${v.name ? '' : ' is-display-empty'}`}>
+                <input value={v.name ?? ''} placeholder="变量名" aria-label={`${v.id} 的名称`} onChange={(e) => setVariables({ ...variables, [key]: { ...v, id: key, name: e.target.value } })} />
+                <EditableIdInput value={v.id} existing={variables} rename={{ kind: 'variable', oldId: key }} onRename={onRenameId} label="变量 ID" />
+              </div>
               <ScalarValueInput
                 value={v.initial ?? 0}
                 label={`${v.id} 的初值`}
@@ -689,30 +835,33 @@ export function ScenarioInspector({
                     ...v,
                     id: key,
                     initial: typeof initial === 'number' ? clampRuleValue(initial, v) : initial,
+                    value: typeof initial === 'number' ? clampRuleValue(initial, v) : initial,
                   },
                 })}
                 style={{ width: '100%', minWidth: 0 }}
               />
-              <button
-                style={{ ...del, marginLeft: 0, padding: 0, width: '2rem', height: '2rem' }}
-                onClick={() => {
-                  const { [key]: _d, ...rest } = variables
-                  setVariables(rest)
-                }}
-                title={`删除变量「${v.name || v.id}」`}
-                aria-label={`删除变量「${v.name || v.id}」`}
-              >
-                ×
-              </button>
-              {typeof v.initial !== 'string' ? <ValueSettings values={{ min: v.min, max: v.max, initial: v.initial }} label={v.id} onChange={(field, value) => {
+              <OptionalNumberInput value={v.min} label={`${v.id} 的最小值`} onCommit={(min) => {
                 const normalized = normalizeRange({
-                  min: v.min,
+                  min,
                   max: v.max,
                   initial: typeof v.initial === 'number' ? v.initial : undefined,
-                  [field]: value,
-                }, field)
-                setVariables({ ...variables, [key]: { ...v, ...normalized, initial: clampRuleValue(normalized.initial ?? 0, normalized) } })
-              }} /> : null}
+                }, 'min')
+                const initial = typeof v.initial === 'number' ? clampRuleValue(v.initial, normalized) : v.initial
+                setVariables({ ...variables, [key]: { ...v, ...normalized, initial, value: initial } })
+              }} />
+              <OptionalNumberInput value={v.max} label={`${v.id} 的最大值`} onCommit={(max) => {
+                const normalized = normalizeRange({
+                  min: v.min,
+                  max,
+                  initial: typeof v.initial === 'number' ? v.initial : undefined,
+                }, 'max')
+                const initial = typeof v.initial === 'number' ? clampRuleValue(v.initial, normalized) : v.initial
+                setVariables({ ...variables, [key]: { ...v, ...normalized, initial, value: initial } })
+              }} />
+              <RuleOverflowAction label={`变量 ${v.name || v.id}`} currentName={v.name || v.id} onRename={(name) => setVariables({ ...variables, [key]: { ...v, id: key, name } })} onDelete={() => {
+                const { [key]: _d, ...rest } = variables
+                setVariables(rest)
+              }} />
             </div>
           ))}
         </>
@@ -724,11 +873,25 @@ export function ScenarioInspector({
             title="实体"
             search={entitySearch}
             onSearchChange={setEntitySearch}
-            onCreate={() => {
-                const id = allocId('ent-', entities)
-                setEntities({ ...entities, [id]: { id, name: id, attrs: {}, attrMeta: {} } })
-              }}
+            onCreate={() => setNewEntityOpen(true)}
           />
+          {newEntityOpen ? <NewEntityDialog
+            defaultId={allocId('ent-', entities)}
+            existing={entities}
+            onClose={() => setNewEntityOpen(false)}
+            onCreate={(name, id) => {
+              setEntities({
+                ...entities,
+                [id]: {
+                  id,
+                  name,
+                  attrs: { attr0: 0 },
+                  attrMeta: { attr0: { label: '属性1', initial: 0 } },
+                },
+              })
+              setNewEntityOpen(false)
+            }}
+          /> : null}
           {entityEntries.map(([key, ent]) => (
             <div key={key} id={`rule-item:${key}`}>
               <EntityRow
@@ -809,9 +972,23 @@ function EntityRow({
 }): JSX.Element {
   const attrs = ent.attrs ?? {}
   const attrMeta = ent.attrMeta ?? {}
-  const [editableAttrIds, setEditableAttrIds] = useState<Set<string>>(() => new Set())
-  const setAttrs = (a: Record<string, ScalarValue>) => onChange({ ...ent, id: entKey, attrs: a })
+  const [expanded, setExpanded] = useState(true)
   const setAttrMeta = (m: Record<string, AttrMeta>) => onChange({ ...ent, id: entKey, attrMeta: m })
+  const nextAttributeLabel = (): string => {
+    const labels = new Set(Object.values(attrMeta).map((meta) => meta.label).filter(Boolean))
+    let index = 1
+    while (labels.has(`属性${index}`)) index += 1
+    return `属性${index}`
+  }
+  const addAttribute = (): void => {
+    const id = allocId('attr', attrs)
+    onChange({
+      ...ent,
+      id: entKey,
+      attrs: { ...attrs, [id]: 0 },
+      attrMeta: { ...attrMeta, [id]: { label: nextAttributeLabel(), initial: 0 } },
+    })
+  }
   const setAttrValue = (attrId: string, value: ScalarValue) => {
     const nextAttrs = { ...attrs, [attrId]: value }
     const nextMeta = { ...attrMeta }
@@ -821,39 +998,9 @@ function EntityRow({
       return
     }
 
-    // `<attr>Max` is the editor's established pairing convention (hp/hpMax,
-    // stamina/staminaMax, ...). Rules author both the runtime seed in attrs and
-    // its template metadata, so keep both halves coherent in one edit.
-    const pairedBase = attrId.endsWith('Max')
-      ? attrId.slice(0, -3)
-      : Object.hasOwn(nextAttrs, `${attrId}Max`)
-        ? attrId
-        : ''
-    if (
-      pairedBase
-      && Object.hasOwn(nextAttrs, pairedBase)
-      && Object.hasOwn(nextAttrs, `${pairedBase}Max`)
-      && typeof nextAttrs[pairedBase] === 'number'
-      && typeof nextAttrs[`${pairedBase}Max`] === 'number'
-    ) {
-      const pairedMaxValue = nextAttrs[`${pairedBase}Max`] as number
-      const pairedCurrentValue = nextAttrs[pairedBase] as number
-      const pairedMeta = normalizeRange({
-        ...nextMeta[pairedBase],
-        max: pairedMaxValue,
-      }, 'max')
-      nextAttrs[`${pairedBase}Max`] = pairedMeta.max ?? pairedMaxValue
-      nextAttrs[pairedBase] = clampRuleValue(pairedCurrentValue, pairedMeta)
-      nextMeta[pairedBase] = {
-        ...pairedMeta,
-        initial: nextAttrs[pairedBase],
-      }
-    } else if (nextMeta[attrId]?.initial !== undefined) {
-      nextAttrs[attrId] = clampRuleValue(value, nextMeta[attrId])
-      nextMeta[attrId] = { ...nextMeta[attrId], initial: nextAttrs[attrId] }
-    } else {
-      nextAttrs[attrId] = clampRuleValue(value, nextMeta[attrId])
-    }
+    const meta = normalizeRange({ ...nextMeta[attrId], initial: value }, 'initial')
+    nextAttrs[attrId] = clampRuleValue(value, meta)
+    nextMeta[attrId] = { ...meta, initial: nextAttrs[attrId] }
 
     onChange({
       ...ent,
@@ -890,69 +1037,61 @@ function EntityRow({
   }
 
   return (
-    <div style={box}>
-      {field('id', <EditableIdInput value={ent.id} existing={entities} rename={{ kind: 'entity', oldId: entKey }} onRename={onRename} label="实体 ID" />)}
-      {field(
-        '名称',
-        <input
-          value={ent.name ?? ''}
-          onChange={(e) => onChange({ ...ent, id: entKey, name: e.target.value })}
-          style={{ flex: 1 }}
-        />,
-      )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 2px' }}>
-        <span style={{ fontSize: 11, opacity: 0.7 }}>attrs（公式里 entity.{entKey}.attr.&lt;名&gt; 引用）</span>
-        <button
-          style={{ fontSize: 11 }}
-          onClick={() => {
-            const id = allocId('attr', attrs)
-            setEditableAttrIds((current) => new Set(current).add(id))
-            setAttrs({ ...attrs, [id]: 0 })
-          }}
-        >
-          + 属性
-        </button>
+    <section className="gc-rule-accordion">
+      <div className={`gc-rule-accordion-head${ent.name ? '' : ' is-display-empty'}`}>
+        <button type="button" className={`gc-rule-accordion-toggle${expanded ? ' is-open' : ''}`} aria-label={`${expanded ? '折叠' : '展开'}实体 ${ent.name || entKey}`} onClick={() => setExpanded((value) => !value)}>›</button>
+        <input className="gc-rule-accordion-name" value={ent.name ?? ''} aria-label={`${ent.id} 的名称`} placeholder={entKey} onChange={(e) => onChange({ ...ent, id: entKey, name: e.target.value })} />
+        <span className="gc-rule-accordion-id">id:</span>
+        <EditableIdInput
+          className="gc-rule-accordion-id-input"
+          value={entKey}
+          existing={entities}
+          rename={{ kind: 'entity', oldId: entKey }}
+          onRename={onRename}
+          label="实体 ID"
+        />
+        <RuleOverflowAction
+          label={`实体 ${ent.name || entKey}`}
+          currentName={ent.name || entKey}
+          onRename={(name) => onChange({ ...ent, id: entKey, name })}
+          onDelete={onDelete}
+        />
       </div>
+      {expanded ? <div className="gc-rule-accordion-body">
+        <div className="gc-rule-grid-head gc-rule-grid-head--attributes"><span>属性名 + id</span><span>初始值</span><span>最小值</span><span>最大值</span><button type="button" className="gc-rule-icon-button" aria-label="新增属性" onClick={addAttribute}>＋</button></div>
       {Object.entries(attrs).map(([ak, av]) => (
-        <div key={ak} style={{ ...rowStyle, display: 'grid', gridTemplateColumns: entityAttrGrid, gap: 8, flexWrap: 'nowrap', marginBottom: 6, padding: '5px 0 7px', borderBottom: '1px solid rgba(255,255,255,.055)' }}>
-          <EditableIdInput value={ak} existing={attrs} rename={{ kind: 'attribute', entityId: entKey, oldId: ak }} onRename={onRename} label={`${ent.id} 的属性 ID`} />
-          <input
-            value={attrMeta[ak]?.label ?? ''}
-            placeholder="显示名"
-            onChange={(e) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: e.target.value || undefined } })}
-            style={{ minWidth: 0, width: '100%' }}
-          />
+        <div key={ak} className="gc-rule-attribute-row">
+          <div className={`gc-rule-id-pair${attrMeta[ak]?.label ? '' : ' is-display-empty'}`}>
+            <input value={attrMeta[ak]?.label ?? ''} placeholder="属性名" aria-label={`${ent.id} 的属性名称`} onChange={(e) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: e.target.value || undefined } })} />
+            <EditableIdInput value={ak} existing={attrs} rename={{ kind: 'attribute', entityId: entKey, oldId: ak }} onRename={onRename} label={`${ent.id} 的属性 ID`} />
+          </div>
           <ScalarValueInput
             value={av}
             label={`属性「${ak}」的数值`}
             onChange={(value) => setAttrValue(ak, value)}
             style={{ minWidth: 0, width: '100%' }}
           />
-          <button style={del} onClick={() => removeAttr(ak)} title="删除该属性">×</button>
-          {typeof av !== 'string' ? <ValueSettings values={attrMeta[ak] ?? {}} label={`${ent.id} 的 ${ak}`} onChange={(field, value) => {
-            const current = { ...attrMeta[ak] }
-            if (value === undefined) delete current[field]
-            else current[field] = value
-            const normalized = normalizeRange(current, field)
-            const nextMeta = { ...attrMeta }
-            const nextAttrs = { ...attrs }
-            if (Object.keys(normalized).length === 0) delete nextMeta[ak]
-            else nextMeta[ak] = normalized
-            if (typeof nextAttrs[ak] === 'number') nextAttrs[ak] = clampRuleValue(nextAttrs[ak], normalized)
-            onChange({
-              ...ent,
-              id: entKey,
-              attrs: nextAttrs,
-              attrMeta: Object.keys(nextMeta).length ? nextMeta : undefined,
-            })
-          }} /> : null}
+          <OptionalNumberInput value={attrMeta[ak]?.min} label={`${ent.id} 的 ${ak} 最小值`} onCommit={(min) => {
+            const meta = normalizeRange({ ...attrMeta[ak], initial: typeof av === 'number' ? av : undefined, min }, 'min')
+            const value = typeof av === 'number' ? clampRuleValue(av, meta) : av
+            onChange({ ...ent, id: entKey, attrs: typeof value === 'number' ? { ...attrs, [ak]: value } : attrs, attrMeta: { ...attrMeta, [ak]: { ...meta, initial: typeof value === 'number' ? value : undefined } } })
+          }} />
+          <OptionalNumberInput value={attrMeta[ak]?.max} label={`${ent.id} 的 ${ak} 最大值`} onCommit={(max) => {
+            const meta = normalizeRange({ ...attrMeta[ak], initial: typeof av === 'number' ? av : undefined, max }, 'max')
+            const value = typeof av === 'number' ? clampRuleValue(av, meta) : av
+            onChange({ ...ent, id: entKey, attrs: typeof value === 'number' ? { ...attrs, [ak]: value } : attrs, attrMeta: { ...attrMeta, [ak]: { ...meta, initial: typeof value === 'number' ? value : undefined } } })
+          }} />
+          <RuleOverflowAction
+            label={`属性 ${attrMeta[ak]?.label || ak}`}
+            currentName={attrMeta[ak]?.label || ak}
+            onRename={(name) => setAttrMeta({ ...attrMeta, [ak]: { ...attrMeta[ak], label: name } })}
+            onDelete={() => removeAttr(ak)}
+          />
         </div>
       ))}
-      {Object.keys(attrs).length === 0 ? <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 4 }}>暂无属性</div> : null}
-      <button style={{ ...del, marginTop: 6 }} onClick={onDelete}>
-        删除实体
-      </button>
-    </div>
+      {Object.keys(attrs).length === 0 ? <div className="gc-rule-empty">暂无属性</div> : null}
+      </div> : null}
+    </section>
   )
 }
 
