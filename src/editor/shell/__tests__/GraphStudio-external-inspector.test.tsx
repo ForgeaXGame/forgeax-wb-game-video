@@ -131,4 +131,44 @@ describe('GraphStudio · external inspectorEl', () => {
     expect(canvasHost.querySelector('[data-testid="node-inspector-empty"]')).toBeNull()
     expect(inspectorEl.querySelector('[data-testid="node-inspector-root"]')).toBeNull()
   })
+
+  it('stays silent when mounting with no selection (host tab must not be kicked)', async () => {
+    act(() => {
+      useGraphScenario.getState().setSelectedNode(null)
+    })
+
+    render(<GraphStudio scenario={SCENARIO} />, { container: canvasHost })
+
+    await waitFor(() =>
+      expect(inspectorEl.querySelector('[data-testid="node-inspector-empty"]')).toBeTruthy(),
+    )
+    expect(onNodeSelect).not.toHaveBeenCalled()
+  })
+
+  it('does not re-notify on remount, only on real transitions', async () => {
+    act(() => {
+      useGraphScenario.getState().setSelectedNode(null)
+    })
+
+    const first = render(<GraphStudio scenario={SCENARIO} />, { container: canvasHost })
+    await waitFor(() =>
+      expect(inspectorEl.querySelector('[data-testid="node-inspector-empty"]')).toBeTruthy(),
+    )
+    first.unmount()
+
+    const secondHost = document.createElement('div')
+    document.body.append(secondHost)
+    render(<GraphStudio scenario={SCENARIO} />, { container: secondHost })
+    await waitFor(() =>
+      expect(inspectorEl.querySelector('[data-testid="node-inspector-empty"]')).toBeTruthy(),
+    )
+    expect(onNodeSelect).not.toHaveBeenCalled()
+
+    act(() => {
+      useGraphScenario.getState().setSelectedNode('second')
+    })
+    await waitFor(() => expect(onNodeSelect).toHaveBeenCalledWith('second'))
+    expect(onNodeSelect).toHaveBeenCalledTimes(1)
+    secondHost.remove()
+  })
 })

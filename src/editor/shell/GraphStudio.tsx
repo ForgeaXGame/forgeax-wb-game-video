@@ -250,8 +250,16 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // 选中节点走共享 store（视频/界面等其它视图据此编辑同一节点）。
   const selected = useGraphScenario((s) => s.selectedNodeId)
   const setSelected = useGraphScenario((s) => s.setSelectedNode)
+  // 宿主用 onNodeSelect 驱动它自己的面板切换（如 Agent ↔ 节点编辑），所以只能上报
+  // 真实的「选中态迁移」。`undefined` = 还没报过；挂载时若本来就没选中节点，那不是
+  // 一次清空，不能上报 null —— 否则用户手动切到「节点编辑」空态就会被踢回 Agent。
+  const notifiedNodeRef = useRef<string | null | undefined>(undefined)
   useEffect(() => {
     if (!onNodeSelect) return
+    const previous = notifiedNodeRef.current
+    if (previous === selected) return
+    notifiedNodeRef.current = selected
+    if (previous === undefined && selected == null) return
     try {
       onNodeSelect(selected)
     } catch (err) {
