@@ -16,6 +16,7 @@ export function AssetDetailPanel({
   onSaveAssetName,
   onDelete,
   onReupload,
+  onGenerate,
   onClose,
 }: {
   asset: BrowserAsset | null
@@ -26,6 +27,7 @@ export function AssetDetailPanel({
   onSaveAssetName: () => void
   onDelete: () => void
   onReupload: (file: File | undefined) => void
+  onGenerate: () => void
   onClose: () => void
 }): JSX.Element {
   const reuploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -34,6 +36,7 @@ export function AssetDetailPanel({
     {asset || component ? <>
       <div className="alx-detail-preview">{component ? <ProjectComponentPreview component={component} variant="detail" /> : previewAsset(asset)}</div>
       <div className="alx-detail-actions">
+        <button type="button" onClick={onGenerate}>生成</button>
         {asset ? <>
           <button type="button" disabled={asset.readOnly || actionsDisabled} onClick={onDelete}>删除</button>
           <button type="button" disabled={asset.readOnly || asset.kind === 'video' || actionsDisabled} onClick={() => reuploadInputRef.current?.click()}>重新上传</button>

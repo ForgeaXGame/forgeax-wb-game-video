@@ -22,6 +22,7 @@ import { useGraphView, installGraphViewSync } from './editor/persist/graphViewSt
 import { installUiNavSync } from './editor/persist/uiNavSync'
 import { installGraphBlueprintSync } from './editor/persist/graphBlueprintSync'
 import { installAssetNavSync } from './editor/persist/assetNavStore'
+import { installRuleSelectionSync } from './editor/persist/ruleSelectionStore'
 import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
 import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
@@ -111,7 +112,9 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
     const disposeUiNav = installUiNavSync(pane)
     const disposeBp = installGraphBlueprintSync()
     const disposeAssetNav = installAssetNavSync()
+    const disposeRuleSelection = installRuleSelectionSync()
     return () => {
+      disposeRuleSelection()
       disposeAssetNav()
       disposeBp()
       disposeUiNav()
