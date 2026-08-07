@@ -15,7 +15,7 @@ import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { placeAdaptivePop } from './useBlueprintNavActions'
 import { AiParameterFillButton } from './AiParameterFillButton'
-import searchIcon from '../../assets/asset-toolbar-search.svg'
+import searchIcon from '../../assets/asset-toolbar-search.svg?url'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
