@@ -572,19 +572,23 @@ export function createWbGameVideoService(
       ) {
         throw new WbServiceInputError('documentType is invalid')
       }
-      const document = await upsertHostDocument(context, {
-        documentType: documentType as DocumentType,
-        ...(input.content === undefined ? {} : { content: String(input.content) }),
-        ...(input.name === undefined ? {} : { name: stringValue(input.name, 'name') }),
-        ...(input.slug === undefined ? {} : { slug: stringValue(input.slug, 'slug') }),
-      })
-      return {
-        document: {
-          id: document.id,
-          name: document.name,
-          documentType: document.meta.documentType,
-          updatedAt: document.updatedAt,
-        },
+      try {
+        const document = await upsertHostDocument(context, {
+          documentType: documentType as DocumentType,
+          ...(input.content === undefined ? {} : { content: String(input.content) }),
+          ...(input.name === undefined ? {} : { name: stringValue(input.name, 'name') }),
+          ...(input.slug === undefined ? {} : { slug: stringValue(input.slug, 'slug') }),
+        })
+        return {
+          document: {
+            id: document.id,
+            name: document.name,
+            documentType: document.meta.documentType,
+            updatedAt: document.updatedAt,
+          },
+        }
+      } catch (error) {
+        return { document: null, error: publicErrorMessage(error) }
       }
     },
   }

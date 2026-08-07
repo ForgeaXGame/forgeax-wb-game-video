@@ -125,7 +125,7 @@ describe('wb-game-video document routing', () => {
   })
 
   it('registers existing file when content omitted', async () => {
-    const { context } = contextFor({
+    const { context, files } = contextFor({
       'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
       'docs/demo_pillar.md': '# Pillar',
     })
@@ -142,6 +142,124 @@ describe('wb-game-video document routing', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(JSON.parse(decoder.decode(res.body)).document.id).toBe('doc-pillar')
+    const body = JSON.parse(decoder.decode(res.body))
+    expect(body.document).toMatchObject({
+      id: 'doc-pillar',
+      name: '支柱',
+      documentType: 'pillar',
+    })
+    expect(files['docs/demo_pillar.md']).toBe('# Pillar')
+    const manifest = JSON.parse(files['assets/manifest.json']!)
+    expect(manifest.assets).toEqual([
+      expect.objectContaining({
+        id: 'doc-pillar',
+        kind: 'document',
+        name: '支柱',
+        status: 'ready',
+        mimeType: 'text/markdown',
+        provider: { kind: 'local', ref: 'docs/demo_pillar.md' },
+        meta: { documentType: 'pillar' },
+      }),
+    ])
+  })
+
+  it('overwrites same documentType while preserving createdAt', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({
+        version: 2,
+        assets: [{
+          id: 'doc-core',
+          kind: 'document',
+          name: '旧核心',
+          status: 'ready',
+          mimeType: 'text/markdown',
+          provider: { kind: 'local', ref: 'docs/demo_core.md' },
+          createdAt: 100,
+          updatedAt: 200,
+          meta: { documentType: 'core' },
+        }],
+      }),
+      'docs/demo_core.md': '# Old core',
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'core',
+        slug: 'demo',
+        name: '核心方案',
+        content: '# New core\n',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    const body = JSON.parse(decoder.decode(res.body))
+    expect(body.document).toMatchObject({
+      id: 'doc-core',
+      name: '核心方案',
+      documentType: 'core',
+    })
+    expect(body.document.updatedAt).toBeGreaterThan(200)
+    expect(files['docs/demo_core.md']).toBe('# New core\n')
+    const manifest = JSON.parse(files['assets/manifest.json']!)
+    expect(manifest.assets).toHaveLength(1)
+    expect(manifest.assets[0]).toMatchObject({
+      id: 'doc-core',
+      name: '核心方案',
+      createdAt: 100,
+      provider: { kind: 'local', ref: 'docs/demo_core.md' },
+      meta: { documentType: 'core' },
+    })
+    expect(manifest.assets[0].updatedAt).toBe(body.document.updatedAt)
+  })
+
+  it('returns structured error when register-only upsert targets a missing file', async () => {
+    const { context } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'inquiry',
+        slug: 'demo',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    const body = JSON.parse(decoder.decode(res.body))
+    expect(body.document).toBeNull()
+    expect(body.error).toMatch(/Document file missing/)
+  })
+
+  it('infers slug from project.json when slug is omitted', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+      'project.json': JSON.stringify({ slug: 'my-game' }),
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'intake',
+        content: '# Intake\n',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    expect(JSON.parse(decoder.decode(res.body)).document).toMatchObject({
+      id: 'doc-intake',
+      documentType: 'intake',
+    })
+    expect(files['docs/my-game_intake.md']).toBe('# Intake\n')
   })
 })
