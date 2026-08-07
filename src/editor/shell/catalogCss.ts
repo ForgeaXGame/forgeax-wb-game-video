@@ -992,7 +992,7 @@ ${PREVIEW_CLOCK_CSS}
 .gc-fx-input::selection { background: rgba(240,136,64,.34); -webkit-text-fill-color: transparent; }
 .gc-fx-hole-tag {
   color: var(--gc-accent); background: var(--gc-accent-soft);
-  border-radius: 3px; box-shadow: inset 0 0 0 1px var(--gc-accent-line);
+  border-radius: 6px; box-shadow: inset 0 0 0 1px var(--gc-accent-line);
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
 /* 结构摘要行：引用/参数概览 + ≈值（不复述公式串） */
