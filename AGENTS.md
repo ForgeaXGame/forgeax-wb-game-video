@@ -33,6 +33,9 @@
   两者当前都不产生版本，成功结果的 `versions` 固定为空数组。
 - 未保存草稿使用 localStorage。未初始化项目只允许经 `GameBootstrap` 引导调用宿主初始化；
   已初始化 package 读取失败必须显示错误，不得在前端自动保存空库覆盖原蓝图。
+- Host `gamePackage.createSeed` 默认写入 **empty library**（`createEmptyLibrarySeed`：单 `entry`
+  perf 节点、无边、空 assets）。Nodia demo 仅通过显式 `createNodiaSeed` / 用户重置入口，不是新游戏
+  默认 seed。
 
 AI 工具共 12 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
 

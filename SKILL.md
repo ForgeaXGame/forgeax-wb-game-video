@@ -38,6 +38,38 @@ wb-game-video:get-graph({})
 AI 改图只使用 `patch-graph`，不要拼接整本 `project` 调用 `save-graph`。游戏身份始终来自宿主绑定；
 所有 12 个 AI 工具都不接受 `gameSlug` 或其它游戏选择参数。
 
+## Bootstrap · 最小可玩（Pass A）
+
+新游戏 Host 初始化后的盘面是**空壳**：主包 `bp-main`、唯一 `perf` 节点 `entry`、无边、无 Nodia demo。
+AI **不得**假设存在 demo 节点；**不得**用 `save-graph`；只用：
+
+```text
+get-graph →（可选 Load 本 Skill）→ 多批 patch-graph → get-graph 自检
+```
+
+### Pass A 过关线
+
+1. 从 `entry` 到结局的主路径连通
+2. ≥1 个抉择点：≥2 条选项出边（不同 `sourceHandle`，如 `opt_a` / `opt_b`），下游合流或分结局
+3. 主路径每个叙事节点 `data.storyText` 非空（字段名是 **storyText**，不是 scriptText）
+4. 本轮不做战斗子图 / 探索枢纽 / 成片生成
+
+### 拓扑草图
+
+```text
+entry → beat_1 → choice → path_a → merge → ending
+                       ↘ path_b ↗
+```
+
+### 推荐 ops（示意）
+
+1. `set-node-data` 写 `entry.storyText`
+2. `add-node` 增加 `type:"perf"` 节点，`data: { name, storyText }`
+3. `connect`：线性边用 `sourceHandle:"default"`；抉择边用 `opt_a` / `opt_b`
+4. 一批失败整批不写盘 → 读 `errors` / `failedOpIndex` 后重试
+
+可点击的 choice overlay（`ensure-node-overlay` / `add-overlay-child`）**不是** Pass A 硬门槛；拓扑选项边 + `storyText` 写清选项即可。需要可玩 UI 时再补 overlay（Pass B / 后续任务）。
+
 ## 视频生产闭环
 
 ```text
