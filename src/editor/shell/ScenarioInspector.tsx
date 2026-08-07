@@ -15,6 +15,7 @@ import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { placeAdaptivePop } from './useBlueprintNavActions'
 import { AiParameterFillButton } from './AiParameterFillButton'
+import searchIcon from '../../assets/asset-toolbar-search.svg'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -356,6 +357,32 @@ function UsageBadge({ count }: { count: number }): JSX.Element {
 
 export type ScenarioSection = 'overlays' | 'variables' | 'entities' | 'formulas'
 
+function RuleToolbar({
+  title,
+  search,
+  onSearchChange,
+  onCreate,
+}: {
+  title: string
+  search: string
+  onSearchChange: (value: string) => void
+  onCreate: () => void
+}): JSX.Element {
+  return (
+    <div className="gc-rule-toolbar" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+      <span className="gc-rule-section-title">{title}</span>
+      <button type="button" className="gc-rule-button" aria-label={`＋ 新建${title}`} onClick={onCreate}>
+        <span className="gc-rule-button-icon" aria-hidden />
+        <span>新建{title}</span>
+      </button>
+      <label className="gc-rule-search-wrap">
+        <span className="gc-rule-search-icon" aria-hidden><img src={searchIcon} alt="" /></span>
+        <input className="gc-rule-search" aria-label={`搜索${title}`} placeholder={`搜索${title}`} value={search} onChange={(event) => onSearchChange(event.target.value)} />
+      </label>
+    </div>
+  )
+}
+
 export function ScenarioInspector({
   value,
   section,
@@ -383,6 +410,8 @@ export function ScenarioInspector({
   const schemeIds = listSchemeAndBaseOverlayIds(allOverlays)
   // 标题输入本地缓存：onChange 自由输入，onBlur 时提交到 renameScheme 做重名校验。
   const [schemeLocalTitles, setSchemeLocalTitles] = useState<Record<string, string>>({})
+  const [variableSearch, setVariableSearch] = useState('')
+  const [entitySearch, setEntitySearch] = useState('')
   const [formulaSearch, setFormulaSearch] = useState('')
   useEffect(() => {
     if (section === 'formulas' && focusItemId) setFormulaSearch('')
@@ -452,6 +481,12 @@ export function ScenarioInspector({
   const setEntities = (e: Record<string, Entity>) => onChange({ ...value, entities: e })
   const setFormulas = (f: Record<string, Formula>) => onChange({ ...value, formulas: f })
   const normalizedFormulaSearch = formulaSearch.trim().toLocaleLowerCase()
+  const normalizedVariableSearch = variableSearch.trim().toLocaleLowerCase()
+  const normalizedEntitySearch = entitySearch.trim().toLocaleLowerCase()
+  const variableEntries = Object.entries(variables).filter(([id, variable]) =>
+    !normalizedVariableSearch || [id, variable.name].some((part) => part?.toLocaleLowerCase().includes(normalizedVariableSearch)))
+  const entityEntries = Object.entries(entities).filter(([id, entity]) =>
+    !normalizedEntitySearch || [id, entity.name].some((part) => part?.toLocaleLowerCase().includes(normalizedEntitySearch)))
   const formulaEntries = Object.entries(formulas).filter(([id, formula]) => {
     if (!normalizedFormulaSearch) return true
     return [id, formula.name, formula.description]
@@ -459,7 +494,7 @@ export function ScenarioInspector({
   })
 
   return (
-    <div style={{ padding: 10, fontSize: 12 }}>
+    <div className="gc-rule-root">
       {show('overlays') && (
         <>
           <div style={sectionTitle}>
@@ -542,17 +577,15 @@ export function ScenarioInspector({
 
       {show('variables') && (
         <>
-          <div style={sectionTitle}>
-            <b>变量</b>
-            <button
-              onClick={() => {
+          <RuleToolbar
+            title="变量"
+            search={variableSearch}
+            onSearchChange={setVariableSearch}
+            onCreate={() => {
                 const id = allocId('var', variables)
                 setVariables({ ...variables, [id]: { id, name: id, initial: 0 } })
               }}
-            >
-              + 变量
-            </button>
-          </div>
+          />
           {Object.keys(variables).length > 0 ? (
             <div
               aria-hidden
@@ -574,7 +607,7 @@ export function ScenarioInspector({
               <span />
             </div>
           ) : null}
-          {Object.entries(variables).map(([key, v]) => (
+          {variableEntries.map(([key, v]) => (
             <div
               key={key}
               id={`rule-item:${key}`}
@@ -636,18 +669,16 @@ export function ScenarioInspector({
 
       {show('entities') && (
         <>
-          <div style={sectionTitle}>
-            <b>实体</b>
-            <button
-              onClick={() => {
+          <RuleToolbar
+            title="实体"
+            search={entitySearch}
+            onSearchChange={setEntitySearch}
+            onCreate={() => {
                 const id = allocId('ent-', entities)
                 setEntities({ ...entities, [id]: { id, name: id, attrs: {}, attrMeta: {} } })
               }}
-            >
-              + 实体
-            </button>
-          </div>
-          {Object.entries(entities).map(([key, ent]) => (
+          />
+          {entityEntries.map(([key, ent]) => (
             <div key={key} id={`rule-item:${key}`}>
               <EntityRow
                 entKey={key}
@@ -667,10 +698,11 @@ export function ScenarioInspector({
 
       {show('formulas') && (
         <div className="sir-formulas">
-          <div className="sir-formula-toolbar">
-            <button
-              className="sir-formula-create"
-              onClick={() => {
+          <RuleToolbar
+            title="公式"
+            search={formulaSearch}
+            onSearchChange={setFormulaSearch}
+            onCreate={() => {
                 const id = allocId('formula-', formulas)
                 setFormulas({
                   ...formulas,
@@ -682,23 +714,7 @@ export function ScenarioInspector({
                   },
                 })
               }}
-            >
-              ＋ 新建公式
-            </button>
-            <span className="sir-formula-search-wrap">
-              <svg className="sir-formula-search-icon" viewBox="0 0 12 12" fill="none" aria-hidden>
-                <circle cx="5.25" cy="5.25" r="3.75" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M8.1 8.1L10.8 10.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              <input
-                className="sir-formula-search"
-                aria-label="搜索公式"
-                placeholder="搜索公式"
-                value={formulaSearch}
-                onChange={(event) => setFormulaSearch(event.target.value)}
-              />
-            </span>
-          </div>
+          />
           <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>
             定义可复用的计算公式（如伤害公式）；条款里的「实体」可留空，蓝图/时间轴应用该公式时再选具体实体填空。
           </div>

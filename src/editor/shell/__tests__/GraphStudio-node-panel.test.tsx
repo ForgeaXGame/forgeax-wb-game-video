@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSubProcess } from '../../../runtime/schema/graph-schema'
 import type { BlueprintDoc, GameScenario } from '../../../runtime/schema/graph-schema'
@@ -406,7 +406,11 @@ describe('GraphStudio 节点配置分栏', () => {
       clientX: 100,
     })
     fireEvent.pointerUp(timeline, { pointerId: 7, clientX: 100 })
-    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+    // 新增结算走类型选择下拉：先开「添加结算」，再选「时间轴结算」。
+    fireEvent.click(screen.getByRole('button', { name: '添加结算' }))
+    fireEvent.click(
+      within(screen.getByRole('listbox', { name: '添加结算' })).getByRole('button', { name: '时间轴结算' }),
+    )
 
     await waitFor(() => {
       const reactions = useGraphScenario.getState().graph.nodes[0]?.data.reactions ?? []
@@ -570,10 +574,10 @@ describe('GraphStudio 节点配置分栏', () => {
 
     expect(screen.getByRole('button', { name: '展开预览区' })).toBeTruthy()
     expect(screen.queryByTestId('node-preview-column')).toBeNull()
-    expect(screen.getByText('视频', { selector: 'label > span:first-child' })).toBeTruthy()
-    expect(screen.getByText('播放', { selector: 'label > span:first-child' })).toBeTruthy()
-    expect(screen.getByText('界面', { selector: 'b' })).toBeTruthy()
-    expect(screen.getByText('结算', { selector: 'b' })).toBeTruthy()
+    expect(screen.getByText('演出视频', { selector: 'label > span:first-child' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: '播放模式' })).toBeTruthy()
+    expect(screen.getByText('界面', { selector: '.ni-section-title' })).toBeTruthy()
+    expect(screen.getByText('结算', { selector: '.ni-section-title' })).toBeTruthy()
     expect(screen.queryByText('响应规则', { selector: 'b' })).toBeNull()
     expect(screen.getByLabelText('入口节点')).toBeTruthy()
 

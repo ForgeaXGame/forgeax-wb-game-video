@@ -42,6 +42,10 @@ const generateVideoClip: WorkbenchToolHandler = async (context, args) => (
   createWbGameVideoService(context).generateVideoClip(args)
 )
 
+const listVideoVisualStyles: WorkbenchToolHandler = async (context, args) => (
+  createWbGameVideoService(context).listVideoVisualStyles(args)
+)
+
 const generateNodeVideo: WorkbenchToolHandler = async (context, args) => (
   createWbGameVideoService(context).generateNodeVideo(args)
 )
@@ -74,6 +78,7 @@ export const tools: Record<string, WorkbenchToolHandler> = {
   'wb-game-video:generate-keyframe': generateKeyframe,
   'wb-game-video:generate-video': generateVideo,
   'wb-game-video:generate-video-clip': generateVideoClip,
+  'wb-game-video:list-video-visual-styles': listVideoVisualStyles,
   'wb-game-video:generate-node-video': generateNodeVideo,
   'wb-game-video:list-assets': listAssets,
   'wb-game-video:get-asset': getAsset,

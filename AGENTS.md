@@ -36,6 +36,39 @@
 
 AI 工具共 12 个，完整列表与生产闭环见 [`SKILL.md`](./SKILL.md)。不要声称镜头脚本、关键帧或视频生成能力已移除。
 
+## 项目初始化内容（`video-game` 模式，未定案）
+
+> [!IMPORTANT]
+> `video-game` 模式下新项目的初始化内容**预期由本扩展提供**，但具体是什么**尚未定案**，本节
+> 当前只登记边界与约束，不描述内容。定案前不要在任何宿主里替代性地实现一份，也不要把下面
+> 任何一条当成已确认结论。Arrival 侧"服务端按 mode 直接初始化"的机制方案见
+> `arrival-studio/docs/superpowers/plans/2026-08-07-wb-game-video-bootstrap-per-host.md`
+> （机制与 seed 内容解耦；该计划不决定本节的内容问题）。
+
+引导页是否出现完全由宿主磁盘状态决定，不是宿主 UI 差异：
+[`GameBootstrap`](./src/editor/bootstrap/GameBootstrap.tsx) 调 `host.gamePackage.status()`，
+`initialized` 直接进编辑器，`uninitialized` 显示"从模板新建视频游戏"，`inconsistent` 显示
+文件状态不一致。三文件清单 `project.json` / `blueprint.json` / `assets/manifest.json` 由
+`@forgeax/workbench-host` 的 `PACKAGE_FILES` 硬编码：三个都缺是 `uninitialized`，缺一两个或
+任一 JSON 非法是 `inconsistent`，三个齐全且合法才是 `initialized`。两个宿主共用这份实现，
+所以行为差异只来自磁盘上有没有这三个文件。
+
+当前唯一的 seed 是 [`createNodiaSeed`](./server/host/nodia-seed.ts)，产出固定的 Nodia 演示
+蓝图与预置视频资产清单。它是 `initialize()` 的既有行为，不是 `video-game` 新项目的目标内容。
+
+未定案期间的约束：
+
+- 不得让 `uninitialized` 静默调用 `initialize()`。那会把 Nodia demo 数据写进真实项目，
+  用户后续是在错误数据上编辑，且该行为会同时改变 ForgeaX 的表现。
+- 不得按创房 mode 字符串在扩展内分支。运行时 mode 只有 `classic` / `classic2` /
+  `workbench` / `ivideo` / `video-game`；`workbench_cn`、`classic_cn` 等 `_cn` 名是发布期
+  概念，CI 按站点改成基础名，不会出现在运行时。宿主差异也不得靠 hostname、端口或环境猜测。
+- 新增 seed 或改初始化路径时，必须一并决定 `assets/manifest.json` 的产出方。
+  `save_graph`（[`wb-service.ts`](./server/host/wb-service.ts) 的 `saveGraph`）只写
+  `blueprint.json`，并在 `project.json` 缺失时补一次，**从不写 `assets/manifest.json`**。
+  因此仅靠 agent 写图无法达到 `initialized`，状态会停在 `inconsistent`——只把引导页换成
+  报错页，不算修好。
+
 ## 宿主上下文
 
 后端只接受宿主构造的 `WorkbenchExtensionContext`：

@@ -28,7 +28,7 @@ const TEST_SCHEME_OVERLAY: Overlay = {
 }
 
 describe('NodeInspector · 界面事件动作入口', () => {
-  it('aligns component and event-effect labels inside the blueprint node interface section', () => {
+  it('aligns component parameter labels and sizes event-effect labels to their own text', () => {
     const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     overlay.children = overlay.children.map((child) => ({ ...child, component: 'test.qte' }))
     overlay.children.unshift({
@@ -67,15 +67,20 @@ describe('NodeInspector · 界面事件动作入口', () => {
     const componentLabel = within(mountSection).getByText('触发按键', { selector: 'span' })
     const fixedTextLabel = within(mountSection).getByText('固定文本', { selector: 'span' })
     const parameterLabel = within(mountSection).getByText('参数', { selector: 'span' })
-    const gridColumns = fixedTextLabel.parentElement?.style.gridTemplateColumns ?? ''
+    // 紧凑字段行容器：普通标量是 `.cff-field-layout`；动态数值（参数）是同款 grid 的匿名 div。
+    const gridColumns = (fixedTextLabel.closest<HTMLElement>('.cff-field-layout') ?? fixedTextLabel.parentElement)?.style.gridTemplateColumns ?? ''
     const labelWidth = gridColumns.split(' ')[0]!
     expect(Number.parseFloat(labelWidth)).toBeLessThan(77)
-    expect(componentLabel.parentElement?.style.gridTemplateColumns).toBe(gridColumns)
+    expect((componentLabel.closest<HTMLElement>('.cff-field-layout') ?? componentLabel.parentElement)?.style.gridTemplateColumns).toBe(gridColumns)
     expect(parameterLabel.parentElement?.style.gridTemplateColumns).toBe(gridColumns)
     expect(gridColumns).toContain('minmax(0, 320px)')
 
+    // 动作卡片按新稿排（Figma 15635:81481）：标签不再对齐成一列，各自按文字宽排，
+    // 控件占满行内剩余宽度。六个字段本身都还在。
+    // 排除 .ni-select-value：那是 NiSelect 壳里显示当前选项的装饰 span（如「类型」选中「属性」），
+    // 与同名字段标签撞文本；这里量的是标签本身。
     for (const label of ['类型', '实体', '属性', '操作', '数值来源', '数值']) {
-      expect(within(mountSection).getByText(label, { selector: 'span' })).toHaveStyle({ width: labelWidth })
+      expect(within(mountSection).getByText(label, { selector: 'span:not(.ni-select-value)' })).toHaveStyle({ width: 'auto' })
     }
   })
 
@@ -99,16 +104,29 @@ describe('NodeInspector · 界面事件动作入口', () => {
       />,
     )
 
-    expect(screen.getAllByRole('button', { name: '＋ 添加效果' })).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: '＋ 沿边推进' })).toHaveLength(2)
+    // 两个事件各在自己的「事件响应」行上有一颗新增触发器；挂载事件不开放绑定界面，所以候选里没有它。
+    const actionAdds = screen.getAllByRole('button', { name: '添加动作' })
+    expect(actionAdds).toHaveLength(2)
+    for (const trigger of actionAdds) {
+      fireEvent.click(trigger)
+      const menu = within(screen.getByRole('listbox', { name: '添加动作' }))
+      expect(menu.getAllByRole('button').map((option) => option.textContent)).toEqual([
+        '添加效果',
+        '沿边推进',
+      ])
+      fireEvent.keyDown(document, { key: 'Escape' })
+    }
     expect(screen.queryByText('走边')).toBeNull()
-    expect(screen.queryByRole('combobox', { name: '绑定界面' })).toBeNull()
     expect(screen.getByText('界面')).toBeTruthy()
     expect(screen.queryByText('覆盖物事件')).toBeNull()
-    const overlaySelect = screen.getByTitle(/从目录追加一张 overlay 挂载/) as HTMLSelectElement
-    expect(overlaySelect.options[0]?.text).toBe('＋ 添加界面')
-    expect([...overlaySelect.options].find((option) => option.value === overlay.id)?.text).toBe(overlay.title)
-    expect(overlaySelect.textContent).not.toContain(`(${overlay.id})`)
+    // 「添加界面」用的是通用下拉（按钮 + 浮层候选），候选要展开后才在 DOM 里。
+    const overlayAdd = screen.getByTitle(/从目录追加一张 overlay 挂载/)
+    expect(overlayAdd).toHaveTextContent('添加界面')
+    fireEvent.click(overlayAdd)
+    const overlayOption = screen.getByRole('button', { name: overlay.title })
+    expect(overlayOption.textContent).toBe(overlay.title)
+    expect(overlayOption.textContent).not.toContain(`(${overlay.id})`)
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByText(/尚未挂载/)).toBeNull()
   })
 
@@ -135,7 +153,8 @@ describe('NodeInspector · 界面事件动作入口', () => {
       />,
     )
 
-    fireEvent.change(screen.getByTitle(/从目录追加一张 overlay 挂载/), { target: { value: overlay.id } })
+    fireEvent.click(screen.getByTitle(/从目录追加一张 overlay 挂载/))
+    fireEvent.click(screen.getByRole('button', { name: overlay.title! }))
 
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.overlayNodes).toEqual([

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax-extension/wb-game-video",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "kind": "workbench",
   "displayName": {
     "zh": "视频游戏",
@@ -147,6 +147,16 @@
         "description": {
           "zh": "在素材库直接生成一段视频素材（不绑定节点，提示词直传 kino provider）",
           "en": "Generate a standalone video clip into the asset library (node-free, prompt passed through to the kino provider)"
+        }
+      },
+      {
+        "id": "wb-game-video:list-video-visual-styles",
+        "args": "./schemas/list-video-visual-styles.args.json",
+        "returns": "./schemas/list-video-visual-styles.returns.json",
+        "exposedToAI": false,
+        "description": {
+          "zh": "读取 Kino 当前可用的视频视觉风格预设。",
+          "en": "List the video visual-style presets currently available from Kino."
         }
       },
       {

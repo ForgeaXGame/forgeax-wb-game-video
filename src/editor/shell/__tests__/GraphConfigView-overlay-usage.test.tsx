@@ -11,6 +11,24 @@ import { NewSidebar } from '../NewSidebar'
 import { useGraphView } from '../../persist/graphViewStore'
 import { useRuleSelection } from '../../persist/ruleSelectionStore'
 
+vi.mock('../../assets/useVideoAssets', () => ({
+  useVideoAssets: () => ({ items: [] }),
+}))
+
+vi.mock('../../assets/use-asset-browser', () => ({
+  useAssetBrowser: () => ({
+    entries: [],
+    directory: {
+      assetLibrary: { version: 1, folders: [], placements: {} },
+      loading: false,
+      saving: false,
+      error: null,
+      refresh: vi.fn(),
+      save: vi.fn(),
+    },
+  }),
+}))
+
 const initialState = useGraphScenario.getState()
 beforeAll(registerTestComponents)
 

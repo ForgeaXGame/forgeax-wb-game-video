@@ -2,7 +2,7 @@
  * 历史 nodia 富内容样例 —— 仅供契约/公式/画布回归测试。
  * 出厂默认数据已切到 `demo/blueprint.json`，勿再当作产品 seed。
  */
-import type { GraphLibraryDocument } from '../../../runtime/schema/graph-schema'
+import type { GraphLibraryDocument } from '../../../../runtime/schema/graph-schema'
 import { normalizeDocument } from '../../../persist/blueprint-project'
 import { ensureBuiltinSchemes } from '../../builtin-schemes'
 import raw from './nodia.graph.json'

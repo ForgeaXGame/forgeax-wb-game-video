@@ -190,6 +190,7 @@ export function AssetLibraryPanel({
   const [error, setError] = useState<string | null>(null)
   const [unavailableAction, setUnavailableAction] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const renameAssetInputRef = useRef<HTMLInputElement | null>(null)
   const suppressAssetOpenRef = useRef(false)
 
   useEffect(() => {
@@ -758,7 +759,7 @@ export function AssetLibraryPanel({
         }}
       /> : null}
 
-      {folderDialog?.mode === 'move' || movingAsset ? <div className="alx-dialog-backdrop"><form className="alx-dialog alx-move-dialog" role="dialog" aria-label={movingAsset ? '移动资产' : '移动文件夹'} onSubmit={(event) => { event.preventDefault(); if (movingAsset) void moveAssetDuringMove(); else void saveFolder() }}>
+      {folderDialog?.mode === 'move' || movingAsset ? <div className="alx-dialog-backdrop"><div className="alx-dialog alx-move-dialog" role="dialog" aria-label={movingAsset ? '移动资产' : '移动文件夹'}>
         <button type="button" className="alx-move-dialog-close" aria-label={movingAsset ? '关闭移动资产' : '关闭移动文件夹'} onClick={() => { if (movingAsset) setMovingAsset(null); else setFolderDialog(null) }}>×</button>
         <div className="alx-move-dialog-content">
           <h2>{movingAsset ? '资产移动' : '文件夹移动'}</h2>
@@ -782,16 +783,16 @@ export function AssetLibraryPanel({
             </div>
           </label>
         </div>
-        <div className="alx-move-dialog-actions"><button type="button" onClick={() => { if (movingAsset) setMovingAsset(null); else setFolderDialog(null) }}>取消</button><button type="submit" disabled={directory.saving || moveDestinations.length === 0}>确定</button></div>
-      </form></div> : folderDialog ? <div className="alx-dialog-backdrop"><form className={`alx-dialog alx-folder-dialog${folderDialog.mode === 'delete' ? ' is-delete' : ''}`} role="dialog" aria-label={folderDialog.mode === 'create' ? '新增文件夹' : folderDialog.mode === 'rename' ? '重命名文件夹' : '删除文件夹'} onSubmit={(event) => { event.preventDefault(); void saveFolder() }}>
+        <div className="alx-move-dialog-actions"><button type="button" onClick={() => { if (movingAsset) setMovingAsset(null); else setFolderDialog(null) }}>取消</button><button type="button" onClick={() => { if (movingAsset) void moveAssetDuringMove(); else void saveFolder() }} disabled={directory.saving || moveDestinations.length === 0}>确定</button></div>
+      </div></div> : folderDialog ? <div className="alx-dialog-backdrop"><div className={`alx-dialog alx-folder-dialog${folderDialog.mode === 'delete' ? ' is-delete' : ''}`} role="dialog" aria-label={folderDialog.mode === 'create' ? '新增文件夹' : folderDialog.mode === 'rename' ? '重命名文件夹' : '删除文件夹'}>
         <button type="button" className="alx-folder-dialog-close" aria-label="关闭文件夹操作" onClick={() => setFolderDialog(null)}>×</button>
         <h2>{folderDialog.mode === 'create' ? '新增文件夹' : folderDialog.mode === 'rename' ? '重命名文件夹' : folderDialog.mode === 'delete' ? '删除文件夹' : '移动文件夹'}</h2>
-        {folderDialog.mode === 'delete' ? <p>确定删除“{folderDialog.folder?.name}”？仅空文件夹可以删除。</p> : <label>文件夹名称<input autoFocus value={folderName} onChange={(event) => setFolderName(event.target.value)} /></label>}
-        <div className="alx-folder-dialog-actions"><button type="button" onClick={() => setFolderDialog(null)}>取消</button><button type="submit" disabled={directory.saving || (folderDialog.mode !== 'delete' && !folderName.trim())}>{folderDialog.mode === 'delete' ? '删除' : '确认'}</button></div>
-      </form></div> : null}
-      {renameAsset ? <div className="alx-dialog-backdrop"><form className="alx-dialog" role="dialog" aria-label="重命名资产" onSubmit={(event) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem('name') as HTMLInputElement; void controller.rename(renameAsset.id, input.value).then(() => setRenameAsset(null)) }}>
-        <h2>重命名资产</h2><label>资产名称<input name="name" autoFocus defaultValue={renameAsset.name} /></label><div><button type="button" onClick={() => setRenameAsset(null)}>取消</button><button type="submit">保存</button></div>
-      </form></div> : null}
+        {folderDialog.mode === 'delete' ? <p>确定删除“{folderDialog.folder?.name}”？仅空文件夹可以删除。</p> : <label>文件夹名称<input autoFocus value={folderName} onChange={(event) => setFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveFolder() } }} /></label>}
+        <div className="alx-folder-dialog-actions"><button type="button" onClick={() => setFolderDialog(null)}>取消</button><button type="button" onClick={() => void saveFolder()} disabled={directory.saving || (folderDialog.mode !== 'delete' && !folderName.trim())}>{folderDialog.mode === 'delete' ? '删除' : '确认'}</button></div>
+      </div></div> : null}
+      {renameAsset ? <div className="alx-dialog-backdrop"><div className="alx-dialog" role="dialog" aria-label="重命名资产">
+        <h2>重命名资产</h2><label>资产名称<input ref={renameAssetInputRef} autoFocus defaultValue={renameAsset.name} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void controller.rename(renameAsset.id, event.currentTarget.value).then(() => setRenameAsset(null)) } }} /></label><div><button type="button" onClick={() => setRenameAsset(null)}>取消</button><button type="button" onClick={() => void controller.rename(renameAsset.id, renameAssetInputRef.current?.value ?? '').then(() => setRenameAsset(null))}>保存</button></div>
+      </div></div> : null}
       {pendingDelete ? <div className="alx-dialog-backdrop"><div className="alx-dialog" role="dialog" aria-label="删除资产"><p>确定删除“{pendingDelete.name}”？此操作不可撤销。</p><div><button type="button" onClick={() => setPendingDelete(null)}>取消</button><button type="button" onClick={() => void removeAsset()}>删除</button></div></div></div> : null}
       {pendingBatchDelete ? <div className="alx-dialog-backdrop"><div className="alx-dialog" role="dialog" aria-label="批量删除资产"><p>确定删除选中的 {selectedIds.size} 项资产？此操作不可撤销。</p><div><button type="button" onClick={() => setPendingBatchDelete(false)}>取消</button><button type="button" disabled={actionsDisabled} onClick={() => { setPendingBatchDelete(false); void removeSelected() }}>删除</button></div></div></div> : null}
     </div>

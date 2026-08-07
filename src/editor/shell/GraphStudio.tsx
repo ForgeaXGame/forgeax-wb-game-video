@@ -372,6 +372,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       kino.push({
         id: resource.resource_id,
         label: resource.name?.trim() || resource.resource_id,
+        durationMs: resource.source_meta?.duration_ms,
       })
     }
     setVideoOptions(kino)
@@ -666,8 +667,8 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       onPointerDownCapture={clearPreviewFocusFromPointer}
       style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: '#0e0c09', color: '#f6f1e9', isolation: 'isolate' }}
     >
-      {/* 顶部工具条：历史版本 → 保存 → 重置 → 草稿提示，不含画布编辑手势 */}
-      <div className="gv-graph-toolbar" style={{ padding: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* 顶部工具条：历史版本 → 保存 → 重置 → 草稿提示；产品侧栏已接管导航，先隐藏不删。 */}
+      <div className="gv-graph-toolbar" style={{ padding: 8, display: 'none', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <VersionPicker />
         <button type="button" onClick={() => void doCommit()} title="保存当前内容并打一个新版本（vN）">💾 保存</button>
         <button
