@@ -583,12 +583,13 @@ export function createWbGameVideoService(
       ) {
         throw new WbServiceInputError('documentType is invalid')
       }
+      const slug = stringValue(input.slug, 'slug', true)!
       try {
         const document = await upsertHostDocument(context, {
           documentType: documentType as DocumentType,
+          slug,
           ...(input.content === undefined ? {} : { content: String(input.content) }),
           ...(input.name === undefined ? {} : { name: stringValue(input.name, 'name') }),
-          ...(input.slug === undefined ? {} : { slug: stringValue(input.slug, 'slug') }),
         })
         return {
           document: {

@@ -420,35 +420,6 @@ export async function readHostDocument(
 
 const SLUG_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
-function sanitizeSlugSegment(value: string): string | null {
-  const collapsed = value
-    .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9._-]+$/g, '')
-  return collapsed && SLUG_SEGMENT_RE.test(collapsed) ? collapsed : null
-}
-
-async function inferSlug(context: WorkbenchExtensionContext): Promise<string | null> {
-  const bytes = await context.files.read('project.json')
-  if (!bytes) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(textDecoder.decode(bytes))
-  } catch {
-    return null
-  }
-  if (!isRecord(parsed)) return null
-  for (const key of ['slug', 'name', 'id'] as const) {
-    const value = parsed[key]
-    if (typeof value === 'string') {
-      const slug = sanitizeSlugSegment(value)
-      if (slug) return slug
-    }
-  }
-  return null
-}
-
 function defaultDocumentName(documentType: DocumentType): string {
   switch (documentType) {
     case 'intake': return '需求'
@@ -501,19 +472,23 @@ async function upsertHostDocumentAtRef(
   })
 }
 
+/**
+ * Callers own the filename slug; it is never inferred from project.json so the
+ * on-disk document identity stays exactly what the author or agent asked for.
+ * An illegal slug is rejected instead of being rewritten into a lookalike path.
+ */
 export async function upsertHostDocument(
   context: WorkbenchExtensionContext,
   input: {
     documentType: DocumentType
+    slug: string
     content?: string
     name?: string
-    slug?: string
   },
 ): Promise<DocumentRecord> {
-  const slug = input.slug?.trim()
-    ? sanitizeSlugSegment(input.slug.trim())
-    : await inferSlug(context)
+  const slug = typeof input.slug === 'string' ? input.slug.trim() : ''
   if (!slug) throw new TypeError('slug is required')
+  if (!SLUG_SEGMENT_RE.test(slug)) throw new TypeError(`Invalid document slug: ${slug}`)
   return upsertHostDocumentAtRef(
     context,
     input,
@@ -537,6 +512,9 @@ export async function healMissingDocuments(
   for (const filename of [...entries].sort()) {
     const match = /^(.+)_(intake|core|inquiry|pillar)\.md$/i.exec(filename)
     if (!match) continue
+    // A filename we cannot register (spaces, unicode, …) must not take the
+    // whole document list down with it.
+    if (!isDocumentPath(`docs/${filename}`)) continue
     const documentType = match[2]!.toLowerCase() as DocumentType
     if (present.has(documentType)) continue
     const selected = orphanByType.get(documentType)

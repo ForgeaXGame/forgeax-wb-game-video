@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax-extension/wb-game-video",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "kind": "workbench",
   "displayName": {
     "zh": "视频游戏",
@@ -221,8 +221,8 @@
         "returns": "./schemas/upsert-document.returns.json",
         "exposedToAI": true,
         "description": {
-          "zh": "原子写入或登记 docs/<slug>_<type>.md，并在 manifest 登记 doc-<type>。content 省略时仅登记已有文件。",
-          "en": "Atomically write or register docs/<slug>_<type>.md and manifest doc-<type>. Omit content to register an existing file only."
+          "zh": "原子写入或登记 docs/<slug>_<type>.md，并在 manifest 登记 doc-<type>。slug 必填且不从 project.json 推断，非法 slug 直接拒绝；content 省略时仅登记已有文件。",
+          "en": "Atomically write or register docs/<slug>_<type>.md and manifest doc-<type>. slug is required, never inferred from project.json, and an illegal slug is rejected. Omit content to register an existing file only."
         }
       }
     ]

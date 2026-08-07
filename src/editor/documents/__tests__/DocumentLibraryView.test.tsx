@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyHostInit, resetHostInjectionForTests } from '../../../host-init'
 import { useDocumentNav } from '../../persist/documentNavStore'
@@ -54,6 +54,45 @@ describe('DocumentLibraryView', () => {
       expect(screen.getByRole('heading', { level: 1, name: '核心' })).toBeTruthy()
     })
     expect(screen.queryByRole('button', { name: '采用' })).toBeNull()
+  })
+
+  it('refetches the document list when the active type changes', async () => {
+    mocks.fetchProjectDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { id: 'doc-intake', name: '需求', documentType: 'intake', updatedAt: 1 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        documents: [
+          { id: 'doc-intake', name: '需求', documentType: 'intake', updatedAt: 1 },
+          { id: 'doc-pillar', name: '支柱', documentType: 'pillar', updatedAt: 3 },
+        ],
+      })
+    mocks.fetchProjectDocument.mockImplementation(async (id: string) => (
+      id === 'doc-pillar'
+        ? { id, name: '支柱', documentType: 'pillar', updatedAt: 3, content: '支柱正文' }
+        : { id, name: '需求', documentType: 'intake', updatedAt: 1, content: '需求正文' }
+    ))
+
+    render(<DocumentLibraryView />)
+
+    await waitFor(() => {
+      expect(screen.getByText('需求正文')).toBeTruthy()
+    })
+
+    act(() => {
+      useDocumentNav.setState({ documentType: 'pillar' })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('支柱正文')).toBeTruthy()
+    })
+    expect(mocks.fetchProjectDocuments).toHaveBeenCalledTimes(2)
+    expect(mocks.fetchProjectDocument).toHaveBeenCalledWith('doc-pillar')
+    expect(screen.queryByText('需求正文')).toBeNull()
+    expect(screen.queryByText('当前项目尚无支柱。')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('hosts docActionSlotEl under header', async () => {
