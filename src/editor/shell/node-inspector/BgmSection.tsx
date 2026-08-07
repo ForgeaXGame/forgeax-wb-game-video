@@ -29,7 +29,7 @@ const BGM_RESTART_TITLE = '不勾 = 同一首接着播（战斗多回合靠它�
 
 /**
  * 稿子只画了「BGM选择 / 播放方式 / 音量」，音量是**标签与轨道同一行**（15635:82412）。
- * 交互改成「声音」+ 静音图标：静音（volume=0）藏滑杆，非静音才出调节条。
+ * 交互改成「BGM声音」+ 静音图标：静音（volume=0）藏滑杆，非静音才出调节条。
  */
 const BGM_CSS = `
 .ni-root .ni-bgm-row {
@@ -141,7 +141,7 @@ export function BgmSection({
             </NiSelect>
           </NiField>
           <div className="ni-bgm-row ni-bgm-volume-row">
-            <span className="ni-bgm-row-label">声音</span>
+            <span className="ni-bgm-row-label">BGM声音</span>
             <label
               className={muted ? 'ni-bgm-mute is-muted' : 'ni-bgm-mute'}
               title={muted ? '取消静音' : '静音'}

@@ -33,6 +33,7 @@ import {
   findKeyBindingConflicts,
 } from './keyBindingConflicts'
 import { overlayDisplayLabel } from './schemeOverlays'
+import { scrollIntoViewWithin } from './focus-scroll'
 import { listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { buildFieldTree, sparseOverlayInputOverride, type OptItem, type VideoOption } from './node-inspector/shared'
 import { PerformanceSection } from './node-inspector/PerformanceSection'
@@ -145,7 +146,7 @@ export function NodeInspector({
   const mountCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   useEffect(() => {
     if (focusAnchorRevision == null || !focusedMountId) return
-    mountCardRefs.current[focusedMountId]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    scrollIntoViewWithin(mountCardRefs.current[focusedMountId])
   }, [focusAnchorRevision])
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node || !nodeId) return <div style={{ padding: 10, opacity: 0.6, fontSize: 12 }}>点画布上的节点以编辑</div>
