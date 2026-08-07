@@ -1,6 +1,37 @@
-import type { GameGraph, GraphLibraryDocument } from '../../src/runtime/schema/graph-schema'
+import { randomUUID } from 'node:crypto'
+import type {
+  EdgeRouting,
+  GameGraph,
+  GameNode,
+  GraphLibraryDocument,
+  NodeBgm,
+  OverlayChild,
+  OverlayNode,
+} from '../../src/runtime/schema/graph-schema'
 import { normalizeDocument } from '../../src/editor/persist/blueprint-project'
-import { patchNodeData } from '../../src/graph/edit/graph-edit'
+import {
+  addNode,
+  attachSubProcess,
+  connect,
+  disconnect,
+  insertNodeAfter,
+  makeEmptySubFlowPack,
+  patchNodeData,
+  removeNode,
+  updateEdgeData,
+  type ConnectSpec,
+  type NodeDataPatch,
+} from '../../src/graph/edit/graph-edit'
+import {
+  addOverlayChild,
+  ensureNodeOverlay,
+  patchOverlayChild,
+  patchOverlayChildParams,
+  patchOverlayMount,
+  removeOverlayChild,
+  resetOverride,
+} from '../../src/graph/edit/overlay-edit'
+import { patchNodeBgm } from '../../src/editor/shell/bgm-authoring'
 
 export type PatchGraphInput = {
   blueprintId?: string
@@ -30,6 +61,21 @@ function withPackGraph(
     ...doc,
     manifest: { ...doc.manifest, packs },
   })
+}
+
+function requireString(op: Record<string, unknown>, key: string, index: number): string {
+  const value = String(op[key] ?? '')
+  if (!value) throw new Error(`op[${index}] missing ${key}`)
+  return value
+}
+
+function applyOverlayOp(
+  doc: GraphLibraryDocument,
+  packId: string,
+  edit: (scenario: GraphLibraryDocument) => GraphLibraryDocument,
+): GraphLibraryDocument {
+  const scenario = edit({ ...doc, graph: doc.manifest.packs[packId]!.graph })
+  return withPackGraph({ ...doc, ui: scenario.ui }, packId, scenario.graph)
 }
 
 export function applyPatchGraphOps(
@@ -78,6 +124,114 @@ export function applyPatchGraphOps(
           throw new Error(`unsupported field: ${field}`)
         }
         doc = withPackGraph(doc, packId, graph)
+      } else if (kind === 'set-node-data') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const patch = { ...(op.patch as Record<string, unknown>) }
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === null) patch[key] = undefined
+        }
+        graph = patchNodeData(graph, nodeId, patch as NodeDataPatch)
+        doc = withPackGraph(doc, packId, graph)
+      } else if (kind === 'add-node') {
+        const node = structuredClone(op.node) as GameNode
+        if (!node || typeof node !== 'object') throw new Error(`op[${i}] missing node`)
+        if (!node.id) node.id = `n-${randomUUID()}`
+        doc = withPackGraph(doc, packId, addNode(graph, node))
+      } else if (kind === 'remove-node') {
+        doc = withPackGraph(doc, packId, removeNode(graph, requireString(op, 'nodeId', i)))
+      } else if (kind === 'insert-node-after') {
+        const afterId = requireString(op, 'afterId', i)
+        const inserted = insertNodeAfter(graph, afterId, {
+          name: typeof op.name === 'string' ? op.name : undefined,
+          gapX: typeof op.gapX === 'number' ? op.gapX : undefined,
+          node: op.node as GameNode | undefined,
+        })
+        doc = withPackGraph(doc, packId, inserted.graph)
+      } else if (kind === 'connect') {
+        const spec: ConnectSpec = {
+          source: requireString(op, 'source', i),
+          target: requireString(op, 'target', i),
+          sourceHandle: typeof op.sourceHandle === 'string' ? op.sourceHandle : undefined,
+          targetHandle: typeof op.targetHandle === 'string' ? op.targetHandle : undefined,
+          data: op.data as EdgeRouting | undefined,
+          id: typeof op.id === 'string' ? op.id : undefined,
+        }
+        doc = withPackGraph(doc, packId, connect(graph, spec))
+      } else if (kind === 'disconnect') {
+        doc = withPackGraph(doc, packId, disconnect(graph, requireString(op, 'edgeId', i)))
+      } else if (kind === 'update-edge-data') {
+        const edgeId = requireString(op, 'edgeId', i)
+        doc = withPackGraph(doc, packId, updateEdgeData(graph, edgeId, op.data as EdgeRouting))
+      } else if (kind === 'patch-node-bgm') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const node = graph.nodes.find((item) => item.id === nodeId)
+        if (!node) throw new Error(`node not found: ${nodeId}`)
+        const bgm = patchNodeBgm(node.data.bgm, op.patch as Partial<NodeBgm>)
+        doc = withPackGraph(doc, packId, patchNodeData(graph, nodeId, { bgm }))
+      } else if (kind === 'ensure-node-overlay') {
+        const nodeId = requireString(op, 'nodeId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          ensureNodeOverlay(scenario, nodeId) as GraphLibraryDocument)
+      } else if (kind === 'add-overlay-child') {
+        const nodeId = requireString(op, 'nodeId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          addOverlayChild(scenario, nodeId, op.child as OverlayChild) as GraphLibraryDocument)
+      } else if (kind === 'remove-overlay-child') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const childId = requireString(op, 'childId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          removeOverlayChild(scenario, nodeId, childId) as GraphLibraryDocument)
+      } else if (kind === 'patch-overlay-child') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const childId = requireString(op, 'childId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          patchOverlayChild(
+            scenario,
+            nodeId,
+            childId,
+            op.patch as Partial<OverlayChild>,
+          ) as GraphLibraryDocument)
+      } else if (kind === 'patch-overlay-child-params') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const childId = requireString(op, 'childId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          patchOverlayChildParams(
+            scenario,
+            nodeId,
+            childId,
+            op.inputs as Record<string, unknown>,
+          ) as GraphLibraryDocument)
+      } else if (kind === 'patch-overlay-mount') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const mountId = requireString(op, 'mountId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          patchOverlayMount(
+            scenario,
+            nodeId,
+            mountId,
+            op.patch as Partial<OverlayNode>,
+          ) as GraphLibraryDocument)
+      } else if (kind === 'reset-overlay-override') {
+        const nodeId = requireString(op, 'nodeId', i)
+        const childId = requireString(op, 'childId', i)
+        doc = applyOverlayOp(doc, packId, (scenario) =>
+          resetOverride(scenario, nodeId, childId) as GraphLibraryDocument)
+      } else if (kind === 'attach-sub-process') {
+        doc = withPackGraph(doc, packId, attachSubProcess(graph, requireString(op, 'nodeId', i)))
+      } else if (kind === 'make-empty-sub-flow-pack') {
+        const pack = makeEmptySubFlowPack({
+          id: typeof op.id === 'string' ? op.id : undefined,
+          title: typeof op.title === 'string' ? op.title : undefined,
+          version: typeof op.version === 'string' ? op.version : undefined,
+        })
+        const blueprintPack = { ...pack, title: pack.title ?? '子蓝图' }
+        doc = normalizeDocument({
+          ...doc,
+          manifest: {
+            ...doc.manifest,
+            packs: { ...doc.manifest.packs, [pack.id]: blueprintPack },
+          },
+        })
       } else {
         throw new Error(`unsupported op: ${kind}`)
       }
