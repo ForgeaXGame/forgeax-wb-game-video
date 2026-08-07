@@ -17,11 +17,13 @@ import { GraphAssetView } from './editor/shell/GraphAssetView'
 import { GraphConfigView } from './editor/shell/GraphConfigView'
 import { GraphPlaySurface } from './editor/shell/GraphPlaySurface'
 import { NewSidebar } from './editor/shell/NewSidebar'
+import { DocumentLibraryView } from './editor/documents/DocumentLibraryView'
 import { useGraphScenario } from './editor/persist/graphScenarioStore'
 import { useGraphView, installGraphViewSync } from './editor/persist/graphViewStore'
 import { installUiNavSync } from './editor/persist/uiNavSync'
 import { installGraphBlueprintSync } from './editor/persist/graphBlueprintSync'
 import { installAssetNavSync } from './editor/persist/assetNavStore'
+import { installDocumentNavSync } from './editor/persist/documentNavStore'
 import { installRuleSelectionSync } from './editor/persist/ruleSelectionStore'
 import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
@@ -63,6 +65,7 @@ function GraphMain(): JSX.Element {
   )
   return (
     <main className="ga-main">
+      {view === 'documents' && <DocumentLibraryView />}
       {view === 'graph' && <GraphStudio scenario={scenario} />}
       {view === 'video' && <GraphVideoView />}
       {view === 'video-generate' && <VideoGenerationPage onBack={() => setView('video')} />}
@@ -112,9 +115,11 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
     const disposeUiNav = installUiNavSync(pane)
     const disposeBp = installGraphBlueprintSync()
     const disposeAssetNav = installAssetNavSync()
+    const disposeDocumentNav = installDocumentNavSync()
     const disposeRuleSelection = installRuleSelectionSync()
     return () => {
       disposeRuleSelection()
+      disposeDocumentNav()
       disposeAssetNav()
       disposeBp()
       disposeUiNav()
