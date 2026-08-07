@@ -458,20 +458,15 @@ function defaultDocumentName(documentType: DocumentType): string {
   }
 }
 
-export async function upsertHostDocument(
+async function upsertHostDocumentAtRef(
   context: WorkbenchExtensionContext,
   input: {
     documentType: DocumentType
     content?: string
     name?: string
-    slug?: string
   },
+  ref: string,
 ): Promise<DocumentRecord> {
-  const slug = input.slug?.trim()
-    ? sanitizeSlugSegment(input.slug.trim())
-    : await inferSlug(context)
-  if (!slug) throw new TypeError('slug is required')
-  const ref = `docs/${slug}_${input.documentType}.md`
   if (!isDocumentPath(ref)) throw new TypeError('Invalid document path')
   const id = `doc-${input.documentType}`
   const now = Date.now()
@@ -483,7 +478,7 @@ export async function upsertHostDocument(
   }
   return context.files.withLocks([HOST_MANIFEST_LOCK], async () => {
     const manifest = await readHostManifest(context.files)
-    const previous = manifest.assets.find((asset) => (
+    const previous = manifest.assets.find((asset): asset is DocumentRecord => (
       isDocumentRecord(asset) && asset.meta.documentType === input.documentType
     ))
     const next: DocumentRecord = {
@@ -504,6 +499,60 @@ export async function upsertHostDocument(
     await writeHostManifest(context.files, { ...manifest, assets })
     return next
   })
+}
+
+export async function upsertHostDocument(
+  context: WorkbenchExtensionContext,
+  input: {
+    documentType: DocumentType
+    content?: string
+    name?: string
+    slug?: string
+  },
+): Promise<DocumentRecord> {
+  const slug = input.slug?.trim()
+    ? sanitizeSlugSegment(input.slug.trim())
+    : await inferSlug(context)
+  if (!slug) throw new TypeError('slug is required')
+  return upsertHostDocumentAtRef(
+    context,
+    input,
+    `docs/${slug}_${input.documentType}.md`,
+  )
+}
+
+export async function healMissingDocuments(
+  context: WorkbenchExtensionContext,
+): Promise<DocumentRecord[]> {
+  const existing = await listHostDocuments(context)
+  const present = new Set(existing.map((document) => document.meta.documentType))
+  let entries: string[]
+  try {
+    entries = await context.files.list('docs')
+  } catch {
+    entries = []
+  }
+
+  const orphanByType = new Map<DocumentType, string>()
+  for (const filename of [...entries].sort()) {
+    const match = /^(.+)_(intake|core|inquiry|pillar)\.md$/i.exec(filename)
+    if (!match) continue
+    const documentType = match[2]!.toLowerCase() as DocumentType
+    if (present.has(documentType)) continue
+    const selected = orphanByType.get(documentType)
+    if (selected) {
+      console.warn(
+        `Multiple orphan ${documentType} documents found; using ${selected} instead of ${filename}`,
+      )
+      continue
+    }
+    orphanByType.set(documentType, filename)
+  }
+
+  for (const [documentType, filename] of orphanByType) {
+    await upsertHostDocumentAtRef(context, { documentType }, `docs/${filename}`)
+  }
+  return listHostDocuments(context)
 }
 
 function isHostReclaimSource(value: unknown): value is HostReclaimSource {

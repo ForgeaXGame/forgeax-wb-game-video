@@ -15,6 +15,15 @@ function contextFor(files: Record<string, string>): {
     context: {
       gameId: 'game-1',
       files: {
+        list: async (directory: string) => {
+          const prefix = `${directory.replace(/\/+$/u, '')}/`
+          return [...new Set(
+            Object.keys(store)
+              .filter((path) => path.startsWith(prefix))
+              .map((path) => path.slice(prefix.length).split('/', 1)[0]!)
+              .filter(Boolean),
+          )].sort()
+        },
         read: async (path: string) => {
           const value = store[path]
           return value === undefined ? null : encoder.encode(value)
@@ -84,6 +93,48 @@ describe('wb-game-video document routing', () => {
       document: { id: 'doc-intake', name: '需求', documentType: 'intake', updatedAt: 2 },
       content: '# Intake',
     })
+  })
+
+  it('GET documents auto-registers orphan docs/*_<type>.md files', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+      'docs/black_myth_core.md': '# Core',
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const list = await router.handle(request('documents'))
+
+    expect(list.status).toBe(200)
+    expect(JSON.parse(decoder.decode(list.body))).toEqual({
+      documents: [
+        expect.objectContaining({ id: 'doc-core', documentType: 'core' }),
+      ],
+    })
+    expect(JSON.parse(files['assets/manifest.json']!).assets).toEqual([
+      expect.objectContaining({
+        id: 'doc-core',
+        provider: { kind: 'local', ref: 'docs/black_myth_core.md' },
+        meta: { documentType: 'core' },
+      }),
+    ])
+  })
+
+  it('GET documents preserves the filename when matching document types case-insensitively', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+      'docs/black_myth_CORE.md': '# Core',
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const list = await router.handle(request('documents'))
+
+    expect(list.status).toBe(200)
+    expect(JSON.parse(files['assets/manifest.json']!).assets).toEqual([
+      expect.objectContaining({
+        id: 'doc-core',
+        provider: { kind: 'local', ref: 'docs/black_myth_CORE.md' },
+      }),
+    ])
   })
 
   it('upserts markdown under docs/ and registers doc-<type>', async () => {

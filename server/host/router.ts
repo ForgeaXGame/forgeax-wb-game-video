@@ -12,7 +12,7 @@ import type {
 import {
   createHostAssetRegistry,
   getHostStyleAxes,
-  listHostDocuments,
+  healMissingDocuments,
   readHostDocument,
 } from '../asset-registry'
 import { bundledMediaResponse, type BundledMediaResolver } from './media-routes'
@@ -508,7 +508,7 @@ export function createWbGameVideoRouter(
         if (method === 'GET' && path === 'documents') {
           exactQuery(request.query, [])
           return jsonResponse(200, {
-            documents: (await listHostDocuments(context)).map(documentSummary),
+            documents: (await healMissingDocuments(context)).map(documentSummary),
           })
         }
         if (
@@ -517,6 +517,7 @@ export function createWbGameVideoRouter(
           && parts[0] === 'documents'
         ) {
           exactQuery(request.query, [])
+          await healMissingDocuments(context)
           const document = await readHostDocument(context, parts[1]!)
           if (!document) return notFound()
           return jsonResponse(200, {
