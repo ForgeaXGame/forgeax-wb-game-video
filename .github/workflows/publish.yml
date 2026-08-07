@@ -24,6 +24,6 @@ jobs:
       # Org policy: no --provenance (keeps repo/commit metadata out of the
       # public Sigstore transparency log, uniform with the private repos).
       - name: Publish to npmjs
-        run: npm publish --access public
+        run: npm publish --access public --tag legacy
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
