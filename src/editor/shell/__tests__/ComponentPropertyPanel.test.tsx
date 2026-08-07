@@ -216,7 +216,8 @@ describe('ComponentPropertyPanel', () => {
     expect(screen.getByText('效果一')).toBeTruthy()
     expect(screen.getByText('效果主体')).toBeTruthy()
     expect(screen.getByText('赋值')).toBeTruthy()
-    expect(screen.queryByText('施加效果')).toBeNull()
+    // 右栏用「效果一」这套自己的卡片头，不走动作卡片通用的那一只。
+    expect(container.querySelector('.ni-na-card-head')).toBeNull()
     expect(screen.queryByText('操作')).toBeNull()
     expect(screen.queryByText('数值')).toBeNull()
     expect(container.querySelector<HTMLElement>("[data-property-effect-action='true']")?.style.borderBottom).toBe('0px')

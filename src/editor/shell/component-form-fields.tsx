@@ -19,6 +19,7 @@ import { AttrSelect, EffectsEditor, EntitySelect, EventsEditor, TextValueInput, 
 import type { TextOrRef } from './TextValueEditor'
 import { ColorPicker } from './ColorPicker'
 import { KeyConflictInput } from './KeyConflictInput'
+import { NiSelect } from './ni-ui'
 import { entityDisplayName, findEntity, listAttrOptions } from './valueExprPick'
 import type {
   EntityAttributeCreateRequest,
@@ -718,10 +719,10 @@ function renderInput(
     return (
       <span key={inp.key}>
         {wrap(
-          <select
-            aria-label={label}
+          <NiSelect
+            ariaLabel={label}
             value={selectedValue}
-            onChange={(e) => onPatch(inp.key, e.target.value)}
+            onChange={(next) => onPatch(inp.key, next)}
             style={{
               width: compact ? '100%' : undefined,
               minWidth: 0,
@@ -732,7 +733,7 @@ function renderInput(
             title={hint}
           >
             {inp.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>,
+          </NiSelect>,
         )}
       </span>
     )

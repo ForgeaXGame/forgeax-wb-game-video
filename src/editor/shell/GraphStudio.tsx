@@ -372,6 +372,7 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       kino.push({
         id: resource.resource_id,
         label: resource.name?.trim() || resource.resource_id,
+        durationMs: resource.source_meta?.duration_ms,
       })
     }
     setVideoOptions(kino)
