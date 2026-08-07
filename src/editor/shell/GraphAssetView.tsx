@@ -1,14 +1,7 @@
-import { useEffect, useState } from 'react'
 import { injectStyleOnce } from '../../styles/injectStyle'
-import { AssetLibraryPanel, type BrowserAsset } from '../assets/AssetLibraryPanel'
-import {
-  createKinoAssetLibraryClient,
-  type AssetLibraryClient,
-  useAssetLibrary,
-} from '../assets/assetLibraryClient'
-import { useAssetDirectory } from '../assets/asset-directory'
-import { loadProjectComponentAssets, type ProjectComponentAsset } from '../assets/project-component-assets'
-import { fetchRegistryAssets } from '../assets/registry-assets'
+import { AssetLibraryPanel } from '../assets/AssetLibraryPanel'
+import type { AssetLibraryClient } from '../assets/assetLibraryClient'
+import { useAssetBrowser } from '../assets/use-asset-browser'
 import { useGraphScenario } from '../persist/graphScenarioStore'
 import { useAssetNav } from '../persist/assetNavStore'
 
@@ -101,40 +94,10 @@ const CSS = `
 export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX.Element {
   injectStyleOnce('graph-asset-view', CSS)
   const gameId = useGraphScenario((state) => state.game)
-  const controller = useAssetLibrary(gameId, client ?? kinoAssetLibraryClient)
-  const directory = useAssetDirectory(gameId)
+  const { controller, directory, videoAssets, projectComponents } = useAssetBrowser(gameId, client)
   const requestedRoot = useAssetNav((state) => state.root)
-  const [videoAssets, setVideoAssets] = useState<BrowserAsset[]>([])
-  const [projectComponents, setProjectComponents] = useState<ProjectComponentAsset[]>([])
-
-  useEffect(() => {
-    let active = true
-    void fetchRegistryAssets(gameId, 'video')
-      .then((assets) => {
-        if (!active) return
-        setVideoAssets(assets.map((asset) => ({
-          id: asset.id,
-          kind: 'video',
-          name: asset.label ?? asset.id,
-          url: asset.url,
-          mime: asset.mime,
-          bytes: asset.bytes,
-          readOnly: true,
-        })))
-      })
-      .catch(() => {
-        if (active) setVideoAssets([])
-      })
-    return () => { active = false }
-  }, [gameId])
-  useEffect(() => {
-    let active = true
-    void loadProjectComponentAssets().then((components) => {
-      if (!active) return
-      setProjectComponents(components)
-    })
-    return () => { active = false }
-  }, [gameId])
+  const requestedFolderId = useAssetNav((state) => state.folderId)
+  const requestedEntryKey = useAssetNav((state) => state.entryKey)
 
   return <AssetLibraryPanel
     controller={controller}
@@ -142,7 +105,7 @@ export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX
     videoAssets={videoAssets}
     projectComponents={projectComponents}
     requestedRoot={requestedRoot}
+    requestedFolderId={requestedFolderId}
+    requestedEntryKey={requestedEntryKey}
   />
 }
-
-const kinoAssetLibraryClient = createKinoAssetLibraryClient()

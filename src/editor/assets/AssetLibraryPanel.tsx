@@ -5,6 +5,15 @@ import localToolbarIcon from '../../assets/asset-toolbar-local.svg?url'
 import presetToolbarIcon from '../../assets/asset-toolbar-preset.svg?url'
 import searchToolbarIcon from '../../assets/asset-toolbar-search.svg?url'
 import type { AssetLibraryController, ManagedAssetKind } from './assetLibraryClient'
+import {
+  assetEntries,
+  assetEntryKey,
+  assetEntryName,
+  assetEntryRoot,
+  type AssetListEntry,
+  type BrowserAsset,
+  type BrowserAssetKind,
+} from './asset-entries'
 import { AssetDetailPanel } from './AssetDetailPanel'
 import { ProjectComponentPreview } from './ProjectComponentPreview'
 import {
@@ -25,6 +34,8 @@ import {
 import type { ProjectComponentAsset } from './project-component-assets'
 import type { AssetLibraryFolder, AssetLibraryRootKind } from './registry-types'
 
+export type { BrowserAsset } from './asset-entries'
+
 const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif'
 const AUDIO_ACCEPT = '.mp3,.wav,.ogg,.m4a,.aac'
 const FONT_ACCEPT = '.woff2,.woff,.ttf,.otf'
@@ -35,35 +46,7 @@ const AUDIO_WAVEFORM_BARS = [
   21.823, 24.542, 31.073, 31.01, 24.198, 19.427, 18,
 ]
 
-type BrowserAssetKind = ManagedAssetKind | 'video'
 const DEFAULT_ASSET_ROOT = ASSET_DIRECTORY_ROOTS[0]!
-
-export interface BrowserAsset {
-  id: string
-  kind: BrowserAssetKind
-  name: string
-  url?: string
-  mime?: string
-  bytes?: number
-  readOnly?: boolean
-}
-
-type AssetListEntry =
-  | { source: 'media', asset: BrowserAsset }
-  | { source: 'project-component', component: ProjectComponentAsset }
-
-function entryKey(entry: AssetListEntry): string {
-  return entry.source === 'media' ? entry.asset.id : `component:${entry.component.componentId}`
-}
-
-function entryRoot(entry: AssetListEntry): AssetLibraryRootKind {
-  if (entry.source === 'project-component') return 'control'
-  return rootForAsset(entry.asset)
-}
-
-function entryName(entry: AssetListEntry): string {
-  return entry.source === 'media' ? entry.asset.name : entry.component.manifest.label ?? entry.component.componentId
-}
 
 interface FolderDialogState {
   mode: 'create' | 'rename' | 'delete'
@@ -77,10 +60,6 @@ const EMPTY_DIRECTORY_CONTROLLER: AssetDirectoryController = {
   error: null,
   async refresh() {},
   async save() { return EMPTY_ASSET_DIRECTORY },
-}
-
-function rootForAsset(asset: BrowserAsset): AssetLibraryRootKind {
-  return asset.kind === 'image' ? 'image' : asset.kind === 'audio' ? 'audio' : asset.kind === 'font' ? 'font' : 'video'
 }
 
 export function typeLabel(kind: BrowserAssetKind): string {
@@ -145,12 +124,16 @@ export function AssetLibraryPanel({
   videoAssets = [],
   projectComponents = [],
   requestedRoot,
+  requestedFolderId,
+  requestedEntryKey,
 }: {
   controller: AssetLibraryController
   directory?: AssetDirectoryController
   videoAssets?: BrowserAsset[]
   projectComponents?: ProjectComponentAsset[]
   requestedRoot?: AssetLibraryRootKind | null
+  requestedFolderId?: string | null
+  requestedEntryKey?: string | null
 }): JSX.Element {
   const [currentId, setCurrentId] = useState<string>('root:library')
   const [query, setQuery] = useState('')
@@ -177,6 +160,15 @@ export function AssetLibraryPanel({
     if (requestedRoot) setCurrentId(`root:${requestedRoot}`)
   }, [requestedRoot])
   useEffect(() => {
+    if (requestedFolderId) setCurrentId(requestedFolderId)
+  }, [requestedFolderId])
+  useEffect(() => {
+    if (requestedEntryKey) {
+      setSelectedEntryId(requestedEntryKey)
+      setDetailOpen(true)
+    }
+  }, [requestedEntryKey])
+  useEffect(() => {
     if (!menuFolderId) return
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null
@@ -191,23 +183,19 @@ export function AssetLibraryPanel({
     ?? (currentFolder ? rootForFolder(currentFolder) : DEFAULT_ASSET_ROOT)
   const currentFolders = isLibraryHome ? [] : childrenOf(directory.assetLibrary, currentId, currentRoot.kind)
   const entries = useMemo<AssetListEntry[]>(
-    () => [
-      ...controller.items.map((asset) => ({ source: 'media' as const, asset: { ...asset, readOnly: false } })),
-      ...videoAssets.map((asset) => ({ source: 'media' as const, asset })),
-      ...projectComponents.map((component) => ({ source: 'project-component' as const, component })),
-    ],
+    () => assetEntries(controller.items, videoAssets, projectComponents),
     [controller.items, projectComponents, videoAssets],
   )
   const searchTerm = query.trim().toLocaleLowerCase()
   const isSearching = searchTerm.length > 0
   const currentEntries = entries.filter((entry) => {
-    const placement = directory.assetLibrary.placements[entryKey(entry)]
-    const inCurrent = !isLibraryHome && (currentFolder ? placement === currentFolder.id : !placement && entryRoot(entry) === currentRoot.kind)
-    return (isSearching || inCurrent) && entryName(entry).toLocaleLowerCase().includes(searchTerm)
+    const placement = directory.assetLibrary.placements[assetEntryKey(entry)]
+    const inCurrent = !isLibraryHome && (currentFolder ? placement === currentFolder.id : !placement && assetEntryRoot(entry) === currentRoot.kind)
+    return (isSearching || inCurrent) && assetEntryName(entry).toLocaleLowerCase().includes(searchTerm)
   })
   const filteredFolders = (isSearching ? directory.assetLibrary.folders : currentFolders)
     .filter((folder) => folder.name.toLocaleLowerCase().includes(searchTerm))
-  const selectedEntry = entries.find((entry) => entryKey(entry) === selectedEntryId) ?? null
+  const selectedEntry = entries.find((entry) => assetEntryKey(entry) === selectedEntryId) ?? null
   const selectedAsset = selectedEntry?.source === 'media' ? selectedEntry.asset : null
   const selectedComponent = selectedEntry?.source === 'project-component' ? selectedEntry.component : null
   const actionsDisabled = controller.mutating || controller.uploading !== null || directory.saving
@@ -303,12 +291,12 @@ export function AssetLibraryPanel({
     folder?: AssetLibraryFolder,
   ) => {
     event.preventDefault()
-    const entry = entries.find((candidate) => entryKey(candidate) === draggingAssetId)
+    const entry = entries.find((candidate) => assetEntryKey(candidate) === draggingAssetId)
     setDropFolderId(null)
     setDraggingAssetId(null)
-    if (!entry || entryRoot(entry) !== rootKind) return
+    if (!entry || assetEntryRoot(entry) !== rootKind) return
     const targetFolderId = folder ? folder.id : undefined
-    const next = moveAsset(directory.assetLibrary, entryKey(entry), targetFolderId)
+    const next = moveAsset(directory.assetLibrary, assetEntryKey(entry), targetFolderId)
     await directory.save(next)
   }
   const canDropFolderIntoFolder = (draggingFolder: AssetLibraryFolder, targetFolder: AssetLibraryFolder): boolean => {
@@ -342,8 +330,8 @@ export function AssetLibraryPanel({
       .map((folder) => ({ type: 'folder' as const, id: folder.id })),
     ...entries
     .filter((entry) => {
-      const placement = directory.assetLibrary.placements[entryKey(entry)]
-      return folderId ? placement === folderId : !placement && entryRoot(entry) === rootKind
+      const placement = directory.assetLibrary.placements[assetEntryKey(entry)]
+      return folderId ? placement === folderId : !placement && assetEntryRoot(entry) === rootKind
     })
     .map((entry) => ({ type: 'asset' as const, entry })),
   ].slice(0, 6)
@@ -355,9 +343,9 @@ export function AssetLibraryPanel({
     folder?: AssetLibraryFolder,
   ): JSX.Element => {
     const previews = previewItemsInFolder(folder?.id, rootKind)
-    const draggingEntry = entries.find((entry) => entryKey(entry) === draggingAssetId)
+    const draggingEntry = entries.find((entry) => assetEntryKey(entry) === draggingAssetId)
     const draggingFolder = directory.assetLibrary.folders.find((candidate) => candidate.id === draggingFolderId)
-    const acceptsAssetDrop = draggingEntry != null && entryRoot(draggingEntry) === rootKind
+    const acceptsAssetDrop = draggingEntry != null && assetEntryRoot(draggingEntry) === rootKind
     const acceptsFolderDrop = folder != null && draggingFolder != null && canDropFolderIntoFolder(draggingFolder, folder)
     const acceptsDrop = acceptsAssetDrop || acceptsFolderDrop
     return (
@@ -398,7 +386,7 @@ export function AssetLibraryPanel({
           <span className="alx-folder-visual" aria-hidden>
             <span className="alx-folder-preview">
               {previews.map((item) => (
-                <span className={`alx-folder-preview-item${item.type === 'folder' ? ' is-folder' : ''}`} key={item.type === 'folder' ? item.id : entryKey(item.entry)}>
+                <span className={`alx-folder-preview-item${item.type === 'folder' ? ' is-folder' : ''}`} key={item.type === 'folder' ? item.id : assetEntryKey(item.entry)}>
                   {item.type === 'folder'
                     ? <span className="alx-folder-preview-folder" aria-label="子文件夹"><span className="alx-folder-visual" /></span>
                     : item.entry.source === 'project-component' ? <ProjectComponentPreview component={item.entry.component} variant="folder" />
@@ -451,9 +439,9 @@ export function AssetLibraryPanel({
               name: item.name,
                 }))),
           ].map((item, index, all) => {
-            const draggingEntry = entries.find((entry) => entryKey(entry) === draggingAssetId)
+            const draggingEntry = entries.find((entry) => assetEntryKey(entry) === draggingAssetId)
             const root = rootForId(item.id)
-            const acceptsDrop = root != null && draggingEntry != null && root.kind === entryRoot(draggingEntry)
+            const acceptsDrop = root != null && draggingEntry != null && root.kind === assetEntryRoot(draggingEntry)
             return <span
               className={dropFolderId === item.id ? 'is-drop-target' : undefined}
               key={item.id}
@@ -480,10 +468,10 @@ export function AssetLibraryPanel({
           {isLibraryHome && !isSearching ? ASSET_DIRECTORY_ROOTS.map((root) => renderFolderCard(root.id, root.name, root.kind)) : null}
           {filteredFolders.map((folder) => renderFolderCard(folder.id, folder.name, folder.rootKind, folder))}
           {currentEntries.map((entry) => {
-            const key = entryKey(entry)
+            const key = assetEntryKey(entry)
             const isMedia = entry.source === 'media'
             const asset = isMedia ? entry.asset : null
-            const name = entryName(entry)
+            const name = assetEntryName(entry)
             return (
             <article
               className={`alx-asset-card${selectedIds.has(key) || selectedEntryId === key ? ' is-selected' : ''}${draggingAssetId === key ? ' is-dragging' : ''}`}
@@ -533,7 +521,7 @@ export function AssetLibraryPanel({
             </article>
           )})}
         </div>
-        {!isLibraryHome && !directory.loading && filteredFolders.length === 0 && currentEntries.length === 0 ? <div className="alx-empty"><span aria-hidden>✦</span><strong>暂无{currentRoot.name}资产</strong><p>可通过本地上传或外部导入来添加资产。</p><div><button type="button" disabled={actionsDisabled} onClick={() => fileInputRef.current?.click()}>本地</button><button type="button" onClick={() => setUnavailableAction('外部资产搜索服务尚未接入')}>外部</button></div></div> : null}
+        {!isLibraryHome && !directory.loading && filteredFolders.length === 0 && currentEntries.length === 0 ? <div className="alx-empty"><span aria-hidden>✦</span><strong>暂无{currentRoot.name}资产</strong><p>可通过本地上传、生成或外部导入来添加资产。</p><div><button type="button" onClick={() => setUnavailableAction(`${currentRoot.name}生成服务尚未接入`)}>生成</button><button type="button" disabled={actionsDisabled} onClick={() => fileInputRef.current?.click()}>本地</button><button type="button" onClick={() => setUnavailableAction('外部资产搜索服务尚未接入')}>外部</button></div></div> : null}
       </section>
 
       {detailOpen ? <AssetDetailPanel
@@ -545,6 +533,7 @@ export function AssetLibraryPanel({
         onSaveAssetName={() => void saveSelectedAssetName()}
         onDelete={() => selectedAsset && setPendingDelete(selectedAsset)}
         onReupload={(file) => void reuploadSelectedAsset(file)}
+        onGenerate={() => setUnavailableAction(`${selectedComponent ? '控件' : selectedAsset ? typeLabel(selectedAsset.kind) : '资产'}生成服务尚未接入`)}
         onClose={() => {
           setDetailOpen(false)
           setSelectedEntryId(null)

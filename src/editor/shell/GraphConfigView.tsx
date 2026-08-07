@@ -7,7 +7,7 @@
  *    选中态来自 uiSelection，方案内容仍写回 scenario.ui.overlays。
  *  - **规则**（实体/变量/公式）：左栏多行扁平切换，右栏渲染 ScenarioInspector。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import type { GameScenario, Layout, Overlay, OverlayChild, UiTreeNode } from '../../runtime/schema/graph-schema'
 import { CatalogShell } from './CatalogShell'
 import { ScenarioInspector, type ScenarioSection } from './ScenarioInspector'
@@ -39,6 +39,7 @@ import { overlayTitleExists } from './overlay-title'
 import { ensureUiTree } from '../persist/ui-tree'
 import { useUiSelection } from '../persist/uiSelectionStore'
 import { executeUiNavCommand } from '../persist/uiNavSync'
+import { useRuleSelection } from '../persist/ruleSelectionStore'
 
 export interface ConfigTab {
   section: ScenarioSection
@@ -80,7 +81,13 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-  const [active, setActive] = useState<ScenarioSection>(tabs[0]?.section ?? 'entities')
+  const overlaysMode = tabs.length === 1 && tabs[0]?.section === 'overlays'
+  const activeRuleSection = useRuleSelection((state) => state.section)
+  const activeRuleItemId = useRuleSelection((state) => state.itemId)
+  const selectRule = useRuleSelection((state) => state.select)
+  const active = overlaysMode
+    ? (tabs[0]?.section ?? 'entities')
+    : (tabs.some((tab) => tab.section === activeRuleSection) ? activeRuleSection : tabs[0]?.section ?? 'entities')
   // overlay 资源池「已用/未用」：统计每个 overlay 被多少节点挂载引用。
   const overlayUsage = useMemo(
     () => countOverlayReferences(Object.values(blueprints).map((doc) => doc.graph)),
@@ -92,7 +99,6 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
   )
 
   // ── 界面（overlays）形态：树 + 单方案编辑 ──
-  const overlaysMode = tabs.length === 1 && tabs[0]?.section === 'overlays'
   const allOverlays = meta.ui?.overlays ?? {}
   // 内容重复标记：三类方案（自定义 / 内置 / 基础 base:*）在同一目录里互查，overlayId → 同内容的其它 id[]。
   // 只提示不处理（§8 人为最终权威）；纯派生，不落盘（§2 Derive）。
@@ -286,13 +292,14 @@ export function GraphConfigView({ tabs, title = '配置', icon = '⚙', scenario
             title={title}
             items={tabs.map((t) => ({ id: t.section, label: t.label }))}
             selectedId={active}
-            onSelect={(id) => setActive(id as ScenarioSection)}
+            onSelect={(id) => selectRule(id as typeof activeRuleSection)}
             renderPreview={() => (
               <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
                 {/* meta.formulas 在 schema 里存为 `Record<string, unknown>`（runtime ↛ editor）；这里窄化回 Formula 给 ScenarioInspector。 */}
                 <ScenarioInspector
                   value={{ ...meta, formulas: meta.formulas as Record<string, Formula> | undefined }}
                   section={active}
+                  focusItemId={activeRuleItemId}
                   overlayUsage={overlayUsage}
                   onChange={setMeta}
                   onRenameId={(rename: ScenarioIdRename) => renameScenarioId(rename)}

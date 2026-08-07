@@ -1,8 +1,8 @@
 /**
  * NewSidebar —— 新版左侧栏（按 Figma 15195_75500 视觉稿）。
  *
- * 「蓝图」子树接真实 `blueprints`（扁平：主入口置顶 + 子蓝图排序），CRUD 对齐原
- * BlueprintLibraryView；其它顶层（视频/界面/资产/规则）仍为 mock。
+ * 「蓝图」子树接真实 `blueprints`（扁平：主入口置顶 + 子蓝图排序），资产和规则
+ * 同样从项目数据派生；视频仍为 mock。
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -14,6 +14,17 @@ import { sendUiNavCommand, useUiNavMirror } from '../persist/uiNavSync'
 import { useUiSelection } from '../persist/uiSelectionStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
 import { useAssetNav } from '../persist/assetNavStore'
+import { useRuleSelection } from '../persist/ruleSelectionStore'
+import { ASSET_DIRECTORY_ROOTS, childrenOf, type AssetDirectoryController } from '../assets/asset-directory'
+import {
+  assetEntryKey,
+  assetEntryName,
+  assetEntryRoot,
+  parentFolderIdForAssetEntry,
+  type AssetListEntry,
+} from '../assets/asset-entries'
+import { useAssetBrowser } from '../assets/use-asset-browser'
+import type { AssetLibraryRootKind } from '../assets/registry-types'
 import { blueprintListItems } from './blueprintNav'
 import { useBlueprintNavActions, type BlueprintNavActions } from './useBlueprintNavActions'
 import { UiTreeView, type UiTreeViewNode } from './UiTreeView'
@@ -32,10 +43,12 @@ export interface NavNode {
   blueprint?: boolean
   /** 是否为入口蓝图。 */
   isEntry?: boolean
+  assetLocation?: { root: AssetLibraryRootKind, folderId?: string, entryKey?: string }
+  ruleTarget?: { section: 'entities' | 'variables' | 'formulas', itemId?: string }
   children?: NavNode[]
 }
 
-/** 非蓝图顶层 mock（视频/界面/资产/规则/试玩）。 */
+/** 非蓝图顶层 mock（视频/界面/试玩）。 */
 const MOCK_ENTRIES: readonly NavNode[] = [
   {
     id: 'video',
@@ -67,66 +80,14 @@ const MOCK_ENTRIES: readonly NavNode[] = [
     // 子树由真实 UiTreeView 渲染（main #115），不再用 mock children。
     // 行内加号在「自定义界面(ui-folder:custom)」下新建界面方案。
   },
-  {
-    id: 'assets',
-    label: '资产库',
-    kind: 'entry',
-    view: 'assets',
-    canAddChild: true,
-    children: [
-      {
-        id: 'as-video',
-        label: '视频',
-        kind: 'branch',
-        children: [
-          { id: 'as-video-door', label: 'narr-door.mp4', kind: 'leaf' },
-          { id: 'as-video-land', label: 'narr-land.mp4', kind: 'leaf' },
-        ],
-      },
-      {
-        id: 'as-image',
-        label: '图片',
-        kind: 'branch',
-        children: [
-          { id: 'as-img-hero', label: '主角立绘', kind: 'leaf' },
-          { id: 'as-img-bg', label: '场景背景', kind: 'leaf' },
-        ],
-      },
-      { id: 'as-bgm', label: 'BGM', kind: 'leaf' },
-    ],
-  },
-  {
-    id: 'rule',
-    label: '规则',
-    kind: 'entry',
-    view: 'rule',
-    canAddChild: true,
-    children: [
-      {
-        id: 'rule-entity',
-        label: '实体',
-        kind: 'branch',
-        children: [
-          { id: 'rule-entity-hero', label: '主角', kind: 'leaf' },
-          { id: 'rule-entity-enemy', label: '空藏', kind: 'leaf' },
-        ],
-      },
-      { id: 'rule-var', label: '变量', kind: 'leaf' },
-      { id: 'rule-formula', label: '公式', kind: 'leaf' },
-    ],
-  },
   { id: 'play', label: '试玩', kind: 'entry', view: 'play' },
 ]
-
-const ASSET_ROOT_BY_NAV_ID = {
-  'as-video': 'video',
-  'as-image': 'image',
-  'as-bgm': 'audio',
-} as const
 
 function buildNavTree(
   blueprints: Parameters<typeof blueprintListItems>[0],
   mainId: string,
+  assets: NavNode,
+  rules: NavNode,
 ): NavNode[] {
   const bpChildren: NavNode[] = blueprintListItems(blueprints, mainId).map((it) => ({
     id: it.id,
@@ -145,7 +106,74 @@ function buildNavTree(
       children: bpChildren,
     },
     ...MOCK_ENTRIES,
+    assets,
+    rules,
   ]
+}
+
+function buildAssetNavNode(directory: AssetDirectoryController, entries: readonly AssetListEntry[]): NavNode {
+  const buildFolder = (folderId: string, root: AssetLibraryRootKind): NavNode[] => [
+    ...childrenOf(directory.assetLibrary, folderId, root).map((folder) => ({
+      id: `asset-folder:${folder.id}`,
+      label: folder.name,
+      kind: 'branch' as const,
+      assetLocation: { root, folderId: folder.id },
+      children: buildFolder(folder.id, root),
+    })),
+    ...entries
+      .filter((entry) => assetEntryRoot(entry) === root
+        && parentFolderIdForAssetEntry(entry, directory.assetLibrary.placements) === folderId)
+      .sort((left, right) => assetEntryName(left).localeCompare(assetEntryName(right), 'zh-CN'))
+      .map((entry) => ({
+        id: `asset-entry:${assetEntryKey(entry)}`,
+        label: assetEntryName(entry),
+        kind: 'leaf' as const,
+        assetLocation: { root, folderId: folderId.startsWith('root:') ? undefined : folderId, entryKey: assetEntryKey(entry) },
+      })),
+  ]
+  return {
+    id: 'assets',
+    label: '资产库',
+    kind: 'entry',
+    view: 'assets',
+    children: ASSET_DIRECTORY_ROOTS.map((root) => ({
+      id: `asset-root:${root.kind}`,
+      label: root.name,
+      kind: 'branch',
+      assetLocation: { root: root.kind },
+      children: buildFolder(root.id, root.kind),
+    })),
+  }
+}
+
+function buildRuleNavNode(meta: { entities?: Record<string, { id: string, name?: string }>, variables?: Record<string, { id: string, name?: string }>, formulas?: Record<string, { id: string, name?: string }> }): NavNode {
+  const section = <T extends { id: string, name?: string }>(
+    id: 'entities' | 'variables' | 'formulas',
+    label: string,
+    values: Record<string, T> | undefined,
+  ): NavNode => ({
+    id: `rule-${id}`,
+    label,
+    kind: 'branch',
+    ruleTarget: { section: id },
+    children: Object.entries(values ?? {}).map(([key, value]) => ({
+      id: `rule-${id}:${key}`,
+      label: value.name?.trim() || value.id || key,
+      kind: 'leaf',
+      ruleTarget: { section: id, itemId: key },
+    })),
+  })
+  return {
+    id: 'rule',
+    label: '规则',
+    kind: 'entry',
+    view: 'rule',
+    children: [
+      section('entities', '实体', meta.entities),
+      section('variables', '变量', meta.variables),
+      section('formulas', '公式', meta.formulas),
+    ],
+  }
 }
 
 function collectExpandableIds(nodes: readonly NavNode[], acc: Set<string> = new Set()): Set<string> {
@@ -710,11 +738,15 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   injectStyleOnce('new-sidebar', NEW_SIDEBAR_CSS)
   const view = useGraphView((s) => s.view)
   const setView = useGraphView((s) => s.setView)
-  const setAssetRoot = useAssetNav((s) => s.setRoot)
+  const setAssetLocation = useAssetNav((s) => s.setLocation)
+  const selectRule = useRuleSelection((s) => s.select)
+  const gameId = useGraphScenario((s) => s.game)
+  const { entries: assetEntries, directory: assetDirectory } = useAssetBrowser(gameId)
   const blueprints = useGraphScenario((s) => s.blueprints)
   const mainId = useGraphScenario((s) => s.mainBlueprintId)
   const activeBlueprintId = useGraphScenario((s) => s.activeBlueprintId)
   const selectBlueprint = useGraphScenario((s) => s.selectBlueprint)
+  const ruleMeta = useGraphScenario((s) => s.meta)
   const meta = useGraphScenario((s) => (uiNavMode === 'left' ? null : s.meta))
   const remoteSnapshot = useUiNavMirror((s) => s.snapshot)
   const selectedTreeNodeId = useUiSelection((s) => s.selectedTreeNodeId)
@@ -736,7 +768,14 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     ? (remoteSnapshot?.usage ?? {})
     : countOverlayReferences(Object.values(blueprints ?? {}).map((doc) => doc.graph))
 
-  const navTree = useMemo(() => buildNavTree(blueprints, mainId), [blueprints, mainId])
+  const navTree = useMemo(
+    () => buildNavTree(blueprints, mainId, buildAssetNavNode(assetDirectory, assetEntries), buildRuleNavNode({
+      entities: ruleMeta.entities,
+      variables: ruleMeta.variables,
+      formulas: ruleMeta.formulas as Record<string, { id: string, name?: string }> | undefined,
+    })),
+    [assetDirectory, assetEntries, blueprints, mainId, ruleMeta.entities, ruleMeta.formulas, ruleMeta.variables],
+  )
 
   const [expanded, setExpanded] = useState<Set<string>>(() => collectExpandableIds(navTree))
   // 蓝图增删后把新可展开节点并入 expanded（只 add，不强制全量重置，避免无变更时 setState 环）。
@@ -778,10 +817,14 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   }
 
   const onSelect = (node: NavNode): void => {
-    const assetRoot = ASSET_ROOT_BY_NAV_ID[node.id as keyof typeof ASSET_ROOT_BY_NAV_ID]
-    if (assetRoot) {
-      setAssetRoot(assetRoot)
+    if (node.assetLocation) {
+      setAssetLocation(node.assetLocation)
       setView('assets')
+      return
+    }
+    if (node.ruleTarget) {
+      selectRule(node.ruleTarget.section, node.ruleTarget.itemId)
+      setView('rule')
       return
     }
     if (node.blueprint) {
