@@ -29,7 +29,6 @@ import type {
 import type {
   AssetManifest,
   DocumentRecord,
-  DocumentSelection,
   DocumentType,
   MediaAsset,
   MediaKind,
@@ -70,16 +69,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDocumentType(value: unknown): value is DocumentType {
-  return value === 'proposal' || value === 'outline' || value === 'script'
+  return value === 'intake' || value === 'core' || value === 'inquiry' || value === 'pillar'
 }
 
 /**
- * 文档只允许位于 assets/documents 下，且不可通过 manifest 引用任意游戏文件。
- * 文件名保留常规 Markdown 字符，路径结构固定为 documents/<name>.md。
+ * 文档只允许位于 docs/ 下，且不可通过 manifest 引用任意游戏文件。
  */
 function isDocumentPath(value: unknown): value is string {
   return typeof value === 'string'
-    && /^documents\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/i.test(value)
+    && /^docs\/[A-Za-z0-9][A-Za-z0-9._-]*\.md$/i.test(value)
 }
 
 export function isDocumentRecord(value: unknown): value is DocumentRecord {
@@ -415,53 +413,96 @@ export async function readHostDocument(
 ): Promise<{ document: DocumentRecord, content: string } | null> {
   const document = (await listHostDocuments(context)).find((entry) => entry.id === id)
   if (!document) return null
-  const bytes = await context.files.read(`assets/${document.provider.ref}`)
+  const bytes = await context.files.read(document.provider.ref)
   if (!bytes) return null
   return { document, content: textDecoder.decode(bytes) }
 }
 
-function documentSelection(manifest: AssetManifest): DocumentSelection | null {
-  const value = manifest.documentSelection
-  if (value === undefined) return null
-  if (!isRecord(value) || (value.proposalId !== undefined && typeof value.proposalId !== 'string')) {
-    throw new Error('Invalid project document selection')
-  }
-  return value as DocumentSelection
+const SLUG_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+function sanitizeSlugSegment(value: string): string | null {
+  const collapsed = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9._-]+$/g, '')
+  return collapsed && SLUG_SEGMENT_RE.test(collapsed) ? collapsed : null
 }
 
-/** 读取已采用策划案；选择指向失效记录时拒绝继续交给后续生成链路。 */
-export async function getHostDocumentSelection(
-  context: WorkbenchExtensionContext,
-): Promise<DocumentSelection | null> {
-  const manifest = await readHostManifest(context.files)
-  const selection = documentSelection(manifest)
-  if (!selection?.proposalId) return selection
-  const selected = (await listHostDocuments(context)).find((entry) => entry.id === selection.proposalId)
-  if (!selected || selected.meta.documentType !== 'proposal') {
-    throw new Error('Selected proposal does not exist')
+async function inferSlug(context: WorkbenchExtensionContext): Promise<string | null> {
+  const bytes = await context.files.read('project.json')
+  if (!bytes) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(textDecoder.decode(bytes))
+  } catch {
+    return null
   }
-  return selection
+  if (!isRecord(parsed)) return null
+  for (const key of ['slug', 'name', 'id'] as const) {
+    const value = parsed[key]
+    if (typeof value === 'string') {
+      const slug = sanitizeSlugSegment(value)
+      if (slug) return slug
+    }
+  }
+  return null
 }
 
-/** 原子采用一份已登记策划案；不提供替换/清空入口，避免覆盖已进入生成管线的输入。 */
-export async function selectHostProposal(
+function defaultDocumentName(documentType: DocumentType): string {
+  switch (documentType) {
+    case 'intake': return '需求'
+    case 'core': return '核心'
+    case 'inquiry': return '问询'
+    case 'pillar': return '支柱'
+  }
+}
+
+export async function upsertHostDocument(
   context: WorkbenchExtensionContext,
-  proposalId: string,
-): Promise<DocumentSelection> {
-  if (!proposalId) throw new TypeError('Proposal id is required')
+  input: {
+    documentType: DocumentType
+    content?: string
+    name?: string
+    slug?: string
+  },
+): Promise<DocumentRecord> {
+  const slug = input.slug?.trim()
+    ? sanitizeSlugSegment(input.slug.trim())
+    : await inferSlug(context)
+  if (!slug) throw new TypeError('slug is required')
+  const ref = `docs/${slug}_${input.documentType}.md`
+  if (!isDocumentPath(ref)) throw new TypeError('Invalid document path')
+  const id = `doc-${input.documentType}`
+  const now = Date.now()
+  if (input.content !== undefined) {
+    await context.files.write(ref, textEncoder.encode(input.content))
+  } else {
+    const existing = await context.files.read(ref)
+    if (!existing) throw new Error(`Document file missing: ${ref}`)
+  }
   return context.files.withLocks([HOST_MANIFEST_LOCK], async () => {
     const manifest = await readHostManifest(context.files)
-    const current = documentSelection(manifest)
-    if (current?.proposalId && current.proposalId !== proposalId) {
-      throw new Error('A proposal has already been selected')
+    const previous = manifest.assets.find((asset) => (
+      isDocumentRecord(asset) && asset.meta.documentType === input.documentType
+    ))
+    const next: DocumentRecord = {
+      id,
+      kind: 'document',
+      name: input.name?.trim() || defaultDocumentName(input.documentType),
+      status: 'ready',
+      mimeType: 'text/markdown',
+      provider: { kind: 'local', ref },
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      meta: { documentType: input.documentType },
     }
-    const selected = manifest.assets.find((entry) => isDocumentRecord(entry) && entry.id === proposalId)
-    if (!isDocumentRecord(selected) || selected.meta.documentType !== 'proposal') {
-      throw new Error('Selected document is not a proposal')
-    }
-    const nextSelection = { proposalId }
-    await writeHostManifest(context.files, { ...manifest, documentSelection: nextSelection })
-    return nextSelection
+    const assets = manifest.assets.filter((asset) => !(
+      isDocumentRecord(asset) && asset.meta.documentType === input.documentType
+    ))
+    assets.push(next)
+    await writeHostManifest(context.files, { ...manifest, assets })
+    return next
   })
 }
 

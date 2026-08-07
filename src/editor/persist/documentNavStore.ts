@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { DocumentType } from '../assets/registry-types'
 
-const DOCUMENT_TYPES: readonly DocumentType[] = ['proposal', 'outline', 'script']
+const DOCUMENT_TYPES: readonly DocumentType[] = ['intake', 'core', 'inquiry', 'pillar']
 const LS_KEY = 'wb-game-video:document:type'
 const CHANNEL = 'wb-game-video:document-sync'
 
@@ -10,7 +10,7 @@ function initialDocumentType(): DocumentType {
     const value = localStorage.getItem(LS_KEY)
     if (DOCUMENT_TYPES.includes(value as DocumentType)) return value as DocumentType
   } catch { /* best effort */ }
-  return 'proposal'
+  return 'intake'
 }
 
 interface DocumentNavStore {

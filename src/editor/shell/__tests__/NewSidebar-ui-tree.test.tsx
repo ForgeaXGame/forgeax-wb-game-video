@@ -33,7 +33,7 @@ const main: BlueprintDoc = { id: 'main', title: '主蓝图', entry: 'entry', gra
 
 beforeEach(() => {
   useGraphView.setState({ view: 'ui' })
-  useDocumentNav.setState({ documentType: 'proposal' })
+  useDocumentNav.setState({ documentType: 'intake' })
   useRuleSelection.setState({ section: 'entities', itemId: null })
   useUiSelection.getState().clearUiSelection()
   useGraphScenario.setState({
@@ -100,10 +100,14 @@ describe('NewSidebar interface tree', () => {
   it('opens the fixed document category even when the project has no documents', () => {
     render(<NewSidebar />)
     fireEvent.click(screen.getByRole('button', { name: '展开 文档' }))
-    fireEvent.click(screen.getByText('剧本'))
+    expect(screen.getByText('需求')).toBeTruthy()
+    expect(screen.getByText('核心')).toBeTruthy()
+    expect(screen.getByText('问询')).toBeTruthy()
+    expect(screen.getByText('支柱')).toBeTruthy()
+    fireEvent.click(screen.getByText('核心'))
 
     expect(useGraphView.getState().view).toBe('documents')
-    expect(useDocumentNav.getState().documentType).toBe('script')
+    expect(useDocumentNav.getState().documentType).toBe('core')
   })
 
   it('renders the real recursive tree and publishes scheme selection', () => {

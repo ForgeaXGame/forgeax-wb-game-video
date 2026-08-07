@@ -128,16 +128,24 @@ function buildNavTree(
 }
 
 function buildDocumentNavNode(): NavNode {
+  const DOCUMENT_LABELS: Record<DocumentType, string> = {
+    intake: '需求',
+    core: '核心',
+    inquiry: '问询',
+    pillar: '支柱',
+  }
+  const types: DocumentType[] = ['intake', 'core', 'inquiry', 'pillar']
   return {
     id: 'documents',
     label: '文档',
     kind: 'entry',
     view: 'documents',
-    children: [
-      { id: 'document:proposal', label: '策划案', kind: 'leaf', documentType: 'proposal' },
-      { id: 'document:outline', label: '大纲', kind: 'leaf', documentType: 'outline' },
-      { id: 'document:script', label: '剧本', kind: 'leaf', documentType: 'script' },
-    ],
+    children: types.map((documentType) => ({
+      id: `document:${documentType}`,
+      label: DOCUMENT_LABELS[documentType],
+      kind: 'leaf' as const,
+      documentType,
+    })),
   }
 }
 

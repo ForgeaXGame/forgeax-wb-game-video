@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wb-game-video:upsert-document args",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["documentType"],
+  "properties": {
+    "documentType": {
+      "enum": ["intake", "core", "inquiry", "pillar"],
+      "description": "Pipeline document slot to upsert."
+    },
+    "content": {
+      "type": "string",
+      "description": "Markdown body to write. Omit to register an existing docs/ file."
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name in the asset manifest."
+    },
+    "slug": {
+      "type": "string",
+      "description": "Filename slug prefix. Defaults from project.json slug/name/id when omitted."
+    }
+  }
+}
