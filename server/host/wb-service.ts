@@ -36,6 +36,7 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const BLUEPRINT_FILE = 'blueprint.json'
 const PROJECT_FILE = 'project.json'
+const ASSETS_MANIFEST_FILE = 'assets/manifest.json'
 const GRAPH_SAVE_LOCK = 'wb-game-video-graph-save'
 
 export class WbServiceInputError extends TypeError {
@@ -395,6 +396,16 @@ export function createWbGameVideoService(
           await context.files.write(
             PROJECT_FILE,
             encoder.encode(JSON.stringify(projectMetadata(context.gameId), null, 2)),
+          )
+        }
+        // project.json / blueprint.json / assets/manifest.json are the Workbench
+        // Host package-status set; back-filling all three on first save lets a
+        // host report `initialized` for agent-authored games instead of
+        // stranding them at `inconsistent`.
+        if (!await context.files.read(ASSETS_MANIFEST_FILE)) {
+          await context.files.write(
+            ASSETS_MANIFEST_FILE,
+            encoder.encode(JSON.stringify({ version: 2, assets: [] }, null, 2)),
           )
         }
       })
