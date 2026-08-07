@@ -41,6 +41,8 @@ export type GraphAppProps = {
   pane?: GraphAppPane
   /** Host-supplied game id (slug) for in-process mounts. */
   gameId?: string
+  /** When true, an uninitialized package is seeded silently (skips the guide). */
+  autoInitialize?: boolean
 }
 
 function readPane(): GraphAppPane {
@@ -98,16 +100,18 @@ function GraphMain({ videoController }: { videoController?: VideoAssetsControlle
 function CombinedWorkspace({
   gameId,
   ensureBoot,
+  autoInitialize,
 }: {
   gameId?: string
   ensureBoot: (gameId: string) => Promise<void>
+  autoInitialize?: boolean
 }): JSX.Element {
   const game = useGraphScenario((state) => state.game)
   const videoController = useVideoAssets(game)
   return (
     <div className="ga-root">
       <NewSidebar videoItems={videoController.items} />
-      <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
+      <GameBootstrap gameId={gameId} autoInitialize={autoInitialize} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
         <GraphMain videoController={videoController} />
       </GameBootstrap>
     </div>
@@ -129,7 +133,7 @@ function LeftPane({ gameSlug }: { gameSlug: string }): JSX.Element {
   )
 }
 
-export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JSX.Element {
+export function GraphApp({ pane: explicitPane, gameId, autoInitialize }: GraphAppProps = {}): JSX.Element {
   injectStyleOnce('graph-app-shell', CSS)
   const [pane] = useState(() => (explicitPane === undefined ? readPane() : explicitPane))
   const ensureBoot = useGraphScenario((state) => state.ensureBoot)
@@ -169,13 +173,13 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
   if (pane === 'center') {
     return (
       <div className="ga-root is-pane-center">
-        <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
+        <GameBootstrap gameId={gameId} autoInitialize={autoInitialize} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
           <GraphMain />
         </GameBootstrap>
       </div>
     )
   }
-  return <CombinedWorkspace gameId={gameId} ensureBoot={ensureBoot} />
+  return <CombinedWorkspace gameId={gameId} ensureBoot={ensureBoot} autoInitialize={autoInitialize} />
 }
 
 const CSS = `

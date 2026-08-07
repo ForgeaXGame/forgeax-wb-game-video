@@ -73,6 +73,7 @@ export function mount(
     <GraphApp
       pane={options.pane}
       gameId={options.slug ?? undefined}
+      autoInitialize={options.autoInitialize}
     />,
   )
   const inspectorEl = options.inspectorEl

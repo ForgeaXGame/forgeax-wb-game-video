@@ -73,6 +73,12 @@ export type WorkbenchInitOptions = {
    * `GameVideoMountHandle.setPendingDocumentTypes` without remounting.
    */
   pendingDocumentTypes?: DocumentType[]
+  /**
+   * When true, an `uninitialized` package is seeded silently (via the extension
+   * `createSeed` empty library) instead of showing the "从模板新建" guide. Hosts
+   * opt in per mount; the default preserves the manual confirmation.
+   */
+  autoInitialize?: boolean
 }
 
 /**
