@@ -1,17 +1,20 @@
 /**
  * ScenarioInspector —— 场景级配置：variables / entities / overlays 目录 / formulas / 默认 BGM。
  */
-import { useEffect, useState, type CSSProperties, type JSX } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { AttrMeta, Entity, GameScenario, Layout, Overlay, ScalarValue, Variable } from '../../runtime/schema/graph-schema'
-import type { Formula } from '../persist/formula-authoring'
+import type { Formula, FormulaParseFailureSnapshot } from '../persist/formula-authoring'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
 import { NEW_COMPONENT_PRESETS, listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
-import { FormulaTextEditor } from './FormulaTextEditor'
+import { FormulaHelpContent, FormulaTextEditor } from './FormulaTextEditor'
 import { LooseNumberInput } from './TermChainEditor'
 import type { ScenarioIdRename } from '../persist/scenario-id'
 import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 import { injectStyleOnce } from '../../styles/injectStyle'
+import { placeAdaptivePop } from './useBlueprintNavActions'
+import { AiParameterFillButton } from './AiParameterFillButton'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -72,10 +75,11 @@ const FORMULA_RULES_CSS = `
 }
 .sir-formula-toggle.is-open svg { transform:rotate(-90deg); }
 .sir-formula-name {
-  min-width:0; width:auto; max-width:40%; padding:0; border:0; outline:0;
+  field-sizing:content; flex:0 1 auto; min-width:2.5em; width:auto; max-width:40%; padding:0; border:0; outline:0;
   background:transparent; color:rgba(255,255,255,.9); font:inherit; font-size:14px;
+  overflow:hidden; text-overflow:ellipsis;
 }
-.sir-formula-id { color:rgba(255,255,255,.32); font-size:14px; }
+.sir-formula-id { flex:0 0 auto; margin-left:-2px; color:rgba(255,255,255,.32); font-size:14px; }
 .sir-formula-more {
   margin-left:auto; width:24px; height:24px; padding:0; border:0;
   background:transparent; color:rgba(255,255,255,.9); font-size:18px;
@@ -94,10 +98,56 @@ const FORMULA_RULES_CSS = `
 .sir-formula-body { padding:0 0 14px; }
 .sir-formula-field { display:grid; gap:6px; margin-bottom:10px; }
 .sir-formula-field > span { color:rgba(255,255,255,.48); font-size:12px; }
+.sir-formula-label { display:flex; align-items:center; gap:4px; }
+.sir-formula-error { color:var(--gc-danger, #e0795f); font-size:11px; line-height:18px; cursor:help; }
+.sir-formula-error:focus-visible { outline:1px solid var(--gc-danger, #e0795f); outline-offset:2px; border-radius:2px; }
+.sir-formula-error-tooltip {
+  box-sizing:border-box; max-width:min(360px, calc(100vw - 16px)); padding:7px 10px;
+  border:1px solid rgba(255,255,255,.14); border-radius:7px;
+  background:var(--color-background-floating, #333); color:rgba(255,255,255,.86);
+  box-shadow:0 6px 18px rgba(0,0,0,.4); font-size:11px; line-height:1.45;
+  overflow-wrap:anywhere; pointer-events:none;
+}
+.sir-formula-error-ai { margin-left:1px; }
+.sir-formula-help-trigger {
+  width:14px; height:14px; padding:0; border:0; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:transparent; color:rgba(255,255,255,.42); cursor:pointer;
+}
+.sir-formula-help-trigger:hover,
+.sir-formula-help-trigger[aria-expanded='true'] { color:rgba(255,255,255,.88); background:rgba(255,255,255,.08); }
+.sir-formula-help-trigger:focus-visible { outline:1px solid var(--gc-accent, #f08840); outline-offset:2px; }
+.sir-formula-help-trigger svg { width:12px; height:12px; display:block; }
+.sir-formula-help {
+  box-sizing:border-box; max-width:calc(100vw - 16px); max-height:min(440px, calc(100vh - 16px));
+  overflow:auto; padding:12px 14px; border:1px solid rgba(255,255,255,.14); border-radius:8px;
+  background:var(--color-background-floating, #333); color:rgba(255,255,255,.78);
+  box-shadow:0 8px 24px rgba(0,0,0,.45); font-size:12px; line-height:1.55;
+}
+.sir-formula-help::before {
+  content:''; position:absolute; width:8px; height:8px; background:inherit;
+  border:inherit; transform:rotate(45deg); pointer-events:none;
+}
+.sir-formula-help[data-side='below']::before { top:-5px; left:calc(var(--ns-arrow) - 4px); border-right:0; border-bottom:0; }
+.sir-formula-help[data-side='above']::before { bottom:-5px; left:calc(var(--ns-arrow) - 4px); border-left:0; border-top:0; }
+.sir-formula-help[data-side='right']::before { left:-5px; top:calc(var(--ns-arrow) - 4px); border-right:0; border-top:0; }
+.sir-formula-help[data-side='left']::before { right:-5px; top:calc(var(--ns-arrow) - 4px); border-left:0; border-bottom:0; }
+.sir-formula-help h3 { margin:0 0 8px; color:rgba(255,255,255,.94); font-size:13px; }
+.sir-formula-help-list { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.sir-formula-help-list > li { position:relative; padding-left:12px; }
+.sir-formula-help-list > li::before { content:'·'; position:absolute; left:1px; color:var(--gc-accent, #f08840); }
+.sir-formula-help strong { color:rgba(255,255,255,.94); font-weight:600; }
+.sir-formula-help p { margin:2px 0 0; color:rgba(255,255,255,.62); }
+.sir-formula-help code { font-family:var(--font-mono, ui-monospace, monospace); color:rgba(255,255,255,.9); }
+.sir-formula-help-example { display:block; margin-top:4px; padding:5px 7px; border-radius:5px; background:rgba(0,0,0,.24); overflow-wrap:anywhere; }
+.sir-formula-help-example .gc-fx-hole-tag { padding:1px 3px; }
 .sir-formula-field > input {
   box-sizing:border-box; width:100%; height:24px; padding:0 8px;
   border:0; border-radius:6px; outline:0; background:rgba(0,0,0,.55);
   color:rgba(255,255,255,.88);
+}
+.sir-formula-field > input:focus {
+  border-color:var(--gc-accent); box-shadow:0 0 0 1px var(--gc-accent); outline:0;
 }
 .sir-formula-empty { padding:20px 0; color:rgba(255,255,255,.38); }
 `
@@ -842,6 +892,182 @@ function EntityRow({
   )
 }
 
+function FormulaHelpPopover({ children }: { children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<ReturnType<typeof placeAdaptivePop>>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const panelId = useId()
+  const titleId = useId()
+  const frameRef = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(null)
+      return
+    }
+    const updatePlacement = (): void => {
+      const panel = panelRef.current
+      const rect = panel?.getBoundingClientRect()
+      setPlacement(placeAdaptivePop(triggerRef.current, {
+        width: rect?.width || 360,
+        height: rect?.height || 280,
+      }))
+    }
+    const schedulePlacement = (): void => {
+      if (frameRef.current != null) return
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null
+        updatePlacement()
+      })
+    }
+    updatePlacement()
+    window.addEventListener('resize', schedulePlacement)
+    window.addEventListener('scroll', schedulePlacement, true)
+    return () => {
+      window.removeEventListener('resize', schedulePlacement)
+      window.removeEventListener('scroll', schedulePlacement, true)
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null
+      if (target && (triggerRef.current?.contains(target) || panelRef.current?.contains(target))) return
+      setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      requestAnimationFrame(() => triggerRef.current?.focus())
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="sir-formula-help-trigger"
+        aria-label="查看公式填写帮助"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <svg viewBox="0 0 14 14" fill="none" aria-hidden>
+          <circle cx="7" cy="7" r="5.5" stroke="currentColor" />
+          <path d="M5.7 5.2a1.45 1.45 0 0 1 2.77.6c0 1.2-1.47 1.25-1.47 2.35" stroke="currentColor" strokeLinecap="round" />
+          <circle cx="7" cy="10.25" r=".55" fill="currentColor" />
+        </svg>
+      </button>
+      {open ? createPortal(
+        <div
+          ref={panelRef}
+          id={panelId}
+          className="sir-formula-help"
+          role="dialog"
+          aria-labelledby={titleId}
+          data-side={placement?.side ?? 'below'}
+          style={placement?.style ?? {
+            position: 'fixed',
+            width: 'min(360px, calc(100vw - 16px))',
+            visibility: 'hidden',
+          }}
+        >
+          <h3 id={titleId}>公式填写帮助</h3>
+          {children}
+        </div>,
+        document.body,
+      ) : null}
+    </>
+  )
+}
+
+function FormulaErrorIndicator({ failure }: { failure: FormulaParseFailureSnapshot }): JSX.Element {
+  const [visible, setVisible] = useState(false)
+  const [placement, setPlacement] = useState<ReturnType<typeof placeAdaptivePop>>(null)
+  const triggerRef = useRef<HTMLSpanElement | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
+  const tooltipId = useId()
+
+  useLayoutEffect(() => {
+    if (!visible) {
+      setPlacement(null)
+      return
+    }
+    const updatePlacement = (): void => {
+      const rect = tooltipRef.current?.getBoundingClientRect()
+      setPlacement(placeAdaptivePop(triggerRef.current, {
+        width: rect?.width || 280,
+        height: rect?.height || 48,
+      }))
+    }
+    updatePlacement()
+    const frame = requestAnimationFrame(updatePlacement)
+    window.addEventListener('resize', updatePlacement)
+    window.addEventListener('scroll', updatePlacement, true)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updatePlacement)
+      window.removeEventListener('scroll', updatePlacement, true)
+    }
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setVisible(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [visible])
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        className="sir-formula-error"
+        role="status"
+        tabIndex={0}
+        data-error-detail={failure.parserDiagnostic}
+        aria-describedby={visible ? tooltipId : undefined}
+        onPointerEnter={() => setVisible(true)}
+        onPointerLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+      >
+        公式解析失败
+      </span>
+      {visible ? createPortal(
+        <div
+          ref={tooltipRef}
+          id={tooltipId}
+          className="sir-formula-error-tooltip"
+          role="tooltip"
+          data-side={placement?.side ?? 'below'}
+          style={placement?.style ?? {
+            position: 'fixed',
+            width: 'min(280px, calc(100vw - 16px))',
+            visibility: 'hidden',
+          }}
+        >
+          错误详情：{failure.parserDiagnostic}
+        </div>,
+        document.body,
+      ) : null}
+    </>
+  )
+}
+
 function FormulaRow({
   formulaKey,
   formula,
@@ -863,6 +1089,7 @@ function FormulaRow({
 }): JSX.Element {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [formulaFailure, setFormulaFailure] = useState<FormulaParseFailureSnapshot | null>(null)
   useEffect(() => {
     if (focused) setExpanded(true)
   }, [focused])
@@ -874,7 +1101,10 @@ function FormulaRow({
           className={`sir-formula-toggle${expanded ? ' is-open' : ''}`}
           aria-label={`${expanded ? '折叠' : '展开'}公式 ${formula.name || formulaKey}`}
           aria-expanded={expanded}
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => setExpanded((current) => {
+            if (current) setFormulaFailure(null)
+            return !current
+          })}
         >
           <svg viewBox="0 0 12 12" fill="none" aria-hidden>
             <path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
@@ -884,6 +1114,7 @@ function FormulaRow({
           className="sir-formula-name"
           aria-label={`公式 ${formulaKey} 名称`}
           value={formula.name ?? ''}
+          size={Math.max(2, Math.min(24, Array.from(formula.name ?? '').length || 2))}
           onChange={(e) => onChange({ ...formula, id: formulaKey, name: e.target.value })}
         />
         <span className="sir-formula-id">id:{formulaKey}</span>
@@ -913,12 +1144,26 @@ function FormulaRow({
             />
           </label>
           <div className="sir-formula-field">
-            <span>公式</span>
+            <span className="sir-formula-label">
+              公式
+              <FormulaHelpPopover><FormulaHelpContent /></FormulaHelpPopover>
+              {formulaFailure ? (
+                <>
+                  <FormulaErrorIndicator failure={formulaFailure} />
+                  <AiParameterFillButton
+                    className="sir-formula-error-ai"
+                    ariaLabel="AI 修复公式"
+                    title="AI 公式修复暂不可用"
+                  />
+                </>
+              ) : null}
+            </span>
             <FormulaTextEditor
               ast={formula.ast}
               empty={formula.draftEmpty}
               entities={entities}
               variables={variables}
+              onParseFailureChange={setFormulaFailure}
               onEmpty={formula.draftEmpty
                 ? () => onChange({ ...formula, id: formulaKey, draftEmpty: true })
                 : undefined}

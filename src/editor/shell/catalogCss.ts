@@ -968,16 +968,6 @@ ${PREVIEW_CLOCK_CSS}
 
 /* ── 公式文本编辑器（Grafana 式：文本主输入 + hole 高亮 + 插入工具条）─────────── */
 .gc-fx { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.gc-fx-example {
-  display: flex; flex-direction: column; gap: 5px;
-  padding: 8px 10px; border: 1px solid var(--gc-line-soft, var(--gc-line));
-  border-radius: 7px; background: rgba(255,255,255,.025);
-}
-.gc-fx-example-formula { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; color: var(--gc-faint); font-size: 11px; }
-.gc-fx-example-formula code { color: var(--gc-text); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.6; }
-.gc-fx-example p { margin: 0; color: var(--gc-muted); font-size: 11px; line-height: 1.5; }
-.gc-fx-example p b { color: var(--gc-text); font-weight: 600; }
-.gc-fx-example p code { font-family: var(--font-mono, ui-monospace, monospace); color: var(--gc-text); }
 .gc-fx-editor {
   position: relative; width: 100%; min-width: 0;
   border-radius: 7px; background: rgba(0,0,0,.28);
@@ -1005,7 +995,6 @@ ${PREVIEW_CLOCK_CSS}
   border-radius: 3px; box-shadow: inset 0 0 0 1px var(--gc-accent-line);
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-.gc-fx-example .gc-fx-hole-tag { padding: 1px 3px; }
 /* 结构摘要行：引用/参数概览 + ≈值（不复述公式串） */
 .gc-fx-summary {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
@@ -1016,9 +1005,7 @@ ${PREVIEW_CLOCK_CSS}
   padding: 2px 8px; border-radius: 999px;
   border: 1px solid var(--gc-line-soft, var(--gc-line)); background: rgba(255,255,255,.03);
 }
-.gc-fx-summary-item--hole { color: var(--gc-accent); border-color: var(--gc-accent-line); }
 .gc-fx-summary-item--muted { color: var(--gc-faint); }
-.gc-fx-summary-item--err { color: var(--gc-danger, #e0795f); border-color: var(--gc-danger, #e0795f); }
 .gc-fx-eq { margin-left: auto; color: var(--gc-muted); font-size: 12px; }
 /* 试算面板：给 ?参数 填样例值、实时算出结果 */
 .gc-fx-trial { border: 1px solid var(--gc-line-soft, var(--gc-line)); border-radius: 7px; background: rgba(255,255,255,.02); }
@@ -1038,20 +1025,23 @@ ${PREVIEW_CLOCK_CSS}
   border: 1px solid var(--gc-line); background: rgba(0,0,0,.28); color: var(--gc-text);
   border-radius: 6px; padding: 4px 6px; font-size: 12px; text-align: right;
 }
-.gc-fx-err { color: var(--gc-danger, #e0795f); font-size: 11px; line-height: 1.4; }
 .gc-fx-hint { color: var(--gc-faint); font-size: 11px; line-height: 1.4; }
 /* 插入工具条 */
 .gc-fx-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.gc-fx-tools > label { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--gc-faint); }
-.gc-fx-chip {
-  all: unset; box-sizing: border-box; cursor: pointer;
-  padding: 3px 9px; border-radius: 999px; font-size: 11.5px;
-  border: 1px solid var(--gc-line); color: var(--gc-muted); background: rgba(0,0,0,.2);
-  font-family: var(--font-mono, ui-monospace, monospace);
+.gc-fx-tool-button {
+  box-sizing: border-box; display:inline-flex; align-items:center; gap:5px;
+  height:26px; min-width:0; padding:0 7px 0 4px;
+  border: 1px solid rgba(255,255,255,.1); border-radius: 7px;
+  background: #181818; color: rgba(255,255,255,.76);
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px;
+  white-space: nowrap; cursor: pointer;
 }
-.gc-fx-chip:hover { border-color: var(--gc-accent-line); color: var(--gc-text); }
-.gc-fx-tools select {
-  border: 1px solid var(--gc-line); background: rgba(0,0,0,.28); color: var(--gc-text);
-  border-radius: 6px; padding: 3px 6px; font-size: 11.5px;
+.gc-fx-tool-add {
+  display:inline-flex; align-items:center; justify-content:center;
+  flex:0 0 18px; width:18px; height:18px;
+  font-family:system-ui,sans-serif; font-size:16px; font-weight:400; line-height:18px;
 }
+.gc-fx-tool-label { display:inline-flex; align-items:center; height:18px; line-height:18px; }
+.gc-fx-tool-button:hover { border-color: rgb(255,156,42); color: var(--gc-text); }
+.gc-fx-tool-button:focus-visible { outline: 1px solid var(--gc-accent); outline-offset: 1px; }
 `
