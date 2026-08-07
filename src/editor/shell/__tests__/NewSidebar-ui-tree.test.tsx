@@ -4,6 +4,7 @@ import type { BlueprintDoc, GameGraph } from '../../../runtime/schema/graph-sche
 import { findUiTreeNode } from '../../persist/ui-tree'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { useGraphView } from '../../persist/graphViewStore'
+import { useDocumentNav } from '../../persist/documentNavStore'
 import { useUiSelection } from '../../persist/uiSelectionStore'
 import { NewSidebar } from '../NewSidebar'
 
@@ -13,6 +14,7 @@ const main: BlueprintDoc = { id: 'main', title: '主蓝图', entry: 'entry', gra
 
 beforeEach(() => {
   useGraphView.setState({ view: 'ui' })
+  useDocumentNav.setState({ documentType: 'proposal' })
   useUiSelection.getState().clearUiSelection()
   useGraphScenario.setState({
     booted: true,
@@ -63,8 +65,17 @@ describe('NewSidebar interface tree', () => {
     expect(sidebar.querySelector('.ns-label[title="蓝图"]')?.textContent).toContain('蓝图')
     expect(sidebar.querySelector('.ns-label[title="视频"]')?.textContent).toContain('视频')
     expect(sidebar.querySelector('.ns-label[title="界面"]')?.textContent).toContain('界面')
-    expect(sidebar.querySelector('.ns-label[title="文档"]')).toBeNull()
+    expect(sidebar.querySelector('.ns-label[title="文档"]')?.textContent).toContain('文档')
     expect(sidebar.querySelector('.ns-label[title="控件"]')).toBeNull()
+  })
+
+  it('opens the fixed document category even when the project has no documents', () => {
+    render(<NewSidebar />)
+    fireEvent.click(screen.getByRole('button', { name: '展开 文档' }))
+    fireEvent.click(screen.getByText('剧本'))
+
+    expect(useGraphView.getState().view).toBe('documents')
+    expect(useDocumentNav.getState().documentType).toBe('script')
   })
 
   it('renders the real recursive tree and publishes scheme selection', () => {

@@ -15,16 +15,10 @@ import { useUiSelection } from '../persist/uiSelectionStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
 import { useAssetNav } from '../persist/assetNavStore'
 import { useRuleSelection } from '../persist/ruleSelectionStore'
+import { useDocumentNav } from '../persist/documentNavStore'
 import { ASSET_DIRECTORY_ROOTS, childrenOf, type AssetDirectoryController } from '../assets/asset-directory'
-import {
-  assetEntryKey,
-  assetEntryName,
-  assetEntryRoot,
-  parentFolderIdForAssetEntry,
-  type AssetListEntry,
-} from '../assets/asset-entries'
 import { useAssetBrowser } from '../assets/use-asset-browser'
-import type { AssetLibraryRootKind } from '../assets/registry-types'
+import type { AssetLibraryRootKind, DocumentType } from '../assets/registry-types'
 import { blueprintListItems } from './blueprintNav'
 import { useBlueprintNavActions, type BlueprintNavActions } from './useBlueprintNavActions'
 import { UiTreeView, type UiTreeViewNode } from './UiTreeView'
@@ -45,6 +39,7 @@ export interface NavNode {
   isEntry?: boolean
   assetLocation?: { root: AssetLibraryRootKind, folderId?: string, entryKey?: string }
   ruleTarget?: { section: 'entities' | 'variables' | 'formulas', itemId?: string }
+  documentType?: DocumentType
   children?: NavNode[]
 }
 
@@ -97,6 +92,7 @@ function buildNavTree(
     isEntry: it.isEntry,
   }))
   return [
+    buildDocumentNavNode(),
     {
       id: 'graph',
       label: '蓝图',
@@ -111,7 +107,21 @@ function buildNavTree(
   ]
 }
 
-function buildAssetNavNode(directory: AssetDirectoryController, entries: readonly AssetListEntry[]): NavNode {
+function buildDocumentNavNode(): NavNode {
+  return {
+    id: 'documents',
+    label: '文档',
+    kind: 'entry',
+    view: 'documents',
+    children: [
+      { id: 'document:proposal', label: '策划案', kind: 'leaf', documentType: 'proposal' },
+      { id: 'document:outline', label: '大纲', kind: 'leaf', documentType: 'outline' },
+      { id: 'document:script', label: '剧本', kind: 'leaf', documentType: 'script' },
+    ],
+  }
+}
+
+function buildAssetNavNode(directory: AssetDirectoryController): NavNode {
   const buildFolder = (folderId: string, root: AssetLibraryRootKind): NavNode[] => [
     ...childrenOf(directory.assetLibrary, folderId, root).map((folder) => ({
       id: `asset-folder:${folder.id}`,
@@ -120,16 +130,6 @@ function buildAssetNavNode(directory: AssetDirectoryController, entries: readonl
       assetLocation: { root, folderId: folder.id },
       children: buildFolder(folder.id, root),
     })),
-    ...entries
-      .filter((entry) => assetEntryRoot(entry) === root
-        && parentFolderIdForAssetEntry(entry, directory.assetLibrary.placements) === folderId)
-      .sort((left, right) => assetEntryName(left).localeCompare(assetEntryName(right), 'zh-CN'))
-      .map((entry) => ({
-        id: `asset-entry:${assetEntryKey(entry)}`,
-        label: assetEntryName(entry),
-        kind: 'leaf' as const,
-        assetLocation: { root, folderId: folderId.startsWith('root:') ? undefined : folderId, entryKey: assetEntryKey(entry) },
-      })),
   ]
   return {
     id: 'assets',
@@ -724,8 +724,10 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   const setView = useGraphView((s) => s.setView)
   const setAssetLocation = useAssetNav((s) => s.setLocation)
   const selectRule = useRuleSelection((s) => s.select)
+  const selectDocumentType = useDocumentNav((s) => s.setDocumentType)
+  const selectedDocumentType = useDocumentNav((s) => s.documentType)
   const gameId = useGraphScenario((s) => s.game)
-  const { entries: assetEntries, directory: assetDirectory } = useAssetBrowser(gameId)
+  const { directory: assetDirectory } = useAssetBrowser(gameId)
   const blueprints = useGraphScenario((s) => s.blueprints)
   const mainId = useGraphScenario((s) => s.mainBlueprintId)
   const activeBlueprintId = useGraphScenario((s) => s.activeBlueprintId)
@@ -753,12 +755,12 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     : countOverlayReferences(Object.values(blueprints ?? {}).map((doc) => doc.graph))
 
   const navTree = useMemo(
-    () => buildNavTree(blueprints, mainId, buildAssetNavNode(assetDirectory, assetEntries), buildRuleNavNode({
+    () => buildNavTree(blueprints, mainId, buildAssetNavNode(assetDirectory), buildRuleNavNode({
       entities: ruleMeta.entities,
       variables: ruleMeta.variables,
       formulas: ruleMeta.formulas as Record<string, { id: string, name?: string }> | undefined,
     })),
-    [assetDirectory, assetEntries, blueprints, mainId, ruleMeta.entities, ruleMeta.formulas, ruleMeta.variables],
+    [assetDirectory, blueprints, mainId, ruleMeta.entities, ruleMeta.formulas, ruleMeta.variables],
   )
 
   // 目录默认全部收起。展开状态只由用户点箭头（或明确的新建操作）改变；
@@ -767,7 +769,9 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
 
   const activeId = view === 'graph'
     ? (activeBlueprintId || 'graph')
-    : (navTree.find((n) => n.view === view)?.id ?? null)
+    : view === 'documents'
+      ? `document:${selectedDocumentType}`
+      : (navTree.find((n) => n.view === view)?.id ?? null)
 
   const onToggle = (id: string): void => {
     setExpanded((cur) => {
@@ -793,6 +797,11 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     if (node.ruleTarget) {
       selectRule(node.ruleTarget.section, node.ruleTarget.itemId)
       setView('rule')
+      return
+    }
+    if (node.documentType) {
+      selectDocumentType(node.documentType)
+      setView('documents')
       return
     }
     if (node.blueprint) {
