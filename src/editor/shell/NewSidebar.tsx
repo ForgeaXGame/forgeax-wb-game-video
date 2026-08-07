@@ -241,6 +241,12 @@ const NEW_SIDEBAR_CSS = `
 }
 .ns-chev svg { width: 20px; height: 20px; display: block; }
 .ns-chev.is-collapsed { transform: rotate(-90deg); }
+.ns-chev-spacer {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
 .ns-label {
   flex: 1;
   min-width: 0;
@@ -439,9 +445,10 @@ function toViewNodes(nodes: readonly UiTreeViewNode[]): UiTreeViewNode[] {
   })
 }
 
+// 默认朝下（展开）；.is-collapsed 旋 -90° → 朝右（收起），对齐 IDE 文件夹箭头。
 const ChevronIcon = (
   <svg viewBox="0 0 20 20" fill="none" aria-hidden>
-    <path d="M15 12.5L10 7.5L5 12.5" stroke="currentColor" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
 const PlusIcon = (
@@ -474,6 +481,7 @@ interface NsRowProps {
   bp: BlueprintNavActions
   uiGroupComposing: boolean
   onToggle: (id: string) => void
+  onExpand: (id: string) => void
   onSelect: (node: NavNode) => void
   onMockAddChild: (node: NavNode) => void
   onMockRename: (node: NavNode) => void
@@ -483,7 +491,7 @@ interface NsRowProps {
 function NsRow({
   node, depth, expanded, activeId, mainId, bp,
   uiGroupComposing,
-  onToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
+  onToggle, onExpand, onSelect, onMockAddChild, onMockRename, onMockDelete,
 }: NsRowProps): JSX.Element {
   const hasChildren = !!(node.children && node.children.length > 0)
   const isExpandable = hasChildren || !!node.externallyExpandable
@@ -569,8 +577,13 @@ function NsRow({
         aria-expanded={bp.composing}
         onClick={(e) => {
           e.stopPropagation()
-          if (bp.composing) bp.cancelCompose()
-          else bp.openCompose()
+          if (bp.composing) {
+            bp.cancelCompose()
+            return
+          }
+          // IDE 式：文件夹收起时点「+」也会展开并出现新建行。
+          onExpand(node.id)
+          bp.openCompose()
         }}
       >
         {PlusIcon}
@@ -594,6 +607,15 @@ function NsRow({
       )
       : null
 
+  const activateRow = (): void => {
+    // 文件夹行：只展开/收起展示子项，不切换当前选中视图。
+    if (isExpandable) {
+      onToggle(node.id)
+      return
+    }
+    onSelect(node)
+  }
+
   return (
     <>
       <div
@@ -603,11 +625,11 @@ function NsRow({
         aria-selected={isActive}
         tabIndex={0}
         style={{ paddingLeft: indent }}
-        onClick={() => onSelect(node)}
+        onClick={activateRow}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            onSelect(node)
+            activateRow()
           }
         }}
       >
@@ -624,6 +646,7 @@ function NsRow({
             {ChevronIcon}
           </button>
         )}
+        {!isExpandable && <span className="ns-chev-spacer" aria-hidden />}
         {isEditing ? (
           <input
             ref={inlineRenameRef}
@@ -667,54 +690,55 @@ function NsRow({
         )}
         {addChild}
       </div>
+      {/* 新建行不挂在子循环里：空库 / 收起态也能出输入框（点 + 会先 expand）。 */}
+      {node.id === 'graph' && bp.composing && (
+        <div
+          className="ns-row is-editing"
+          style={{ paddingLeft: (depth + 1) * 8 }}
+        >
+          <input
+            ref={bp.composeInputRef}
+            className="ns-inline-edit"
+            aria-label="新建蓝图名称"
+            aria-invalid={!!bp.composeError}
+            value={bp.draftName ?? ''}
+            placeholder="新建蓝图名称"
+            onChange={(e) => {
+              bp.setDraftName(e.target.value)
+              if (bp.composeError) bp.clearComposeError()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); bp.confirmCompose() }
+              else if (e.key === 'Escape') { e.preventDefault(); bp.cancelCompose() }
+            }}
+            onBlur={() => {
+              setTimeout(() => {
+                if (bp.composing) bp.cancelCompose()
+              }, 0)
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
       {hasChildren && isExpanded && (
         <>
-          {node.children!.map((child, i) => (
-            <Fragment key={child.id}>
-              {node.id === 'graph' && bp.composing && i === 0 && (
-                <div
-                  className="ns-row is-editing"
-                  style={{ paddingLeft: (depth + 1) * 8 }}
-                >
-                  <input
-                    ref={bp.composeInputRef}
-                    className="ns-inline-edit"
-                    aria-label="新建蓝图名称"
-                    aria-invalid={!!bp.composeError}
-                    value={bp.draftName ?? ''}
-                    placeholder="新建蓝图名称"
-                    onChange={(e) => {
-                      bp.setDraftName(e.target.value)
-                      if (bp.composeError) bp.clearComposeError()
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); bp.confirmCompose() }
-                      else if (e.key === 'Escape') { e.preventDefault(); bp.cancelCompose() }
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        if (bp.composing) bp.cancelCompose()
-                      }, 0)
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              )}
-              <NsRow
-                node={child}
-                depth={depth + 1}
-                expanded={expanded}
-                activeId={activeId}
-                mainId={mainId}
-                bp={bp}
-                uiGroupComposing={uiGroupComposing}
-                onToggle={onToggle}
-                onSelect={onSelect}
-                onMockAddChild={onMockAddChild}
-                onMockRename={onMockRename}
-                onMockDelete={onMockDelete}
-              />
-            </Fragment>
+          {node.children!.map((child) => (
+            <NsRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expanded={expanded}
+              activeId={activeId}
+              mainId={mainId}
+              bp={bp}
+              uiGroupComposing={uiGroupComposing}
+              onToggle={onToggle}
+              onExpand={onExpand}
+              onSelect={onSelect}
+              onMockAddChild={onMockAddChild}
+              onMockRename={onMockRename}
+              onMockDelete={onMockDelete}
+            />
           ))}
         </>
       )}
@@ -795,6 +819,10 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     })
   }
 
+  const onExpand = (id: string): void => {
+    setExpanded((cur) => (cur.has(id) ? cur : new Set(cur).add(id)))
+  }
+
   const onSelect = (node: NavNode): void => {
     if (node.id === 'assets') {
       // “资产库”是浏览器根入口，不是上一次选中的分类或文件夹。
@@ -865,6 +893,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
               bp={bp}
               uiGroupComposing={uiGroupComposing}
               onToggle={onToggle}
+              onExpand={onExpand}
               onSelect={onSelect}
               onMockAddChild={onMockAddChild}
               onMockRename={onMockRename}
@@ -902,7 +931,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
                 />
               </div>
             ) : null}
-            {node.id === 'ui' && view === 'ui' && expanded.has(node.id) ? (
+            {node.id === 'ui' && expanded.has(node.id) ? (
               <div className="ns-ui-tree" role="group" aria-label="界面子项">
                 <UiTreeView
                   nodes={uiNodes}
@@ -913,6 +942,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
                   onSelect={(treeNode) => {
                     const overlayId = treeNode.kind === 'scheme' ? (treeNode.overlayId ?? null) : null
                     selectUiNode(treeNode.id, overlayId)
+                    setView('ui')
                     sendUiNavCommand({ type: 'select', treeNodeId: treeNode.id, overlayId }, uiNavMode)
                   }}
                   onAddScheme={(parentId, name) => {

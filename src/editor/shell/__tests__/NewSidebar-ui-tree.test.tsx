@@ -71,6 +71,14 @@ describe('NewSidebar interface tree', () => {
     expect(sidebar.querySelector('.ns-label[title="控件"]')).toBeNull()
   })
 
+  it('reserves the disclosure icon column for top-level leaves', () => {
+    render(<NewSidebar />)
+
+    const playLabel = document.querySelector('.ns-label[title="试玩"]')
+    const playRow = playLabel?.closest('[role="treeitem"]')
+    expect(playRow?.querySelector('.ns-chev-spacer')).toBeTruthy()
+  })
+
   it('opens the fixed document category even when the project has no documents', () => {
     render(<NewSidebar />)
     fireEvent.click(screen.getByRole('button', { name: '展开 文档' }))
@@ -180,5 +188,56 @@ describe('NewSidebar interface tree', () => {
       section: 'formulas',
       itemId: null,
     })
+  })
+})
+
+describe('NewSidebar blueprint folder interactions', () => {
+  it('adds a blueprint from + while the folder is collapsed', () => {
+    render(<NewSidebar />)
+    expect(screen.queryByText('主蓝图')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '新增 蓝图 子项' }))
+    const input = screen.getByPlaceholderText('新建蓝图名称')
+    fireEvent.change(input, { target: { value: '支线 A' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    const state = useGraphScenario.getState()
+    const created = Object.values(state.blueprints).find((doc) => doc.title === '支线 A')
+    expect(created).toBeTruthy()
+    expect(screen.getByText('支线 A')).toBeTruthy()
+    expect(screen.getByText('主蓝图')).toBeTruthy()
+  })
+
+  it('toggles the blueprint folder on row click without selecting a child', () => {
+    useGraphView.setState({ view: 'ui' })
+    render(<NewSidebar />)
+    const folderLabel = document.querySelector('.ns-label[title="蓝图"]')
+    expect(folderLabel).toBeTruthy()
+    const folder = folderLabel!.closest('[role="treeitem"]') as HTMLElement
+    expect(folder).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('主蓝图')).toBeNull()
+
+    fireEvent.click(folder)
+    expect(folder).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('主蓝图')).toBeTruthy()
+    // 展开只是展示子项，不切视图、不选中某个蓝图
+    expect(useGraphView.getState().view).toBe('ui')
+    expect(useGraphScenario.getState().activeBlueprintId).toBe('main')
+
+    fireEvent.click(folder)
+    expect(folder).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('主蓝图')).toBeNull()
+    expect(useGraphView.getState().view).toBe('ui')
+  })
+
+  it('switches view only after clicking a blueprint leaf', () => {
+    useGraphView.setState({ view: 'ui' })
+    render(<NewSidebar />)
+    fireEvent.click(document.querySelector('.ns-label[title="蓝图"]')!.closest('[role="treeitem"]')!)
+    expect(useGraphView.getState().view).toBe('ui')
+
+    fireEvent.click(screen.getByText('主蓝图'))
+    expect(useGraphView.getState().view).toBe('graph')
+    expect(useGraphScenario.getState().activeBlueprintId).toBe('main')
   })
 })
