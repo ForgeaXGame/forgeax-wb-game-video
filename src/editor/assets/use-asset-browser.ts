@@ -25,8 +25,11 @@ export function useAssetBrowser(gameId: string, client: AssetLibraryClient = kin
 
   useEffect(() => {
     let active = true
-    void fetchRegistryAssets(gameId, 'video')
-      .then((assets) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+    const loadVideos = async (): Promise<void> => {
+      try {
+        const assets = await fetchRegistryAssets(gameId, 'video')
         if (!active) return
         setVideoAssets(assets.map((asset) => ({
           id: asset.id,
@@ -37,17 +40,38 @@ export function useAssetBrowser(gameId: string, client: AssetLibraryClient = kin
           bytes: asset.bytes,
           readOnly: true,
         })))
-      })
-      .catch(() => { if (active) setVideoAssets([]) })
-    return () => { active = false }
+      } catch {
+        // 左 pane 在 Workbench 握手前挂载时 extension.fetch 会暂不可用；不要把
+        // 已显示的列表清空，等宿主上下文就绪后再试。
+        if (active && attempts++ < 15) retryTimer = setTimeout(() => void loadVideos(), 300)
+      }
+    }
+    void loadVideos()
+    return () => {
+      active = false
+      if (retryTimer) clearTimeout(retryTimer)
+    }
   }, [gameId])
 
   useEffect(() => {
     let active = true
-    void loadProjectComponentAssets().then((components) => {
-      if (active) setProjectComponents(components)
-    })
-    return () => { active = false }
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+    const loadComponents = async (): Promise<void> => {
+      const components = await loadProjectComponentAssets()
+      if (!active) return
+      setProjectComponents(components)
+      // importProjectComponentModule 在握手前会降级为 []；有限重试覆盖左右
+      // iframe 的不同挂载时序，同时不会持续轮询一个确实没有项目控件的游戏。
+      if (components.length === 0 && attempts++ < 15) {
+        retryTimer = setTimeout(() => void loadComponents(), 300)
+      }
+    }
+    void loadComponents()
+    return () => {
+      active = false
+      if (retryTimer) clearTimeout(retryTimer)
+    }
   }, [gameId])
 
   return {

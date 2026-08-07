@@ -1,8 +1,17 @@
 import { injectStyleOnce } from '../../styles/injectStyle'
-import { AssetLibraryPanel } from '../assets/AssetLibraryPanel'
-import type { AssetLibraryClient } from '../assets/assetLibraryClient'
-import { useAssetBrowser } from '../assets/use-asset-browser'
+import { useEffect, useState } from 'react'
+import { AssetLibraryPanel, type BrowserAsset } from '../assets/AssetLibraryPanel'
+import {
+  createKinoAssetLibraryClient,
+  type AssetLibraryClient,
+  useAssetLibrary,
+} from '../assets/assetLibraryClient'
+import { useAssetDirectory } from '../assets/asset-directory'
+import { loadProjectComponentAssets, type ProjectComponentAsset } from '../assets/project-component-assets'
+import { fetchRegistryAssets } from '../assets/registry-assets'
+import { createKinoVideoClient } from '../assets/kino-api'
 import { useGraphScenario } from '../persist/graphScenarioStore'
+import { useGraphView } from '../persist/graphViewStore'
 import { useAssetNav } from '../persist/assetNavStore'
 
 const CSS = `
@@ -91,13 +100,66 @@ const CSS = `
 @media (max-width: 780px) { .alx-tree { width: 132px; flex-basis: 132px; }.alx-toolbar { flex-wrap: nowrap; }.alx-search { order: initial; width: 221px; margin-left: 0; }.alx-grid { grid-template-columns: repeat(auto-fill, 140px); gap: 20px; }.alx-root:not(.is-detail-pane) .alx-detail { display: none; }.alx-asset-actions { opacity: 1; }.ig-content { gap: 24px; }.ig-params { width: 260px; min-width: 260px; }.ig-result-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 `
 
+const kinoVideoClient = createKinoVideoClient()
+
 export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX.Element {
   injectStyleOnce('graph-asset-view', CSS)
   const gameId = useGraphScenario((state) => state.game)
-  const { controller, directory, videoAssets, projectComponents } = useAssetBrowser(gameId, client)
+  const setView = useGraphView((state) => state.setView)
+  const controller = useAssetLibrary(gameId, client ?? kinoAssetLibraryClient)
+  const directory = useAssetDirectory(gameId)
   const requestedRoot = useAssetNav((state) => state.root)
   const requestedFolderId = useAssetNav((state) => state.folderId)
   const requestedEntryKey = useAssetNav((state) => state.entryKey)
+  const [videoAssets, setVideoAssets] = useState<BrowserAsset[]>([])
+  const [projectComponents, setProjectComponents] = useState<ProjectComponentAsset[]>([])
+
+  useEffect(() => {
+    let active = true
+    void Promise.all([
+      fetchRegistryAssets(gameId, 'video'),
+      kinoVideoClient.list({
+        game_id: gameId,
+        media_type: 'video',
+        page: 1,
+        page_size: 100,
+      }),
+    ])
+      .then(([assets, kinoVideos]) => {
+        if (!active) return
+        const resourceById = new Map(
+          kinoVideos.items.map((resource) => [resource.resource_id, resource]),
+        )
+        setVideoAssets(assets.flatMap((asset) => {
+          const kinoVideo = resourceById.get(asset.id)
+          // A registry record without either a registry URL or a Kino video
+          // resource cannot be previewed as video. Exclude it instead of
+          // rendering the misleading fallback play icon in the 视频目录.
+          const url = kinoVideo?.url ?? asset.url
+          if (!url) return []
+          return [{
+            id: asset.id,
+            kind: 'video' as const,
+            name: asset.label ?? asset.id,
+            url,
+            mime: asset.mime ?? kinoVideo?.source_meta?.mime_type,
+            bytes: asset.bytes,
+            readOnly: true,
+          }]
+        }))
+      })
+      .catch(() => {
+        if (active) setVideoAssets([])
+      })
+    return () => { active = false }
+  }, [gameId])
+  useEffect(() => {
+    let active = true
+    void loadProjectComponentAssets().then((components) => {
+      if (active) setProjectComponents(components)
+    })
+    return () => { active = false }
+  }, [gameId])
 
   return <AssetLibraryPanel
     controller={controller}
@@ -107,5 +169,8 @@ export function GraphAssetView({ client }: { client?: AssetLibraryClient }): JSX
     requestedRoot={requestedRoot}
     requestedFolderId={requestedFolderId}
     requestedEntryKey={requestedEntryKey}
+    onVideoGenerate={() => setView('video-generate')}
   />
 }
+
+const kinoAssetLibraryClient = createKinoAssetLibraryClient()

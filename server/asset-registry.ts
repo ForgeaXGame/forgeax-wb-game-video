@@ -65,7 +65,10 @@ function isMediaAsset(value: unknown): value is MediaAsset {
     isRecord(value) &&
     typeof value.id === 'string' &&
     (value.kind === 'image' || value.kind === 'video') &&
-    typeof value.productionType === 'string'
+    // Shared provider-backed uploads predate the editor-only productionType
+    // field. They are still valid media records and must remain visible in the
+    // library rather than being silently dropped during normalization.
+    (typeof value.productionType === 'string' || isProviderBacked(value))
   )
 }
 
@@ -79,6 +82,8 @@ function normalizeMediaAsset(value: unknown): MediaAsset | null {
   const providerBacked = isProviderBacked(source)
   return {
     ...source,
+    productionType: source.productionType
+      ?? (source.kind === 'video' ? 'video_clip' : 'shot_image'),
     label: source.label ?? (typeof source.name === 'string' ? source.name : undefined),
     mime: source.mime ?? (typeof source.mimeType === 'string' ? source.mimeType : undefined),
     meta: providerBacked ? { ...(source.meta ?? {}), upload: true } : source.meta,

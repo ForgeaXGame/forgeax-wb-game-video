@@ -176,16 +176,6 @@ function buildRuleNavNode(meta: { entities?: Record<string, { id: string, name?:
   }
 }
 
-function collectExpandableIds(nodes: readonly NavNode[], acc: Set<string> = new Set()): Set<string> {
-  for (const n of nodes) {
-    if (n.children && n.children.length > 0) {
-      acc.add(n.id)
-      collectExpandableIds(n.children, acc)
-    }
-  }
-  return acc
-}
-
 const NEW_SIDEBAR_CSS = `
 .ns-sidebar {
   --ns-bg: #2C2C2C;
@@ -483,7 +473,6 @@ interface NsRowProps {
   mainId: string
   bp: BlueprintNavActions
   onToggle: (id: string) => void
-  onExternalToggle: (node: NavNode, expanded: boolean) => void
   onSelect: (node: NavNode) => void
   onMockAddChild: (node: NavNode) => void
   onMockRename: (node: NavNode) => void
@@ -492,11 +481,11 @@ interface NsRowProps {
 
 function NsRow({
   node, depth, expanded, activeId, mainId, bp,
-  onToggle, onExternalToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
+  onToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
 }: NsRowProps): JSX.Element {
   const hasChildren = !!(node.children && node.children.length > 0)
   const isExpandable = hasChildren || !!node.externallyExpandable
-  const isExpanded = node.externallyExpandable ? activeId === node.id : expanded.has(node.id)
+  const isExpanded = expanded.has(node.id)
   const isActive = activeId === node.id
   const indent = depth * 8
   const isBlueprintLeaf = !!node.blueprint
@@ -623,14 +612,10 @@ function NsRow({
           <button
             type="button"
             className={`ns-chev${isExpanded ? '' : ' is-collapsed'}`}
-            aria-label={isExpanded ? '折叠' : '展开'}
+            aria-label={`${isExpanded ? '折叠' : '展开'} ${node.label}`}
             onClick={(e) => {
               e.stopPropagation()
-              if (node.externallyExpandable) {
-                onExternalToggle(node, isExpanded)
-              } else {
-                onToggle(node.id)
-              }
+              onToggle(node.id)
             }}
           >
             {ChevronIcon}
@@ -720,7 +705,6 @@ function NsRow({
                 mainId={mainId}
                 bp={bp}
                 onToggle={onToggle}
-                onExternalToggle={onExternalToggle}
                 onSelect={onSelect}
                 onMockAddChild={onMockAddChild}
                 onMockRename={onMockRename}
@@ -777,26 +761,9 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     [assetDirectory, assetEntries, blueprints, mainId, ruleMeta.entities, ruleMeta.formulas, ruleMeta.variables],
   )
 
-  const [expanded, setExpanded] = useState<Set<string>>(() => collectExpandableIds(navTree))
-  // 蓝图增删后把新可展开节点并入 expanded（只 add，不强制全量重置，避免无变更时 setState 环）。
-  const expandableKey = useMemo(
-    () => [...collectExpandableIds(navTree)].sort().join('\0'),
-    [navTree],
-  )
-  useEffect(() => {
-    setExpanded((cur) => {
-      const needed = collectExpandableIds(navTree)
-      let changed = false
-      const next = new Set(cur)
-      for (const id of needed) {
-        if (!next.has(id)) {
-          next.add(id)
-          changed = true
-        }
-      }
-      return changed ? next : cur
-    })
-  }, [expandableKey, navTree])
+  // 目录默认全部收起。展开状态只由用户点箭头（或明确的新建操作）改变；
+  // 不能在资产/规则数据刷新时把已收起的分支重新打开。
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const activeId = view === 'graph'
     ? (activeBlueprintId || 'graph')
@@ -811,15 +778,16 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
     })
   }
 
-  const onExternalToggle = (node: NavNode, isExpanded: boolean): void => {
-    if (node.id !== 'ui') return
-    setView(isExpanded ? 'graph' : 'ui')
-  }
-
   const onSelect = (node: NavNode): void => {
-    if (node.assetLocation) {
-      setAssetLocation(node.assetLocation)
+    if (node.id === 'assets') {
+      // “资产库”是浏览器根入口，不是上一次选中的分类或文件夹。
+      setAssetLocation({ root: null })
       setView('assets')
+      return
+    }
+    if (node.assetLocation) {
+      setView('assets')
+      setAssetLocation(node.assetLocation)
       return
     }
     if (node.ruleTarget) {
@@ -895,13 +863,12 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
               mainId={mainId}
               bp={bp}
               onToggle={onToggle}
-              onExternalToggle={onExternalToggle}
               onSelect={onSelect}
               onMockAddChild={onMockAddChild}
               onMockRename={onMockRename}
               onMockDelete={onMockDelete}
             />
-            {node.id === 'ui' && view === 'ui' ? (
+            {node.id === 'ui' && view === 'ui' && expanded.has(node.id) ? (
               <div className="ns-ui-tree" role="group" aria-label="界面子项">
                 <UiTreeView
                   nodes={uiNodes}

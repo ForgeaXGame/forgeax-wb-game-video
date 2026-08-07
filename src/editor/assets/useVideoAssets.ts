@@ -155,7 +155,9 @@ export function useVideoAssets(
         if (!mountedRef.current || generation !== listGeneration.current) {
           return
         }
-        const mapped = result.items.map((dto) => toListItem(dto, client))
+        const mapped = result.items
+          .filter((dto) => dto.media_type === 'video')
+          .map((dto) => toListItem(dto, client))
         setLocalItems((prev) => (
           mode === 'append'
             ? mergeUniqueItems(prev, mapped)
