@@ -25,9 +25,13 @@ import { installGraphBlueprintSync } from './editor/persist/graphBlueprintSync'
 import { installAssetNavSync } from './editor/persist/assetNavStore'
 import { installDocumentNavSync } from './editor/persist/documentNavStore'
 import { installRuleSelectionSync } from './editor/persist/ruleSelectionStore'
+import { installVideoLibraryNavSync } from './editor/persist/videoLibraryNavStore'
 import { getGameSlug } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
 import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
+import { useGlobalVideoGenerationTracker } from './editor/assets/generation/videoGenerationStore'
+import { useVideoAssets, type VideoAssetsController } from './editor/assets/useVideoAssets'
+import { installKinoVideoCacheSync } from './editor/assets/kinoVideoCacheStore'
 
 export type GraphAppPane = 'left' | 'center' | null
 
@@ -52,11 +56,13 @@ function resolveGameSlug(explicit?: string): string {
 }
 
 /** 主区——当前 tab 对应的内容。center pane 的全部内容。 */
-function GraphMain(): JSX.Element {
+function GraphMain({ videoController }: { videoController?: VideoAssetsController } = {}): JSX.Element {
   const view = useGraphView((state) => state.view)
   const setView = useGraphView((state) => state.setView)
   const scenarioFromStore = useGraphScenario((s) => s.scn)
   const loadEpoch = useGraphScenario((s) => s.loadEpoch)
+  const game = useGraphScenario((s) => s.game)
+  useGlobalVideoGenerationTracker(game)
   // The host package is the only runtime source. The bundled demo remains
   // available for explicit reset/template flows, never as a live project.
   const scenario = useMemo(
@@ -67,7 +73,7 @@ function GraphMain(): JSX.Element {
     <main className="ga-main">
       {view === 'documents' && <DocumentLibraryView />}
       {view === 'graph' && <GraphStudio scenario={scenario} />}
-      {view === 'video' && <GraphVideoView />}
+      {view === 'video' && <GraphVideoView controller={videoController} />}
       {view === 'video-generate' && <VideoGenerationPage onBack={() => setView('video')} />}
       {view === 'assets' && <GraphAssetView />}
       {view === 'ui' && <GraphConfigView title="界面" icon="🖥" tabs={[{ section: 'overlays', label: '自定义界面' }]} scenario={scenario} />}
@@ -85,6 +91,25 @@ function GraphMain(): JSX.Element {
       )}
       {view === 'play' && <GraphPlaySurface scenario={scenario} />}
     </main>
+  )
+}
+
+function CombinedWorkspace({
+  gameId,
+  ensureBoot,
+}: {
+  gameId?: string
+  ensureBoot: (gameId: string) => Promise<void>
+}): JSX.Element {
+  const game = useGraphScenario((state) => state.game)
+  const videoController = useVideoAssets(game)
+  return (
+    <div className="ga-root">
+      <NewSidebar videoItems={videoController.items} />
+      <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
+        <GraphMain videoController={videoController} />
+      </GameBootstrap>
+    </div>
   )
 }
 
@@ -116,9 +141,11 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
     const disposeBp = installGraphBlueprintSync()
     const disposeAssetNav = installAssetNavSync()
     const disposeDocumentNav = installDocumentNavSync()
+    const disposeVideoLibraryNav = installVideoLibraryNavSync()
     const disposeRuleSelection = installRuleSelectionSync()
     return () => {
       disposeRuleSelection()
+      disposeVideoLibraryNav()
       disposeDocumentNav()
       disposeAssetNav()
       disposeBp()
@@ -126,6 +153,8 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
       disposeView()
     }
   }, [pane])
+
+  useEffect(() => installKinoVideoCacheSync(), [])
 
   if (pane === 'left') {
     return <LeftPane gameSlug={gameSlug} />
@@ -139,14 +168,7 @@ export function GraphApp({ pane: explicitPane, gameId }: GraphAppProps = {}): JS
       </div>
     )
   }
-  return (
-    <div className="ga-root">
-      <NewSidebar />
-      <GameBootstrap gameId={gameId} onBoot={(bootGameId) => ensureBoot(bootGameId)}>
-        <GraphMain />
-      </GameBootstrap>
-    </div>
-  )
+  return <CombinedWorkspace gameId={gameId} ensureBoot={ensureBoot} />
 }
 
 const CSS = `

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph } from '../../../runtime/schema/graph-schema'
 import { findUiTreeNode } from '../../persist/ui-tree'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
@@ -8,6 +8,24 @@ import { useDocumentNav } from '../../persist/documentNavStore'
 import { useRuleSelection } from '../../persist/ruleSelectionStore'
 import { useUiSelection } from '../../persist/uiSelectionStore'
 import { NewSidebar } from '../NewSidebar'
+
+vi.mock('../../assets/useVideoAssets', () => ({
+  useVideoAssets: () => ({ items: [] }),
+}))
+
+vi.mock('../../assets/use-asset-browser', () => ({
+  useAssetBrowser: () => ({
+    entries: [],
+    directory: {
+      assetLibrary: { version: 1, folders: [], placements: {} },
+      loading: false,
+      saving: false,
+      error: null,
+      refresh: vi.fn(),
+      save: vi.fn(),
+    },
+  }),
+}))
 
 const initialScenario = useGraphScenario.getState()
 const emptyGraph: GameGraph = { nodes: [], edges: [] }
@@ -58,17 +76,17 @@ function expandUiTree(): void {
 }
 
 describe('NewSidebar interface tree', () => {
-  it('keeps the main-branch 240px rail while exposing only real product routes', () => {
+  it('keeps the Figma 196px rail and exposes the asset-library hierarchy', () => {
     render(<NewSidebar />)
 
     const sidebar = screen.getByRole('complementary', { name: /视频游戏工坊/ })
     expect(sidebar).toBeTruthy()
-    expect(document.querySelector('style[data-reel-style="new-sidebar"]')?.textContent).toContain('width: 240px')
+    expect(document.querySelector('style[data-reel-style="new-sidebar"]')?.textContent).toContain('width: 196px')
     expect(sidebar.querySelector('.ns-label[title="蓝图"]')?.textContent).toContain('蓝图')
     expect(sidebar.querySelector('.ns-label[title="视频"]')?.textContent).toContain('视频')
     expect(sidebar.querySelector('.ns-label[title="界面"]')?.textContent).toContain('界面')
     expect(sidebar.querySelector('.ns-label[title="文档"]')?.textContent).toContain('文档')
-    expect(sidebar.querySelector('.ns-label[title="控件"]')).toBeNull()
+    expect(sidebar.querySelector('.ns-label[title="控件"]')?.textContent).toContain('控件')
   })
 
   it('reserves the disclosure icon column for top-level leaves', () => {

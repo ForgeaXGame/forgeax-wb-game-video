@@ -20,6 +20,7 @@ import {
   type VideoGenInput,
 } from '../generation/orchestrate'
 import { generateVideoClip, type GenerateVideoClipArgs } from '../generation/clip'
+import { listVideoVisualStyles } from '../generation/visual-styles'
 import {
   importCharacterRefsFromHost,
   importSceneRefsFromHost,
@@ -54,6 +55,7 @@ export interface WbGameVideoService {
   generateKeyframe(input: unknown): Promise<unknown>
   generateVideo(input: unknown): Promise<unknown>
   generateVideoClip(input: unknown): Promise<unknown>
+  listVideoVisualStyles(input?: unknown): Promise<unknown>
   generateNodeVideo(input: unknown): Promise<unknown>
 }
 
@@ -289,7 +291,7 @@ function videoClipInput(value: unknown): GenerateVideoClipArgs {
   assertOnlyKeys(input, [
     'prompt', 'durationSeconds', 'generateAudio', 'mode',
     'firstFrameAssetId', 'lastFrameAssetId', 'referenceImageAssetIds',
-    'label', 'requestId',
+    'label', 'requestId', 'visualStyleKey',
   ])
   return {
     prompt: stringValue(input.prompt, 'prompt', true)!,
@@ -303,6 +305,7 @@ function videoClipInput(value: unknown): GenerateVideoClipArgs {
       : stringArray(input.referenceImageAssetIds, 'referenceImageAssetIds'),
     label: stringValue(input.label, 'label'),
     requestId: stringValue(input.requestId, 'requestId'),
+    visualStyleKey: stringValue(input.visualStyleKey, 'visualStyleKey'),
   }
 }
 
@@ -539,6 +542,11 @@ export function createWbGameVideoService(
     async generateVideoClip(value) {
       assertSchema('generateVideoClip', value)
       return generateVideoClip(context, videoClipInput(value), registry)
+    },
+    async listVideoVisualStyles(value = {}) {
+      const input = record(value)
+      assertOnlyKeys(input, [])
+      return listVideoVisualStyles(context)
     },
     async generateNodeVideo(value) {
       assertSchema('generateNodeVideo', value)
