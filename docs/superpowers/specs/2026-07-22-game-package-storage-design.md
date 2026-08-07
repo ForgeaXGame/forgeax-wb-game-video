@@ -6,6 +6,12 @@
 > 范围：公共框架 vs 每游戏独立 git 仓；目录命名；进 git 清单；组件双轨；资产 id→manifest→url；**与 `/api/game-host` 一体实施**。  
 > 暂不做：`play.json` 重编译轨、游戏仓内 `versions/vN/` 目录版管理、产品入口回退版本。  
 > 配套合同：[`docs/superpowers/specs/2026-07-22-game-host-api-design.md`](../../../../../../../docs/superpowers/specs/2026-07-22-game-host-api-design.md)（宿主 HTTP；本文管仓内布局，配套文管传输与 git 打版本）。
+>
+> **2026-08-07 注（PR #141）**：本文保留为历史设计记录。组件双轨章节中的
+> `registerInteractionSkin` / `registerHpBar`、skin/HP-bar 合并访问器、旧 focus/组件分类假设已被
+> component-host catalog 隔离重构取代。当前契约以仓库 `README.md`、
+> `src/runtime/component-host/index.ts`、`components/index.ts` 与 `components/manifest.ts` 为准；
+> 不应按本文旧元数据 side channel 实现新组件。
 
 本文是**游戏包布局 + 扩展侧改造**的 SSOT。落盘/打版本的**写路径不得再由扩展 Vite middleware 承担**；须与配套 API 文档**同一里程碑一起实施**，禁止「只改目录仍走 `/__graph__`」或「只上 API 不改仓根布局」的分叉交付。
 

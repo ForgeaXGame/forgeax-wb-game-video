@@ -184,7 +184,11 @@ flowchart TD
 
 ## 验证记录
 
-执行命令：
+### PR #141 前的历史验证
+
+以下命令和“8 个文件、74 个测试”是当时提交上的验证记录；其中
+`components/new/__tests__/BattleHpBars.test.tsx` 与 `NumericHpBar.test.tsx` 已在 PR #141 的 catalog
+隔离重构中删除，因此**不能在当前 main 复跑**：
 
 ```bash
 bun run test -- \
@@ -192,15 +196,36 @@ bun run test -- \
   src/editor/shell/__tests__/ScenarioInspector-entities.test.tsx \
   src/editor/shell/__tests__/GraphStudio-node-panel.test.tsx \
   src/editor/shell/__tests__/valueExprPick.test.ts \
-  src/runtime/component-host/components/__tests__/BattleHpBars.test.tsx \
-  src/runtime/component-host/components/__tests__/NumericHpBar.test.tsx \
+  src/runtime/component-host/components/new/__tests__/BattleHpBars.test.tsx \
+  src/runtime/component-host/components/new/__tests__/NumericHpBar.test.tsx \
   src/runtime/__tests__/apply-effects.test.ts \
   src/runtime/__tests__/session.test.ts
 
 bun run lint
 ```
 
-结果：8 个测试文件、74 个测试全部通过；TypeScript、server TypeScript 和模块边界检查全部通过。
+历史结果：8 个测试文件、74 个测试全部通过；TypeScript、server TypeScript 和模块边界检查全部通过。
+
+### PR #141 后的当前验证
+
+当前架构改用独立 `test.*` fixture catalog 验证跨层管线，并在 component-host 边界测试 manifest 输入解析：
+
+```bash
+bun run test -- \
+  src/editor/shell/__tests__/ComponentEventsEditor.test.tsx \
+  src/editor/shell/__tests__/ScenarioInspector-entities.test.tsx \
+  src/editor/shell/__tests__/valueExprPick.test.ts \
+  src/runtime/component-host/__tests__/RuntimeComponentHost.test.tsx \
+  src/runtime/component-host/__tests__/resolveComponentInputs.test.ts \
+  src/runtime/__tests__/hud-mount-render.test.ts \
+  src/runtime/__tests__/apply-effects.test.ts \
+  src/runtime/__tests__/session.test.ts
+
+bun run lint
+```
+
+该命令在当前 main 上验证 8 个测试文件、68 个测试，覆盖 host/input/session 边界；它不等价于已删除的
+生产 catalog 视觉测试，也不沿用历史 74 个测试结论。
 
 142 后续修复验证：全量 140 个测试文件，986 个测试通过、18 个既有跳过；`bun run lint` 与完整 `bun run build`（frontend/backend/standalone/release validator）通过。
 
