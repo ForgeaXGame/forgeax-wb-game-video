@@ -7,6 +7,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { Entity, Variable } from '../../runtime/schema/graph-schema'
 import { authoringOptionLabel } from '../authoring-option-label'
+import { NiSelect } from './ni-ui'
 
 const rowStyle: CSSProperties = { display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }
 const lbl: CSSProperties = { width: 52, opacity: 0.7, flexShrink: 0, fontSize: 11 }
@@ -55,11 +56,11 @@ export function EntityPicker({
   }
   const known = list.some((e) => e.id === value)
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
+    <NiSelect value={value} onChange={onChange} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
       {allowEmpty ? <option value="">（选实体）</option> : null}
       {list.map((e) => <option key={e.id} value={e.id}>{entityLabel(e)}</option>)}
       {!known && value ? <option value={value}>⚠ {value}（已失效）</option> : null}
-    </select>
+    </NiSelect>
   )
 }
 
@@ -82,11 +83,11 @@ export function AttrPicker({
   }
   const known = keys.includes(value)
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
+    <NiSelect value={value} onChange={onChange} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
       <option value="">（选属性）</option>
       {keys.map((a) => <option key={a} value={a}>{attrLabel(ent, a)}</option>)}
       {!known && value ? <option value={value}>⚠ {value}（已失效）</option> : null}
-    </select>
+    </NiSelect>
   )
 }
 
@@ -108,11 +109,11 @@ export function VariablePicker({
   }
   const known = list.some((v) => v.id === value)
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
+    <NiSelect value={value} onChange={onChange} style={{ ...selectStyle, ...(!known && value ? staleOption : {}) }}>
       {allowEmpty ? <option value="">（选变量）</option> : null}
       {list.map((v) => <option key={v.id} value={v.id}>{varLabel(v)}</option>)}
       {!known && value ? <option value={value}>⚠ {value}（已失效）</option> : null}
-    </select>
+    </NiSelect>
   )
 }
 

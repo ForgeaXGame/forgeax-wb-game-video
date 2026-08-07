@@ -68,6 +68,8 @@ describe('ComponentEventsEditor', () => {
     )
     expect(screen.queryByText('q:pass')).toBeNull()
     expect(screen.queryByText('目录动作（所有挂载继承）')).toBeNull()
+    // 动作类型收在通用下拉里，展开后才能断言「目录模式不提供沿边推进」。
+    fireEvent.click(screen.getByRole('button', { name: '添加动作' }))
     expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /效果/ }))
     expect(onCatalogChange).toHaveBeenCalledWith([
@@ -90,12 +92,13 @@ describe('ComponentEventsEditor', () => {
     )
     expect(screen.queryByText(/目录继承动作/)).toBeNull()
     expect(screen.queryByText(/挂载追加动作/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '添加动作' }))
     expect(screen.getByRole('button', { name: /沿边推进/ })).toBeTruthy()
   })
 
   it('renders one advance action with custom route controls and preserves it when side effects change', () => {
     const onMountActionsChange = vi.fn()
-    render(
+    const { container } = render(
       <ComponentEventsEditor
         mode="mount"
         events={[event]}
@@ -109,11 +112,17 @@ describe('ComponentEventsEditor', () => {
       />,
     )
 
-    expect(screen.getByText('沿边推进')).toBeTruthy()
+    // 事件响应行用胶囊概览这条事件已加的响应；卡片标题仍在行下面。
+    const responseRow = container.querySelector<HTMLElement>('.ni-ov-event-row')!
+    const advanceCard = container.querySelector<HTMLElement>('[data-action-kind="advance"]')!
+    expect(within(responseRow).getByText('沿边推进')).toBeTruthy()
+    expect(within(advanceCard).getByText('沿边推进')).toBeTruthy()
     expect(screen.getByText('从事件节点到目标节点')).toBeTruthy()
     expect(screen.queryByText('走边')).toBeNull()
+    // 已经有一条推进，候选里就不该再出现它。
+    fireEvent.click(screen.getByRole('button', { name: '添加动作' }))
     expect(screen.queryByRole('button', { name: /沿边推进/ })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '＋ 添加效果' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加效果' }))
     expect(onMountActionsChange).toHaveBeenCalledWith(event, [
       { kind: 'advance', edgeId: 'edge-1' },
       expect.objectContaining({ kind: 'effect' }),

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,6 +27,43 @@ function graphWith(reactions: Reaction[]): GameGraph {
   }
 }
 
+/**
+ * 新增动作的入口是「事件响应」行右侧那颗 ＋：候选浮层展开后才在 DOM 里，
+ * 且被 portal 挂到 body 上，所以触发器在 `scope` 里找、候选在全局找。
+ */
+function openAddAction(scope?: HTMLElement): void {
+  fireEvent.click(within(scope ?? document.body).getByRole('button', { name: '添加动作' }))
+}
+
+/** 沿候选层级依次点过去；「绑定界面」带子层，第二级是具体的界面模板。 */
+function addAction(path: string | (string | RegExp)[], scope?: HTMLElement): void {
+  openAddAction(scope)
+  for (const label of Array.isArray(path) ? path : [path]) {
+    fireEvent.click(screen.getByRole('button', { name: label }))
+  }
+}
+
+/** 新增结算：入口是类型选择下拉（Figma 15635:82029），先点「添加结算」再选一种触发。 */
+function addSettlement(label = '时间轴结算'): void {
+  fireEvent.click(screen.getByRole('button', { name: '添加结算' }))
+  fireEvent.click(
+    within(screen.getByRole('listbox', { name: '添加结算' })).getByRole('button', { name: label }),
+  )
+}
+
+/** 读出一条事件响应行当前提供的候选（含置灰项），读完收起以免影响后续查询。 */
+function addActionOptions(scope?: HTMLElement): { label: string; disabled: boolean }[] {
+  openAddAction(scope)
+  const options = within(screen.getByRole('listbox', { name: '添加动作' }))
+    .getAllByRole('button')
+    .map((option) => ({
+      label: option.textContent ?? '',
+      disabled: (option as HTMLButtonElement).disabled,
+    }))
+  fireEvent.keyDown(document, { key: 'Escape' })
+  return options
+}
+
 afterEach(() => {
   cleanup()
   unregisterComponent('test-rage-float')
@@ -43,7 +80,7 @@ describe('NodeInspector · 结算选中联动', () => {
     const graph = graphWith([])
     const { rerender } = render(<NodeInspector graph={graph} nodeId="gate" onChange={vi.fn()} />)
 
-    expect(screen.getByText('节点 gate')).toBeTruthy()
+    expect(screen.getByTitle('节点 gate')).toBeTruthy()
     expect(() => {
       rerender(<NodeInspector graph={{ nodes: [], edges: [] }} nodeId="gate" onChange={vi.fn()} />)
     }).not.toThrow()
@@ -52,7 +89,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(() => {
       rerender(<NodeInspector graph={graph} nodeId="gate" onChange={vi.fn()} />)
     }).not.toThrow()
-    expect(screen.getByText('节点 gate')).toBeTruthy()
+    expect(screen.getByTitle('节点 gate')).toBeTruthy()
   })
 
   it('新增结算使用宿主计算的时间轴插入时刻，没有时回落到 0ms', () => {
@@ -69,14 +106,14 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+    addSettlement()
     let next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when).toEqual({ type: 'at', ms: 1_350 })
     expect(onFocusLifecycle).toHaveBeenLastCalledWith(0)
 
     onChange.mockClear()
     rerender(<NodeInspector graph={emptyGraph} nodeId="gate" onChange={onChange} />)
-    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+    addSettlement()
     next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when).toEqual({ type: 'at', ms: 0 })
   })
@@ -106,7 +143,7 @@ describe('NodeInspector · 结算选中联动', () => {
     }
 
     render(<Harness />)
-    fireEvent.click(screen.getByRole('button', { name: '＋ 结算' }))
+    addSettlement()
 
     expect(screen.getByTitle('本节点演出 3000ms')).toHaveValue('300')
     expect(screen.getByRole('combobox', { name: '数值来源' })).toHaveValue('const')
@@ -193,7 +230,7 @@ describe('NodeInspector · 结算选中联动', () => {
     })
     const { rerender } = render(<NodeInspector graph={graph} nodeId="gate" onChange={onChange} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '＋ 沿边推进' }))
+    addAction('沿边推进')
     const withAdvance = onChange.mock.calls.at(-1)?.[0] as GameGraph
     rerender(<NodeInspector graph={withAdvance} nodeId="gate" onChange={onChange} />)
 
@@ -238,7 +275,7 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(second?.style.background).toBe('')
     expect(second?.style.boxShadow).toBe('')
     expect(screen.getByText('结算')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '＋ 结算' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '添加结算' })).toBeTruthy()
     expect(screen.queryByText('生命周期效果')).toBeNull()
     expect(screen.queryByText(/演出播到指定 ms/)).toBeNull()
 
@@ -443,33 +480,46 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    const triggerSelects = screen.getAllByTitle('触发条件') as HTMLSelectElement[]
-    expect(triggerSelects.map((select) => select.value)).toEqual(['at', 'condition'])
+    // 类型在新增时选定，卡片标题是纯文字、不再可切换（Figma 15635:82040）。
+    const triggerTitles = container.querySelectorAll<HTMLElement>('[data-settlement-trigger]')
+    expect([...triggerTitles].map((title) => title.dataset.settlementTrigger)).toEqual(['at', 'condition'])
+    expect([...triggerTitles].map((title) => title.textContent)).toEqual(['时间轴结算', '条件结算'])
+    expect(screen.queryByTitle('触发条件')).toBeNull()
     expect(screen.getByRole('combobox', { name: '条件类型' })).toHaveValue('dec')
     expect(screen.getByRole('option', { name: '数值增加' })).toBeTruthy()
     expect(screen.getByRole('option', { name: '数值减少' })).toBeTruthy()
     expect(screen.queryByText('响应规则')).toBeNull()
-    expect(screen.getAllByRole('combobox', { name: '绑定界面' })).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: '＋ 添加效果' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '添加动作' })).toHaveLength(2)
     expect(screen.queryByRole('button', { name: '+ 效果' })).toBeNull()
-    expect(screen.getAllByRole('button', { name: '＋ 沿边推进' })).toHaveLength(2)
-    const [timedToolbar, conditionToolbar] = container.querySelectorAll<HTMLElement>('[data-node-action-toolbar]')
+    const [timedSettlement, conditionSettlement] = container.querySelectorAll<HTMLElement>('[data-settlement-index]')
+    // 事件响应行用胶囊概览这条结算已加的响应：定时那条有一个效果，条件那条还什么都没加。
+    // 只看那一行——动作卡片的标题现在也是「添加效果」（与胶囊同一份措辞）。
+    const responseRow = (settlement: HTMLElement) =>
+      settlement.querySelector<HTMLElement>('.ni-st-actions-head')!
+    expect(within(responseRow(timedSettlement!)).getByText('添加效果')).toBeTruthy()
+    expect(within(responseRow(conditionSettlement!)).queryByText('添加效果')).toBeNull()
     // 定时结算能绑界面，但不开放「隐藏界面」——hideOverlay 命中不了 spawn 出来的界面。
-    expect(Array.from(timedToolbar!.children).map((control) => control.textContent?.trim())).toEqual([
-      '＋ 添加效果',
-      '＋ 沿边推进',
-      '+ 绑定界面',
+    // 本用例没有任何界面模板/挂载，所以能绑的两项置灰留在列表里（原因走 tooltip），而不是消失。
+    expect(addActionOptions(timedSettlement!)).toEqual([
+      { label: '添加效果', disabled: false },
+      { label: '沿边推进', disabled: false },
+      { label: '绑定界面', disabled: true },
     ])
-    expect(Array.from(conditionToolbar!.children).map((control) => control.textContent?.trim())).toEqual([
-      '＋ 添加效果',
-      '＋ 沿边推进',
-      '+ 绑定界面',
-      '＋ 隐藏界面',
+    expect(addActionOptions(conditionSettlement!)).toEqual([
+      { label: '添加效果', disabled: false },
+      { label: '沿边推进', disabled: false },
+      { label: '绑定界面', disabled: true },
+      { label: '隐藏界面', disabled: true },
     ])
 
-    fireEvent.change(triggerSelects[0]!, { target: { value: 'hidden' } })
-    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
-    expect(next.nodes[0]?.data.reactions?.[0]?.when.type).toBe('hidden')
+    // 四种触发改由「添加结算」入口选定；这里核候选齐全（含界面消失）。
+    fireEvent.click(screen.getByRole('button', { name: '添加结算' }))
+    expect(
+      within(screen.getByRole('listbox', { name: '添加结算' }))
+        .getAllByRole('button')
+        .map((option) => option.textContent),
+    ).toEqual(['时间轴结算', '条件结算', '时间轴结算·界面出现', '时间轴结算·界面消失'])
+    fireEvent.keyDown(document, { key: 'Escape' })
   })
 
   it('绑定界面的初始显示时长取自模板 window 声明的可见长度', () => {
@@ -496,7 +546,7 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('combobox', { name: '绑定界面' }), { target: { value: 'rageHud/value' } })
+    addAction(['绑定界面', /怒气值界面/])
 
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.do[1]).toEqual({
@@ -530,7 +580,7 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('combobox', { name: '绑定界面' }), { target: { value: 'rageHud/value' } })
+    addAction(['绑定界面', /怒气值界面/])
 
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.do[1]).toEqual({
@@ -564,9 +614,8 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    const addUi = screen.getByRole('combobox', { name: '绑定界面' })
-    expect(addUi).not.toBeDisabled()
-    fireEvent.change(addUi, { target: { value: 'rageHud/value' } })
+    expect(addActionOptions()).toContainEqual({ label: '绑定界面', disabled: false })
+    addAction(['绑定界面', /怒气值界面/])
 
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     const reaction = next.nodes[0]?.data.reactions?.[0]
@@ -599,9 +648,8 @@ describe('NodeInspector · 结算选中联动', () => {
       />,
     )
 
-    const addUi = screen.getByRole('combobox', { name: '绑定界面' })
-    expect(addUi).not.toBeDisabled()
-    fireEvent.change(addUi, { target: { value: 'rageHud/value' } })
+    expect(addActionOptions()).toContainEqual({ label: '绑定界面', disabled: false })
+    addAction(['绑定界面', /怒气值界面/])
 
     const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.do).toEqual([{
@@ -631,7 +679,7 @@ describe('NodeInspector · 结算选中联动', () => {
     const { container } = render(<Harness />)
     const settlement = container.querySelector<HTMLElement>('[data-settlement-index="0"]')!
 
-    fireEvent.change(settlement.querySelector('select[aria-label="绑定界面"]')!, { target: { value: 'rageHud/value' } })
+    addAction(['绑定界面', /怒气值界面/], settlement)
     const disappearance = screen.getByRole('combobox', { name: '消失方式' })
     expect(Array.from(disappearance.querySelectorAll('option')).map((option) => option.textContent)).toEqual(['常驻', '按时长隐藏'])
     // 绑定即带确定时长，作者要常驻得显式选。
@@ -672,9 +720,8 @@ describe('NodeInspector · 结算选中联动', () => {
 
     const { container } = render(<Harness />)
     const settlement = container.querySelector<HTMLElement>('[data-settlement-index="0"]')!
-    const hideButton = Array.from(settlement.querySelectorAll('button')).find((button) => button.textContent === '＋ 隐藏界面')!
-    expect(hideButton).not.toBeDisabled()
-    fireEvent.click(hideButton)
+    expect(addActionOptions(settlement)).toContainEqual({ label: '隐藏界面', disabled: false })
+    addAction('隐藏界面', settlement)
 
     expect(latest.nodes[0]?.data.reactions?.[0]?.do).toEqual([{
       kind: 'hideOverlay',
@@ -716,15 +763,15 @@ describe('NodeInspector · 结算选中联动', () => {
     }
 
     const { container } = render(<Harness />)
-    const addUi = screen.getByRole('combobox', { name: '绑定界面' })
-    fireEvent.change(addUi, { target: { value: 'rageHud/value' } })
-    fireEvent.change(addUi, { target: { value: 'dialogue/line' } })
+    // 候选带子层，一次手势就选定模板；两条绑定各自指向自己的界面，不用落好再回卡片里改。
+    addAction(['绑定界面', /怒气飘字/])
+    addAction(['绑定界面', /字幕对白/])
+    const spawnCards = container.querySelectorAll<HTMLElement>('[data-action-kind="spawn"]')
 
     expect(latest.nodes[0]?.data.reactions?.[0]?.do).toEqual([
       { kind: 'spawn', from: 'rageHud/value', ttlMs: 2500 },
       { kind: 'spawn', from: 'dialogue/line', ttlMs: 2500 },
     ])
-    const spawnCards = container.querySelectorAll<HTMLElement>('[data-action-kind="spawn"]')
     const componentCards = container.querySelectorAll<HTMLDetailsElement>('[data-component-inputs-disclosure]')
     expect(spawnCards).toHaveLength(2)
     expect(componentCards).toHaveLength(2)
@@ -742,7 +789,8 @@ describe('NodeInspector · 结算选中联动', () => {
       inputs: { value: 80 },
     })
 
-    fireEvent.click(Array.from(spawnCards[0]!.querySelectorAll('button')).find((button) => button.textContent === '解除绑定')!)
+    // 「解除绑定」现在是卡片头那枚垃圾桶图标；文案仍是它的无障碍名。
+    fireEvent.click(within(spawnCards[0]!).getByRole('button', { name: '解除绑定' }))
     expect(latest.nodes[0]?.data.reactions?.[0]?.do).toEqual([
       { kind: 'spawn', from: 'dialogue/line', ttlMs: 2500 },
     ])
@@ -825,7 +873,7 @@ describe('NodeInspector · 结算选中联动', () => {
       <NodeInspector graph={initial} nodeId="gate" entities={entities} onChange={onChange} />,
     )
 
-    expect(screen.getByTitle('触发条件')).toHaveValue('condition')
+    expect(screen.getByText('条件结算')).toHaveAttribute('data-settlement-trigger', 'condition')
     expect(screen.getByRole('combobox', { name: '条件类型' })).toHaveValue('state')
     expect(screen.getByRole('combobox', { name: '比较运算符' })).toHaveValue('eq')
     expect(screen.getByRole('textbox', { name: '比较值' })).toHaveValue('50')
