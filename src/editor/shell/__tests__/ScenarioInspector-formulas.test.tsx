@@ -25,7 +25,7 @@ describe('ScenarioInspector formulas', () => {
     expect(input.selectionEnd).toBe(0)
   })
 
-  it('uses formula-specific toolbar copy and accordion rows', () => {
+  it('uses the shared rule toolbar and accordion primitives', () => {
     render(
       <ScenarioInspector
         value={{
@@ -56,8 +56,9 @@ describe('ScenarioInspector formulas', () => {
     const open = screen.getByRole('button', { name: '折叠公式 减法' })
     const closed = screen.getByRole('button', { name: '展开公式 加法' })
     expect(open).toHaveClass('is-open')
-    expect(open).toHaveStyle({ color: 'rgba(255,255,255,.92)' })
+    expect(open).toHaveClass('sir-formula-toggle')
     expect(closed).not.toHaveClass('is-open')
+    expect(closed).toHaveClass('sir-formula-toggle')
     expect(closed).toHaveStyle({ color: 'rgba(255,255,255,.34)' })
     // '打' 是公式的 description（描述输入框仍存在，断言其值）
     expect(screen.getByDisplayValue('打')).toBeTruthy()

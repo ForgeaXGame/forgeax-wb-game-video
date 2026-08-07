@@ -247,22 +247,16 @@ function buildAssetNavNode(
   }
 }
 
-function buildRuleNavNode(meta: { entities?: Record<string, { id: string, name?: string }>, variables?: Record<string, { id: string, name?: string }>, formulas?: Record<string, { id: string, name?: string }> }): NavNode {
-  const section = <T extends { id: string, name?: string }>(
+function buildRuleNavNode(_meta: { entities?: Record<string, { id: string, name?: string }>, variables?: Record<string, { id: string, name?: string }>, formulas?: Record<string, { id: string, name?: string }> }): NavNode {
+  const section = (
     id: 'entities' | 'variables' | 'formulas',
     label: string,
-    values: Record<string, T> | undefined,
   ): NavNode => ({
     id: `rule-${id}`,
     label,
-    kind: 'branch',
+    kind: 'leaf',
     ruleTarget: { section: id },
-    children: Object.entries(values ?? {}).map(([key, value]) => ({
-      id: `rule-${id}:${key}`,
-      label: value.name?.trim() || value.id || key,
-      kind: 'leaf',
-      ruleTarget: { section: id, itemId: key },
-    })),
+    children: [],
   })
   return {
     id: 'rule',
@@ -270,9 +264,9 @@ function buildRuleNavNode(meta: { entities?: Record<string, { id: string, name?:
     kind: 'entry',
     view: 'rule',
     children: [
-      section('entities', '实体', meta.entities),
-      section('variables', '变量', meta.variables),
-      section('formulas', '公式', meta.formulas),
+      section('entities', '实体'),
+      section('variables', '变量'),
+      section('formulas', '公式'),
     ],
   }
 }
