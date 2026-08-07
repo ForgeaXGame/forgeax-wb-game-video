@@ -32,10 +32,56 @@ export type WorkbenchInitOptions = {
    */
   inspectorEl?: HTMLElement
   /**
+   * Host-owned DOM slot for the node preview surface (video + timeline) and its
+   * toggle pill. Only honoured together with `inspectorEl`: it splits the node
+   * panel's two columns into two host-positioned surfaces, so the form can track
+   * a resizable host sidebar while the preview stays a sibling beside it.
+   */
+  previewEl?: HTMLElement
+  /**
+   * Fired when the preview drawer opens or closes, so a host owning `previewEl`
+   * can size its column. Errors thrown by the callback are swallowed.
+   */
+  onPreviewOpenChange?: (open: boolean) => void
+  /**
    * Fired when canvas node selection changes. Pass `null` when selection clears.
    * Errors thrown by the callback are swallowed so selection still updates.
    */
   onNodeSelect?: (nodeId: string | null) => void
+  /**
+   * Declares what the host's inspector tab shows. Every view that fills
+   * `inspectorEl` owns its own label, so the tab beside Agent is a generic slot
+   * rather than a blueprint-only "节点编辑".
+   *
+   * `selected` drives the host's auto-switch: true focuses the slot tab, false
+   * returns to Agent. Errors thrown by the callback are swallowed.
+   */
+  onInspectorTabChange?: (tab: { label: string, selected: boolean }) => void
+}
+
+/**
+ * 宿主插槽当前是否是激活页签。宿主的 Agent 页签在前时节点面板整个不可见，
+ * 预览抽屉与它的开关拉片也就没有意义（拉片挂在画布上，宿主藏不掉）。
+ * 没有宿主插槽的形态（standalone / dev host）恒为 true。
+ */
+let inspectorActive = true
+const inspectorActiveListeners = new Set<() => void>()
+
+export function setInspectorActive(active: boolean): void {
+  if (inspectorActive === active) return
+  inspectorActive = active
+  inspectorActiveListeners.forEach((listener) => listener())
+}
+
+export function getInspectorActive(): boolean {
+  return inspectorActive
+}
+
+export function subscribeInspectorActive(cb: () => void): () => void {
+  inspectorActiveListeners.add(cb)
+  return () => {
+    inspectorActiveListeners.delete(cb)
+  }
 }
 
 /** Refcount so nested in-process mounts do not tear each other's host down. */
@@ -44,20 +90,39 @@ let hostCount = 0
 let initDepth = 0
 
 let activeInspectorEl: HTMLElement | undefined
+let activePreviewEl: HTMLElement | undefined
 let activeOnNodeSelect: ((nodeId: string | null) => void) | undefined
+let activeOnPreviewOpenChange: ((open: boolean) => void) | undefined
+let activeOnInspectorTabChange:
+  | ((tab: { label: string, selected: boolean }) => void)
+  | undefined
 
 export function getInspectorMountOptions(): {
   inspectorEl: HTMLElement | undefined
+  previewEl: HTMLElement | undefined
   onNodeSelect: ((nodeId: string | null) => void) | undefined
+  onPreviewOpenChange: ((open: boolean) => void) | undefined
+  onInspectorTabChange:
+    | ((tab: { label: string, selected: boolean }) => void)
+    | undefined
 } {
-  return { inspectorEl: activeInspectorEl, onNodeSelect: activeOnNodeSelect }
+  return {
+    inspectorEl: activeInspectorEl,
+    previewEl: activePreviewEl,
+    onNodeSelect: activeOnNodeSelect,
+    onPreviewOpenChange: activeOnPreviewOpenChange,
+    onInspectorTabChange: activeOnInspectorTabChange,
+  }
 }
 
 export function applyHostInit(options: WorkbenchInitOptions = {}): void {
   acquireHostInit(options.rewrite)
   initDepth += 1
   activeInspectorEl = options.inspectorEl
+  activePreviewEl = options.previewEl
   activeOnNodeSelect = options.onNodeSelect
+  activeOnPreviewOpenChange = options.onPreviewOpenChange
+  activeOnInspectorTabChange = options.onInspectorTabChange
   if (options.acceptReference) setInjectedAcceptReference(options.acceptReference)
   if (!options.host) return
   setWorkbenchHost(options.host)
@@ -69,7 +134,11 @@ export function releaseHostInit(): void {
   initDepth = Math.max(0, initDepth - 1)
   if (initDepth === 0) {
     activeInspectorEl = undefined
+    activePreviewEl = undefined
     activeOnNodeSelect = undefined
+    activeOnPreviewOpenChange = undefined
+    activeOnInspectorTabChange = undefined
+    setInspectorActive(true)
   }
   if (hostCount <= 0) return
   hostCount -= 1
@@ -83,7 +152,11 @@ export function resetHostInjectionForTests(): void {
   hostCount = 0
   initDepth = 0
   activeInspectorEl = undefined
+  activePreviewEl = undefined
   activeOnNodeSelect = undefined
+  activeOnPreviewOpenChange = undefined
+  activeOnInspectorTabChange = undefined
+  setInspectorActive(true)
   clearWorkbenchHost()
   setInjectedAcceptReference(null)
 }
