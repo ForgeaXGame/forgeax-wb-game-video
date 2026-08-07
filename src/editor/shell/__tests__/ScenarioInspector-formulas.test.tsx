@@ -59,6 +59,7 @@ describe('ScenarioInspector formulas', () => {
     expect(open).toHaveStyle({ color: 'rgba(255,255,255,.92)' })
     expect(closed).not.toHaveClass('is-open')
     expect(closed).toHaveStyle({ color: 'rgba(255,255,255,.34)' })
+    // '打' 是公式的 description（描述输入框仍存在，断言其值）
     expect(screen.getByDisplayValue('打')).toBeTruthy()
 
     fireEvent.click(closed)
@@ -78,8 +79,8 @@ describe('ScenarioInspector formulas', () => {
       />,
     )
 
-    const nameInput = screen.getByRole('textbox', { name: '公式 damage 名称' })
-    expect(nameInput).toHaveAttribute('size', '2')
+    const nameInput = screen.getByText('伤害')
+    expect(nameInput).toBeTruthy()
 
     const trigger = screen.getByRole('button', { name: '查看公式填写帮助' })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
@@ -200,7 +201,8 @@ describe('ScenarioInspector formulas', () => {
     )
 
     fireEvent.change(screen.getByRole('textbox', { name: '搜索公式' }), { target: { value: '防御' } })
-    expect(screen.getByDisplayValue('减法')).toBeTruthy()
-    expect(screen.queryByDisplayValue('加法')).toBeNull()
+    // 公式名称展示为 span：用文本查询验证搜索过滤仍工作
+    expect(screen.getByText('减法')).toBeTruthy()
+    expect(screen.queryByText('加法')).toBeNull()
   })
 })

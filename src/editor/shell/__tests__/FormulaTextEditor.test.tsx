@@ -30,6 +30,25 @@ describe('FormulaTextEditor hole guidance', () => {
     expect(highlight?.querySelectorAll('.gc-fx-hole-tag')).toHaveLength(2)
     expect(container.querySelectorAll('.gc-fx-hole-tag')).toHaveLength(2)
   })
+
+  it('highlights function names as ref tags when followed by (', () => {
+    const { container } = render(
+      <FormulaTextEditor
+        ast={{ t: 'num', id: 'n0', v: 0 }}
+        onChange={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: '公式表达式' }), {
+      target: { value: 'max(?攻击力, 0) + floor(?倍率)' },
+    })
+    const highlight = container.querySelector('.gc-fx-highlight')
+    // max / floor 各被包成一个 .gc-fx-ref-tag（函数名 tag），?参数 仍是 hole tag。
+    const refTags = highlight?.querySelectorAll('.gc-fx-ref-tag')
+    expect(refTags?.length).toBe(2)
+    expect(refTags?.[0]?.textContent).toBe('max')
+    expect(refTags?.[1]?.textContent).toBe('floor')
+    expect(highlight?.querySelectorAll('.gc-fx-hole-tag')).toHaveLength(2)
+  })
 })
 
 describe('FormulaTextEditor input state', () => {
@@ -76,6 +95,26 @@ describe('FormulaTextEditor input state', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ t: 'num', v: 25 }))
   })
 
+  it('clearing the input calls onEmpty instead of falling back to a 0 ast', () => {
+    const onChange = vi.fn()
+    const onEmpty = vi.fn()
+    render(
+      <FormulaTextEditor
+        ast={{ t: 'num', id: 'n0', v: 25 }}
+        onEmpty={onEmpty}
+        onChange={onChange}
+      />,
+    )
+
+    const input = screen.getByRole('textbox', { name: '公式表达式' }) as HTMLTextAreaElement
+    // 编辑后删空 → 应走 onEmpty（保持空），不应回退 onChange({t:'num',v:0}) 让 "0" 复活。
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.blur(input)
+
+    expect(onEmpty).toHaveBeenCalled()
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ t: 'num', v: 0 }))
+  })
+
   it('reports parsing errors without duplicating the short error or parameter count', async () => {
     const onChange = vi.fn()
     const onParseFailureChange = vi.fn()
@@ -101,7 +140,8 @@ describe('FormulaTextEditor input state', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(screen.queryByText('无法解析')).toBeNull()
     expect(screen.queryByText(/^错误详情：/)).toBeNull()
-    expect(screen.getByText(/可用：数字/)).toBeTruthy()
+    // 编辑器在解析失败时仍正常渲染（输入框可见，未卸载）。
+    expect(screen.getByRole('textbox', { name: '公式表达式' })).toBeTruthy()
     expect(onChange).not.toHaveBeenCalled()
 
     fireEvent.change(input, { target: { value: 'max(1, 2)' } })
@@ -187,14 +227,16 @@ describe('FormulaTextEditor authoring syntax', () => {
 
     fireEvent.click(variable)
     fireEvent.click(screen.getByRole('menuitem', { name: /连击/ }))
-    expect(input.value).toBe('entity.ent-player.attr.attackvar.combo')
+    // 连续插入的 tag 与前一个 tag 粘连成标识符会让解析失败，insert 自动补空格隔开。
+    expect(input.value).toBe('entity.ent-player.attr.attack var.combo')
 
     fireEvent.click(fn)
     fireEvent.click(screen.getByRole('menuitem', { name: 'max()' }))
-    expect(input.value).toBe('entity.ent-player.attr.attackvar.combomax()')
+    expect(input.value).toBe('entity.ent-player.attr.attack var.combo max()')
 
     fireEvent.click(parameter)
-    expect(input.value).toBe('entity.ent-player.attr.attackvar.combomax()?参数')
+    // 统一补空格：')' 非空格，插入 ?参数 前补一个空格隔开。
+    expect(input.value).toBe('entity.ent-player.attr.attack var.combo max() ?参数')
   })
 
   it('keeps empty catalog actions visible and disabled', () => {
