@@ -885,7 +885,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 minHeight: 0,
                 display: selectedCanConfigurePerformance ? 'grid' : 'flex',
                 gridTemplateColumns: selectedCanConfigurePerformance
-                  ? 'minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))'
+                  ? externalInspector
+                    ? 'minmax(0, var(--gv-preview-w)) minmax(0, 1fr)'
+                    : 'minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))'
                   : undefined,
                 overflowX: 'hidden',
               }}
@@ -938,19 +940,23 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                 data-testid="node-inspector-column"
                 style={{ gridColumn: 2, flex: `1 0 ${FORM_W_MIN}px`, minWidth: FORM_W_MIN, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
               >
-                {/* 一级页签栏（Figma 14597:21458）：Agent（预留空态）｜{节点名}调试面板，✕ 关闭右置。 */}
-                <NodePanelTabBar
-                  activeTab={nodePanelTab}
-                  configLabel={selectedNode ? `${selectedNode.data.name || selectedNode.id}调试面板` : '节点调试面板'}
-                  onTabChange={setNodePanelTab}
-                  onClose={() => setSelected(null)}
-                />
-                {/* Agent 页签内容区：暂留空，仅占位撑满本列。 */}
-                {nodePanelTab === 'agent' ? (
+                {/* 一级页签栏（Figma 14597:21458）：Agent（预留空态）｜{节点名}调试面板，✕ 关闭右置。
+                    宿主传入 inspectorEl 时由宿主 chrome 托管 Agent｜节点编辑，这里不再重复。 */}
+                {externalInspector ? null : (
+                  <NodePanelTabBar
+                    activeTab={nodePanelTab}
+                    configLabel={selectedNode ? `${selectedNode.data.name || selectedNode.id}调试面板` : '节点调试面板'}
+                    onTabChange={setNodePanelTab}
+                    onClose={() => setSelected(null)}
+                  />
+                )}
+                {/* Agent 页签内容区：暂留空，仅占位撑满本列。外置模式下不渲染。 */}
+                {!externalInspector && nodePanelTab === 'agent' ? (
                   <div data-testid="node-panel-agent" style={{ flex: 1, minHeight: 0 }} />
                 ) : null}
-                {/* 配置页签内容：切到 Agent 时仅 display:none 隐藏、保持挂载，组件本地状态不丢。 */}
-                <div data-testid="node-config-tab-content" style={{ display: nodePanelTab === 'config' ? 'contents' : 'none' }}>
+                {/* 配置页签内容：切到 Agent 时仅 display:none 隐藏、保持挂载，组件本地状态不丢。
+                    外置模式始终展示配置（宿主 tab 已分流 Agent）。 */}
+                <div data-testid="node-config-tab-content" style={{ display: (externalInspector || nodePanelTab === 'config') ? 'contents' : 'none' }}>
                   {selectedNode ? (
                     <NodeAgentVideoActions
                       game={game}

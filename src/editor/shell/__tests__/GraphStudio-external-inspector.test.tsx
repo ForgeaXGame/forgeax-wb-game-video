@@ -114,7 +114,13 @@ describe('GraphStudio · external inspectorEl', () => {
     expect(inspectorEl.querySelector('[data-testid="node-inspector-root"]')).toBeTruthy()
     expect(canvasHost.querySelector('[data-testid="node-inspector-root"]')).toBeNull()
     expect(canvasHost.querySelector('.gv-node-panel')).toBeNull()
-    expect(screen.getByText('Intro调试面板')).toBeTruthy()
+    // Host chrome already owns Agent | 节点编辑 — the embedded NodePanelTabBar
+    // (Agent / {name}调试面板 / ✕) must not duplicate it in the external slot.
+    expect(inspectorEl.querySelector('[aria-label="节点面板页签"]')).toBeNull()
+    expect(screen.queryByText('Intro调试面板')).toBeNull()
+    expect(inspectorEl.querySelector('[data-testid="node-config-tab-content"]')).toBeTruthy()
+    expect(screen.getByTestId('node-panel-columns').style.gridTemplateColumns)
+      .toBe('minmax(0, var(--gv-preview-w)) minmax(0, 1fr)')
   })
 
   it('notifies onNodeSelect on select and clear; empty state stays in the slot', async () => {
