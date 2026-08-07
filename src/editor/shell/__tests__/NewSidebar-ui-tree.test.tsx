@@ -119,6 +119,15 @@ describe('NewSidebar interface tree', () => {
     })
   })
 
+  it('uses the same disclosure arrow at every folder depth', () => {
+    render(<NewSidebar />)
+    const topLevelPath = screen.getByRole('button', { name: '展开 界面' }).querySelector('path')
+    expandUiTree()
+    const nestedPath = screen.getByRole('button', { name: '收起战斗' }).querySelector('path')
+
+    expect(nestedPath?.getAttribute('d')).toBe(topLevelPath?.getAttribute('d'))
+  })
+
   it('creates top-level folders from the 界面 add button before schemes can be added inside', () => {
     render(<NewSidebar />)
     fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))

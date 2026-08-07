@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Overlay } from '../../runtime/schema/graph-schema'
 import { injectStyleOnce } from '../../styles/injectStyle'
+import { DisclosureChevronIcon } from './DisclosureChevronIcon'
 
 export interface UiTreeViewNode {
   id: string
@@ -107,12 +108,6 @@ const UI_TREE_CSS = `
 
 type RowMode = 'rename' | 'delete' | null
 
-const ChevronIcon = (
-  <svg viewBox="0 0 20 20" fill="none" aria-hidden>
-    <path d="M15 12.5L10 7.5L5 12.5" stroke="currentColor" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 const PencilIcon = (
   <svg viewBox="0 0 14 14" fill="none" aria-hidden>
     <path d="M10.2083 6.41732L12.5416 4.08398L9.91661 1.45898L7.58327 3.79232L1.75 9.62565V12.2506H4.37494L10.2083 6.41732ZM7.58327 3.79232L10.2083 6.41732" stroke="currentColor" strokeWidth="1.16667" />
@@ -204,7 +199,7 @@ function UiTreeRow({
                 setExpanded((value) => !value)
               }}
             >
-              {ChevronIcon}
+              {DisclosureChevronIcon}
             </button>
           ) : null}
           {mode === 'rename' ? (
