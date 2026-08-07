@@ -106,29 +106,21 @@ function pickRegister(mod: GameComponentModule): ((host: ComponentHostApi) => vo
 }
 
 /**
- * 加载并注册某游戏仓的专属组件。**免构建优先**：
- *   1. Workbench —— 通过握手上下文的 `gameComponents.moduleUrl()` 读取游戏仓构建产物；
- *   2. dev —— 在没有构建产物时，直接吃游戏仓 `components/index.tsx` **源码**，经扩展 vite 现场编译
- *      （`/@game-components/<slug>/index.js`，见 vite.config `gameComponentsDevPlugin`）；
+ * 加载并注册某游戏仓的专属组件。模块来源由 Workbench Host 决定；
+ * 开发期可转译源码，生产环境提供构建产物。
  * 都拿不到 / 无 `register` → 静默 false，运行时继续用内建集（fail-soft）。
- * `base` 用于非同源场景显式指定源（dev 一般同源，留空即可）。
  */
-export async function loadGameComponents(slug: string | undefined, base = ''): Promise<boolean> {
+export async function loadGameComponents(slug: string | undefined): Promise<boolean> {
   if (!slug || loadedGames.has(slug)) return false
   loadedGames.add(slug)
-  const s = encodeURIComponent(slug)
-  const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-  const candidates = [
-    (() => {
-      try {
-        return getWorkbenchHost().gameComponents.moduleUrl('index.js')
-      } catch {
-        return null
-      }
-    })(),
-    ...(isDev ? [`${base}/@game-components/${s}/index.js`] : []),
-  ].filter((url): url is string => Boolean(url))
-  for (const url of candidates) {
+  const url = (() => {
+    try {
+      return getWorkbenchHost().gameComponents.moduleUrl('index.js')
+    } catch {
+      return null
+    }
+  })()
+  if (url) {
     try {
       const mod = (await import(/* @vite-ignore */ url)) as GameComponentModule
       const reg = pickRegister(mod)
@@ -137,7 +129,7 @@ export async function loadGameComponents(slug: string | undefined, base = ''): P
         return true
       }
     } catch {
-      /* 未构建 / 无源码 / 加载失败 → 试下一个 */
+      /* 模块不可用 → 回落内建集 */
     }
   }
   loadedGames.delete(slug)

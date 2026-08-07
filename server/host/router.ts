@@ -12,12 +12,46 @@ import {
   WbServiceInputError,
 } from './wb-service'
 import { WB_GAME_VIDEO_POST_SERVICE_ROUTES } from './http-routes'
+import type { AssetLibraryState } from '../../src/editor/assets/registry-types'
 
 export { WB_GAME_VIDEO_HTTP_ROUTES, WB_GAME_VIDEO_POST_SERVICE_ROUTES } from './http-routes'
 export type { WbGameVideoHttpRoute, WbGameVideoServiceMethod } from './http-routes'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+const ASSET_MANIFEST_FILE = 'assets/manifest.json'
+
+const EMPTY_ASSET_LIBRARY: AssetLibraryState = {
+  version: 1,
+  folders: [],
+  placements: {},
+}
+
+function assetLibraryFromManifest(value: unknown): AssetLibraryState {
+  if (!value || typeof value !== 'object') return EMPTY_ASSET_LIBRARY
+  const candidate = (value as { assetLibrary?: unknown }).assetLibrary
+  if (!candidate || typeof candidate !== 'object') return EMPTY_ASSET_LIBRARY
+  const state = candidate as Partial<AssetLibraryState>
+  if (
+    state.version !== 1
+    || !Array.isArray(state.folders)
+    || !state.placements
+    || typeof state.placements !== 'object'
+  ) return EMPTY_ASSET_LIBRARY
+  return state as AssetLibraryState
+}
+
+async function readManifest(context: WorkbenchExtensionContext): Promise<Record<string, unknown>> {
+  const raw = await context.files.read(ASSET_MANIFEST_FILE)
+  if (!raw) return { version: 2, assets: [] }
+  try {
+    const parsed = JSON.parse(decoder.decode(raw))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error()
+    return parsed as Record<string, unknown>
+  } catch {
+    throw new WbServiceInputError('assets manifest is invalid')
+  }
+}
 
 function jsonResponse(
   status: number,
@@ -155,6 +189,26 @@ export function createWbGameVideoRouter(
             'kind', 'productionType', 'sceneNodeId',
           ])
           return jsonResponse(200, await service.listAssets(query))
+        }
+        if (method === 'GET' && path === 'asset-library') {
+          exactQuery(request.query, [])
+          const manifest = await readManifest(context)
+          return jsonResponse(200, { assetLibrary: assetLibraryFromManifest(manifest) })
+        }
+        if (method === 'POST' && path === 'asset-library') {
+          exactQuery(request.query, [])
+          const body = jsonBody(request)
+          if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            throw new WbServiceInputError('assetLibrary payload is invalid')
+          }
+          const assetLibrary = assetLibraryFromManifest(body)
+          if (assetLibrary === EMPTY_ASSET_LIBRARY && (body as { assetLibrary?: unknown }).assetLibrary !== undefined) {
+            throw new WbServiceInputError('assetLibrary is invalid')
+          }
+          const manifest = await readManifest(context)
+          const next = { ...manifest, assetLibrary }
+          await context.files.write(ASSET_MANIFEST_FILE, encoder.encode(JSON.stringify(next, null, 2)))
+          return jsonResponse(200, { assetLibrary })
         }
         if (
           method === 'GET'

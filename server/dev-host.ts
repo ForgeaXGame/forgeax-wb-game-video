@@ -353,7 +353,9 @@ export function createDevWorkbenchHost(
   const extensionRoot = realpathSync(
     options.extensionRoot ?? resolve(fileURLToPath(new URL('..', import.meta.url))),
   )
-  const gamesRoot = resolve(options.gamesRoot ?? resolve(extensionRoot, '.workbench-dev', 'games'))
+  const gamesRoot = resolve(
+    options.gamesRoot ?? resolve(extensionRoot, '../../../..', '.forgeax', 'games'),
+  )
   mkdirSync(gamesRoot, { recursive: true })
   const rawManifest = JSON.parse(readFileSync(resolve(extensionRoot, 'forgeax-extension.json'), 'utf8'))
   const registry = new RuntimeRegistry()
