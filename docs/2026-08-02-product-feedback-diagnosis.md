@@ -192,8 +192,8 @@ bun run test -- \
   src/editor/shell/__tests__/ScenarioInspector-entities.test.tsx \
   src/editor/shell/__tests__/GraphStudio-node-panel.test.tsx \
   src/editor/shell/__tests__/valueExprPick.test.ts \
-  src/runtime/component-host/components/new/__tests__/BattleHpBars.test.tsx \
-  src/runtime/component-host/components/new/__tests__/NumericHpBar.test.tsx \
+  src/runtime/component-host/components/__tests__/BattleHpBars.test.tsx \
+  src/runtime/component-host/components/__tests__/NumericHpBar.test.tsx \
   src/runtime/__tests__/apply-effects.test.ts \
   src/runtime/__tests__/session.test.ts
 

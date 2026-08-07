@@ -44,4 +44,4 @@
 |---|---|
 | Overlay 契约 | `src/runtime/schema/node-config-schema.ts` |
 | 类型 SSOT | `src/runtime/schema/node-config-schema.ts` + `graph-schema.ts` |
-| 组件 props / 注册 | `src/runtime/component-host/rendererRegistry.tsx` · `components/index.ts` · `skinRuntime.ts` |
+| 组件 props / 注册 | `src/runtime/component-host/rendererRegistry.tsx` · `component-host/index.ts` · `components/index.ts` |

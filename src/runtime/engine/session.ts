@@ -9,7 +9,7 @@ import type { GameGraph, GameNode, GameScenario, GraphLibraryDocument, SubFlowPa
 import type { Layout } from '../schema/node-config-schema'
 import { GraphRuntime, type GraphRuntimeCheckpoint } from './engine'
 import type { ComponentRegistry } from '../registry/component-registry'
-import { createCoreSkinRegistry, createDefaultComponentRegistry } from '../component-host/components'
+import { createCoreSkinRegistry, createDefaultComponentRegistry } from '../component-host'
 import type { SkinRegistry } from '../component-host/rendererRegistry'
 import type { RuntimeDirective } from './directives'
 import type { BgmPlaybackCommand } from './bgm-stack'

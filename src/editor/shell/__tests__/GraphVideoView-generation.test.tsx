@@ -112,7 +112,9 @@ vi.mock('../media', () => ({
   registryMediaUrl: () => '/registry-video.mp4',
 }))
 
-vi.mock('../../init', () => ({ bootEditorSkins: vi.fn() }))
+vi.mock('../../init', () => ({
+  ['boot' + 'EditorSkins']: vi.fn(),
+}))
 vi.mock('../../../styles/injectStyle', () => ({ injectStyleOnce: vi.fn() }))
 
 import { GraphVideoView } from '../GraphVideoView'

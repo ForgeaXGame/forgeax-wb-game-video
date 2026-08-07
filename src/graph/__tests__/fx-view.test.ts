@@ -1,12 +1,7 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { toFXView } from '../canvas/fx-view'
 import { NODIA_DEMO } from '../../editor/demo/demo'
-import { registerCoreSkins } from '../../runtime/component-host/components'
 import { getSubProcess } from '../../runtime/schema/graph-schema'
-
-beforeAll(() => {
-    registerCoreSkins()
-})
 
 const overlays = () => NODIA_DEMO.ui?.overlays
 const processGraph = (id: string) => getSubProcess(NODIA_DEMO.graph.nodes.find((n) => n.id === id)!.data)!.graph
@@ -34,12 +29,12 @@ describe('toFXView', () => {
     expect(e.targetHandle).toBe('target:in')
   })
 
-  it('output handles carry Chinese display labels', () => {
+  it('output handles preserve stable flow labels without a catalog', () => {
     const fx = toFXView(processGraph('a_my'), overlays())
     const wait = fx.nodes.find((n) => n.id === 'wait')!
     const light = wait.outputs.find((h) => h.data?.flowId === 'light')!
-    expect(light.label).toBe('轻攻击')
-    expect(light.data?.displayLabel).toBe('轻攻击')
+    expect(light.label).toBe('light')
+    expect(light.data?.displayLabel).toBe('light')
     const handoff = toFXView(NODIA_DEMO.graph, overlays()).nodes.find((n) => n.id === 'n_nolotus')!
     const def = handoff.outputs.find((h) => h.data?.flowId === 'default')!
     expect(def.label).toBe('默认推进')

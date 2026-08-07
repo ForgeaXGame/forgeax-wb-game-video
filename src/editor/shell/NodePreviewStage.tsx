@@ -27,7 +27,7 @@ import type { GameNode, GameScenario, Layout, OverlayInstanceChild } from '../..
 import type { SkinCtx } from '../../runtime/component-host/rendererRegistry'
 import { bootEditorSkins } from '../init'
 import { injectStyleOnce } from '../../styles/injectStyle'
-import { createCoreSkinRegistry } from '../../runtime/component-host/components'
+import { createCoreSkinRegistry } from '../../runtime/component-host'
 import { resolveVideoFxForNode } from '../../runtime/fx/video-fx'
 import { CATALOG_CSS } from './catalogCss'
 import { renderOverlayChildPreview } from './overlayChildPreview'

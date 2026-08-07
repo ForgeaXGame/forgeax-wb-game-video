@@ -374,7 +374,7 @@ describe('NodeInspector · 结算选中联动', () => {
       edges: [],
     }
     const overlays = {
-      hud: { id: 'hud', children: [{ id: 'hp', component: 'BattlePlayerHpBar' }] },
+      hud: { id: 'hud', children: [{ id: 'hp', component: 'test.hud' }] },
     }
     const { container, rerender } = render(
       <NodeInspector
@@ -480,7 +480,7 @@ describe('NodeInspector · 结算选中联动', () => {
         title: '怒气值界面',
         children: [{
           id: 'value',
-          component: 'DamageFloatText',
+          component: 'test.float',
           trigger: { when: 'enter' },
           window: { startMs: 200, endMs: 1_000 },
           inputs: { value: 0 },
@@ -514,7 +514,7 @@ describe('NodeInspector · 结算选中联动', () => {
         title: '怒气值界面',
         children: [{
           id: 'value',
-          component: 'DamageFloatText',
+          component: 'test.float',
           trigger: { when: 'enter' },
           window: { startMs: 0 },
           inputs: {},
@@ -548,7 +548,7 @@ describe('NodeInspector · 结算选中联动', () => {
         title: '怒气值界面',
         children: [{
           id: 'value',
-          component: 'DamageFloatText',
+          component: 'test.float',
           trigger: { when: 'enter' },
           window: { startMs: 0, endMs: 1_200 },
           inputs: { value: 0 },
@@ -583,7 +583,7 @@ describe('NodeInspector · 结算选中联动', () => {
         title: '怒气值界面',
         children: [{
           id: 'value',
-          component: 'DamageFloatText',
+          component: 'test.float',
           trigger: { when: 'enter' },
           inputs: { value: 0 },
           layout: { left: 0.5, top: 0.2 },
@@ -616,7 +616,7 @@ describe('NodeInspector · 结算选中联动', () => {
       rageHud: {
         id: 'rageHud',
         title: '怒气值界面',
-        children: [{ id: 'value', component: 'DamageFloatText', inputs: { value: 0 } }],
+        children: [{ id: 'value', component: 'test.float', inputs: { value: 0 } }],
       },
     }
     let latest = graphWith([
@@ -657,7 +657,7 @@ describe('NodeInspector · 结算选中联动', () => {
       rageHud: {
         id: 'rageHud',
         title: '怒气值界面',
-        children: [{ id: 'value', component: 'DamageFloatText', inputs: { value: 0 } }],
+        children: [{ id: 'value', component: 'test.float', inputs: { value: 0 } }],
       },
     }
     let latest = graphWith([

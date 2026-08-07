@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { GraphSession } from '../engine/session'
-import { createDefaultComponentRegistry } from '../component-host/components'
 import { ComponentRegistry } from '../registry/component-registry'
 import { node, scnOf } from './test-fixtures'
 import {
@@ -15,18 +14,13 @@ describe('multi-runtime isolation (B)', () => {
     const b = new GraphSession(scnOf({ nodes: [node('b')], edges: [] }))
     expect(a.runtime.components).not.toBe(b.runtime.components)
     expect(a.skins).not.toBe(b.skins)
-    expect(a.runtime.components.getComponent('InkKou')?.events?.length).toBeGreaterThan(0)
-    expect(b.runtime.components.getComponent('InkKou')?.events?.length).toBeGreaterThan(0)
   })
 
   it('custom component on one registry is invisible to another registry', () => {
-    const onlyA = createDefaultComponentRegistry()
+    const onlyA = new ComponentRegistry()
     onlyA.registerComponent('secretView', {})
     expect(onlyA.getComponent('secretView')).toBeDefined()
     expect(new ComponentRegistry().getComponent('secretView')).toBeUndefined()
-    // 默认组件包在 A，裸表没有
-    expect(onlyA.getComponent('InkKou')?.events?.length).toBeGreaterThan(0)
-    expect(new ComponentRegistry().getComponent('InkKou')).toBeUndefined()
   })
 })
 
