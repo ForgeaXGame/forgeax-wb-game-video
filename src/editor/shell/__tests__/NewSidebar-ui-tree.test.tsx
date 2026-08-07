@@ -4,6 +4,7 @@ import type { BlueprintDoc, GameGraph } from '../../../runtime/schema/graph-sche
 import { findUiTreeNode } from '../../persist/ui-tree'
 import { useGraphScenario } from '../../persist/graphScenarioStore'
 import { useGraphView } from '../../persist/graphViewStore'
+import { useRuleSelection } from '../../persist/ruleSelectionStore'
 import { useUiSelection } from '../../persist/uiSelectionStore'
 import { NewSidebar } from '../NewSidebar'
 
@@ -13,6 +14,7 @@ const main: BlueprintDoc = { id: 'main', title: '主蓝图', entry: 'entry', gra
 
 beforeEach(() => {
   useGraphView.setState({ view: 'ui' })
+  useRuleSelection.setState({ section: 'entities', itemId: null })
   useUiSelection.getState().clearUiSelection()
   useGraphScenario.setState({
     booted: true,
@@ -83,28 +85,34 @@ describe('NewSidebar interface tree', () => {
   it('creates top-level folders from the 界面 add button before schemes can be added inside', () => {
     render(<NewSidebar />)
     fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
+    const input = screen.getByPlaceholderText('新建界面组名称')
+    fireEvent.change(input, { target: { value: '过场界面' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     const selectedId = useUiSelection.getState().selectedTreeNodeId!
     const meta = useGraphScenario.getState().meta
     expect(findUiTreeNode(meta.uiTree!, selectedId)).toMatchObject({
       kind: 'folder',
-      name: '新文件夹',
+      name: '过场界面',
     })
     expect(meta.uiTree?.root.some((node) => node.id === selectedId)).toBe(true)
     expect(useGraphView.getState().view).toBe('ui')
   })
 
-  it('creates an overlay in the selected folder from the 界面 add button', () => {
+  it('creates a named overlay from the folder add button', () => {
     render(<NewSidebar />)
     expandUiTree()
-    fireEvent.click(screen.getByRole('button', { name: '选择文件夹 战斗' }))
-    fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
+    fireEvent.click(screen.getByLabelText('新增界面 战斗'))
+    const input = screen.getByPlaceholderText('新建界面名称')
+    fireEvent.change(input, { target: { value: '战斗结算' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     const selection = useUiSelection.getState()
     expect(selection.selectedOverlayId).toBeTruthy()
     const meta = useGraphScenario.getState().meta
     expect(meta.ui?.overlays?.[selection.selectedOverlayId!]).toMatchObject({
       id: selection.selectedOverlayId,
+      title: '战斗结算',
       children: [],
     })
     expect(findUiTreeNode(meta.uiTree!, selection.selectedTreeNodeId!)).toMatchObject({
@@ -116,6 +124,9 @@ describe('NewSidebar interface tree', () => {
   it('persists nested folder rename and delete operations', () => {
     render(<NewSidebar />)
     fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
+    const input = screen.getByPlaceholderText('新建界面组名称')
+    fireEvent.change(input, { target: { value: '新文件夹' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
     const folderId = useUiSelection.getState().selectedTreeNodeId!
     expect(findUiTreeNode(useGraphScenario.getState().meta.uiTree!, folderId)).toMatchObject({
       kind: 'folder',
@@ -145,5 +156,18 @@ describe('NewSidebar interface tree', () => {
     const meta = useGraphScenario.getState().meta
     expect(meta.ui?.overlays?.hud).toBeUndefined()
     expect(findUiTreeNode(meta.uiTree!, 'hud-node')).toBeUndefined()
+  })
+
+  it('routes the formula navigation leaf to the formula rule section', () => {
+    render(<NewSidebar />)
+
+    fireEvent.click(screen.getByRole('button', { name: '展开 规则' }))
+    fireEvent.click(screen.getByText('公式'))
+
+    expect(useGraphView.getState().view).toBe('rule')
+    expect(useRuleSelection.getState()).toMatchObject({
+      section: 'formulas',
+      itemId: null,
+    })
   })
 })

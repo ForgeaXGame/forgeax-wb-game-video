@@ -11,6 +11,7 @@ import { FormulaTextEditor } from './FormulaTextEditor'
 import { LooseNumberInput } from './TermChainEditor'
 import type { ScenarioIdRename } from '../persist/scenario-id'
 import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
+import { injectStyleOnce } from '../../styles/injectStyle'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
@@ -34,6 +35,72 @@ const sectionTitle: CSSProperties = {
 }
 const variableGridColumns = 'minmax(0, 0.9fr) minmax(0, 1.5fr) minmax(4rem, 0.5fr) minmax(3.5rem, 0.55fr) 2rem'
 const entityAttrGrid = 'minmax(4.5rem, 0.45fr) minmax(0, 0.9fr) minmax(4rem, 0.5fr) minmax(7rem, 1.25fr) 2rem'
+const FORMULA_RULES_CSS = `
+.sir-formulas { min-width:0; }
+.sir-formula-toolbar {
+  height:44px; display:flex; align-items:center; justify-content:flex-end; gap:12px;
+}
+.sir-formula-create {
+  height:24px; padding:0 10px; border:0; border-radius:6px;
+  background:rgba(255,255,255,.08); color:rgba(255,255,255,.86);
+  font-size:12px; cursor:pointer;
+}
+.sir-formula-search {
+  box-sizing:border-box; width:190px; height:24px; padding:0 10px 0 30px;
+  border:0; border-radius:6px; outline:0; color:rgba(255,255,255,.86);
+  background:rgba(255,255,255,.08);
+}
+.sir-formula-search::placeholder { color:rgba(255,255,255,.32); }
+.sir-formula-search-wrap { position:relative; display:inline-flex; }
+.sir-formula-search-icon {
+  position:absolute; left:10px; top:50%; width:12px; height:12px;
+  transform:translateY(-50%); color:rgba(255,255,255,.88); pointer-events:none;
+}
+.sir-formula-row { border-bottom:1px solid rgba(255,255,255,.08); }
+.sir-formula-row:first-of-type { border-top:1px solid rgba(255,255,255,.08); }
+.sir-formula-head {
+  min-height:64px; display:flex; align-items:center; gap:8px; position:relative;
+}
+.sir-formula-toggle {
+  width:16px; height:20px; padding:0; border:0; background:transparent;
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+  color:rgba(255,255,255,.34);
+}
+.sir-formula-toggle.is-open { color:rgba(255,255,255,.92); }
+.sir-formula-toggle svg {
+  width:12px; height:12px; display:block; transition:transform .16s ease,color .16s ease;
+}
+.sir-formula-toggle.is-open svg { transform:rotate(-90deg); }
+.sir-formula-name {
+  min-width:0; width:auto; max-width:40%; padding:0; border:0; outline:0;
+  background:transparent; color:rgba(255,255,255,.9); font:inherit; font-size:14px;
+}
+.sir-formula-id { color:rgba(255,255,255,.32); font-size:14px; }
+.sir-formula-more {
+  margin-left:auto; width:24px; height:24px; padding:0; border:0;
+  background:transparent; color:rgba(255,255,255,.9); font-size:18px;
+  line-height:18px; cursor:pointer;
+}
+.sir-formula-menu {
+  position:absolute; z-index:3; right:0; top:46px; padding:4px;
+  border:1px solid rgba(255,255,255,.1); border-radius:6px; background:#242424;
+  box-shadow:0 8px 20px rgba(0,0,0,.3);
+}
+.sir-formula-menu button {
+  min-width:72px; height:26px; border:0; border-radius:4px; background:transparent;
+  color:#ff8e8e; cursor:pointer;
+}
+.sir-formula-menu button:hover { background:rgba(255,255,255,.08); }
+.sir-formula-body { padding:0 0 14px; }
+.sir-formula-field { display:grid; gap:6px; margin-bottom:10px; }
+.sir-formula-field > span { color:rgba(255,255,255,.48); font-size:12px; }
+.sir-formula-field > input {
+  box-sizing:border-box; width:100%; height:24px; padding:0 8px;
+  border:0; border-radius:6px; outline:0; background:rgba(0,0,0,.55);
+  color:rgba(255,255,255,.88);
+}
+.sir-formula-empty { padding:20px 0; color:rgba(255,255,255,.38); }
+`
 
 function field(label: string, node: JSX.Element): JSX.Element {
   return (
@@ -256,6 +323,7 @@ export function ScenarioInspector({
   onChange: (next: ScenarioMeta) => void
   onRenameId?: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
 }): JSX.Element {
+  injectStyleOnce('scenario-inspector-formulas', FORMULA_RULES_CSS)
   const show = (s: ScenarioSection) => !section || section === s
   const variables = value.variables ?? {}
   const entities = value.entities ?? {}
@@ -266,10 +334,14 @@ export function ScenarioInspector({
   const schemeIds = sortSchemeIds(Object.keys(allOverlays).filter((id) => !id.startsWith('node:')))
   // 标题输入本地缓存：onChange 自由输入，onBlur 时提交到 renameScheme 做重名校验。
   const [schemeLocalTitles, setSchemeLocalTitles] = useState<Record<string, string>>({})
+  const [formulaSearch, setFormulaSearch] = useState('')
+  useEffect(() => {
+    if (section === 'formulas' && focusItemId) setFormulaSearch('')
+  }, [focusItemId, section])
   useEffect(() => {
     if (!focusItemId) return
     document.getElementById(`rule-item:${focusItemId}`)?.scrollIntoView({ block: 'nearest' })
-  }, [focusItemId, section])
+  }, [focusItemId, formulaSearch, section])
   const setOverlays = (overlays: Record<string, Overlay>) => onChange({ ...value, ui: { ...value.ui, overlays } })
   const patchOverlayChildInMeta = (
     overlayId: string,
@@ -330,6 +402,12 @@ export function ScenarioInspector({
   const setVariables = (v: Record<string, Variable>) => onChange({ ...value, variables: v })
   const setEntities = (e: Record<string, Entity>) => onChange({ ...value, entities: e })
   const setFormulas = (f: Record<string, Formula>) => onChange({ ...value, formulas: f })
+  const normalizedFormulaSearch = formulaSearch.trim().toLocaleLowerCase()
+  const formulaEntries = Object.entries(formulas).filter(([id, formula]) => {
+    if (!normalizedFormulaSearch) return true
+    return [id, formula.name, formula.description]
+      .some((part) => part?.toLocaleLowerCase().includes(normalizedFormulaSearch))
+  })
 
   return (
     <div style={{ padding: 10, fontSize: 12 }}>
@@ -539,10 +617,10 @@ export function ScenarioInspector({
       )}
 
       {show('formulas') && (
-        <>
-          <div style={sectionTitle}>
-            <b>公式</b>
+        <div className="sir-formulas">
+          <div className="sir-formula-toolbar">
             <button
+              className="sir-formula-create"
               onClick={() => {
                 const id = allocId('formula-', formulas)
                 setFormulas({
@@ -556,31 +634,45 @@ export function ScenarioInspector({
                 })
               }}
             >
-              + 公式
+              ＋ 新建公式
             </button>
+            <span className="sir-formula-search-wrap">
+              <svg className="sir-formula-search-icon" viewBox="0 0 12 12" fill="none" aria-hidden>
+                <circle cx="5.25" cy="5.25" r="3.75" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8.1 8.1L10.8 10.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                className="sir-formula-search"
+                aria-label="搜索公式"
+                placeholder="搜索公式"
+                value={formulaSearch}
+                onChange={(event) => setFormulaSearch(event.target.value)}
+              />
+            </span>
           </div>
           <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>
             定义可复用的计算公式（如伤害公式）；条款里的「实体」可留空，蓝图/时间轴应用该公式时再选具体实体填空。
           </div>
-          {Object.keys(formulas).length === 0 ? <div style={{ opacity: 0.5 }}>暂无公式</div> : null}
-          {Object.entries(formulas).map(([key, f]) => (
-            <div key={key} id={`rule-item:${key}`}>
-              <FormulaRow
-                formulaKey={key}
-                formula={f}
-                formulas={formulas}
-                entities={entities}
-                variables={variables}
-                onChange={(next) => setFormulas({ ...formulas, [key]: { ...next, id: key } })}
-                onRename={onRenameId}
-                onDelete={() => {
-                  const { [key]: _drop, ...rest } = formulas
-                  setFormulas(rest)
-                }}
-              />
-            </div>
+          {formulaEntries.length === 0 ? (
+            <div className="sir-formula-empty">{normalizedFormulaSearch ? '没有匹配的公式' : '暂无公式'}</div>
+          ) : null}
+          {formulaEntries.map(([key, f], index) => (
+            <FormulaRow
+              key={key}
+              formulaKey={key}
+              formula={f}
+              entities={entities}
+              variables={variables}
+              defaultExpanded={index === 0 || focusItemId === key}
+              focused={focusItemId === key}
+              onChange={(next) => setFormulas({ ...formulas, [key]: { ...next, id: key } })}
+              onDelete={() => {
+                const { [key]: _drop, ...rest } = formulas
+                setFormulas(rest)
+              }}
+            />
           ))}
-        </>
+        </div>
       )}
 
     </div>
@@ -754,61 +846,93 @@ function EntityRow({
 function FormulaRow({
   formulaKey,
   formula,
-  formulas,
   entities,
   variables,
+  defaultExpanded,
+  focused,
   onChange,
-  onRename,
   onDelete,
 }: {
   formulaKey: string
   formula: Formula
-  formulas: Record<string, Formula>
   entities: Record<string, Entity>
   variables: Record<string, Variable>
+  defaultExpanded: boolean
+  focused: boolean
   onChange: (next: Formula) => void
-  onRename: (rename: ScenarioIdRename) => { ok: true } | { ok: false; reason: 'empty_id' | 'duplicate_id' | 'not_found' }
   onDelete: () => void
 }): JSX.Element {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => {
+    if (focused) setExpanded(true)
+  }, [focused])
   return (
-    <div style={box}>
-      {field('id', <EditableIdInput value={formula.id} existing={formulas} rename={{ kind: 'formula', oldId: formulaKey }} onRename={onRename} label="公式 ID" />)}
-      {field(
-        '名称',
+    <div id={`rule-item:${formulaKey}`} className="sir-formula-row">
+      <div className="sir-formula-head">
+        <button
+          type="button"
+          className={`sir-formula-toggle${expanded ? ' is-open' : ''}`}
+          aria-label={`${expanded ? '折叠' : '展开'}公式 ${formula.name || formulaKey}`}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <svg viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
         <input
+          className="sir-formula-name"
+          aria-label={`公式 ${formulaKey} 名称`}
           value={formula.name ?? ''}
           onChange={(e) => onChange({ ...formula, id: formulaKey, name: e.target.value })}
-          style={{ flex: 1 }}
-        />,
-      )}
-      {field(
-        '描述',
-        <input
-          value={formula.description ?? ''}
-          placeholder="如：伤害 = 攻击力 × 倍率 - 防御力"
-          onChange={(e) => onChange({ ...formula, id: formulaKey, description: e.target.value || undefined })}
-          style={{ flex: 1 }}
-        />,
-      )}
-      <div style={{ margin: '6px 0 2px', fontSize: 11, opacity: 0.7 }}>公式（留空位 = 应用时再填的参数/实体）</div>
-      <FormulaTextEditor
-        ast={formula.ast}
-        empty={formula.draftEmpty}
-        entities={entities}
-        variables={variables}
-        onEmpty={formula.draftEmpty
-          ? () => onChange({ ...formula, id: formulaKey, draftEmpty: true })
-          : undefined}
-        onChange={(ast) => onChange({
-          ...formula,
-          id: formulaKey,
-          ast,
-          draftEmpty: undefined,
-        })}
-      />
-      <button style={{ ...del, marginTop: 6 }} onClick={onDelete}>
-        删除公式
-      </button>
+        />
+        <span className="sir-formula-id">id:{formulaKey}</span>
+        <button
+          type="button"
+          className="sir-formula-more"
+          aria-label={`${formula.name || formulaKey}更多操作`}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((current) => !current)}
+        >
+          ⋯
+        </button>
+        {menuOpen ? (
+          <div className="sir-formula-menu" role="menu">
+            <button type="button" onClick={onDelete}>删除公式</button>
+          </div>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="sir-formula-body">
+          <label className="sir-formula-field">
+            <span>描述</span>
+            <input
+              value={formula.description ?? ''}
+              placeholder="如：伤害 = 攻击力 × 倍率 - 防御力"
+              onChange={(e) => onChange({ ...formula, id: formulaKey, description: e.target.value || undefined })}
+            />
+          </label>
+          <div className="sir-formula-field">
+            <span>公式</span>
+            <FormulaTextEditor
+              ast={formula.ast}
+              empty={formula.draftEmpty}
+              entities={entities}
+              variables={variables}
+              onEmpty={formula.draftEmpty
+                ? () => onChange({ ...formula, id: formulaKey, draftEmpty: true })
+                : undefined}
+              onChange={(ast) => onChange({
+                ...formula,
+                id: formulaKey,
+                ast,
+                draftEmpty: undefined,
+              })}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
