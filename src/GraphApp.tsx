@@ -26,7 +26,7 @@ import { installAssetNavSync } from './editor/persist/assetNavStore'
 import { installDocumentNavSync } from './editor/persist/documentNavStore'
 import { installRuleSelectionSync } from './editor/persist/ruleSelectionStore'
 import { installVideoLibraryNavSync } from './editor/persist/videoLibraryNavStore'
-import { getGameSlug } from './editor/persist/gameScope'
+import { getGameSlug, setSyncGameId } from './editor/persist/gameScope'
 import { injectStyleOnce } from './styles/injectStyle'
 import { GameBootstrap } from './editor/bootstrap/GameBootstrap'
 import { useGlobalVideoGenerationTracker } from './editor/assets/generation/videoGenerationStore'
@@ -139,9 +139,14 @@ export function GraphApp({ pane: explicitPane, gameId, autoInitialize }: GraphAp
   const ensureBoot = useGraphScenario((state) => state.ensureBoot)
   const booted = useGraphScenario((state) => state.booted)
   const gameSlug = resolveGameSlug(gameId)
+  // 权威 game 来源：boot 后由 store 写入（center 来自宿主握手的 context.gameId，
+  // left 来自 ensureBoot）。频道命名必须等它到位，否则同源多 tab 会共用空后缀串台。
+  const activeGame = useGraphScenario((state) => state.game)
 
   useEffect(() => {
-    if (pane === null) return
+    if (pane === null || !activeGame) return
+    // 用真实 game 作为跨 tab 同步频道的作用域，再安装，保证不同 game 的 tab 互不收听。
+    setSyncGameId(activeGame)
     const disposeView = installGraphViewSync()
     const disposeUiNav = installUiNavSync(pane)
     const disposeBp = installGraphBlueprintSync()
@@ -158,7 +163,7 @@ export function GraphApp({ pane: explicitPane, gameId, autoInitialize }: GraphAp
       disposeUiNav()
       disposeView()
     }
-  }, [pane])
+  }, [pane, activeGame])
 
   useEffect(() => installKinoVideoCacheSync(), [])
 
