@@ -1,26 +1,11 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { requestKinoEnvelope, type KinoRequestOptions } from '../kino-api'
+import type { KinoRequestOptions } from '../kino-api'
+import { getRegistryAsset, listRegistryAssets } from '../../shell/media'
+import type { MediaAsset } from '../registry-types'
 import type { VideoGenerationTask, VideoGenerationStatus } from './generation-api'
 
 export const VIDEO_GENERATION_POLL_INTERVAL_MS = 3_000
-
-interface GenerationTaskDTO {
-  generation_id: string
-  status: VideoGenerationStatus
-  prompt_text?: string
-  model?: string
-  provider_task_id?: string
-  result_url?: string
-  resource?: { resource_id?: unknown }
-  error_code?: string
-  error_message?: string
-  created_at?: number
-}
-
-interface ActiveGenerationPageDTO {
-  items: GenerationTaskDTO[]
-}
 
 export interface VideoGenerationStoreEntry {
   tasks: readonly VideoGenerationTask[]
@@ -47,21 +32,18 @@ const EMPTY_ENTRY: VideoGenerationStoreEntry = {
 }
 
 /**
- * Reads the server-owned Kino task projection. This deliberately uses the
- * Studio same-origin API instead of the extension router: a long-running
- * generation must not prevent status recovery when the extension page unmounts.
+ * Reads Workbench-owned durable placeholders. Generation continues inside the
+ * host when the page unmounts, while this app-level store recovers prompt and
+ * status from the same asset registry used by the extension backend.
  */
 export async function listActiveVideoGenerationTasks(
   gameSlug: string,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask[]> {
-  const page = await requestKinoEnvelope<ActiveGenerationPageDTO>('/api/v1/kino-generations', {
-    query: { gameSlug },
-    signal: options.signal,
-    fetch: globalThis.fetch.bind(globalThis),
-  })
-  if (!page || !Array.isArray(page.items)) throw new Error('Video generation list returned an invalid response')
-  return page.items.map(toTask)
+  const assets = await listRegistryAssets(gameSlug, 'video', { signal: options.signal })
+  return assets
+    .filter((asset) => asset.productionType === 'video_clip' && isActiveStatus(asset.status))
+    .map(toTask)
 }
 
 export async function getVideoGenerationTask(
@@ -69,15 +51,12 @@ export async function getVideoGenerationTask(
   generationId: string,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask> {
-  const task = await requestKinoEnvelope<GenerationTaskDTO>(
-    `/api/v1/kino-generations/${encodeURIComponent(generationId)}`,
-    {
-      query: { gameSlug },
-      signal: options.signal,
-      fetch: globalThis.fetch.bind(globalThis),
-    },
-  )
-  return toTask(task)
+  if (options.signal?.aborted) throw options.signal.reason
+  const asset = await getRegistryAsset(gameSlug, generationId)
+  if (!asset || asset.productionType !== 'video_clip') {
+    throw new Error('Video generation task was not found')
+  }
+  return toTask(asset)
 }
 
 export const useVideoGenerationStore = create<VideoGenerationStore>((set, get) => ({
@@ -176,28 +155,27 @@ export function useGlobalVideoGenerationTracker(gameSlug: string): void {
   }, [gameSlug, refresh])
 }
 
-function toTask(dto: GenerationTaskDTO): VideoGenerationTask {
-  if (!dto || typeof dto.generation_id !== 'string' || !isStatus(dto.status)) {
-    throw new Error('Video generation list returned an invalid task')
-  }
-  const resourceId = dto.resource && typeof dto.resource.resource_id === 'string'
-    ? dto.resource.resource_id
-    : undefined
+function toTask(asset: MediaAsset): VideoGenerationTask {
+  const status = taskStatus(asset.status)
   return {
-    generationId: dto.generation_id,
-    status: dto.status,
-    ...(typeof dto.prompt_text === 'string' ? { prompt: dto.prompt_text } : {}),
-    ...(typeof dto.model === 'string' ? { model: dto.model } : {}),
-    ...(typeof dto.provider_task_id === 'string' ? { providerTaskId: dto.provider_task_id } : {}),
-    ...(typeof dto.result_url === 'string' ? { resultUrl: dto.result_url } : {}),
-    ...(resourceId ? { resourceId } : {}),
-    ...(typeof dto.error_code === 'string' ? { errorCode: dto.error_code } : {}),
-    ...(typeof dto.error_message === 'string' ? { errorMessage: dto.error_message } : {}),
-    ...(typeof dto.created_at === 'number' ? { createdAt: dto.created_at } : {}),
+    generationId: asset.id,
+    status,
+    ...(asset.prompt ? { prompt: asset.prompt } : {}),
+    ...(typeof asset.meta?.model === 'string' ? { model: asset.meta.model } : {}),
+    ...(typeof asset.meta?.taskId === 'string' ? { providerTaskId: asset.meta.taskId } : {}),
+    ...(asset.status === 'ready' ? { resourceId: asset.provider?.upstreamResourceId ?? asset.id } : {}),
+    ...(asset.error ? { errorMessage: asset.error } : {}),
+    createdAt: asset.createdAt,
   }
 }
 
-function isStatus(value: unknown): value is VideoGenerationStatus {
-  return value === 'pending' || value === 'submitting' || value === 'polling'
-    || value === 'succeeded' || value === 'failed' || value === 'cancelled'
+function isActiveStatus(status: MediaAsset['status']): boolean {
+  return status === 'placeholder' || status === 'generating'
+}
+
+function taskStatus(status: MediaAsset['status']): VideoGenerationStatus {
+  if (status === 'placeholder') return 'pending'
+  if (status === 'generating') return 'polling'
+  if (status === 'ready') return 'succeeded'
+  return 'failed'
 }
