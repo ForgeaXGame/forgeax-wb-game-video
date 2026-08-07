@@ -111,28 +111,28 @@ describe('shared asset manifest coexistence', () => {
 describe('project document records', () => {
   test('accepts a local Markdown document record outside the media domain', () => {
     expect(isDocumentRecord({
-      id: 'doc-outline',
+      id: 'doc-intake',
       kind: 'document',
-      name: '游戏大纲',
+      name: '需求',
       status: 'ready',
       mimeType: 'text/markdown',
-      provider: { kind: 'local', ref: 'documents/outline.md' },
+      provider: { kind: 'local', ref: 'docs/demo_intake.md' },
       createdAt: 1,
       updatedAt: 1,
-      meta: { documentType: 'outline' },
+      meta: { documentType: 'intake' },
     })).toBe(true)
   })
 
   test('rejects non-Markdown and unbounded document paths', () => {
     const base = {
-      id: 'doc-outline',
+      id: 'doc-intake',
       kind: 'document',
-      name: '游戏大纲',
+      name: '需求',
       status: 'ready',
       mimeType: 'text/markdown',
       createdAt: 1,
       updatedAt: 1,
-      meta: { documentType: 'outline' },
+      meta: { documentType: 'intake' },
     }
     expect(isDocumentRecord({
       ...base,
@@ -141,6 +141,10 @@ describe('project document records', () => {
     expect(isDocumentRecord({
       ...base,
       mimeType: 'text/plain',
+      provider: { kind: 'local', ref: 'docs/demo_intake.md' },
+    })).toBe(false)
+    expect(isDocumentRecord({
+      ...base,
       provider: { kind: 'local', ref: 'documents/outline.md' },
     })).toBe(false)
   })

@@ -12,10 +12,8 @@ import type {
 import {
   createHostAssetRegistry,
   getHostStyleAxes,
-  getHostDocumentSelection,
   listHostDocuments,
   readHostDocument,
-  selectHostProposal,
 } from '../asset-registry'
 import { bundledMediaResponse, type BundledMediaResolver } from './media-routes'
 import {
@@ -511,7 +509,6 @@ export function createWbGameVideoRouter(
           exactQuery(request.query, [])
           return jsonResponse(200, {
             documents: (await listHostDocuments(context)).map(documentSummary),
-            selection: await getHostDocumentSelection(context),
           })
         }
         if (
@@ -525,31 +522,7 @@ export function createWbGameVideoRouter(
           return jsonResponse(200, {
             document: documentSummary(document.document),
             content: document.content,
-            selection: await getHostDocumentSelection(context),
           })
-        }
-        if (method === 'POST' && path === 'documents/selection') {
-          exactQuery(request.query, [])
-          const body = jsonBody(request)
-          if (
-            !body
-            || typeof body !== 'object'
-            || Array.isArray(body)
-            || typeof (body as { proposalId?: unknown }).proposalId !== 'string'
-          ) {
-            throw new WbServiceInputError('proposalId is required')
-          }
-          try {
-            const selection = await selectHostProposal(
-              context,
-              (body as { proposalId: string }).proposalId,
-            )
-            return jsonResponse(200, { selection })
-          } catch (error) {
-            throw new WbServiceInputError(
-              error instanceof Error ? error.message : 'Unable to select proposal',
-            )
-          }
         }
         if (method === 'GET' && path === 'asset-library') {
           exactQuery(request.query, [])
