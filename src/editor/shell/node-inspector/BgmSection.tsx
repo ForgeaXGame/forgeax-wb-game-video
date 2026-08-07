@@ -7,7 +7,7 @@ import { authoringOptionLabel } from '../../authoring-option-label'
 import type { NodeDataPatch } from '../../../graph/edit/graph-edit'
 import { injectStyleOnce } from '../../../styles/injectStyle'
 import { patchNodeBgm, type AudioOption } from '../bgm-authoring'
-import { NiField, NiSection, NiSelect, NiSlider } from '../ni-ui'
+import { NiField, NiIcon, NiSection, NiSelect, NiSlider } from '../ni-ui'
 
 /**
  * 「播放动作」下拉的 hover 说明 —— 面板上不再铺开这些解释（只留表单本身），所以三条动作的
@@ -28,8 +28,8 @@ const BGM_TRACK_TITLE = '选择该节点作用域 BGM（与资产库音频一致
 const BGM_RESTART_TITLE = '不勾 = 同一首接着播（战斗多回合靠它不断曲）；勾上 = 每次重新进入本节点都从头播。'
 
 /**
- * 稿子只画了「BGM选择 / 播放方式 / 音量」，音量是**标签与轨道同一行**（15635:82412），
- * 保留下来的三个控件（播放模式 / 重进时 / 音量启用）按同一行式排布跟上。
+ * 稿子只画了「BGM选择 / 播放方式 / 音量」，音量是**标签与轨道同一行**（15635:82412）。
+ * 交互改成「声音」+ 静音图标：静音（volume=0）藏滑杆，非静音才出调节条。
  */
 const BGM_CSS = `
 .ni-root .ni-bgm-row {
@@ -52,6 +52,31 @@ const BGM_CSS = `
   flex: none;
   color: var(--ni-w-60);
 }
+.ni-root .ni-bgm-mute {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ni-w-60);
+  cursor: pointer;
+}
+.ni-root .ni-bgm-mute:hover { color: var(--ni-w-100); background: var(--ni-w-10); }
+.ni-root .ni-bgm-mute.is-muted { color: var(--ni-accent); }
+.ni-root .ni-bgm-mute-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
 `
 
 export function BgmSection({
@@ -70,8 +95,9 @@ export function BgmSection({
   patchData: (p: NodeDataPatch) => void
 }): JSX.Element {
   injectStyleOnce('ni-bgm', BGM_CSS)
-  const volumeSet = bgm?.volume !== undefined
-  const volume = bgm?.volume ?? 1
+  // 静音 = 显式 volume: 0；未写 volume 视为有声（展示 100%，拖动后再落盘）。
+  const muted = bgm?.volume === 0
+  const volume = typeof bgm?.volume === 'number' && bgm.volume > 0 ? bgm.volume : 1
   return (
     /* 作用域 BGM：本节点作为 owner 的床轨。不填 = 不动 BGM 栈（继续播上层那首），旧图零行为变化。 */
     <NiSection title="BGM">
@@ -114,25 +140,34 @@ export function BgmSection({
               ))}
             </NiSelect>
           </NiField>
-          <label className="ni-bgm-row ni-bgm-volume-row">
-            <span className="ni-bgm-row-label">音量</span>
-            {/* 勾选框是 `volume === undefined`（继承上层音量）与显式音量的唯一区分，稿子没画它。 */}
-            <input
-              type="checkbox"
-              aria-label="设置 BGM 音量"
-              checked={volumeSet}
-              onChange={(e) => patchData({ bgm: patchNodeBgm(bgm, { volume: e.target.checked ? 1 : undefined }) })}
-            />
+          <div className="ni-bgm-row ni-bgm-volume-row">
+            <span className="ni-bgm-row-label">声音</span>
+            <label
+              className={muted ? 'ni-bgm-mute is-muted' : 'ni-bgm-mute'}
+              title={muted ? '取消静音' : '静音'}
+            >
+              <input
+                type="checkbox"
+                className="ni-bgm-mute-input"
+                aria-label="静音"
+                checked={muted}
+                onChange={(e) => patchData({
+                  bgm: patchNodeBgm(bgm, { volume: e.target.checked ? 0 : 1 }),
+                })}
+              />
+              <NiIcon name={muted ? 'mute' : 'volume'} size={14} />
+            </label>
             {/* `ni-bgm-volume` 是旧全局规则与面板测试认的钩子，随 className 一起带给 NiSlider。 */}
-            <NiSlider
-              ariaLabel="BGM 音量"
-              className="ni-bgm-volume"
-              value={volume}
-              disabled={!volumeSet}
-              bubble={volumeSet ? `${Math.round(volume * 100)}%` : '未设置'}
-              onChange={(next) => patchData({ bgm: patchNodeBgm(bgm, { volume: next }) })}
-            />
-          </label>
+            {muted ? null : (
+              <NiSlider
+                ariaLabel="BGM 音量"
+                className="ni-bgm-volume"
+                value={volume}
+                bubble={`${Math.round(volume * 100)}%`}
+                onChange={(next) => patchData({ bgm: patchNodeBgm(bgm, { volume: next }) })}
+              />
+            )}
+          </div>
           {bgm?.ref ? (
             <>
               <NiField label="播放模式">

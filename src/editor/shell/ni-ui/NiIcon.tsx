@@ -6,15 +6,18 @@
 import type { CSSProperties, JSX } from 'react'
 import { ensureNiUiStyle } from './theme'
 import chevronUrl from '../assets/ni-icons/chevron.svg'
+import muteUrl from '../assets/ni-icons/mute.svg'
 import pencilUrl from '../assets/ni-icons/pencil.svg'
 import playUrl from '../assets/ni-icons/play.svg'
 import plusUrl from '../assets/ni-icons/plus.svg'
 import trashUrl from '../assets/ni-icons/trash.svg'
 import unfoldUrl from '../assets/ni-icons/unfold.svg'
+import volumeUrl from '../assets/ni-icons/volume.svg'
 
 /** `close` 与 `plus` 同一份几何：设计稿里的 ✕ 就是把 ＋ 转 45°（Figma 15635:81615）。 */
 const ICON_URL = {
   chevron: chevronUrl,
+  mute: muteUrl,
   pencil: pencilUrl,
   play: playUrl,
   plus: plusUrl,
@@ -22,6 +25,7 @@ const ICON_URL = {
   trash: trashUrl,
   /** 上下双箭头，折叠卡片的展开/收起（Figma dfrunfold-more · 15635:84476）。 */
   unfold: unfoldUrl,
+  volume: volumeUrl,
 } as const
 
 export type NiIconName = keyof typeof ICON_URL
