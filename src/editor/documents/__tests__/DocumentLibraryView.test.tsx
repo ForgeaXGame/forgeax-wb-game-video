@@ -26,7 +26,7 @@ describe('DocumentLibraryView', () => {
     render(<DocumentLibraryView />)
 
     await waitFor(() => {
-      expect(screen.getByText('当前项目尚无需求。创建和写入功能将在后续版本提供。')).toBeTruthy()
+      expect(screen.getByText('当前项目尚无需求。')).toBeTruthy()
     })
     expect(screen.queryByRole('button', { name: /创建|上传|编辑|采用/ })).toBeNull()
   })

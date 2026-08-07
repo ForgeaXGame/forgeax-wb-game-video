@@ -87,7 +87,7 @@ export function DocumentLibraryView(): JSX.Element {
         {documents === null && !error ? <p className="gdx-loading">正在读取项目文档…</p> : null}
         {documents !== null && matching.length === 0 ? (
           <div className="gdx-empty">
-            当前项目尚无{title}。创建和写入功能将在后续版本提供。
+            当前项目尚无{title}。
           </div>
         ) : null}
         {selectedId && !document && !error ? <p className="gdx-loading">正在读取正文…</p> : null}
