@@ -29,8 +29,8 @@ import { isBlueprintTitleTaken } from './blueprint-title'
 import { resolveGraphEntry } from '../../runtime/schema/graph-schema'
 import { blueprintsReferencing, findReferenceCycle } from '../../graph/edit/blueprint-refs'
 import { resolveEntryAfterGraphChange } from '../../graph/edit/graph-scope'
-import { loadGameComponents } from '../../runtime/component-host'
-import { NODIA_DEMO } from '../demo/demo'
+import { bootComponents } from '../../runtime/component-host'
+import { NODIA_DEMO_PROJECT } from '../demo/demo'
 import {
   addUiTreeFolder as addTreeFolder,
   addUiTreeScheme as addTreeScheme,
@@ -401,7 +401,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
       return toRuntimeScenario(playDocument(st.authoringProject(), rootId))
     },
 
-    ensureBoot: (game, demo = NODIA_DEMO) => {
+    ensureBoot: (game, demo = NODIA_DEMO_PROJECT) => {
       const st = get()
       if (st.booted && st.game === game) {
         // 已 boot：补 demo 引用；旧草稿曾把 entities 抹成 undefined 的，从 demo 填回 meta。
@@ -451,7 +451,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
           set({ isDraft: false, booted: true })
           void currentVersion(game).then((cv) => set({ currentTag: cv.tag }))
           void listVersions(game).then((vs) => set({ gameVersions: vs }))
-          void loadGameComponents(game)
+          void bootComponents(game)
         } catch (cause) {
           if (get().game === game) set({ booted: false })
           throw cause

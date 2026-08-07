@@ -1,20 +1,39 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
-import { registerCoreSkins } from '../../../runtime/component-host/components'
-import { PRESET_SCHEME_BY_ID } from '../schemeOverlays'
+import type { GameGraph, GameNodeData, Overlay } from '../../../runtime/schema/graph-schema'
+import { STAGE_FILL_LAYOUT } from '../../../runtime/schema/layout'
+import { registerTestComponents } from '../../../runtime/__tests__/test-components'
 import { NodeInspector } from '../NodeInspector'
 
 afterEach(cleanup)
-beforeAll(registerCoreSkins)
+beforeAll(registerTestComponents)
+
+/** 测试用界面方案（对齐旧 n_door：双事件 QTE + 铺满舞台）。 */
+const TEST_SCHEME_OVERLAY: Overlay = {
+  id: 'n_door',
+  title: '慈悲狱门叩',
+  children: [{
+    id: 'kou',
+    component: 'test.qte',
+    trigger: { when: 'enter' },
+    layout: { ...STAGE_FILL_LAYOUT },
+    inputs: {
+      events: [
+        { id: 'pass', label: '叩中' },
+        { id: 'fail', label: '错过' },
+      ],
+    },
+  }],
+}
 
 describe('NodeInspector · 界面事件动作入口', () => {
   it('aligns component and event-effect labels inside the blueprint node interface section', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
+    overlay.children = overlay.children.map((child) => ({ ...child, component: 'test.qte' }))
     overlay.children.unshift({
       id: 'damage',
-      component: 'DamageFloatText',
+      component: 'test.float',
       inputs: { fixedText: '-', parameter: 70 },
     })
     const data: GameNodeData = {
@@ -48,10 +67,10 @@ describe('NodeInspector · 界面事件动作入口', () => {
     const componentLabel = within(mountSection).getByText('触发按键', { selector: 'span' })
     const fixedTextLabel = within(mountSection).getByText('固定文本', { selector: 'span' })
     const parameterLabel = within(mountSection).getByText('参数', { selector: 'span' })
-    const gridColumns = fixedTextLabel.closest('label')?.style.gridTemplateColumns ?? ''
+    const gridColumns = fixedTextLabel.parentElement?.style.gridTemplateColumns ?? ''
     const labelWidth = gridColumns.split(' ')[0]!
     expect(Number.parseFloat(labelWidth)).toBeLessThan(77)
-    expect(componentLabel.closest('label')?.style.gridTemplateColumns).toBe(gridColumns)
+    expect(componentLabel.parentElement?.style.gridTemplateColumns).toBe(gridColumns)
     expect(parameterLabel.parentElement?.style.gridTemplateColumns).toBe(gridColumns)
     expect(gridColumns).toContain('minmax(0, 320px)')
 
@@ -61,7 +80,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
   })
 
   it('事件响应保留沿边推进入口，并把走边选择收进目标节点路由', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     const data: GameNodeData = {
       name: '慈悲狱门口',
       overlayNodes: [{ overlay: overlay.id }],
@@ -94,7 +113,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
   })
 
   it('允许同一界面方案重复添加，并为第二份生成独立挂载 id', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     const graph: GameGraph = {
       nodes: [{
         id: 'gate',
@@ -126,7 +145,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
   })
 
   it('界面配置标题只展示名称，不拼接 overlay id', () => {
-    const overlay = { id: 'base:InkKou', title: '叩击', children: [] }
+    const overlay = { id: 'base:TEST_QTE', title: '叩击', children: [] }
     const graph: GameGraph = {
       nodes: [{
         id: 'gate',
@@ -148,10 +167,10 @@ describe('NodeInspector · 界面事件动作入口', () => {
       />,
     )
 
-    const mountCard = container.querySelector('[data-focus-anchor="mount:base:InkKou"]')
+    const mountCard = container.querySelector('[data-focus-anchor="mount:base:TEST_QTE"]')
     expect(mountCard).toBeTruthy()
     expect(mountCard).toHaveTextContent('叩击')
-    expect(mountCard).not.toHaveTextContent('叩击 (base:InkKou)')
+    expect(mountCard).not.toHaveTextContent('叩击 (base:TEST_QTE)')
   })
 
   it('only stores the field changed in a shared scheme component override', () => {
@@ -160,7 +179,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
       title: '共享提示',
       children: [{
         id: 'notice',
-        component: 'StatusNotice',
+        component: 'test.notice',
         inputs: { text: '原始提示', color: '#ffffff', durationMs: 1600 },
       }],
     }
@@ -194,64 +213,4 @@ describe('NodeInspector · 界面事件动作入口', () => {
     })
   })
 
-  it('stores a direct entity hp selection from the node-mounted scheme entry', () => {
-    const overlay = {
-      id: 'battle-hud',
-      title: '战斗 HUD',
-      children: [{
-        id: 'hp',
-        component: 'BattlePlayerHpBar',
-        inputs: { label: '我方', current: 0, max: 100 },
-      }],
-    }
-    const graph: GameGraph = {
-      nodes: [{
-        id: 'gate',
-        type: 'perf',
-        position: { x: 0, y: 0 },
-        inputs: [],
-        outputs: [],
-        data: { name: '门口', overlayNodes: [{ overlay: overlay.id }] },
-      }],
-      edges: [],
-    }
-    const onChange = vi.fn()
-    render(
-      <NodeInspector
-        graph={graph}
-        nodeId="gate"
-        overlays={{ [overlay.id]: overlay }}
-        entities={{ hero: { id: 'hero', name: '主角', attrs: { hp: 80, hpMax: 100 } } }}
-        onChange={onChange}
-      />,
-    )
-
-    const hpSelect = within(screen.getByText('血量').parentElement!)
-      .getByRole('combobox', { name: '数值内容' })
-    fireEvent.click(hpSelect)
-    fireEvent.click(screen.getByRole('menuitem', { name: '实体属性' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '主角' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'hp' }))
-
-    const next = onChange.mock.calls.at(-1)?.[0] as GameGraph
-    expect(next.nodes[0]?.data.overlayNodes?.[0]?.overrides).toEqual({
-      hp: {
-        inputs: {
-          current: {
-            expr: 'entity.hero.attr.hp',
-            pick: {
-              mode: 'pick',
-              terms: [{
-                source: 'entity',
-                refId: 'hero',
-                attr: 'hp',
-                op: '+',
-                constValue: undefined,
-              }],
-            },
-          },
-        },
-      },
-    })
-  })
 })

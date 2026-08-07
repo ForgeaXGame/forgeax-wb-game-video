@@ -4,8 +4,9 @@ import { pluginFetch, pluginUrl } from '../plugin-http'
 
 vi.mock('../workbench-host', () => ({
   getWorkbenchHost: () => ({
+    ready: async () => undefined,
     extension: {
-      url: (path: string) => `/__wb__${path}`,
+      url: (path: string) => `/__wb__${path}?gameId=demo`,
       fetch: (path: string, init?: RequestInit) => globalThis.fetch(`/__wb__${path}`, init),
     },
   }),
@@ -19,7 +20,13 @@ describe('pluginUrl', () => {
   })
 
   it('resolves extension paths through the workbench host', () => {
-    expect(pluginUrl('/__gva__/assets')).toBe('/__wb__/__gva__/assets')
+    expect(pluginUrl('/__gva__/assets')).toBe('/__wb__/__gva__/assets?gameId=demo')
+  })
+
+  it('merges logical query parameters into the handshake endpoint', () => {
+    expect(pluginUrl('/media/resources?page=1&page_size=100')).toBe(
+      '/__wb__/media/resources?gameId=demo&page=1&page_size=100',
+    )
   })
 })
 
@@ -51,5 +58,16 @@ describe('pluginFetch + forgeaxHttp', () => {
     await pluginFetch('blob:http://localhost:5173/6c2f')
 
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('blob:http://localhost:5173/6c2f')
+  })
+
+  it('keeps query parameters when dispatching through the handshake endpoint', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response('{}'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await pluginFetch('/media/resources?page=1&page_size=100')
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      '/__wb__/media/resources?gameId=demo&page=1&page_size=100',
+    )
   })
 })

@@ -59,12 +59,33 @@ function baseArgs(overrides: Partial<GenerateVideoClipArgs> = {}): GenerateVideo
 }
 
 function createContext(
-  generateVideo: WorkbenchExtensionContext['videoGeneration']['generateVideo'],
+  invoke: WorkbenchExtensionContext['capabilities']['invoke'],
 ): WorkbenchExtensionContext {
   return {
     gameId: 'game-1',
-    videoGeneration: { generateVideo } as WorkbenchExtensionContext['videoGeneration'],
+    media: {
+      read: vi.fn(async (_gameId: string, assetId: string) => ({
+        contentType: 'image/png',
+        bytes: new TextEncoder().encode(assetId),
+      })),
+    },
+    capabilities: { invoke },
   } as unknown as WorkbenchExtensionContext
+}
+
+function capabilityVideo() {
+  return {
+    video: {
+      bytes: new Uint8Array([1, 2, 3]),
+      mime: 'video/mp4',
+      sourceUrl: 'https://kino.example/generated-video.mp4',
+      provider: {
+        kind: 'kino',
+        ref: 'https://kino.example/generated-video.mp4',
+        upstreamResourceId: 'generated-video',
+      },
+    },
+  }
 }
 
 describe('generateVideoClip', () => {
@@ -74,7 +95,7 @@ describe('generateVideoClip', () => {
       ['last', imageAsset('last')],
     ])
     const registry = createRegistry(assets)
-    const generateVideo = vi.fn(async (input: Parameters<WorkbenchExtensionContext['videoGeneration']['generateVideo']>[0]) => {
+    const invoke = vi.fn(async (_id: string, _version: number, input: unknown) => {
       const placeholder = [...assets.values()].find((a) => a.productionType === 'video_clip')
       expect(placeholder).toMatchObject({
         status: 'generating',
@@ -95,13 +116,19 @@ describe('generateVideoClip', () => {
           { assetId: 'host:last', role: 'last_frame' },
         ],
       })
-      return { assets: [{ id: 'generated-video', type: 'video' as const, contentType: 'video/mp4', url: 'memory://generated-video' }] }
+      return capabilityVideo()
     })
-    const context = createContext(generateVideo)
+    const context = createContext(invoke)
 
     const result = await generateVideoClip(context, baseArgs({ requestId: 'request-ready-1' }), registry)
 
     expect(result.status).toBe('ready')
+    expect(invoke).toHaveBeenCalledWith(
+      'media.video.generate',
+      1,
+      expect.anything(),
+      { requestId: 'request-ready-1' },
+    )
     expect(registry.persistGenerated).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'generated-video' }),
       expect.objectContaining({
@@ -119,14 +146,14 @@ describe('generateVideoClip', () => {
       ['first', imageAsset('first')],
     ])
     const registry = createRegistry(assets)
-    const generateVideo = vi.fn(async (input: Parameters<WorkbenchExtensionContext['videoGeneration']['generateVideo']>[0]) => {
-      expect(input.references).toEqual([
-        { assetId: 'host:reference', role: 'reference_image' },
-        { assetId: 'host:first', role: 'reference_image' },
+    const invoke = vi.fn(async (_id: string, _version: number, input: unknown) => {
+      expect((input as { references: unknown }).references).toEqual([
+        expect.objectContaining({ assetId: 'host:reference', role: 'reference_image' }),
+        expect.objectContaining({ assetId: 'host:first', role: 'reference_image' }),
       ])
-      return { assets: [{ id: 'generated-video', type: 'video' as const, contentType: 'video/mp4', url: 'memory://generated-video' }] }
+      return capabilityVideo()
     })
-    const context = createContext(generateVideo)
+    const context = createContext(invoke)
 
     const result = await generateVideoClip(context, baseArgs({
       mode: 'ref',
@@ -144,8 +171,8 @@ describe('generateVideoClip', () => {
       ['last', imageAsset('last')],
     ])
     const registry = createRegistry(assets)
-    const generateVideo = vi.fn(async () => { throw new Error('Kino generation failed') })
-    const context = createContext(generateVideo)
+    const invoke = vi.fn(async () => { throw new Error('Kino generation failed') })
+    const context = createContext(invoke)
 
     const result = await generateVideoClip(context, baseArgs({ requestId: 'request-failed-1' }), registry)
 
@@ -172,24 +199,24 @@ describe('generateVideoClip', () => {
       ['last', imageAsset('last')],
     ])
     const registry = createRegistry(assets)
-    const generateVideo = vi.fn()
-    const context = createContext(generateVideo)
+    const invoke = vi.fn()
+    const context = createContext(invoke)
 
     await expect(generateVideoClip(context, args, registry)).rejects.toThrow()
 
-    expect(generateVideo).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
     expect([...assets.values()].some((a) => a.productionType === 'video_clip')).toBe(false)
   })
 
   it('rejects a reference absent from the registry before creating a placeholder', async () => {
     const registry = createRegistry(new Map())
-    const generateVideo = vi.fn()
-    const context = createContext(generateVideo)
+    const invoke = vi.fn()
+    const context = createContext(invoke)
 
     await expect(generateVideoClip(context, baseArgs({ firstFrameAssetId: 'missing' }), registry))
       .rejects.toThrow('参考图不存在：missing')
 
-    expect(generateVideo).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   it('rejects invalid image metadata before creating a placeholder', async () => {
@@ -198,8 +225,8 @@ describe('generateVideoClip', () => {
       ['bad-mime', imageAsset('bad-mime', { mime: 'video/mp4' })],
     ])
     const registry = createRegistry(assets)
-    const generateVideo = vi.fn()
-    const context = createContext(generateVideo)
+    const invoke = vi.fn()
+    const context = createContext(invoke)
 
     await expect(generateVideoClip(context, baseArgs({
       mode: 'firstref',
@@ -207,6 +234,6 @@ describe('generateVideoClip', () => {
       lastFrameAssetId: undefined,
     }), registry)).rejects.toThrow('参考图 MIME 无效：bad-mime')
 
-    expect(generateVideo).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 })

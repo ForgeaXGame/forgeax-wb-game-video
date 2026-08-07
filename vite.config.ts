@@ -11,7 +11,9 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     ?? (process.env.WB_GAME_VIDEO_PLUGIN_BUILD === '1' ? '/extensions/wb-game-video/' : './'),
   plugins: [
     react(),
-    ...(command === 'serve'
+    // Vitest loads this config with command=serve; skip the local games-root
+    // mkdir (can resolve outside the checkout, e.g. /Users/.forgeax/games).
+    ...(command === 'serve' && !process.env.VITEST
       ? [createViteWorkbenchPlugin(createDevWorkbenchHost())]
       : []),
   ],
@@ -24,8 +26,8 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     port: 15185,
     strictPort: true,
     allowedHosts: true as const,
-    // dev 下 `/api/*`（kino 直连 HTTP 路由 + ToolRegistry 调用）转发到 forgeax server，
-    // 与 rebase 前行为一致；host-ssot 重写移除了该代理，standalone dev 的生成链路会双双 404。
+    // Asset CRUD still uses extension-owned `/api/*` routes in standalone dev.
+    // Video generation itself goes through the Workbench Host handshake/tool endpoint.
     proxy: {
       '/api': process.env.FORGEAX_SERVER_URL
         ?? `http://localhost:${process.env.FORGEAX_SERVER_PORT ?? process.env.PORT_SERVER ?? 18900}`,

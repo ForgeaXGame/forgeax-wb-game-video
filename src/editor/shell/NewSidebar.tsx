@@ -9,12 +9,12 @@ import { createPortal } from 'react-dom'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import { countOverlayReferences } from '../../graph/edit/overlay-edit'
 import { useGraphScenario } from '../persist/graphScenarioStore'
-import { BASIC_UI_FOLDER_ID, ensureUiTree, findUiTreeNode } from '../persist/ui-tree'
+import { BASIC_UI_FOLDER_ID, ensureUiTree } from '../persist/ui-tree'
 import { sendUiNavCommand, useUiNavMirror } from '../persist/uiNavSync'
 import { useUiSelection } from '../persist/uiSelectionStore'
 import { useGraphView, type GraphView } from '../persist/graphViewStore'
 import { useAssetNav } from '../persist/assetNavStore'
-import { useRuleSelection } from '../persist/ruleSelectionStore'
+import { useRuleSelection, type RuleSection } from '../persist/ruleSelectionStore'
 import { useDocumentNav } from '../persist/documentNavStore'
 import { ASSET_DIRECTORY_ROOTS, childrenOf, type AssetDirectoryController } from '../assets/asset-directory'
 import { useAssetBrowser } from '../assets/use-asset-browser'
@@ -38,7 +38,7 @@ export interface NavNode {
   /** 是否为入口蓝图。 */
   isEntry?: boolean
   assetLocation?: { root: AssetLibraryRootKind, folderId?: string, entryKey?: string }
-  ruleTarget?: { section: 'entities' | 'variables' | 'formulas', itemId?: string }
+  ruleTarget?: { section: RuleSection, itemId?: string }
   documentType?: DocumentType
   children?: NavNode[]
 }
@@ -472,6 +472,7 @@ interface NsRowProps {
   activeId: string | null
   mainId: string
   bp: BlueprintNavActions
+  uiGroupComposing: boolean
   onToggle: (id: string) => void
   onSelect: (node: NavNode) => void
   onMockAddChild: (node: NavNode) => void
@@ -481,6 +482,7 @@ interface NsRowProps {
 
 function NsRow({
   node, depth, expanded, activeId, mainId, bp,
+  uiGroupComposing,
   onToggle, onSelect, onMockAddChild, onMockRename, onMockDelete,
 }: NsRowProps): JSX.Element {
   const hasChildren = !!(node.children && node.children.length > 0)
@@ -578,9 +580,10 @@ function NsRow({
       ? (
         <button
           type="button"
-          className="ns-add"
+          className={`ns-add${node.id === 'ui' && uiGroupComposing ? ' is-on' : ''}`}
           aria-label={`新增 ${node.label} 子项`}
           title="新增子项"
+          aria-expanded={node.id === 'ui' ? uiGroupComposing : undefined}
           onClick={(e) => {
             e.stopPropagation()
             onMockAddChild(node)
@@ -704,6 +707,7 @@ function NsRow({
                 activeId={activeId}
                 mainId={mainId}
                 bp={bp}
+                uiGroupComposing={uiGroupComposing}
                 onToggle={onToggle}
                 onSelect={onSelect}
                 onMockAddChild={onMockAddChild}
@@ -723,6 +727,8 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   const view = useGraphView((s) => s.view)
   const setView = useGraphView((s) => s.setView)
   const setAssetLocation = useAssetNav((s) => s.setLocation)
+  const ruleSection = useRuleSelection((s) => s.section)
+  const ruleItemId = useRuleSelection((s) => s.itemId)
   const selectRule = useRuleSelection((s) => s.select)
   const selectDocumentType = useDocumentNav((s) => s.setDocumentType)
   const selectedDocumentType = useDocumentNav((s) => s.documentType)
@@ -766,11 +772,18 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   // 目录默认全部收起。展开状态只由用户点箭头（或明确的新建操作）改变；
   // 不能在资产/规则数据刷新时把已收起的分支重新打开。
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [uiGroupComposing, setUiGroupComposing] = useState(false)
+  const [uiGroupDraft, setUiGroupDraft] = useState('')
 
+  const activeRuleId = ruleItemId
+    ? `rule-${ruleSection}:${ruleItemId}`
+    : `rule-${ruleSection}`
   const activeId = view === 'graph'
     ? (activeBlueprintId || 'graph')
     : view === 'documents'
       ? `document:${selectedDocumentType}`
+      : view === 'rule'
+        ? activeRuleId
       : (navTree.find((n) => n.view === view)?.id ?? null)
 
   const onToggle = (id: string): void => {
@@ -821,30 +834,9 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
   const onMockAddChild = (node: NavNode): void => {
     setExpanded((cur) => new Set(cur).add(node.id))
     if (node.id === 'ui') {
-      // 未进入文件夹时先创建根文件夹；选中可编辑文件夹后，顶层加号新建方案；
-      // 选中方案时则在其父文件夹继续新建方案。
-      // 文件夹行尾只保留重命名 / 删除，与其它导航树分支一致。
       setView('ui')
-      const selectedNode = selectedTreeNodeId ? findUiTreeNode(uiTree, selectedTreeNodeId) : undefined
-      let targetFolderId = selectedNode?.kind === 'folder' ? selectedNode.id : null
-      if (selectedNode?.kind === 'scheme') {
-        const findParentFolderId = (nodes: readonly UiTreeViewNode[], targetId: string, parentId: string | null = null): string | null => {
-          for (const item of nodes) {
-            if (item.id === targetId) return parentId
-            if (item.kind === 'folder') {
-              const found = findParentFolderId(item.children ?? [], targetId, item.id)
-              if (found) return found
-            }
-          }
-          return null
-        }
-        targetFolderId = findParentFolderId(uiNodes, selectedNode.id)
-      }
-      if (targetFolderId && targetFolderId !== BASIC_UI_FOLDER_ID) {
-        sendUiNavCommand({ type: 'add-scheme', parentId: targetFolderId }, uiNavMode)
-      } else {
-        sendUiNavCommand({ type: 'add-root-folder' }, uiNavMode)
-      }
+      setUiGroupDraft('')
+      setUiGroupComposing((current) => !current)
       return
     }
     // eslint-disable-next-line no-console
@@ -871,12 +863,45 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
               activeId={activeId}
               mainId={mainId}
               bp={bp}
+              uiGroupComposing={uiGroupComposing}
               onToggle={onToggle}
               onSelect={onSelect}
               onMockAddChild={onMockAddChild}
               onMockRename={onMockRename}
               onMockDelete={onMockDelete}
             />
+            {node.id === 'ui' && uiGroupComposing ? (
+              <div className="ns-row is-editing" style={{ paddingLeft: 8 }}>
+                <input
+                  autoFocus
+                  className="ns-inline-edit"
+                  aria-label="新建界面组名称"
+                  placeholder="新建界面组名称"
+                  value={uiGroupDraft}
+                  onChange={(event) => setUiGroupDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      const name = uiGroupDraft.trim()
+                      if (!name) return
+                      sendUiNavCommand({ type: 'add-root-folder', name }, uiNavMode)
+                      setUiGroupDraft('')
+                      setUiGroupComposing(false)
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setUiGroupDraft('')
+                      setUiGroupComposing(false)
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setUiGroupDraft('')
+                      setUiGroupComposing(false)
+                    }, 0)
+                  }}
+                />
+              </div>
+            ) : null}
             {node.id === 'ui' && view === 'ui' && expanded.has(node.id) ? (
               <div className="ns-ui-tree" role="group" aria-label="界面子项">
                 <UiTreeView
@@ -889,6 +914,9 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
                     const overlayId = treeNode.kind === 'scheme' ? (treeNode.overlayId ?? null) : null
                     selectUiNode(treeNode.id, overlayId)
                     sendUiNavCommand({ type: 'select', treeNodeId: treeNode.id, overlayId }, uiNavMode)
+                  }}
+                  onAddScheme={(parentId, name) => {
+                    sendUiNavCommand({ type: 'add-scheme', parentId, name }, uiNavMode)
                   }}
                   onRename={(nodeId, name) => sendUiNavCommand({ type: 'rename', nodeId, name }, uiNavMode)}
                   onDelete={(treeNode) => {

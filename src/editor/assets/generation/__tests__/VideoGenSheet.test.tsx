@@ -98,13 +98,13 @@ describe('VideoGenSheet', () => {
     expect(screen.getByText(tip)).toBeInTheDocument()
   })
 
-  it('offers only the four real Kino sizes, links output pixels, and allows both resolutions', () => {
+  it('shows the four Kino sizes and both resolutions as Host-controlled values', () => {
     renderSheet()
 
     const ratio = screen.getByLabelText('画幅') as HTMLSelectElement
     const resolution = screen.getByLabelText('清晰度') as HTMLSelectElement
     const duration = screen.getByLabelText('时长（秒）') as HTMLInputElement
-    expect(ratio).toBeEnabled()
+    expect(ratio).toBeDisabled()
     expect(within(ratio).getAllByRole('option').map((option) => option.textContent)).toEqual([
       '16:9 (2560×1440)',
       '9:16 (1440×2560)',
@@ -115,22 +115,19 @@ describe('VideoGenSheet', () => {
     expect(ratio.value).toBe('2560x1440')
     expect(screen.getByText('2560×1440')).toBeInTheDocument()
 
-    fireEvent.change(ratio, { target: { value: '1440x2560' } })
-    expect(screen.getByText('1440×2560')).toBeInTheDocument()
-
-    expect(resolution).toBeEnabled()
+    expect(resolution).toBeDisabled()
     expect(within(resolution).getAllByRole('option').map((option) => option.textContent)).toEqual([
       '720p',
       '1080p',
     ])
     expect(resolution.value).toBe('720p')
     expect(duration).toHaveAttribute('min', '1')
-    expect(duration).toHaveAttribute('max', '30')
+    expect(duration).toHaveAttribute('max', '15')
     expect(duration.value).toBe('8')
     expect(screen.getByRole('button', { name: '生成视频' })).toBeDisabled()
   })
 
-  it('omits a server-managed model and only enables selection for multiple explicit models', () => {
+  it('keeps model selection Host-controlled even when models are advertised', () => {
     const view = renderSheet()
     const serverManaged = screen.getByLabelText('模型') as HTMLSelectElement
     expect(serverManaged).toBeDisabled()
@@ -155,12 +152,11 @@ describe('VideoGenSheet', () => {
 
     view.rerender(<VideoGenSheet {...view.props} availableModels={['video-primary', 'video-fast']} />)
     const multipleModels = screen.getByLabelText('模型') as HTMLSelectElement
-    expect(multipleModels).toBeEnabled()
-    fireEvent.change(multipleModels, { target: { value: 'video-fast' } })
+    expect(multipleModels).toBeDisabled()
     chooseMode('t2v')
     fillPrompt()
     fireEvent.click(screen.getByRole('button', { name: '生成视频' }))
-    expect(view.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'video-fast' }))
+    expect(view.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ model: 'video-primary' }))
   })
 
   it('validates strict inputs and submits the complete request after both frames are selected', () => {
@@ -189,12 +185,10 @@ describe('VideoGenSheet', () => {
       resolution: '720p',
       firstFrameAssetId: 'char-1',
       lastFrameAssetId: 'scene-1',
-      firstFrameResourceId: 'kino-char-1',
-      lastFrameResourceId: 'kino-scene-1',
     })
   })
 
-  it('clamps duration and disables HTTP-only controls on the Phase 1 tool fallback', () => {
+  it('clamps duration and keeps provider controls on the Workbench Host', () => {
     const { onSubmit } = renderSheet({ genState: { phase: 'idle', transport: 'tool' } })
     chooseMode('t2v')
     fillPrompt()
@@ -203,7 +197,7 @@ describe('VideoGenSheet', () => {
     expect(screen.getByLabelText('清晰度')).toBeDisabled()
     expect(screen.getByLabelText('模型')).toBeDisabled()
     expect(screen.getByLabelText('时长（秒）')).toHaveAttribute('max', '15')
-    expect(screen.getByText('已回落到兼容生成链路：画幅、清晰度与模型由服务端固定，时长最多 15 秒。')).toBeInTheDocument()
+    expect(screen.getByText('当前使用 Workbench Host 生成链路：画幅、清晰度与模型由服务端固定，时长最多 15 秒。')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('时长（秒）'), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('button', { name: '生成视频' }))
@@ -215,7 +209,7 @@ describe('VideoGenSheet', () => {
   })
 
   it.each([
-    [{ phase: 'generating', transport: 'http', generationId: 'generation-1' } as const, '生成中', true],
+    [{ phase: 'generating', transport: 'tool', assetId: 'clip-1' } as const, '生成中', true],
     [{ phase: 'succeeded', assetId: 'clip-1' } as const, '已完成', false],
     [{ phase: 'failed', assetId: 'clip-1', error: '上游拒绝请求' } as const, '失败', false],
   ])('renders output state $1', (genState, status, running) => {
@@ -248,7 +242,7 @@ describe('VideoGenSheet', () => {
 
   it('offers local cancellation while truthfully warning that the cloud task may continue', () => {
     const { onCancel } = renderSheet({
-      genState: { phase: 'generating', transport: 'http', generationId: 'generation-1' },
+      genState: { phase: 'generating', transport: 'tool', assetId: 'clip-1' },
     })
 
     fireEvent.click(screen.getByRole('button', { name: '取消跟踪' }))
@@ -256,54 +250,18 @@ describe('VideoGenSheet', () => {
     expect(screen.getByText('仅停止本地跟踪，云端任务可能继续运行并最终进入素材库。')).toBeInTheDocument()
   })
 
-  it('shows a recovered task immediately and lets the user track another active task', () => {
-    const { onTrack } = renderSheet({
-      genState: {
-        phase: 'generating',
-        transport: 'http',
-        generationId: 'generation-latest-12345678',
-        activeTasks: [
-          { generationId: 'generation-latest-12345678', status: 'polling', createdAt: 1_754_361_000_000 },
-          { generationId: 'generation-other-87654321', status: 'submitting', createdAt: 1_754_360_000_000 },
-        ],
-      },
-    })
-
-    expect(screen.getByTestId('generation-progress')).toBeInTheDocument()
-    expect(screen.queryByText('生成结果将在此预览')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '生成中' })).toBeDisabled()
-    expect(screen.getByRole('region', { name: '其他进行中的任务' })).toHaveTextContent('generati…')
-    fireEvent.click(screen.getByRole('button', { name: /generation-other-87654321/ }))
-    expect(onTrack).toHaveBeenCalledWith('generation-other-87654321')
-  })
-
-  it('previews an HTTP result URL and correlates a refreshed resource by resource id', () => {
-    const view = renderSheet({
-      genState: {
-        phase: 'succeeded',
-        transport: 'http',
-        generationId: 'generation-1',
-        resourceId: 'kino-video-1',
-        resultUrl: 'https://media.example/result.mp4',
-      },
-    })
-    expect(screen.getByTestId('generation-preview')).toHaveAttribute(
-      'src',
-      'https://media.example/result.mp4',
-    )
-
-    view.rerender(<VideoGenSheet
-      {...view.props}
-      genState={{ phase: 'succeeded', transport: 'http', resourceId: 'kino-video-1' }}
-      recentClips={[{
-        id: 'kino-video-1',
-        label: 'Generated resource',
+  it('previews the generated Host registry asset by asset id', () => {
+    renderSheet({
+      genState: { phase: 'succeeded', transport: 'tool', assetId: 'host-video-1' },
+      recentClips: [{
+        id: 'host-video-1',
+        label: 'Generated Host asset',
         createdAt: 100,
         status: 'ready',
-        playbackUrl: '/kino-video-1.mp4',
-      }]}
-    />)
-    expect(screen.getByTestId('generation-preview')).toHaveAttribute('src', '/kino-video-1.mp4')
+        playbackUrl: '/host-video-1.mp4',
+      }],
+    })
+    expect(screen.getByTestId('generation-preview')).toHaveAttribute('src', '/host-video-1.mp4')
   })
 
   it('closes with Escape and backdrop clicks, preserving a background-task notice', () => {
@@ -351,9 +309,7 @@ describe('VideoGenSheet', () => {
     expect(onSubmit.mock.calls[0]?.[0].referenceImageAssetIds).toEqual(
       nineAssets.slice(0, 9).map((asset) => asset.id),
     )
-    expect(onSubmit.mock.calls[0]?.[0].referenceImageResourceIds).toEqual(
-      nineAssets.slice(0, 9).map((asset) => asset.resourceId),
-    )
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('referenceImageResourceIds')
   })
 
   it('keeps the generation entry visible and disables it until a handler is supplied', () => {

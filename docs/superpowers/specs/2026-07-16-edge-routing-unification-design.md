@@ -3,6 +3,11 @@
 > 状态：🟢 DONE（已落地） · 日期：2026-07-16
 > 范围：`extensions/wb-game-video` 的 overlay 事件 → reactions → 边 路由模型。
 > 目标：把散落的路由/副作用来源收敛成一条链，让 runtime 固定下来，新交互不再长新字段。
+>
+> **2026-08-07 注（PR #141）**：本文保留路由迁移的历史语义；其中 `params`、组件 `resolve()`、
+> `isOptionLocked` / focus gate、通用 `choice` / `qte` 等组件细节早于当前 `inputs` 模型和隔离 catalog，
+> 不再是组件实现契约。当前组件注册与输入解析以 `README.md` 和
+> `src/runtime/component-host/` 为准。
 
 ---
 

@@ -157,10 +157,20 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
 （`number | { expr: string; pick?: ValuePick }`），string 字段存文本或 `{ ref: string }`。
 两者共享内容选择体验，但分别交给数值表达式引擎和字符串引用解析器。
 
-**边界（务必遵守）**：`numberExpr` 只表示编辑器允许写数值或表达式，运行时消费方仍必须明确
-求值。`GraphEffect.value`、`NodeAction.spawn.inputs` 由引擎求值；`components/new` 下的动态
-飘字与玩家/敌方血条通过 `components/numericValue.ts` 求值。其它挂载态组件的 number 字段不会
-因为打了 `numberExpr` 标记就自动解表达式，新增标记时必须同时补运行时消费。
+**当前边界（PR #141，2026-08-07）**：`numberExpr` 仍只表示作者态允许写常量/表达式/引用，
+但挂载组件的求值职责已经集中到 component-host，不再由每个 catalog 叶子自行实现：
+
+```text
+RuntimeComponentHost
+  → resolveComponentInputs
+  → inputValue（数值表达式 / 文本引用 / 默认值）
+  → 已解析的扁平 props + emit / preview 注入叶子组件
+```
+
+`RuntimeComponentHost.tsx` 根据 manifest 的 `inputs[].component === 'numberExpr'` 统一调用
+`resolveComponentInputs.ts`；具体数值/文本求值与 RNG 克隆由 `inputValue.ts` 完成。catalog 叶子收到的是
+可直接消费的 props，不应再导入 engine evaluator 或平台 schema 来重复解释作者态数据。引擎自己的
+`GraphEffect.value`、`NodeAction.spawn.inputs` 仍在各自执行边界求值，不属于组件 host 的挂载解析。
 
 落地范围：
 
@@ -168,11 +178,9 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
   `component: 'numberExpr'`）。`GraphVideoView.tsx` 里原来手写的 `FloatValuePickEditor`
   特判 + 平行的 `inputs.valuePick` sidecar 字段**整体删除**——`pick` 现在内嵌在
   `NumOrExpr.pick` 里，`valuePick` 概念退役，改成通用 `ValueInput` 直接绑定 `expr`。
-  **`FloatTextParams.expr` 的类型不写成 `NumOrExpr`**，而是本地窄类型
-  `number | { expr: string }`（不含 `pick`，也不从 schema 导入 `NumOrExpr`）——runtime
-  的 `FloatText.tsx` 只消费 `expr` 字段本身，`pick` 是纯编辑器 sidecar，与
-  `apply-effects.ts::resolveValue` 处理 `GraphEffect.value`（同样在 schema 里声明成
-  `NumOrExpr`，但消费端只本地声明 `number | { expr: string }`）的既有写法保持一致。
+  **历史说明**：`FloatTextParams` 不再是 runtime catalog 组件契约；它与 `ChoiceOption`、`QteCue`
+  一起保留在 `editor/video/overlayMaterialTypes.ts`，只用于编辑器读取/迁移旧素材形状。当前
+  `DamageFloatText` / `GainFloatText` 等叶子直接接收 component-host 已解析的扁平参数。
   编辑器侧（`ValueInput`/`graphMaterialOps.ts`/`previewResolve.ts`）仍按完整 `NumOrExpr`
   读写——两个方向的结构赋值都成立（多一个可选 `pick` field 不影响双向兼容），无需改动。
 - `NodeAction.spawn.inputs`（`SpawnInputsEditor`）：字段若在模板 manifest 里标了
@@ -184,9 +192,13 @@ overlay child / spawn / directive / snapshot / 运行时的**存值袋** `params
   变量和具名公式；固定值使用普通输入框。简单历史引用只生成临时编辑视图，不会在展示时补 sidecar
   或改写原值；无 sidecar 的复杂表达式保持只读。无默认值的字段直接平铺完整控件，并以
   “使用组件实时值”表示未覆盖；选择具体内容后才写入，切回实时值时删除覆盖。
-- `components/numericValue.ts` 是新组件共享的只读求值器：数值接受 number、旧字符串表达式和
-  `{ expr }`；文本接受字面量和 `{ ref }`，例如 `entity.ent-player.name`。数值从运行态求值时
-  克隆当前位置的 RNG，保证 React 渲染中的 `rand()` / `chance()` 不推进游戏随机状态。
+- `RuntimeComponentHost.tsx` / `resolveComponentInputs.ts` / `inputValue.ts` 组成 catalog 组件共享的只读
+  求值边界：数值接受 number、旧字符串表达式和 `{ expr }`；文本接受字面量和 `{ ref }`，例如
+  `entity.ent-player.name`。数值从运行态求值时克隆当前位置的 RNG，保证 React 渲染中的
+  `rand()` / `chance()` 不推进游戏随机状态。
+- 跨层 runtime/editor 测试使用 `runtime/__tests__/test-components.tsx` 内的 `test.*` fixture
+  catalog，避免测试管线依赖生产 catalog 的具体 DOM、ID 或资源。生产叶子的行为测试应留在
+  component-host 目录内，不能反向引入 editor/engine。
 
 ## 8. 运算符符号化统一：`OpSymbolButtons` + Effect 层减/除靠取反/取倒数（2026-07-20，已完成）
 

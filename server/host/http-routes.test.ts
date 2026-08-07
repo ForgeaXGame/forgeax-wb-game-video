@@ -22,6 +22,16 @@ describe('WB_GAME_VIDEO_HTTP_ROUTES', () => {
       'POST generation/keyframe',
       'POST generation/video',
       'POST generation/node-video',
+      'GET media/capabilities',
+      'POST media/image-assets/upload',
+      'GET media/resources',
+      'POST media/resources',
+      'POST media/resources/batch',
+      'GET media/resources/:id',
+      'PUT media/resources/:id',
+      'DELETE media/resources/:id',
+      'GET media/resources/:id/content',
+      'PUT media/uploads/:id',
     ])
     expect(new Set(keys).size).toBe(keys.length)
   })

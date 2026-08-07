@@ -111,8 +111,8 @@ export function VideoGenSheet({
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const noticeTimerRef = useRef<number | null>(null)
   const running = RUNNING_PHASES.has(genState.phase)
-  const toolFallback = genState.transport === 'tool'
-  const durationMax = toolFallback ? 15 : 30
+  const hostManaged = true
+  const durationMax = 15
   const modelOptions = useMemo(
     () => [...new Set(availableModels.map((value) => value.trim()).filter(Boolean))],
     [availableModels],
@@ -138,9 +138,8 @@ export function VideoGenSheet({
   }, [defaultModel, open])
 
   useEffect(() => {
-    if (!toolFallback) return
     setDuration((current) => Math.min(15, current))
-  }, [toolFallback])
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -220,19 +219,6 @@ export function VideoGenSheet({
     if (mode === 'ref' && references.length === 0) {
       nextErrors.references = t('videoAssets.generate.validation.needRefs')
     }
-    const requireResourceId = !toolFallback
-    if (requireResourceId && mode === 'strict' && firstFrame && lastFrame && (
-      !firstFrame?.resourceId || !lastFrame?.resourceId
-    )) {
-      nextErrors.frames = t('videoAssets.generate.validation.needResourceId')
-    }
-    if (requireResourceId && mode === 'firstref' && firstFrame && !firstFrame.resourceId) {
-      nextErrors.first = t('videoAssets.generate.validation.needResourceId')
-    }
-    if (requireResourceId && mode === 'ref' && references.length > 0
-      && references.some((asset) => !asset.resourceId)) {
-      nextErrors.references = t('videoAssets.generate.validation.needResourceId')
-    }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
 
@@ -248,21 +234,12 @@ export function VideoGenSheet({
     }
     if ((mode === 'strict' || mode === 'firstref') && firstFrame) {
       request.firstFrameAssetId = firstFrame.id
-      if (!toolFallback && firstFrame.resourceId) {
-        request.firstFrameResourceId = firstFrame.resourceId
-      }
     }
     if (mode === 'strict' && lastFrame) {
       request.lastFrameAssetId = lastFrame.id
-      if (!toolFallback && lastFrame.resourceId) {
-        request.lastFrameResourceId = lastFrame.resourceId
-      }
     }
     if (mode === 'ref') {
       request.referenceImageAssetIds = references.map((asset) => asset.id)
-      if (!toolFallback) {
-        request.referenceImageResourceIds = references.map((asset) => asset.resourceId as string)
-      }
     }
     onSubmit(request)
   }
@@ -278,7 +255,7 @@ export function VideoGenSheet({
     ? t('videoAssets.generate.footHintDone')
     : running
       ? t('videoAssets.generate.cancelNote')
-      : toolFallback
+      : hostManaged
         ? t('videoAssets.generate.fallbackNote')
       : t('videoAssets.generate.footHintIdle')
   const submitLabel = running
@@ -435,8 +412,8 @@ export function VideoGenSheet({
                     id={ratioId}
                     className="vgen-select"
                     value={size}
-                    disabled={toolFallback}
-                    title={toolFallback ? fixedByServer : undefined}
+                    disabled={hostManaged}
+                    title={hostManaged ? fixedByServer : undefined}
                     onChange={(event) => setSize(event.target.value as KinoVideoSize)}
                   >
                     {SIZE_OPTIONS.map((option) => (
@@ -450,8 +427,8 @@ export function VideoGenSheet({
                     id={resolutionId}
                     className="vgen-select"
                     value={resolution}
-                    disabled={toolFallback}
-                    title={toolFallback ? fixedByServer : undefined}
+                    disabled={hostManaged}
+                    title={hostManaged ? fixedByServer : undefined}
                     onChange={(event) => setResolution(event.target.value as KinoVideoResolution)}
                   >
                     <option value="720p">720p</option>
@@ -484,8 +461,8 @@ export function VideoGenSheet({
                   id={modelId}
                   className="vgen-select"
                   value={model}
-                  disabled={toolFallback || modelOptions.length <= 1}
-                  title={toolFallback ? fixedByServer : modelOptions.length <= 1 ? modelServerManaged : undefined}
+                  disabled={hostManaged || modelOptions.length <= 1}
+                  title={hostManaged ? fixedByServer : modelOptions.length <= 1 ? modelServerManaged : undefined}
                   onChange={(event) => setModel(event.target.value)}
                 >
                   {modelOptions.length === 0 ? (
@@ -590,7 +567,7 @@ export function VideoGenSheet({
         open={pickerTarget !== null}
         gameSlug={gameSlug}
         imageAssets={imageAssets}
-        requireResourceId={!toolFallback}
+        requireResourceId={!hostManaged}
         onPick={onPickImage}
         onClose={() => setPickerTarget(null)}
       />
