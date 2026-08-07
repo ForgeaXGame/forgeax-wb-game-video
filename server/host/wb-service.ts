@@ -4,6 +4,7 @@ import type {
   MediaKind,
   MediaProductionType,
   StyleAxes,
+  DocumentType,
 } from '../../src/editor/assets/registry-types'
 import {
   normalizeDocument,
@@ -12,6 +13,7 @@ import {
 import {
   createHostAssetRegistry,
   sanitizePublicText,
+  upsertHostDocument,
   type AssetFilter,
 } from '../asset-registry'
 import {
@@ -57,6 +59,7 @@ export interface WbGameVideoService {
   generateVideoClip(input: unknown): Promise<unknown>
   listVideoVisualStyles(input?: unknown): Promise<unknown>
   generateNodeVideo(input: unknown): Promise<unknown>
+  upsertDocument(input: unknown): Promise<unknown>
 }
 
 function assertSchema(schema: ServiceSchemaName, value: unknown): void {
@@ -555,6 +558,33 @@ export function createWbGameVideoService(
         return { assets: await generation.generateNodeVideo(input) }
       } catch (error) {
         return { assets: [], error: publicErrorMessage(error) }
+      }
+    },
+    async upsertDocument(value) {
+      assertSchema('upsertDocument', value)
+      const input = record(value)
+      const documentType = input.documentType
+      if (
+        documentType !== 'intake'
+        && documentType !== 'core'
+        && documentType !== 'inquiry'
+        && documentType !== 'pillar'
+      ) {
+        throw new WbServiceInputError('documentType is invalid')
+      }
+      const document = await upsertHostDocument(context, {
+        documentType: documentType as DocumentType,
+        ...(input.content === undefined ? {} : { content: String(input.content) }),
+        ...(input.name === undefined ? {} : { name: stringValue(input.name, 'name') }),
+        ...(input.slug === undefined ? {} : { slug: stringValue(input.slug, 'slug') }),
+      })
+      return {
+        document: {
+          id: document.id,
+          name: document.name,
+          documentType: document.meta.documentType,
+          updatedAt: document.updatedAt,
+        },
       }
     },
   }

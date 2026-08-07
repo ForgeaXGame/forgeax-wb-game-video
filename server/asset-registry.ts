@@ -418,6 +418,94 @@ export async function readHostDocument(
   return { document, content: textDecoder.decode(bytes) }
 }
 
+const SLUG_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+function sanitizeSlugSegment(value: string): string | null {
+  const collapsed = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9._-]+$/g, '')
+  return collapsed && SLUG_SEGMENT_RE.test(collapsed) ? collapsed : null
+}
+
+async function inferSlug(context: WorkbenchExtensionContext): Promise<string | null> {
+  const bytes = await context.files.read('project.json')
+  if (!bytes) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(textDecoder.decode(bytes))
+  } catch {
+    return null
+  }
+  if (!isRecord(parsed)) return null
+  for (const key of ['slug', 'name', 'id'] as const) {
+    const value = parsed[key]
+    if (typeof value === 'string') {
+      const slug = sanitizeSlugSegment(value)
+      if (slug) return slug
+    }
+  }
+  return null
+}
+
+function defaultDocumentName(documentType: DocumentType): string {
+  switch (documentType) {
+    case 'intake': return '需求'
+    case 'core': return '核心'
+    case 'inquiry': return '问询'
+    case 'pillar': return '支柱'
+  }
+}
+
+export async function upsertHostDocument(
+  context: WorkbenchExtensionContext,
+  input: {
+    documentType: DocumentType
+    content?: string
+    name?: string
+    slug?: string
+  },
+): Promise<DocumentRecord> {
+  const slug = input.slug?.trim()
+    ? sanitizeSlugSegment(input.slug.trim())
+    : await inferSlug(context)
+  if (!slug) throw new TypeError('slug is required')
+  const ref = `docs/${slug}_${input.documentType}.md`
+  if (!isDocumentPath(ref)) throw new TypeError('Invalid document path')
+  const id = `doc-${input.documentType}`
+  const now = Date.now()
+  if (input.content !== undefined) {
+    await context.files.write(ref, textEncoder.encode(input.content))
+  } else {
+    const existing = await context.files.read(ref)
+    if (!existing) throw new Error(`Document file missing: ${ref}`)
+  }
+  return context.files.withLocks([HOST_MANIFEST_LOCK], async () => {
+    const manifest = await readHostManifest(context.files)
+    const previous = manifest.assets.find((asset) => (
+      isDocumentRecord(asset) && asset.meta.documentType === input.documentType
+    ))
+    const next: DocumentRecord = {
+      id,
+      kind: 'document',
+      name: input.name?.trim() || defaultDocumentName(input.documentType),
+      status: 'ready',
+      mimeType: 'text/markdown',
+      provider: { kind: 'local', ref },
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      meta: { documentType: input.documentType },
+    }
+    const assets = manifest.assets.filter((asset) => !(
+      isDocumentRecord(asset) && asset.meta.documentType === input.documentType
+    ))
+    assets.push(next)
+    await writeHostManifest(context.files, { ...manifest, assets })
+    return next
+  })
+}
+
 function isHostReclaimSource(value: unknown): value is HostReclaimSource {
   return (
     value === 'wb-game-video-reference'

@@ -25,6 +25,7 @@ const expectedTools = [
   'wb-game-video:get-asset',
   'wb-game-video:import-character-refs',
   'wb-game-video:import-scene-refs',
+  'wb-game-video:upsert-document',
 ]
 let compiledBackendUrl: string
 
@@ -212,7 +213,7 @@ describe('release identity', () => {
   })
 
   it('derives game identity from the host binding for every public tool', () => {
-    expect(manifest.provides.tools).toHaveLength(14)
+    expect(manifest.provides.tools).toHaveLength(15)
 
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)
@@ -233,6 +234,8 @@ describe('release identity', () => {
       'fs:write:{gameRoot}/project.json',
       'fs:read:{gameRoot}/assets/**',
       'fs:write:{gameRoot}/assets/**',
+      'fs:read:{gameRoot}/docs/**',
+      'fs:write:{gameRoot}/docs/**',
       'fs:read:{gameRoot}/characters/**',
       'fs:read:{gameRoot}/textures/**',
     ])

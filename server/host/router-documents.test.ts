@@ -5,15 +5,29 @@ import { createWbGameVideoRouter } from './router'
 const decoder = new TextDecoder()
 const encoder = new TextEncoder()
 
-function contextFor(files: Record<string, string>): WorkbenchExtensionContext {
+function contextFor(files: Record<string, string>): {
+  context: WorkbenchExtensionContext
+  files: Record<string, string>
+} {
+  const store = { ...files }
   return {
-    files: {
-      read: async (path: string) => {
-        const value = files[path]
-        return value === undefined ? null : encoder.encode(value)
+    files: store,
+    context: {
+      gameId: 'game-1',
+      files: {
+        read: async (path: string) => {
+          const value = store[path]
+          return value === undefined ? null : encoder.encode(value)
+        },
+        write: async (path: string, contents: Uint8Array) => {
+          store[path] = decoder.decode(contents)
+        },
+        withLocks: async <T>(_keys: readonly string[], operation: () => Promise<T>) => (
+          operation()
+        ),
       },
-    },
-  } as unknown as WorkbenchExtensionContext
+    } as unknown as WorkbenchExtensionContext,
+  }
 }
 
 function request(path: string) {
@@ -30,7 +44,8 @@ function request(path: string) {
 
 describe('wb-game-video document routing', () => {
   it('returns an empty document list for a new project', async () => {
-    const router = createWbGameVideoRouter(contextFor({}))
+    const { context } = contextFor({})
+    const router = createWbGameVideoRouter(context)
 
     const response = await router.handle(request('documents'))
 
@@ -56,7 +71,8 @@ describe('wb-game-video document routing', () => {
       }),
       'docs/demo_intake.md': '# Intake',
     }
-    const router = createWbGameVideoRouter(contextFor(files))
+    const { context } = contextFor(files)
+    const router = createWbGameVideoRouter(context)
 
     const list = await router.handle(request('documents'))
     expect(JSON.parse(decoder.decode(list.body))).toEqual({
@@ -68,5 +84,64 @@ describe('wb-game-video document routing', () => {
       document: { id: 'doc-intake', name: '需求', documentType: 'intake', updatedAt: 2 },
       content: '# Intake',
     })
+  })
+
+  it('upserts markdown under docs/ and registers doc-<type>', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'core',
+        slug: 'demo',
+        name: '核心方案',
+        content: '# Core\n',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    const body = JSON.parse(decoder.decode(res.body))
+    expect(body.document).toMatchObject({
+      id: 'doc-core',
+      documentType: 'core',
+      name: '核心方案',
+    })
+    expect(files['docs/demo_core.md']).toBe('# Core\n')
+    const manifest = JSON.parse(files['assets/manifest.json']!)
+    expect(manifest.assets).toEqual([
+      expect.objectContaining({
+        id: 'doc-core',
+        kind: 'document',
+        name: '核心方案',
+        provider: { kind: 'local', ref: 'docs/demo_core.md' },
+        meta: { documentType: 'core' },
+      }),
+    ])
+  })
+
+  it('registers existing file when content omitted', async () => {
+    const { context } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+      'docs/demo_pillar.md': '# Pillar',
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'pillar',
+        slug: 'demo',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    expect(JSON.parse(decoder.decode(res.body)).document.id).toBe('doc-pillar')
   })
 })
