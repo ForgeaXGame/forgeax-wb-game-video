@@ -13,6 +13,7 @@ const manifest = JSON.parse(
 const expectedTools = [
   'wb-game-video:get-graph',
   'wb-game-video:save-graph',
+  'wb-game-video:patch-graph',
   'wb-game-video:list-videos',
   'wb-game-video:generate-shot-script',
   'wb-game-video:generate-keyframe',
@@ -95,10 +96,10 @@ describe('release identity', () => {
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax-extension/wb-game-video')
-    expect(pkg.version).toBe('0.4.0')
+    expect(pkg.version).toBe('0.5.0')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe('0.4.0')
+    expect(manifest.version).toBe('0.5.0')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),
@@ -205,7 +206,7 @@ describe('release identity', () => {
   })
 
   it('derives game identity from the host binding for every public tool', () => {
-    expect(manifest.provides.tools).toHaveLength(12)
+    expect(manifest.provides.tools).toHaveLength(13)
 
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)
