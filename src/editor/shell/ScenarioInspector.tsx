@@ -715,9 +715,6 @@ export function ScenarioInspector({
                 })
               }}
           />
-          <div style={{ opacity: 0.55, fontSize: 11, marginBottom: 6 }}>
-            定义可复用的计算公式（如伤害公式）；条款里的「实体」可留空，蓝图/时间轴应用该公式时再选具体实体填空。
-          </div>
           {formulaEntries.length === 0 ? (
             <div className="sir-formula-empty">{normalizedFormulaSearch ? '没有匹配的公式' : '暂无公式'}</div>
           ) : null}

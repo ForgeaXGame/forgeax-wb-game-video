@@ -432,11 +432,6 @@ export function FormulaTextEditor({
           <span className="gc-fx-tool-label">参数</span>
         </button>
       </div>
-
-      <p className="gc-fx-hint">
-        可用：数字 / 变量 / 实体属性 / floor·min·max·chance 等函数。
-        <code> ?参数 </code>= 留空位（应用公式时绑定具体值）。⌘/Ctrl+Enter 提交。
-      </p>
     </div>
   )
 }

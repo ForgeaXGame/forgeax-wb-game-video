@@ -101,7 +101,8 @@ describe('FormulaTextEditor input state', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(screen.queryByText('无法解析')).toBeNull()
     expect(screen.queryByText(/^错误详情：/)).toBeNull()
-    expect(screen.getByText(/可用：数字/)).toBeTruthy()
+    // 编辑器在解析失败时仍正常渲染（输入框可见，未卸载）。
+    expect(screen.getByRole('textbox', { name: '公式表达式' })).toBeTruthy()
     expect(onChange).not.toHaveBeenCalled()
 
     fireEvent.change(input, { target: { value: 'max(1, 2)' } })
