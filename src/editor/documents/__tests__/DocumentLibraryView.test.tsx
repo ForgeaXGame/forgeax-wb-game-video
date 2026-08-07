@@ -95,6 +95,50 @@ describe('DocumentLibraryView', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('renders only the author-visible layer of the active document', async () => {
+    mocks.fetchProjectDocuments.mockResolvedValue({
+      documents: [
+        { id: 'doc-pillar', name: '支柱', documentType: 'pillar', updatedAt: 3 },
+      ],
+    })
+    mocks.fetchProjectDocument.mockResolvedValue({
+      id: 'doc-pillar',
+      name: '支柱',
+      documentType: 'pillar',
+      updatedAt: 3,
+      content: [
+        '# 黑神话 · 支柱设计',
+        '',
+        '    schema_version: 1',
+        '    based_on_option: A',
+        '',
+        '<!-- ========== 作者可见层（确认门渲染此段） ========== -->',
+        '',
+        '### 序：五行山下',
+        '',
+        '五百年前那一架没打完。',
+        '',
+        '<!-- ========== 契约层（作者界面默认折叠） ========== -->',
+        '',
+        '| 字段 | 值 |',
+        '| --- | --- |',
+        '| ap_cost | 3 |',
+      ].join('\n'),
+    })
+    useDocumentNav.setState({ documentType: 'pillar' })
+
+    render(<DocumentLibraryView />)
+
+    await waitFor(() => {
+      expect(screen.getByText('五百年前那一架没打完。')).toBeTruthy()
+    })
+    const prose = screen.getByText('五百年前那一架没打完。').closest('.gdx-prose')
+    expect(prose).toBeTruthy()
+    expect(prose?.textContent ?? '').not.toContain('schema_version')
+    expect(prose?.textContent ?? '').not.toContain('<!--')
+    expect(prose?.textContent ?? '').not.toContain('ap_cost')
+  })
+
   it('hosts docActionSlotEl under header', async () => {
     mocks.fetchProjectDocuments.mockResolvedValue({ documents: [] })
     const slot = document.createElement('div')

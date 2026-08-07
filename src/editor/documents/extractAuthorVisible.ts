@@ -22,7 +22,7 @@ function selectAuthorRegions(lines: string[]): string[] {
   for (const line of lines) {
     const standalone = line.trim().match(STANDALONE_COMMENT)
     if (standalone) {
-      const inner = standalone[1]
+      const inner = standalone[1] ?? ''
       if (inner.includes(AUTHOR_LAYER_KEYWORD)) visible = true
       else if (CONTRACT_LAYER_KEYWORDS.some((keyword) => inner.includes(keyword))) visible = false
       continue
@@ -43,27 +43,33 @@ function stripContractBlocks(lines: string[]): string[] {
   let index = 0
 
   while (index < lines.length) {
-    const fence = lines[index].trim().match(FENCE_OPEN)
+    const line = lines[index] ?? ''
+    const fence = line.trim().match(FENCE_OPEN)
     if (fence) {
+      const closing = fence[1] ?? '```'
       let end = index + 1
-      while (end < lines.length && !lines[end].trim().startsWith(fence[1])) end += 1
+      while (end < lines.length && !(lines[end] ?? '').trim().startsWith(closing)) end += 1
       const block = lines.slice(index, Math.min(end + 1, lines.length))
-      if (!block.some((line) => line.includes(CONTRACT_BLOCK_MARKER))) kept.push(...block)
+      if (!block.some((entry) => entry.includes(CONTRACT_BLOCK_MARKER))) kept.push(...block)
       index = end + 1
       continue
     }
 
-    if (isIndented(lines[index])) {
+    if (isIndented(line)) {
       let end = index
-      while (end < lines.length && (isIndented(lines[end]) || isBlank(lines[end]))) end += 1
-      while (end > index && isBlank(lines[end - 1])) end -= 1
+      while (end < lines.length) {
+        const candidate = lines[end] ?? ''
+        if (!isIndented(candidate) && !isBlank(candidate)) break
+        end += 1
+      }
+      while (end > index && isBlank(lines[end - 1] ?? '')) end -= 1
       const block = lines.slice(index, end)
-      if (!block.some((line) => line.includes(CONTRACT_BLOCK_MARKER))) kept.push(...block)
+      if (!block.some((entry) => entry.includes(CONTRACT_BLOCK_MARKER))) kept.push(...block)
       index = end
       continue
     }
 
-    kept.push(lines[index])
+    kept.push(line)
     index += 1
   }
 

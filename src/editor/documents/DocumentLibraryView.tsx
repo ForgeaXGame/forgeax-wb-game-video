@@ -9,6 +9,7 @@ import {
   type ProjectDocument,
   type ProjectDocumentSummary,
 } from './document-client'
+import { extractAuthorVisible } from './extractAuthorVisible'
 import { useDocumentNav } from '../persist/documentNavStore'
 
 const DOCUMENT_LABELS: Record<DocumentType, string> = {
@@ -110,7 +111,7 @@ export function DocumentLibraryView(): JSX.Element {
         {document ? (
           <article className="gdx-paper">
             <div className="gdx-prose">
-              <ReactMarkdown>{document.content}</ReactMarkdown>
+              <ReactMarkdown>{extractAuthorVisible(document.content)}</ReactMarkdown>
             </div>
           </article>
         ) : null}
