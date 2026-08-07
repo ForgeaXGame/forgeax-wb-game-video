@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { GameGraph, GameNodeData, Overlay } from '../../../runtime/schema/graph-schema'
@@ -8,6 +8,32 @@ import { registerComponent, unregisterComponent } from '../../../runtime/registr
 import { NodeInspector } from '../NodeInspector'
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+const originalScrollTo = Element.prototype.scrollTo
+
+/**
+ * 面板宿主的滚动结构：外层裁切（GraphStudio 主体，`overflow: hidden`）套内层配置列
+ * （`overflow: auto`）。聚焦滚动只准动内层——外层被滚起来就是画布与工具条整体上移。
+ */
+function ScrollHost({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div data-testid="outer-clip" style={{ overflow: 'hidden' }}>
+      <div data-testid="inspector-scroll" style={{ overflow: 'auto' }}>{children}</div>
+    </div>
+  )
+}
+
+/** 记录每一次 `scrollTo`（滚的是谁、滚到哪），替代不可用的 jsdom 布局。 */
+function captureScrolls(): { el: Element; top?: number }[] {
+  const scrolls: { el: Element; top?: number }[] = []
+  Object.defineProperty(Element.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: function scrollTo(this: Element, options?: ScrollToOptions) {
+      scrolls.push({ el: this, top: options?.top })
+    },
+  })
+  return scrolls
+}
 
 function lifecycle(ms: number, entityId: string): Reaction {
   return {
@@ -73,6 +99,11 @@ afterEach(() => {
     writable: true,
     value: originalScrollIntoView,
   })
+  Object.defineProperty(Element.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: originalScrollTo,
+  })
 })
 
 describe('NodeInspector · 结算选中联动', () => {
@@ -109,6 +140,7 @@ describe('NodeInspector · 结算选中联动', () => {
     addSettlement()
     let next = onChange.mock.calls.at(-1)?.[0] as GameGraph
     expect(next.nodes[0]?.data.reactions?.[0]?.when).toEqual({ type: 'at', ms: 1_350 })
+    expect(next.nodes[0]?.data.reactions?.[0]?.do).toEqual([])
     expect(onFocusLifecycle).toHaveBeenLastCalledWith(0)
 
     onChange.mockClear()
@@ -144,6 +176,7 @@ describe('NodeInspector · 结算选中联动', () => {
 
     render(<Harness />)
     addSettlement()
+    addAction('添加效果')
 
     expect(screen.getByTitle('本节点演出 3000ms')).toHaveValue('300')
     expect(screen.getByRole('combobox', { name: '数值来源' })).toHaveValue('const')
@@ -288,12 +321,7 @@ describe('NodeInspector · 结算选中联动', () => {
   })
 
   it('右侧表单切换高亮不触发滚动定位', () => {
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView,
-    })
+    const scrolls = captureScrolls()
     const graph = graphWith([lifecycle(0, 'ent-player'), lifecycle(800, 'ent-boss')])
     const { container, rerender } = render(
       <NodeInspector
@@ -304,7 +332,7 @@ describe('NodeInspector · 结算选中联动', () => {
         onChange={vi.fn()}
       />,
     )
-    scrollIntoView.mockClear()
+    scrolls.length = 0
 
     rerender(
       <NodeInspector
@@ -317,7 +345,7 @@ describe('NodeInspector · 结算选中联动', () => {
     )
 
     expect(container.querySelector('[data-settlement-index="0"]')).toHaveAttribute('data-selected', 'true')
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrolls).toEqual([])
   })
 
   it('组件属性折叠标题不被结算卡片的选中手势抢占', () => {
@@ -354,45 +382,40 @@ describe('NodeInspector · 结算选中联动', () => {
     expect(details.open).toBe(true)
   })
 
-  it('重复选择同一个结算时仍把配置块平滑滚到面板中央', () => {
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView,
-    })
+  it('重复选择同一个结算时仍把配置块滚到配置列中央，且不动外层裁切层', () => {
+    const scrolls = captureScrolls()
     const graph = graphWith([lifecycle(0, 'ent-player'), lifecycle(800, 'ent-boss')])
     const { rerender } = render(
-      <NodeInspector
-        graph={graph}
-        nodeId="gate"
-        focusedLifecycleIndex={1}
-        focusAnchorRevision={1}
-        onChange={vi.fn()}
-      />,
+      <ScrollHost>
+        <NodeInspector
+          graph={graph}
+          nodeId="gate"
+          focusedLifecycleIndex={1}
+          focusAnchorRevision={1}
+          onChange={vi.fn()}
+        />
+      </ScrollHost>,
     )
 
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-    scrollIntoView.mockClear()
+    expect(scrolls.map((s) => s.el)).toEqual([screen.getByTestId('inspector-scroll')])
+    scrolls.length = 0
     rerender(
-      <NodeInspector
-        graph={graph}
-        nodeId="gate"
-        focusedLifecycleIndex={1}
-        focusAnchorRevision={2}
-        onChange={vi.fn()}
-      />,
+      <ScrollHost>
+        <NodeInspector
+          graph={graph}
+          nodeId="gate"
+          focusedLifecycleIndex={1}
+          focusAnchorRevision={2}
+          onChange={vi.fn()}
+        />
+      </ScrollHost>,
     )
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrolls).toHaveLength(1)
+    expect(scrolls.some((s) => s.el === screen.getByTestId('outer-clip'))).toBe(false)
   })
 
   it('选择时间轴覆盖物时滚动到对应挂载卡片，重复选择仍可重新定位', () => {
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView,
-    })
+    const scrolls = captureScrolls()
     const graph: GameGraph = {
       nodes: [{
         id: 'gate',
@@ -414,33 +437,38 @@ describe('NodeInspector · 结算选中联动', () => {
       hud: { id: 'hud', children: [{ id: 'hp', component: 'test.hud' }] },
     }
     const { container, rerender } = render(
-      <NodeInspector
-        graph={graph}
-        nodeId="gate"
-        overlays={overlays}
-        focusedMountId="mount-b"
-        focusAnchorRevision={1}
-        onChange={vi.fn()}
-      />,
+      <ScrollHost>
+        <NodeInspector
+          graph={graph}
+          nodeId="gate"
+          overlays={overlays}
+          focusedMountId="mount-b"
+          focusAnchorRevision={1}
+          onChange={vi.fn()}
+        />
+      </ScrollHost>,
     )
 
     const focusedMount = container.querySelector<HTMLElement>('[data-focus-anchor="mount:mount-b"]')
     expect(focusedMount).toBeTruthy()
     expect(focusedMount?.style.outline).toContain('#f08840')
     expect(focusedMount?.style.background).toBe('')
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-    scrollIntoView.mockClear()
+    expect(scrolls.map((s) => s.el)).toEqual([screen.getByTestId('inspector-scroll')])
+    scrolls.length = 0
     rerender(
-      <NodeInspector
-        graph={graph}
-        nodeId="gate"
-        overlays={overlays}
-        focusedMountId="mount-b"
-        focusAnchorRevision={2}
-        onChange={vi.fn()}
-      />,
+      <ScrollHost>
+        <NodeInspector
+          graph={graph}
+          nodeId="gate"
+          overlays={overlays}
+          focusedMountId="mount-b"
+          focusAnchorRevision={2}
+          onChange={vi.fn()}
+        />
+      </ScrollHost>,
     )
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrolls).toHaveLength(1)
+    expect(scrolls.some((s) => s.el === screen.getByTestId('outer-clip'))).toBe(false)
   })
 
   it('删除选中项前面的效果后同步修正高亮序号', () => {
@@ -512,13 +540,13 @@ describe('NodeInspector · 结算选中联动', () => {
       { label: '隐藏界面', disabled: true },
     ])
 
-    // 四种触发改由「添加结算」入口选定；这里核候选齐全（含界面消失）。
+    // 「添加结算」只开放时间轴 / 条件；界面出现/消失改走绑定界面动作。
     fireEvent.click(screen.getByRole('button', { name: '添加结算' }))
     expect(
       within(screen.getByRole('listbox', { name: '添加结算' }))
         .getAllByRole('button')
         .map((option) => option.textContent),
-    ).toEqual(['时间轴结算', '条件结算', '时间轴结算·界面出现', '时间轴结算·界面消失'])
+    ).toEqual(['时间轴结算', '条件结算'])
     fireEvent.keyDown(document, { key: 'Escape' })
   })
 

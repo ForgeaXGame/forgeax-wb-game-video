@@ -14,7 +14,8 @@ import {
   type NodeDataPatch,
 } from '../../../graph/edit/graph-edit'
 import { injectStyleOnce } from '../../../styles/injectStyle'
-import { ConditionEditor, createDefaultEffect, type EditorPickerCtx } from '../editors'
+import { ConditionEditor, type EditorPickerCtx } from '../editors'
+import { scrollIntoViewWithin } from '../focus-scroll'
 import type {
   EntityAttributeCreateHandler,
   EntityCreateHandler,
@@ -173,9 +174,12 @@ type SettlementTriggerType = 'at' | 'condition' | 'shown' | 'hidden'
 const SETTLEMENT_TRIGGER_LABEL: Record<SettlementTriggerType, string> = {
   at: '时间轴结算',
   condition: '条件结算',
+  // 旧图仍可能落盘 shown/hidden；标题要认得，但「添加结算」入口不再提供这两项。
   shown: '时间轴结算·界面出现',
   hidden: '时间轴结算·界面消失',
 }
+/** 「添加结算」入口只开放这两种触发；界面出现/消失改走绑定界面动作，不再单独建结算。 */
+const ADD_SETTLEMENT_TRIGGERS: SettlementTriggerType[] = ['at', 'condition']
 /**
  * 触发类型 → 落盘的 `when`。新增结算与标题里改类型共用这一份，避免两处对「一个类型
  * 应该长什么样」写在两处。目前只有「添加结算」用它——卡片建好后不再改类型。
@@ -318,7 +322,7 @@ function LifecycleReactionsEditor({
   }
   useEffect(() => {
     if (focusAnchorRevision == null || focusedIndex == null) return
-    itemRefs.current[focusedIndex]?.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    scrollIntoViewWithin(itemRefs.current[focusedIndex])
   }, [focusAnchorRevision])
 
   useEffect(() => {
@@ -527,11 +531,11 @@ function LifecycleReactionsEditor({
         )
       })}
       {/* 新增入口是类型选择（稿子 15635:82029）：选哪一种就直接落成那一种触发，
-          不必先建一条定时结算再去标题里改类型。四个候选与标题选择器同一份 label。 */}
+          不必先建一条定时结算再去标题里改类型。只开放时间轴 / 条件两种。 */}
       <NiAddMenu
         label="添加结算"
         title="选一种触发方式新增结算"
-        options={(Object.keys(SETTLEMENT_TRIGGER_LABEL) as SettlementTriggerType[]).map((type) => ({
+        options={ADD_SETTLEMENT_TRIGGERS.map((type) => ({
           value: type,
           label: SETTLEMENT_TRIGGER_LABEL[type],
         }))}
@@ -542,7 +546,8 @@ function LifecycleReactionsEditor({
               atMs: Math.max(0, Math.round(insertMs ?? 0)),
               componentValue: componentOptions[0]?.value ?? '',
             }),
-            do: [{ kind: 'effect', effects: [createDefaultEffect('attr', entities ?? pickers?.entities, variables ?? pickers?.variables)] }],
+            // 空动作：作者自己点「添加动作」再选效果 / 沿边推进 / 绑界面，不预塞一条效果。
+            do: [],
           }])
           onFocusIndex?.(nextIndex)
         }}
