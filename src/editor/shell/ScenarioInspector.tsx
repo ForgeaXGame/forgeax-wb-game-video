@@ -12,7 +12,7 @@ import { LooseNumberInput } from './TermChainEditor'
 import type { ScenarioIdRename } from '../persist/scenario-id'
 import { nextUniqueOverlayTitle, overlayTitleExists } from './overlay-title'
 import { injectStyleOnce } from '../../styles/injectStyle'
-import searchIcon from '../../assets/asset-toolbar-search.svg'
+import searchIcon from '../../assets/asset-toolbar-search.svg?url'
 
 export type ScenarioMeta = Pick<GameScenario, 'variables' | 'entities' | 'ui'> & {
   formulas?: Record<string, Formula>
