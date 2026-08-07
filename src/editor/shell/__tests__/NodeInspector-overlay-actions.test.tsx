@@ -1,17 +1,35 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import type { GameGraph, GameNodeData } from '../../../runtime/schema/graph-schema'
+import type { GameGraph, GameNodeData, Overlay } from '../../../runtime/schema/graph-schema'
+import { STAGE_FILL_LAYOUT } from '../../../runtime/schema/layout'
 import { registerTestComponents } from '../../../runtime/__tests__/test-components'
-import { PRESET_SCHEME_BY_ID } from '../schemeOverlays'
 import { NodeInspector } from '../NodeInspector'
 
 afterEach(cleanup)
 beforeAll(registerTestComponents)
 
+/** 测试用界面方案（对齐旧 n_door：双事件 QTE + 铺满舞台）。 */
+const TEST_SCHEME_OVERLAY: Overlay = {
+  id: 'n_door',
+  title: '慈悲狱门叩',
+  children: [{
+    id: 'kou',
+    component: 'test.qte',
+    trigger: { when: 'enter' },
+    layout: { ...STAGE_FILL_LAYOUT },
+    inputs: {
+      events: [
+        { id: 'pass', label: '叩中' },
+        { id: 'fail', label: '错过' },
+      ],
+    },
+  }],
+}
+
 describe('NodeInspector · 界面事件动作入口', () => {
   it('aligns component and event-effect labels inside the blueprint node interface section', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     overlay.children = overlay.children.map((child) => ({ ...child, component: 'test.qte' }))
     overlay.children.unshift({
       id: 'damage',
@@ -62,7 +80,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
   })
 
   it('事件响应保留沿边推进入口，并把走边选择收进目标节点路由', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     const data: GameNodeData = {
       name: '慈悲狱门口',
       overlayNodes: [{ overlay: overlay.id }],
@@ -95,7 +113,7 @@ describe('NodeInspector · 界面事件动作入口', () => {
   })
 
   it('允许同一界面方案重复添加，并为第二份生成独立挂载 id', () => {
-    const overlay = structuredClone(PRESET_SCHEME_BY_ID.n_door!)
+    const overlay = structuredClone(TEST_SCHEME_OVERLAY)
     const graph: GameGraph = {
       nodes: [{
         id: 'gate',

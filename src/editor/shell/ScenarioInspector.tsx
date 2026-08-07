@@ -6,7 +6,7 @@ import type { AttrMeta, Entity, GameScenario, Layout, Overlay, ScalarValue, Vari
 import type { Formula } from '../persist/formula-authoring'
 import { OverlayCatalogPreview } from './OverlayCatalogPreview'
 import { OverlayChildStyleEditor } from './OverlayChildStyleEditor'
-import { NEW_COMPONENT_PRESETS, sortSchemeIds } from '../demo/builtin-schemes'
+import { NEW_COMPONENT_PRESETS, listSchemeAndBaseOverlayIds } from '../demo/builtin-schemes'
 import { FormulaTextEditor } from './FormulaTextEditor'
 import { LooseNumberInput } from './TermChainEditor'
 import type { ScenarioIdRename } from '../persist/scenario-id'
@@ -329,9 +329,8 @@ export function ScenarioInspector({
   const entities = value.entities ?? {}
   const formulas = value.formulas ?? {}
   const allOverlays = value.ui?.overlays ?? {}
-  // 「通用样式」= 自由方案；排除每节点自动内容 overlay（node:*，那是时间轴的内容容器）。
-  // 内置方案（静态/动态组件方案）固定置顶，其余按目录原有顺序跟后，见 sortSchemeIds。
-  const schemeIds = sortSchemeIds(Object.keys(allOverlays).filter((id) => !id.startsWith('node:')))
+  // 「通用样式」= 自由方案 + 基础覆盖物；排除每节点自动内容 overlay（node:*）。
+  const schemeIds = listSchemeAndBaseOverlayIds(allOverlays)
   // 标题输入本地缓存：onChange 自由输入，onBlur 时提交到 renameScheme 做重名校验。
   const [schemeLocalTitles, setSchemeLocalTitles] = useState<Record<string, string>>({})
   const [formulaSearch, setFormulaSearch] = useState('')
