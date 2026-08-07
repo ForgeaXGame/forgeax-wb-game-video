@@ -70,7 +70,7 @@ class SkinErrorBoundary extends Component<{ name: string; fallback?: ReactNode; 
   }
 }
 
-/** 可注入的 Overlay 渲染表（每局 Session 一份）。 */
+/** Overlay 渲染表（缺省进程内共享一份；测试/特殊路径可自建注入）。 */
 export class SkinRegistry {
   private readonly overlay = new Map<string, OverlayRendererRegistration>()
 
@@ -86,7 +86,7 @@ export class SkinRegistry {
     return this.overlay.has(id)
   }
 
-  /** 复制当前表（Session 隔离 / createCoreSkinRegistry 用）。 */
+  /** 复制当前表（测试或需要快照副本时用）。 */
   clone(): SkinRegistry {
     const next = new SkinRegistry()
     for (const [id, registration] of this.overlay) {
@@ -137,36 +137,6 @@ export class SkinRegistry {
       </div>
     )
   }
-
-  /** @deprecated 用 renderOverlayMount */
-  renderOverlay(
-    overlay: OverlaySnap,
-    emit?: (key: string) => void,
-    preview?: { timeMs?: number; playing?: boolean },
-    ctx?: SkinCtx,
-  ): ReactNode {
-    const registration = this.overlay.get(overlay.component)
-    if (!registration) return null
-    return (
-      <SkinErrorBoundary key={overlay.elementId} name={overlay.component}>
-        <RuntimeComponentHost
-          registration={registration}
-          overlay={overlay}
-          emit={emit}
-          ctx={ctx}
-          preview={!!preview}
-          previewTimeMs={preview?.timeMs}
-          previewPlaying={preview?.playing ?? false}
-        />
-      </SkinErrorBoundary>
-    )
-  }
-
-  /**
-   * @deprecated 内建渲染器由 `component-host` 的 `createCoreSkinRegistry` /
-   * `registerCoreSkins` 安装。保留为空操作以免旧调用方炸。
-   */
-  registerCoreRenderers(): void {}
 }
 
 export const defaultSkinRegistry = new SkinRegistry()
@@ -185,16 +155,4 @@ export function renderOverlayMount(
   preview?: { timeMs?: number; playing?: boolean },
 ): ReactNode {
   return defaultSkinRegistry.renderOverlayMount(mount, emit, ctx, preview)
-}
-export function renderOverlay(
-  overlay: OverlaySnap,
-  emit?: (key: string) => void,
-  preview?: { timeMs?: number; playing?: boolean },
-  ctx?: SkinCtx,
-): ReactNode {
-  return defaultSkinRegistry.renderOverlay(overlay, emit, preview, ctx)
-}
-/** @deprecated 见 `SkinRegistry.registerCoreRenderers`；请用 `registerCoreSkins()`。 */
-export function registerCoreRenderers(): void {
-  defaultSkinRegistry.registerCoreRenderers()
 }

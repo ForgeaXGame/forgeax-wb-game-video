@@ -8,5 +8,4 @@
   `ComponentDef` / `ComponentManifest` 转换只发生在 `component-host/index.ts`。
 
 将来启用 `commons/` 时，应导出与 `components/index.ts` 相同形状的 catalog，并在
-`createDefaultComponentRegistry()`、`createCoreSkinRegistry()`、`registerCoreSkins()`（经
-`registerBuiltins()`）三条内建注册路径中显式合并。当前不存在需要扩展的 skin/HP-bar“合并访问器”。
+`bootComponents()` / `ensureBuiltins()` 的内建注册路径中显式合并。
