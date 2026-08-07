@@ -248,9 +248,9 @@ describe('validateRelease', () => {
       expect.stringContaining('requiresCapabilities'),
     )
 
-    // 'wb-asset-canvas' and '/api/v1/kino' are intentionally not forbidden: this
-    // extension keeps a direct kino integration and vendors wb-asset-canvas at
-    // build time (see FORBIDDEN_PROVIDER_INTEGRATION_TEXT in check-release.mjs).
+    // wb-asset-canvas is vendored at build time. Product Kino routes are
+    // forbidden by the production-source release contract above; provider ids
+    // and legacy upload proxies remain forbidden in published artifacts here.
     for (const forbiddenPublishedText of [
       'arrival-kino',
       '__video-upload-proxy',

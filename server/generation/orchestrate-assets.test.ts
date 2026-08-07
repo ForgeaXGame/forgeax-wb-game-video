@@ -77,20 +77,29 @@ describe('host-backed generation references', () => {
     }])
   })
 
-  test('passes uploaded references through the host videoGeneration broker', async () => {
+  test('materializes uploaded references through media.video.generate@1', async () => {
     const registry = createRegistry()
-    const generateVideo = vi.fn(async () => ({
-      assets: [{
-        id: 'generated-video',
-        type: 'video' as const,
-        contentType: 'video/mp4',
-        url: 'memory://generated-video',
-        sizeBytes: 3,
-      }],
-      model: 'test',
+    const invoke = vi.fn(async () => ({
+      video: {
+        bytes: new Uint8Array([1, 2, 3]),
+        mime: 'video/mp4',
+        sourceUrl: 'https://kino.example/generated-video.mp4',
+        provider: {
+          kind: 'kino',
+          ref: 'https://kino.example/generated-video.mp4',
+          upstreamResourceId: 'generated-video',
+        },
+      },
     }))
     const context = {
-      videoGeneration: { generateVideo },
+      gameId: 'game-1',
+      media: {
+        read: vi.fn(async (_gameId: string, assetId: string) => ({
+          contentType: 'image/png',
+          bytes: new TextEncoder().encode(assetId),
+        })),
+      },
+      capabilities: { invoke },
     } as unknown as WorkbenchExtensionContext
     const orchestrator = createHostGenerationOrchestrator(context, registry)
 
@@ -104,19 +113,25 @@ describe('host-backed generation references', () => {
 
     expect(registry.mediaReference).toHaveBeenNthCalledWith(1, 'character-1')
     expect(registry.mediaReference).toHaveBeenNthCalledWith(2, 'scene-1')
-    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
-      references: [
-        { assetId: 'host:character-1' },
-        { assetId: 'host:scene-1' },
-      ],
-      durationSeconds: 4,
-    }))
+    expect(invoke).toHaveBeenCalledWith(
+      'media.video.generate',
+      1,
+      expect.objectContaining({
+        references: [
+          expect.objectContaining({ assetId: 'host:character-1', mime: 'image/png' }),
+          expect.objectContaining({ assetId: 'host:scene-1', mime: 'image/png' }),
+        ],
+        durationSeconds: 4,
+        metadata: { sceneNodeId: 'shot-1', nodeName: '开场' },
+      }),
+      undefined,
+    )
   })
 
   test('fails before calling the host when references are missing', async () => {
     const registry = createRegistry()
-    const generateVideo = vi.fn()
-    const context = { videoGeneration: { generateVideo } } as unknown as WorkbenchExtensionContext
+    const invoke = vi.fn()
+    const context = { capabilities: { invoke } } as unknown as WorkbenchExtensionContext
     const orchestrator = createHostGenerationOrchestrator(context, registry)
 
     await expect(orchestrator.generateVideo({
@@ -126,6 +141,6 @@ describe('host-backed generation references', () => {
       characterRefIds: [],
       sceneRefIds: ['scene-1'],
     })).rejects.toThrow('视频生成缺必传参考图')
-    expect(generateVideo).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalled()
   })
 })

@@ -15,12 +15,12 @@ export type WbGameVideoServiceMethod =
   | 'generateNodeVideo'
 
 export type WbGameVideoHttpRoute = {
-  readonly method: 'GET' | 'POST'
+  readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   readonly path: string
   /** Service method for POST routes that share the JSON body → service pattern. */
   readonly service?: WbGameVideoServiceMethod
   /** Free-form GET/POST handlers implemented in router.ts. */
-  readonly kind?: 'list-assets' | 'get-asset' | 'bundled-media' | 'get-style-axes' | 'set-style-axes'
+  readonly kind?: 'list-assets' | 'get-asset' | 'bundled-media' | 'get-style-axes' | 'set-style-axes' | 'host-media'
 }
 
 /** Ordered for documentation; router may use maps for O(1) lookup. */
@@ -36,6 +36,16 @@ export const WB_GAME_VIDEO_HTTP_ROUTES: readonly WbGameVideoHttpRoute[] = [
   { method: 'POST', path: 'generation/keyframe', service: 'generateKeyframe' },
   { method: 'POST', path: 'generation/video', service: 'generateVideo' },
   { method: 'POST', path: 'generation/node-video', service: 'generateNodeVideo' },
+  { method: 'GET', path: 'media/capabilities', kind: 'host-media' },
+  { method: 'POST', path: 'media/image-assets/upload', kind: 'host-media' },
+  { method: 'GET', path: 'media/resources', kind: 'host-media' },
+  { method: 'POST', path: 'media/resources', kind: 'host-media' },
+  { method: 'POST', path: 'media/resources/batch', kind: 'host-media' },
+  { method: 'GET', path: 'media/resources/:id', kind: 'host-media' },
+  { method: 'PUT', path: 'media/resources/:id', kind: 'host-media' },
+  { method: 'DELETE', path: 'media/resources/:id', kind: 'host-media' },
+  { method: 'GET', path: 'media/resources/:id/content', kind: 'host-media' },
+  { method: 'PUT', path: 'media/uploads/:id', kind: 'host-media' },
 ] as const
 
 /** POST paths that dispatch to `createWbGameVideoService` methods. */

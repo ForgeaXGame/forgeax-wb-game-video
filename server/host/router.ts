@@ -1,4 +1,9 @@
 import type {
+  MediaAsset,
+  MediaUpdateInput,
+  ResumableMediaCapability,
+} from '@forgeax/workbench-host/contracts'
+import type {
   WorkbenchExtensionContext,
   WorkbenchExtensionRouter,
   WorkbenchExtensionRouterRequest,
@@ -71,6 +76,22 @@ function jsonResponse(
 
 function mediaResponse(value: unknown): WorkbenchExtensionRouterResponse {
   return jsonResponse(200, { code: 0, message: 'ok', data: value })
+}
+
+function binaryResponse(
+  status: number,
+  contentType: string,
+  body: Uint8Array,
+): WorkbenchExtensionRouterResponse {
+  return {
+    status,
+    headers: {
+      'cache-control': 'private, no-store',
+      'content-length': String(body.byteLength),
+      'content-type': contentType,
+    },
+    body,
+  }
 }
 
 function notFound(): WorkbenchExtensionRouterResponse {
@@ -164,6 +185,275 @@ function parsePositiveInteger(value: string | undefined, label: string, allowZer
   return parsed
 }
 
+function record(value: unknown, label = 'Request body'): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new WbServiceInputError(`${label} must be an object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function stringValue(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new WbServiceInputError(`${label} is invalid`)
+  }
+  return value
+}
+
+function assertActiveGame(context: WorkbenchExtensionContext, value: unknown): void {
+  if (value !== undefined && value !== context.gameId) {
+    throw new WbServiceInputError('game_id must match the active Workbench game')
+  }
+}
+
+function resumableMedia(context: WorkbenchExtensionContext): ResumableMediaCapability {
+  const media = context.media as Partial<ResumableMediaCapability>
+  for (const method of [
+    'update',
+    'createUpload',
+    'getUpload',
+    'writeUploadChunk',
+    'completeUpload',
+  ] as const) {
+    if (typeof media[method] !== 'function') {
+      throw new WbServiceInputError('Workbench media uploads are not supported')
+    }
+  }
+  return context.media as ResumableMediaCapability
+}
+
+function mediaTimestamp(asset: MediaAsset, field: 'created_at' | 'updated_at'): number {
+  const value = asset.metadata?.[field]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function kinoResource(context: WorkbenchExtensionContext, asset: MediaAsset): Record<string, unknown> {
+  const metadata = asset.metadata ?? {}
+  const sourceMetaKeys = [
+    'task_id', 'prompt', 'model', 'seed', 'width', 'height', 'duration_ms',
+  ] as const
+  const sourceMeta = Object.fromEntries(
+    sourceMetaKeys.flatMap((key) => metadata[key] === undefined ? [] : [[key, metadata[key]]]),
+  )
+  const reserved = new Set([
+    ...sourceMetaKeys, 'type', 'remark', 'source', 'created_at', 'updated_at',
+  ])
+  const extra = Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => !reserved.has(key)),
+  )
+  return {
+    resource_id: asset.id,
+    game_id: context.gameId,
+    media_type: asset.type,
+    name: asset.filename ?? asset.id,
+    type: asset.metadata?.type ?? 'OTHER',
+    remark: asset.metadata?.remark,
+    url: asset.url,
+    source: asset.metadata?.source ?? 'workbench-host',
+    source_meta: {
+      mime_type: asset.contentType,
+      ...sourceMeta,
+      extra: {
+        ...extra,
+        ...(asset.sizeBytes === undefined ? {} : { bytes: asset.sizeBytes }),
+      },
+    },
+    created_at: mediaTimestamp(asset, 'created_at'),
+    updated_at: mediaTimestamp(asset, 'updated_at'),
+  }
+}
+
+async function mediaAsset(
+  context: WorkbenchExtensionContext,
+  assetId: string,
+): Promise<MediaAsset | undefined> {
+  return (await context.media.list(context.gameId)).find((asset) => asset.id === assetId)
+}
+
+function uploadIdFromObjectUrl(value: unknown): string {
+  const objectUrl = stringValue(value, 'url')
+  if (!objectUrl.startsWith('workbench-upload:')) {
+    throw new WbServiceInputError('url must identify a Workbench upload')
+  }
+  return stringValue(objectUrl.slice('workbench-upload:'.length), 'upload id')
+}
+
+async function completeHostResource(
+  context: WorkbenchExtensionContext,
+  rawInput: unknown,
+): Promise<MediaAsset> {
+  const input = record(rawInput)
+  assertActiveGame(context, input.game_id)
+  const uploadId = uploadIdFromObjectUrl(input.url)
+  let asset = await resumableMedia(context).completeUpload(context.gameId, uploadId)
+  const metadata: Record<string, unknown> = {
+    ...(record(input.source_meta ?? {}, 'source_meta')),
+    ...(input.type === undefined ? {} : { type: input.type }),
+    ...(input.source === undefined ? {} : { source: input.source }),
+  }
+  const update: MediaUpdateInput = {
+    ...(typeof input.name === 'string' ? { filename: input.name } : {}),
+    metadata,
+  }
+  asset = await resumableMedia(context).update(context.gameId, asset.id, update) ?? asset
+  return asset
+}
+
+async function handleHostMedia(
+  context: WorkbenchExtensionContext,
+  request: WorkbenchExtensionRouterRequest,
+  parts: readonly string[],
+): Promise<WorkbenchExtensionRouterResponse | undefined> {
+  if (parts[0] !== 'media') return undefined
+  const method = request.method.toUpperCase()
+  const path = parts.join('/')
+
+  if (method === 'GET' && path === 'media/capabilities') {
+    exactQuery(request.query, [])
+    return mediaResponse({
+      provider: 'kino',
+      media_types: ['image', 'video', 'audio'],
+      upload_mimes: [
+        'video/mp4', 'image/png', 'image/jpeg', 'image/webp',
+        'audio/mpeg', 'audio/wav',
+      ],
+    })
+  }
+
+  if (method === 'GET' && path === 'media/resources') {
+    const query = exactQuery(request.query, ['game_id', 'media_type', 'page', 'page_size', 'type'])
+    assertActiveGame(context, query.game_id)
+    const page = query.page === undefined ? 1 : parsePositiveInteger(query.page, 'page')
+    const pageSize = query.page_size === undefined
+      ? 20
+      : parsePositiveInteger(query.page_size, 'page_size')
+    if (pageSize > 100) throw new WbServiceInputError('page_size is invalid')
+    const assets = await context.media.list(context.gameId, {
+      ...(query.media_type === undefined ? {} : {
+        type: stringValue(query.media_type, 'media_type') as MediaAsset['type'],
+      }),
+    })
+    const filtered = query.type === undefined
+      ? assets
+      : assets.filter((asset) => asset.metadata?.type === query.type)
+    const start = (page - 1) * pageSize
+    return mediaResponse({
+      items: filtered.slice(start, start + pageSize).map((asset) => kinoResource(context, asset)),
+      total: filtered.length,
+      page,
+      page_size: pageSize,
+    })
+  }
+
+  if (method === 'POST' && path === 'media/image-assets/upload') {
+    exactQuery(request.query, [])
+    const input = record(jsonBody(request))
+    assertActiveGame(context, input.game_id)
+    const filename = stringValue(input.file_name, 'file_name')
+    const contentType = stringValue(input.mime_type, 'mime_type')
+    const sizeBytes = input.bytes
+    if (!Number.isSafeInteger(sizeBytes) || (sizeBytes as number) <= 0) {
+      throw new WbServiceInputError('bytes is invalid')
+    }
+    const upload = await resumableMedia(context).createUpload(context.gameId, {
+      filename,
+      contentType,
+      sizeBytes: sizeBytes as number,
+      ...(typeof input.client_resource_id === 'string'
+        ? { idempotencyKey: `replace:${input.client_resource_id}` }
+        : {}),
+    })
+    const chunkSize = Math.min(5 * 1024 * 1024, upload.sizeBytes)
+    return mediaResponse({
+      upload: {
+        method: 'PUT',
+        url: `/media/uploads/${encodeURIComponent(upload.id)}`,
+        headers: {},
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        chunk_size: chunkSize,
+        chunk_count: Math.ceil(upload.sizeBytes / chunkSize),
+      },
+      object_url: `workbench-upload:${upload.id}`,
+      upload_token: upload.id,
+    })
+  }
+
+  if (method === 'PUT' && parts.length === 3 && parts[1] === 'uploads') {
+    exactQuery(request.query, [])
+    const offsetHeader = header(request, 'upload-offset')
+    const offset = parsePositiveInteger(offsetHeader, 'upload-offset', true)
+    const upload = await resumableMedia(context).writeUploadChunk(
+      context.gameId,
+      parts[2]!,
+      { offset, bytes: request.body },
+    )
+    if (!upload) return notFound()
+    return mediaResponse(upload)
+  }
+
+  if (method === 'POST' && path === 'media/resources') {
+    exactQuery(request.query, [])
+    const asset = await completeHostResource(context, jsonBody(request))
+    return mediaResponse(kinoResource(context, asset))
+  }
+
+  if (method === 'POST' && path === 'media/resources/batch') {
+    exactQuery(request.query, [])
+    const input = record(jsonBody(request))
+    assertActiveGame(context, input.game_id)
+    if (!Array.isArray(input.resources)) {
+      throw new WbServiceInputError('resources must be an array')
+    }
+    const completed = await Promise.all(input.resources.map((resource) => (
+      completeHostResource(context, {
+        ...record(resource, 'resource'),
+        game_id: context.gameId,
+      })
+    )))
+    const unique = new Map(completed.map((asset) => [asset.id, asset]))
+    return mediaResponse({
+      created_count: unique.size,
+      skipped_count: completed.length - unique.size,
+      items: [...unique.values()].map((asset) => kinoResource(context, asset)),
+    })
+  }
+
+  if (parts.length >= 3 && parts[1] === 'resources') {
+    const assetId = parts[2]!
+    if (parts.length === 4 && parts[3] === 'content' && method === 'GET') {
+      const query = exactQuery(request.query, ['game_id', 'v'])
+      assertActiveGame(context, query.game_id)
+      const body = await context.media.read(context.gameId, assetId)
+      return body ? binaryResponse(200, body.contentType, body.bytes) : notFound()
+    }
+    if (parts.length !== 3) return undefined
+    const query = exactQuery(request.query, ['game_id'])
+    assertActiveGame(context, query.game_id)
+    if (method === 'GET') {
+      const asset = await mediaAsset(context, assetId)
+      return asset ? mediaResponse(kinoResource(context, asset)) : notFound()
+    }
+    if (method === 'PUT') {
+      const input = record(jsonBody(request))
+      assertActiveGame(context, input.game_id)
+      const metadata = record(input.source_meta ?? {}, 'source_meta')
+      const asset = await resumableMedia(context).update(context.gameId, assetId, {
+        ...(typeof input.name === 'string' ? { filename: input.name } : {}),
+        metadata: {
+          ...metadata,
+          ...(input.type === undefined ? {} : { type: input.type }),
+          ...(input.source === undefined ? {} : { source: input.source }),
+        },
+      })
+      return asset ? mediaResponse(kinoResource(context, asset)) : notFound()
+    }
+    if (method === 'DELETE') {
+      await context.media.delete(context.gameId, assetId)
+      return mediaResponse(null)
+    }
+  }
+  return undefined
+}
+
 /**
  * Creates the transport-neutral extension router. Framework adapters remain
  * host responsibilities and receive these status/headers/body values verbatim.
@@ -183,6 +473,9 @@ export function createWbGameVideoRouter(
         if (!parts) return notFound()
         const method = request.method.toUpperCase()
         const path = parts.join('/')
+
+        const hostMediaResponse = await handleHostMedia(context, request, parts)
+        if (hostMediaResponse) return hostMediaResponse
 
         if (method === 'GET' && path === 'assets') {
           const query = exactQuery(request.query, [
