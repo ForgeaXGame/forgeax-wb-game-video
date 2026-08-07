@@ -32,6 +32,7 @@ import {
 } from '../assets/asset-entries'
 import { useAssetBrowser } from '../assets/use-asset-browser'
 import { useVideoAssets, type VideoAssetListItem } from '../assets/useVideoAssets'
+import { DisclosureChevronIcon } from './DisclosureChevronIcon'
 import {
   listVideoLibraryFolderNames,
   normalizeVideoLibraryFolderName,
@@ -586,12 +587,6 @@ function toViewNodes(nodes: readonly UiTreeViewNode[]): UiTreeViewNode[] {
   })
 }
 
-// 默认朝下（展开）；.is-collapsed 旋 -90° → 朝右（收起），对齐 IDE 文件夹箭头。
-const ChevronIcon = (
-  <svg viewBox="0 0 20 20" fill="none" aria-hidden>
-    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
 const PlusIcon = (
   <svg viewBox="0 0 14 14" fill="none" aria-hidden>
     <path d="M0 5.85059L0 7.72559L5.91943 7.6875V13.5H7.79443V7.6875H13.5V5.8125H7.79443V0H5.91943V5.8125L0 5.85059Z" fill="currentColor" />
@@ -785,7 +780,7 @@ function NsRow({
               onToggle(node.id)
             }}
           >
-            {ChevronIcon}
+            {DisclosureChevronIcon}
           </button>
         )}
         {!isExpandable && node.leadingIcon == null ? (
