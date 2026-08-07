@@ -62,3 +62,30 @@ test('stores inspectorEl and onNodeSelect for the GraphStudio external panel', a
     onNodeSelect: undefined,
   })
 })
+
+test('openDocument sets document nav and graph view', async () => {
+  const { useDocumentNav } = await import('../editor/persist/documentNavStore')
+  const { useGraphView } = await import('../editor/persist/graphViewStore')
+  useDocumentNav.setState({ documentType: 'intake' })
+  useGraphView.setState({ view: 'graph' })
+
+  const handle = mountInto({})
+  act(() => handle.openDocument('pillar'))
+  expect(useDocumentNav.getState().documentType).toBe('pillar')
+  expect(useGraphView.getState().view).toBe('documents')
+  act(() => handle.unmount())
+})
+
+test('stores docActionSlotEl and clears it on unmount', async () => {
+  const { getDocumentMountOptions } = await import('../host-init')
+  const docActionSlotEl = document.createElement('div')
+  docActionSlotEl.textContent = 'HOST_BAR'
+  document.body.append(docActionSlotEl)
+
+  const handle = mountInto({ docActionSlotEl })
+
+  expect(getDocumentMountOptions()).toEqual({ docActionSlotEl })
+  act(() => handle.unmount())
+  expect(docActionSlotEl.childNodes.length).toBe(0)
+  expect(getDocumentMountOptions()).toEqual({ docActionSlotEl: undefined })
+})

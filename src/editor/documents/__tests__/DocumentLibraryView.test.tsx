@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { applyHostInit, resetHostInjectionForTests } from '../../../host-init'
 import { useDocumentNav } from '../../persist/documentNavStore'
 import { DocumentLibraryView } from '../DocumentLibraryView'
 
@@ -18,6 +19,11 @@ describe('DocumentLibraryView', () => {
     mocks.fetchProjectDocuments.mockReset()
     mocks.fetchProjectDocument.mockReset()
     useDocumentNav.setState({ documentType: 'intake' })
+    resetHostInjectionForTests()
+  })
+
+  afterEach(() => {
+    resetHostInjectionForTests()
   })
 
   it('shows a read-only empty state when a new project has no Markdown documents', async () => {
@@ -48,5 +54,18 @@ describe('DocumentLibraryView', () => {
       expect(screen.getByRole('heading', { level: 1, name: '核心' })).toBeTruthy()
     })
     expect(screen.queryByRole('button', { name: '采用' })).toBeNull()
+  })
+
+  it('hosts docActionSlotEl under header', async () => {
+    mocks.fetchProjectDocuments.mockResolvedValue({ documents: [] })
+    const slot = document.createElement('div')
+    slot.textContent = 'HOST_BAR'
+    applyHostInit({ docActionSlotEl: slot })
+
+    render(<DocumentLibraryView />)
+
+    const hostBar = await screen.findByText('HOST_BAR')
+    expect(hostBar.closest('.gdx-header')).toBeTruthy()
+    expect(screen.getByTestId('doc-action-slot-host').contains(slot)).toBe(true)
   })
 })

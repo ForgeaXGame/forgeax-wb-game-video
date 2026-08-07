@@ -21,6 +21,9 @@
  *
  * 可选 `inspectorEl`：节点配置面板 portal 到该 DOM（画布内不再嵌面板）；
  * `onNodeSelect` 在选中/取消选中时回调。`unmount()` 同时卸画布根与 inspector 内容。
+ *
+ * 可选 `docActionSlotEl`：文档头动作槽由 DocumentLibraryView 挂到 `.gdx-header`；
+ * `openDocument` / `setPendingDocumentTypes` 供宿主驱动文档视图与侧栏角标。
  */
 import { createRoot, type Root } from 'react-dom/client'
 import { GraphApp } from './GraphApp'
@@ -29,6 +32,10 @@ import {
   releaseHostInit,
   type WorkbenchInitOptions,
 } from './host-init'
+import type { DocumentType } from './editor/assets/registry-types'
+import { useDocumentNav } from './editor/persist/documentNavStore'
+import { useGraphView } from './editor/persist/graphViewStore'
+import { setPendingDocumentTypes as writePendingDocumentTypes } from './editor/persist/pendingDocumentsStore'
 import { initLocaleSync } from './i18n'
 import './styles/global.css'
 
@@ -39,6 +46,8 @@ export type { WorkbenchHostClient } from './lib/workbench-host'
 
 export interface GameVideoMountHandle {
   unmount(): void
+  openDocument(type: DocumentType): void
+  setPendingDocumentTypes(types: readonly DocumentType[]): void
 }
 
 export function mount(
@@ -59,12 +68,21 @@ export function mount(
     />,
   )
   const inspectorEl = options.inspectorEl
+  const docActionSlotEl = options.docActionSlotEl
   return {
+    openDocument(type: DocumentType): void {
+      useDocumentNav.getState().setDocumentType(type)
+      useGraphView.getState().setView('documents')
+    },
+    setPendingDocumentTypes(types: readonly DocumentType[]): void {
+      writePendingDocumentTypes(types)
+    },
     unmount: () => {
       reactRoot.unmount()
       rootEl.classList.remove('ks-app-host')
       // Portal content unmounts with the canvas root; clear the host slot for remounts.
       if (inspectorEl) inspectorEl.replaceChildren()
+      if (docActionSlotEl) docActionSlotEl.replaceChildren()
       releaseHostInit()
     },
   }

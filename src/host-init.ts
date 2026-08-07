@@ -10,6 +10,11 @@ import {
 } from './lib/workbench-host'
 import { setInjectedAcceptReference } from './platform/HostSdkBridge'
 import type { ContextReference } from './platform/context-reference'
+import type { DocumentType } from './editor/assets/registry-types'
+import {
+  resetPendingDocumentTypes,
+  setPendingDocumentTypes,
+} from './editor/persist/pendingDocumentsStore'
 
 export type WorkbenchInitOptions = {
   rewrite?: RewriteRule[]
@@ -36,6 +41,17 @@ export type WorkbenchInitOptions = {
    * Errors thrown by the callback are swallowed so selection still updates.
    */
   onNodeSelect?: (nodeId: string | null) => void
+  /**
+   * Host-owned DOM slot for document header actions (e.g. author gate bar).
+   * DocumentLibraryView hosts this element under `.gdx-header`; the host keeps
+   * React ownership of the slot's children.
+   */
+  docActionSlotEl?: HTMLElement
+  /**
+   * Initial pending document types for sidebar badges. Live updates go through
+   * `GameVideoMountHandle.setPendingDocumentTypes` without remounting.
+   */
+  pendingDocumentTypes?: DocumentType[]
 }
 
 /** Refcount so nested in-process mounts do not tear each other's host down. */
@@ -45,6 +61,7 @@ let initDepth = 0
 
 let activeInspectorEl: HTMLElement | undefined
 let activeOnNodeSelect: ((nodeId: string | null) => void) | undefined
+let activeDocActionSlotEl: HTMLElement | undefined
 
 export function getInspectorMountOptions(): {
   inspectorEl: HTMLElement | undefined
@@ -53,11 +70,21 @@ export function getInspectorMountOptions(): {
   return { inspectorEl: activeInspectorEl, onNodeSelect: activeOnNodeSelect }
 }
 
+export function getDocumentMountOptions(): {
+  docActionSlotEl: HTMLElement | undefined
+} {
+  return { docActionSlotEl: activeDocActionSlotEl }
+}
+
 export function applyHostInit(options: WorkbenchInitOptions = {}): void {
   acquireHostInit(options.rewrite)
   initDepth += 1
   activeInspectorEl = options.inspectorEl
   activeOnNodeSelect = options.onNodeSelect
+  activeDocActionSlotEl = options.docActionSlotEl
+  if (options.pendingDocumentTypes) {
+    setPendingDocumentTypes(options.pendingDocumentTypes)
+  }
   if (options.acceptReference) setInjectedAcceptReference(options.acceptReference)
   if (!options.host) return
   setWorkbenchHost(options.host)
@@ -70,6 +97,8 @@ export function releaseHostInit(): void {
   if (initDepth === 0) {
     activeInspectorEl = undefined
     activeOnNodeSelect = undefined
+    activeDocActionSlotEl = undefined
+    resetPendingDocumentTypes()
   }
   if (hostCount <= 0) return
   hostCount -= 1
@@ -84,6 +113,8 @@ export function resetHostInjectionForTests(): void {
   initDepth = 0
   activeInspectorEl = undefined
   activeOnNodeSelect = undefined
+  activeDocActionSlotEl = undefined
+  resetPendingDocumentTypes()
   clearWorkbenchHost()
   setInjectedAcceptReference(null)
 }

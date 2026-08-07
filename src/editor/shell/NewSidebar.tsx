@@ -18,6 +18,7 @@ import { useGraphView, type GraphView } from '../persist/graphViewStore'
 import { useAssetNav } from '../persist/assetNavStore'
 import { useRuleSelection, type RuleSection } from '../persist/ruleSelectionStore'
 import { useDocumentNav } from '../persist/documentNavStore'
+import { usePendingDocumentTypes } from '../persist/pendingDocumentsStore'
 import {
   useVideoLibraryNav,
   type VideoLibraryFolderTarget,
@@ -531,6 +532,16 @@ button.ns-leading { cursor: pointer; }
   vertical-align: middle;
   line-height: 1;
 }
+.ns-pending-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #f08840;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
 .ns-inline-edit {
   flex: 1;
   min-width: 0;
@@ -629,6 +640,7 @@ interface NsRowProps {
   mainId: string
   bp: BlueprintNavActions
   uiGroupComposing: boolean
+  pendingDocumentTypes: readonly DocumentType[]
   onToggle: (id: string) => void
   onExpand: (id: string) => void
   onSelect: (node: NavNode) => void
@@ -640,6 +652,7 @@ interface NsRowProps {
 function NsRow({
   node, depth, expanded, activeId, mainId, bp,
   uiGroupComposing,
+  pendingDocumentTypes,
   onToggle, onExpand, onSelect, onMockAddChild, onMockRename, onMockDelete,
 }: NsRowProps): JSX.Element {
   const hasChildren = !!(node.children && node.children.length > 0)
@@ -651,6 +664,9 @@ function NsRow({
   const isMainBp = isBlueprintLeaf && (node.isEntry || node.id === mainId)
   const isEditing = !!isBlueprintLeaf && bp.renameId === node.id
   const inlineRenameRef = useRef<HTMLInputElement>(null!)
+  const isPending = !!(
+    node.documentType && pendingDocumentTypes.includes(node.documentType)
+  )
 
   useEffect(() => {
     if (isEditing && inlineRenameRef.current) {
@@ -773,6 +789,7 @@ function NsRow({
         role="treeitem"
         aria-expanded={isExpandable ? isExpanded : undefined}
         aria-selected={isActive}
+        data-pending={isPending ? 'true' : undefined}
         tabIndex={0}
         style={{ paddingLeft: indent }}
         onClick={activateRow}
@@ -849,6 +866,7 @@ function NsRow({
                 入口
               </span>
             )}
+            {isPending ? <span className="ns-pending-dot" aria-hidden /> : null}
           </span>
         )}
         {rowActions && (
@@ -900,6 +918,7 @@ function NsRow({
               mainId={mainId}
               bp={bp}
               uiGroupComposing={uiGroupComposing}
+              pendingDocumentTypes={pendingDocumentTypes}
               onToggle={onToggle}
               onExpand={onExpand}
               onSelect={onSelect}
@@ -933,6 +952,7 @@ function NewSidebarContent({ uiNavMode, videoItems }: NewSidebarContentProps): J
   const selectRule = useRuleSelection((s) => s.select)
   const selectDocumentType = useDocumentNav((s) => s.setDocumentType)
   const selectedDocumentType = useDocumentNav((s) => s.documentType)
+  const pendingDocumentTypes = usePendingDocumentTypes()
   const gameId = useGraphScenario((s) => s.game)
   const { entries: assetEntries, directory: assetDirectory } = useAssetBrowser(gameId)
   const videoMetadata = useVideoMetadataSnapshot(gameId)
@@ -1140,6 +1160,7 @@ function NewSidebarContent({ uiNavMode, videoItems }: NewSidebarContentProps): J
               mainId={mainId}
               bp={bp}
               uiGroupComposing={uiGroupComposing}
+              pendingDocumentTypes={pendingDocumentTypes}
               onToggle={onToggle}
               onExpand={onExpand}
               onSelect={onSelect}

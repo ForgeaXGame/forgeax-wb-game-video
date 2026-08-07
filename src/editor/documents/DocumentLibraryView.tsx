@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { DocumentType } from '../assets/registry-types'
+import { getDocumentMountOptions } from '../../host-init'
 import { injectStyleOnce } from '../../styles/injectStyle'
 import {
   fetchProjectDocument,
@@ -76,11 +77,22 @@ export function DocumentLibraryView(): JSX.Element {
   }, [selectedId])
 
   const title = DOCUMENT_LABELS[documentType]
+  const { docActionSlotEl } = getDocumentMountOptions()
 
   return (
     <section className="gdx-root" aria-label="项目文档">
       <header className="gdx-header">
         <h1 className="gdx-title">{title}</h1>
+        {docActionSlotEl ? (
+          <div
+            data-testid="doc-action-slot-host"
+            ref={(el) => {
+              if (el && docActionSlotEl.parentElement !== el) {
+                el.appendChild(docActionSlotEl)
+              }
+            }}
+          />
+        ) : null}
       </header>
       <div className="gdx-content">
         {error ? <div className="gdx-error" role="alert">{error}</div> : null}

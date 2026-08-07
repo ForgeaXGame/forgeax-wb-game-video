@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BlueprintDoc, GameGraph } from '../../../runtime/schema/graph-schema'
 import { findUiTreeNode } from '../../persist/ui-tree'
@@ -108,6 +108,30 @@ describe('NewSidebar interface tree', () => {
 
     expect(useGraphView.getState().view).toBe('documents')
     expect(useDocumentNav.getState().documentType).toBe('core')
+  })
+
+  it('setPendingDocumentTypes marks sidebar leaf', async () => {
+    const { setPendingDocumentTypes, resetPendingDocumentTypes } = await import(
+      '../../persist/pendingDocumentsStore'
+    )
+    act(() => resetPendingDocumentTypes())
+    render(<NewSidebar />)
+    fireEvent.click(screen.getByRole('button', { name: '展开 文档' }))
+
+    expect(
+      screen.getByText('核心').closest('[role="treeitem"]')?.getAttribute('data-pending'),
+    ).toBeNull()
+
+    act(() => setPendingDocumentTypes(['core']))
+    expect(
+      screen.getByText('核心').closest('[role="treeitem"]')?.getAttribute('data-pending'),
+    ).toBe('true')
+
+    act(() => setPendingDocumentTypes([]))
+    expect(
+      screen.getByText('核心').closest('[role="treeitem"]')?.getAttribute('data-pending'),
+    ).toBeNull()
+    act(() => resetPendingDocumentTypes())
   })
 
   it('renders the real recursive tree and publishes scheme selection', () => {
