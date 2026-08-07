@@ -9,6 +9,20 @@
 - 图中只有 `perf` 演出节点；路由判断放在边上，副作用放在 reaction 中，UI 放在 overlay/component 中。
 - 运行入口是根 `graph`；子流程从 `manifest.packs` 解析。保存前保持根图与主 pack 同步。
 
+### 组件 catalog 边界
+
+- `src/runtime/component-host/components/` 的叶子组件只依赖 React 与 catalog 本地 helper/type；不得依赖
+  `src/editor`、engine/session 状态、平台 schema 或 `usePlayerKeyGate`。
+- manifest 使用 `components/manifest.ts` 的 `LocalComponentManifest`；转为平台 `ComponentDef` /
+  `ComponentManifest` 的 cast 只允许位于 `component-host/index.ts` 注册边界。
+- 内建 catalog 是仓内实现，不是 npm 公共子路径。跨层 runtime/editor 测试使用
+  `src/runtime/__tests__/test-components.tsx` 的 `test.*` fixtures，不要把管线测试绑定到生产组件 ID/DOM。
+- catalog 内部可以有叶子行为测试，但不得为测试方便反向 import editor 或 engine。
+- 当前交互叶子在 mounted 期间直接注册 capture-phase `window` 键盘监听，不使用 player focus gate。
+  监听必须在同一 `useEffect` 中安装/清理，按组件语义忽略 repeat，并在 preview 时禁用。多个播放器或
+  键盘组件同时挂载时可能收到同一事件；在解决外层路由前，不得假设有 player-focus 隔离，也不要新增
+  无生命周期清理的全局监听。
+
 ## 持久化与启动
 
 - 权威蓝图是宿主绑定游戏工作区内的逻辑路径 `blueprint.json`。
