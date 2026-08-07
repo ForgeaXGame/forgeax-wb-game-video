@@ -3,6 +3,7 @@ import type { MediaReference } from '@forgeax/workbench-host/contracts'
 import { createHostAssetRegistry, type HostAssetRegistry } from '../asset-registry'
 import { makeAssetId, type MediaAsset } from '../../src/editor/assets/registry-types'
 import { generated, generationError } from './orchestrate'
+import { generateVideoThroughHostCapability } from './video-capability'
 
 const ASSET_LIBRARY_NODE_ID = 'asset-library'
 const ASSET_LIBRARY_SOURCE = 'asset-library-generation'
@@ -77,14 +78,18 @@ export async function generateVideoClip(
 
   try {
     const references = await resolveReferences(registry, args, validated.mode)
-    const result = await context.videoGeneration.generateVideo({
+    const generatedVideo = await generateVideoThroughHostCapability(context, {
       prompt: args.prompt,
       references,
       durationSeconds: validated.durationSeconds,
       generateAudio: validated.generateAudio,
-      metadata: { sceneNodeId: ASSET_LIBRARY_NODE_ID, source: ASSET_LIBRARY_SOURCE },
+      metadata: {
+        sceneNodeId: ASSET_LIBRARY_NODE_ID,
+        nodeName: validated.label,
+      },
+      requestId: validated.requestId,
     })
-    await registry.persistGenerated(generated(result.assets, 'video'), {
+    await registry.persistGenerated(generated([generatedVideo], 'video'), {
       registryId: id,
       filenamePrefix: 'video',
       productionType: 'video_clip',

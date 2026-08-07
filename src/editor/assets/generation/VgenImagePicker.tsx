@@ -17,9 +17,9 @@ import type { MediaAsset } from '../registry-types'
 export type VgenImageKind = 'character_ref' | 'scene_ref' | 'keyframe'
 
 export interface VgenImageAsset {
-  /** Shared-registry identity used by the Phase 1 tool fallback. */
+  /** Shared-registry identity used by Workbench Host tools. */
   id: string
-  /** Provider-native Kino resource identity used by the Phase 2 HTTP route. */
+  /** Provider-native Kino identity retained for asset CRUD compatibility. */
   resourceId?: string
   label: string
   kind: VgenImageKind
@@ -236,14 +236,17 @@ function toPickerAsset(asset: MediaAsset, gameSlug: string): VgenImageAsset {
   if (!kind) {
     throw new Error('Imported image is missing a supported shared-registry production type')
   }
+  const resourceId = asset.provider?.kind === 'kino'
+    ? nonEmptyString(asset.provider.upstreamResourceId)
+    : undefined
   return {
     id: asset.id,
-    resourceId: asset.provider?.kind === 'kino'
-      ? nonEmptyString(asset.provider.upstreamResourceId)
-      : undefined,
+    resourceId,
     label: asset.label ?? asset.name ?? asset.id,
     kind,
-    thumbUrl: asset.url ?? gvaImageUrl(asset.id, gameSlug, asset.updatedAt),
+    thumbUrl: asset.url ?? (resourceId
+      ? gvaImageUrl(resourceId, gameSlug, asset.updatedAt)
+      : undefined),
   }
 }
 

@@ -7,6 +7,15 @@ import {
   listExternalVideoImportProjects,
 } from '../video-external-import'
 
+const extension = vi.hoisted(() => ({
+  fetch: vi.fn((path: string, init?: RequestInit) => fetch(path, init)),
+  url: vi.fn((path: string) => path),
+}))
+
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({ extension, ready: vi.fn(async () => undefined) }),
+}))
+
 function resource(overrides: Partial<KinoResourceDTO> = {}): KinoResourceDTO {
   return {
     resource_id: 'source-video',
@@ -24,7 +33,7 @@ function resource(overrides: Partial<KinoResourceDTO> = {}): KinoResourceDTO {
 describe('video external import helpers', () => {
   it('loads importable projects through the Kino endpoint and excludes the target game', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe('/api/v1/kino/import-projects?exclude_game_id=target%20game')
+      expect(String(input)).toBe('/media/import-projects?exclude_game_id=target%20game')
       return new Response(JSON.stringify({ code: 0, message: 'ok', data: [{ game_id: 'source-game', name: 'Source' }] }), {
         headers: { 'content-type': 'application/json' },
       })

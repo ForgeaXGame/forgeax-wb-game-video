@@ -6,6 +6,15 @@ import {
   uploadReferenceImage,
 } from '../image-assets'
 
+const extension = vi.hoisted(() => ({
+  fetch: vi.fn((path: string, init?: RequestInit) => fetch(path, init)),
+  url: vi.fn((path: string) => `https://host.test/extension/runtime/${path.replace(/^\/+/, '')}`),
+}))
+
+vi.mock('../../../lib/workbench-host', () => ({
+  getWorkbenchHost: () => ({ extension, ready: vi.fn(async () => undefined) }),
+}))
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -13,7 +22,7 @@ afterEach(() => {
 describe('gvaImageUrl', () => {
   it('builds a same-origin, revisioned image URL', () => {
     expect(gvaImageUrl('a-img-1/2', 'demo game', 42)).toBe(
-      '/api/v1/kino/resources/a-img-1%2F2/content?game_id=demo%20game&v=42',
+      'https://host.test/extension/runtime/media/resources/a-img-1%2F2/content?game_id=demo%20game&v=42',
     )
   })
 })
@@ -29,7 +38,7 @@ describe('deleteReferenceImage', () => {
     await deleteReferenceImage('demo game', 'a-img-1')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/kino/resources/a-img-1?game_id=demo%20game',
+      'https://host.test/extension/runtime/media/resources/a-img-1?game_id=demo%20game',
       expect.objectContaining({ method: 'DELETE' }),
     )
   })

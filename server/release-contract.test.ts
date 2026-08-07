@@ -43,12 +43,6 @@ const mainOwnedRuntimeFiles = new Set([
   'src/runtime/component-host/index.ts',
   'src/runtime/play/GamePlayer.tsx',
 ])
-// wb-game-video intentionally keeps a direct Kino integration instead of
-// adopting the host-media SSOT migration; see scripts/check-release.mjs's
-// FORBIDDEN_PROVIDER_INTEGRATION_TEXT for the matching release-gate carve-out.
-const kinoDirectIntegrationFiles = new Set([
-  'src/editor/assets/kino-api.ts',
-])
 const releaseGuardFiles = new Set([
   'scripts/check-release.mjs',
 ])
@@ -71,8 +65,8 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       || /(?:^|\/)__tests__\//.test(relativePath)
       || /\.test\.[cm]?[jt]sx?$/.test(relativePath)
       || ['server/dev-host.ts', 'vite.config.ts'].includes(relativePath)
+      || relativePath.startsWith('src/runtime/sdk/')
       || mainOwnedRuntimeFiles.has(relativePath)
-      || kinoDirectIntegrationFiles.has(relativePath)
       || releaseGuardFiles.has(relativePath)
     ) {
       return []
@@ -101,10 +95,10 @@ describe('release identity', () => {
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax-extension/wb-game-video')
-    expect(pkg.version).toBe('0.3.1')
+    expect(pkg.version).toBe('0.3.2')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe('0.3.1')
+    expect(manifest.version).toBe('0.3.2')
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),

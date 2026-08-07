@@ -49,7 +49,7 @@ export async function listExternalVideoImportProjects(
   if (!targetGameId.trim()) {
     throw new ExternalVideoImportError('Target game ID is required')
   }
-  const result = await requestKinoEnvelope<KinoImportProjectPage | KinoImportProjectDTO[]>('/api/v1/kino/import-projects', {
+  const result = await requestKinoEnvelope<KinoImportProjectPage | KinoImportProjectDTO[]>('/media/import-projects', {
     query: { exclude_game_id: targetGameId },
     signal: options.signal,
   })

@@ -1,7 +1,9 @@
 /**
- * Browser-safe Kino video resource API client.
+ * Browser-safe projection of the Workbench Host media API.
  * Standalone DTOs — must not import server/private packages.
  */
+
+import { pluginFetch, pluginUrl } from '../../lib/plugin-http'
 
 export interface KinoEnvelope<T> {
   code: number
@@ -166,7 +168,7 @@ export interface KinoEnvelopeRequestOptions extends KinoRequestOptions {
   query?: Record<string, string | number | boolean | undefined>
   json?: unknown
   /** Test seam; production callers use the same-origin global fetch. */
-  fetch?: typeof fetch
+  fetch?: KinoFetch
 }
 
 export interface KinoVideoClient {
@@ -182,11 +184,13 @@ export interface KinoVideoClient {
 }
 
 export interface CreateKinoVideoClientOptions {
-  fetch?: typeof fetch
+  fetch?: KinoFetch
   baseUrl?: string
 }
 
-const DEFAULT_BASE_URL = '/api/v1/kino'
+export type KinoFetch = (input: string, init?: RequestInit) => Promise<Response>
+
+const DEFAULT_BASE_URL = '/media'
 const MAX_ERROR_MESSAGE_LENGTH = 512
 
 /** Shared sentinel text so downstream callers can detect a plain (non-business) 404 by message. */
@@ -303,7 +307,7 @@ function parseEnvelope<T>(response: Response, payload: unknown): T {
 }
 
 async function requestJson<T>(
-  fetchImpl: typeof fetch,
+  fetchImpl: KinoFetch,
   baseUrl: string,
   path: string,
   options?: Pick<RequestInit, 'method' | 'body' | 'signal'>,
@@ -336,7 +340,7 @@ export async function requestKinoEnvelope<T>(
   if (!path.startsWith('/') || path.startsWith('//')) {
     throw new Error('Kino request path must be same-origin and absolute')
   }
-  const fetchImpl = options.fetch ?? fetch.bind(globalThis)
+  const fetchImpl = options.fetch ?? pluginFetch
   const requestPath = options.query ? appendQuery(path, options.query) : path
   return requestJson<T>(fetchImpl, '', requestPath, {
     method: options.method,
@@ -355,8 +359,9 @@ function resourcePath(resourceId: string, gameId: string, suffix = ''): string {
 export function createKinoVideoClient(
   options: CreateKinoVideoClientOptions = {},
 ): KinoVideoClient {
-  const fetchImpl = options.fetch ?? fetch.bind(globalThis)
+  const fetchImpl = options.fetch ?? pluginFetch
   const baseUrl = normalizeBaseUrl(options.baseUrl)
+  const hostTransport = options.fetch === undefined && options.baseUrl === undefined
 
   return {
     async capabilities(options) {
@@ -434,7 +439,8 @@ export function createKinoVideoClient(
     },
 
     playbackUrl(resourceId, gameId) {
-      return `${baseUrl}${resourcePath(resourceId, gameId, '/content')}`
+      const path = `${baseUrl}${resourcePath(resourceId, gameId, '/content')}`
+      return hostTransport ? pluginUrl(path) : path
     },
   }
 }
