@@ -15,7 +15,7 @@ export interface EmptyProject {
   entry: { blueprint: 'blueprint.json'; components: 'dist/components' }
 }
 
-export interface EmptyLibrarySeed {
+export interface EmptyLibrarySeed extends Record<string, unknown> {
   project: EmptyProject
   blueprint: GraphLibraryDocument
   assetsManifest: { version: 2; assets: [] }
