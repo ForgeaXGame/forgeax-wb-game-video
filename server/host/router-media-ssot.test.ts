@@ -3,7 +3,7 @@ import type { WorkbenchExtensionContext } from '@forgeax/workbench-host/node'
 import { createWbGameVideoRouter } from './router'
 
 describe('wb-game-video media routing', () => {
-  it('advertises the exact media surface backed by server-private Kino', async () => {
+  it('advertises the exact media surface backed by the product Kino provider', async () => {
     const response = await createWbGameVideoRouter({} as WorkbenchExtensionContext).handle({
       gameId: 'game-1',
       runtimeId: 'runtime-1',
