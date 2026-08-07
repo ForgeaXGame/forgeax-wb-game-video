@@ -171,7 +171,7 @@ describe('wb-game-video host module', () => {
     expect(host.tools).toBe(tools)
     expect(host.gamePackage).toMatchObject({ platform: 'wb-game-video' })
     expect(await host.gamePackage!.createSeed(createContext().context))
-      .toMatchObject({ project: { id: 'nodia' } })
+      .toMatchObject({ project: { id: 'parity-game' } })
     await expect(host.gamePackage!.validateSeed({})).rejects.toThrow()
     expect(host.createRouter).toBeTypeOf('function')
   })

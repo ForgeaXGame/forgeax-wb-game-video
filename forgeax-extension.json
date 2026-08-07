@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "@forgeax-extension/wb-game-video",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "kind": "workbench",
   "displayName": {
     "zh": "视频游戏",

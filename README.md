@@ -6,8 +6,10 @@
 
 - 图文档权威文件是宿主绑定游戏工作区内的逻辑路径 `blueprint.json`；首次保存同时补齐
   `project.json`。物理目录布局由宿主 workspace adapter 决定。
-- 未保存草稿留在浏览器 localStorage。未初始化项目由 `GameBootstrap` 引导用户显式创建
-  Nodia seed；已初始化 package 读取失败会进入可重试错误页，不会自动写入空蓝图。
+- 未保存草稿留在浏览器 localStorage。未初始化项目由 `GameBootstrap` 引导宿主 `initialize`；
+  首次 initialize 默认写入 **empty library**（单 `entry` 节点空壳，非 Nodia demo）。Nodia 仅用于
+  用户显式 demo 重置（`createNodiaSeed`）。已初始化 package 读取失败会进入可重试错误页，不会自动
+  写入空蓝图覆盖原文件。
 - 游戏身份只来自宿主：后端读取 `WorkbenchExtensionContext.gameId`，浏览器等待 nonce-bound
   handshake 后读取 `ExtensionClient.ready()` 返回的 `gameId`。12 个 AI 工具都不接受调用者提供的
   `gameSlug`。
@@ -56,7 +58,8 @@ bun run start:standalone
 `/__workbench__/v1` 的标准 Workbench HTTP 契约；用宿主 iframe 的 nonce-bound
 handshake 注入 game id、runtime id 和端点后再打开编辑器。它不提供旧的兼容业务路由。
 本地游戏包保存在被忽略的 `.workbench-dev/games/<gameId>/`，首次 `initialize` 时由
-扩展的 Nodia seed 创建 `project.json`、`blueprint.json` 与 `assets/manifest.json`。
+扩展的 empty library seed 创建 `project.json`、`blueprint.json` 与 `assets/manifest.json`。
+Nodia demo 需显式调用 `createNodiaSeed`。
 `bun test` 是无 DOM 的 server/release-contract gate；浏览器、React 与 Vite 覆盖使用
 完整的 `bun run test`（Vitest）。
 
