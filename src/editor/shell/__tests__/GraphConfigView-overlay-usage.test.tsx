@@ -105,6 +105,7 @@ describe('GraphConfigView overlay usage', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '展开 界面' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开自定义界面' }))
     expect(screen.getByText('⇢2')).toBeTruthy()
     expect(screen.queryByText('被 2 个节点引用')).toBeNull()
   })

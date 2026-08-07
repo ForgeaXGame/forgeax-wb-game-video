@@ -84,13 +84,36 @@ describe('NewSidebar interface tree', () => {
     render(<NewSidebar />)
     expect(screen.queryByText('自定义界面')).toBeNull()
     expandUiTree()
+    expect(screen.getByText('战斗')).toBeTruthy()
+    expect(screen.queryByText('首领')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗' }))
     expect(screen.getByText('首领')).toBeTruthy()
+    expect(screen.queryByText('战斗 HUD')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开首领' }))
 
     fireEvent.click(screen.getByRole('button', { name: '选择界面方案 战斗 HUD' }))
     expect(useUiSelection.getState()).toMatchObject({
       selectedTreeNodeId: 'hud-node',
       selectedOverlayId: 'hud',
     })
+  })
+
+  it('shows interface children when its arrow is clicked from the rule view', () => {
+    useGraphView.setState({ view: 'rule' })
+    render(<NewSidebar />)
+
+    expect(screen.getByRole('button', { name: '展开 界面' })).toBeTruthy()
+    expect(screen.queryByText('首领')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开 界面' }))
+
+    expect(useGraphView.getState().view).toBe('rule')
+    expect(screen.getByRole('button', { name: '折叠 界面' })).toBeTruthy()
+    expect(screen.getByText('战斗')).toBeTruthy()
+    expect(screen.queryByText('首领')).toBeNull()
+    expect(screen.getByRole('button', { name: '展开战斗' })).toBeTruthy()
   })
 
   it('creates top-level folders from the 界面 add button before schemes can be added inside', () => {
@@ -161,6 +184,8 @@ describe('NewSidebar interface tree', () => {
   it('deletes a scheme reference and its overlay together', () => {
     render(<NewSidebar />)
     expandUiTree()
+    fireEvent.click(screen.getByRole('button', { name: '展开战斗' }))
+    fireEvent.click(screen.getByRole('button', { name: '展开首领' }))
     fireEvent.click(screen.getByLabelText('删除 战斗 HUD'))
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 

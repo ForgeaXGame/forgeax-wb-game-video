@@ -902,7 +902,7 @@ export function NewSidebar({ uiNavMode = 'standalone' }: { uiNavMode?: 'left' | 
                 />
               </div>
             ) : null}
-            {node.id === 'ui' && view === 'ui' && expanded.has(node.id) ? (
+            {node.id === 'ui' && expanded.has(node.id) ? (
               <div className="ns-ui-tree" role="group" aria-label="界面子项">
                 <UiTreeView
                   nodes={uiNodes}

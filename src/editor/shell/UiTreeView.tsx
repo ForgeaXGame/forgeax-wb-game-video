@@ -144,7 +144,7 @@ function UiTreeRow({
   onDelete,
 }: UiTreeViewProps & { node: UiTreeViewNode; depth: number }): JSX.Element {
   const isFolder = node.kind === 'folder'
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const [mode, setMode] = useState<RowMode>(null)
   const [draft, setDraft] = useState(node.name ?? '')
   const [composingScheme, setComposingScheme] = useState(false)
