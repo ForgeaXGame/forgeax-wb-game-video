@@ -119,7 +119,10 @@ function createContext() {
       models,
       videoGeneration: unavailableVideoGeneration,
       services: unavailableServices,
-      capabilities: { async invoke() { throw new Error('Capabilities are unavailable in this test context') } },
+      capabilities: { async invoke(id: string) {
+        if (id === 'media.video.visual-styles.list') return { items: [] }
+        throw new Error('Capabilities are unavailable in this test context')
+      } },
     } satisfies WorkbenchExtensionContext,
     media,
     models,
@@ -151,6 +154,7 @@ const manifestTools = [
   ['wb-game-video:generate-video-clip', 'generateVideoClip', {
     prompt: 'A rainy alley',
   }],
+  ['wb-game-video:list-video-visual-styles', 'listVideoVisualStyles', {}],
   ['wb-game-video:generate-node-video', 'generateNodeVideo', {
     sceneNodeId: 'node-1', nodeName: 'Opening',
     characterRefIds: ['character-ref'], sceneRefIds: ['scene-ref'],

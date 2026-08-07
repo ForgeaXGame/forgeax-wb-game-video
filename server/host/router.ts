@@ -383,7 +383,10 @@ async function handleHostMedia(
         ? { idempotencyKey: `replace:${input.client_resource_id}` }
         : {}),
     })
-    const chunkSize = Math.min(5 * 1024 * 1024, upload.sizeBytes)
+    // Workbench Host bounds every extension HTTP request body to 1 MiB.
+    // Keep resumable chunks within that transport contract; a larger chunk is
+    // cancelled by the Hono adapter before it reaches writeUploadChunk.
+    const chunkSize = Math.min(1024 * 1024, upload.sizeBytes)
     return mediaResponse({
       upload: {
         method: 'PUT',

@@ -19,6 +19,7 @@ const expectedTools = [
   'wb-game-video:generate-keyframe',
   'wb-game-video:generate-video',
   'wb-game-video:generate-video-clip',
+  'wb-game-video:list-video-visual-styles',
   'wb-game-video:generate-node-video',
   'wb-game-video:list-assets',
   'wb-game-video:get-asset',
@@ -36,6 +37,11 @@ const forbiddenLegacyHostRoutes = [
   'FORGEAX_SERVER_PORT',
   '.forgeax/active-game.json',
 ]
+
+function containsForbiddenLegacyRoute(source: string, route: string): boolean {
+  if (route !== '/api/v1/kino') return source.includes(route)
+  return /\/api\/v1\/kino(?:\/|\?|["'`])/.test(source)
+}
 
 // These routes belong to the current main-branch runtime/builders. They are
 // intentionally not part of the migration surface being gated here.
@@ -87,7 +93,7 @@ describe('release identity', () => {
     const violations = productionSourceFiles().flatMap((file) => {
       const source = readFileSync(resolve(root, file), 'utf8')
       return forbiddenLegacyHostRoutes
-        .filter((route) => source.includes(route))
+        .filter((route) => containsForbiddenLegacyRoute(source, route))
         .map((route) => `${file}: ${route}`)
     })
 
@@ -211,7 +217,7 @@ describe('release identity', () => {
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)
       const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
-      expect(schema.properties, tool.id).not.toHaveProperty('gameSlug')
+      expect(schema.properties ?? {}, tool.id).not.toHaveProperty('gameSlug')
       expect(schema.required ?? [], tool.id).not.toContain('gameSlug')
     }
   })

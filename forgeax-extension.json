@@ -150,6 +150,22 @@
         }
       },
       {
+        "id": "wb-game-video:list-video-visual-styles",
+        "args": "./schemas/list-video-visual-styles.args.json",
+        "returns": "./schemas/list-video-visual-styles.returns.json",
+        "requiresCapabilities": [
+          {
+            "id": "media.video.visual-styles.list",
+            "version": 1
+          }
+        ],
+        "exposedToAI": false,
+        "description": {
+          "zh": "读取 Kino 当前可用的视频视觉风格预设。",
+          "en": "List the video visual-style presets currently available from Kino."
+        }
+      },
+      {
         "id": "wb-game-video:generate-node-video",
         "args": "./schemas/generate-node-video.args.json",
         "returns": "./schemas/generate-node-video.returns.json",
