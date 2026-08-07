@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wb-game-video:patch-graph args",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ops"],
+  "properties": {
+    "blueprintId": { "type": "string", "minLength": 1 },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["op"],
+        "properties": {
+          "op": { "type": "string" },
+          "nodeId": { "type": "string" },
+          "field": { "type": "string" },
+          "value": {},
+          "graphPath": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
