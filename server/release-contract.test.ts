@@ -212,7 +212,7 @@ describe('release identity', () => {
   })
 
   it('derives game identity from the host binding for every public tool', () => {
-    expect(manifest.provides.tools).toHaveLength(13)
+    expect(manifest.provides.tools).toHaveLength(14)
 
     for (const tool of manifest.provides.tools) {
       const schemaPath = resolve(root, tool.args)
