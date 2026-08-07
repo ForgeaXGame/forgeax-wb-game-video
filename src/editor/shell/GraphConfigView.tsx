@@ -102,9 +102,11 @@ export function GraphConfigView({ tabs, title: _title = '配置', icon: _icon = 
   // 界面 tab 保持新建方案置顶；其它方案选择器继续沿用通用排序。
   const schemeIds = useMemo(() => listInterfaceCustomSchemeIds(allOverlays), [allOverlays])
   const baseIds = useMemo(() => listBaseHudIds(allOverlays), [allOverlays])
+  const selectedTreeNodeId = useUiSelection((state) => state.selectedTreeNodeId)
   const selectedOverlayId = useUiSelection((state) => state.selectedOverlayId)
   const selectUiNode = useUiSelection((state) => state.selectUiNode)
-  // 选中项自愈：不在当前方案集（全局 + 基础）里（删除/首次）就落到第一个全局方案。
+  // 主区展示用的方案：选中项不在当前方案集（全局 + 基础）里（删除/首次/选中了文件夹）
+  // 时回落到第一个全局方案，保证 OverlaySchemeEditor 始终有内容可渲染。
   const selectable = [...schemeIds, ...baseIds]
   const selOverlay = selectedOverlayId && selectable.includes(selectedOverlayId)
     ? selectedOverlayId
@@ -112,13 +114,17 @@ export function GraphConfigView({ tabs, title: _title = '配置', icon: _icon = 
   const uiTree = ensureUiTree(meta.uiTree, allOverlays)
   useEffect(() => {
     if (!overlaysMode) return
+    // 仅在「确实没有任何树节点选中」（首次进入 / 删除后）时自愈到第一个方案。
+    // 用户主动选中文件夹时 selectedTreeNodeId 非 null、selectedOverlayId 为 null，
+    // 此时不应把选中抢回 scheme——否则 is-selected 会在文件夹与方案行间反复跳变。
+    if (selectedTreeNodeId !== null) return
     if (!selOverlay) {
       if (selectedOverlayId !== null) selectUiNode(null, null)
       return
     }
     if (selectedOverlayId === selOverlay) return
     selectUiNode(findSchemeNodeId(uiTree.root, selOverlay) ?? null, selOverlay)
-  }, [overlaysMode, selOverlay, selectUiNode, selectedOverlayId, uiTree])
+  }, [overlaysMode, selOverlay, selectUiNode, selectedTreeNodeId, selectedOverlayId, uiTree])
   // 基础覆盖物方案只锁结构：单组件不可增删；inputs/layout 可编辑。
   const selLocked = selOverlay.startsWith(BASE_HUD_PREFIX)
 
