@@ -23,7 +23,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   },
   server: {
     host: true,
-    port: 15185,
+    port: process.env.VITE_DEV_PORT ? Number(process.env.VITE_DEV_PORT) : 15185,
     strictPort: true,
     allowedHosts: true as const,
     // Asset CRUD still uses extension-owned `/api/*` routes in standalone dev.
