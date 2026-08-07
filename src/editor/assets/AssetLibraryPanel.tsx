@@ -126,6 +126,7 @@ export function AssetLibraryPanel({
   requestedRoot,
   requestedFolderId,
   requestedEntryKey,
+  onVideoGenerate,
 }: {
   controller: AssetLibraryController
   directory?: AssetDirectoryController
@@ -134,6 +135,7 @@ export function AssetLibraryPanel({
   requestedRoot?: AssetLibraryRootKind | null
   requestedFolderId?: string | null
   requestedEntryKey?: string | null
+  onVideoGenerate?: () => void
 }): JSX.Element {
   const [currentId, setCurrentId] = useState<string>('root:library')
   const [query, setQuery] = useState('')
@@ -157,7 +159,13 @@ export function AssetLibraryPanel({
   const suppressAssetOpenRef = useRef(false)
 
   useEffect(() => {
-    if (requestedRoot) setCurrentId(`root:${requestedRoot}`)
+    if (requestedRoot === null) {
+      setCurrentId('root:library')
+      setSelectedEntryId(null)
+      setDetailOpen(false)
+    } else if (requestedRoot) {
+      setCurrentId(`root:${requestedRoot}`)
+    }
   }, [requestedRoot])
   useEffect(() => {
     if (requestedFolderId) setCurrentId(requestedFolderId)
@@ -414,7 +422,16 @@ export function AssetLibraryPanel({
       <section className="alx-workspace" aria-label={isLibraryHome ? '资产库' : `${currentRoot.name}资产`}>
         <header className="alx-toolbar">
           <div className="alx-action-group">
-            <button type="button" onClick={() => setUnavailableAction('图像生成服务尚未接入')}><span className="alx-action-icon"><img src={generateToolbarIcon} alt="" /></span>生成</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!isLibraryHome && currentRoot.kind === 'video') {
+                  onVideoGenerate?.()
+                  return
+                }
+                setUnavailableAction(`${isLibraryHome ? '资产' : currentRoot.name}生成服务尚未接入`)
+              }}
+            ><span className="alx-action-icon"><img src={generateToolbarIcon} alt="" /></span>生成</button>
             <button type="button" disabled={actionsDisabled || isLibraryHome} onClick={() => fileInputRef.current?.click()}><span className="alx-action-icon"><img src={localToolbarIcon} alt="" /></span>本地</button>
             <button type="button" onClick={() => setUnavailableAction('外部资产搜索服务尚未接入')}><span className="alx-action-icon"><img src={externalToolbarIcon} alt="" /></span>外部</button>
             <button type="button" className="alx-preset" onClick={() => setUnavailableAction(`${isLibraryHome ? '资产' : currentRoot.name}预设服务尚未接入`)}><span className="alx-action-icon"><img src={presetToolbarIcon} alt="" /></span>{isLibraryHome ? '资产' : currentRoot.name}预设</button>

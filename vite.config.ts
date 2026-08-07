@@ -21,7 +21,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   },
   server: {
     host: true,
-    port: 15185,
+    port: process.env.VITE_DEV_PORT ? Number(process.env.VITE_DEV_PORT) : 15185,
     strictPort: true,
     allowedHosts: true as const,
     // dev 下 `/api/*`（kino 直连 HTTP 路由 + ToolRegistry 调用）转发到 forgeax server，

@@ -49,6 +49,10 @@ afterEach(() => {
   useUiSelection.getState().clearUiSelection()
 })
 
+function expandUiTree(): void {
+  fireEvent.click(screen.getByRole('button', { name: '展开 界面' }))
+}
+
 describe('NewSidebar interface tree', () => {
   it('keeps the main-branch 240px rail while exposing only real product routes', () => {
     render(<NewSidebar />)
@@ -66,6 +70,7 @@ describe('NewSidebar interface tree', () => {
   it('renders the real recursive tree and publishes scheme selection', () => {
     render(<NewSidebar />)
     expect(screen.queryByText('自定义界面')).toBeNull()
+    expandUiTree()
     expect(screen.getByText('首领')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '选择界面方案 战斗 HUD' }))
@@ -91,6 +96,7 @@ describe('NewSidebar interface tree', () => {
 
   it('creates an overlay in the selected folder from the 界面 add button', () => {
     render(<NewSidebar />)
+    expandUiTree()
     fireEvent.click(screen.getByRole('button', { name: '选择文件夹 战斗' }))
     fireEvent.click(screen.getByRole('button', { name: '新增 界面 子项' }))
 
@@ -132,6 +138,7 @@ describe('NewSidebar interface tree', () => {
 
   it('deletes a scheme reference and its overlay together', () => {
     render(<NewSidebar />)
+    expandUiTree()
     fireEvent.click(screen.getByLabelText('删除 战斗 HUD'))
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 
