@@ -29,7 +29,7 @@ import { isBlueprintTitleTaken } from './blueprint-title'
 import { resolveGraphEntry } from '../../runtime/schema/graph-schema'
 import { blueprintsReferencing, findReferenceCycle } from '../../graph/edit/blueprint-refs'
 import { resolveEntryAfterGraphChange } from '../../graph/edit/graph-scope'
-import { loadGameComponents } from '../../runtime/component-host'
+import { bootComponents } from '../../runtime/component-host'
 import { NODIA_DEMO } from '../demo/demo'
 import {
   addUiTreeFolder as addTreeFolder,
@@ -451,7 +451,7 @@ export const useGraphScenario = create<GraphScenarioStore>()(temporal((set, get)
           set({ isDraft: false, booted: true })
           void currentVersion(game).then((cv) => set({ currentTag: cv.tag }))
           void listVersions(game).then((vs) => set({ gameVersions: vs }))
-          void loadGameComponents(game)
+          void bootComponents(game)
         } catch (cause) {
           if (get().game === game) set({ booted: false })
           throw cause

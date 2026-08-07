@@ -12,7 +12,7 @@ export * from './registry/component-registry'
 export * from './validate/validate'
 export * from './component-host/rendererRegistry'
 export {
-  registerCoreSkins,
+  bootComponents,
   createCoreSkinRegistry,
   createDefaultComponentRegistry,
 } from './component-host'

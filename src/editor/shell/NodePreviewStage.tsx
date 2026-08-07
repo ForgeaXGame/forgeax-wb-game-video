@@ -454,7 +454,7 @@ function EditableNodePreviewStage({
     () => resolveVideoFxForNode(node, overlays, playheadMs, maxMs),
     [node, overlays, playheadMs, maxMs],
   )
-  // 与视频 tab / 界面 tab 同源：完整皮肤表，不依赖 default 单例是否被 HMR 冲掉。
+  // 与 bootComponents / Session 同源：共享默认皮肤表。
   const previewSkinReg = useMemo(() => createCoreSkinRegistry(), [])
   const previewSkinCtx = useMemo((): SkinCtx => {
     const st = projectNodePreviewState(scenario, node, playheadMs, maxMs)
