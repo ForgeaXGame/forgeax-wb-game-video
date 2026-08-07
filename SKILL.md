@@ -34,7 +34,7 @@ wb-game-video:get-graph({})
   → wb-game-video:patch-graph({ blueprintId?, ops })
 ```
 
-如果 `get-graph` 返回 `project: null`，先创建空的 `GraphLibraryDocument`；不要自动注入 demo。Nodia demo 只用于用户显式重置。
+如果 `get-graph` 返回 `project: null`，说明 Host 尚未初始化 empty library seed。向编排层报错并停止——你无法 `save-graph`，不得编造整本 `GraphLibraryDocument` 或 Write/Edit `blueprint.json`。正常 Pass A 前提是盘上已有 Host empty seed（单 `entry` 节点）。Nodia demo 只用于用户显式重置。
 AI 改图只使用 `patch-graph`，不要拼接整本 `project` 调用 `save-graph`。游戏身份始终来自宿主绑定；
 所有 12 个 AI 工具都不接受 `gameSlug` 或其它游戏选择参数。
 
