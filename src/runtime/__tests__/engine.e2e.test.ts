@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { makeNodiaDemo } from '../../editor/demo/demo'
+import { makeNodiaFixture } from '../../editor/demo/__tests__/fixtures/nodia-fixture'
 import { validateScenario } from '../validate/validate'
 import { getSubProcess } from '../schema/graph-schema'
 
 describe('nodia graph e2e (runs on GraphRuntime)', () => {
   it('authored graph passes the validator', () => {
-    const scn = makeNodiaDemo()
+    const scn = makeNodiaFixture()
     const issues = validateScenario(scn)
     expect(
       issues.filter((issue) =>
@@ -16,7 +16,7 @@ describe('nodia graph e2e (runs on GraphRuntime)', () => {
   })
 
   it('combat turn containers are subflows (我方回合/敌方回合)', () => {
-    const scn = makeNodiaDemo()
+    const scn = makeNodiaFixture()
     const aMy = scn.graph.nodes.find((n) => n.id === 'a_my')
     const bAi = scn.graph.nodes.find((n) => n.id === 'b_ai')
     expect(getSubProcess(aMy!.data)?.entry).toBe('wait')

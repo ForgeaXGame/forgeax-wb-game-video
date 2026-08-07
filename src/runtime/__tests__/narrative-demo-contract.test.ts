@@ -5,7 +5,7 @@
  * 不绑定 `component-host/components` 具体组件（catalog 将来动态加载 / npm）。
  */
 import { describe, expect, it } from 'vitest'
-import { makeNodiaDemo } from '../../editor/demo/demo'
+import { makeNodiaFixture } from '../../editor/demo/__tests__/fixtures/nodia-fixture'
 
 const DAZHAO_RESOURCE_ID = 'fa6da536-df0b-4f4f-aede-d77e8b053950'
 
@@ -27,14 +27,14 @@ function collectMediaRefs(value: unknown, refs: string[] = []): string[] {
 
 describe('nodia narrative demo contract', () => {
   it('重置模板使用 Kino/COS resource id，不回退本地视频 basename', () => {
-    const refs = collectMediaRefs(makeNodiaDemo())
+    const refs = collectMediaRefs(makeNodiaFixture())
     expect(refs).toContain(DAZHAO_RESOURCE_ID)
     expect(refs).not.toContain('dazhao')
     expect(refs.filter((ref) => ref.includes('narr-')).every((ref) => ref.startsWith('m-narr-'))).toBe(true)
   })
 
   it('拓扑：上岸 應→灯笼 / 默→孟婆；渡河 應→小孩 / 默→上岸', () => {
-    const scn = makeNodiaDemo()
+    const scn = makeNodiaFixture()
     const edges = scn.graph.edges
     const of = (src: string) =>
       edges.filter((e) => e.source === src).map((e) => [e.sourceHandle ?? 'default', e.target] as const)

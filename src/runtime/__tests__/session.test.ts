@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GraphSession } from '../engine/session'
-import { makeNodiaDemo } from '../../editor/demo/demo'
+import { NODIA_DEMO_PROJECT } from '../../editor/demo/demo'
 import type { GameGraph } from '../schema/graph-schema'
 import { node, scnOf } from './test-fixtures'
 
@@ -25,7 +25,7 @@ describe('GraphSession (playable view model)', () => {
   })
 
   it('returns a fresh snapshot reference each call (so React re-renders)', () => {
-    const session = new GraphSession(makeNodiaDemo({ bossHp: 700 }))
+    const session = new GraphSession(structuredClone(NODIA_DEMO_PROJECT))
     const a = session.start()
     const b = session.performanceEnd()
     expect(a).not.toBe(b) // 不同引用，否则 React setState 会跳过重渲染

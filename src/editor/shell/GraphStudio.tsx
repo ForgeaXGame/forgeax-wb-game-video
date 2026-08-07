@@ -990,13 +990,6 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
                       onFocusLifecycle={selectLifecycle}
                       onChange={setCanvasGraph}
                       onPacksChange={setPacks}
-                      onEnsureOverlay={(overlay) => {
-                        setMeta((m) => {
-                          const cur = m.ui?.overlays ?? {}
-                          if (cur[overlay.id]) return m
-                          return { ...m, ui: { ...m.ui, overlays: { ...cur, [overlay.id]: overlay } } }
-                        })
-                      }}
                       onDropOverlayIfOrphan={(oid) => {
                         // 卸载已同步写入 store；用完整库文档（根 graph + manifest.packs）判孤儿后只改共享 meta。
                         const st = useGraphScenario.getState()

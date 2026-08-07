@@ -1143,7 +1143,7 @@ export function collectMountItemsFromNode(scenario: GameScenario, node: GameNode
 // ── 写映射：挂载级编辑（挂载 / 移除 / 整体平移） ──────────────────────────────────
 /**
  * 挂载一张覆盖物到节点（「添加控件」入口）：目录缺失且给了 preset 时先写入固化原型，
- * 再 push 一份挂载（已挂载则原样返回）。等价 NodeInspector「＋挂载」的 onEnsureOverlay + push。
+ * 再 push 一份挂载（已挂载则原样返回）。候选须已在 live overlays 目录中。
  */
 export function mountOverlayGraph(
   scenario: GameScenario,
