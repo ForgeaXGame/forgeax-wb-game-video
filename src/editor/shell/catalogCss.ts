@@ -970,7 +970,7 @@ ${PREVIEW_CLOCK_CSS}
 .gc-fx { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .gc-fx-editor {
   position: relative; width: 100%; min-width: 0;
-  border-radius: 7px; background: rgba(0,0,0,.28);
+  border-radius: 7px; background: rgba(26,26,26,1);
 }
 .gc-fx-highlight, .gc-fx-input {
   width: 100%; min-width: 0; box-sizing: border-box; margin: 0;
@@ -987,7 +987,7 @@ ${PREVIEW_CLOCK_CSS}
   border: 1px solid var(--gc-line); background: transparent;
   color: transparent; caret-color: var(--gc-text); -webkit-text-fill-color: transparent;
 }
-.gc-fx-input:focus { border-color: var(--gc-accent); outline: none; box-shadow: 0 0 0 2px rgba(240,136,64,.18); }
+.gc-fx-input:focus { outline: none; border-color: var(--gc-line); box-shadow: none; }
 .gc-fx-input.is-err { border-color: var(--gc-danger, #e0795f); }
 .gc-fx-input::selection { background: rgba(240,136,64,.34); -webkit-text-fill-color: transparent; }
 .gc-fx-hole-tag {
@@ -1025,6 +1025,7 @@ ${PREVIEW_CLOCK_CSS}
   border: 1px solid var(--gc-line); background: rgba(0,0,0,.28); color: var(--gc-text);
   border-radius: 6px; padding: 4px 6px; font-size: 12px; text-align: right;
 }
+.gc-fx-trial-input:focus { outline: none; border-color: var(--gc-line); box-shadow: none; }
 .gc-fx-hint { color: var(--gc-faint); font-size: 11px; line-height: 1.4; }
 /* 插入工具条 */
 .gc-fx-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
@@ -1051,6 +1052,18 @@ ${PREVIEW_CLOCK_CSS}
   --rule-text: #fff;
   --rule-muted: rgba(255,255,255,.4);
   --rule-divider: rgba(255,255,255,.1);
+  /* 公式编辑器（gc-fx-*）等 gc-* 组件复用 --gc-* token；规则页不在 .gc-tab 作用域，
+     这里补齐，否则 caret-color/border 等会解析失败（光标不可见、边框色丢失）。 */
+  --gc-bg: var(--rule-surface);
+  --gc-text: var(--rule-text);
+  --gc-muted: var(--rule-muted);
+  --gc-faint: var(--rule-muted);
+  --gc-line: var(--rule-divider);
+  --gc-line-soft: var(--rule-divider);
+  --gc-panel: var(--rule-input);
+  --gc-accent: #f08840;
+  --gc-accent-soft: rgba(240,136,64,.16);
+  --gc-accent-line: rgba(240,136,64,.42);
   flex: 1; min-width: 0; min-height: 0; overflow: auto;
   background: var(--rule-surface);
   color: var(--rule-text);

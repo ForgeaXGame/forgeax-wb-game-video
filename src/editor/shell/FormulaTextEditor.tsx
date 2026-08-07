@@ -29,7 +29,15 @@ import { LooseNumberInput } from './TermChainEditor'
 
 const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }
 const FORMULA_EXAMPLE = 'max(?攻击力 * ?技能倍率 - ?防御力, 0)'
-const FORMULA_TOKEN_RE = /\?[\p{L}_][\p{L}\p{N}_]*|entity\.[A-Za-z0-9_-]+\.attr\.[A-Za-z0-9_-]+|var\.[A-Za-z0-9_.-]+/gu
+// expr.ts eval 支持的函数名（插入用）。
+const FUNCTIONS = ['floor', 'round', 'abs', 'min', 'max', 'chance', 'rand', 'randInt']
+const FUNCTION_OPTIONS = FUNCTIONS.map((fn) => ({ value: fn, label: `${fn}()` }))
+// 函数名按长度降序，避免 `rand` 截断 `randInt`；后跟 `(` 才算函数调用 tag。
+const FN_NAMES = [...FUNCTIONS].sort((a, b) => b.length - a.length).join('|')
+const FORMULA_TOKEN_RE = new RegExp(
+  `\\?[\\p{L}_][\\p{L}\\p{N}_]*|entity\\.[\\p{L}\\p{N}_-]+\\.attr\\.[\\p{L}\\p{N}_-]+|var\\.[\\p{L}\\p{N}_.-]+|(?:${FN_NAMES})(?=\\()`,
+  'gu',
+)
 const refTokenStyle: CSSProperties = {
   color: '#78b9d6',
   background: 'rgba(91,153,181,.12)',
@@ -51,10 +59,6 @@ function sampleCtx(entities?: Record<string, Entity>, variables?: Record<string,
   }
   return { entities: ents, vars, flags: {}, score: 0 }
 }
-
-// expr.ts eval 支持的函数名（插入用）。
-const FUNCTIONS = ['floor', 'round', 'abs', 'min', 'max', 'chance', 'rand', 'randInt']
-const FUNCTION_OPTIONS = FUNCTIONS.map((fn) => ({ value: fn, label: `${fn}()` }))
 
 /** 一条公式引用了哪些实体 / 变量（去重、按出现顺序）——供结构摘要展示。 */
 function collectRefs(ast: FormulaAstNode): { entities: Set<string>; vars: Set<string>; usesScore: boolean } {
@@ -266,8 +270,15 @@ export function FormulaTextEditor({
     }
     const start = Math.min(lastSelectionRef.current.start, base.length)
     const end = Math.min(Math.max(start, lastSelectionRef.current.end), base.length)
-    const next = base.slice(0, start) + frag + base.slice(end)
-    const pos = start + frag.length
+    // 插入 tag（?参数 / entity.x.attr.y / var.x / fn()）时统一与前后隔开：只要相邻不是空格就补一个，
+    // 避免与字母粘连成标识符、也避免紧贴运算符造成视觉混乱。前面已有空格则不重复补。
+    const before = base[start - 1] ?? ''
+    const after = base[end] ?? ''
+    const padBefore = before && before !== ' ' ? ' ' : ''
+    const padAfter = after && after !== ' ' ? ' ' : ''
+    const inserted = padBefore + frag + padAfter
+    const next = base.slice(0, start) + inserted + base.slice(end)
+    const pos = start + inserted.length
     lastSelectionRef.current = { start: pos, end: pos }
     setDraft(next)
     revalidate(next)
@@ -275,6 +286,38 @@ export function FormulaTextEditor({
       ta.focus()
       ta.setSelectionRange(pos, pos)
     })
+  }
+
+  /**
+   * 原子删除：无选区 Backspace 时，若光标紧跟在一个标签 token（?参数 / entity.x.attr.y /
+   * var.x）后或落在其内部，一次性删掉整个 token，而不是逐字符拆删。
+   * 返回 true 表示已处理（调用方 preventDefault）。
+   */
+  function deleteTokenBackspace(ta: HTMLTextAreaElement): boolean {
+    const pos = ta.selectionStart
+    if (pos !== ta.selectionEnd) return false // 有选区：交给默认行为
+    const base = draft ?? canonical
+    if (pos === 0) return false
+    // 找包含 pos 的 token：token 区间 [start, end]，pos 落在 (start, end] 即视为「在该 token 内/紧随其后」。
+    for (const match of base.matchAll(FORMULA_TOKEN_RE)) {
+      const start = match.index ?? -1
+      const end = start + match[0].length
+      if (pos > start && pos <= end) {
+        committedTextRef.current = null
+        const next = base.slice(0, start) + base.slice(end)
+        lastSelectionRef.current = { start, end: start }
+        setDraft(next)
+        revalidate(next)
+        // 等 React 把新 value 写回 textarea DOM 后再定位光标，否则 setSelectionRange
+        // 会被随后的渲染覆盖（与 insert 同样的 rAF 套路）。
+        requestAnimationFrame(() => {
+          ta.focus()
+          ta.setSelectionRange(start, start)
+        })
+        return true
+      }
+    }
+    return false
   }
 
   const entityOptions = useMemo<CascadingPickerOption[]>(() => listEntityOptions(entities)
@@ -350,6 +393,9 @@ export function FormulaTextEditor({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(latestTextRef.current) }
+            else if (e.key === 'Backspace' && !e.shiftKey && !e.metaKey && !e.altKey && deleteTokenBackspace(e.currentTarget)) {
+              e.preventDefault()
+            }
           }}
         />
       </div>

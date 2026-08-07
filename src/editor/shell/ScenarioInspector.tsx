@@ -92,10 +92,11 @@ const FORMULA_RULES_CSS = `
   box-shadow:0 8px 20px rgba(0,0,0,.3);
 }
 .sir-formula-menu button {
-  min-width:72px; height:26px; border:0; border-radius:4px; background:transparent;
-  color:#ff8e8e; cursor:pointer;
+  display:block; width:100%; min-width:96px; height:26px; border:0; border-radius:4px; background:transparent;
+  color:#fff; cursor:pointer; text-align:left; padding:0 8px;
 }
 .sir-formula-menu button:hover { background:rgba(255,255,255,.08); }
+.sir-formula-menu button.is-danger { color:#ff8e8e; }
 .sir-formula-body { padding:0 0 14px; }
 .sir-formula-field { display:grid; gap:6px; margin-bottom:10px; }
 .sir-formula-field > span { color:rgba(255,255,255,.48); font-size:12px; }
@@ -148,9 +149,59 @@ const FORMULA_RULES_CSS = `
   color:rgba(255,255,255,.88);
 }
 .sir-formula-field > input:focus {
-  border-color:var(--gc-accent); box-shadow:0 0 0 1px var(--gc-accent); outline:0;
+  outline:0; box-shadow:none;
 }
 .sir-formula-empty { padding:20px 0; color:rgba(255,255,255,.38); }
+
+/* ── 公式行弹窗（重命名 / 删除）—— 居中模态 ── */
+.sir-modal-backdrop {
+  position:fixed; inset:0; z-index:100;
+  background:rgba(0,0,0,.55);
+  display:flex; align-items:center; justify-content:center;
+  padding:16px;
+}
+.sir-modal {
+  box-sizing:border-box; width:min(420px, 100%);
+  background:#161310; border:1px solid rgba(255,255,255,.08);
+  border-radius:10px; padding:24px 28px 20px;
+  box-shadow:0 20px 50px rgba(0,0,0,.5);
+  color:#fff;
+  display:flex; flex-direction:column; gap:16px;
+}
+.sir-modal-head {
+  position:relative; display:flex; align-items:center; justify-content:center;
+  font-size:16px; font-weight:500;
+}
+.sir-modal-close {
+  position:absolute; right:-4px; top:-4px;
+  width:24px; height:24px; border:0; background:transparent; color:rgba(255,255,255,.6);
+  cursor:pointer; border-radius:4px; padding:0;
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.sir-modal-close:hover { background:rgba(255,255,255,.08); }
+.sir-modal-close svg { width:14px; height:14px; display:block; }
+.sir-modal-field { display:flex; flex-direction:column; gap:6px; }
+.sir-modal-field > label { font-size:12px; color:rgba(255,255,255,.6); }
+.sir-modal-input {
+  box-sizing:border-box; width:100%; height:32px; padding:4px 10px;
+  border:1px solid rgba(255,255,255,.18); border-radius:4px;
+  background:rgba(0,0,0,.4); color:#fff; font-size:14px; outline:0;
+}
+.sir-modal-input:focus { border-color:rgba(255,255,255,.4); }
+.sir-modal-input::placeholder { color:rgba(255,255,255,.32); }
+.sir-modal-body { font-size:13px; line-height:1.6; color:rgba(255,255,255,.72); text-align:center; padding:8px 0; }
+.sir-modal-body strong { color:rgba(255,156,42,1); font-weight:600; }
+.sir-modal-actions { display:flex; justify-content:center; gap:24px; margin-top:4px; }
+.sir-modal-btn {
+  min-width:96px; height:34px; padding:0 18px; border:0; border-radius:4px;
+  font-size:14px; cursor:pointer; transition:background-color .12s;
+}
+/* 按钮 hover 把背景变亮，显式钉死 color 避免文字色漂移；disabled 不响应 hover。 */
+.sir-modal-btn.is-secondary { background:rgba(255,255,255,.92); color:#161310; }
+.sir-modal-btn.is-secondary:not(:disabled):hover { background:#fff; color:#161310; }
+.sir-modal-btn.is-primary { background:#f08840; color:#17120d; }
+.sir-modal-btn.is-primary:not(:disabled):hover { background:#f59b56; color:#17120d; }
+.sir-modal-btn:disabled { cursor:not-allowed; opacity:.4; }
 `
 
 function field(label: string, node: JSX.Element): JSX.Element {
@@ -1102,11 +1153,14 @@ function FormulaRow({
 }): JSX.Element {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [formulaFailure, setFormulaFailure] = useState<FormulaParseFailureSnapshot | null>(null)
   useEffect(() => {
     if (focused) setExpanded(true)
   }, [focused])
   return (
+    <>
     <div id={`rule-item:${formulaKey}`} className="sir-formula-row">
       <div className="sir-formula-head">
         <button
@@ -1123,13 +1177,12 @@ function FormulaRow({
             <path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <input
+        <span
           className="sir-formula-name"
-          aria-label={`公式 ${formulaKey} 名称`}
-          value={formula.name ?? ''}
-          size={Math.max(2, Math.min(24, Array.from(formula.name ?? '').length || 2))}
-          onChange={(e) => onChange({ ...formula, id: formulaKey, name: e.target.value })}
-        />
+          title={formula.name || formulaKey}
+        >
+          {formula.name || formulaKey}
+        </span>
         <span className="sir-formula-id">id:{formulaKey}</span>
         <button
           type="button"
@@ -1142,7 +1195,8 @@ function FormulaRow({
         </button>
         {menuOpen ? (
           <div className="sir-formula-menu" role="menu">
-            <button type="button" onClick={onDelete}>删除公式</button>
+            <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setRenameOpen(true) }}>重命名</button>
+            <button type="button" role="menuitem" className="is-danger" onClick={() => { setMenuOpen(false); setDeleteOpen(true) }}>删除公式</button>
           </div>
         ) : null}
       </div>
@@ -1177,9 +1231,7 @@ function FormulaRow({
               entities={entities}
               variables={variables}
               onParseFailureChange={setFormulaFailure}
-              onEmpty={formula.draftEmpty
-                ? () => onChange({ ...formula, id: formulaKey, draftEmpty: true })
-                : undefined}
+              onEmpty={() => onChange({ ...formula, id: formulaKey, draftEmpty: true })}
               onChange={(ast) => onChange({
                 ...formula,
                 id: formulaKey,
@@ -1191,5 +1243,141 @@ function FormulaRow({
         </div>
       ) : null}
     </div>
+    {renameOpen ? (
+      <FormulaRenameDialog
+        initialName={formula.name ?? formulaKey}
+        onCancel={() => setRenameOpen(false)}
+        onConfirm={(nextName) => {
+          setRenameOpen(false)
+          onChange({ ...formula, id: formulaKey, name: nextName })
+        }}
+      />
+    ) : null}
+    {deleteOpen ? (
+      <FormulaDeleteDialog
+        name={formula.name || formulaKey}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => { setDeleteOpen(false); onDelete() }}
+      />
+    ) : null}
+  </>
+  )
+}
+
+/**
+ * 公式重命名弹窗（居中模态）。
+ * 只有一个「名称」字段（不出现 id），点 ✕ / 背景 / 取消 关闭；确认回调当前名称。
+ */
+function FormulaRenameDialog({
+  initialName,
+  onCancel,
+  onConfirm,
+}: {
+  initialName: string
+  onCancel: () => void
+  onConfirm: (nextName: string) => void
+}): JSX.Element {
+  const [value, setValue] = useState(initialName)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+  const submit = (): void => {
+    const next = value.trim()
+    if (!next || next === initialName) { onCancel(); return }
+    onConfirm(next)
+  }
+  return createPortal(
+    <div
+      className="sir-modal-backdrop"
+      role="presentation"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div className="sir-modal" role="dialog" aria-modal="true" aria-labelledby="sir-formula-rename-title">
+        <div className="sir-modal-head">
+          <span id="sir-formula-rename-title">重命名</span>
+          <button type="button" className="sir-modal-close" aria-label="关闭" onClick={onCancel}>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M2.5 2.5L11.5 11.5M11.5 2.5L2.5 11.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="sir-modal-field">
+          <label htmlFor="sir-formula-rename-input">公式名称</label>
+          <input
+            id="sir-formula-rename-input"
+            ref={inputRef}
+            className="sir-modal-input"
+            value={value}
+            placeholder="这里默认填入的是当前公式名"
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); submit() }
+            }}
+          />
+        </div>
+        <div className="sir-modal-actions">
+          <button type="button" className="sir-modal-btn is-secondary" onClick={onCancel}>取消</button>
+          <button type="button" className="sir-modal-btn is-primary" onClick={submit} disabled={!value.trim()}>确认</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+/**
+ * 公式删除确认弹窗（居中模态）。
+ * 文案：「确认删除[名字]吗？工程中对这公式的调用引用将被清除。」
+ */
+function FormulaDeleteDialog({
+  name,
+  onCancel,
+  onConfirm,
+}: {
+  name: string
+  onCancel: () => void
+  onConfirm: () => void
+}): JSX.Element {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+  return createPortal(
+    <div
+      className="sir-modal-backdrop"
+      role="presentation"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div className="sir-modal" role="dialog" aria-modal="true" aria-labelledby="sir-formula-delete-title">
+        <div className="sir-modal-head">
+          <span id="sir-formula-delete-title">删除公式</span>
+          <button type="button" className="sir-modal-close" aria-label="关闭" onClick={onCancel}>
+            <svg viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M2.5 2.5L11.5 11.5M11.5 2.5L2.5 11.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="sir-modal-body">
+          确认删除<strong>[{name}]</strong>吗？工程中对这公式的调用引用将被清除。
+        </div>
+        <div className="sir-modal-actions">
+          <button type="button" className="sir-modal-btn is-secondary" onClick={onCancel}>取消</button>
+          <button type="button" className="sir-modal-btn is-primary" onClick={onConfirm}>删除</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
