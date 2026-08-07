@@ -81,8 +81,10 @@ export function applyHostInit(options: WorkbenchInitOptions = {}): void {
   initDepth += 1
   activeInspectorEl = options.inspectorEl
   activeOnNodeSelect = options.onNodeSelect
-  activeDocActionSlotEl = options.docActionSlotEl
-  if (options.pendingDocumentTypes) {
+  // A dual-pane host mounts the left pane without a slot; keeping the previous
+  // element avoids erasing the center pane's document header actions.
+  if (options.docActionSlotEl) activeDocActionSlotEl = options.docActionSlotEl
+  if (options.pendingDocumentTypes !== undefined) {
     setPendingDocumentTypes(options.pendingDocumentTypes)
   }
   if (options.acceptReference) setInjectedAcceptReference(options.acceptReference)
