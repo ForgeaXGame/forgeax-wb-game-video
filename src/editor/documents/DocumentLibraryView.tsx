@@ -42,8 +42,12 @@ export function DocumentLibraryView(): JSX.Element {
   const [document, setDocument] = useState<ProjectDocument | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Re-listing per active type keeps a document that was upserted or healed
+  // after mount visible without a reload; the previous list and error are
+  // dropped first so nothing from the outgoing type survives the switch.
   useEffect(() => {
     let cancelled = false
+    setDocuments(null)
     setError(null)
     void fetchProjectDocuments()
       .then((next) => {
@@ -53,7 +57,7 @@ export function DocumentLibraryView(): JSX.Element {
         if (!cancelled) setError(cause instanceof Error ? cause.message : '读取项目文档失败')
       })
     return () => { cancelled = true }
-  }, [])
+  }, [documentType])
 
   const matching = useMemo(
     () => (documents ?? []).filter((item) => item.documentType === documentType),

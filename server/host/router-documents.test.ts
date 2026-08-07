@@ -137,6 +137,20 @@ describe('wb-game-video document routing', () => {
     ])
   })
 
+  it('GET documents skips orphan docs files that are not bounded document paths', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+      'docs/black myth_core.md': '# Core',
+    })
+    const router = createWbGameVideoRouter(context)
+
+    const list = await router.handle(request('documents'))
+
+    expect(list.status).toBe(200)
+    expect(JSON.parse(decoder.decode(list.body))).toEqual({ documents: [] })
+    expect(JSON.parse(files['assets/manifest.json']!).assets).toEqual([])
+  })
+
   it('upserts markdown under docs/ and registers doc-<type>', async () => {
     const { context, files } = contextFor({
       'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
@@ -289,10 +303,10 @@ describe('wb-game-video document routing', () => {
     expect(body.error).toMatch(/Document file missing/)
   })
 
-  it('infers slug from project.json when slug is omitted', async () => {
+  it('rejects an omitted slug instead of inferring one from project.json', async () => {
     const { context, files } = contextFor({
       'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
-      'project.json': JSON.stringify({ slug: 'my-game' }),
+      'project.json': JSON.stringify({ slug: 'my-game', name: 'My Game', id: 'my-game-id' }),
     })
     const router = createWbGameVideoRouter(context)
 
@@ -306,11 +320,58 @@ describe('wb-game-video document routing', () => {
       })),
     })
 
-    expect(res.status).toBe(200)
-    expect(JSON.parse(decoder.decode(res.body)).document).toMatchObject({
-      id: 'doc-intake',
-      documentType: 'intake',
+    expect(res.status).toBe(400)
+    const body = JSON.parse(decoder.decode(res.body))
+    expect(body.error).toMatchObject({ code: 'invalid_input' })
+    expect(body.error.message).toMatch(/slug/)
+    expect(Object.keys(files).filter((path) => path.startsWith('docs/'))).toEqual([])
+    expect(JSON.parse(files['assets/manifest.json']!).assets).toEqual([])
+  })
+
+  it('rejects a blank slug', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
     })
-    expect(files['docs/my-game_intake.md']).toBe('# Intake\n')
+    const router = createWbGameVideoRouter(context)
+
+    const res = await router.handle({
+      ...request('documents/upsert'),
+      method: 'POST',
+      headers: { 'content-type': ['application/json'] },
+      body: encoder.encode(JSON.stringify({
+        documentType: 'core',
+        slug: '   ',
+        content: '# Core\n',
+      })),
+    })
+
+    expect(res.status).toBe(400)
+    expect(JSON.parse(decoder.decode(res.body)).error.message).toMatch(/slug/)
+    expect(Object.keys(files).filter((path) => path.startsWith('docs/'))).toEqual([])
+  })
+
+  it('rejects illegal slug characters instead of sanitizing them', async () => {
+    const { context, files } = contextFor({
+      'assets/manifest.json': JSON.stringify({ version: 2, assets: [] }),
+    })
+    const router = createWbGameVideoRouter(context)
+
+    for (const slug of ['my game', '../evil', 'demo/nested', '_leading']) {
+      const res = await router.handle({
+        ...request('documents/upsert'),
+        method: 'POST',
+        headers: { 'content-type': ['application/json'] },
+        body: encoder.encode(JSON.stringify({
+          documentType: 'core',
+          slug,
+          content: '# Core\n',
+        })),
+      })
+
+      expect(res.status, slug).toBe(400)
+      expect(JSON.parse(decoder.decode(res.body)).error.message, slug).toMatch(/slug/)
+    }
+    expect(Object.keys(files).filter((path) => path.startsWith('docs/'))).toEqual([])
+    expect(JSON.parse(files['assets/manifest.json']!).assets).toEqual([])
   })
 })
