@@ -6,11 +6,13 @@
  * 编辑图后可从节点「从此试玩」打开浮层；浮层内「重开」用最新图重建 session。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { GameGraph, GameScenario, SubFlowPackDef } from '../../runtime/schema/graph-schema'
 import { getSubFlowPack, getSubProcess } from '../../runtime/schema/graph-schema'
 import { GraphSession, type SessionSnapshot } from '../../runtime/engine/session'
 import { createSessionSeed } from '../../runtime/play/sessionSeed'
+import { getInspectorMountOptions } from '../../host-init'
 import { GraphCanvas } from '../../graph/canvas/GraphCanvas'
 import { NodeInspector, type VideoOption } from './NodeInspector'
 import { NodePanelTabBar, type NodePanelTab } from './NodePanelTabBar'
@@ -171,6 +173,8 @@ function PreviewTogglePill({ open, onToggle }: { open: boolean, onToggle: () => 
 export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Element {
   bootEditorSkins()
   ensureToolbarStyle()
+  const { inspectorEl, onNodeSelect } = getInspectorMountOptions()
+  const externalInspector = !!inspectorEl
   const playRootRef = useRef<HTMLDivElement | null>(null)
   const [playRootEl, setPlayRootEl] = useState<HTMLElement | null>(null)
   const bindPlayRoot = (el: HTMLDivElement | null) => {
@@ -246,6 +250,14 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   // 选中节点走共享 store（视频/界面等其它视图据此编辑同一节点）。
   const selected = useGraphScenario((s) => s.selectedNodeId)
   const setSelected = useGraphScenario((s) => s.setSelectedNode)
+  useEffect(() => {
+    if (!onNodeSelect) return
+    try {
+      onNodeSelect(selected)
+    } catch (err) {
+      console.error('[wb-game-video] onNodeSelect failed', err)
+    }
+  }, [selected, onNodeSelect])
   // 一级页签：Agent（预留空态）｜{节点名}调试面板。纯 UI 展示态，不进蓝图协议与持久化。
   const [nodePanelTab, setNodePanelTab] = useState<NodePanelTab>('config')
   // 节点配置面板：预览台选中的挂载覆盖物 id（联动右侧表单聚焦该卡片）；换节点自动清空。
@@ -487,7 +499,9 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
   }, [])
   /** 面板宽度 ÷ 画布容器宽度（0~1），传给 GraphCanvas 让选中节点平移到左侧可见区中心。 */
   const [canvasW, setCanvasW] = useState(0)
-  const panelRatio = canvasW > 0 ? Math.min(0.8, panelW / canvasW) : 0
+  const panelRatio = externalInspector
+    ? 0
+    : canvasW > 0 ? Math.min(0.8, panelW / canvasW) : 0
 
   const addPerfNode = (position: { x: number; y: number }) => {
     const id = `n-${Date.now().toString(36)}`
@@ -826,166 +840,200 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
       </div>
 
       {/* 右：节点配置面板 —— 默认隐藏，点画布节点才出现；✕ 或点画布空白处关闭。
-          左预览（NodePreviewStage：视频+覆盖物+时间轴，可编辑）｜右表单（NodeInspector 原样）。 */}
-      {selected && (
-        <div
-          ref={panelRef}
-          className="gv-node-panel"
-          data-preview-open={effectivePreviewOpen}
-          style={{
-            // 宽度 = 配置列 + 预览列，两者由 .gv-node-panel 的 CSS 变量给出：
-            // 满宽时是 Figma 14597:20310 的 711 + 500 = 1211，窄屏两列同比缩小。
-            maxWidth: '90%',
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            // 给预览区拉片定位：它骑在面板左缘（向左探出 34px 压在画布上），面板自身不裁剪。
-            position: 'relative',
-          }}
-        >
-          {/* 预览区开关拉片：始终贴面板左缘——收起态即配置列左缘，展开态面板左扩后
-              自然落在预览区左缘（Figma 14597:20310）；展开时图标与描边高亮（14597:20069）。 */}
-          {selectedCanConfigurePerformance ? (
-            <PreviewTogglePill open={effectivePreviewOpen} onToggle={togglePreviewSurface} />
-          ) : null}
-          {/* 展开态固定 711:500（Figma 14597:20310 预览区:配置列），窄屏同比缩放。 */}
+          左预览（NodePreviewStage：视频+覆盖物+时间轴，可编辑）｜右表单（NodeInspector 原样）。
+          宿主传入 inspectorEl 时改为 portal 到外部 slot，画布内不再嵌面板。 */}
+      {(() => {
+        const nodePanel = selected ? (
           <div
-            data-testid="node-panel-columns"
+            ref={panelRef}
+            className="gv-node-panel"
+            data-testid="node-inspector-root"
             data-preview-open={effectivePreviewOpen}
-            className="gv-node-panel-columns"
             style={{
-              flex: 1,
-              minHeight: 0,
-              display: selectedCanConfigurePerformance ? 'grid' : 'flex',
-              gridTemplateColumns: selectedCanConfigurePerformance
-                ? 'minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))'
-                : undefined,
-              overflowX: 'hidden',
+              // 宽度 = 配置列 + 预览列，两者由 .gv-node-panel 的 CSS 变量给出：
+              // 满宽时是 Figma 14597:20310 的 711 + 500 = 1211，窄屏两列同比缩小。
+              maxWidth: externalInspector ? '100%' : '90%',
+              width: externalInspector ? '100%' : undefined,
+              height: externalInspector ? '100%' : undefined,
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              // 给预览区拉片定位：它骑在面板左缘（向左探出 34px 压在画布上），面板自身不裁剪。
+              position: 'relative',
             }}
           >
-            {selectedNode && selectedCanConfigurePerformance && previewDrawerMounted ? (
-              <div
-                data-testid="node-preview-column"
-                className="gv-node-preview-column"
-                style={{
-                  // 本层只负责从右向左扩大裁切窗口；内部内容从第一帧起就是最终宽度。
-                  gridColumn: 1,
-                  minWidth: 0,
-                  overflow: 'hidden',
-                }}
-              >
+            {/* 预览区开关拉片：始终贴面板左缘——收起态即配置列左缘，展开态面板左扩后
+                自然落在预览区左缘（Figma 14597:20310）；展开时图标与描边高亮（14597:20069）。 */}
+            {selectedCanConfigurePerformance ? (
+              <PreviewTogglePill open={effectivePreviewOpen} onToggle={togglePreviewSurface} />
+            ) : null}
+            {/* 展开态固定 711:500（Figma 14597:20310 预览区:配置列），窄屏同比缩放。 */}
+            <div
+              data-testid="node-panel-columns"
+              data-preview-open={effectivePreviewOpen}
+              className="gv-node-panel-columns"
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: selectedCanConfigurePerformance ? 'grid' : 'flex',
+                gridTemplateColumns: selectedCanConfigurePerformance
+                  ? 'minmax(0, var(--gv-preview-w)) minmax(0, var(--gv-form-w))'
+                  : undefined,
+                overflowX: 'hidden',
+              }}
+            >
+              {selectedNode && selectedCanConfigurePerformance && previewDrawerMounted ? (
                 <div
-                  data-testid="node-preview-content"
+                  data-testid="node-preview-column"
+                  className="gv-node-preview-column"
                   style={{
-                    position: 'absolute',
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                    width: 'var(--gv-preview-target-w)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    // Figma 14597:20633：左侧预览是独立区域，底色与右列页签栏同色。
-                    background: '#2C2C2C',
+                    // 本层只负责从右向左扩大裁切窗口；内部内容从第一帧起就是最终宽度。
+                    gridColumn: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
                   }}
                 >
-                  <NodePreviewStage
-                    scenario={previewScenario}
-                    node={selectedNode}
-                    game={game}
-                    muted={isNodePreviewMuted}
-                    focusedMountId={focusedMountId}
-                    focusedLifecycleIndex={focusedLifecycleIndex}
-                    onEditScenario={editPreviewScenario}
-                    onMutedChange={setIsNodePreviewMuted}
-                    onSelectedTimeChange={(_ms, selection) => setSettlementInsertTimeMs(selection.settlementInsertMs)}
-                    onFocusMount={focusMountFromPreview}
-                    onFocusLifecycle={focusLifecycleFromPreview}
-                  />
+                  <div
+                    data-testid="node-preview-content"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      width: 'var(--gv-preview-target-w)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      // Figma 14597:20633：左侧预览是独立区域，底色与右列页签栏同色。
+                      background: '#2C2C2C',
+                    }}
+                  >
+                    <NodePreviewStage
+                      scenario={previewScenario}
+                      node={selectedNode}
+                      game={game}
+                      muted={isNodePreviewMuted}
+                      focusedMountId={focusedMountId}
+                      focusedLifecycleIndex={focusedLifecycleIndex}
+                      onEditScenario={editPreviewScenario}
+                      onMutedChange={setIsNodePreviewMuted}
+                      onSelectedTimeChange={(_ms, selection) => setSettlementInsertTimeMs(selection.settlementInsertMs)}
+                      onFocusMount={focusMountFromPreview}
+                      onFocusLifecycle={focusLifecycleFromPreview}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : null}
-            {/* 右列：一级页签栏是本列头部（预览展开时不再横跨整板），下方配置内容独立滚动。
-                固定占第 2 栏——预览列在收起动画结束后会卸载，不锁死列号它会掉进宽度为 0 的第 1 栏。
-                长下拉文案会把表单撑到 ~880px，中等宽度也出现不必要的横向滚动。 */}
-            <div
-              data-testid="node-inspector-column"
-              style={{ gridColumn: 2, flex: `1 0 ${FORM_W_MIN}px`, minWidth: FORM_W_MIN, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-            >
-              {/* 一级页签栏（Figma 14597:21458）：Agent（预留空态）｜{节点名}调试面板，✕ 关闭右置。 */}
-              <NodePanelTabBar
-                activeTab={nodePanelTab}
-                configLabel={selectedNode ? `${selectedNode.data.name || selectedNode.id}调试面板` : '节点调试面板'}
-                onTabChange={setNodePanelTab}
-                onClose={() => setSelected(null)}
-              />
-              {/* Agent 页签内容区：暂留空，仅占位撑满本列。 */}
-              {nodePanelTab === 'agent' ? (
-                <div data-testid="node-panel-agent" style={{ flex: 1, minHeight: 0 }} />
               ) : null}
-              {/* 配置页签内容：切到 Agent 时仅 display:none 隐藏、保持挂载，组件本地状态不丢。 */}
-              <div data-testid="node-config-tab-content" style={{ display: nodePanelTab === 'config' ? 'contents' : 'none' }}>
-                {selectedNode ? (
-                  <NodeAgentVideoActions
-                    game={game}
-                    blueprintId={activeBlueprintId}
-                    blueprintTitle={blueprints[activeBlueprintId]?.title}
-                    graphPath={drillLabels}
-                    graph={canvasGraph}
-                    scenario={previewScenario}
-                    node={selectedNode}
-                    videoGenerationEnabled={selectedCanConfigurePerformance}
-                    onEditScenario={editPreviewScenario}
-                  />
+              {/* 右列：一级页签栏是本列头部（预览展开时不再横跨整板），下方配置内容独立滚动。
+                  固定占第 2 栏——预览列在收起动画结束后会卸载，不锁死列号它会掉进宽度为 0 的第 1 栏。
+                  长下拉文案会把表单撑到 ~880px，中等宽度也出现不必要的横向滚动。 */}
+              <div
+                data-testid="node-inspector-column"
+                style={{ gridColumn: 2, flex: `1 0 ${FORM_W_MIN}px`, minWidth: FORM_W_MIN, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+              >
+                {/* 一级页签栏（Figma 14597:21458）：Agent（预留空态）｜{节点名}调试面板，✕ 关闭右置。 */}
+                <NodePanelTabBar
+                  activeTab={nodePanelTab}
+                  configLabel={selectedNode ? `${selectedNode.data.name || selectedNode.id}调试面板` : '节点调试面板'}
+                  onTabChange={setNodePanelTab}
+                  onClose={() => setSelected(null)}
+                />
+                {/* Agent 页签内容区：暂留空，仅占位撑满本列。 */}
+                {nodePanelTab === 'agent' ? (
+                  <div data-testid="node-panel-agent" style={{ flex: 1, minHeight: 0 }} />
                 ) : null}
-                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                  <NodeInspector
-                    graph={canvasGraph}
-                    nodeId={selected}
-                    videoOptions={videoOptions}
-                    audioOptions={audioOptions}
-                    packs={packs}
-                    isRefAllowed={isRefAllowed}
-                    overlays={overlays}
-                    entities={entities}
-                    variables={variables}
-                    formulas={formulas}
-                    focusedMountId={focusedMountId}
-                    focusedLifecycleIndex={focusedLifecycleIndex}
-                    settlementInsertMs={effectivePreviewOpen ? settlementInsertTimeMs ?? undefined : undefined}
-                    focusAnchorRevision={focusAnchorRevision}
-                    onFocusMount={selectMount}
-                    onFocusLifecycle={selectLifecycle}
-                    onChange={setCanvasGraph}
-                    onPacksChange={setPacks}
-                    onEnsureOverlay={(overlay) => {
-                      setMeta((m) => {
-                        const cur = m.ui?.overlays ?? {}
-                        if (cur[overlay.id]) return m
-                        return { ...m, ui: { ...m.ui, overlays: { ...cur, [overlay.id]: overlay } } }
-                      })
-                    }}
-                    onDropOverlayIfOrphan={(oid) => {
-                      // 卸载已同步写入 store；用完整库文档（根 graph + manifest.packs）判孤儿后只改共享 meta。
-                      const st = useGraphScenario.getState()
-                      const scn = st.authoringScenario()
-                      const cleaned = dropOverlayIfUnreferenced(scn, oid)
-                      if (cleaned !== scn) st.setMeta(metaFromDocument(cleaned))
-                    }}
-                    onRemoveMount={(mountId) => {
-                      editPreviewScenario((s, n) => removeMountGraph(s, n, mountId))
-                    }}
-                    onCreateEntityAttribute={createEntityAttribute}
-                    onCreateEntity={createEntity}
-                    onCreateVariable={createVariable}
-                    onCreateFormula={createFormula}
-                    onJump={jump}
-                  />
+                {/* 配置页签内容：切到 Agent 时仅 display:none 隐藏、保持挂载，组件本地状态不丢。 */}
+                <div data-testid="node-config-tab-content" style={{ display: nodePanelTab === 'config' ? 'contents' : 'none' }}>
+                  {selectedNode ? (
+                    <NodeAgentVideoActions
+                      game={game}
+                      blueprintId={activeBlueprintId}
+                      blueprintTitle={blueprints[activeBlueprintId]?.title}
+                      graphPath={drillLabels}
+                      graph={canvasGraph}
+                      scenario={previewScenario}
+                      node={selectedNode}
+                      videoGenerationEnabled={selectedCanConfigurePerformance}
+                      onEditScenario={editPreviewScenario}
+                    />
+                  ) : null}
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                    <NodeInspector
+                      graph={canvasGraph}
+                      nodeId={selected}
+                      videoOptions={videoOptions}
+                      audioOptions={audioOptions}
+                      packs={packs}
+                      isRefAllowed={isRefAllowed}
+                      overlays={overlays}
+                      entities={entities}
+                      variables={variables}
+                      formulas={formulas}
+                      focusedMountId={focusedMountId}
+                      focusedLifecycleIndex={focusedLifecycleIndex}
+                      settlementInsertMs={effectivePreviewOpen ? settlementInsertTimeMs ?? undefined : undefined}
+                      focusAnchorRevision={focusAnchorRevision}
+                      onFocusMount={selectMount}
+                      onFocusLifecycle={selectLifecycle}
+                      onChange={setCanvasGraph}
+                      onPacksChange={setPacks}
+                      onEnsureOverlay={(overlay) => {
+                        setMeta((m) => {
+                          const cur = m.ui?.overlays ?? {}
+                          if (cur[overlay.id]) return m
+                          return { ...m, ui: { ...m.ui, overlays: { ...cur, [overlay.id]: overlay } } }
+                        })
+                      }}
+                      onDropOverlayIfOrphan={(oid) => {
+                        // 卸载已同步写入 store；用完整库文档（根 graph + manifest.packs）判孤儿后只改共享 meta。
+                        const st = useGraphScenario.getState()
+                        const scn = st.authoringScenario()
+                        const cleaned = dropOverlayIfUnreferenced(scn, oid)
+                        if (cleaned !== scn) st.setMeta(metaFromDocument(cleaned))
+                      }}
+                      onRemoveMount={(mountId) => {
+                        editPreviewScenario((s, n) => removeMountGraph(s, n, mountId))
+                      }}
+                      onCreateEntityAttribute={createEntityAttribute}
+                      onCreateEntity={createEntity}
+                      onCreateVariable={createVariable}
+                      onCreateFormula={createFormula}
+                      onJump={jump}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        ) : null
+
+        if (externalInspector && inspectorEl) {
+          return createPortal(
+            selected
+              ? nodePanel
+              : (
+                <div
+                  data-testid="node-inspector-empty"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    minHeight: 120,
+                    padding: 24,
+                    color: 'rgba(246,241,233,0.55)',
+                    fontSize: 13,
+                    textAlign: 'center',
+                    background: '#1b1713',
+                  }}
+                >
+                  选择画布上的节点以编辑
+                </div>
+              ),
+            inspectorEl,
+          )
+        }
+        return nodePanel
+      })()}
       </div>
     </div>
   )

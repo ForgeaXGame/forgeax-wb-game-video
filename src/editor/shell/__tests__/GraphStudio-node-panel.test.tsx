@@ -158,7 +158,7 @@ describe('GraphStudio 节点配置分栏', () => {
     render(<GraphStudio scenario={SCENARIO} />)
 
     fireEvent.click(screen.getByRole('button', { name: '🔗 引用' }))
-    expect(screen.getByText('请在 Studio 中打开后使用侧边 Chat')).toBeTruthy()
+    expect(screen.getByText('当前无 Agent 可接收引用')).toBeTruthy()
 
     const generationButton = screen.getByRole('button', { name: '🎬 生成视频' })
     expect(generationButton.getAttribute('aria-expanded')).toBe('false')
