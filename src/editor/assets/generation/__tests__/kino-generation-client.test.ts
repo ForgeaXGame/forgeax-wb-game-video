@@ -68,12 +68,14 @@ describe('same-origin Kino generation transport', () => {
 
     expect(calls[0]?.url).toBe(KINO_GENERATIONS_ROUTE)
     expect(calls[0]?.init?.method).toBe('POST')
-    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
-      gameSlug: 'demo',
-      prompt: '雨夜追逐',
-      durationSeconds: 5,
-      generateAudio: true,
-      visualStyleKey: 'bwcinema',
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      game_id: 'demo',
+      media_type: 'video',
+      duration_sec: 5,
+      add_to_resource: true,
+      content: [{ type: 'text', text: '雨夜追逐' }],
+      extra: { generate_audio: true },
+      visual_style_key: 'bwcinema',
     })
     expect(task).toMatchObject({
       generationId: 'gen-1',
@@ -101,25 +103,25 @@ describe('same-origin Kino generation transport', () => {
     })
   })
 
-  it('never sends a gameId — the host resolves the authoritative scope from gameSlug', async () => {
+  it('sends the handshake game id using the native Kino contract', async () => {
     const { calls } = stubFetch([ok(TASK)])
 
     await createKinoGeneration(INPUT)
 
-    expect(JSON.parse(String(calls[0]?.init?.body))).not.toHaveProperty('gameId')
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ game_id: 'demo' })
   })
 
   it('applies host rewrite rules so an in-process host can serve the route from its own origin', async () => {
     acquireHostInit([{
-      from: /^\/api\/v1\/kino-generations(\/.*)?$/,
-      to: 'https://mate.example.com/as-mate-backend/api/v1/kino-generations$1',
+      from: /^\/api\/v1\/kino\/generations(\/.*)?$/,
+      to: 'https://mate.example.com/api/v1/kino/generations$1',
     }])
     const { calls } = stubFetch([ok(TASK)])
 
     await getKinoGeneration('gen-1', 'demo')
 
     expect(calls[0]?.url).toBe(
-      'https://mate.example.com/as-mate-backend/api/v1/kino-generations/gen-1?gameSlug=demo',
+      'https://mate.example.com/api/v1/kino/generations/gen-1',
     )
   })
 
@@ -138,7 +140,7 @@ describe('same-origin Kino generation transport', () => {
 
     const task = await getKinoGeneration('gen 2', 'demo')
 
-    expect(calls[0]?.url).toBe(`${KINO_GENERATIONS_ROUTE}/gen%202?gameSlug=demo`)
+    expect(calls[0]?.url).toBe(`${KINO_GENERATIONS_ROUTE}/gen%202`)
     expect(task.status).toBe('polling')
   })
 
@@ -149,7 +151,9 @@ describe('same-origin Kino generation transport', () => {
 
     const tasks = await listActiveKinoGenerations('demo')
 
-    expect(calls[0]?.url).toBe(`${KINO_GENERATIONS_ROUTE}?gameSlug=demo`)
+    expect(calls[0]?.url).toBe(
+      `${KINO_GENERATIONS_ROUTE}?game_id=demo&media_type=video&page=1&page_size=100`,
+    )
     expect(tasks.map((task) => task.generationId)).toEqual(['gen-1', 'gen-2'])
   })
 

@@ -1,11 +1,9 @@
 /**
  * Same-origin Kino video generation transport.
  *
- * 生成任务直接请求宿主的同源代理 `/api/v1/kino-generations`：宿主服务端注入
- * Kino 身份并原样投影任务状态，长期登录 key 不进浏览器。两个宿主
- * （ForgeaX `server-private`、Arrival `agentic_mate`）暴露同一路径，所以这里
- * 不按 hostname、端口或环境猜宿主；需要换前缀的宿主在 mount 时注入 rewrite
- * 规则改写。
+ * 生成任务直接请求产品同源 Kino API `/api/v1/kino/generations`。浏览器沿用
+ * 产品登录态，长期登录 key 不进浏览器；需要换 transport 的宿主在 mount 时
+ * 注入 rewrite 规则，不在共享扩展里猜 hostname、端口或环境。
  *
  * 为什么不走 Workbench Host tool：Host 链路把成片字节搬进宿主 media
  * projection，浏览器只拿到 Host 投影地址；同源代理回传 Kino 的 `result_url`，
@@ -21,7 +19,7 @@ import type {
   VideoGenerationTask,
 } from './generation-api'
 
-export const KINO_GENERATIONS_ROUTE = '/api/v1/kino-generations'
+export const KINO_GENERATIONS_ROUTE = '/api/v1/kino/generations'
 
 const GENERATION_STATUSES = new Set<string>([
   'pending',
@@ -40,7 +38,7 @@ const ACTIVE_STATUSES = new Set<VideoGenerationStatus>([
 ])
 
 export interface CreateKinoGenerationInput {
-  /** 宿主用它解析权威 gameId；浏览器不发送 gameId。 */
+  /** 当前 Workbench handshake 提供的 gameId。 */
   gameSlug: string
   prompt: string
   durationSeconds: number
@@ -123,9 +121,35 @@ export async function createKinoGeneration(
   if (!input.gameSlug.trim()) {
     throw new KinoClientError('Missing gameSlug', 400, 'missing_game_slug')
   }
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: input.prompt },
+    ...(input.firstFrameResourceId
+      ? [{ type: 'resource', resource_id: input.firstFrameResourceId, frame_position: 'first' }]
+      : []),
+    ...(input.lastFrameResourceId
+      ? [{ type: 'resource', resource_id: input.lastFrameResourceId, frame_position: 'last' }]
+      : []),
+    ...(input.referenceImageResourceIds ?? []).map((resourceId) => ({
+      type: 'resource',
+      resource_id: resourceId,
+    })),
+  ]
   return parseGenerationTask(await requestKinoEnvelope<unknown>(KINO_GENERATIONS_ROUTE, {
     method: 'POST',
-    json: input,
+    json: {
+      game_id: input.gameSlug,
+      media_type: 'video',
+      duration_sec: input.durationSeconds,
+      add_to_resource: true,
+      content,
+      extra: {
+        generate_audio: input.generateAudio,
+        ...(input.resolution ? { resolution: input.resolution } : {}),
+      },
+      ...(input.size ? { size: input.size } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.visualStyleKey ? { visual_style_key: input.visualStyleKey } : {}),
+    },
     fetch: sameOriginFetch,
     ...(options.signal ? { signal: options.signal } : {}),
   }))
@@ -140,9 +164,11 @@ export async function getKinoGeneration(
   if (!generationId.trim()) {
     throw new KinoClientError('Missing generation id', 400, 'kino_invalid_parameter')
   }
+  if (!gameSlug.trim()) {
+    throw new KinoClientError('Missing gameSlug', 400, 'missing_game_slug')
+  }
   const path = `${KINO_GENERATIONS_ROUTE}/${encodeURIComponent(generationId)}`
   return parseGenerationTask(await requestKinoEnvelope<unknown>(path, {
-    query: { gameSlug },
     fetch: sameOriginFetch,
     ...(options.signal ? { signal: options.signal } : {}),
   }))
@@ -153,8 +179,16 @@ export async function listActiveKinoGenerations(
   gameSlug: string,
   options: KinoRequestOptions = {},
 ): Promise<VideoGenerationTask[]> {
+  if (!gameSlug.trim()) {
+    throw new KinoClientError('Missing gameSlug', 400, 'missing_game_slug')
+  }
   const page = await requestKinoEnvelope<unknown>(KINO_GENERATIONS_ROUTE, {
-    query: { gameSlug },
+    query: {
+      game_id: gameSlug,
+      media_type: 'video',
+      page: 1,
+      page_size: 100,
+    },
     fetch: sameOriginFetch,
     ...(options.signal ? { signal: options.signal } : {}),
   })

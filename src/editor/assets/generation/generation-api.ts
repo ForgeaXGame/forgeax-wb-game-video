@@ -1,7 +1,7 @@
 /**
  * Browser-side video generation contract.
  *
- * 浏览器的生成 transport 是同源 `/api/v1/kino-generations`（见
+ * 浏览器的生成 transport 是同源 `/api/v1/kino/generations`（见
  * `kino-generation-client.ts`）。这里只保留请求/任务形状，不再持有 Workbench
  * Host tool 的提交实现：Host tool `wb-game-video:generate-video-clip` 仍然存在，
  * 但只服务 Agent/MCP 调用方，由 server 侧 handler 承载。
@@ -18,7 +18,7 @@ export type VideoGenerationStatus =
   | 'cancelled'
 
 export interface ClipGenerationRequest {
-  /** UI identity only. 宿主服务端解析权威 gameId。 */
+  /** 当前 Workbench handshake 提供的 gameId。 */
   gameSlug: string
   prompt: string
   durationSeconds: number

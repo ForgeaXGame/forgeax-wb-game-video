@@ -192,6 +192,18 @@ export type KinoFetch = (input: string, init?: RequestInit) => Promise<Response>
 
 const DEFAULT_BASE_URL = '/api/v1/kino'
 const MAX_ERROR_MESSAGE_LENGTH = 512
+const KINO_BROWSER_CAPABILITIES: KinoProviderCapabilities = {
+  provider: 'kino',
+  media_types: ['video', 'image', 'audio'],
+  upload_mimes: [
+    'video/mp4',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'audio/mpeg',
+    'audio/wav',
+  ],
+}
 
 /** Shared sentinel text so downstream callers can detect a plain (non-business) 404 by message. */
 export const KINO_PLAIN_HTTP_404_MESSAGE = 'Request failed with HTTP 404'
@@ -363,10 +375,12 @@ export function createKinoVideoClient(
   const baseUrl = normalizeBaseUrl(options.baseUrl)
 
   return {
-    async capabilities(options) {
-      return requestJson<KinoProviderCapabilities>(fetchImpl, baseUrl, '/capabilities', {
-        signal: options?.signal,
-      })
+    async capabilities() {
+      return {
+        ...KINO_BROWSER_CAPABILITIES,
+        media_types: [...KINO_BROWSER_CAPABILITIES.media_types],
+        upload_mimes: [...KINO_BROWSER_CAPABILITIES.upload_mimes],
+      }
     },
 
     async prepareUpload(input, options) {
