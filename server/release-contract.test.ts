@@ -33,15 +33,13 @@ const forbiddenLegacyHostRoutes = [
   '/__gva__',
   '/__ce-api__',
   '/api/game-host',
-  '/api/v1/kino',
   '__video-upload-proxy',
   'FORGEAX_SERVER_PORT',
   '.forgeax/active-game.json',
 ]
 
 function containsForbiddenLegacyRoute(source: string, route: string): boolean {
-  if (route !== '/api/v1/kino') return source.includes(route)
-  return /\/api\/v1\/kino(?:\/|\?|["'`])/.test(source)
+  return source.includes(route)
 }
 
 // These routes belong to the current main-branch runtime/builders. They are
@@ -62,7 +60,7 @@ function productionSourceFiles(directory = root, relativeDirectory = ''): string
       : entry.name
     const absolutePath = resolve(directory, entry.name)
     if (entry.isDirectory()) {
-      if (['.git', 'dist', 'docs', 'node_modules', '.superpowers'].includes(entry.name)) {
+      if (['.git', '.worktrees', 'dist', 'docs', 'node_modules', '.superpowers'].includes(entry.name)) {
         return []
       }
       return productionSourceFiles(absolutePath, relativePath)
@@ -103,10 +101,10 @@ describe('release identity', () => {
 
   it('uses one package, manifest, workbench, skill, and tool namespace', () => {
     expect(pkg.name).toBe('@forgeax-extension/wb-game-video')
-    expect(pkg.version).toBe('0.7.2')
+    expect(pkg.version).toBe('0.7.4')
     expect(pkg.private).not.toBe(true)
     expect(manifest.id).toBe(pkg.name)
-    expect(manifest.version).toBe('0.7.2')
+    expect(manifest.version).toBe(pkg.version)
     expect(manifest.provides.workbench.id).toBe('wb-game-video')
     expect(manifest.provides.skills.every(
       (entry: { id: string }) => entry.id.startsWith('wb-game-video:'),
