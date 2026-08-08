@@ -1,9 +1,9 @@
 /**
- * Browser-safe projection of the Workbench Host media API.
+ * Browser-safe client for the product's same-origin Kino API.
  * Standalone DTOs — must not import server/private packages.
  */
 
-import { pluginFetch, pluginUrl } from '../../lib/plugin-http'
+import { productFetch, productUrl } from '../../lib/plugin-http'
 
 export interface KinoEnvelope<T> {
   code: number
@@ -190,7 +190,7 @@ export interface CreateKinoVideoClientOptions {
 
 export type KinoFetch = (input: string, init?: RequestInit) => Promise<Response>
 
-const DEFAULT_BASE_URL = '/media'
+const DEFAULT_BASE_URL = '/api/v1/kino'
 const MAX_ERROR_MESSAGE_LENGTH = 512
 
 /** Shared sentinel text so downstream callers can detect a plain (non-business) 404 by message. */
@@ -340,7 +340,7 @@ export async function requestKinoEnvelope<T>(
   if (!path.startsWith('/') || path.startsWith('//')) {
     throw new Error('Kino request path must be same-origin and absolute')
   }
-  const fetchImpl = options.fetch ?? pluginFetch
+  const fetchImpl = options.fetch ?? productFetch
   const requestPath = options.query ? appendQuery(path, options.query) : path
   return requestJson<T>(fetchImpl, '', requestPath, {
     method: options.method,
@@ -359,9 +359,8 @@ function resourcePath(resourceId: string, gameId: string, suffix = ''): string {
 export function createKinoVideoClient(
   options: CreateKinoVideoClientOptions = {},
 ): KinoVideoClient {
-  const fetchImpl = options.fetch ?? pluginFetch
+  const fetchImpl = options.fetch ?? productFetch
   const baseUrl = normalizeBaseUrl(options.baseUrl)
-  const hostTransport = options.fetch === undefined && options.baseUrl === undefined
 
   return {
     async capabilities(options) {
@@ -440,7 +439,7 @@ export function createKinoVideoClient(
 
     playbackUrl(resourceId, gameId) {
       const path = `${baseUrl}${resourcePath(resourceId, gameId, '/content')}`
-      return hostTransport ? pluginUrl(path) : path
+      return options.fetch === undefined ? productUrl(path) : path
     },
   }
 }

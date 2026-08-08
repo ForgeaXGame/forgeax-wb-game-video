@@ -871,12 +871,13 @@ export function GraphStudio({ scenario }: { scenario: GameScenario }): JSX.Eleme
             ⚠ 未保存草稿
           </span>
         ) : null}
-        {videoOptionsError ? (
-          <span role="alert" style={{ color: '#ff8f8f', fontSize: 11 }}>
-            Kino 视频素材加载失败：{videoOptionsError}
-          </span>
-        ) : null}
       </div>
+
+      {videoOptionsError ? (
+        <div role="alert" style={{ flex: 'none', padding: '6px 10px', color: '#ff8f8f', fontSize: 11 }}>
+          Kino 视频素材加载失败：{videoOptionsError}
+        </div>
+      ) : null}
 
       {/* 主体：画布命中区必须裁在本层内（WebKit 上 RF transform 层会把 hit-test 渗到工具条） */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', zIndex: 0, overflow: 'hidden', isolation: 'isolate' }}>
