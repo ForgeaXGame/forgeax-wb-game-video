@@ -21,24 +21,25 @@ function makeFetch(
 }
 
 describe('createKinoVideoClient', () => {
-  it('loads active provider capabilities', async () => {
+  it('uses the capabilities documented by the native Kino browser API', async () => {
     const capabilities = {
       provider: 'kino' as const,
       media_types: ['video', 'image', 'audio'] as const,
-      upload_mimes: ['video/mp4', 'image/png', 'audio/mpeg'] as const,
+      upload_mimes: [
+        'video/mp4',
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'audio/mpeg',
+        'audio/wav',
+      ] as const,
     }
-    const fetchImpl = makeFetch((input, init) => {
-      expect(String(input)).toBe('/api/v1/kino/capabilities')
-      expect(init?.credentials).toBe('include')
-      return new Response(JSON.stringify(envelope(capabilities)), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
+    const fetchImpl = makeFetch(() => new Response())
 
     const client = createKinoVideoClient({ fetch: fetchImpl })
 
     await expect(client.capabilities()).resolves.toEqual(capabilities)
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('normalizes baseUrl without trailing slash', async () => {
